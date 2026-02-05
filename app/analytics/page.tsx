@@ -16,6 +16,7 @@ type Entry = {
   startingPosition: string;
   leftStartingZone: boolean;
 
+  autoCoralMissed: number;
   autoCoralL1: number;
   autoCoralL2: number;
   autoCoralL3: number;
@@ -174,7 +175,7 @@ export default function AnalyticsPage() {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* SIDEBAR */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
         <div className="p-4 border-b border-gray-200">
           <h1 className="text-xl font-bold" style={{ color: "#c42221" }}>
             Analytics
@@ -184,7 +185,7 @@ export default function AnalyticsPage() {
           </p>
         </div>
 
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 flex flex-col">
           <button
             onClick={() => setActiveView("raw-data")}
             className={`w-full text-left px-3 py-2 rounded mb-2 ${
@@ -217,7 +218,7 @@ export default function AnalyticsPage() {
           </button>
           <button
             onClick={() => setActiveView("rankings")}
-            className={`w-full text-left px-3 py-2 rounded ${
+            className={`w-full text-left px-3 py-2 rounded mb-2 ${
               activeView === "rankings"
                 ? "bg-red-100 text-red-800 font-semibold"
                 : "hover:bg-gray-100 text-gray-700"
@@ -231,304 +232,261 @@ export default function AnalyticsPage() {
       {/* MAIN CONTENT */}
       <div className="flex-1 overflow-hidden">
         {activeView === "raw-data" && (
-          <div className="h-full overflow-auto">
-            <style jsx>{`
-              .table-container {
-                position: relative;
-                overflow: auto;
-                height: 100%;
-              }
-
-              table {
-                border-collapse: collapse;
-                font-size: 0.75rem;
-              }
-
-              th, td {
-                border: 1px solid #e5e7eb;
-                padding: 0.5rem;
-                white-space: nowrap;
-              }
-
-              thead th {
-                position: sticky;
-                top: 0;
-                z-index: 20;
-                background: white;
-              }
-
-              /* First row headers (group headers) */
-              thead tr:first-child th {
-                top: 0;
-                z-index: 21;
-              }
-
-              /* Second row headers (column labels) */
-              thead tr:nth-child(2) th {
-                top: 33px; /* Height of first header row */
-                z-index: 21;
-              }
-
-              /* Sticky left columns */
-              .sticky-col-1 {
-                position: sticky;
-                left: 0;
-                z-index: 10;
-                background: white;
-              }
-
-              .sticky-col-2 {
-                position: sticky;
-                left: 80px; /* Width of first column */
-                z-index: 10;
-                background: white;
-              }
-
-              /* When in header */
-              thead .sticky-col-1,
-              thead .sticky-col-2 {
-                z-index: 22;
-              }
-
-              tbody tr:nth-child(even) .sticky-col-1,
-              tbody tr:nth-child(even) .sticky-col-2 {
-                background: #f9fafb;
-              }
-            `}</style>
-
-            <div className="table-container">
+          <div className="h-full p-4">
+            <div className="bg-white rounded-xl shadow h-full table-scroll">
               <table>
-                <thead>
-                  {/* GROUP HEADERS ROW */}
+                <thead className="sticky-header">
+                  {/* ROW 1: TOP LEVEL GROUPS */}
                   <tr>
-                    <th className="sticky-col-1 bg-red-200 font-bold" colSpan={2}>
-                      Information
-                    </th>
-                    <th className="bg-yellow-200 font-bold" colSpan={2}>
-                      Pre-Match
-                    </th>
-                    <th className="bg-green-200 font-bold" colSpan={9}>
-                      Autonomous
-                    </th>
-                    <th className="bg-blue-200 font-bold" colSpan={13}>
-                      Teleoperated
-                    </th>
-                    <th className="bg-yellow-200 font-bold" colSpan={2}>
-                      Endgame
-                    </th>
-                    <th className="bg-purple-200 font-bold" colSpan={2}>
-                      Misc
-                    </th>
-                    <th className="bg-pink-200 font-bold">
-                      Accuracy
-                    </th>
+                    <th className="sticky-left bg-red-300" colSpan={2}>Information</th>
+                    <th className="bg-yellow-300" colSpan={2}>Pre-Match</th>
+                    <th className="bg-green-300" colSpan={9}>Autonomous</th>
+                    <th className="bg-blue-300" colSpan={13}>Teleoperated</th>
+                    <th className="bg-yellow-300" colSpan={2}>Endgame</th>
+                    <th className="bg-purple-300" colSpan={1}>Incidents</th>
+                    <th className="bg-pink-300" colSpan={3}>General</th>
                   </tr>
 
-                  {/* SUB-HEADERS ROW */}
+                  {/* ROW 2: SUB-CATEGORIES */}
                   <tr>
                     {/* Information */}
-                    <th className="sticky-col-1 bg-red-50 cursor-pointer hover:bg-red-100"
+                    <th className="sticky-left bg-red-200" colSpan={2}>Information</th>
+
+                    {/* Pre-Match */}
+                    <th className="bg-yellow-200" colSpan={2}>Pre-Match</th>
+
+                    {/* Autonomous - subdivided */}
+                    <th className="bg-green-200" colSpan={1}>Leave</th>
+                    <th className="bg-green-200" colSpan={4}>Coral</th>
+                    <th className="bg-green-200" colSpan={2}>Algae Processor</th>
+                    <th className="bg-green-200" colSpan={2}>Algae Net</th>
+
+                    {/* Teleoperated - subdivided */}
+                    <th className="bg-blue-200" colSpan={5}>Coral</th>
+                    <th className="bg-blue-200" colSpan={1}>Algae Collection</th>
+                    <th className="bg-blue-200" colSpan={2}>Algae Processor</th>
+                    <th className="bg-blue-200" colSpan={2}>Algae Net (Robot)</th>
+                    <th className="bg-blue-200" colSpan={2}>Algae Net (Human)</th>
+                    <th className="bg-blue-200" colSpan={1}>Climb</th>
+
+                    {/* Endgame */}
+                    <th className="bg-yellow-200" colSpan={2}>Climb</th>
+
+                    {/* Incidents */}
+                    <th className="bg-purple-200" colSpan={1}>Incidents</th>
+
+                    {/* General */}
+                    <th className="bg-pink-200" colSpan={1}>Comments</th>
+                    <th className="bg-pink-200" colSpan={1}>Accuracy Script</th>
+                    <th className="bg-pink-200" colSpan={1}>Script Status</th>
+                  </tr>
+
+                  {/* ROW 3: ACTUAL COLUMN LABELS */}
+                  <tr>
+                    {/* Information */}
+                    <th className="sticky-left cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("matchNumber")}>
                       {sortLabel("matchNumber", "Match")}
                     </th>
-                    <th className="sticky-col-2 bg-red-50 cursor-pointer hover:bg-red-100"
+                    <th className="sticky-left-2 cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teamNumber")}>
                       {sortLabel("teamNumber", "Team")}
                     </th>
 
                     {/* Pre-Match */}
-                    <th className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("scoutName")}>
                       {sortLabel("scoutName", "Scout")}
                     </th>
-                    <th className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("startingPosition")}>
                       {sortLabel("startingPosition", "Starting Position")}
                     </th>
 
                     {/* Autonomous - Leave */}
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("leftStartingZone")}>
                       {sortLabel("leftStartingZone", "Leave")}
                     </th>
 
                     {/* Autonomous - Coral */}
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoCoralL1")}>
                       {sortLabel("autoCoralL1", "L1")}
                     </th>
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoCoralL2")}>
                       {sortLabel("autoCoralL2", "L2")}
                     </th>
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoCoralL3")}>
                       {sortLabel("autoCoralL3", "L3")}
                     </th>
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoCoralL4")}>
                       {sortLabel("autoCoralL4", "L4")}
                     </th>
 
                     {/* Autonomous - Algae Processor */}
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoAlgaeProcessorMissed")}>
                       {sortLabel("autoAlgaeProcessorMissed", "Missed")}
                     </th>
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoAlgaeProcessorScored")}>
                       {sortLabel("autoAlgaeProcessorScored", "Scored")}
                     </th>
 
                     {/* Autonomous - Algae Net */}
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoAlgaeNetMissed")}>
                       {sortLabel("autoAlgaeNetMissed", "Missed")}
                     </th>
-                    <th className="bg-green-50 cursor-pointer hover:bg-green-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("autoAlgaeNetScored")}>
                       {sortLabel("autoAlgaeNetScored", "Scored")}
                     </th>
 
                     {/* Teleoperated - Coral */}
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopCoralMissed")}>
                       {sortLabel("teleopCoralMissed", "Missed")}
                     </th>
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopCoralL1")}>
                       {sortLabel("teleopCoralL1", "L1")}
                     </th>
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopCoralL2")}>
                       {sortLabel("teleopCoralL2", "L2")}
                     </th>
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopCoralL3")}>
                       {sortLabel("teleopCoralL3", "L3")}
                     </th>
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopCoralL4")}>
                       {sortLabel("teleopCoralL4", "L4")}
                     </th>
 
                     {/* Teleoperated - Algae Collection */}
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopAlgaeRemoved")}>
-                      {sortLabel("teleopAlgaeRemoved", "Remove")}
+                      {sortLabel("teleopAlgaeRemoved", "Remove Algae from Reef")}
                     </th>
 
                     {/* Teleoperated - Processor */}
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopProcessorMissed")}>
                       {sortLabel("teleopProcessorMissed", "Missed")}
                     </th>
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopProcessorScored")}>
                       {sortLabel("teleopProcessorScored", "Scored")}
                     </th>
 
                     {/* Teleoperated - Net (Robot) */}
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopNetRobotMissed")}>
                       {sortLabel("teleopNetRobotMissed", "Missed")}
                     </th>
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopNetRobotScored")}>
                       {sortLabel("teleopNetRobotScored", "Scored")}
                     </th>
 
                     {/* Teleoperated - Net (Human) */}
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopNetHumanMissed")}>
                       {sortLabel("teleopNetHumanMissed", "Missed")}
                     </th>
-                    <th className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("teleopNetHumanScored")}>
                       {sortLabel("teleopNetHumanScored", "Scored")}
                     </th>
 
-                    {/* Endgame */}
-                    <th className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
+                    {/* Teleoperated - Climb (Failed moved here from Endgame) */}
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("failedClimb")}>
                       {sortLabel("failedClimb", "Failed")}
                     </th>
-                    <th className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
+
+                    {/* Endgame - Climb */}
+                    <th className="cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort("stageStatus")}>
                       {sortLabel("stageStatus", "End Place")}
                     </th>
+                    <th>Score</th>
 
-                    {/* Misc */}
-                    <th className="bg-purple-50">Incidents</th>
-                    <th className="bg-purple-50">Notes</th>
+                    {/* Incidents */}
+                    <th>Incidents</th>
 
-                    {/* Accuracy */}
-                    <th className="bg-pink-50 cursor-pointer hover:bg-pink-100"
-                        onClick={() => handleSort("score")}>
-                      {sortLabel("score", "Score")}
-                    </th>
+                    {/* General */}
+                    <th>Comments</th>
+                    <th>Alliance Accuracy</th>
+                    <th>Script Status</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {data.map((e, idx) => {
+                  {data.map((e) => {
                     const score = scoreEntry(e);
 
                     return (
                       <tr key={e.id}>
                         {/* Information */}
-                        <td className="sticky-col-1 text-center font-semibold">
+                        <td className="sticky-left font-semibold">
                           {e.matchNumber || "-"}
                         </td>
-                        <td className="sticky-col-2 text-center font-semibold">
+                        <td className="sticky-left-2 font-semibold">
                           {e.teamNumber}
                         </td>
 
                         {/* Pre-Match */}
-                        <td className="text-center">{e.scoutName}</td>
-                        <td className="text-center">{e.startingPosition}</td>
+                        <td>{e.scoutName}</td>
+                        <td>{e.startingPosition}</td>
 
                         {/* Autonomous */}
-                        <td className="text-center">{e.leftStartingZone ? "✓" : ""}</td>
-                        <td className="text-center">{e.autoCoralL1 || ""}</td>
-                        <td className="text-center">{e.autoCoralL2 || ""}</td>
-                        <td className="text-center">{e.autoCoralL3 || ""}</td>
-                        <td className="text-center">{e.autoCoralL4 || ""}</td>
-                        <td className="text-center">{e.autoAlgaeProcessorMissed || ""}</td>
-                        <td className="text-center">{e.autoAlgaeProcessorScored || ""}</td>
-                        <td className="text-center">{e.autoAlgaeNetMissed || ""}</td>
-                        <td className="text-center">{e.autoAlgaeNetScored || ""}</td>
+                        <td>{e.leftStartingZone ? "✓" : ""}</td>
+                        <td>{e.autoCoralL1 || ""}</td>
+                        <td>{e.autoCoralL2 || ""}</td>
+                        <td>{e.autoCoralL3 || ""}</td>
+                        <td>{e.autoCoralL4 || ""}</td>
+                        <td>{e.autoAlgaeProcessorMissed || ""}</td>
+                        <td>{e.autoAlgaeProcessorScored || ""}</td>
+                        <td>{e.autoAlgaeNetMissed || ""}</td>
+                        <td>{e.autoAlgaeNetScored || ""}</td>
 
                         {/* Teleoperated */}
-                        <td className="text-center">{e.teleopCoralMissed || ""}</td>
-                        <td className="text-center">{e.teleopCoralL1 || ""}</td>
-                        <td className="text-center">{e.teleopCoralL2 || ""}</td>
-                        <td className="text-center">{e.teleopCoralL3 || ""}</td>
-                        <td className="text-center">{e.teleopCoralL4 || ""}</td>
-                        <td className="text-center">{e.teleopAlgaeRemoved ? "✓" : ""}</td>
-                        <td className="text-center">{e.teleopProcessorMissed || ""}</td>
-                        <td className="text-center">{e.teleopProcessorScored || ""}</td>
-                        <td className="text-center">{e.teleopNetRobotMissed || ""}</td>
-                        <td className="text-center">{e.teleopNetRobotScored || ""}</td>
-                        <td className="text-center">{e.teleopNetHumanMissed || ""}</td>
-                        <td className="text-center">{e.teleopNetHumanScored || ""}</td>
+                        <td>{e.teleopCoralMissed || ""}</td>
+                        <td>{e.teleopCoralL1 || ""}</td>
+                        <td>{e.teleopCoralL2 || ""}</td>
+                        <td>{e.teleopCoralL3 || ""}</td>
+                        <td>{e.teleopCoralL4 || ""}</td>
+                        <td>{e.teleopAlgaeRemoved ? "✓" : ""}</td>
+                        <td>{e.teleopProcessorMissed || ""}</td>
+                        <td>{e.teleopProcessorScored || ""}</td>
+                        <td>{e.teleopNetRobotMissed || ""}</td>
+                        <td>{e.teleopNetRobotScored || ""}</td>
+                        <td>{e.teleopNetHumanMissed || ""}</td>
+                        <td>{e.teleopNetHumanScored || ""}</td>
+                        <td>{e.failedClimb || ""}</td>
 
                         {/* Endgame */}
-                        <td className="text-center">{e.failedClimb || ""}</td>
-                        <td className="text-center">{e.stageStatus}</td>
+                        <td>{e.stageStatus}</td>
+                        <td className="font-bold">{score}</td>
 
-                        {/* Misc */}
+                        {/* Incidents */}
                         <td className="text-xs max-w-[200px] truncate">
-                          {e.incidents?.join(", ")}
-                        </td>
-                        <td className="text-xs max-w-[200px] truncate">
-                          {e.notes}
+                          {e.incidents?.join(", ") || ""}
                         </td>
 
-                        {/* Accuracy */}
-                        <td className="text-center font-bold text-base">
-                          {score}
+                        {/* General */}
+                        <td className="text-xs max-w-[200px] truncate">
+                          {e.notes || ""}
                         </td>
+                        <td>-</td>
+                        <td>-</td>
                       </tr>
                     );
                   })}
