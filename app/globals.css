@@ -51,30 +51,58 @@
   background: white;
 }
 
+/* Ensure all header rows stick properly */
+.sticky-header tr:first-child th {
+  top: 0;
+}
+
+.sticky-header tr:nth-child(2) th {
+  top: 38px; /* Height of first row */
+}
+
+.sticky-header tr:nth-child(3) th {
+  top: 76px; /* Height of first + second row */
+}
+
 /* ----------------------------- */
 /* STICKY LEFT COLUMNS           */
 /* ----------------------------- */
 
-.sticky-left {
+/* Action column - leftmost */
+.sticky-left-action {
   position: sticky;
   left: 0;
-  z-index: 60;
+  z-index: 110;
   background: white;
   min-width: 80px;
+  border-right: 1px solid #ccc;
 }
 
+/* Match number column */
+.sticky-left {
+  position: sticky;
+  left: 80px; /* Width of action column */
+  z-index: 110;
+  background: white;
+  min-width: 80px;
+  border-right: 1px solid #ccc;
+}
+
+/* Team number column */
 .sticky-left-2 {
   position: sticky;
-  left: 80px;
-  z-index: 60;
+  left: 160px; /* Width of action + match columns */
+  z-index: 110;
   background: white;
   min-width: 80px;
+  border-right: 1px solid #ccc;
 }
 
-/* Prevent sticky columns from overlapping borders */
-.sticky-left,
-.sticky-left-2 {
-  border-right: 1px solid #ccc;
+/* Higher z-index for sticky headers in sticky columns */
+.sticky-header .sticky-left-action,
+.sticky-header .sticky-left,
+.sticky-header .sticky-left-2 {
+  z-index: 150;
 }
 
 /* ----------------------------- */
@@ -142,5 +170,18 @@
 }
 
 .table-scroll tbody tr:nth-child(odd) {
+  background: white;
+}
+
+/* Ensure sticky cells maintain row color */
+.table-scroll tbody tr:nth-child(even) .sticky-left-action,
+.table-scroll tbody tr:nth-child(even) .sticky-left,
+.table-scroll tbody tr:nth-child(even) .sticky-left-2 {
+  background: #f9fafb;
+}
+
+.table-scroll tbody tr:nth-child(odd) .sticky-left-action,
+.table-scroll tbody tr:nth-child(odd) .sticky-left,
+.table-scroll tbody tr:nth-child(odd) .sticky-left-2 {
   background: white;
 }

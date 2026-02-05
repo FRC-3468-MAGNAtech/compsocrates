@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { collection, addDoc } from "firebase/firestore";
+import { db } from "@/app/firebase";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -328,6 +330,7 @@ export default function Page() {
     id: 23, 
     type: "qualification" 
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     scoutName: "Jordan Smith",
@@ -377,6 +380,75 @@ export default function Page() {
       return `Practice Match ${selectedMatch.id}`;
     } else {
       return `Qualification Match ${selectedMatch.id}`;
+    }
+  };
+
+  const handleSubmit = async () => {
+    // Validation
+    if (!formData.teamNumber) {
+      alert("Please select a team number");
+      return;
+    }
+    if (!formData.startingPosition) {
+      alert("Please select a starting position");
+      return;
+    }
+    if (!formData.stageStatus) {
+      alert("Please select a stage status");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const submissionData = {
+        ...formData,
+        matchNumber: selectedMatch.id.toString(),
+        matchType: selectedMatch.type,
+        timestamp: Date.now(),
+      };
+
+      await addDoc(collection(db, "scouting"), submissionData);
+      
+      alert("Form submitted successfully!");
+      
+      // Reset form
+      setFormData({
+        scoutName: formData.scoutName, // Keep scout name
+        teamNumber: "",
+        startingPosition: "",
+        leftStartingZone: false,
+        autoCoralMissed: 0,
+        autoCoralL1: 0,
+        autoCoralL2: 0,
+        autoCoralL3: 0,
+        autoCoralL4: 0,
+        autoAlgaeProcessorMissed: 0,
+        autoAlgaeProcessorScored: 0,
+        autoAlgaeNetMissed: 0,
+        autoAlgaeNetScored: 0,
+        teleopCoralMissed: 0,
+        teleopCoralL1: 0,
+        teleopCoralL2: 0,
+        teleopCoralL3: 0,
+        teleopCoralL4: 0,
+        teleopAlgaeRemoved: false,
+        teleopProcessorMissed: 0,
+        teleopProcessorScored: 0,
+        teleopNetRobotMissed: 0,
+        teleopNetRobotScored: 0,
+        teleopNetHumanMissed: 0,
+        teleopNetHumanScored: 0,
+        failedClimb: 0,
+        stageStatus: "",
+        incidents: [],
+        notes: "",
+      });
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      alert("Error submitting form. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -476,10 +548,10 @@ export default function Page() {
                 className="w-full border rounded p-2"
               >
                 <option value="">Select Position</option>
-                <option value="not-there">Not There</option>
-                <option value="processor">Processor Side</option>
-                <option value="middle">Middle</option>
-                <option value="opposite">Opposite Side</option>
+                <option value="Not There">Not There</option>
+                <option value="Processor Side">Processor Side</option>
+                <option value="Middle">Middle</option>
+                <option value="Opposite Side">Opposite Side</option>
               </select>
             </div>
           </div>
@@ -589,10 +661,10 @@ export default function Page() {
               className="w-full border rounded p-2"
             >
               <option value="">Select Status</option>
-              <option value="not-parked">Not Parked</option>
-              <option value="barge">Parked in Barge Zone</option>
-              <option value="shallow">Shallow Cage</option>
-              <option value="deep">Deep Cage</option>
+              <option value="Not Parked">Not Parked</option>
+              <option value="Parked in Barge Zone">Parked in Barge Zone</option>
+              <option value="Shallow Cage">Shallow Cage</option>
+              <option value="Deep Cage">Deep Cage</option>
             </select>
           </div>
         </div>
@@ -638,14 +710,12 @@ export default function Page() {
         {/* SUBMIT */}
         <div className="bg-white rounded-xl shadow p-4">
           <button
-            className="w-full py-3 rounded text-white font-semibold"
+            className="w-full py-3 rounded text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ backgroundColor: "#c42221" }}
-            onClick={() => {
-              console.log("Form submitted:", formData);
-              alert("Form submitted! Check console for data.");
-            }}
+            onClick={handleSubmit}
+            disabled={isSubmitting}
           >
-            Submit Scouting Report
+            {isSubmitting ? "Submitting..." : "Submit Scouting Report"}
           </button>
         </div>
       </div>
