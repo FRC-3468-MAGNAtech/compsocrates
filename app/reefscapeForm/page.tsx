@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { addDoc, collection } from "firebase/firestore";
+import { db } from "@/firebase";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -640,10 +642,19 @@ export default function Page() {
           <button
             className="w-full py-3 rounded text-white font-semibold"
             style={{ backgroundColor: "#c42221" }}
-            onClick={() => {
-              console.log("Form submitted:", formData);
-              alert("Form submitted! Check console for data.");
-            }}
+           onClick={async () => {
+            try {
+              await addDoc(collection(db, "scouting"), {
+                ...formData,
+                timestamp: Date.now(),
+              });
+
+              alert("Scouting data saved!");
+            } catch (error) {
+              console.error("Error saving data:", error);
+              alert("Error saving data. Check console.");
+            }
+          }}
           >
             Submit Scouting Report
           </button>
