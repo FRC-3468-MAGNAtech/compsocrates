@@ -189,46 +189,92 @@ export default function AnalyticsPage() {
         <div className="bg-white rounded-xl shadow table-scroll border">
           <table className="min-w-full border-collapse text-xs">
             {/* GROUP HEADERS */}
-            <thead className="sticky-header">
-              <tr>
-                {/* Information */}
-                <th
-                  className="sticky-left bg-red-300 border px-2 py-1 text-center font-semibold"
-                  colSpan={2}
-                >
-                  Information
-                </th>
+           <thead className="sticky-header">
+            <tr>
+              {/* Information */}
+              <th className="sticky-left bg-red-300 border px-2 py-1 font-semibold" colSpan={2}>
+                Information
+              </th>
 
-                {/* Pre-Match */}
-                <th className="bg-yellow-300 border px-2 py-1 text-center font-semibold" colSpan={2}>
-                  Pre‑Match
-                </th>
+              {/* Pre‑Match */}
+              <th className="bg-yellow-300 border px-2 py-1 font-semibold" colSpan={2}>
+                Pre‑Match
+              </th>
 
-                {/* Autonomous */}
-                <th className="bg-green-300 border px-2 py-1 text-center font-semibold" colSpan={9}>
-                  Autonomous
-                </th>
+              {/* Autonomous */}
+              <th className="bg-green-300 border px-2 py-1 font-semibold" colSpan={9}>
+                Autonomous
+              </th>
 
-                {/* Teleop */}
-                <th className="bg-blue-300 border px-2 py-1 text-center font-semibold" colSpan={13}>
-                  Teleoperated
-                </th>
+              {/* Teleoperated */}
+              <th className="bg-blue-300 border px-2 py-1 font-semibold" colSpan={13}>
+                Teleoperated
+              </th>
 
-                {/* Endgame */}
-                <th className="bg-yellow-300 border px-2 py-1 text-center font-semibold" colSpan={2}>
-                  Endgame
-                </th>
+              {/* Endgame */}
+              <th className="bg-yellow-300 border px-2 py-1 font-semibold" colSpan={2}>
+                Endgame
+              </th>
 
-                {/* Misc */}
-                <th className="bg-purple-300 border px-2 py-1 text-center font-semibold" colSpan={2}>
-                  Misc
-                </th>
+              {/* Misc */}
+              <th className="bg-purple-300 border px-2 py-1 font-semibold" colSpan={2}>
+                Misc
+              </th>
 
-                {/* Accuracy */}
-                <th className="bg-pink-300 border px-2 py-1 text-center font-semibold" colSpan={1}>
-                  Accuracy
-                </th>
-              </tr>
+              {/* Accuracy */}
+              <th className="bg-pink-300 border px-2 py-1 font-semibold">
+                Accuracy
+              </th>
+            </tr>
+
+            {/* COLUMN LABELS */}
+            <tr className="bg-white shadow-sm">
+
+              {/* Sticky left */}
+              <th className="sticky-left border px-2 py-1 font-semibold">Match</th>
+              <th className="sticky-left-2 border px-2 py-1 font-semibold">Team</th>
+
+              {/* Pre‑Match */}
+              <th className="border px-2 py-1 font-semibold">Scout</th>
+              <th className="border px-2 py-1 font-semibold">Start Pos</th>
+
+              {/* Autonomous */}
+              <th className="border px-2 py-1 font-semibold">Leave</th>
+              <th className="border px-2 py-1 font-semibold">L1</th>
+              <th className="border px-2 py-1 font-semibold">L2</th>
+              <th className="border px-2 py-1 font-semibold">L3</th>
+              <th className="border px-2 py-1 font-semibold">L4</th>
+              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Processor Missed */}
+              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Processor Scored */}
+              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Net Missed */}
+              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Net Scored */}
+
+              {/* Teleop */}
+              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Coral Missed */}
+              <th className="border px-2 py-1 font-semibold">L1</th>
+              <th className="border px-2 py-1 font-semibold">L2</th>
+              <th className="border px-2 py-1 font-semibold">L3</th>
+              <th className="border px-2 py-1 font-semibold">L4</th>
+              <th className="border px-2 py-1 font-semibold">Remove</th>
+              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Processor Missed */}
+              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Processor Scored */}
+              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Net Robot Missed */}
+              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Net Robot Scored */}
+              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Net Human Missed */}
+              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Net Human Scored */}
+
+              {/* Endgame */}
+              <th className="border px-2 py-1 font-semibold">Failed</th>
+              <th className="border px-2 py-1 font-semibold">End Place</th>
+
+              {/* Misc */}
+              <th className="border px-2 py-1 font-semibold">Incidents</th>
+              <th className="border px-2 py-1 font-semibold">Notes</th>
+
+              {/* Accuracy */}
+              <th className="border px-2 py-1 font-semibold">Score</th>
+            </tr>
+          </thead>
 
               {/* COLUMN HEADERS */}
               <tr className="bg-white shadow-sm">
