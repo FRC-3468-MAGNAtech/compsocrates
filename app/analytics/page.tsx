@@ -1,5 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
+
 import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -188,269 +189,191 @@ export default function AnalyticsPage() {
       <div className="flex-1 p-4">
         <div className="bg-white rounded-xl shadow table-scroll border">
           <table className="min-w-full border-collapse text-xs">
-            {/* GROUP HEADERS */}
-           <thead className="sticky-header">
-            <tr>
-              {/* Information */}
-              <th className="sticky-left bg-red-300 border px-2 py-1 font-semibold" colSpan={2}>
-                Information
-              </th>
 
-              {/* Pre‑Match */}
-              <th className="bg-yellow-300 border px-2 py-1 font-semibold" colSpan={2}>
-                Pre‑Match
-              </th>
+            {/* SINGLE VALID THEAD */}
+            <thead className="sticky-header">
 
-              {/* Autonomous */}
-              <th className="bg-green-300 border px-2 py-1 font-semibold" colSpan={9}>
-                Autonomous
-              </th>
+              {/* GROUP HEADERS */}
+              <tr>
+                <th className="sticky-left bg-red-300 border px-2 py-1 font-semibold" colSpan={2}>
+                  Information
+                </th>
 
-              {/* Teleoperated */}
-              <th className="bg-blue-300 border px-2 py-1 font-semibold" colSpan={13}>
-                Teleoperated
-              </th>
+                <th className="bg-yellow-300 border px-2 py-1 font-semibold" colSpan={2}>
+                  Pre‑Match
+                </th>
 
-              {/* Endgame */}
-              <th className="bg-yellow-300 border px-2 py-1 font-semibold" colSpan={2}>
-                Endgame
-              </th>
+                <th className="bg-green-300 border px-2 py-1 font-semibold" colSpan={9}>
+                  Autonomous
+                </th>
 
-              {/* Misc */}
-              <th className="bg-purple-300 border px-2 py-1 font-semibold" colSpan={2}>
-                Misc
-              </th>
+                <th className="bg-blue-300 border px-2 py-1 font-semibold" colSpan={13}>
+                  Teleoperated
+                </th>
 
-              {/* Accuracy */}
-              <th className="bg-pink-300 border px-2 py-1 font-semibold">
-                Accuracy
-              </th>
-            </tr>
+                <th className="bg-yellow-300 border px-2 py-1 font-semibold" colSpan={2}>
+                  Endgame
+                </th>
 
-            {/* COLUMN LABELS */}
-            <tr className="bg-white shadow-sm">
+                <th className="bg-purple-300 border px-2 py-1 font-semibold" colSpan={2}>
+                  Misc
+                </th>
 
-              {/* Sticky left */}
-              <th className="sticky-left border px-2 py-1 font-semibold">Match</th>
-              <th className="sticky-left-2 border px-2 py-1 font-semibold">Team</th>
+                <th className="bg-pink-300 border px-2 py-1 font-semibold">
+                  Accuracy
+                </th>
+              </tr>
 
-              {/* Pre‑Match */}
-              <th className="border px-2 py-1 font-semibold">Scout</th>
-              <th className="border px-2 py-1 font-semibold">Start Pos</th>
-
-              {/* Autonomous */}
-              <th className="border px-2 py-1 font-semibold">Leave</th>
-              <th className="border px-2 py-1 font-semibold">L1</th>
-              <th className="border px-2 py-1 font-semibold">L2</th>
-              <th className="border px-2 py-1 font-semibold">L3</th>
-              <th className="border px-2 py-1 font-semibold">L4</th>
-              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Processor Missed */}
-              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Processor Scored */}
-              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Net Missed */}
-              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Net Scored */}
-
-              {/* Teleop */}
-              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Coral Missed */}
-              <th className="border px-2 py-1 font-semibold">L1</th>
-              <th className="border px-2 py-1 font-semibold">L2</th>
-              <th className="border px-2 py-1 font-semibold">L3</th>
-              <th className="border px-2 py-1 font-semibold">L4</th>
-              <th className="border px-2 py-1 font-semibold">Remove</th>
-              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Processor Missed */}
-              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Processor Scored */}
-              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Net Robot Missed */}
-              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Net Robot Scored */}
-              <th className="border px-2 py-1 font-semibold">Missed</th>   {/* Net Human Missed */}
-              <th className="border px-2 py-1 font-semibold">Scored</th>   {/* Net Human Scored */}
-
-              {/* Endgame */}
-              <th className="border px-2 py-1 font-semibold">Failed</th>
-              <th className="border px-2 py-1 font-semibold">End Place</th>
-
-              {/* Misc */}
-              <th className="border px-2 py-1 font-semibold">Incidents</th>
-              <th className="border px-2 py-1 font-semibold">Notes</th>
-
-              {/* Accuracy */}
-              <th className="border px-2 py-1 font-semibold">Score</th>
-            </tr>
-          </thead>
-
-              {/* COLUMN HEADERS */}
+              {/* COLUMN LABELS */}
               <tr className="bg-white shadow-sm">
-                {/* Sticky left columns */}
-                <th
-                  className="sticky-left border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("matchNumber")}
-                >
+
+                {/* Sticky left */}
+                <th className="sticky-left border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("matchNumber")}>
                   {sortLabel("matchNumber", "Match")}
                 </th>
-                <th
-                  className="sticky-left-2 border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teamNumber")}
-                >
+
+                <th className="sticky-left-2 border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teamNumber")}>
                   {sortLabel("teamNumber", "Team")}
                 </th>
 
-                {/* Pre-Match */}
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("scoutName")}
-                >
+                {/* Pre‑Match */}
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("scoutName")}>
                   {sortLabel("scoutName", "Scout")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("startingPosition")}
-                >
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("startingPosition")}>
                   {sortLabel("startingPosition", "Start Pos")}
                 </th>
 
                 {/* Autonomous */}
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("leftStartingZone")}
-                >
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("leftStartingZone")}>
                   {sortLabel("leftStartingZone", "Leave")}
                 </th>
-                <th className="border px-2 py-1 text-center font-semibold cursor-pointer" onClick={() => handleSort("autoCoralL1")}>
-                  {sortLabel("autoCoralL1", "A L1")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoCoralL1")}>
+                  {sortLabel("autoCoralL1", "L1")}
                 </th>
-                <th className="border px-2 py-1 text-center font-semibold cursor-pointer" onClick={() => handleSort("autoCoralL2")}>
-                  {sortLabel("autoCoralL2", "A L2")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoCoralL2")}>
+                  {sortLabel("autoCoralL2", "L2")}
                 </th>
-                <th className="border px-2 py-1 text-center font-semibold cursor-pointer" onClick={() => handleSort("autoCoralL3")}>
-                  {sortLabel("autoCoralL3", "A L3")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoCoralL3")}>
+                  {sortLabel("autoCoralL3", "L3")}
                 </th>
-                <th className="border px-2 py-1 text-center font-semibold cursor-pointer" onClick={() => handleSort("autoCoralL4")}>
-                  {sortLabel("autoCoralL4", "A L4")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoCoralL4")}>
+                  {sortLabel("autoCoralL4", "L4")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("autoAlgaeProcessorMissed")}
-                >
-                  {sortLabel("autoAlgaeProcessorMissed", "Proc Miss")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoAlgaeProcessorMissed")}>
+                  {sortLabel("autoAlgaeProcessorMissed", "Missed")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("autoAlgaeProcessorScored")}
-                >
-                  {sortLabel("autoAlgaeProcessorScored", "Proc Score")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoAlgaeProcessorScored")}>
+                  {sortLabel("autoAlgaeProcessorScored", "Scored")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("autoAlgaeNetMissed")}
-                >
-                  {sortLabel("autoAlgaeNetMissed", "Net Miss")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoAlgaeNetMissed")}>
+                  {sortLabel("autoAlgaeNetMissed", "Missed")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("autoAlgaeNetScored")}
-                >
-                  {sortLabel("autoAlgaeNetScored", "Net Score")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("autoAlgaeNetScored")}>
+                  {sortLabel("autoAlgaeNetScored", "Scored")}
                 </th>
 
                 {/* Teleop */}
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopCoralMissed")}
-                >
-                  {sortLabel("teleopCoralMissed", "T Miss")}
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopCoralMissed")}>
+                  {sortLabel("teleopCoralMissed", "Missed")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopCoralL1")}
-                >
-                  {sortLabel("teleopCoralL1", "T L1")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopCoralL1")}>
+                  {sortLabel("teleopCoralL1", "L1")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopCoralL2")}
-                >
-                  {sortLabel("teleopCoralL2", "T L2")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopCoralL2")}>
+                  {sortLabel("teleopCoralL2", "L2")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopCoralL3")}
-                >
-                  {sortLabel("teleopCoralL3", "T L3")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopCoralL3")}>
+                  {sortLabel("teleopCoralL3", "L3")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopCoralL4")}
-                >
-                  {sortLabel("teleopCoralL4", "T L4")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopCoralL4")}>
+                  {sortLabel("teleopCoralL4", "L4")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopAlgaeRemoved")}
-                >
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopAlgaeRemoved")}>
                   {sortLabel("teleopAlgaeRemoved", "Remove")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopProcessorMissed")}
-                >
-                  {sortLabel("teleopProcessorMissed", "Proc Miss")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopProcessorMissed")}>
+                  {sortLabel("teleopProcessorMissed", "Missed")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopProcessorScored")}
-                >
-                  {sortLabel("teleopProcessorScored", "Proc Score")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopProcessorScored")}>
+                  {sortLabel("teleopProcessorScored", "Scored")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopNetRobotMissed")}
-                >
-                  {sortLabel("teleopNetRobotMissed", "Net R Miss")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopNetRobotMissed")}>
+                  {sortLabel("teleopNetRobotMissed", "Missed")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopNetRobotScored")}
-                >
-                  {sortLabel("teleopNetRobotScored", "Net R Score")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopNetRobotScored")}>
+                  {sortLabel("teleopNetRobotScored", "Scored")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopNetHumanMissed")}
-                >
-                  {sortLabel("teleopNetHumanMissed", "Net H Miss")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopNetHumanMissed")}>
+                  {sortLabel("teleopNetHumanMissed", "Missed")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("teleopNetHumanScored")}
-                >
-                  {sortLabel("teleopNetHumanScored", "Net H Score")}
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("teleopNetHumanScored")}>
+                  {sortLabel("teleopNetHumanScored", "Scored")}
                 </th>
 
                 {/* Endgame */}
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("failedClimb")}
-                >
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("failedClimb")}>
                   {sortLabel("failedClimb", "Failed")}
                 </th>
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("stageStatus")}
-                >
+
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("stageStatus")}>
                   {sortLabel("stageStatus", "End Place")}
                 </th>
 
                 {/* Misc */}
-                <th className="border px-2 py-1 text-center font-semibold">
-                  Incidents
-                </th>
-                <th className="border px-2 py-1 text-center font-semibold">
-                  Notes
-                </th>
+                <th className="border px-2 py-1 font-semibold">Incidents</th>
+                <th className="border px-2 py-1 font-semibold">Notes</th>
 
                 {/* Accuracy */}
-                <th
-                  className="border px-2 py-1 text-center font-semibold cursor-pointer"
-                  onClick={() => handleSort("score")}
-                >
+                <th className="border px-2 py-1 font-semibold cursor-pointer"
+                    onClick={() => handleSort("score")}>
                   {sortLabel("score", "Score")}
                 </th>
               </tr>
@@ -462,86 +385,60 @@ export default function AnalyticsPage() {
                 const score = scoreEntry(e);
 
                 return (
-                  <tr
-                    key={e.id}
-                    className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}
-                  >
+                  <tr key={e.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     {/* Sticky left */}
                     <td className="sticky-left border px-2 py-1 text-center">
                       {e.matchNumber || ""}
                     </td>
+
                     <td className="sticky-left-2 border px-2 py-1 text-center">
                       {e.teamNumber}
                     </td>
 
-                    {/* Pre-Match */}
-                    <td className="border px-2 py-1 text-center">
-                      {e.scoutName}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.startingPosition}
-                    </td>
+                    {/* Pre‑Match */}
+                    <td className="border px-2 py-1 text-center">{e.scoutName}</td>
+                    <td className="border px-2 py-1 text-center">{e.startingPosition}</td>
 
                     {/* Auto */}
                     <td className="border px-2 py-1 text-center">
                       {e.leftStartingZone ? "Y" : ""}
                     </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoCoralL1}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoCoralL2}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoCoralL3}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoCoralL4}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoAlgaeProcessorMissed}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoAlgaeProcessorScored}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoAlgaeNetMissed}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.autoAlgaeNetScored}
-                    </td>
+
+                    <td className="border px-2 py-1 text-center">{e.autoCoralL1}</td>
+                    <td className="border px-2 py-1 text-center">{e.autoCoralL2}</td>
+                    <td className="border px-2 py-1 text-center">{e.autoCoralL3}</td>
+                    <td className="border px-2 py-1 text-center">{e.autoCoralL4}</td>
+
+                    <td className="border px-2 py-1 text-center">{e.autoAlgaeProcessorMissed}</td>
+                    <td className="border px-2 py-1 text-center">{e.autoAlgaeProcessorScored}</td>
+                    <td className="border px-2 py-1 text-center">{e.autoAlgaeNetMissed}</td>
+                    <td className="border px-2 py-1 text-center">{e.autoAlgaeNetScored}</td>
 
                     {/* Teleop */}
-                    <td className="border px-2 py-1 text-center">
-                      {e.teleopCoralMissed}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.teleopCoralL1}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.teleopCoralL2}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.teleopCoralL3}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
-                      {e.teleopCoralL4}
-                    </td>
-                    <td className="border px-2 py-1 text-center">
+                    <td className="border px-2 py-1 text-center">{e.teleopCoralMissed}</td>
+                    <td className="border px-2 py-1 text-center">{e.teleopCoralL1}</td>
+                    <td className="border px-2 py-1 text-center">{e.teleopCoralL2}</td>
+                    <td className="border px-2 py-1 text-center">{e.teleopCoralL3}</td>
+                    <td className="border px-2 py-1 text-center">{e.teleopCoralL4}</td>
+
+                                        <td className="border px-2 py-1 text-center">
                       {e.teleopAlgaeRemoved ? "Y" : ""}
                     </td>
+
                     <td className="border px-2 py-1 text-center">
                       {e.teleopProcessorMissed}
                     </td>
                     <td className="border px-2 py-1 text-center">
                       {e.teleopProcessorScored}
                     </td>
+
                     <td className="border px-2 py-1 text-center">
                       {e.teleopNetRobotMissed}
                     </td>
                     <td className="border px-2 py-1 text-center">
                       {e.teleopNetRobotScored}
                     </td>
+
                     <td className="border px-2 py-1 text-center">
                       {e.teleopNetHumanMissed}
                     </td>
@@ -573,6 +470,7 @@ export default function AnalyticsPage() {
                 );
               })}
             </tbody>
+
           </table>
         </div>
       </div>
