@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ----------------------------- */
 /* GLOBAL TABLE BEHAVIOR         */
 /* ----------------------------- */
@@ -12,14 +16,14 @@
 }
 
 /* Prevents table from collapsing */
-table {
+.table-scroll table {
   border-collapse: collapse;
   min-width: max-content; /* REQUIRED for scroll */
   width: max-content;
 }
 
 /* Prevents header wrapping */
-th {
+.table-scroll th {
   white-space: nowrap;
   text-align: center;
   font-weight: 600;
@@ -28,8 +32,8 @@ th {
 }
 
 /* Base column width (spreadsheet-like) */
-th,
-td {
+.table-scroll th,
+.table-scroll td {
   min-width: 70px;
   padding: 6px 10px;
   white-space: nowrap;
@@ -43,7 +47,7 @@ td {
 .sticky-header th {
   position: sticky;
   top: 0;
-  z-index: 100; /* higher than sticky-left cells */
+  z-index: 100;
   background: white;
 }
 
@@ -56,15 +60,15 @@ td {
   left: 0;
   z-index: 60;
   background: white;
-  min-width: 80px; /* spreadsheet width */
+  min-width: 80px;
 }
 
 .sticky-left-2 {
   position: sticky;
-  left: 80px; /* width of first sticky column */
+  left: 80px;
   z-index: 60;
   background: white;
-  min-width: 80px; /* spreadsheet width */
+  min-width: 80px;
 }
 
 /* Prevent sticky columns from overlapping borders */
@@ -81,34 +85,62 @@ td {
   background-color: #fca5a5 !important;
 }
 
+.bg-red-200 {
+  background-color: #fecaca !important;
+}
+
 .bg-yellow-300 {
   background-color: #fde047 !important;
+}
+
+.bg-yellow-200 {
+  background-color: #fef08a !important;
 }
 
 .bg-green-300 {
   background-color: #86efac !important;
 }
 
+.bg-green-200 {
+  background-color: #bbf7d0 !important;
+}
+
 .bg-blue-300 {
   background-color: #93c5fd !important;
+}
+
+.bg-blue-200 {
+  background-color: #bfdbfe !important;
 }
 
 .bg-purple-300 {
   background-color: #d8b4fe !important;
 }
 
+.bg-purple-200 {
+  background-color: #e9d5ff !important;
+}
+
 .bg-pink-300 {
   background-color: #f9a8d4 !important;
+}
+
+.bg-pink-200 {
+  background-color: #fbcfe8 !important;
 }
 
 /* ----------------------------- */
 /* ROW STRIPING                  */
 /* ----------------------------- */
 
-tbody tr:nth-child(even) {
+.table-scroll tbody tr:first-child {
+  background: #e5e7eb !important;
+}
+
+.table-scroll tbody tr:nth-child(even) {
   background: #f9fafb;
 }
 
-tbody tr:nth-child(odd) {
+.table-scroll tbody tr:nth-child(odd) {
   background: white;
 }
