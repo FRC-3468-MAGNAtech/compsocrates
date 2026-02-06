@@ -6,7 +6,6 @@
 /* GLOBAL TABLE BEHAVIOR         */
 /* ----------------------------- */
 
-/* Forces horizontal scroll */
 .table-scroll {
   overflow-x: auto;
   overflow-y: visible;
@@ -15,14 +14,12 @@
   border-radius: 8px;
 }
 
-/* Prevents table from collapsing */
 .table-scroll table {
   border-collapse: collapse;
-  min-width: max-content; /* REQUIRED for scroll */
+  min-width: max-content;
   width: max-content;
 }
 
-/* Prevents header wrapping */
 .table-scroll th {
   white-space: nowrap;
   text-align: center;
@@ -31,7 +28,6 @@
   background: white;
 }
 
-/* Base column width (spreadsheet-like) */
 .table-scroll th,
 .table-scroll td {
   min-width: 70px;
@@ -51,24 +47,22 @@
   background: white;
 }
 
-/* Ensure all header rows stick properly */
 .sticky-header tr:first-child th {
   top: 0;
 }
 
 .sticky-header tr:nth-child(2) th {
-  top: 38px; /* Height of first row */
+  top: 38px;
 }
 
 .sticky-header tr:nth-child(3) th {
-  top: 76px; /* Height of first + second row */
+  top: 76px;
 }
 
 /* ----------------------------- */
 /* STICKY LEFT COLUMNS           */
 /* ----------------------------- */
 
-/* Action column - leftmost */
 .sticky-left-action {
   position: sticky;
   left: 0;
@@ -78,27 +72,24 @@
   border-right: 1px solid #ccc;
 }
 
-/* Match number column */
 .sticky-left {
   position: sticky;
-  left: 80px; /* Width of action column */
+  left: 80px;
   z-index: 110;
   background: white;
   min-width: 80px;
   border-right: 1px solid #ccc;
 }
 
-/* Team number column */
 .sticky-left-2 {
   position: sticky;
-  left: 160px; /* Width of action + match columns */
+  left: 160px;
   z-index: 110;
   background: white;
   min-width: 80px;
   border-right: 1px solid #ccc;
 }
 
-/* Higher z-index for sticky headers in sticky columns */
 .sticky-header .sticky-left-action,
 .sticky-header .sticky-left,
 .sticky-header .sticky-left-2 {
@@ -117,12 +108,20 @@
   background-color: #fecaca !important;
 }
 
+.bg-red-100 {
+  background-color: #fee2e2 !important;
+}
+
 .bg-yellow-300 {
   background-color: #fde047 !important;
 }
 
 .bg-yellow-200 {
   background-color: #fef08a !important;
+}
+
+.bg-yellow-100 {
+  background-color: #fef9c3 !important;
 }
 
 .bg-green-300 {
@@ -133,12 +132,20 @@
   background-color: #bbf7d0 !important;
 }
 
+.bg-green-100 {
+  background-color: #dcfce7 !important;
+}
+
 .bg-blue-300 {
   background-color: #93c5fd !important;
 }
 
 .bg-blue-200 {
   background-color: #bfdbfe !important;
+}
+
+.bg-blue-100 {
+  background-color: #dbeafe !important;
 }
 
 .bg-purple-300 {
@@ -149,12 +156,20 @@
   background-color: #e9d5ff !important;
 }
 
+.bg-purple-100 {
+  background-color: #f3e8ff !important;
+}
+
 .bg-pink-300 {
   background-color: #f9a8d4 !important;
 }
 
 .bg-pink-200 {
   background-color: #fbcfe8 !important;
+}
+
+.bg-pink-100 {
+  background-color: #fce7f3 !important;
 }
 
 /* ----------------------------- */
@@ -173,7 +188,6 @@
   background: white;
 }
 
-/* Ensure sticky cells maintain row color */
 .table-scroll tbody tr:nth-child(even) .sticky-left-action,
 .table-scroll tbody tr:nth-child(even) .sticky-left,
 .table-scroll tbody tr:nth-child(even) .sticky-left-2 {

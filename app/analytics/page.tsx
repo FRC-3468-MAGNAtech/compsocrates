@@ -160,7 +160,7 @@ export default function AnalyticsPage() {
     if (deleteConfirm === id) {
       try {
         await deleteDoc(doc(db, "scouting", id));
-        await loadData(); // Reload data
+        await loadData();
         setDeleteConfirm(null);
         alert("Entry deleted successfully");
       } catch (error) {
@@ -169,14 +169,13 @@ export default function AnalyticsPage() {
       }
     } else {
       setDeleteConfirm(id);
-      setTimeout(() => setDeleteConfirm(null), 3000); // Reset after 3 seconds
+      setTimeout(() => setDeleteConfirm(null), 3000);
     }
   }
 
-  // Filter data by event
   const filteredData = selectedEvent === "all" 
     ? rawData 
-    : rawData; // TODO: Add actual event filtering logic when event data is available
+    : rawData;
 
   const data = sortEntries(filteredData, sortKey, sortDir);
 
@@ -270,8 +269,8 @@ export default function AnalyticsPage() {
               >
                 <option value="all">All Events</option>
                 <option value="app-testing">App Testing</option>
-                <option value="regional-1">Regional 1 (Coming Soon)</option>
-                <option value="regional-2">Regional 2 (Coming Soon)</option>
+                <option value="arkansas">Arkansas Regional</option>
+                <option value="bayou">Bayou Regional</option>
               </select>
             </div>
 
@@ -282,7 +281,7 @@ export default function AnalyticsPage() {
                   <thead className="sticky-header">
                     {/* ROW 1: TOP LEVEL GROUPS */}
                     <tr>
-                      <th className="sticky-left-action bg-white" rowSpan={3}>Actions</th>
+                      <th className="sticky-left-action bg-red-300" rowSpan={3}>Actions</th>
                       <th className="sticky-left bg-red-300" colSpan={2}>Information</th>
                       <th className="bg-yellow-300" colSpan={2}>Pre-Match</th>
                       <th className="bg-green-300" colSpan={9}>Autonomous</th>
@@ -329,147 +328,147 @@ export default function AnalyticsPage() {
                     {/* ROW 3: ACTUAL COLUMN LABELS */}
                     <tr>
                       {/* Information */}
-                      <th className="sticky-left cursor-pointer hover:bg-gray-100"
+                      <th className="sticky-left cursor-pointer hover:bg-red-100"
                           onClick={() => handleSort("matchNumber")}>
                         {sortLabel("matchNumber", "Match")}
                       </th>
-                      <th className="sticky-left-2 cursor-pointer hover:bg-gray-100"
+                      <th className="sticky-left-2 cursor-pointer hover:bg-red-100"
                           onClick={() => handleSort("teamNumber")}>
                         {sortLabel("teamNumber", "Team")}
                       </th>
 
                       {/* Pre-Match */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-yellow-100"
                           onClick={() => handleSort("scoutName")}>
                         {sortLabel("scoutName", "Scout")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-yellow-100"
                           onClick={() => handleSort("startingPosition")}>
                         {sortLabel("startingPosition", "Starting Position")}
                       </th>
 
                       {/* Autonomous - Leave */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("leftStartingZone")}>
                         {sortLabel("leftStartingZone", "Leave")}
                       </th>
 
                       {/* Autonomous - Coral */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoCoralL1")}>
                         {sortLabel("autoCoralL1", "L1")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoCoralL2")}>
                         {sortLabel("autoCoralL2", "L2")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoCoralL3")}>
                         {sortLabel("autoCoralL3", "L3")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoCoralL4")}>
                         {sortLabel("autoCoralL4", "L4")}
                       </th>
 
                       {/* Autonomous - Algae Processor */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoAlgaeProcessorMissed")}>
                         {sortLabel("autoAlgaeProcessorMissed", "Missed")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoAlgaeProcessorScored")}>
                         {sortLabel("autoAlgaeProcessorScored", "Scored")}
                       </th>
 
                       {/* Autonomous - Algae Net */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoAlgaeNetMissed")}>
                         {sortLabel("autoAlgaeNetMissed", "Missed")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-green-100"
                           onClick={() => handleSort("autoAlgaeNetScored")}>
                         {sortLabel("autoAlgaeNetScored", "Scored")}
                       </th>
 
                       {/* Teleoperated - Coral */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopCoralMissed")}>
                         {sortLabel("teleopCoralMissed", "Missed")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopCoralL1")}>
                         {sortLabel("teleopCoralL1", "L1")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopCoralL2")}>
                         {sortLabel("teleopCoralL2", "L2")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopCoralL3")}>
                         {sortLabel("teleopCoralL3", "L3")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopCoralL4")}>
                         {sortLabel("teleopCoralL4", "L4")}
                       </th>
 
                       {/* Teleoperated - Algae Collection */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopAlgaeRemoved")}>
                         {sortLabel("teleopAlgaeRemoved", "Remove Algae from Reef")}
                       </th>
 
                       {/* Teleoperated - Processor */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopProcessorMissed")}>
                         {sortLabel("teleopProcessorMissed", "Missed")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopProcessorScored")}>
                         {sortLabel("teleopProcessorScored", "Scored")}
                       </th>
 
                       {/* Teleoperated - Net (Robot) */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopNetRobotMissed")}>
                         {sortLabel("teleopNetRobotMissed", "Missed")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopNetRobotScored")}>
                         {sortLabel("teleopNetRobotScored", "Scored")}
                       </th>
 
                       {/* Teleoperated - Net (Human) */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopNetHumanMissed")}>
                         {sortLabel("teleopNetHumanMissed", "Missed")}
                       </th>
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("teleopNetHumanScored")}>
                         {sortLabel("teleopNetHumanScored", "Scored")}
                       </th>
 
-                      {/* Teleoperated - Climb (Failed moved here from Endgame) */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      {/* Teleoperated - Climb */}
+                      <th className="cursor-pointer hover:bg-blue-100"
                           onClick={() => handleSort("failedClimb")}>
                         {sortLabel("failedClimb", "Failed")}
                       </th>
 
                       {/* Endgame - Climb */}
-                      <th className="cursor-pointer hover:bg-gray-100"
+                      <th className="cursor-pointer hover:bg-yellow-100"
                           onClick={() => handleSort("stageStatus")}>
                         {sortLabel("stageStatus", "End Place")}
                       </th>
-                      <th>Score</th>
+                      <th className="bg-yellow-200">Score</th>
 
                       {/* Incidents */}
-                      <th>Incidents</th>
+                      <th className="bg-purple-200">Incidents</th>
 
                       {/* General */}
-                      <th>Comments</th>
-                      <th>Alliance Accuracy</th>
-                      <th>Script Status</th>
+                      <th className="bg-pink-200">Comments</th>
+                      <th className="bg-pink-200">Alliance Accuracy</th>
+                      <th className="bg-pink-200">Script Status</th>
                     </tr>
                   </thead>
 
@@ -496,18 +495,18 @@ export default function AnalyticsPage() {
 
                           {/* Information */}
                           <td className="sticky-left font-semibold">
-                            {e.matchNumber || "-"}
+                            {e.matchNumber || "x"}
                           </td>
                           <td className="sticky-left-2 font-semibold">
-                            {e.teamNumber}
+                            {e.teamNumber || "x"}
                           </td>
 
                           {/* Pre-Match */}
-                          <td>{e.scoutName}</td>
-                          <td>{e.startingPosition}</td>
+                          <td>{e.scoutName || "x"}</td>
+                          <td>{e.startingPosition || "x"}</td>
 
                           {/* Autonomous */}
-                          <td>{e.leftStartingZone ? "✓" : ""}</td>
+                          <td>{e.leftStartingZone ? "x" : ""}</td>
                           <td>{e.autoCoralL1 || ""}</td>
                           <td>{e.autoCoralL2 || ""}</td>
                           <td>{e.autoCoralL3 || ""}</td>
@@ -523,7 +522,7 @@ export default function AnalyticsPage() {
                           <td>{e.teleopCoralL2 || ""}</td>
                           <td>{e.teleopCoralL3 || ""}</td>
                           <td>{e.teleopCoralL4 || ""}</td>
-                          <td>{e.teleopAlgaeRemoved ? "✓" : ""}</td>
+                          <td>{e.teleopAlgaeRemoved ? "x" : ""}</td>
                           <td>{e.teleopProcessorMissed || ""}</td>
                           <td>{e.teleopProcessorScored || ""}</td>
                           <td>{e.teleopNetRobotMissed || ""}</td>
@@ -533,20 +532,20 @@ export default function AnalyticsPage() {
                           <td>{e.failedClimb || ""}</td>
 
                           {/* Endgame */}
-                          <td>{e.stageStatus}</td>
+                          <td>{e.stageStatus || "x"}</td>
                           <td className="font-bold">{score}</td>
 
                           {/* Incidents */}
                           <td className="text-xs max-w-[200px] truncate">
-                            {e.incidents?.join(", ") || ""}
+                            {e.incidents?.join(", ") || "x"}
                           </td>
 
                           {/* General */}
                           <td className="text-xs max-w-[200px] truncate">
-                            {e.notes || ""}
+                            {e.notes || "x"}
                           </td>
-                          <td>-</td>
-                          <td>-</td>
+                          <td>x</td>
+                          <td>x</td>
                         </tr>
                       );
                     })}

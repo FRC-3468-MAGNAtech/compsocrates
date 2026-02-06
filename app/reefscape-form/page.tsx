@@ -384,7 +384,10 @@ export default function Page() {
   };
 
   const handleSubmit = async () => {
-    // Validation
+    if (!formData.scoutName.trim()) {
+      alert("Please enter your scout name");
+      return;
+    }
     if (!formData.teamNumber) {
       alert("Please select a team number");
       return;
@@ -412,9 +415,8 @@ export default function Page() {
       
       alert("Form submitted successfully!");
       
-      // Reset form
       setFormData({
-        scoutName: formData.scoutName, // Keep scout name
+        scoutName: formData.scoutName,
         teamNumber: "",
         startingPosition: "",
         leftStartingZone: false,
@@ -475,9 +477,7 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-      {/* LEFT COLUMN */}
       <div className="flex-1 p-4 space-y-6 max-w-3xl">
-        {/* MATCH SELECTOR HEADER */}
         <div
           className="bg-white rounded-xl shadow p-4 border-l-4"
           style={{ borderColor: "#c42221" }}
@@ -500,7 +500,6 @@ export default function Page() {
           </div>
         </div>
 
-        {/* SECTION 1: PRE-MATCH INFO */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Pre-Match Info
@@ -514,8 +513,9 @@ export default function Page() {
               <input
                 type="text"
                 value={formData.scoutName}
-                disabled
-                className="w-full border rounded p-2 bg-gray-100 text-gray-600"
+                onChange={(e) => setFormData({ ...formData, scoutName: e.target.value })}
+                className="w-full border rounded p-2"
+                placeholder="Enter your name"
               />
             </div>
 
@@ -557,7 +557,6 @@ export default function Page() {
           </div>
         </div>
 
-        {/* SECTION 2: AUTONOMOUS */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Autonomous
@@ -597,7 +596,6 @@ export default function Page() {
           </div>
         </div>
 
-        {/* SECTION 3: TELEOP */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Teleop
@@ -643,7 +641,6 @@ export default function Page() {
           </div>
         </div>
 
-        {/* SECTION 4: ENDGAME */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Endgame
@@ -669,7 +666,6 @@ export default function Page() {
           </div>
         </div>
 
-        {/* SECTION 5: GENERAL */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             General
@@ -707,7 +703,6 @@ export default function Page() {
           </div>
         </div>
 
-        {/* SUBMIT */}
         <div className="bg-white rounded-xl shadow p-4">
           <button
             className="w-full py-3 rounded text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -720,7 +715,6 @@ export default function Page() {
         </div>
       </div>
 
-      {/* RIGHT COLUMN — NOTES PANEL (DESKTOP) */}
       <div className="hidden md:block w-80 p-4">
         <div className="bg-white rounded-xl shadow p-4 sticky top-4 flex flex-col" style={{ height: 'calc(100vh - 2rem)' }}>
           <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
@@ -735,7 +729,6 @@ export default function Page() {
         </div>
       </div>
 
-      {/* MOBILE NOTES DRAWER */}
       <div className="md:hidden fixed right-0 top-1/2 transform -translate-y-1/2 z-40">
         <button
           onClick={() => setNotesOpen(!notesOpen)}
@@ -760,13 +753,11 @@ export default function Page() {
         )}
       </div>
 
-      {/* MODAL CONTENT — MATCH SELECTION FLOW */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         step={modalStep}
       >
-        {/* STEP 1 — SELECT MATCH TYPE */}
         {modalStep === "type" && (
           <>
             <h2 className="text-xl font-semibold mb-4" style={{ color: "#c42221" }}>
@@ -801,7 +792,6 @@ export default function Page() {
           </>
         )}
 
-        {/* STEP 2 — PRACTICE MATCH */}
         {modalStep === "practice" && (
           <>
             <h2 className="text-xl font-semibold mb-4" style={{ color: "#c42221" }}>
@@ -836,7 +826,6 @@ export default function Page() {
           </>
         )}
 
-        {/* STEP 3 — QUALIFICATION */}
         {modalStep === "qualification" && (
           <>
             <h2
@@ -937,7 +926,6 @@ export default function Page() {
           </>
         )}
 
-        {/* STEP 4 — FINALS */}
         {modalStep === "finals" && (
           <FinalsBracket
             setSelectedMatch={handleMatchSelect}
