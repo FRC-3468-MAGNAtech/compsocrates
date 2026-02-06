@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { collection, addDoc } from "firebase/firestore";
-import { db } from "@/app/firebase";
+import ProtectedRoute from "@/app/components/ProtectedRoute";
+import Sidebar from "@/app/components/Sidebar";
+import { useAuth } from "@/app/AuthContext";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -322,7 +323,8 @@ function FinalsBracket({
 /* -------------------------------------------------------
    MAIN PAGE
 -------------------------------------------------------- */
-export default function Page() {
+function ScoutFormContent() {
+  const { userData } = useAuth();
   const [notesOpen, setNotesOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");
@@ -330,10 +332,9 @@ export default function Page() {
     id: 23, 
     type: "qualification" 
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
-    scoutName: "Jordan Smith",
+    scoutName: userData?.displayName || "",
     teamNumber: "",
     startingPosition: "",
     leftStartingZone: false,
@@ -383,77 +384,6 @@ export default function Page() {
     }
   };
 
-  const handleSubmit = async () => {
-    if (!formData.scoutName.trim()) {
-      alert("Please enter your scout name");
-      return;
-    }
-    if (!formData.teamNumber) {
-      alert("Please select a team number");
-      return;
-    }
-    if (!formData.startingPosition) {
-      alert("Please select a starting position");
-      return;
-    }
-    if (!formData.stageStatus) {
-      alert("Please select a stage status");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const submissionData = {
-        ...formData,
-        matchNumber: selectedMatch.id.toString(),
-        matchType: selectedMatch.type,
-        timestamp: Date.now(),
-      };
-
-      await addDoc(collection(db, "scouting"), submissionData);
-      
-      alert("Form submitted successfully!");
-      
-      setFormData({
-        scoutName: formData.scoutName,
-        teamNumber: "",
-        startingPosition: "",
-        leftStartingZone: false,
-        autoCoralMissed: 0,
-        autoCoralL1: 0,
-        autoCoralL2: 0,
-        autoCoralL3: 0,
-        autoCoralL4: 0,
-        autoAlgaeProcessorMissed: 0,
-        autoAlgaeProcessorScored: 0,
-        autoAlgaeNetMissed: 0,
-        autoAlgaeNetScored: 0,
-        teleopCoralMissed: 0,
-        teleopCoralL1: 0,
-        teleopCoralL2: 0,
-        teleopCoralL3: 0,
-        teleopCoralL4: 0,
-        teleopAlgaeRemoved: false,
-        teleopProcessorMissed: 0,
-        teleopProcessorScored: 0,
-        teleopNetRobotMissed: 0,
-        teleopNetRobotScored: 0,
-        teleopNetHumanMissed: 0,
-        teleopNetHumanScored: 0,
-        failedClimb: 0,
-        stageStatus: "",
-        incidents: [],
-        notes: "",
-      });
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      alert("Error submitting form. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
     <div className="flex items-center justify-between py-2">
       <span className="text-sm font-medium text-gray-700">{label}</span>
@@ -476,8 +406,13 @@ export default function Page() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
+    <div className="flex h-screen bg-gray-100">
+      <Sidebar />
+      <div className="flex-1 overflow-y-auto">
+        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
+      {/* LEFT COLUMN */}
       <div className="flex-1 p-4 space-y-6 max-w-3xl">
+        {/* MATCH SELECTOR HEADER */}
         <div
           className="bg-white rounded-xl shadow p-4 border-l-4"
           style={{ borderColor: "#c42221" }}
@@ -500,6 +435,7 @@ export default function Page() {
           </div>
         </div>
 
+        {/* SECTION 1: PRE-MATCH INFO */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Pre-Match Info
@@ -513,9 +449,8 @@ export default function Page() {
               <input
                 type="text"
                 value={formData.scoutName}
-                onChange={(e) => setFormData({ ...formData, scoutName: e.target.value })}
-                className="w-full border rounded p-2"
-                placeholder="Enter your name"
+                disabled
+                className="w-full border rounded p-2 bg-gray-100 text-gray-600"
               />
             </div>
 
@@ -548,15 +483,16 @@ export default function Page() {
                 className="w-full border rounded p-2"
               >
                 <option value="">Select Position</option>
-                <option value="Not There">Not There</option>
-                <option value="Processor Side">Processor Side</option>
-                <option value="Middle">Middle</option>
-                <option value="Opposite Side">Opposite Side</option>
+                <option value="not-there">Not There</option>
+                <option value="processor">Processor Side</option>
+                <option value="middle">Middle</option>
+                <option value="opposite">Opposite Side</option>
               </select>
             </div>
           </div>
         </div>
 
+        {/* SECTION 2: AUTONOMOUS */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Autonomous
@@ -596,6 +532,7 @@ export default function Page() {
           </div>
         </div>
 
+        {/* SECTION 3: TELEOP */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Teleop
@@ -641,6 +578,7 @@ export default function Page() {
           </div>
         </div>
 
+        {/* SECTION 4: ENDGAME */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             Endgame
@@ -658,14 +596,15 @@ export default function Page() {
               className="w-full border rounded p-2"
             >
               <option value="">Select Status</option>
-              <option value="Not Parked">Not Parked</option>
-              <option value="Parked in Barge Zone">Parked in Barge Zone</option>
-              <option value="Shallow Cage">Shallow Cage</option>
-              <option value="Deep Cage">Deep Cage</option>
+              <option value="not-parked">Not Parked</option>
+              <option value="barge">Parked in Barge Zone</option>
+              <option value="shallow">Shallow Cage</option>
+              <option value="deep">Deep Cage</option>
             </select>
           </div>
         </div>
 
+        {/* SECTION 5: GENERAL */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
             General
@@ -703,18 +642,73 @@ export default function Page() {
           </div>
         </div>
 
+        {/* SUBMIT */}
         <div className="bg-white rounded-xl shadow p-4">
           <button
-            className="w-full py-3 rounded text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded text-white font-semibold"
             style={{ backgroundColor: "#c42221" }}
-            onClick={handleSubmit}
-            disabled={isSubmitting}
+            onClick={async () => {
+              try {
+                // Add to Firebase with proper labels
+                const { addDoc, collection } = await import("firebase/firestore");
+                const { db } = await import("@/app/firebase");
+                
+                const submission = {
+                  ...formData,
+                  matchNumber: selectedMatch.id.toString(),
+                  matchType: selectedMatch.type || "qualification",
+                  bracket: selectedMatch.bracket || null,
+                  timestamp: Date.now(),
+                  submittedAt: Date.now(), // Track when form was submitted for event filtering
+                };
+                
+                await addDoc(collection(db, "scouting"), submission);
+                alert("Scouting report submitted successfully!");
+                
+                // Reset form
+                setFormData({
+                  scoutName: userData?.displayName || "",
+                  teamNumber: "",
+                  startingPosition: "",
+                  leftStartingZone: false,
+                  autoCoralMissed: 0,
+                  autoCoralL1: 0,
+                  autoCoralL2: 0,
+                  autoCoralL3: 0,
+                  autoCoralL4: 0,
+                  autoAlgaeProcessorMissed: 0,
+                  autoAlgaeProcessorScored: 0,
+                  autoAlgaeNetMissed: 0,
+                  autoAlgaeNetScored: 0,
+                  teleopCoralMissed: 0,
+                  teleopCoralL1: 0,
+                  teleopCoralL2: 0,
+                  teleopCoralL3: 0,
+                  teleopCoralL4: 0,
+                  teleopAlgaeRemoved: false,
+                  teleopProcessorMissed: 0,
+                  teleopProcessorScored: 0,
+                  teleopNetRobotMissed: 0,
+                  teleopNetRobotScored: 0,
+                  teleopNetHumanMissed: 0,
+                  teleopNetHumanScored: 0,
+                  failedClimb: 0,
+                  stageStatus: "",
+                  incidents: [],
+                  notes: "",
+                });
+              } catch (error) {
+                console.error("Error submitting:", error);
+                alert("Error submitting report. Check console.");
+              }
+            }}
           >
-            {isSubmitting ? "Submitting..." : "Submit Scouting Report"}
+            Submit Scouting Report
           </button>
         </div>
       </div>
 
+      {/* RIGHT COLUMN — NOTES PANEL (DESKTOP) */}
       <div className="hidden md:block w-80 p-4">
         <div className="bg-white rounded-xl shadow p-4 sticky top-4 flex flex-col" style={{ height: 'calc(100vh - 2rem)' }}>
           <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
@@ -729,6 +723,7 @@ export default function Page() {
         </div>
       </div>
 
+      {/* MOBILE NOTES DRAWER */}
       <div className="md:hidden fixed right-0 top-1/2 transform -translate-y-1/2 z-40">
         <button
           onClick={() => setNotesOpen(!notesOpen)}
@@ -753,11 +748,13 @@ export default function Page() {
         )}
       </div>
 
+      {/* MODAL CONTENT — MATCH SELECTION FLOW */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         step={modalStep}
       >
+        {/* STEP 1 — SELECT MATCH TYPE */}
         {modalStep === "type" && (
           <>
             <h2 className="text-xl font-semibold mb-4" style={{ color: "#c42221" }}>
@@ -792,6 +789,7 @@ export default function Page() {
           </>
         )}
 
+        {/* STEP 2 — PRACTICE MATCH */}
         {modalStep === "practice" && (
           <>
             <h2 className="text-xl font-semibold mb-4" style={{ color: "#c42221" }}>
@@ -826,6 +824,7 @@ export default function Page() {
           </>
         )}
 
+        {/* STEP 3 — QUALIFICATION */}
         {modalStep === "qualification" && (
           <>
             <h2
@@ -926,6 +925,7 @@ export default function Page() {
           </>
         )}
 
+        {/* STEP 4 — FINALS */}
         {modalStep === "finals" && (
           <FinalsBracket
             setSelectedMatch={handleMatchSelect}
@@ -933,6 +933,16 @@ export default function Page() {
           />
         )}
       </Modal>
+        </div>
+      </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
+      <ScoutFormContent />
+    </ProtectedRoute>
   );
 }

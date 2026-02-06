@@ -1,0 +1,290 @@
+"use client";
+
+import { useState } from "react";
+import { useAuth } from "@/app/AuthContext";
+import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { doc, updateDoc } from "firebase/firestore";
+import { db, auth } from "@/app/firebase";
+import ProtectedRoute from "@/app/components/ProtectedRoute";
+import Sidebar from "@/app/components/Sidebar";
+
+function AccountContent() {
+  const { user, userData } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  
+  const [passwords, setPasswords] = useState({
+    current: "",
+    new: "",
+    confirm: "",
+  });
+
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    try {
+      if (passwords.new !== passwords.confirm) {
+        setError("New passwords do not match");
+        setLoading(false);
+        return;
+      }
+
+      if (passwords.new.length < 6) {
+        setError("Password must be at least 6 characters");
+        setLoading(false);
+        return;
+      }
+
+      if (!user || !user.email) {
+        setError("User not found");
+        setLoading(false);
+        return;
+      }
+
+      // Reauthenticate user
+      const credential = EmailAuthProvider.credential(user.email, passwords.current);
+      await reauthenticateWithCredential(user, credential);
+
+      // Update password
+      await updatePassword(user, passwords.new);
+
+      setSuccess("Password updated successfully!");
+      setPasswords({ current: "", new: "", confirm: "" });
+    } catch (err: any) {
+      console.error("Password update error:", err);
+      if (err.code === "auth/wrong-password") {
+        setError("Current password is incorrect");
+      } else {
+        setError(err.message || "Failed to update password");
+      }
+    }
+
+    setLoading(false);
+  }
+
+  async function handleChangeEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    try {
+      if (!user || !user.email) {
+        setError("User not found");
+        setLoading(false);
+        return;
+      }
+
+      // Reauthenticate user
+      const credential = EmailAuthProvider.credential(user.email, emailPassword);
+      await reauthenticateWithCredential(user, credential);
+
+      // Update email in Firebase Auth
+      await updateEmail(user, newEmail);
+
+      // Update email in Firestore
+      await updateDoc(doc(db, "users", user.uid), {
+        email: newEmail,
+      });
+
+      setSuccess("Email updated successfully!");
+      setNewEmail("");
+      setEmailPassword("");
+    } catch (err: any) {
+      console.error("Email update error:", err);
+      if (err.code === "auth/wrong-password") {
+        setError("Password is incorrect");
+      } else if (err.code === "auth/email-already-in-use") {
+        setError("This email is already in use");
+      } else {
+        setError(err.message || "Failed to update email");
+      }
+    }
+
+    setLoading(false);
+  }
+
+  if (!userData) return null;
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      <Sidebar />
+      
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto p-8">
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            Account Settings
+          </h1>
+          <p className="text-gray-600 mb-8">Manage your account information and security</p>
+
+          {/* SUCCESS/ERROR MESSAGES */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-600">{success}</p>
+            </div>
+          )}
+
+          {/* ACCOUNT INFO */}
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Account Information</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name
+                </label>
+                <p className="text-gray-900">{userData.displayName}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <p className="text-gray-900">{userData.email}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <p className="text-gray-900 capitalize">{userData.role}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Team ID
+                </label>
+                <p className="text-gray-900 font-mono">{userData.teamId}</p>
+                {userData.isTeamAdmin && (
+                  <p className="text-xs text-gray-500 mt-1">You are the team admin</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* CHANGE EMAIL */}
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Change Email</h2>
+            
+            <form onSubmit={handleChangeEmail} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  New Email Address
+                </label>
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="newemail@example.com"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={emailPassword}
+                  onChange={(e) => setEmailPassword(e.target.value)}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="Enter your password to confirm"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-6 py-2 rounded-lg text-white font-semibold disabled:opacity-50"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                {loading ? "Updating..." : "Update Email"}
+              </button>
+            </form>
+          </div>
+
+          {/* CHANGE PASSWORD */}
+          <div className="bg-white rounded-xl shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">Change Password</h2>
+            
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={passwords.current}
+                  onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="Enter current password"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwords.new}
+                  onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="At least 6 characters"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwords.confirm}
+                  onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="Re-enter new password"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-6 py-2 rounded-lg text-white font-semibold disabled:opacity-50"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                {loading ? "Updating..." : "Update Password"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AccountPage() {
+  return (
+    <ProtectedRoute requireAuth={true}>
+      <AccountContent />
+    </ProtectedRoute>
+  );
+}

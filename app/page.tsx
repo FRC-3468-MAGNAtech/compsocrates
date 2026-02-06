@@ -1,9 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/app/AuthContext";
+import { useEffect } from "react";
 
 export default function LandingPage() {
   const router = useRouter();
+  const { user, userData } = useAuth();
+
+  // Optional: Auto-redirect logged-in users (commented out by default)
+  // useEffect(() => {
+  //   if (user && userData) {
+  //     const dashboard = userData.role === "coach" ? "/coach-dashboard" : "/scout-dashboard";
+  //     router.push(dashboard);
+  //   }
+  // }, [user, userData, router]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -19,19 +30,31 @@ export default function LandingPage() {
             </h1>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => router.push("/login")}
-              className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-medium"
-            >
-              Log In
-            </button>
-            <button
-              onClick={() => router.push("/signup")}
-              className="px-4 py-2 rounded-lg text-white font-medium"
-              style={{ backgroundColor: "#c42221" }}
-            >
-              Get Started
-            </button>
+            {user && userData ? (
+              <button
+                onClick={() => router.push(userData.role === "coach" ? "/coach-dashboard" : "/scout-dashboard")}
+                className="px-4 py-2 rounded-lg text-white font-medium"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                Dashboard
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => router.push("/login")}
+                  className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-medium"
+                >
+                  Log In
+                </button>
+                <button
+                  onClick={() => router.push("/signup")}
+                  className="px-4 py-2 rounded-lg text-white font-medium"
+                  style={{ backgroundColor: "#c42221" }}
+                >
+                  Get Started
+                </button>
+              </>
+            )}
           </div>
         </div>
       </nav>

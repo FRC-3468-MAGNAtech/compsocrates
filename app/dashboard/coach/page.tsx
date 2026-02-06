@@ -2,110 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import ProtectedRoute from "@/app/components/ProtectedRoute";
+import Sidebar from "@/app/components/Sidebar";
 
-export default function CoachDashboard() {
+function CoachDashboardContent() {
   const router = useRouter();
   const [activePage, setActivePage] = useState("dashboard");
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
-      {/* SIDEBAR NAVIGATION */}
-      <nav className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
-              <span className="text-white text-lg font-bold">CS</span>
-            </div>
-            <h1 className="text-xl font-bold" style={{ color: "#c42221" }}>
-              CompSocrates
-            </h1>
-          </div>
-          <p className="text-sm text-gray-600 ml-[52px]">Team 1234</p>
-        </div>
-
-        <div className="flex-1 p-4">
-          <div className="space-y-1">
-            <button
-              onClick={() => setActivePage("dashboard")}
-              className={`w-full text-left px-3 py-2 rounded ${
-                activePage === "dashboard"
-                  ? "bg-red-100 text-red-800 font-semibold"
-                  : "hover:bg-gray-100 text-gray-700"
-              }`}
-            >
-              📊 Dashboard
-            </button>
-            
-            <button
-              onClick={() => router.push("/scout")}
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 text-gray-700"
-            >
-              📝 Scout Form
-            </button>
-            
-            <button
-              onClick={() => router.push("/analytics")}
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 text-gray-700"
-            >
-              📈 Analytics
-            </button>
-
-            <div className="pt-4 pb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-3">
-                Coach Tools
-              </p>
-            </div>
-
-            <button
-              onClick={() => setActivePage("form-builder")}
-              className={`w-full text-left px-3 py-2 rounded ${
-                activePage === "form-builder"
-                  ? "bg-red-100 text-red-800 font-semibold"
-                  : "hover:bg-gray-100 text-gray-700"
-              }`}
-            >
-              🔧 Form Builder
-            </button>
-
-            <button
-              onClick={() => setActivePage("scout-accuracy")}
-              className={`w-full text-left px-3 py-2 rounded ${
-                activePage === "scout-accuracy"
-                  ? "bg-red-100 text-red-800 font-semibold"
-                  : "hover:bg-gray-100 text-gray-700"
-              }`}
-            >
-              🎯 Scout Accuracy
-            </button>
-
-            <button
-              onClick={() => setActivePage("team-management")}
-              className={`w-full text-left px-3 py-2 rounded ${
-                activePage === "team-management"
-                  ? "bg-red-100 text-red-800 font-semibold"
-                  : "hover:bg-gray-100 text-gray-700"
-              }`}
-            >
-              👥 Team Management
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
-              <span className="text-sm font-semibold">JD</span>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold">John Doe</p>
-              <p className="text-xs text-gray-600">Coach</p>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* MAIN CONTENT */}
-      <div className="flex-1 overflow-auto">
+    <div className="flex h-screen bg-gray-100">
+      <Sidebar />
+      <div className="flex-1 overflow-y-auto">
         {activePage === "dashboard" && (
           <div className="p-8">
             <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
@@ -185,7 +92,7 @@ export default function CoachDashboard() {
               <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
               <div className="grid md:grid-cols-2 gap-4">
                 <button
-                  onClick={() => router.push("/scout")}
+                  onClick={() => router.push("/scout-form")}
                   className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                 >
                   <div className="text-2xl mb-2">📝</div>
@@ -301,5 +208,13 @@ export default function CoachDashboard() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function CoachDashboard() {
+  return (
+    <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
+      <CoachDashboardContent />
+    </ProtectedRoute>
   );
 }
