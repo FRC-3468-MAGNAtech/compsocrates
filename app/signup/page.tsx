@@ -98,9 +98,9 @@ function SignupContent() {
         let isTeamAdmin = false;
 
         if (formData.teamAction === "create") {
-          // Validate team name
+          // Validate team number
           if (!formData.teamName) {
-            setError("Please enter a team name");
+            setError("Please enter a team number");
             setLoading(false);
             return;
           }
@@ -342,14 +342,14 @@ function SignupContent() {
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Team Name
+                    Team Number
                   </label>
                   <input
                     type="text"
                     value={formData.teamName}
                     onChange={(e) => setFormData({ ...formData, teamName: e.target.value })}
                     className="w-full border rounded-lg p-3"
-                    placeholder="Team 1234"
+                    placeholder="1234"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     A unique team code will be generated for you
