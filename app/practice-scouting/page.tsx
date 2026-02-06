@@ -47,16 +47,20 @@ function PracticeScoutingContent() {
       const rocketCityMatches = await getEventMatches("2025alhu");
       const bayouMatches = await getEventMatches("2025labr");
       
+      // Tag matches with their event keys
+      const rocketCityTagged = rocketCityMatches.map(m => ({ match: m, eventKey: "2025alhu" }));
+      const bayouTagged = bayouMatches.map(m => ({ match: m, eventKey: "2025labr" }));
+      
       // Combine and shuffle matches
-      const allMatches = [...rocketCityMatches, ...bayouMatches];
+      const allMatches = [...rocketCityTagged, ...bayouTagged];
       
       // Pick 6 random qual matches
-      const qualMatches = allMatches.filter(m => m.comp_level === "qm");
+      const qualMatches = allMatches.filter(({ match }) => match.comp_level === "qm");
       const shuffled = qualMatches.sort(() => 0.5 - Math.random());
       const selectedMatches = shuffled.slice(0, 6);
 
       // Create practice sessions with difficulty levels
-      const practiceSessions: PracticeSession[] = selectedMatches.map((match, index) => {
+      const practiceSessions: PracticeSession[] = selectedMatches.map(({ match, eventKey }, index) => {
         // Pick a random team from the match
         const allTeams = [
           ...match.alliances.red.team_keys,
@@ -73,7 +77,7 @@ function PracticeScoutingContent() {
 
         return {
           id: match.key,
-          eventKey: match.event_key,
+          eventKey: eventKey,
           matchKey: match.key,
           matchName: `Qualification Match ${match.match_number}`,
           team: teamNumber,

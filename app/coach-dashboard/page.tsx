@@ -19,6 +19,16 @@ function CoachDashboardContent() {
     loadDashboardData();
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    if (activePage === "form-builder") {
+      router.push("/form-builder");
+    } else if (activePage === "scout-accuracy") {
+      router.push("/scout-accuracy");
+    } else if (activePage === "team-management") {
+      router.push("/team-management");
+    }
+  }, [activePage, router]);
+
   async function loadDashboardData() {
     if (!userData?.teamId) return;
     
@@ -202,7 +212,6 @@ function CoachDashboardContent() {
               Form Builder
             </h1>
             <p className="text-gray-600 mb-8">Redirecting to Form Builder...</p>
-            {router.push("/form-builder")}
           </div>
         )}
 
@@ -212,7 +221,6 @@ function CoachDashboardContent() {
               Scout Accuracy
             </h1>
             <p className="text-gray-600 mb-8">Redirecting to Scout Accuracy...</p>
-            {router.push("/scout-accuracy")}
           </div>
         )}
 
@@ -222,7 +230,6 @@ function CoachDashboardContent() {
               Team Management
             </h1>
             <p className="text-gray-600 mb-8">Redirecting to Team Management...</p>
-            {router.push("/team-management")}
           </div>
         )}
       </div>
