@@ -85,6 +85,30 @@ function FormBuilderContent() {
     a.click();
   }
 
+  function importForm(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const imported = JSON.parse(content);
+        
+        if (imported.name && Array.isArray(imported.fields)) {
+          setFormName(imported.name);
+          setFields(imported.fields);
+          alert("Form imported successfully!");
+        } else {
+          alert("Invalid form file format");
+        }
+      } catch (error) {
+        alert("Error importing form: " + (error as Error).message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
   const fieldsBySection = sections.reduce((acc, section) => {
     acc[section] = fields.filter(f => f.section === section);
     return acc;
@@ -104,13 +128,27 @@ function FormBuilderContent() {
                 Create and customize your scouting forms for each season
               </p>
             </div>
-            <button
-              onClick={exportForm}
-              className="px-4 py-2 rounded-lg text-white font-medium"
-              style={{ backgroundColor: "#c42221" }}
-            >
-              💾 Export Form
-            </button>
+            <div className="flex gap-3">
+              <label
+                className="px-4 py-2 rounded-lg text-white font-medium cursor-pointer"
+                style={{ backgroundColor: "#666" }}
+              >
+                📥 Import Form
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={importForm}
+                  className="hidden"
+                />
+              </label>
+              <button
+                onClick={exportForm}
+                className="px-4 py-2 rounded-lg text-white font-medium"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                💾 Export Form
+              </button>
+            </div>
           </div>
 
           <div className="grid lg:grid-cols-3 gap-6">

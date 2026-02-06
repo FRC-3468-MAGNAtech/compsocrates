@@ -32,7 +32,7 @@ export default function Sidebar() {
     { href: "/coach-dashboard", label: "Dashboard", icon: "📊" },
     { href: "/scout-form", label: "Scout Form", icon: "📝" },
     { href: "/analytics", label: "Analytics", icon: "📈" },
-    { href: "/form-builder", label: "Edit Form", icon: "🔧" },
+    { href: "/form-builder", label: "Form Builder", icon: "🔧" },
     { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: "🎯" },
     { href: "/team-management", label: "Team Management", icon: "👥" },
   ];

@@ -37,8 +37,21 @@ function SignupContent() {
     return !snapshot.empty;
   }
 
+  // Check if team name already exists
+  async function teamNameExists(name: string): Promise<boolean> {
+    const q = query(collection(db, "teams"), where("teamName", "==", name));
+    const snapshot = await getDocs(q);
+    return !snapshot.empty;
+  }
+
   // Create new team
   async function createTeam(teamName: string): Promise<string> {
+    // Check if team name already exists
+    const nameExists = await teamNameExists(teamName);
+    if (nameExists) {
+      throw new Error("A team with this number already exists. Please use a different team number or join the existing team.");
+    }
+
     let teamCode = generateTeamCode();
     
     // Ensure unique team code
@@ -258,7 +271,7 @@ function SignupContent() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, role: "scout" })}
+                    onClick={() => setFormData({ ...formData, role: "scout", teamAction: "join" })}
                     className={`p-4 border-2 rounded-lg font-medium transition-all ${
                       formData.role === "scout"
                         ? "border-red-600 bg-red-50 text-red-600"
@@ -287,32 +300,50 @@ function SignupContent() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Team
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, teamAction: "join" })}
-                    className={`p-4 border-2 rounded-lg font-medium transition-all ${
-                      formData.teamAction === "join"
-                        ? "border-red-600 bg-red-50 text-red-600"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="text-2xl mb-1">🔗</div>
-                    Join Team
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, teamAction: "create" })}
-                    className={`p-4 border-2 rounded-lg font-medium transition-all ${
-                      formData.teamAction === "create"
-                        ? "border-red-600 bg-red-50 text-red-600"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="text-2xl mb-1">✨</div>
-                    Create Team
-                  </button>
-                </div>
+                {formData.role === "scout" ? (
+                  // Scouts can only join teams
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, teamAction: "join" })}
+                      className="w-full p-4 border-2 border-red-600 bg-red-50 text-red-600 rounded-lg font-medium"
+                    >
+                      <div className="text-2xl mb-1">🔗</div>
+                      Join Team
+                    </button>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Scouts must join an existing team using a team code from their coach.
+                    </p>
+                  </div>
+                ) : (
+                  // Coaches can join or create
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, teamAction: "join" })}
+                      className={`p-4 border-2 rounded-lg font-medium transition-all ${
+                        formData.teamAction === "join"
+                          ? "border-red-600 bg-red-50 text-red-600"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="text-2xl mb-1">🔗</div>
+                      Join Team
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, teamAction: "create" })}
+                      className={`p-4 border-2 rounded-lg font-medium transition-all ${
+                        formData.teamAction === "create"
+                          ? "border-red-600 bg-red-50 text-red-600"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="text-2xl mb-1">✨</div>
+                      Create Team
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

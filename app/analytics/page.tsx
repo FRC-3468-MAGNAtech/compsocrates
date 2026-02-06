@@ -104,259 +104,171 @@ function scoreEntry(e: Entry) {
   s += e.teleopNetRobotScored * PTS.TELE_ALGAE_NET_R;
   s += e.teleopNetHumanScored * PTS.TELE_ALGAE_NET_H;
 
-  if (e.teleopAlgaeRemoved) s += 2;
-
-  const end = e.stageStatus.toLowerCase();
-  if (end.includes("deep")) s += PTS.CLIMB_DEEP;
-  else if (end.includes("shallow")) s += PTS.CLIMB_SHALLOW;
-  else if (end.includes("park")) s += PTS.CLIMB_PARK;
+  if (e.stageStatus === "Parked") s += PTS.CLIMB_PARK;
+  else if (e.stageStatus === "Shallow Climb") s += PTS.CLIMB_SHALLOW;
+  else if (e.stageStatus === "Deep Climb") s += PTS.CLIMB_DEEP;
 
   return s;
 }
 
 // -------------------------
-// SORTING
-// -------------------------
-type SortKey = keyof Entry | "score";
-type SortDir = "asc" | "desc";
-
-function sortEntries(entries: Entry[], key: SortKey, dir: SortDir): Entry[] {
-  const withScore = entries.map(e => ({ ...e, score: scoreEntry(e) }));
-  return [...withScore].sort((a, b) => {
-    const av = a[key];
-    const bv = b[key];
-
-    if (typeof av === "number" && typeof bv === "number") {
-      return dir === "asc" ? av - bv : bv - av;
-    }
-
-    const as = (av ?? "").toString().toLowerCase();
-    const bs = (bv ?? "").toString().toLowerCase();
-    if (as < bs) return dir === "asc" ? -1 : 1;
-    if (as > bs) return dir === "asc" ? 1 : -1;
-    return 0;
-  }) as Entry[];
-}
-
-// -------------------------
-// EVENT DEFINITIONS
-// -------------------------
-type EventDefinition = {
-  id: string;
-  name: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
-};
-
-const EVENTS: EventDefinition[] = [
-  {
-    id: "arkansas-regional",
-    name: "Arkansas Regional",
-    startDate: "2026-03-15",
-    endDate: "2026-03-18"
-  },
-  {
-    id: "app-testing",
-    name: "App Testing",
-    startDate: "1970-01-01",
-    endDate: "2099-12-31" // Shows everything
-  }
-];
-
-// -------------------------
-// MAIN PAGE
+// MAIN COMPONENT
 // -------------------------
 function AnalyticsPageContent() {
-  const [rawData, setRawData] = useState<Entry[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [activeView, setActiveView] = useState("raw-data");
-  const [selectedEvent, setSelectedEvent] = useState("all");
-  const [selectedGame, setSelectedGame] = useState("reefscape");
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [sortConfig, setSortConfig] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "timestamp", dir: "desc" });
+  const [selectedGame, setSelectedGame] = useState<"reefscape" | null>("reefscape");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
+    async function load() {
+      setLoading(true);
+      try {
+        const snap = await getDocs(collection(db, "scoutingEntries"));
+        const data: Entry[] = [];
+        snap.forEach((d) => {
+          const raw = d.data();
+          data.push({
+            id: d.id,
+            matchNumber: raw.matchNumber || "",
+            teamNumber: raw.teamNumber || "",
+            scoutName: raw.scoutName || "",
+            startingPosition: raw.startingPosition || "",
+            leftStartingZone: raw.leftStartingZone || false,
+            submittedAt: raw.submittedAt,
+
+            autoCoralMissed: raw.autoCoralMissed || 0,
+            autoCoralL1: raw.autoCoralL1 || 0,
+            autoCoralL2: raw.autoCoralL2 || 0,
+            autoCoralL3: raw.autoCoralL3 || 0,
+            autoCoralL4: raw.autoCoralL4 || 0,
+            autoAlgaeProcessorMissed: raw.autoAlgaeProcessorMissed || 0,
+            autoAlgaeProcessorScored: raw.autoAlgaeProcessorScored || 0,
+            autoAlgaeNetMissed: raw.autoAlgaeNetMissed || 0,
+            autoAlgaeNetScored: raw.autoAlgaeNetScored || 0,
+
+            teleopCoralMissed: raw.teleopCoralMissed || 0,
+            teleopCoralL1: raw.teleopCoralL1 || 0,
+            teleopCoralL2: raw.teleopCoralL2 || 0,
+            teleopCoralL3: raw.teleopCoralL3 || 0,
+            teleopCoralL4: raw.teleopCoralL4 || 0,
+            teleopAlgaeRemoved: raw.teleopAlgaeRemoved || false,
+            teleopProcessorMissed: raw.teleopProcessorMissed || 0,
+            teleopProcessorScored: raw.teleopProcessorScored || 0,
+            teleopNetRobotMissed: raw.teleopNetRobotMissed || 0,
+            teleopNetRobotScored: raw.teleopNetRobotScored || 0,
+            teleopNetHumanMissed: raw.teleopNetHumanMissed || 0,
+            teleopNetHumanScored: raw.teleopNetHumanScored || 0,
+
+            failedClimb: raw.failedClimb || 0,
+            stageStatus: raw.stageStatus || "None",
+
+            incidents: raw.incidents || [],
+            notes: raw.notes || "",
+
+            timestamp: raw.timestamp || 0,
+          });
+        });
+        setEntries(data);
+      } catch (err) {
+        console.error("Error loading analytics:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, []);
 
-  async function loadData() {
-    const snapshot = await getDocs(collection(db, "scouting"));
-    const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Entry[];
-    setRawData(entries);
-  }
-
-  async function handleDelete(id: string) {
-    if (deleteConfirm === id) {
-      try {
-        await deleteDoc(doc(db, "scouting", id));
-        await loadData();
-        setDeleteConfirm(null);
-        alert("Entry deleted successfully");
-      } catch (error) {
-        console.error("Error deleting entry:", error);
-        alert("Error deleting entry");
-      }
-    } else {
-      setDeleteConfirm(id);
-      setTimeout(() => setDeleteConfirm(null), 3000);
+  async function deleteEntry(id: string) {
+    if (!confirm("Delete this entry?")) return;
+    try {
+      await deleteDoc(doc(db, "scoutingEntries", id));
+      setEntries(entries.filter((e) => e.id !== id));
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("Failed to delete entry");
     }
   }
 
-  // Filter by event dates
-  const filteredByEvent = selectedEvent === "all" 
-    ? rawData 
-    : rawData.filter(entry => {
-        const event = EVENTS.find(e => e.id === selectedEvent);
-        if (!event) return true;
-        
-        // Get submission timestamp (use submittedAt if available, fallback to timestamp)
-        const entryTime = entry.submittedAt || entry.timestamp || 0;
-        const entryDate = new Date(entryTime);
-        
-        const startDate = new Date(event.startDate + "T00:00:00");
-        const endDate = new Date(event.endDate + "T23:59:59");
-        
-        return entryDate >= startDate && entryDate <= endDate;
-      });
-
-  const data = sortEntries(filteredByEvent, sortKey, sortDir);
-
-  function handleSort(key: SortKey) {
-    setSortKey(prevKey => {
-      if (prevKey === key) {
-        setSortDir(prevDir => (prevDir === "asc" ? "desc" : "asc"));
-        return prevKey;
-      } else {
-        setSortDir("asc");
-        return key;
-      }
-    });
+  function handleSort(key: string) {
+    setSortConfig((prev) => ({
+      key,
+      dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc",
+    }));
   }
 
-  function sortLabel(key: SortKey, label: string) {
-    if (sortKey !== key) return label;
-    return sortDir === "asc" ? `${label} ▲` : `${label} ▼`;
-  }
+  const sortLabel = (key: string, label: string) => {
+    if (sortConfig.key === key) {
+      return `${label} ${sortConfig.dir === "asc" ? "▲" : "▼"}`;
+    }
+    return label;
+  };
+
+  const sorted = [...entries].sort((a, b) => {
+    const k = sortConfig.key;
+    const dir = sortConfig.dir === "asc" ? 1 : -1;
+
+    // @ts-ignore
+    const valA = a[k] ?? "";
+    // @ts-ignore
+    const valB = b[k] ?? "";
+
+    if (typeof valA === "number" && typeof valB === "number") {
+      return (valA - valB) * dir;
+    }
+    if (typeof valA === "boolean" && typeof valB === "boolean") {
+      return (valA === valB ? 0 : valA ? 1 : -1) * dir;
+    }
+    return String(valA).localeCompare(String(valB)) * dir;
+  });
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 flex h-screen bg-gray-100 overflow-hidden">
-      {/* ANALYTICS SIDEBAR */}
-      <div 
-        className={`bg-white border-r border-gray-200 flex flex-col shrink-0 transition-all duration-300 ${
-          sidebarCollapsed ? "w-0 overflow-hidden" : "w-64"
-        }`}
-      >
-        <div className="p-4 border-b border-gray-200">
-          <h1 className="text-xl font-bold" style={{ color: "#c42221" }}>
-            Analytics
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            {data.length} entries
-          </p>
-          
-          {/* Event Filter */}
-          <div className="mt-3">
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Event
-            </label>
-            <select
-              value={selectedEvent}
-              onChange={(e) => setSelectedEvent(e.target.value)}
-              className="w-full text-sm border rounded p-1.5"
-            >
-              <option value="all">All Events</option>
-              {EVENTS.map(event => (
-                <option key={event.id} value={event.id}>{event.name}</option>
-              ))}
-            </select>
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {/* HEADER */}
+        <div className="p-4 bg-white border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold" style={{ color: "#c42221" }}>
+                Analytics
+              </h1>
+              <p className="text-sm text-gray-600">{entries.length} entries</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                Game:
+                <select
+                  value={selectedGame || ""}
+                  onChange={(e) => setSelectedGame(e.target.value as "reefscape")}
+                  className="border rounded px-3 py-1.5"
+                >
+                  <option value="reefscape">REEFSCAPE</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
-        <nav className="flex-1 p-4 flex flex-col">
-          <button
-            onClick={() => setActiveView("raw-data")}
-            className={`w-full text-left px-3 py-2 rounded mb-2 ${
-              activeView === "raw-data"
-                ? "bg-red-100 text-red-800 font-semibold"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-          >
-            Raw Data
-          </button>
-          <button
-            onClick={() => setActiveView("team-averages")}
-            className={`w-full text-left px-3 py-2 rounded mb-2 ${
-              activeView === "team-averages"
-                ? "bg-red-100 text-red-800 font-semibold"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-          >
-            Team Averages
-          </button>
-          <button
-            onClick={() => setActiveView("match-breakdown")}
-            className={`w-full text-left px-3 py-2 rounded mb-2 ${
-              activeView === "match-breakdown"
-                ? "bg-red-100 text-red-800 font-semibold"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-          >
-            Match Breakdown
-          </button>
-          <button
-            onClick={() => setActiveView("rankings")}
-            className={`w-full text-left px-3 py-2 rounded mb-2 ${
-              activeView === "rankings"
-                ? "bg-red-100 text-red-800 font-semibold"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-          >
-            Rankings
-          </button>
-        </nav>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {activeView === "raw-data" && (
-          <>
-            {/* TOP BAR WITH GAME SELECTOR */}
-            <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {/* Sidebar Toggle */}
-                <button
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  className="p-2 hover:bg-gray-100 rounded"
-                  title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                >
-                  {sidebarCollapsed ? "→" : "←"}
-                </button>
-                
-                <div className="h-6 w-px bg-gray-300" />
-                
-                <span className="text-sm text-gray-600">{data.length} entries</span>
-              </div>
-
-              {/* Game Selector */}
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">
-                  Game:
-                </label>
-                <select
-                  value={selectedGame}
-                  onChange={(e) => setSelectedGame(e.target.value)}
-                  className="border rounded px-3 py-1.5 text-sm"
-                >
-                  <option value="reefscape">REEFSCAPE</option>
-                  <option value="rebuilt">REBUILT</option>
-                </select>
-              </div>
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-4xl mb-4 animate-spin">🔄</div>
+              <p className="text-gray-600">Loading analytics...</p>
             </div>
-
-            {/* TABLE AREA */}
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-6xl mb-4">📊</div>
+              <p className="text-xl text-gray-600">No entries yet</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Scout some matches to see analytics here
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
             {selectedGame === "reefscape" ? (
               <div className="flex-1 p-4 overflow-hidden">
                 <div className="bg-white rounded-xl shadow h-full table-scroll">
@@ -364,8 +276,8 @@ function AnalyticsPageContent() {
                     <thead className="sticky-header">
                       {/* ROW 1: TOP LEVEL GROUPS */}
                       <tr>
-                        <th className="sticky-left bg-red-300" colSpan={2}>Information</th>
-                        <th className="bg-yellow-300" colSpan={2}>Pre-Match</th>
+                        <th className="sticky-left bg-red-300" colSpan={1}>Information</th>
+                        <th className="bg-yellow-300" colSpan={3}>Pre-Match</th>
                         <th className="bg-green-300" colSpan={9}>Autonomous</th>
                         <th className="bg-blue-300" colSpan={13}>Teleoperated</th>
                         <th className="bg-yellow-300" colSpan={2}>Endgame</th>
@@ -376,12 +288,14 @@ function AnalyticsPageContent() {
 
                       {/* ROW 2: SUB-CATEGORIES */}
                       <tr>
-                        <th className="sticky-left bg-red-200" colSpan={2}>Information</th>
-                        <th className="bg-yellow-200" colSpan={2}>Pre-Match</th>
-                        <th className="bg-green-200" colSpan={1}>Leave</th>
+                        <th className="sticky-left bg-red-200" colSpan={1}>Match/Team</th>
+                        <th className="bg-yellow-200" colSpan={1}>Scout</th>
+                        <th className="bg-yellow-200" colSpan={1}>Starting Position</th>
+                        <th className="bg-yellow-200" colSpan={1}>Leave</th>
                         <th className="bg-green-200" colSpan={4}>Coral</th>
                         <th className="bg-green-200" colSpan={2}>Algae Processor</th>
                         <th className="bg-green-200" colSpan={2}>Algae Net</th>
+                        <th className="bg-green-200" colSpan={1}>Missed</th>
                         <th className="bg-blue-200" colSpan={5}>Coral</th>
                         <th className="bg-blue-200" colSpan={1}>Algae Collection</th>
                         <th className="bg-blue-200" colSpan={2}>Algae Processor</th>
@@ -401,10 +315,6 @@ function AnalyticsPageContent() {
                         <th className="sticky-left cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("matchNumber")}>
                           {sortLabel("matchNumber", "Match")}
-                        </th>
-                        <th className="sticky-left-2 cursor-pointer hover:bg-gray-100"
-                            onClick={() => handleSort("teamNumber")}>
-                          {sortLabel("teamNumber", "Team")}
                         </th>
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("scoutName")}>
@@ -451,8 +361,8 @@ function AnalyticsPageContent() {
                           {sortLabel("autoAlgaeNetScored", "Scored")}
                         </th>
                         <th className="cursor-pointer hover:bg-gray-100"
-                            onClick={() => handleSort("teleopCoralMissed")}>
-                          {sortLabel("teleopCoralMissed", "Missed")}
+                            onClick={() => handleSort("autoCoralMissed")}>
+                          {sortLabel("autoCoralMissed", "Missed")}
                         </th>
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("teleopCoralL1")}>
@@ -469,6 +379,10 @@ function AnalyticsPageContent() {
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("teleopCoralL4")}>
                           {sortLabel("teleopCoralL4", "L4")}
+                        </th>
+                        <th className="cursor-pointer hover:bg-gray-100"
+                            onClick={() => handleSort("teleopCoralMissed")}>
+                          {sortLabel("teleopCoralMissed", "Missed")}
                         </th>
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("teleopAlgaeRemoved")}>
@@ -504,83 +418,62 @@ function AnalyticsPageContent() {
                         </th>
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("stageStatus")}>
-                          {sortLabel("stageStatus", "End Place")}
+                          {sortLabel("stageStatus", "Stage Status")}
                         </th>
                         <th>Score</th>
                         <th>Incidents</th>
-                        <th>Comments</th>
-                        <th>Alliance Accuracy</th>
-                        <th>Script Status</th>
-                        <th>Delete</th>
+                        <th>Notes</th>
+                        <th>Accuracy</th>
+                        <th>Status</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {data.map((e) => {
+                      {sorted.map((e) => {
                         const score = scoreEntry(e);
-                        
-                        const positionLabels: Record<string, string> = {
-                          "not-there": "Not There",
-                          "processor": "Processor Side",
-                          "middle": "Middle",
-                          "opposite": "Opposite Side"
-                        };
-                        
-                        const stageLabels: Record<string, string> = {
-                          "not-parked": "Not Parked",
-                          "barge": "Parked in Barge Zone",
-                          "shallow": "Shallow Cage",
-                          "deep": "Deep Cage"
-                        };
-
                         return (
                           <tr key={e.id}>
-                            <td className="sticky-left font-semibold">{e.matchNumber || "-"}</td>
-                            <td className="sticky-left-2 font-semibold">{e.teamNumber}</td>
+                            <td className="sticky-left">{e.matchNumber || "-"}</td>
                             <td>{e.scoutName}</td>
-                            <td>{positionLabels[e.startingPosition] || e.startingPosition}</td>
-                            <td>{e.leftStartingZone ? "✓" : ""}</td>
-                            <td>{e.autoCoralL1 || ""}</td>
-                            <td>{e.autoCoralL2 || ""}</td>
-                            <td>{e.autoCoralL3 || ""}</td>
-                            <td>{e.autoCoralL4 || ""}</td>
-                            <td>{e.autoAlgaeProcessorMissed || ""}</td>
-                            <td>{e.autoAlgaeProcessorScored || ""}</td>
-                            <td>{e.autoAlgaeNetMissed || ""}</td>
-                            <td>{e.autoAlgaeNetScored || ""}</td>
-                            <td>{e.teleopCoralMissed || ""}</td>
-                            <td>{e.teleopCoralL1 || ""}</td>
-                            <td>{e.teleopCoralL2 || ""}</td>
-                            <td>{e.teleopCoralL3 || ""}</td>
-                            <td>{e.teleopCoralL4 || ""}</td>
-                            <td>{e.teleopAlgaeRemoved ? "✓" : ""}</td>
-                            <td>{e.teleopProcessorMissed || ""}</td>
-                            <td>{e.teleopProcessorScored || ""}</td>
-                            <td>{e.teleopNetRobotMissed || ""}</td>
-                            <td>{e.teleopNetRobotScored || ""}</td>
-                            <td>{e.teleopNetHumanMissed || ""}</td>
-                            <td>{e.teleopNetHumanScored || ""}</td>
-                            <td>{e.failedClimb || ""}</td>
-                            <td>{stageLabels[e.stageStatus] || e.stageStatus}</td>
-                            <td className="font-bold">{score}</td>
-                            <td className="text-xs max-w-[200px] truncate">
-                              {e.incidents?.join(", ") || ""}
-                            </td>
-                            <td className="text-xs max-w-[200px] truncate">
-                              {e.notes || ""}
+                            <td>{e.startingPosition || "-"}</td>
+                            <td>{e.leftStartingZone ? "Yes" : "No"}</td>
+                            <td>{e.autoCoralL1}</td>
+                            <td>{e.autoCoralL2}</td>
+                            <td>{e.autoCoralL3}</td>
+                            <td>{e.autoCoralL4}</td>
+                            <td>{e.autoAlgaeProcessorMissed}</td>
+                            <td>{e.autoAlgaeProcessorScored}</td>
+                            <td>{e.autoAlgaeNetMissed}</td>
+                            <td>{e.autoAlgaeNetScored}</td>
+                            <td>{e.autoCoralMissed}</td>
+                            <td>{e.teleopCoralL1}</td>
+                            <td>{e.teleopCoralL2}</td>
+                            <td>{e.teleopCoralL3}</td>
+                            <td>{e.teleopCoralL4}</td>
+                            <td>{e.teleopCoralMissed}</td>
+                            <td>{e.teleopAlgaeRemoved ? "Yes" : "No"}</td>
+                            <td>{e.teleopProcessorMissed}</td>
+                            <td>{e.teleopProcessorScored}</td>
+                            <td>{e.teleopNetRobotMissed}</td>
+                            <td>{e.teleopNetRobotScored}</td>
+                            <td>{e.teleopNetHumanMissed}</td>
+                            <td>{e.teleopNetHumanScored}</td>
+                            <td>{e.failedClimb}</td>
+                            <td>{e.stageStatus}</td>
+                            <td className="font-semibold">{score}</td>
+                            <td>{e.incidents.join(", ") || "-"}</td>
+                            <td className="max-w-[200px] truncate" title={e.notes}>
+                              {e.notes || "-"}
                             </td>
                             <td>-</td>
                             <td>-</td>
                             <td>
                               <button
-                                onClick={() => handleDelete(e.id)}
-                                className={`px-2 py-1 text-xs rounded transition-colors ${
-                                  deleteConfirm === e.id
-                                    ? "bg-red-600 text-white"
-                                    : "bg-red-500 text-white hover:bg-red-600"
-                                }`}
+                                onClick={() => deleteEntry(e.id)}
+                                className="text-red-600 hover:text-red-800 text-xs px-2 py-1"
                               >
-                                {deleteConfirm === e.id ? "Confirm?" : "Delete"}
+                                Delete
                               </button>
                             </td>
                           </tr>
@@ -590,40 +483,67 @@ function AnalyticsPageContent() {
                   </table>
                 </div>
               </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center p-8 bg-white rounded-xl shadow max-w-md">
-                  <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
-                    REBUILT Form Not Available
-                  </h2>
-                  <p className="text-gray-600">
-                    The scouting form for REBUILT has not been created yet. Please select REEFSCAPE to view data.
-                  </p>
-                </div>
-              </div>
-            )}
+            ) : null}
           </>
         )}
-
-        {activeView === "team-averages" && (
-          <div className="h-full flex items-center justify-center text-gray-500">
-            Team Averages - Coming Soon
-          </div>
-        )}
-
-        {activeView === "match-breakdown" && (
-          <div className="h-full flex items-center justify-center text-gray-500">
-            Match Breakdown - Coming Soon
-          </div>
-        )}
-
-        {activeView === "rankings" && (
-          <div className="h-full flex items-center justify-center text-gray-500">
-            Rankings - Coming Soon
-          </div>
-        )}
       </div>
-      </div>
+
+      <style jsx global>{`
+        .table-scroll {
+          overflow: auto;
+          position: relative;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+          table-layout: auto;
+        }
+
+        th,
+        td {
+          padding: 8px 12px;
+          border: 1px solid #e5e7eb;
+          text-align: center;
+          white-space: nowrap;
+          font-size: 0.875rem;
+          background: white;
+        }
+
+        th {
+          font-weight: 600;
+          position: sticky;
+          top: 0;
+          z-index: 2;
+        }
+
+        .sticky-header {
+          position: sticky;
+          top: 0;
+          z-index: 3;
+        }
+
+        .sticky-left {
+          position: sticky;
+          left: 0;
+          z-index: 1;
+          background: white;
+          box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+        }
+
+        thead .sticky-left {
+          z-index: 4;
+        }
+
+        tbody tr:hover td {
+          background: #f9fafb;
+        }
+
+        tbody tr:hover .sticky-left {
+          background: #f9fafb;
+        }
+      `}</style>
     </div>
   );
 }

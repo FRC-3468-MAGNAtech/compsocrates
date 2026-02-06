@@ -202,6 +202,7 @@ function CoachDashboardContent() {
               Form Builder
             </h1>
             <p className="text-gray-600 mb-8">Redirecting to Form Builder...</p>
+            {router.push("/form-builder")}
           </div>
         )}
 
@@ -211,6 +212,7 @@ function CoachDashboardContent() {
               Scout Accuracy
             </h1>
             <p className="text-gray-600 mb-8">Redirecting to Scout Accuracy...</p>
+            {router.push("/scout-accuracy")}
           </div>
         )}
 
@@ -220,6 +222,7 @@ function CoachDashboardContent() {
               Team Management
             </h1>
             <p className="text-gray-600 mb-8">Redirecting to Team Management...</p>
+            {router.push("/team-management")}
           </div>
         )}
       </div>
