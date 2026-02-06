@@ -100,7 +100,6 @@ function TeamManagementContent() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-xl font-semibold mb-1">{teamName}</h2>
-                    <p className="text-gray-600">Team Code: <span className="font-mono font-bold">{userData?.teamId}</span></p>
                     <p className="text-sm text-gray-500 mt-2">{members.length} team members</p>
                   </div>
                   <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -24,6 +24,11 @@ function PracticeScoutingContent() {
   const [loading, setLoading] = useState(true);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [practiceStats, setPracticeStats] = useState({
+    sessionsCompleted: 0,
+    averageAccuracy: 0,
+    bestScore: 0,
+  });
 
   const [formData, setFormData] = useState({
     autoCoralL1: 0,
@@ -38,7 +43,43 @@ function PracticeScoutingContent() {
 
   useEffect(() => {
     loadPracticeSessions();
-  }, []);
+    loadPracticeStats();
+  }, [userData]);
+
+  async function loadPracticeStats() {
+    if (!userData?.displayName) return;
+    
+    try {
+      const practiceQuery = query(
+        collection(db, "practiceSessions"),
+        where("scoutName", "==", userData.displayName)
+      );
+      const practiceSnapshot = await getDocs(practiceQuery);
+      
+      let totalAccuracy = 0;
+      let maxScore = 0;
+      
+      practiceSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.accuracy !== undefined) {
+          totalAccuracy += data.accuracy;
+          if (data.accuracy > maxScore) {
+            maxScore = data.accuracy;
+          }
+        }
+      });
+
+      const avgAccuracy = practiceSnapshot.size > 0 ? Math.round(totalAccuracy / practiceSnapshot.size) : 0;
+
+      setPracticeStats({
+        sessionsCompleted: practiceSnapshot.size,
+        averageAccuracy: avgAccuracy,
+        bestScore: maxScore,
+      });
+    } catch (error) {
+      console.error("Error loading practice stats:", error);
+    }
+  }
 
   async function loadPracticeSessions() {
     setLoading(true);
@@ -129,6 +170,9 @@ function PracticeScoutingContent() {
         difficulty: selectedSession.difficulty,
         timestamp: Date.now(),
       });
+      
+      // Reload stats to reflect the new session
+      await loadPracticeStats();
     } catch (error) {
       console.error("Error saving practice session:", error);
     }
@@ -280,7 +324,27 @@ function PracticeScoutingContent() {
               {/* Stats Summary */}
               <div className="bg-white rounded-xl shadow-md p-6 mb-6">
                 <h2 className="text-xl font-semibold mb-4">Your Practice Stats</h2>
-                <p className="text-sm text-gray-600">
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Sessions Completed</p>
+                    <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                      {practiceStats.sessionsCompleted}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Average Accuracy</p>
+                    <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                      {practiceStats.averageAccuracy}%
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Best Score</p>
+                    <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                      {practiceStats.bestScore}%
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600 mt-4">
                   Complete practice sessions to track your improvement and verify your accuracy.
                 </p>
               </div>

@@ -8,7 +8,7 @@ import { getEvent, getEventTeams, getEventMatches, formatMatchType, getDaysUntil
 
 function EventDetailsContent() {
   const searchParams = useSearchParams();
-  const eventKey = searchParams.get("event") || "2026arli"; // Default to Arkansas Regional
+  const eventKey = searchParams.get("event") || "2025alhu"; // Default to Rocket City Regional 2025
   
   const [event, setEvent] = useState<TBAEvent | null>(null);
   const [teams, setTeams] = useState<TBATeam[]>([]);
@@ -99,216 +99,145 @@ function EventDetailsContent() {
                 </div>
               ) : (
                 <div className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 font-semibold">
-                  Completed
+                  Event Completed
                 </div>
               )}
-            </div>
-
-            {/* STATS */}
-            <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-gray-200">
-              <div className="text-center">
-                <p className="text-sm text-gray-600">Teams</p>
-                <p className="text-2xl font-bold" style={{ color: "#c42221" }}>
-                  {teams.length}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-gray-600">Matches</p>
-                <p className="text-2xl font-bold" style={{ color: "#c42221" }}>
-                  {matches.length}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-gray-600">Week</p>
-                <p className="text-2xl font-bold" style={{ color: "#c42221" }}>
-                  {event.week === null ? "N/A" : event.week}
-                </p>
-              </div>
             </div>
           </div>
 
           {/* TABS */}
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => setActiveTab("overview")}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                activeTab === "overview"
-                  ? "text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              style={activeTab === "overview" ? { backgroundColor: "#c42221" } : {}}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => setActiveTab("teams")}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                activeTab === "teams"
-                  ? "text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              style={activeTab === "teams" ? { backgroundColor: "#c42221" } : {}}
-            >
-              Teams ({teams.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("schedule")}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                activeTab === "schedule"
-                  ? "text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              style={activeTab === "schedule" ? { backgroundColor: "#c42221" } : {}}
-            >
-              Schedule ({matches.length})
-            </button>
-          </div>
-
-          {/* CONTENT */}
-          {activeTab === "overview" && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-xl shadow-md p-6">
-                <h2 className="text-xl font-semibold mb-4">Event Information</h2>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Event Code</p>
-                    <p className="font-semibold">{event.event_code}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Event Type</p>
-                    <p className="font-semibold">{event.event_type === 0 ? "Regional" : event.event_type === 1 ? "District" : "Other"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Year</p>
-                    <p className="font-semibold">{event.year}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Week</p>
-                    <p className="font-semibold">{event.week === null ? "Championship/Offseason" : `Week ${event.week}`}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-md p-6">
-                <h2 className="text-xl font-semibold mb-4">Quick Stats</h2>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-gray-700">Total Teams</span>
-                    <span className="font-bold" style={{ color: "#c42221" }}>{teams.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-gray-700">Qualification Matches</span>
-                    <span className="font-bold" style={{ color: "#c42221" }}>
-                      {matches.filter(m => m.comp_level === "qm").length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-gray-700">Playoff Matches</span>
-                    <span className="font-bold" style={{ color: "#c42221" }}>
-                      {matches.filter(m => m.comp_level !== "qm").length}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          <div className="bg-white rounded-xl shadow-md mb-6 overflow-hidden">
+            <div className="flex border-b">
+              {(["overview", "teams", "schedule"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`
+                    flex-1 px-6 py-4 font-semibold transition-colors
+                    ${activeTab === tab ? "bg-red-50 text-red-600 border-b-2 border-red-600" : "text-gray-600 hover:bg-gray-50"}
+                  `}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
             </div>
-          )}
 
-          {activeTab === "teams" && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Team Number
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Location
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+            <div className="p-6">
+              {activeTab === "overview" && (
+                <div>
+                  <div className="grid md:grid-cols-3 gap-6 mb-6">
+                    <div className="bg-gray-50 rounded-lg p-6">
+                      <h3 className="text-sm font-semibold text-gray-600 mb-2">Total Teams</h3>
+                      <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                        {teams.length}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-6">
+                      <h3 className="text-sm font-semibold text-gray-600 mb-2">Total Matches</h3>
+                      <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                        {matches.length}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-6">
+                      <h3 className="text-sm font-semibold text-gray-600 mb-2">Event Week</h3>
+                      <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                        Week {event.week !== null ? event.week : "N/A"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "teams" && (
+                <div>
+                  <h2 className="text-xl font-semibold mb-4">Competing Teams ({teams.length})</h2>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {teams.map((team) => (
-                      <tr key={team.key} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-bold" style={{ color: "#c42221" }}>
+                      <div
+                        key={team.key}
+                        className="p-4 border rounded-lg hover:border-red-300 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold"
+                            style={{ backgroundColor: "#c42221" }}
+                          >
                             {team.team_number}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div>
-                            <p className="font-semibold">{team.nickname}</p>
-                            <p className="text-sm text-gray-600">{team.name}</p>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {team.city}, {team.state_prov}
-                        </td>
-                      </tr>
+                          <div className="flex-1">
+                            <h3 className="font-semibold">{team.nickname || `Team ${team.team_number}`}</h3>
+                            <p className="text-sm text-gray-600">
+                              {team.city}, {team.state_prov}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                  </div>
+                </div>
+              )}
 
-          {activeTab === "schedule" && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Match
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Red Alliance
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Blue Alliance
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Time
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {matches.map((match) => (
-                      <tr key={match.key} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap font-semibold">
-                          {formatMatchType(match.comp_level, match.set_number, match.match_number)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex gap-2">
-                            {match.alliances.red.team_keys.map(key => (
-                              <span key={key} className="px-2 py-1 bg-red-100 text-red-800 rounded text-sm font-medium">
-                                {key.replace("frc", "")}
-                              </span>
-                            ))}
+              {activeTab === "schedule" && (
+                <div>
+                  <h2 className="text-xl font-semibold mb-4">Match Schedule ({matches.length} matches)</h2>
+                  <div className="space-y-3">
+                    {matches.slice(0, 20).map((match) => (
+                      <div
+                        key={match.key}
+                        className="p-4 border rounded-lg hover:border-red-300 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold">
+                              {formatMatchType(match.comp_level, match.set_number, match.match_number)}
+                            </h3>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {match.predicted_time
+                                ? new Date(match.predicted_time * 1000).toLocaleString()
+                                : "Time TBD"}
+                            </p>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex gap-2">
-                            {match.alliances.blue.team_keys.map(key => (
-                              <span key={key} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm font-medium">
-                                {key.replace("frc", "")}
-                              </span>
-                            ))}
+                          <div className="flex gap-4">
+                            <div className="text-right">
+                              <p className="text-xs text-gray-600 mb-1">Red Alliance</p>
+                              <div className="flex gap-1">
+                                {match.alliances.red.team_keys.map((teamKey) => (
+                                  <span
+                                    key={teamKey}
+                                    className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold"
+                                  >
+                                    {teamKey.replace("frc", "")}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-gray-600 mb-1">Blue Alliance</p>
+                              <div className="flex gap-1">
+                                {match.alliances.blue.team_keys.map((teamKey) => (
+                                  <span
+                                    key={teamKey}
+                                    className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold"
+                                  >
+                                    {teamKey.replace("frc", "")}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {match.predicted_time ? new Date(match.predicted_time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                    {matches.length > 20 && (
+                      <p className="text-center text-gray-600 py-4">
+                        Showing first 20 of {matches.length} matches
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
