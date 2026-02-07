@@ -60,7 +60,7 @@ export default function Sidebar() {
 
       <div className="p-4 border-t mt-auto">
         <button
-          onClick={logout}
+          onClick={logOut}
           className="flex items-center gap-3 w-full px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-colors group"
         >
           <LogOut size={20} className="group-hover:text-red-600" />
