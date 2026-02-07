@@ -163,10 +163,6 @@ function AccountContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Team ID
-                </label>
-                <p className="text-gray-900 font-mono">{userData.teamId}</p>
                 {userData.isTeamAdmin && (
                   <p className="text-xs text-gray-500 mt-1">You are the team admin</p>
                 )}
