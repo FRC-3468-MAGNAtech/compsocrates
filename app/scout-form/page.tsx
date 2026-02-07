@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
-import { isEventActive } from "@/app/utils/eventDates";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -326,40 +324,7 @@ function FinalsBracket({
    MAIN PAGE
 -------------------------------------------------------- */
 function ScoutFormContent() {
-  const router = useRouter();
   const { userData } = useAuth();
-  
-  // Check if an event is currently active
-  const eventActive = isEventActive();
-  
-  // If no event is active, show message and redirect option
-  if (!eventActive) {
-    return (
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="max-w-md text-center bg-white rounded-xl shadow-lg p-8">
-            <div className="text-6xl mb-4">📅</div>
-            <h2 className="text-2xl font-bold mb-4" style={{ color: "#c42221" }}>
-              Event Not Active
-            </h2>
-            <p className="text-gray-600 mb-6">
-              The scout form is only available during competition events (Arkansas Regional: March 18-21 or Bayou Regional: April 1-4). 
-              Please use Practice Scouting to improve your skills until the event begins.
-            </p>
-            <button
-              onClick={() => router.push("/practice-scouting")}
-              className="px-6 py-3 rounded-lg text-white font-semibold"
-              style={{ backgroundColor: "#c42221" }}
-            >
-              Go to Practice Scouting
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const [notesOpen, setNotesOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");

@@ -31,7 +31,6 @@ export default function Sidebar() {
   const coachNavItems = [
     { href: "/coach-dashboard", label: "Dashboard", icon: "📊" },
     { href: "/scout-form", label: "Scout Form", icon: "📝" },
-    { href: "/practice-scouting", label: "Practice Scouting", icon: "🎯" },
     { href: "/analytics", label: "Analytics", icon: "📈" },
     { href: "/form-builder", label: "Form Builder", icon: "🔧" },
     { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: "🎯" },
