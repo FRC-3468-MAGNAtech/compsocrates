@@ -48,7 +48,7 @@ function CoachDashboardContent() {
 
   async function getUpcomingEvent(): Promise<UpcomingEvent> {
     try {
-      const TBA_KEY = process.env.NEXT_PUBLIC_TBA_API_KEY;
+      const TBA_KEY = process.env.NEXT_PUBLIC_TBA_AUTH_KEY;
       if (!TBA_KEY) {
         console.error("TBA API key not found");
         return null;
