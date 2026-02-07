@@ -2,200 +2,133 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ----------------------------- */
-/* GLOBAL TABLE BEHAVIOR         */
-/* ----------------------------- */
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ANALYTICS TABLE STYLES */
 .table-scroll {
-  overflow-x: auto;
-  overflow-y: visible;
-  width: 100%;
-  max-width: 100%;
-  border-radius: 8px;
+  overflow: auto;
+  position: relative;
 }
 
 .table-scroll table {
-  border-collapse: collapse;
-  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
   width: max-content;
-}
-
-.table-scroll th {
-  white-space: nowrap;
-  text-align: center;
-  font-weight: 600;
-  padding: 6px 10px;
-  background: white;
+  min-width: 100%;
 }
 
 .table-scroll th,
 .table-scroll td {
-  min-width: 70px;
-  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
   white-space: nowrap;
-  text-align: center;
+  background: white;
 }
 
-/* ----------------------------- */
-/* STICKY HEADER                 */
-/* ----------------------------- */
+.table-scroll th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+/* STICKY HEADER (all 3 rows) */
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
 
 .sticky-header th {
   position: sticky;
   top: 0;
-  z-index: 100;
-  background: white;
 }
 
-.sticky-header tr:first-child th {
-  top: 0;
+/* STICKY LEFT COLUMNS - FIXED POSITIONING */
+/* Match column (leftmost) */
+.sticky-left-0 {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 25 !important;
+  background: white !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
-.sticky-header tr:nth-child(2) th {
-  top: 38px;
+/* Team column (second from left) */
+.sticky-left-1 {
+  position: sticky !important;
+  left: 80px !important; /* Width of Match column */
+  z-index: 25 !important;
+  background: white !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
-.sticky-header tr:nth-child(3) th {
-  top: 76px;
+/* Scout column (third from left) */
+.sticky-left-2 {
+  position: sticky !important;
+  left: 160px !important; /* Width of Match + Team columns */
+  z-index: 25 !important;
+  background: white !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
-/* ----------------------------- */
-/* STICKY LEFT COLUMNS           */
-/* ----------------------------- */
-
-.sticky-left-action {
-  position: sticky;
-  left: 0;
-  z-index: 110;
-  background: white;
-  min-width: 80px;
-  border-right: 1px solid #ccc;
+/* HEADER CELLS IN STICKY COLUMNS - Higher z-index */
+.sticky-header .sticky-left-0,
+.sticky-header .sticky-left-1,
+.sticky-header .sticky-left-2 {
+  z-index: 30 !important;
 }
 
+/* Legacy support for old class names */
 .sticky-left {
-  position: sticky;
-  left: 80px;
-  z-index: 110;
-  background: white;
-  min-width: 80px;
-  border-right: 1px solid #ccc;
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 25 !important;
+  background: white !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
 .sticky-left-2 {
-  position: sticky;
-  left: 160px;
-  z-index: 110;
-  background: white;
+  position: sticky !important;
+  left: 80px !important;
+  z-index: 25 !important;
+  background: white !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ENSURE INFORMATION COLUMN DOESN'T OVERLAP */
+.table-scroll th:nth-child(1),
+.table-scroll th:nth-child(2),
+.table-scroll th:nth-child(3) {
   min-width: 80px;
-  border-right: 1px solid #ccc;
-}
-
-.sticky-header .sticky-left-action,
-.sticky-header .sticky-left,
-.sticky-header .sticky-left-2 {
-  z-index: 150;
-}
-
-/* ----------------------------- */
-/* GROUP HEADER COLORS           */
-/* ----------------------------- */
-
-.bg-red-300 {
-  background-color: #fca5a5 !important;
-}
-
-.bg-red-200 {
-  background-color: #fecaca !important;
-}
-
-.bg-red-100 {
-  background-color: #fee2e2 !important;
-}
-
-.bg-yellow-300 {
-  background-color: #fde047 !important;
-}
-
-.bg-yellow-200 {
-  background-color: #fef08a !important;
-}
-
-.bg-yellow-100 {
-  background-color: #fef9c3 !important;
-}
-
-.bg-green-300 {
-  background-color: #86efac !important;
-}
-
-.bg-green-200 {
-  background-color: #bbf7d0 !important;
-}
-
-.bg-green-100 {
-  background-color: #dcfce7 !important;
-}
-
-.bg-blue-300 {
-  background-color: #93c5fd !important;
-}
-
-.bg-blue-200 {
-  background-color: #bfdbfe !important;
-}
-
-.bg-blue-100 {
-  background-color: #dbeafe !important;
-}
-
-.bg-purple-300 {
-  background-color: #d8b4fe !important;
-}
-
-.bg-purple-200 {
-  background-color: #e9d5ff !important;
-}
-
-.bg-purple-100 {
-  background-color: #f3e8ff !important;
-}
-
-.bg-pink-300 {
-  background-color: #f9a8d4 !important;
-}
-
-.bg-pink-200 {
-  background-color: #fbcfe8 !important;
-}
-
-.bg-pink-100 {
-  background-color: #fce7f3 !important;
-}
-
-/* ----------------------------- */
-/* ROW STRIPING                  */
-/* ----------------------------- */
-
-.table-scroll tbody tr:first-child {
-  background: #e5e7eb !important;
-}
-
-.table-scroll tbody tr:nth-child(even) {
-  background: #f9fafb;
-}
-
-.table-scroll tbody tr:nth-child(odd) {
-  background: white;
-}
-
-.table-scroll tbody tr:nth-child(even) .sticky-left-action,
-.table-scroll tbody tr:nth-child(even) .sticky-left,
-.table-scroll tbody tr:nth-child(even) .sticky-left-2 {
-  background: #f9fafb;
-}
-
-.table-scroll tbody tr:nth-child(odd) .sticky-left-action,
-.table-scroll tbody tr:nth-child(odd) .sticky-left,
-.table-scroll tbody tr:nth-child(odd) .sticky-left-2 {
-  background: white;
 }

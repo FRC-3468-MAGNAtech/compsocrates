@@ -1,5 +1,5 @@
 // Utility functions to calculate real statistics from Firebase data
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 
 export interface TeamStats {
@@ -19,6 +19,15 @@ export interface Activity {
   matchNumber?: string;
   accuracy?: number;
   timestamp: number;
+}
+
+export interface UpcomingEvent {
+  name: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  daysUntil: number;
+  key: string; // TBA event key
 }
 
 // Get all scouting entries for a team
@@ -96,20 +105,43 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   };
 }
 
-// Calculate stats for upcoming events
-export async function getUpcomingEvent() {
-  // Arkansas Regional 2026 - March 18-21 (Week 3)
-  const arkansasStart = new Date("2026-03-18");
+// Get upcoming events - ONLY Arkansas and Bayou Regional
+export async function getUpcomingEvents(): Promise<UpcomingEvent[]> {
   const now = new Date();
-  const daysUntil = Math.ceil((arkansasStart.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  
+  const events = [
+    {
+      name: "Arkansas Regional",
+      location: "Little Rock, AR",
+      startDate: "2026-03-14",
+      endDate: "2026-03-17",
+      key: "2026arli"
+    },
+    {
+      name: "Bayou Regional",
+      location: "Kenner, LA",
+      startDate: "2026-03-26",
+      endDate: "2026-03-29",
+      key: "2026labr"
+    }
+  ];
 
-  return {
-    name: "Arkansas Regional",
-    location: "Little Rock, AR",
-    startDate: "2026-03-18",
-    endDate: "2026-03-21",
-    daysUntil: Math.max(0, daysUntil),
-  };
+  return events.map(event => {
+    const startDate = new Date(event.startDate);
+    const daysUntil = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    return {
+      ...event,
+      daysUntil: Math.max(0, daysUntil)
+    };
+  }).filter(event => event.daysUntil >= 0); // Only show upcoming/current events
+}
+
+// Get single upcoming event (for scout dashboard - shows next event)
+export async function getUpcomingEvent(): Promise<UpcomingEvent | null> {
+  const events = await getUpcomingEvents();
+  // Return the event with the smallest daysUntil (soonest)
+  return events.sort((a, b) => a.daysUntil - b.daysUntil)[0] || null;
 }
 
 // Get scout-specific stats
@@ -128,6 +160,20 @@ export async function getScoutStats(scoutName: string) {
     averageAccuracy,
     recentEntries: entries.slice(0, 5),
   };
+}
+
+// Get team name from team document
+export async function getTeamName(teamId: string): Promise<string> {
+  try {
+    const teamDoc = await getDoc(doc(db, "teams", teamId));
+    if (teamDoc.exists()) {
+      return teamDoc.data().teamName || `Team ${teamId}`;
+    }
+    return `Team ${teamId}`;
+  } catch (error) {
+    console.error("Error fetching team name:", error);
+    return `Team ${teamId}`;
+  }
 }
 
 // Format recent activity for display

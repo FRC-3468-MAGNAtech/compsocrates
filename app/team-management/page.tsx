@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, updateDoc, deleteDoc, doc, query, where } from "firebase/firestore";
+import { collection, getDocs, updateDoc, doc, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
+import { getTeamName } from "@/app/utils/stats-calculator";
 
 interface TeamMember {
   uid: string;
@@ -20,19 +21,20 @@ function TeamManagementContent() {
   const { userData } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [teamName, setTeamName] = useState("Team 1234");
+  const [teamName, setTeamName] = useState("");
   const [editingMember, setEditingMember] = useState<string | null>(null);
   const [showInviteCode, setShowInviteCode] = useState(false);
 
   useEffect(() => {
-    loadTeamMembers();
-  }, []);
+    loadTeamData();
+  }, [userData?.teamId]);
 
-  async function loadTeamMembers() {
+  async function loadTeamData() {
     if (!userData?.teamId) return;
     
     setLoading(true);
     try {
+      // Load team members
       const q = query(collection(db, "users"), where("teamId", "==", userData.teamId));
       const snapshot = await getDocs(q);
       const teamMembers = snapshot.docs.map(doc => ({
@@ -41,8 +43,12 @@ function TeamManagementContent() {
       })) as TeamMember[];
       
       setMembers(teamMembers);
+      
+      // Get team name from teams collection
+      const fetchedTeamName = await getTeamName(userData.teamId);
+      setTeamName(fetchedTeamName);
     } catch (error) {
-      console.error("Error loading team members:", error);
+      console.error("Error loading team data:", error);
     } finally {
       setLoading(false);
     }
@@ -51,7 +57,7 @@ function TeamManagementContent() {
   async function updateMemberRole(uid: string, newRole: "coach" | "scout") {
     try {
       await updateDoc(doc(db, "users", uid), { role: newRole });
-      await loadTeamMembers();
+      await loadTeamData();
       setEditingMember(null);
       alert("Member role updated successfully!");
     } catch (error) {
@@ -65,7 +71,7 @@ function TeamManagementContent() {
     
     try {
       await updateDoc(doc(db, "users", uid), { teamId: "", isTeamAdmin: false });
-      await loadTeamMembers();
+      await loadTeamData();
       alert("Member removed from team");
     } catch (error) {
       console.error("Error removing member:", error);
@@ -100,7 +106,8 @@ function TeamManagementContent() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-xl font-semibold mb-1">{teamName}</h2>
-                    <p className="text-sm text-gray-500 mt-2">{members.length} team members</p>
+                    <p className="text-gray-600 mb-1">{members.length} team members</p>
+                    <p className="text-sm text-gray-500">Team Code: <span className="font-mono font-bold">{userData?.teamId}</span></p>
                   </div>
                   <button
                     onClick={() => setShowInviteCode(!showInviteCode)}
