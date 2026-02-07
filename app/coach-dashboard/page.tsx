@@ -73,6 +73,7 @@ function CoachDashboardContent() {
       }
 
       const events = await response.json();
+      console.log("TBA Events:", events); // <-- Add this line
       const now = new Date();
 
       // Find the next upcoming event
