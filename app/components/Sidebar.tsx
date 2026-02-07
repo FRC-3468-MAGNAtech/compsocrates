@@ -14,7 +14,7 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { userData, logout } = useAuth();
+  const { userData, logOut } = useAuth();
 
   const navItems = [
     { name: 'Dashboard', path: '/scout-dashboard', icon: LayoutDashboard, roles: ['scout', 'coach'] },
