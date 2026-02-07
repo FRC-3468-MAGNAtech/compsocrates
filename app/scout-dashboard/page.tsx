@@ -1,218 +1,235 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import { useScoutAccuracy } from "@/app/hooks/useScoutAccuracy";
-import { EVENTS, daysUntilEvent, formatEventDates } from "@/app/utils/eventDates";
+import { useAuth } from "@/app/AuthContext";
+import { EVENTS, daysUntilEvent } from "@/app/utils/eventDates";
+
+type ScoutStats = {
+  matchesScoutedCount: number;
+  accuracyScore: number;
+  practiceSessionsCount: number;
+};
 
 function ScoutDashboardContent() {
   const router = useRouter();
-  const [activePage, setActivePage] = useState("dashboard");
-  const { avgAccuracy, totalPracticeSessions } = useScoutAccuracy();
+  const { userData } = useAuth();
+  const [stats, setStats] = useState<ScoutStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [userData]);
+
+  async function loadDashboardData() {
+    if (!userData) return;
+    
+    setLoading(true);
+    try {
+      // Get scout's scouting entries
+      const entriesQuery = query(
+        collection(db, "scoutingEntries"),
+        where("scoutName", "==", userData.displayName)
+      );
+      const entriesSnapshot = await getDocs(entriesQuery);
+      const matchesScoutedCount = entriesSnapshot.size;
+
+      // Get scout's practice sessions
+      const practiceQuery = query(
+        collection(db, "practiceSessions"),
+        where("scoutName", "==", userData.displayName)
+      );
+      const practiceSnapshot = await getDocs(practiceQuery);
+      
+      // Calculate average accuracy from practice sessions
+      let totalAccuracy = 0;
+      let practiceCount = 0;
+      
+      practiceSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.accuracy !== undefined) {
+          totalAccuracy += data.accuracy;
+          practiceCount++;
+        }
+      });
+
+      const accuracyScore = practiceCount > 0 ? Math.round(totalAccuracy / practiceCount) : 0;
+
+      setStats({
+        matchesScoutedCount,
+        accuracyScore,
+        practiceSessionsCount: practiceSnapshot.size,
+      });
+
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const needsPractice = stats && stats.practiceSessionsCount < 3;
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
-        {activePage === "dashboard" && (
-          <div className="p-8 max-w-4xl">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-              Dashboard
-            </h1>
-            <p className="text-gray-600 mb-8">Ready to scout? Here's what's coming up.</p>
+        <div className="p-8 max-w-4xl">
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            Dashboard
+          </h1>
+          <p className="text-gray-600 mb-8">Ready to scout? Here's your assignment.</p>
 
-            {/* NO ASSIGNMENT CARD - Outside Event Dates */}
-            <div className="bg-gray-50 rounded-xl shadow-md p-6 mb-6 border-2 border-gray-300">
-              <div className="text-center py-4">
-                <p className="text-gray-600 mb-4">No active event right now. Check back during competition!</p>
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4 animate-spin">🔄</div>
+              <p className="text-gray-600">Loading dashboard...</p>
+            </div>
+          ) : (
+            <>
+              {/* NO ASSIGNMENT PLACEHOLDER */}
+              <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center border-2 border-dashed border-gray-300">
+                <div className="text-4xl mb-3">📋</div>
+                <h2 className="text-xl font-semibold mb-2">No Active Assignment</h2>
+                <p className="text-gray-600 mb-4">
+                  Your coach hasn't assigned you a match yet. Check back later or start practicing!
+                </p>
                 <button
-                  onClick={() => router.push("/practice-scouting")}
+                  onClick={() => router.push("/scout-form")}
                   className="px-6 py-3 rounded-lg text-white font-semibold"
                   style={{ backgroundColor: "#c42221" }}
                 >
-                  Practice Scouting
+                  Scout Manually
                 </button>
               </div>
-            </div>
 
-            {/* PRACTICE REMINDER */}
-            {totalPracticeSessions < 3 && (
-              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6">
-                <div className="flex items-start gap-4">
-                  <span className="text-3xl">⚠️</span>
-                  <div className="flex-1">
-                    <h3 className="font-semibold mb-1">Practice Scouting Required</h3>
-                    <p className="text-sm text-gray-700 mb-3">
-                      You need to complete {3 - totalPracticeSessions} more practice session(s) to verify your accuracy before the event.
-                    </p>
-                    <button
-                      onClick={() => router.push("/practice-scouting")}
-                      className="px-4 py-2 rounded-lg text-white font-medium"
-                      style={{ backgroundColor: "#c42221" }}
-                    >
-                      Start Practice Session
-                    </button>
+              {/* PRACTICE REMINDER */}
+              {needsPractice && (
+                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6">
+                  <div className="flex items-start gap-4">
+                    <span className="text-3xl">⚠️</span>
+                    <div className="flex-1">
+                      <h3 className="font-semibold mb-1">Practice Scouting Required</h3>
+                      <p className="text-sm text-gray-700 mb-3">
+                        You need to complete {3 - (stats?.practiceSessionsCount || 0)} more practice session(s) to verify your accuracy before the event.
+                      </p>
+                      <button
+                        onClick={() => router.push("/practice-scouting")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "#c42221" }}
+                      >
+                        Start Practice Session
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* UPCOMING EVENTS - BOTH */}
-            <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Upcoming Event</h2>
-              <div>
-                <p className="text-2xl font-bold mb-1" style={{ color: "#c42221" }}>
-                  {EVENTS.arkansas.name}
-                </p>
-                <p className="text-gray-600">
-                  📅 {formatEventDates('arkansas')} • 📍 {EVENTS.arkansas.location}
-                </p>
-                <p className="text-sm text-gray-600 mt-2">{daysUntilEvent('arkansas')} days away</p>
-              </div>
-            </div>
+              {/* UPCOMING EVENTS */}
+              {Object.entries(EVENTS).map(([key, event]) => {
+                const daysUntil = daysUntilEvent(key);
+                const today = new Date();
+                const isUpcoming = event.endDate >= today;
+                
+                if (!isUpcoming) return null;
+                
+                return (
+                  <div key={key} className="bg-white rounded-xl shadow-md p-6 mb-6">
+                    <h2 className="text-xl font-semibold mb-4">Upcoming Event</h2>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-2xl font-bold mb-1" style={{ color: "#c42221" }}>
+                          {event.name}
+                        </p>
+                        <p className="text-gray-600">
+                          📅 {event.startDate.toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {event.endDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-2">{daysUntil} days away</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
 
-            <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Upcoming Event</h2>
-              <div>
-                <p className="text-2xl font-bold mb-1" style={{ color: "#c42221" }}>
-                  {EVENTS.bayou.name}
-                </p>
-                <p className="text-gray-600">
-                  📅 {formatEventDates('bayou')} • 📍 {EVENTS.bayou.location}
-                </p>
-                <p className="text-sm text-gray-600 mt-2">{daysUntilEvent('bayou')} days away</p>
-              </div>
-            </div>
+              {/* YOUR STATS */}
+              <div className="grid md:grid-cols-3 gap-6 mb-6">
+                <div className="bg-white rounded-xl shadow-md p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-gray-700">Matches Scouted</h3>
+                    <span className="text-2xl">📝</span>
+                  </div>
+                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                    {stats?.matchesScoutedCount || 0}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">This season</p>
+                </div>
 
-            {/* YOUR STATS */}
-            <div className="grid md:grid-cols-3 gap-6 mb-6">
+                <div className="bg-white rounded-xl shadow-md p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-gray-700">Accuracy Score</h3>
+                    <span className="text-2xl">🎯</span>
+                  </div>
+                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                    {stats?.accuracyScore || 0}%
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {stats?.accuracyScore && stats.accuracyScore >= 95 ? "Excellent!" : 
+                     stats?.accuracyScore && stats.accuracyScore >= 85 ? "Good" : 
+                     "Needs practice"}
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-md p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
+                    <span className="text-2xl">💪</span>
+                  </div>
+                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                    {stats?.practiceSessionsCount || 0}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">Completed</p>
+                </div>
+              </div>
+
+              {/* QUICK ACTIONS */}
               <div className="bg-white rounded-xl shadow-md p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-gray-700">Matches Scouted</h3>
-                  <span className="text-2xl">📝</span>
-                </div>
-                <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
-                  0
-                </p>
-                <p className="text-sm text-gray-600 mt-1">This season</p>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-md p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-gray-700">Accuracy Score</h3>
-                  <span className="text-2xl">🎯</span>
-                </div>
-                <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
-                  {avgAccuracy}%
-                </p>
-                <p className="text-sm text-gray-600 mt-1">Verified by practice</p>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-md p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
-                  <span className="text-2xl">💪</span>
-                </div>
-                <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
-                  {totalPracticeSessions}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">Completed</p>
-              </div>
-            </div>
-
-            {/* QUICK ACTIONS */}
-            <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-              <div className="grid md:grid-cols-2 gap-4">
-                <button
-                  onClick={() => router.push("/practice-scouting")}
-                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
-                >
-                  <div className="text-2xl mb-2">🎯</div>
-                  <h3 className="font-semibold mb-1">Practice Scouting</h3>
-                  <p className="text-sm text-gray-600">Improve your accuracy</p>
-                </button>
-
-                <button
-                  onClick={() => router.push("/analytics")}
-                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
-                >
-                  <div className="text-2xl mb-2">📈</div>
-                  <h3 className="font-semibold mb-1">View Analytics</h3>
-                  <p className="text-sm text-gray-600">See team performance</p>
-                </button>
-              </div>
-            </div>
-
-            {/* RECENT ACTIVITY */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Your Recent Activity</h2>
-              <div className="text-center text-gray-500 py-8">
-                No activity yet. Start by completing practice sessions!
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activePage === "practice" && (
-          <div className="p-8 max-w-4xl">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-              Practice Scouting
-            </h1>
-            <p className="text-gray-600 mb-8">Improve your scouting skills with practice matches.</p>
-
-            <div className="bg-white rounded-xl shadow-md p-8 mb-6">
-              <h2 className="text-2xl font-semibold mb-4">How Practice Works</h2>
-              <div className="space-y-4">
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: "#c42221" }}>
-                    1
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">Watch a Recorded Match</h3>
-                    <p className="text-gray-600">We'll show you a pre-recorded match video.</p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: "#c42221" }}>
-                    2
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">Scout the Robot</h3>
-                    <p className="text-gray-600">Fill out the scouting form just like a real match.</p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: "#c42221" }}>
-                    3
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">Get Your Score</h3>
-                    <p className="text-gray-600">We'll compare your data to the verified answer key.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-8 p-6 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold mb-1">Your Current Accuracy</h3>
-                    <p className="text-4xl font-bold" style={{ color: "#c42221" }}>{avgAccuracy}%</p>
-                    <p className="text-sm text-gray-600 mt-1">Based on {totalPracticeSessions} practice sessions</p>
-                  </div>
+                <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
+                <div className="grid md:grid-cols-2 gap-4">
                   <button
-                    className="px-6 py-3 rounded-lg text-white font-semibold"
-                    style={{ backgroundColor: "#c42221" }}
+                    onClick={() => router.push("/scout-form")}
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
-                    Start Practice Session
+                    <div className="text-2xl mb-2">📝</div>
+                    <h3 className="font-semibold mb-1">Start Scouting</h3>
+                    <p className="text-sm text-gray-600">Begin a new scouting session</p>
+                  </button>
+
+                  <button
+                    onClick={() => router.push("/practice-scouting")}
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
+                  >
+                    <div className="text-2xl mb-2">🎯</div>
+                    <h3 className="font-semibold mb-1">Practice Scouting</h3>
+                    <p className="text-sm text-gray-600">Improve your accuracy</p>
+                  </button>
+
+                  <button
+                    onClick={() => router.push("/analytics")}
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
+                  >
+                    <div className="text-2xl mb-2">📈</div>
+                    <h3 className="font-semibold mb-1">View Analytics</h3>
+                    <p className="text-sm text-gray-600">Check team performance</p>
                   </button>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
