@@ -34,26 +34,44 @@ function ScoutAccuracyContent() {
       const teamSnapshot = await getDocs(teamQuery);
       const scouts = teamSnapshot.docs.filter(doc => doc.data().role === "scout");
 
-      // Get scouting entries for each scout
+      // Get scouting entries and practice sessions for each scout
       const statsPromises = scouts.map(async (scoutDoc) => {
         const scoutName = scoutDoc.data().displayName;
         
-        // Get all entries by this scout
-        const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
+        // Get all scouting entries by this scout
+        const entriesQuery = query(collection(db, "scoutingEntries"), where("scoutName", "==", scoutName));
         const entriesSnapshot = await getDocs(entriesQuery);
         
-        // Get practice sessions (in real app, this would be a separate collection)
-        // For demo, generate mock data
-        const practiceSessionsCompleted = Math.floor(Math.random() * 15) + 5;
-        const averageAccuracy = Math.floor(Math.random() * 10) + 90;
-        const recentAccuracies = Array.from({ length: 5 }, () => Math.floor(Math.random() * 15) + 85);
+        // Get practice sessions from Firebase
+        const practiceQuery = query(collection(db, "practiceSessions"), where("scoutName", "==", scoutName));
+        const practiceSnapshot = await getDocs(practiceQuery);
+        
+        let totalAccuracy = 0;
+        let recentAccuracies: number[] = [];
+        let lastPracticeDate = 0;
+        
+        practiceSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.accuracy !== undefined) {
+            totalAccuracy += data.accuracy;
+            recentAccuracies.push(data.accuracy);
+          }
+          if (data.timestamp > lastPracticeDate) {
+            lastPracticeDate = data.timestamp;
+          }
+        });
+        
+        // Sort recent accuracies and take last 5
+        recentAccuracies = recentAccuracies.sort((a, b) => b - a).slice(0, 5);
+        
+        const averageAccuracy = practiceSnapshot.size > 0 ? Math.round(totalAccuracy / practiceSnapshot.size) : 0;
 
         return {
           scoutName,
           totalEntries: entriesSnapshot.size,
-          practiceSessionsCompleted,
+          practiceSessionsCompleted: practiceSnapshot.size,
           averageAccuracy,
-          lastPracticeDate: Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000,
+          lastPracticeDate: lastPracticeDate || Date.now(),
           recentAccuracies,
         };
       });

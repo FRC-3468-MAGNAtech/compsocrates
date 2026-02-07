@@ -365,7 +365,7 @@ function AnalyticsPageContent() {
                       {/* ROW 1: TOP LEVEL GROUPS */}
                       <tr>
                         <th className="sticky-left bg-red-300" colSpan={2}>Information</th>
-                        <th className="bg-yellow-300" colSpan={2}>Pre-Match</th>
+                        <th className="bg-yellow-300" colSpan={3}>Pre-Match</th>
                         <th className="bg-green-300" colSpan={9}>Autonomous</th>
                         <th className="bg-blue-300" colSpan={13}>Teleoperated</th>
                         <th className="bg-yellow-300" colSpan={2}>Endgame</th>
@@ -374,85 +374,63 @@ function AnalyticsPageContent() {
                         <th className="bg-gray-300" colSpan={1}>Actions</th>
                       </tr>
 
-                      {/* ROW 2: SUB-CATEGORIES */}
+                      {/* ROW 2: COLUMN LABELS */}
                       <tr>
-                        <th className="sticky-left bg-red-200" colSpan={2}>Information</th>
-                        <th className="bg-yellow-200" colSpan={2}>Pre-Match</th>
-                        <th className="bg-green-200" colSpan={1}>Leave</th>
-                        <th className="bg-green-200" colSpan={4}>Coral</th>
-                        <th className="bg-green-200" colSpan={2}>Algae Processor</th>
-                        <th className="bg-green-200" colSpan={2}>Algae Net</th>
-                        <th className="bg-blue-200" colSpan={5}>Coral</th>
-                        <th className="bg-blue-200" colSpan={1}>Algae Collection</th>
-                        <th className="bg-blue-200" colSpan={2}>Algae Processor</th>
-                        <th className="bg-blue-200" colSpan={2}>Algae Net (Robot)</th>
-                        <th className="bg-blue-200" colSpan={2}>Algae Net (Human)</th>
-                        <th className="bg-blue-200" colSpan={1}>Climb</th>
-                        <th className="bg-yellow-200" colSpan={2}>Climb</th>
-                        <th className="bg-purple-200" colSpan={1}>Incidents</th>
-                        <th className="bg-pink-200" colSpan={1}>Comments</th>
-                        <th className="bg-pink-200" colSpan={1}>Accuracy Script</th>
-                        <th className="bg-pink-200" colSpan={1}>Script Status</th>
-                        <th className="bg-gray-200" colSpan={1}>Actions</th>
-                      </tr>
-
-                      {/* ROW 3: COLUMN LABELS */}
-                      <tr>
-                        <th className="sticky-left cursor-pointer hover:bg-gray-100"
+                        <th className="sticky-left cursor-pointer hover:bg-gray-100 bg-red-200"
                             onClick={() => handleSort("matchNumber")}>
                           {sortLabel("matchNumber", "Match")}
                         </th>
-                        <th className="sticky-left-2 cursor-pointer hover:bg-gray-100"
+                        <th className="sticky-left-2 cursor-pointer hover:bg-gray-100 bg-red-200"
                             onClick={() => handleSort("teamNumber")}>
                           {sortLabel("teamNumber", "Team")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-yellow-200"
                             onClick={() => handleSort("scoutName")}>
                           {sortLabel("scoutName", "Scout")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-yellow-200"
                             onClick={() => handleSort("startingPosition")}>
                           {sortLabel("startingPosition", "Starting Position")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-yellow-200"
                             onClick={() => handleSort("leftStartingZone")}>
                           {sortLabel("leftStartingZone", "Leave")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoCoralL1")}>
                           {sortLabel("autoCoralL1", "L1")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoCoralL2")}>
                           {sortLabel("autoCoralL2", "L2")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoCoralL3")}>
                           {sortLabel("autoCoralL3", "L3")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoCoralL4")}>
                           {sortLabel("autoCoralL4", "L4")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoAlgaeProcessorMissed")}>
                           {sortLabel("autoAlgaeProcessorMissed", "Missed")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoAlgaeProcessorScored")}>
                           {sortLabel("autoAlgaeProcessorScored", "Scored")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoAlgaeNetMissed")}>
                           {sortLabel("autoAlgaeNetMissed", "Missed")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
                             onClick={() => handleSort("autoAlgaeNetScored")}>
                           {sortLabel("autoAlgaeNetScored", "Scored")}
                         </th>
-                        <th className="cursor-pointer hover:bg-gray-100"
-                            onClick={() => handleSort("teleopCoralMissed")}>
-                          {sortLabel("teleopCoralMissed", "Missed")}
+                        <th className="cursor-pointer hover:bg-gray-100 bg-green-200"
+                            onClick={() => handleSort("autoCoralMissed")}>
+                          {sortLabel("autoCoralMissed", "Missed")}
                         </th>
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("teleopCoralL1")}>
