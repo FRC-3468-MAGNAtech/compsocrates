@@ -347,7 +347,6 @@ function AnalyticsPageContent() {
                 <span className="text-sm text-gray-600">{data.length} entries</span>
               </div>
 
-              {/* Game Selector */}
               <div className="flex items-center gap-3">
                 <label className="text-sm font-medium text-gray-700">
                   Game:
@@ -376,8 +375,7 @@ function AnalyticsPageContent() {
                         <th className="bg-green-300" colSpan={10}>Autonomous</th>
                         <th className="bg-blue-300" colSpan={13}>Teleoperated</th>
                         <th className="bg-purple-300" colSpan={2}>Endgame</th>
-                        <th className="bg-pink-300" colSpan={1}>Incidents</th>
-                        <th className="bg-gray-300" colSpan={3}>General</th>
+                        <th className="bg-gray-300" colSpan={6}>General</th>
                         <th className="bg-orange-300" colSpan={1}>Actions</th>
                       </tr>
 
@@ -389,17 +387,17 @@ function AnalyticsPageContent() {
                         <th className="bg-green-200" colSpan={5}>Coral</th>
                         <th className="bg-green-200" colSpan={2}>Algae Processor</th>
                         <th className="bg-green-200" colSpan={2}>Algae Net</th>
-                        <th className="bg-blue-200" colSpan={6}>Coral</th>
+                        <th className="bg-blue-200" colSpan={5}>Coral</th>
                         <th className="bg-blue-200" colSpan={1}>Algae Collection</th>
                         <th className="bg-blue-200" colSpan={2}>Algae Processor</th>
                         <th className="bg-blue-200" colSpan={2}>Algae Net (Robot)</th>
                         <th className="bg-blue-200" colSpan={2}>Algae Net (Human)</th>
-                        <th className="bg-purple-200" colSpan={2}>Climb</th>
-                        <th className="bg-pink-200" colSpan={1}>Incidents</th>
+                        <th className="bg-purple-200" colSpan={1}>Climb</th>
+                        <th className="bg-purple-200" colSpan={1}>End Place</th>
+                        <th className="bg-gray-200" colSpan={1}>Incidents</th>
                         <th className="bg-gray-200" colSpan={1}>Comments</th>
-                        <th className="bg-gray-200" colSpan={1}>Accuracy</th>
-                        <th className="bg-gray-200" colSpan={1}>Score</th>
-                        <th className="bg-orange-200" colSpan={1}>Actions</th>
+                        <th className="bg-gray-200" colSpan={3}>Accuracy</th>
+                        <th className="bg-gray-200" colSpan={1}>Actions</th>
                       </tr>
 
                       {/* ROW 3: COLUMN LABELS */}
@@ -518,8 +516,9 @@ function AnalyticsPageContent() {
                         </th>
                         <th>Incidents</th>
                         <th>Comments</th>
-                        <th>Alliance Accuracy</th>
                         <th>Score</th>
+                        <th>Alliance Accuracy</th>
+                        <th>Comparison</th>
                         <th>Delete</th>
                       </tr>
                     </thead>
@@ -542,7 +541,6 @@ function AnalyticsPageContent() {
                           "deep": "Deep Cage"
                         };
 
-                        // Format incidents with full labels
                         const incidentText = e.incidents?.map(inc => INCIDENT_LABELS[inc] || inc).join(", ") || "";
 
                         return (
@@ -581,8 +579,9 @@ function AnalyticsPageContent() {
                             <td className="text-xs" style={{ minWidth: "200px", maxWidth: "200px" }}>
                               {e.notes || ""}
                             </td>
-                            <td>-</td>
                             <td className="font-bold">{score}</td>
+                            <td>-</td>
+                            <td>-</td>
                             <td>
                               <button
                                 onClick={() => handleDelete(e.id)}
