@@ -49,10 +49,11 @@ body {
 .table-scroll td {
   border: 1px solid #e5e7eb;
   padding: 8px 12px;
-  text-align: left;
+  text-align: center; /* CHANGED FROM LEFT TO CENTER */
   font-size: 13px;
   white-space: nowrap;
   background: white;
+  vertical-align: middle; /* CENTER VERTICALLY TOO */
 }
 
 .table-scroll th {
@@ -105,8 +106,8 @@ body {
   min-width: 80px;
 }
 
-/* Wider columns for incidents and comments */
+/* Wider columns for incidents and notes - allow wrapping */
 .table-scroll td[style*="minWidth"] {
-  white-space: normal;
+  white-space: normal !important;
   word-wrap: break-word;
 }

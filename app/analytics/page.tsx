@@ -100,6 +100,33 @@ function scoreEntry(e: Entry) {
 }
 
 // -------------------------
+// MATCH SORTING
+// -------------------------
+function parseMatchType(matchStr: string): { type: string; number: number; priority: number } {
+  if (!matchStr) return { type: "unknown", number: 0, priority: 999 };
+  
+  const str = matchStr.toString().toLowerCase();
+  
+  if (str.includes("practice") || str.startsWith("p")) {
+    const num = parseInt(str.replace(/\D/g, "")) || 0;
+    return { type: "practice", number: num, priority: 1 };
+  }
+  
+  if (str.includes("qual") || str.startsWith("q")) {
+    const num = parseInt(str.replace(/\D/g, "")) || 0;
+    return { type: "qualification", number: num, priority: 2 };
+  }
+  
+  if (str.includes("final") || str.includes("upper") || str.includes("lower") || str.startsWith("f")) {
+    const num = parseInt(str.replace(/\D/g, "")) || 0;
+    return { type: "finals", number: num, priority: 3 };
+  }
+  
+  const num = parseInt(str.replace(/\D/g, "")) || 0;
+  return { type: "unknown", number: num, priority: 999 };
+}
+
+// -------------------------
 // SORTING
 // -------------------------
 type SortKey = keyof Entry | "score";
@@ -108,6 +135,24 @@ type SortDir = "asc" | "desc";
 function sortEntries(entries: Entry[], key: SortKey, dir: SortDir): Entry[] {
   const withScore = entries.map(e => ({ ...e, score: scoreEntry(e) }));
   return [...withScore].sort((a, b) => {
+    // Special handling for match number sorting
+    if (key === "matchNumber") {
+      const aMatch = parseMatchType(a.matchNumber || "");
+      const bMatch = parseMatchType(b.matchNumber || "");
+      
+      // First sort by type (Practice, Qualification, Finals)
+      if (aMatch.priority !== bMatch.priority) {
+        return dir === "asc" 
+          ? aMatch.priority - bMatch.priority 
+          : bMatch.priority - aMatch.priority;
+      }
+      
+      // Then by number within type
+      return dir === "asc"
+        ? aMatch.number - bMatch.number
+        : bMatch.number - aMatch.number;
+    }
+    
     const av = a[key];
     const bv = b[key];
     if (typeof av === "number" && typeof bv === "number") {
@@ -281,7 +326,7 @@ function AnalyticsPageContent() {
                         <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
                         <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
                         <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
-                        <th className="bg-gray-300 text-center" colSpan={isCoach ? 6 : 5}>General</th>
+                        <th className="bg-gray-300 text-center" colSpan={5}>General</th>
                         {isCoach && <th className="bg-orange-300 text-center" colSpan={1}>Actions</th>}
                       </tr>
                       <tr>
@@ -300,7 +345,7 @@ function AnalyticsPageContent() {
                         <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
                         <th className="bg-gray-200 text-center" colSpan={1}>Incidents</th>
                         <th className="bg-gray-200 text-center" colSpan={1}>Notes</th>
-                        <th className="bg-gray-200 text-center" colSpan={isCoach ? 3 : 2}>Accuracy</th>
+                        <th className="bg-gray-200 text-center" colSpan={3}>Accuracy</th>
                         {isCoach && <th className="bg-orange-200 text-center" colSpan={1}>Actions</th>}
                       </tr>
                       <tr>
