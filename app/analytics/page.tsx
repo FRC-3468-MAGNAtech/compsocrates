@@ -17,7 +17,7 @@ type Entry = {
   scoutName: string;
   startingPosition: string;
   leftStartingZone: boolean;
-  submittedAt?: number; // timestamp when form was submitted
+  submittedAt?: number;
 
   autoCoralMissed: number;
   autoCoralL1: number;
@@ -144,8 +144,8 @@ function sortEntries(entries: Entry[], key: SortKey, dir: SortDir): Entry[] {
 type EventDefinition = {
   id: string;
   name: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
 };
 
 const EVENTS: EventDefinition[] = [
@@ -159,9 +159,20 @@ const EVENTS: EventDefinition[] = [
     id: "app-testing",
     name: "App Testing",
     startDate: "1970-01-01",
-    endDate: "2099-12-31" // Shows everything
+    endDate: "2099-12-31"
   }
 ];
+
+// Incident labels matching scout form
+const INCIDENT_LABELS: Record<string, string> = {
+  "died": "Died During Match",
+  "never-started": "Never Started Match",
+  "disabled": "Disabled by FRC",
+  "recovered": "Recovered from Freeze",
+  "tipped": "Tipped Over",
+  "yellow-card": "Yellow Card",
+  "red-card": "Red Card"
+};
 
 // -------------------------
 // MAIN PAGE
@@ -203,14 +214,12 @@ function AnalyticsPageContent() {
     }
   }
 
-  // Filter by event dates
   const filteredByEvent = selectedEvent === "all" 
     ? rawData 
     : rawData.filter(entry => {
         const event = EVENTS.find(e => e.id === selectedEvent);
         if (!event) return true;
         
-        // Get submission timestamp (use submittedAt if available, fallback to timestamp)
         const entryTime = entry.submittedAt || entry.timestamp || 0;
         const entryDate = new Date(entryTime);
         
@@ -257,7 +266,6 @@ function AnalyticsPageContent() {
             {data.length} entries
           </p>
           
-          {/* Event Filter */}
           <div className="mt-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Event
@@ -323,10 +331,9 @@ function AnalyticsPageContent() {
       <div className="flex-1 overflow-hidden flex flex-col">
         {activeView === "raw-data" && (
           <>
-            {/* TOP BAR WITH GAME SELECTOR */}
+            {/* TOP BAR */}
             <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {/* Sidebar Toggle */}
                 <button
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                   className="p-2 hover:bg-gray-100 rounded"
@@ -364,50 +371,48 @@ function AnalyticsPageContent() {
                     <thead className="sticky-header">
                       {/* ROW 1: TOP LEVEL GROUPS */}
                       <tr>
-                        {/* FIXED: Made Information span only its own columns, no overlap */}
-                        <th className="sticky-left sticky-left-0 bg-red-300 z-30" colSpan={3}>Information</th>
+                        <th className="sticky-left-0 bg-red-300 z-30" colSpan={2}>Information</th>
                         <th className="bg-yellow-300" colSpan={2}>Pre-Match</th>
-                        <th className="bg-green-300" colSpan={9}>Autonomous</th>
+                        <th className="bg-green-300" colSpan={10}>Autonomous</th>
                         <th className="bg-blue-300" colSpan={13}>Teleoperated</th>
-                        <th className="bg-yellow-300" colSpan={2}>Endgame</th>
-                        <th className="bg-purple-300" colSpan={1}>Incidents</th>
-                        <th className="bg-pink-300" colSpan={3}>General</th>
-                        <th className="bg-gray-300" colSpan={1}>Actions</th>
+                        <th className="bg-purple-300" colSpan={2}>Endgame</th>
+                        <th className="bg-pink-300" colSpan={1}>Incidents</th>
+                        <th className="bg-gray-300" colSpan={3}>General</th>
+                        <th className="bg-orange-300" colSpan={1}>Actions</th>
                       </tr>
 
                       {/* ROW 2: SUB-CATEGORIES */}
                       <tr>
-                        <th className="sticky-left sticky-left-0 bg-red-200 z-30" colSpan={3}>Information</th>
+                        <th className="sticky-left-0 bg-red-200 z-30" colSpan={2}>Information</th>
                         <th className="bg-yellow-200" colSpan={2}>Pre-Match</th>
                         <th className="bg-green-200" colSpan={1}>Leave</th>
-                        <th className="bg-green-200" colSpan={4}>Coral</th>
+                        <th className="bg-green-200" colSpan={5}>Coral</th>
                         <th className="bg-green-200" colSpan={2}>Algae Processor</th>
                         <th className="bg-green-200" colSpan={2}>Algae Net</th>
-                        <th className="bg-blue-200" colSpan={5}>Coral</th>
+                        <th className="bg-blue-200" colSpan={6}>Coral</th>
                         <th className="bg-blue-200" colSpan={1}>Algae Collection</th>
                         <th className="bg-blue-200" colSpan={2}>Algae Processor</th>
                         <th className="bg-blue-200" colSpan={2}>Algae Net (Robot)</th>
                         <th className="bg-blue-200" colSpan={2}>Algae Net (Human)</th>
-                        <th className="bg-blue-200" colSpan={1}>Climb</th>
-                        <th className="bg-yellow-200" colSpan={2}>Climb</th>
-                        <th className="bg-purple-200" colSpan={1}>Incidents</th>
-                        <th className="bg-pink-200" colSpan={1}>Comments</th>
-                        <th className="bg-pink-200" colSpan={1}>Accuracy Script</th>
-                        <th className="bg-pink-200" colSpan={1}>Script Status</th>
-                        <th className="bg-gray-200" colSpan={1}>Actions</th>
+                        <th className="bg-purple-200" colSpan={2}>Climb</th>
+                        <th className="bg-pink-200" colSpan={1}>Incidents</th>
+                        <th className="bg-gray-200" colSpan={1}>Comments</th>
+                        <th className="bg-gray-200" colSpan={1}>Accuracy</th>
+                        <th className="bg-gray-200" colSpan={1}>Score</th>
+                        <th className="bg-orange-200" colSpan={1}>Actions</th>
                       </tr>
 
                       {/* ROW 3: COLUMN LABELS */}
                       <tr>
-                        <th className="sticky-left sticky-left-0 z-30 cursor-pointer hover:bg-gray-100"
+                        <th className="sticky-left-0 z-30 cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("matchNumber")}>
                           {sortLabel("matchNumber", "Match")}
                         </th>
-                        <th className="sticky-left sticky-left-1 z-30 cursor-pointer hover:bg-gray-100"
+                        <th className="sticky-left-1 z-30 cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("teamNumber")}>
                           {sortLabel("teamNumber", "Team")}
                         </th>
-                        <th className="sticky-left sticky-left-2 z-30 cursor-pointer hover:bg-gray-100"
+                        <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("scoutName")}>
                           {sortLabel("scoutName", "Scout")}
                         </th>
@@ -418,6 +423,10 @@ function AnalyticsPageContent() {
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("leftStartingZone")}>
                           {sortLabel("leftStartingZone", "Leave")}
+                        </th>
+                        <th className="cursor-pointer hover:bg-gray-100"
+                            onClick={() => handleSort("autoCoralMissed")}>
+                          {sortLabel("autoCoralMissed", "Missed")}
                         </th>
                         <th className="cursor-pointer hover:bg-gray-100"
                             onClick={() => handleSort("autoCoralL1")}>
@@ -507,11 +516,10 @@ function AnalyticsPageContent() {
                             onClick={() => handleSort("stageStatus")}>
                           {sortLabel("stageStatus", "End Place")}
                         </th>
-                        <th>Score</th>
                         <th>Incidents</th>
                         <th>Comments</th>
                         <th>Alliance Accuracy</th>
-                        <th>Script Status</th>
+                        <th>Score</th>
                         <th>Delete</th>
                       </tr>
                     </thead>
@@ -534,13 +542,17 @@ function AnalyticsPageContent() {
                           "deep": "Deep Cage"
                         };
 
+                        // Format incidents with full labels
+                        const incidentText = e.incidents?.map(inc => INCIDENT_LABELS[inc] || inc).join(", ") || "";
+
                         return (
                           <tr key={e.id}>
-                            <td className="sticky-left sticky-left-0 font-semibold bg-white z-20">{e.matchNumber || "-"}</td>
-                            <td className="sticky-left sticky-left-1 font-semibold bg-white z-20">{e.teamNumber}</td>
-                            <td className="sticky-left sticky-left-2 bg-white z-20">{e.scoutName}</td>
+                            <td className="sticky-left-0 font-semibold bg-white z-20">{e.matchNumber || "-"}</td>
+                            <td className="sticky-left-1 font-semibold bg-white z-20">{e.teamNumber}</td>
+                            <td>{e.scoutName}</td>
                             <td>{positionLabels[e.startingPosition] || e.startingPosition}</td>
                             <td>{e.leftStartingZone ? "✓" : ""}</td>
+                            <td>{e.autoCoralMissed || ""}</td>
                             <td>{e.autoCoralL1 || ""}</td>
                             <td>{e.autoCoralL2 || ""}</td>
                             <td>{e.autoCoralL3 || ""}</td>
@@ -563,15 +575,14 @@ function AnalyticsPageContent() {
                             <td>{e.teleopNetHumanScored || ""}</td>
                             <td>{e.failedClimb || ""}</td>
                             <td>{stageLabels[e.stageStatus] || e.stageStatus}</td>
-                            <td className="font-bold">{score}</td>
-                            <td className="text-xs max-w-[200px] truncate">
-                              {e.incidents?.join(", ") || ""}
+                            <td className="text-xs" style={{ minWidth: "200px", maxWidth: "200px" }}>
+                              {incidentText}
                             </td>
-                            <td className="text-xs max-w-[200px] truncate">
+                            <td className="text-xs" style={{ minWidth: "200px", maxWidth: "200px" }}>
                               {e.notes || ""}
                             </td>
                             <td>-</td>
-                            <td>-</td>
+                            <td className="font-bold">{score}</td>
                             <td>
                               <button
                                 onClick={() => handleDelete(e.id)}
