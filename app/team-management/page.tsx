@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, updateDoc, doc, query, where } from "firebase/firestore";
+import { collection, getDocs, updateDoc, deleteDoc, doc, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
-import { getTeamName } from "@/app/utils/stats-calculator";
 
 interface TeamMember {
   uid: string;
@@ -44,9 +43,9 @@ function TeamManagementContent() {
       
       setMembers(teamMembers);
       
-      // Get team name from teams collection
-      const fetchedTeamName = await getTeamName(userData.teamId);
-      setTeamName(fetchedTeamName);
+      // Set team name - use teamId if no custom name is set
+      // In a real app, you'd have a separate teams collection
+      setTeamName(`Team ${userData.teamId}`);
     } catch (error) {
       console.error("Error loading team data:", error);
     } finally {
@@ -106,8 +105,7 @@ function TeamManagementContent() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-xl font-semibold mb-1">{teamName}</h2>
-                    <p className="text-gray-600 mb-1">{members.length} team members</p>
-                    <p className="text-sm text-gray-500">Team Code: <span className="font-mono font-bold">{userData?.teamId}</span></p>
+                    <p className="text-sm text-gray-500 mt-2">{members.length} team members</p>
                   </div>
                   <button
                     onClick={() => setShowInviteCode(!showInviteCode)}
