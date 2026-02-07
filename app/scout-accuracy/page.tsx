@@ -92,6 +92,7 @@ function ScoutAccuracyContent() {
   }
 
   function getAccuracyBadge(accuracy: number): { bg: string; text: string; label: string } {
+    if (accuracy === 0) return { bg: "bg-gray-100", text: "text-gray-800", label: "Undetermined" };
     if (accuracy >= 95) return { bg: "bg-green-100", text: "text-green-800", label: "Excellent" };
     if (accuracy >= 85) return { bg: "bg-yellow-100", text: "text-yellow-800", label: "Good" };
     return { bg: "bg-red-100", text: "text-red-800", label: "Needs Practice" };
@@ -330,12 +331,15 @@ function ScoutAccuracyContent() {
                         "bg-red-50 border border-red-200"
                       }`}>
                         <h3 className="font-semibold mb-2">
-                          {selectedScoutData.averageAccuracy >= 95 ? "✅ Excellent Performance!" :
+                          {selectedScoutData.averageAccuracy === 0 ? "ℹ️ Status" :
+                           selectedScoutData.averageAccuracy >= 95 ? "✅ Excellent Performance!" :
                            selectedScoutData.averageAccuracy >= 85 ? "⚠️ Recommendation" :
                            "🚨 Action Required"}
                         </h3>
                         <p className="text-sm">
-                          {selectedScoutData.averageAccuracy >= 95
+                          {selectedScoutData.averageAccuracy === 0
+                            ? `${selectedScoutData.scoutName} has not completed any practice sessions yet. Accuracy is undetermined.`
+                            : selectedScoutData.averageAccuracy >= 95
                             ? `${selectedScoutData.scoutName} is performing excellently and is ready for competition scouting.`
                             : selectedScoutData.averageAccuracy >= 85
                             ? `${selectedScoutData.scoutName} should complete a few more practice sessions to improve accuracy.`

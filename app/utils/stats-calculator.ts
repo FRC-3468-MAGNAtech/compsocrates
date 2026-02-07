@@ -98,16 +98,16 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
 
 // Calculate stats for upcoming events
 export async function getUpcomingEvent() {
-  // Arkansas Regional 2026 - March 14-17
-  const arkansasStart = new Date("2026-03-14");
+  // Arkansas Regional 2026 - March 18-21 (Week 3)
+  const arkansasStart = new Date("2026-03-18");
   const now = new Date();
   const daysUntil = Math.ceil((arkansasStart.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
   return {
     name: "Arkansas Regional",
     location: "Little Rock, AR",
-    startDate: "2026-03-14",
-    endDate: "2026-03-17",
+    startDate: "2026-03-18",
+    endDate: "2026-03-21",
     daysUntil: Math.max(0, daysUntil),
   };
 }
