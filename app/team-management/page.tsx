@@ -123,7 +123,6 @@ function TeamManagementContent() {
                       Team {teamName}
                     </h2>
                     <p className="text-gray-600 mb-1">{members.length} team members</p>
-                    <p className="text-sm text-gray-500">Team Code: <span className="font-mono font-bold">{userData?.teamId}</span></p>
                   </div>
                   <button
                     onClick={() => setShowInviteCode(!showInviteCode)}
