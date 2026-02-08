@@ -11,16 +11,17 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
-import { useRouter } from "next/navigation";
 
 // User data structure
 export type UserRole = "scout" | "coach";
+export type SpecialRole = "lead-scout" | "lead-strategist" | "pit-scout" | null;
 
 export type UserData = {
   uid: string;
   email: string;
   displayName: string;
   role: UserRole;
+  specialRole?: SpecialRole;
   teamId: string;
   isTeamAdmin: boolean;
 };
@@ -32,6 +33,7 @@ type AuthContextType = {
   signUp: (email: string, password: string, name: string, role: UserRole, teamId: string, isTeamAdmin: boolean) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   logOut: () => Promise<void>;
+  updateUserData: (updates: Partial<UserData>) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -41,6 +43,7 @@ const AuthContext = createContext<AuthContextType>({
   signUp: async () => {},
   signIn: async () => {},
   logOut: async () => {},
+  updateUserData: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -57,6 +60,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error("Error loading user data:", error);
+    }
+  }
+
+  // Update user data
+  async function updateUserData(updates: Partial<UserData>) {
+    if (!user) return;
+    
+    try {
+      await setDoc(doc(db, "users", user.uid), updates, { merge: true });
+      setUserData(prev => prev ? { ...prev, ...updates } : null);
+    } catch (error) {
+      console.error("Error updating user data:", error);
+      throw error;
     }
   }
 
@@ -80,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: email,
       displayName: name,
       role: role,
+      specialRole: null,
       teamId: teamId,
       isTeamAdmin: isTeamAdmin,
     };
@@ -115,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading, signUp, signIn, logOut }}>
+    <AuthContext.Provider value={{ user, userData, loading, signUp, signIn, logOut, updateUserData }}>
       {children}
     </AuthContext.Provider>
   );
