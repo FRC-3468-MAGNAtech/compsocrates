@@ -394,7 +394,7 @@ function PracticeScoutingContent() {
 
 export default function PracticeScouting() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["scout"]}>
+    <ProtectedRoute requireAuth={true}>
       <PracticeScoutingContent />
     </ProtectedRoute>
   );

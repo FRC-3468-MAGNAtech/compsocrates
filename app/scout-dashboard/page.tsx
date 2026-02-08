@@ -147,12 +147,12 @@ function ScoutDashboardContent() {
                             {event.name}
                           </p>
                           <p className="text-gray-600">
-                            📅 {new Date(event.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
+                            📅 {new Date(event.startDate + 'T12:00:00').toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate + 'T12:00:00').toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
                           </p>
                           <p className="text-sm text-gray-600 mt-2">{event.daysUntil} days away</p>
                         </div>
                         <button
-                          onClick={() => router.push(`/event/${event.key}`)}
+                          onClick={() => router.push(`/event-details/${event.key}`)}
                           className="px-4 py-2 rounded-lg text-white font-semibold"
                           style={{ backgroundColor: "#c42221" }}
                         >

@@ -212,8 +212,8 @@ function TeamManagementContent() {
                               Team Admin
                             </span>
                           )}
-                          {/* Special Role Selector */}
-                          {!member.isTeamAdmin && userData?.isTeamAdmin && (
+                          {/* Special Role Selector - show for all coaches if you're team admin */}
+                          {userData?.isTeamAdmin && (
                             <div className="mt-2">
                               <label className="text-xs text-gray-600 mr-2">Special Role:</label>
                               <select
