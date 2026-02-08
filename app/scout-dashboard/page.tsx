@@ -7,247 +7,230 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
+import { getUpcomingEvents } from "@/app/utils/stats-calculator";
 
-type UpcomingEvent = {
-  name: string;
-  key: string;
-  startDate: string;
-  endDate: string;
-  location: string;
-  daysUntil: number;
-} | null;
+type ScoutStats = {
+  matchesScoutedCount: number;
+  accuracyScore: number;
+  practiceSessionsCount: number;
+};
 
 function ScoutDashboardContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  const [stats, setStats] = useState<{
-    matchesCompleted: number;
-    accuracy: number;
-    practiceCompleted: number;
-  } | null>(null);
-  const [upcomingEvent, setUpcomingEvent] = useState<UpcomingEvent>(null);
+  const [stats, setStats] = useState<ScoutStats | null>(null);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadDashboardData();
-  }, [userData?.displayName]);
-
-  async function getUpcomingEvent(): Promise<UpcomingEvent> {
-    try {
-      const TBA_KEY = process.env.NEXT_PUBLIC_TBA_AUTH_KEY;
-      if (!TBA_KEY) {
-        console.error("TBA API key not found");
-        return null;
-      }
-
-      const year = new Date().getFullYear();
-      const response = await fetch(
-        `https://www.thebluealliance.com/api/v3/events/${year}`,
-        {
-          headers: {
-            "X-TBA-Auth-Key": TBA_KEY,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        console.error("TBA API error:", response.status);
-        return null;
-      }
-
-      const events = await response.json();
-      const now = new Date();
-
-      const upcomingEvents = events
-        .filter((event: any) => {
-          const startDate = new Date(event.start_date);
-          return startDate > now;
-        })
-        .sort((a: any, b: any) => {
-          return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
-        });
-
-      if (upcomingEvents.length === 0) {
-        return null;
-      }
-
-      const nextEvent = upcomingEvents[0];
-      const startDate = new Date(nextEvent.start_date);
-      const daysUntil = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-      return {
-        name: nextEvent.name,
-        key: nextEvent.key,
-        startDate: nextEvent.start_date,
-        endDate: nextEvent.end_date,
-        location: `${nextEvent.city}, ${nextEvent.state_prov}`,
-        daysUntil: daysUntil,
-      };
-    } catch (error) {
-      console.error("Error fetching upcoming event:", error);
-      return null;
-    }
-  }
+  }, [userData]);
 
   async function loadDashboardData() {
-    if (!userData?.displayName) return;
-
+    if (!userData) return;
+    
     setLoading(true);
     try {
-      // Get scouting entries for this scout
+      // Get scout's scouting entries
       const entriesQuery = query(
-        collection(db, "scouting"),
+        collection(db, "scoutingEntries"),
         where("scoutName", "==", userData.displayName)
       );
       const entriesSnapshot = await getDocs(entriesQuery);
+      const matchesScoutedCount = entriesSnapshot.size;
 
-      // Get practice sessions for this scout
+      // Get scout's practice sessions
       const practiceQuery = query(
         collection(db, "practiceSessions"),
         where("scoutName", "==", userData.displayName)
       );
       const practiceSnapshot = await getDocs(practiceQuery);
-
+      
       // Calculate average accuracy from practice sessions
       let totalAccuracy = 0;
-      let sessionsWithAccuracy = 0;
-
+      let practiceCount = 0;
+      
       practiceSnapshot.forEach((doc) => {
         const data = doc.data();
         if (data.accuracy !== undefined) {
           totalAccuracy += data.accuracy;
-          sessionsWithAccuracy++;
+          practiceCount++;
         }
       });
 
-      const avgAccuracy = sessionsWithAccuracy > 0 
-        ? Math.round((totalAccuracy / sessionsWithAccuracy) * 100) / 100 
-        : 0;
-
-      // Get upcoming event
-      const event = await getUpcomingEvent();
+      const accuracyScore = practiceCount > 0 ? Math.round(totalAccuracy / practiceCount) : 0;
 
       setStats({
-        matchesCompleted: entriesSnapshot.size,
-        accuracy: avgAccuracy,
-        practiceCompleted: practiceSnapshot.size,
+        matchesScoutedCount,
+        accuracyScore,
+        practiceSessionsCount: practiceSnapshot.size,
       });
 
-      setUpcomingEvent(event);
+      // Get upcoming event
+      const events = await getUpcomingEvents();
+      setUpcomingEvents(events);
+
     } catch (error) {
       console.error("Error loading dashboard data:", error);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
-  if (!userData) return null;
+  const needsPractice = stats && stats.practiceSessionsCount < 3;
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-7xl mx-auto p-8">
+        <div className="p-8 max-w-4xl">
           <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
             Dashboard
           </h1>
-          <p className="text-gray-600 mb-8">Welcome back! Here's what's happening with your team.</p>
+          <p className="text-gray-600 mb-8">Ready to scout? Here's your assignment.</p>
 
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="w-16 h-16 border-4 border-gray-300 border-t-red-600 rounded-full animate-spin"></div>
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4 animate-spin">🔄</div>
+              <p className="text-gray-600">Loading dashboard...</p>
             </div>
           ) : (
             <>
-              {/* UPCOMING EVENT */}
-              {upcomingEvent ? (
-                <div className="bg-white rounded-xl shadow-md p-6 mb-8 border-l-4 border-red-600">
-                  <div className="flex justify-between items-start">
+              {/* NO ASSIGNMENT PLACEHOLDER */}
+              <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center border-2 border-dashed border-gray-300">
+                <div className="text-4xl mb-3">📋</div>
+                <h2 className="text-xl font-semibold mb-2">No Active Assignment</h2>
+                <p className="text-gray-600 mb-4">
+                  Your coach hasn't assigned you a match yet. Check back later or start practicing!
+                </p>
+                <button
+                  onClick={() => router.push("/scout-form")}
+                  className="px-6 py-3 rounded-lg text-white font-semibold"
+                  style={{ backgroundColor: "#c42221" }}
+                >
+                  Scout Manually
+                </button>
+              </div>
+
+              {/* PRACTICE REMINDER */}
+              {needsPractice && (
+                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6">
+                  <div className="flex items-start gap-4">
+                    <span className="text-3xl">⚠️</span>
                     <div className="flex-1">
-                      <p className="text-sm text-gray-600 mb-1">Upcoming Event</p>
-                      <h2 className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
-                        {upcomingEvent.name}
-                      </h2>
-                      <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-                        <span>📅 {new Date(upcomingEvent.startDate).toLocaleDateString()} - {new Date(upcomingEvent.endDate).toLocaleDateString()}</span>
-                        <span>📍 {upcomingEvent.location}</span>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        {upcomingEvent.daysUntil} days away
+                      <h3 className="font-semibold mb-1">Practice Scouting Required</h3>
+                      <p className="text-sm text-gray-700 mb-3">
+                        You need to complete {3 - (stats?.practiceSessionsCount || 0)} more practice session(s) to verify your accuracy before the event.
                       </p>
+                      <button
+                        onClick={() => router.push("/practice-scouting")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "#c42221" }}
+                      >
+                        Start Practice Session
+                      </button>
                     </div>
-                    <button
-                      onClick={() => router.push(`/event/${upcomingEvent.key}`)}
-                      className="px-4 py-2 rounded-lg text-white font-semibold"
-                      style={{ backgroundColor: "#c42221" }}
-                    >
-                      View Details
-                    </button>
                   </div>
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl shadow-md p-6 mb-8 border-l-4 border-gray-300">
-                  <p className="text-gray-600">No upcoming events found</p>
                 </div>
               )}
 
-              {/* STATS GRID */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+
+              {/* UPCOMING EVENTS */}
+              {upcomingEvents.length > 0 && (
+                <div className="mb-6 space-y-4">
+                  {upcomingEvents.map((event) => (
+                    <div key={event.key} className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "#c42221" }}>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h2 className="text-xl font-semibold mb-1">Upcoming Event</h2>
+                          <p className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
+                            {event.name}
+                          </p>
+                          <p className="text-gray-600">
+                            📅 {new Date(event.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
+                          </p>
+                          <p className="text-sm text-gray-600 mt-2">{event.daysUntil} days away</p>
+                        </div>
+                        <button
+                          onClick={() => router.push(`/event/${event.key}`)}
+                          className="px-4 py-2 rounded-lg text-white font-semibold"
+                          style={{ backgroundColor: "#c42221" }}
+                        >
+                          View Details
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="grid md:grid-cols-3 gap-6 mb-6">
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Matches Scouted</h3>
+                    <h3 className="font-semibold text-gray-700">Matches Scouted</h3>
                     <span className="text-2xl">📝</span>
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
-                    {stats?.matchesCompleted || 0}
+                    {stats?.matchesScoutedCount || 0}
                   </p>
-                  <p className="text-sm text-gray-500 mt-1">This season</p>
+                  <p className="text-sm text-gray-600 mt-1">This season</p>
                 </div>
 
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Accuracy Score</h3>
+                    <h3 className="font-semibold text-gray-700">Accuracy Score</h3>
                     <span className="text-2xl">🎯</span>
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
-                    {stats?.accuracy || 0}%
+                    {stats?.accuracyScore || 0}%
                   </p>
-                  <p className="text-sm text-gray-500 mt-1">Verified by coach</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {stats?.accuracyScore && stats.accuracyScore >= 95 ? "Excellent!" : 
+                     stats?.accuracyScore && stats.accuracyScore >= 85 ? "Good" : 
+                     "Needs practice"}
+                  </p>
                 </div>
 
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Practice Sessions</h3>
+                    <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
                     <span className="text-2xl">💪</span>
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
-                    {stats?.practiceCompleted || 0}
+                    {stats?.practiceSessionsCount || 0}
                   </p>
-                  <p className="text-sm text-gray-500 mt-1">Completed</p>
+                  <p className="text-sm text-gray-600 mt-1">Completed</p>
                 </div>
               </div>
 
               {/* QUICK ACTIONS */}
               <div className="bg-white rounded-xl shadow-md p-6">
                 <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-2 gap-4">
                   <button
                     onClick={() => router.push("/scout-form")}
-                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-600 hover:bg-red-50 transition-all text-left"
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
-                    <div className="text-3xl mb-2">📝</div>
-                    <div className="font-semibold">Scout Current Match</div>
-                    <div className="text-sm text-gray-600">Begin your assigned match</div>
+                    <div className="text-2xl mb-2">📝</div>
+                    <h3 className="font-semibold mb-1">Start Scouting</h3>
+                    <p className="text-sm text-gray-600">Begin a new scouting session</p>
                   </button>
 
                   <button
                     onClick={() => router.push("/practice-scouting")}
-                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-600 hover:bg-red-50 transition-all text-left"
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
-                    <div className="text-3xl mb-2">🎯</div>
-                    <div className="font-semibold">Practice Scouting</div>
-                    <div className="text-sm text-gray-600">Improve your accuracy</div>
+                    <div className="text-2xl mb-2">🎯</div>
+                    <h3 className="font-semibold mb-1">Practice Scouting</h3>
+                    <p className="text-sm text-gray-600">Improve your accuracy</p>
+                  </button>
+
+                  <button
+                    onClick={() => router.push("/analytics")}
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
+                  >
+                    <div className="text-2xl mb-2">📈</div>
+                    <h3 className="font-semibold mb-1">View Analytics</h3>
+                    <p className="text-sm text-gray-600">Check team performance</p>
                   </button>
                 </div>
               </div>

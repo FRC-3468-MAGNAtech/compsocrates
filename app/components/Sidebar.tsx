@@ -73,9 +73,15 @@ export default function Sidebar() {
   ];
 
   // Coaches with special roles also get practice scouting
-  const navItems = isCoach 
-    ? (hasSpecialRole ? [...coachNavItems.slice(0, 3), { href: "/practice-scouting", label: "Practice Scouting", icon: "🎯" }, ...coachNavItems.slice(3)] : coachNavItems)
-    : scoutNavItems;
+  let navItems = isCoach ? coachNavItems : scoutNavItems;
+  if (isCoach && hasSpecialRole) {
+    // Insert Practice Scouting after Scout Form for coaches with special roles
+    navItems = [
+      ...coachNavItems.slice(0, 2),
+      { href: "/practice-scouting", label: "Practice Scouting", icon: "🎯" },
+      ...coachNavItems.slice(2)
+    ];
+  }
 
   return (
     <div
@@ -97,7 +103,7 @@ export default function Sidebar() {
               </div>
               <div>
                 <h1 className="text-sm font-bold">CompSocrates</h1>
-                <p className="text-xs text-gray-600">{teamName}</p>
+                <p className="text-xs text-gray-600">Team {teamName}</p>
               </div>
             </div>
           )}
