@@ -32,16 +32,7 @@ function ScoutAccuracyContent() {
       // Get all team members
       const teamQuery = query(collection(db, "users"), where("teamId", "==", userData?.teamId));
       const teamSnapshot = await getDocs(teamQuery);
-      
-      // Include scouts AND coaches with special roles
-      const scouts = teamSnapshot.docs.filter(doc => {
-        const data = doc.data();
-        const isScout = data.role === "scout";
-        const isCoachWithSpecialRole = data.role === "coach" && 
-          data.specialRole && 
-          ["lead-scout", "lead-strategist", "pit-scout"].includes(data.specialRole);
-        return isScout || isCoachWithSpecialRole;
-      });
+      const scouts = teamSnapshot.docs.filter(doc => doc.data().role === "scout");
 
       // Get scouting entries and practice sessions for each scout
       const statsPromises = scouts.map(async (scoutDoc) => {
@@ -100,44 +91,44 @@ function ScoutAccuracyContent() {
     return "text-red-600";
   }
 
-function getAccuracyBadge(
-  accuracy: number,
-  practiceSessions: number
-): { bg: string; text: string; label: string; showWarning: boolean } {
-  // If no practice sessions, status is undetermined
-  if (practiceSessions === 0) {
+  function getAccuracyBadge(
+    accuracy: number,
+    practiceSessions: number
+  ): { bg: string; text: string; label: string; showWarning: boolean } {
+    // If no practice sessions, status is undetermined
+    if (practiceSessions === 0) {
+      return {
+        bg: "bg-gray-100",
+        text: "text-gray-700",
+        label: "Undetermined",
+        showWarning: false
+      };
+    }
+    
+    // If they have practiced
+    if (accuracy >= 95) {
+      return {
+        bg: "bg-green-100",
+        text: "text-green-800",
+        label: "Excellent",
+        showWarning: false
+      };
+    }
+    if (accuracy >= 85) {
+      return {
+        bg: "bg-yellow-100",
+        text: "text-yellow-800",
+        label: "Good",
+        showWarning: false
+      };
+    }
     return {
-      bg: "bg-gray-100",
-      text: "text-gray-700",
-      label: "Undetermined",
-      showWarning: false
+      bg: "bg-red-100",
+      text: "text-red-800",
+      label: "Needs Practice",
+      showWarning: true
     };
   }
-  
-  // If they have practiced
-  if (accuracy >= 95) {
-    return {
-      bg: "bg-green-100",
-      text: "text-green-800",
-      label: "Excellent",
-      showWarning: false
-    };
-  }
-  if (accuracy >= 85) {
-    return {
-      bg: "bg-yellow-100",
-      text: "text-yellow-800",
-      label: "Good",
-      showWarning: false
-    };
-  }
-  return {
-    bg: "bg-red-100",
-    text: "text-red-800",
-    label: "Needs Practice",
-    showWarning: true
-  };
-}
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
 
@@ -366,24 +357,37 @@ function getAccuracyBadge(
                       </div>
 
                       {/* RECOMMENDATIONS */}
-                      <div className={`p-4 rounded-lg ${
-                        selectedScoutData.averageAccuracy >= 95 ? "bg-green-50 border border-green-200" :
-                        selectedScoutData.averageAccuracy >= 85 ? "bg-yellow-50 border border-yellow-200" :
-                        "bg-red-50 border border-red-200"
-                      }`}>
-                        <h3 className="font-semibold mb-2">
-                          {selectedScoutData.averageAccuracy >= 95 ? "✅ Excellent Performance!" :
-                           selectedScoutData.averageAccuracy >= 85 ? "⚠️ Recommendation" :
-                           "🚨 Action Required"}
-                        </h3>
-                        <p className="text-sm">
-                          {selectedScoutData.averageAccuracy >= 95
-                            ? `${selectedScoutData.scoutName} is performing excellently and is ready for competition scouting.`
-                            : selectedScoutData.averageAccuracy >= 85
-                            ? `${selectedScoutData.scoutName} should complete a few more practice sessions to improve accuracy.`
-                            : `${selectedScoutData.scoutName} needs additional practice before being assigned to competition matches.`}
-                        </p>
-                      </div>
+                      {(() => {
+                        const badge = getAccuracyBadge(
+                          selectedScoutData.averageAccuracy,
+                          selectedScoutData.practiceSessionsCompleted
+                        );
+                        
+                        return (
+                          <div className={`p-4 rounded-lg ${badge.bg} border ${
+                            badge.label === "Excellent" ? "border-green-200" :
+                            badge.label === "Good" ? "border-yellow-200" :
+                            badge.label === "Undetermined" ? "border-gray-200" :
+                            "border-red-200"
+                          }`}>
+                            <h3 className="font-semibold mb-2">
+                              {badge.label === "Excellent" ? "✅ Excellent Performance!" :
+                               badge.label === "Good" ? "⚠️ Recommendation" :
+                               badge.label === "Undetermined" ? "📊 Status Pending" :
+                               "🚨 Action Required"}
+                            </h3>
+                            <p className="text-sm">
+                              {badge.label === "Excellent"
+                                ? `${selectedScoutData.scoutName} is performing excellently and is ready for competition scouting.`
+                                : badge.label === "Good"
+                                ? `${selectedScoutData.scoutName} should complete a few more practice sessions to improve accuracy.`
+                                : badge.label === "Undetermined"
+                                ? `${selectedScoutData.scoutName} has not completed any practice sessions yet. Practice is required before competition scouting.`
+                                : `${selectedScoutData.scoutName} needs additional practice before being assigned to competition matches.`}
+                            </p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

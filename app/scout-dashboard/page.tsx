@@ -140,24 +140,15 @@ function ScoutDashboardContent() {
                 <div className="mb-6 space-y-4">
                   {upcomingEvents.map((event) => (
                     <div key={event.key} className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "#c42221" }}>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h2 className="text-xl font-semibold mb-1">Upcoming Event</h2>
-                          <p className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
-                            {event.name}
-                          </p>
-                          <p className="text-gray-600">
-                            📅 {new Date(event.startDate + 'T12:00:00').toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate + 'T12:00:00').toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
-                          </p>
-                          <p className="text-sm text-gray-600 mt-2">{event.daysUntil} days away</p>
-                        </div>
-                        <button
-                          onClick={() => router.push(`/event-details/${event.key}`)}
-                          className="px-4 py-2 rounded-lg text-white font-semibold"
-                          style={{ backgroundColor: "#c42221" }}
-                        >
-                          View Details
-                        </button>
+                      <div>
+                        <h2 className="text-xl font-semibold mb-1">Upcoming Event</h2>
+                        <p className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
+                          {event.name}
+                        </p>
+                        <p className="text-gray-600">
+                          📅 {new Date(event.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-2">{event.daysUntil} days away</p>
                       </div>
                     </div>
                   ))}

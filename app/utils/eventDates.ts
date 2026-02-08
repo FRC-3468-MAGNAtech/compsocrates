@@ -1,8 +1,8 @@
 // Event date configuration
 export const EVENTS = {
-  rocketCity: {
-    name: 'Rocket City Regional',
-    location: 'Huntsville, AL',
+  arkansas: {
+    name: 'Arkansas Regional',
+    location: 'Little Rock, AR',
     startDate: new Date('2026-03-18'),
     endDate: new Date('2026-03-21'),
   },
@@ -36,50 +36,9 @@ export function getCurrentEvent() {
   return null;
 }
 
-// Get the next upcoming event
-export function getNextEvent() {
-  const now = new Date();
-  
-  const upcomingEvents = Object.entries(EVENTS)
-    .filter(([_, event]) => event.startDate > now)
-    .sort((a, b) => a[1].startDate.getTime() - b[1].startDate.getTime());
-  
-  if (upcomingEvents.length > 0) {
-    const [key, event] = upcomingEvents[0];
-    return { key, ...event };
-  }
-  
-  return null;
-}
-
 // Calculate days until an event
-export function daysUntilEvent(eventKey: string): number {
-  const event = EVENTS[eventKey as keyof typeof EVENTS];
-  if (!event) return 0;
-  
+export function daysUntilEvent(startDate: Date): number {
   const now = new Date();
-  const diff = event.startDate.getTime() - now.getTime();
+  const diff = startDate.getTime() - now.getTime();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
-}
-
-// Format event date range
-export function formatEventDates(eventKey: string): string {
-  const event = EVENTS[eventKey as keyof typeof EVENTS];
-  if (!event) return '';
-  
-  const startMonth = event.startDate.toLocaleDateString('en-US', { month: 'long' });
-  const startDay = event.startDate.getDate();
-  const endDay = event.endDate.getDate();
-  const year = event.startDate.getFullYear();
-  
-  return `${startMonth} ${startDay}-${endDay}, ${year}`;
-}
-
-// Check if a timestamp falls within an event's date range
-export function isWithinEventDates(timestamp: number, eventKey: string): boolean {
-  const event = EVENTS[eventKey as keyof typeof EVENTS];
-  if (!event) return false;
-  
-  const date = new Date(timestamp);
-  return date >= event.startDate && date <= event.endDate;
 }

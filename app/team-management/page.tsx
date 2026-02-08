@@ -13,7 +13,6 @@ interface TeamMember {
   displayName: string;
   email: string;
   role: "coach" | "scout";
-  specialRole?: "lead-scout" | "lead-strategist" | "pit-scout" | null;
   isTeamAdmin: boolean;
   teamId: string;
 }
@@ -80,19 +79,6 @@ function TeamManagementContent() {
     }
   }
 
-  async function updateSpecialRole(uid: string, specialRole: string | null) {
-    try {
-      await updateDoc(doc(db, "users", uid), { 
-        specialRole: specialRole || null 
-      });
-      await loadTeamData();
-      alert("Special role updated!");
-    } catch (error) {
-      console.error("Error updating special role:", error);
-      alert("Failed to update special role");
-    }
-  }
-
   const coaches = members.filter(m => m.role === "coach");
   const scouts = members.filter(m => m.role === "scout");
 
@@ -119,10 +105,9 @@ function TeamManagementContent() {
               <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "#c42221" }}>
                 <div className="flex items-start justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold mb-1" style={{ color: "#c42221" }}>
-                      Team {teamName}
-                    </h2>
+                    <h2 className="text-xl font-semibold mb-1">{teamName}</h2>
                     <p className="text-gray-600 mb-1">{members.length} team members</p>
+                    <p className="text-sm text-gray-500">Team Code: <span className="font-mono font-bold">{userData?.teamId}</span></p>
                   </div>
                   <button
                     onClick={() => setShowInviteCode(!showInviteCode)}
@@ -210,22 +195,6 @@ function TeamManagementContent() {
                             <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded mt-1 inline-block">
                               Team Admin
                             </span>
-                          )}
-                          {/* Special Role Selector - show for all coaches if you're team admin */}
-                          {userData?.isTeamAdmin && (
-                            <div className="mt-2">
-                              <label className="text-xs text-gray-600 mr-2">Special Role:</label>
-                              <select
-                                value={member.specialRole || ""}
-                                onChange={(e) => updateSpecialRole(member.uid, e.target.value || null)}
-                                className="text-xs border rounded px-2 py-1"
-                              >
-                                <option value="">None</option>
-                                <option value="lead-scout">Lead Scout</option>
-                                <option value="lead-strategist">Lead Strategist</option>
-                                <option value="pit-scout">Pit Scout</option>
-                              </select>
-                            </div>
                           )}
                         </div>
                       </div>
