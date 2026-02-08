@@ -66,7 +66,7 @@ function CoachDashboardContent() {
                             {event.name}
                           </p>
                           <p className="text-gray-600">
-                            📅 {new Date(event.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
+                            📅 {new Date(event.startDate + 'T12:00:00').toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate + 'T12:00:00').toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
                           </p>
                           <div className="mt-4 flex gap-4">
                             <div>

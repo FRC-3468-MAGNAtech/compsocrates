@@ -215,7 +215,7 @@ function AnalyticsPageContent() {
   }, []);
 
   async function loadData() {
-    const snapshot = await getDocs(collection(db, "scoutingEntries"));
+    const snapshot = await getDocs(collection(db, "scouting"));
     const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Entry[];
     setRawData(entries);
   }
@@ -223,7 +223,7 @@ function AnalyticsPageContent() {
   async function handleDelete(id: string) {
     if (deleteConfirm === id) {
       try {
-        await deleteDoc(doc(db, "scoutingEntries", id));
+        await deleteDoc(doc(db, "scouting", id));
         await loadData();
         setDeleteConfirm(null);
         alert("Entry deleted successfully");
@@ -237,7 +237,7 @@ function AnalyticsPageContent() {
     }
   }
 
-  // Filter by practice/non-practice
+  // Filter by practice/non-practice first
   const filteredByPractice = showPractice 
     ? rawData.filter(entry => entry.matchType === "practice")
     : rawData.filter(entry => entry.matchType !== "practice");

@@ -4,10 +4,13 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/app/firebase";
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [teamName, setTeamName] = useState<string>("");
   const pathname = usePathname();
   const { userData, logOut } = useAuth();
 
@@ -22,10 +25,35 @@ export default function Sidebar() {
     localStorage.setItem("sidebarCollapsed", JSON.stringify(collapsed));
   }, [collapsed]);
 
+  // Load team name from Firestore
+  useEffect(() => {
+    async function loadTeamName() {
+      if (!userData?.teamId) return;
+      
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (teamDoc.exists()) {
+          setTeamName(teamDoc.data().teamName || userData.teamId);
+        } else {
+          setTeamName(userData.teamId);
+        }
+      } catch (error) {
+        console.error("Error loading team name:", error);
+        setTeamName(userData.teamId);
+      }
+    }
+    
+    loadTeamName();
+  }, [userData?.teamId]);
+
   if (!userData) return null;
 
   const isCoach = userData.role === "coach";
   const isScout = userData.role === "scout";
+  
+  // Check if user has special scout role
+  const hasSpecialRole = userData.specialRole && 
+    ["lead-scout", "lead-strategist", "pit-scout"].includes(userData.specialRole);
 
   // Navigation items based on role
   const coachNavItems = [
@@ -44,7 +72,10 @@ export default function Sidebar() {
     { href: "/analytics", label: "Analytics", icon: "📈" },
   ];
 
-  const navItems = isCoach ? coachNavItems : scoutNavItems;
+  // Coaches with special roles also get practice scouting
+  const navItems = isCoach 
+    ? (hasSpecialRole ? [...coachNavItems.slice(0, 3), { href: "/practice-scouting", label: "Practice Scouting", icon: "🎯" }, ...coachNavItems.slice(3)] : coachNavItems)
+    : scoutNavItems;
 
   return (
     <div
@@ -66,7 +97,7 @@ export default function Sidebar() {
               </div>
               <div>
                 <h1 className="text-sm font-bold">CompSocrates</h1>
-                <p className="text-xs text-gray-600">Team {userData.teamId}</p>
+                <p className="text-xs text-gray-600">{teamName}</p>
               </div>
             </div>
           )}
@@ -119,7 +150,9 @@ export default function Sidebar() {
           {!collapsed && (
             <div className="flex-1 text-left">
               <p className="text-sm font-semibold text-gray-900">{userData.displayName}</p>
-              <p className="text-xs text-gray-600 capitalize">{userData.role}</p>
+              <p className="text-xs text-gray-600 capitalize">
+                {userData.specialRole ? userData.specialRole.replace(/-/g, ' ') : userData.role}
+              </p>
             </div>
           )}
         </button>
