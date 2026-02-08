@@ -9,7 +9,7 @@ interface ScoutAccuracyData {
   totalEntries: number;
 }
 
-export function useScoutAccuracy() {
+export function useScoutAccuracy(teamId?: string) {
   const [data, setData] = useState<ScoutAccuracyData>({
     totalScouts: 0,
     avgAccuracy: 0,
@@ -21,16 +21,30 @@ export function useScoutAccuracy() {
   useEffect(() => {
     async function fetchData() {
       try {
+        // Get all users (we need to count scouts AND lead scouts)
+        let usersQuery;
+        if (teamId) {
+          usersQuery = query(collection(db, 'users'), where('teamId', '==', teamId));
+        } else {
+          usersQuery = collection(db, 'users');
+        }
+        
+        const usersSnapshot = await getDocs(usersQuery);
+        const users = usersSnapshot.docs.map(doc => doc.data());
+        
+        // Count scouts AND lead scouts (coaches with "Lead Scout" special role)
+        const totalScouts = users.filter((u: any) => 
+          u.role === 'scout' || 
+          (u.role === 'coach' && u.specialRole === 'Lead Scout')
+        ).length;
+        
         // Get all practice sessions
-        const practiceSnapshot = await getDocs(collection(db, 'practice-sessions'));
+        const practiceSnapshot = await getDocs(collection(db, 'practiceSessions'));
         const practiceSessions = practiceSnapshot.docs.map(doc => doc.data());
         
         // Get all scouting entries
         const scoutingSnapshot = await getDocs(collection(db, 'scouting'));
         const scoutingEntries = scoutingSnapshot.docs.map(doc => doc.data());
-        
-        // Calculate unique scouts
-        const uniqueScouts = new Set(scoutingEntries.map((e: any) => e.scoutName)).size;
         
         // Calculate average accuracy from practice sessions
         const accuracies = practiceSessions.map((s: any) => s.accuracy || 0);
@@ -39,7 +53,7 @@ export function useScoutAccuracy() {
           : 0;
         
         setData({
-          totalScouts: uniqueScouts,
+          totalScouts,
           avgAccuracy,
           totalPracticeSessions: practiceSessions.length,
           totalEntries: scoutingEntries.length,
@@ -52,7 +66,7 @@ export function useScoutAccuracy() {
     }
 
     fetchData();
-  }, []);
+  }, [teamId]);
 
   return { ...data, loading };
 }

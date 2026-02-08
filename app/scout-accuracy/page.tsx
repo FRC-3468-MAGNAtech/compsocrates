@@ -100,11 +100,44 @@ function ScoutAccuracyContent() {
     return "text-red-600";
   }
 
-  function getAccuracyBadge(accuracy: number): { bg: string; text: string; label: string } {
-    if (accuracy >= 95) return { bg: "bg-green-100", text: "text-green-800", label: "Excellent" };
-    if (accuracy >= 85) return { bg: "bg-yellow-100", text: "text-yellow-800", label: "Good" };
-    return { bg: "bg-red-100", text: "text-red-800", label: "Needs Practice" };
+function getAccuracyBadge(
+  accuracy: number,
+  practiceSessions: number
+): { bg: string; text: string; label: string; showWarning: boolean } {
+  // If no practice sessions, status is undetermined
+  if (practiceSessions === 0) {
+    return {
+      bg: "bg-gray-100",
+      text: "text-gray-700",
+      label: "Undetermined",
+      showWarning: false
+    };
   }
+  
+  // If they have practiced
+  if (accuracy >= 95) {
+    return {
+      bg: "bg-green-100",
+      text: "text-green-800",
+      label: "Excellent",
+      showWarning: false
+    };
+  }
+  if (accuracy >= 85) {
+    return {
+      bg: "bg-yellow-100",
+      text: "text-yellow-800",
+      label: "Good",
+      showWarning: false
+    };
+  }
+  return {
+    bg: "bg-red-100",
+    text: "text-red-800",
+    label: "Needs Practice",
+    showWarning: true
+  };
+}
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
 
@@ -212,7 +245,7 @@ function ScoutAccuracyContent() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {scoutStats.map((scout, index) => {
-                        const badge = getAccuracyBadge(scout.averageAccuracy);
+                        const badge = getAccuracyBadge(scout.averageAccuracy, scout.practiceSessionsCompleted);
                         return (
                           <tr key={scout.scoutName} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
