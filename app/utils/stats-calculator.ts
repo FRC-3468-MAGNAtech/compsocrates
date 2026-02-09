@@ -40,7 +40,7 @@ export async function getTeamEntries(teamId: string) {
   // Get all scouting entries by team scouts
   const allEntries: any[] = [];
   for (const scoutName of scoutNames) {
-    const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
+    const entriesQuery = query(collection(db, "scoutingEntries"), where("scoutName", "==", scoutName));
     const entriesSnapshot = await getDocs(entriesQuery);
     allEntries.push(...entriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   }
@@ -162,7 +162,7 @@ export async function getUpcomingEvent(): Promise<UpcomingEvent | null> {
 
 // Get scout-specific stats
 export async function getScoutStats(scoutName: string) {
-  const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
+  const entriesQuery = query(collection(db, "scoutingEntries"), where("scoutName", "==", scoutName));
   const entriesSnapshot = await getDocs(entriesQuery);
   const entries = entriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 

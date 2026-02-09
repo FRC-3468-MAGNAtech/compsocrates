@@ -699,7 +699,7 @@ function ScoutFormContent() {
                   submittedAt: Date.now(), // Track when form was submitted for event filtering
                 };
                 
-                await addDoc(collection(db, "scouting"), submission);
+                await addDoc(collection(db, "scoutingEntries"), submission);
                 alert("Scouting report submitted successfully!");
                 
                 // Reset form
