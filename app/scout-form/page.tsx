@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection } from "firebase/firestore";
-import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
@@ -688,6 +686,10 @@ function ScoutFormContent() {
             style={{ backgroundColor: "#c42221" }}
             onClick={async () => {
               try {
+                // Add to Firebase with proper labels
+                const { addDoc, collection } = await import("firebase/firestore");
+                const { db } = await import("@/app/firebase");
+                
                 const submission = {
                   ...formData,
                   matchNumber: selectedMatch.id.toString(),
@@ -697,7 +699,7 @@ function ScoutFormContent() {
                   submittedAt: Date.now(), // Track when form was submitted for event filtering
                 };
                 
-                await addDoc(collection(db, "scoutingEntries"), submission);
+                await addDoc(collection(db, "scouting"), submission);
                 alert("Scouting report submitted successfully!");
                 
                 // Reset form
