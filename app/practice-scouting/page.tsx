@@ -24,12 +24,16 @@ const Counter = ({ label, value, onChange }: { label: string; value: number; onC
 function PracticeScoutingContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  const [currentStep, setCurrentStep] = useState<'select' | 'practice' | 'results'>('select');
+  const [currentStep, setCurrentStep] = useState<'select' | 'practice' | 'robot-complete' | 'results'>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | null>(null);
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  
+  // Track robot progress (3 robots per alliance)
+  const [robotsCompleted, setRobotsCompleted] = useState(0);
+  const [allRobotData, setAllRobotData] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     teamNumber: "",
@@ -62,6 +66,13 @@ function PracticeScoutingContent() {
     notes: "",
   });
 
+  // Get match type from match number (Q = Qualification, F = Finals)
+  function getMatchType(matchNumber: number): string {
+    // In FRC: matches 1-N are qualifications, then playoffs/finals
+    // For practice, we'll check if match number > 100 for finals
+    return matchNumber > 100 ? "Finals" : "Qualification";
+  }
+
   async function selectPracticeMatch(difficulty: 'easy' | 'medium' | 'hard') {
     setLoading(true);
     setSelectedDifficulty(difficulty);
@@ -89,6 +100,8 @@ function PracticeScoutingContent() {
       setFormData(prev => ({ ...prev, teamNumber: randomMatch.teamNumber.toString() }));
 
       setCurrentStep('practice');
+      setRobotsCompleted(0);
+      setAllRobotData([]);
     } catch (error) {
       console.error('Error loading practice match:', error);
       alert('Error loading practice match. Please try again.');
@@ -97,43 +110,112 @@ function PracticeScoutingContent() {
     }
   }
 
-  async function submitPracticeSession() {
+  async function submitRobotData() {
     if (!currentMatch || !userData) return;
 
-    const scoutedScore = calculateScoutedScore(formData);
-    const officialScore = currentMatch.officialData.score;
-    const accuracy = calculateAccuracy(scoutedScore, officialScore);
-
-    const session: Omit<PracticeSession, 'id'> = {
-      scoutName: userData.displayName,
-      scoutId: userData.uid,
-      matchKey: currentMatch.matchKey,
-      matchNumber: currentMatch.matchNumber,
-      teamNumber: currentMatch.teamNumber,
-      difficulty: currentMatch.difficulty,
-      scoutedData: formData,
-      scoutedScore,
-      officialScore,
-      accuracy,
-      startedAt: Date.now(),
-      completedAt: Date.now(),
+    // Save current robot data
+    const robotData = {
+      ...formData,
+      robotNumber: robotsCompleted + 1,
+      timestamp: Date.now()
     };
 
+    setAllRobotData(prev => [...prev, robotData]);
+    
+    const newCount = robotsCompleted + 1;
+    setRobotsCompleted(newCount);
+
+    // Check if all 3 robots are done
+    if (newCount >= 3) {
+      // Calculate session results based on all 3 robots
+      await completePracticeSession();
+    } else {
+      // Move to robot-complete screen
+      setCurrentStep('robot-complete');
+    }
+  }
+
+  async function completePracticeSession() {
+    if (!currentMatch || !userData || allRobotData.length < 3) return;
+
     try {
+      // Calculate average score across all 3 robots
+      let totalScoutedScore = 0;
+      allRobotData.forEach(robotData => {
+        totalScoutedScore += calculateScoutedScore(robotData);
+      });
+      const avgScoutedScore = Math.round(totalScoutedScore / 3);
+
+      const officialScore = currentMatch.officialData.score;
+      const accuracy = calculateAccuracy(avgScoutedScore, officialScore);
+
+      const session: Omit<PracticeSession, 'id'> = {
+        scoutName: userData.displayName,
+        scoutId: userData.uid,
+        matchKey: currentMatch.matchKey,
+        matchNumber: currentMatch.matchNumber,
+        teamNumber: currentMatch.teamNumber,
+        difficulty: currentMatch.difficulty,
+        scoutedData: allRobotData[0], // Use first robot for reference
+        scoutedScore: avgScoutedScore,
+        officialScore: officialScore,
+        accuracy: accuracy,
+        startedAt: Date.now() - 180000, // Approximate
+        completedAt: Date.now(),
+      };
+
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
-      setSessionResults({ ...session, id: docRef.id });
+
+      setSessionResults({ id: docRef.id, ...session });
       setCurrentStep('results');
     } catch (error) {
       console.error('Error saving practice session:', error);
-      alert('Error saving practice session.');
+      alert('Error saving practice session. Please try again.');
     }
+  }
+
+  function continueToNextRobot() {
+    // Reset form for next robot
+    setFormData({
+      teamNumber: currentMatch?.teamNumber.toString() || "",
+      startingPosition: "",
+      leftStartingZone: false,
+      autoCoralMissed: 0,
+      autoCoralL1: 0,
+      autoCoralL2: 0,
+      autoCoralL3: 0,
+      autoCoralL4: 0,
+      autoAlgaeProcessorMissed: 0,
+      autoAlgaeProcessorScored: 0,
+      autoAlgaeNetMissed: 0,
+      autoAlgaeNetScored: 0,
+      teleopCoralMissed: 0,
+      teleopCoralL1: 0,
+      teleopCoralL2: 0,
+      teleopCoralL3: 0,
+      teleopCoralL4: 0,
+      teleopAlgaeRemoved: false,
+      teleopProcessorMissed: 0,
+      teleopProcessorScored: 0,
+      teleopNetRobotMissed: 0,
+      teleopNetRobotScored: 0,
+      teleopNetHumanMissed: 0,
+      teleopNetHumanScored: 0,
+      failedClimb: 0,
+      stageStatus: "",
+      incidents: [],
+      notes: "",
+    });
+    setCurrentStep('practice');
   }
 
   function resetPractice() {
     setCurrentStep('select');
-    setSelectedDifficulty(null);
     setCurrentMatch(null);
     setSessionResults(null);
+    setSelectedDifficulty(null);
+    setRobotsCompleted(0);
+    setAllRobotData([]);
     setFormData({
       teamNumber: "",
       startingPosition: "",
@@ -167,34 +249,30 @@ function PracticeScoutingContent() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        {/* STEP 1: DIFFICULTY SELECTION */}
+    <ProtectedRoute allowedRoles={["scout"]}>
+      <div className="flex min-h-screen bg-gray-100">
+        <Sidebar />
+        
+        {/* STEP 1: SELECT DIFFICULTY */}
         {currentStep === 'select' && (
-          <div className="p-8 max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-              Practice Scouting
-            </h1>
-            <p className="text-gray-600 mb-8">
-              Improve your accuracy by practicing with real match footage.
-            </p>
-
-            <div className="bg-white rounded-xl shadow-md p-8 mb-6">
-              <h2 className="text-2xl font-semibold mb-4">How Practice Works</h2>
+          <div className="flex-1 p-8">
+            <h1 className="text-3xl font-bold mb-6" style={{ color: "#c42221" }}>Practice Scouting</h1>
+            
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-6 mb-6 rounded">
+              <h2 className="font-semibold text-lg mb-3 text-blue-900">How Practice Scouting Works</h2>
               <div className="space-y-4">
                 <div className="flex gap-4">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: "#c42221" }}>1</div>
                   <div>
-                    <h3 className="font-semibold mb-1">Watch a Recorded Match</h3>
-                    <p className="text-gray-600">We'll show you a pre-recorded match video from a real competition.</p>
+                    <h3 className="font-semibold mb-1">Watch Real Match Footage</h3>
+                    <p className="text-gray-600">Scout all 3 robots on your alliance from actual FRC matches. Video cannot be paused.</p>
                   </div>
                 </div>
                 <div className="flex gap-4">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: "#c42221" }}>2</div>
                   <div>
-                    <h3 className="font-semibold mb-1">Scout the Robot</h3>
-                    <p className="text-gray-600">Fill out the scouting form just like a real match. The video can't be paused!</p>
+                    <h3 className="font-semibold mb-1">Fill Out the Scouting Form</h3>
+                    <p className="text-gray-600">Track each robot's performance using the same form you'll use at competition.</p>
                   </div>
                 </div>
                 <div className="flex gap-4">
@@ -209,6 +287,7 @@ function PracticeScoutingContent() {
 
             <div className="bg-white rounded-xl shadow-md p-8">
               <h2 className="text-2xl font-semibold mb-4">Select Difficulty</h2>
+              <p className="text-gray-600 mb-6">All matches require scouting all 3 alliance robots to complete a session.</p>
               <div className="grid md:grid-cols-3 gap-4">
                 <button
                   onClick={() => selectPracticeMatch('easy')}
@@ -252,22 +331,20 @@ function PracticeScoutingContent() {
           <div className="h-screen flex flex-col md:flex-row">
             {/* VIDEO PLAYER (LEFT SIDE - 60%) */}
             <div className="md:w-[60%] bg-black flex items-center justify-center relative">
-              <div className="w-full aspect-video">
+              <div className="w-full h-full flex items-center justify-center">
                 <iframe
-                  src={`${currentMatch.videoUrl}?autoplay=1&controls=0&disablekb=1&modestbranding=1&rel=0`}
+                  src={`https://www.youtube.com/embed/${currentMatch.videoUrl.split('v=')[1]?.split('&')[0]}?autoplay=1&modestbranding=1&rel=0&showinfo=0`}
                   className="w-full h-full"
                   allow="autoplay; fullscreen"
                   allowFullScreen
                   title="Practice Match Video"
                 />
-                {/* Overlay to prevent interactions */}
-                <div className="absolute inset-0 pointer-events-none bg-transparent" />
               </div>
 
               {/* Match Info Overlay */}
               <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white p-4 rounded-lg">
-                <h3 className="font-semibold text-lg">Practice Match {currentMatch.matchNumber}</h3>
-                <p className="text-sm">Scout Team {currentMatch.teamNumber}</p>
+                <h3 className="font-semibold text-lg">{getMatchType(currentMatch.matchNumber)} {currentMatch.matchNumber}</h3>
+                <p className="text-sm">Scout Team {currentMatch.teamNumber} (Robot {robotsCompleted + 1}/3)</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • Position {currentMatch.teamPosition + 1}</p>
                 <p className="text-xs mt-2 text-yellow-300">⚠️ Video cannot be paused</p>
               </div>
@@ -275,6 +352,23 @@ function PracticeScoutingContent() {
 
             {/* SCOUTING FORM (RIGHT SIDE - 40%) */}
             <div className="md:w-[40%] overflow-y-auto bg-gray-100 p-4 space-y-4">
+              {/* Progress Indicator */}
+              <div className="bg-white rounded-xl shadow p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-semibold">Session Progress</span>
+                  <span className="text-sm text-gray-600">Robot {robotsCompleted + 1} of 3</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="h-2 rounded-full transition-all"
+                    style={{ 
+                      width: `${((robotsCompleted) / 3) * 100}%`,
+                      backgroundColor: "#c42221"
+                    }}
+                  />
+                </div>
+              </div>
+
               {/* PRE-MATCH */}
               <div className="bg-white rounded-xl shadow p-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Pre-Match Info</h2>
@@ -403,25 +497,34 @@ function PracticeScoutingContent() {
                 </div>
               </div>
 
-              {/* NOTES */}
+              {/* NOTES - COLLAPSIBLE */}
               <div className="bg-white rounded-xl shadow p-4">
-                <h2 className="text-lg font-semibold mb-2" style={{ color: "#c42221" }}>Notes</h2>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full border rounded p-2 h-24 resize-none"
-                  placeholder="Optional notes..."
-                />
+                <button 
+                  onClick={() => setNotesOpen(!notesOpen)}
+                  className="w-full flex items-center justify-between text-lg font-semibold mb-2" 
+                  style={{ color: "#c42221" }}
+                >
+                  <span>Notes</span>
+                  <span className="text-gray-400">{notesOpen ? '▼' : '▶'}</span>
+                </button>
+                {notesOpen && (
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="w-full border rounded p-2 h-24 resize-none"
+                    placeholder="Optional notes..."
+                  />
+                )}
               </div>
 
               {/* SUBMIT */}
               <div className="bg-white rounded-xl shadow p-4">
                 <button
-                  onClick={submitPracticeSession}
+                  onClick={submitRobotData}
                   className="w-full py-3 rounded text-white font-semibold mb-2"
                   style={{ backgroundColor: "#c42221" }}
                 >
-                  Submit Practice Session
+                  Submit Robot {robotsCompleted + 1}
                 </button>
                 <button
                   onClick={resetPractice}
@@ -434,77 +537,117 @@ function PracticeScoutingContent() {
           </div>
         )}
 
+        {/* STEP 2.5: ROBOT COMPLETE - TAKE A BREAK */}
+        {currentStep === 'robot-complete' && (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="bg-white rounded-xl shadow-md p-8 max-w-md text-center">
+              <div className="text-6xl mb-4">✅</div>
+              <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+                Robot {robotsCompleted}/3 Scouted!
+              </h1>
+              <p className="text-gray-600 mb-6">
+                Great job! You've completed robot {robotsCompleted} of 3.
+                {robotsCompleted < 3 ? " Take a break if you need one, then continue when you're ready." : ""}
+              </p>
+
+              <div className="mb-6">
+                <div className="w-full bg-gray-200 rounded-full h-4">
+                  <div 
+                    className="h-4 rounded-full transition-all"
+                    style={{ 
+                      width: `${(robotsCompleted / 3) * 100}%`,
+                      backgroundColor: "#c42221"
+                    }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600 mt-2">{robotsCompleted} of 3 robots completed</p>
+              </div>
+
+              <button
+                onClick={continueToNextRobot}
+                className="w-full py-3 rounded text-white font-semibold mb-2"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                Continue to Robot {robotsCompleted + 1}
+              </button>
+              <button
+                onClick={resetPractice}
+                className="w-full py-2 rounded border-2 border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
+              >
+                Exit Practice
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* STEP 3: RESULTS */}
         {currentStep === 'results' && sessionResults && (
-          <div className="p-8 max-w-4xl mx-auto">
-            <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center">
-              <div className="text-6xl mb-4">
-                {sessionResults.accuracy >= 90 ? "🎉" : sessionResults.accuracy >= 75 ? "👍" : "📚"}
-              </div>
-              <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-                Practice Session Complete!
-              </h1>
-              <p className="text-gray-600 mb-6">Here's how you did:</p>
+          <div className="flex-1 p-8 overflow-auto">
+            <div className="max-w-4xl mx-auto">
+              <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center">
+                <div className="text-6xl mb-4">
+                  {sessionResults.accuracy >= 90 ? "🎉" : sessionResults.accuracy >= 75 ? "👍" : "📚"}
+                </div>
+                <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+                  Practice Session Complete!
+                </h1>
+                <p className="text-gray-600 mb-6">You scouted all 3 robots. Here's how you did:</p>
 
-              <div className="grid md:grid-cols-3 gap-6 mb-8">
-                <div className="p-6 bg-gray-50 rounded-lg">
-                  <h3 className="text-sm font-medium text-gray-600 mb-2">Your Score</h3>
-                  <p className="text-4xl font-bold" style={{ color: "#c42221" }}>{sessionResults.scoutedScore}</p>
-                  <p className="text-xs text-gray-500 mt-1">points</p>
+                <div className="grid md:grid-cols-3 gap-6 mb-8">
+                  <div className="p-6 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Your Accuracy</p>
+                    <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
+                      {sessionResults.accuracy}%
+                    </p>
+                  </div>
+                  <div className="p-6 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Your Score</p>
+                    <p className="text-4xl font-bold text-gray-700">{sessionResults.scoutedScore}</p>
+                  </div>
+                  <div className="p-6 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Official Score</p>
+                    <p className="text-4xl font-bold text-gray-700">{sessionResults.officialScore}</p>
+                  </div>
                 </div>
 
-                <div className="p-6 bg-gray-50 rounded-lg">
-                  <h3 className="text-sm font-medium text-gray-600 mb-2">Official Score</h3>
-                  <p className="text-4xl font-bold text-gray-700">{sessionResults.officialScore}</p>
-                  <p className="text-xs text-gray-500 mt-1">points</p>
+                <div className="text-left bg-blue-50 p-6 rounded-lg mb-6">
+                  <h3 className="font-semibold mb-2 text-blue-900">💡 What This Means</h3>
+                  {sessionResults.accuracy >= 95 ? (
+                    <p className="text-gray-700">Excellent work! You're ready for competition scouting. Your accuracy is outstanding!</p>
+                  ) : sessionResults.accuracy >= 85 ? (
+                    <p className="text-gray-700">Good job! You're getting close. Try a few more practice sessions to improve your accuracy.</p>
+                  ) : sessionResults.accuracy >= 75 ? (
+                    <p className="text-gray-700">Not bad! Keep practicing to improve. Focus on tracking all scoring actions carefully.</p>
+                  ) : (
+                    <p className="text-gray-700">Keep practicing! Review the game manual and try focusing on one scoring type at a time.</p>
+                  )}
                 </div>
 
-                <div className="p-6 bg-gradient-to-br from-green-50 to-green-100 rounded-lg">
-                  <h3 className="text-sm font-medium text-green-700 mb-2">Accuracy</h3>
-                  <p className="text-4xl font-bold text-green-600">{sessionResults.accuracy}%</p>
-                  <p className="text-xs text-green-600 mt-1">
-                    {sessionResults.accuracy >= 90 ? "Excellent!" : sessionResults.accuracy >= 75 ? "Good job!" : "Keep practicing!"}
-                  </p>
+                <div className="flex gap-4">
+                  <button
+                    onClick={resetPractice}
+                    className="flex-1 py-3 rounded text-white font-semibold"
+                    style={{ backgroundColor: "#c42221" }}
+                  >
+                    Practice Again
+                  </button>
+                  <button
+                    onClick={() => router.push('/scout-dashboard')}
+                    className="flex-1 py-3 rounded border-2 text-gray-700 font-semibold hover:bg-gray-50"
+                    style={{ borderColor: "#c42221" }}
+                  >
+                    Back to Dashboard
+                  </button>
                 </div>
               </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={resetPractice}
-                  className="w-full py-3 rounded text-white font-semibold"
-                  style={{ backgroundColor: "#c42221" }}
-                >
-                  Do Another Practice Session
-                </button>
-                <button
-                  onClick={() => router.push('/dashboard/scout')}
-                  className="w-full py-2 rounded border-2 text-gray-700 font-medium hover:bg-gray-50"
-                  style={{ borderColor: "#c42221" }}
-                >
-                  Return to Dashboard
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-              <p className="text-sm text-blue-700">
-                <strong>💡 Tip:</strong> {sessionResults.accuracy >= 90 
-                  ? "You're ready for competition scouting! Your accuracy is excellent."
-                  : "Try practicing a few more times to improve your accuracy before competition matches."
-                }
-              </p>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
 
-export default function PracticeScoutingPage() {
-  return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
-      <PracticeScoutingContent />
-    </ProtectedRoute>
-  );
+export default function PracticeScouting() {
+  return <PracticeScoutingContent />;
 }
