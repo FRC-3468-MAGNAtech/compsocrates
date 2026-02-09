@@ -32,7 +32,12 @@ function ScoutAccuracyContent() {
       // Get all team members
       const teamQuery = query(collection(db, "users"), where("teamId", "==", userData?.teamId));
       const teamSnapshot = await getDocs(teamQuery);
-      const scouts = teamSnapshot.docs.filter(doc => doc.data().role === "scout");
+      const scouts = teamSnapshot.docs.filter(doc => {
+        const role = doc.data().role;
+        const specialRole = doc.data().specialRole;
+        // Include regular scouts AND coaches with "Lead Scout" special role
+        return role === "scout" || (role === "coach" && specialRole === "Lead Scout");
+      });
 
       // Get scouting entries and practice sessions for each scout
       const statsPromises = scouts.map(async (scoutDoc) => {
