@@ -249,7 +249,7 @@ function PracticeScoutingContent() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["scout"]}>
+    <ProtectedRoute allowedRoles={["scout", "coach"]}>
       <div className="flex min-h-screen bg-gray-100">
         <Sidebar />
         
@@ -329,8 +329,8 @@ function PracticeScoutingContent() {
         {/* STEP 2: PRACTICE SCOUTING */}
         {currentStep === 'practice' && currentMatch && (
           <div className="h-screen flex flex-col md:flex-row">
-            {/* VIDEO PLAYER (LEFT SIDE - 60%) */}
-            <div className="md:w-[60%] bg-black flex items-center justify-center relative">
+            {/* VIDEO PLAYER (LEFT SIDE - 75%) */}
+            <div className="md:w-[75%] bg-black flex items-center justify-center relative">
               <div className="w-full h-full flex items-center justify-center">
                 <iframe
                   src={`https://www.youtube.com/embed/${currentMatch.videoUrl.split('v=')[1]?.split('&')[0]}?autoplay=1&modestbranding=1&rel=0&showinfo=0`}
@@ -350,8 +350,8 @@ function PracticeScoutingContent() {
               </div>
             </div>
 
-            {/* SCOUTING FORM (RIGHT SIDE - 40%) */}
-            <div className="md:w-[40%] overflow-y-auto bg-gray-100 p-4 space-y-4">
+            {/* SCOUTING FORM (RIGHT SIDE - 25%) */}
+            <div className="md:w-[25%] overflow-y-auto bg-gray-100 p-4 space-y-4">
               {/* Progress Indicator */}
               <div className="bg-white rounded-xl shadow p-4">
                 <div className="flex justify-between items-center mb-2">
