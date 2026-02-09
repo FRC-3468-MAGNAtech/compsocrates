@@ -34,6 +34,7 @@ function PracticeScoutingContent() {
   // Track robot progress (3 robots per alliance)
   const [robotsCompleted, setRobotsCompleted] = useState(0);
   const [allRobotData, setAllRobotData] = useState<any[]>([]);
+  const [currentRobotPosition, setCurrentRobotPosition] = useState<1 | 2 | 3>(1); // Which of the 3 robots to scout
 
   const [formData, setFormData] = useState({
     teamNumber: "",
@@ -102,6 +103,9 @@ function PracticeScoutingContent() {
       setCurrentStep('practice');
       setRobotsCompleted(0);
       setAllRobotData([]);
+      
+      // Randomly select which robot position to scout (1, 2, or 3)
+      setCurrentRobotPosition((Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3);
     } catch (error) {
       console.error('Error loading practice match:', error);
       alert('Error loading practice match. Please try again.');
@@ -206,6 +210,10 @@ function PracticeScoutingContent() {
       incidents: [],
       notes: "",
     });
+    
+    // Pick a new random robot position for next robot
+    setCurrentRobotPosition((Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3);
+    
     setCurrentStep('practice');
   }
 
@@ -328,30 +336,49 @@ function PracticeScoutingContent() {
 
         {/* STEP 2: PRACTICE SCOUTING */}
         {currentStep === 'practice' && currentMatch && (
-          <div className="h-screen flex flex-col md:flex-row">
-            {/* VIDEO PLAYER (LEFT SIDE - 75%) */}
-            <div className="md:w-[75%] bg-black flex items-center justify-center relative">
+          <div className="flex-1 h-screen flex flex-col md:flex-row">
+            {/* VIDEO PLAYER (LEFT SIDE - 65%) */}
+            <div className="md:w-[65%] bg-black flex items-center justify-center relative">
               <div className="w-full h-full flex items-center justify-center">
-                <iframe
-                  src={`https://www.youtube.com/embed/${currentMatch.videoUrl.split('v=')[1]?.split('&')[0]}?autoplay=1&modestbranding=1&rel=0&showinfo=0`}
-                  className="w-full h-full"
-                  allow="autoplay; fullscreen"
-                  allowFullScreen
-                  title="Practice Match Video"
-                />
+                <div className="relative w-full h-full">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${currentMatch.videoUrl.split('v=')[1]?.split('&')[0]}?autoplay=1&controls=0&disablekb=1&modestbranding=1&rel=0&showinfo=0&fs=0&iv_load_policy=3`}
+                    className="w-full h-full"
+                    allow="autoplay"
+                    title="Practice Match Video"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  {/* Overlay to block ALL interactions */}
+                  <div className="absolute inset-0" style={{ pointerEvents: 'auto', background: 'transparent' }} />
+                </div>
               </div>
 
               {/* Match Info Overlay */}
               <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white p-4 rounded-lg">
                 <h3 className="font-semibold text-lg">{getMatchType(currentMatch.matchNumber)} {currentMatch.matchNumber}</h3>
-                <p className="text-sm">Scout Team {currentMatch.teamNumber} (Robot {robotsCompleted + 1}/3)</p>
-                <p className="text-sm capitalize">{currentMatch.alliance} Alliance • Position {currentMatch.teamPosition + 1}</p>
+                <p className="text-sm">Scout Team {currentMatch.teamNumber}</p>
+                <p className="text-sm capitalize">{currentMatch.alliance} Alliance - Robot #{currentRobotPosition}</p>
+                <p className="text-sm text-gray-300">Session: Robot {robotsCompleted + 1}/3</p>
                 <p className="text-xs mt-2 text-yellow-300">⚠️ Video cannot be paused</p>
               </div>
             </div>
 
-            {/* SCOUTING FORM (RIGHT SIDE - 25%) */}
-            <div className="md:w-[25%] overflow-y-auto bg-gray-100 p-4 space-y-4">
+            {/* SCOUTING FORM (RIGHT SIDE - 35%) */}
+            <div className="md:w-[35%] overflow-y-auto bg-gray-100 p-4 space-y-4">
+              {/* Robot Selection Notice */}
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4">
+                <div className="flex items-start gap-2">
+                  <span className="text-2xl">🤖</span>
+                  <div>
+                    <h3 className="font-bold text-yellow-900 mb-1">Scout Robot #{currentRobotPosition}</h3>
+                    <p className="text-sm text-yellow-800">
+                      Focus on the <strong>robot in position {currentRobotPosition}</strong> of the {currentMatch.alliance} alliance. 
+                      Include points scored by the <strong>human player</strong> for this robot.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Progress Indicator */}
               <div className="bg-white rounded-xl shadow p-4">
                 <div className="flex justify-between items-center mb-2">
