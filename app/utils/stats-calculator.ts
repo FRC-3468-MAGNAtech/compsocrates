@@ -52,10 +52,16 @@ export async function getTeamEntries(teamId: string) {
 export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   const entries = await getTeamEntries(teamId);
   
-  // Get team members
+  // Get team members - FIXED: Include coaches with special roles as scouts
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
   const usersSnapshot = await getDocs(usersQuery);
-  const scouts = usersSnapshot.docs.filter(doc => doc.data().role === "scout");
+  const scouts = usersSnapshot.docs.filter(doc => {
+    const data = doc.data();
+    // Count scouts AND coaches with special scout roles
+    return data.role === "scout" || 
+           (data.role === "coach" && data.specialRole && 
+            ["lead-scout", "lead-strategist", "pit-scout"].includes(data.specialRole));
+  });
 
   // Get practice sessions from Firebase to calculate REAL average accuracy
   const practiceQuery = query(collection(db, "practiceSessions"));
@@ -98,22 +104,12 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
       scoutName: entry.scoutName,
       teamNumber: entry.teamNumber,
       matchNumber: entry.matchNumber,
-      timestamp: entry.submittedAt || entry.timestamp,
+      timestamp: entry.submittedAt || entry.timestamp || Date.now(),
     }));
 
-  // Only count entries if we're currently during an event (Arkansas: March 18-21, Bayou: April 1-4)
-  const now = new Date();
-  const arkansasStart = new Date('2026-03-18');
-  const arkansasEnd = new Date('2026-03-21');
-  const bayouStart = new Date('2026-04-01');
-  const bayouEnd = new Date('2026-04-04');
-  
-  const isEventActive = (now >= arkansasStart && now <= arkansasEnd) || (now >= bayouStart && now <= bayouEnd);
-  const eventBasedEntries = isEventActive ? entries.length : 0;
-
   return {
-    totalEntries: eventBasedEntries,
-    activeScouts: scouts.length,
+    totalEntries: entries.length,
+    activeScouts: scouts.length, // FIXED: Now includes lead scouts
     averageAccuracy: avgAccuracy,
     entriesByEvent,
     entriesByScout,
@@ -121,7 +117,21 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   };
 }
 
-// Get upcoming events - ONLY Arkansas and Bayou Regional
+// Format activity for display
+export function formatActivity(activity: Activity): string {
+  if (activity.type === "scouting") {
+    return `${activity.scoutName} scouted Team ${activity.teamNumber} (Match ${activity.matchNumber})`;
+  }
+  if (activity.type === "practice") {
+    return `${activity.scoutName} completed practice session (${activity.accuracy}% accuracy)`;
+  }
+  if (activity.type === "team_join") {
+    return `${activity.scoutName} joined the team`;
+  }
+  return "Unknown activity";
+}
+
+// Get upcoming events - hardcoded for Arkansas and Bayou
 export async function getUpcomingEvents(): Promise<UpcomingEvent[]> {
   const now = new Date();
   
@@ -153,63 +163,16 @@ export async function getUpcomingEvents(): Promise<UpcomingEvent[]> {
   }).filter(event => event.daysUntil >= 0); // Only show upcoming/current events
 }
 
-// Get single upcoming event (for scout dashboard - shows next event)
-export async function getUpcomingEvent(): Promise<UpcomingEvent | null> {
-  const events = await getUpcomingEvents();
-  // Return the event with the smallest daysUntil (soonest)
-  return events.sort((a, b) => a.daysUntil - b.daysUntil)[0] || null;
-}
-
-// Get scout-specific stats
-export async function getScoutStats(scoutName: string) {
-  const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
-  const entriesSnapshot = await getDocs(entriesQuery);
-  const entries = entriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  // Mock practice data
-  const practiceSessionsCompleted = Math.floor(Math.random() * 10) + 5;
-  const averageAccuracy = Math.floor(Math.random() * 10) + 90;
-
-  return {
-    totalEntries: entries.length,
-    practiceSessionsCompleted,
-    averageAccuracy,
-    recentEntries: entries.slice(0, 5),
-  };
-}
-
-// Get team name from team document
+// Get team name from teams collection
 export async function getTeamName(teamId: string): Promise<string> {
   try {
     const teamDoc = await getDoc(doc(db, "teams", teamId));
     if (teamDoc.exists()) {
-      return teamDoc.data().teamName || `Team ${teamId}`;
+      return teamDoc.data().teamName || teamId;
     }
-    return `Team ${teamId}`;
+    return teamId;
   } catch (error) {
-    console.error("Error fetching team name:", error);
-    return `Team ${teamId}`;
+    console.error("Error getting team name:", error);
+    return teamId;
   }
-}
-
-// Format recent activity for display
-export function formatActivity(activity: Activity): string {
-  switch (activity.type) {
-    case "scouting":
-      return `${activity.scoutName} scouted Team ${activity.teamNumber} in Match ${activity.matchNumber}`;
-    case "practice":
-      return `${activity.scoutName} completed practice session (${activity.accuracy}% accuracy)`;
-    case "team_join":
-      return `${activity.scoutName} joined the team`;
-    default:
-      return "Unknown activity";
-  }
-}
-
-// Calculate days until event
-export function getDaysUntilEvent(eventDate: string): number {
-  const event = new Date(eventDate);
-  const now = new Date();
-  const diff = event.getTime() - now.getTime();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }

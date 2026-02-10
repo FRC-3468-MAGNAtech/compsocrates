@@ -13,8 +13,8 @@ const EVENT_DATA: Record<string, any> = {
     city: "Little Rock",
     state_prov: "AR",
     country: "USA",
-    startDate: "2026-03-14",
-    endDate: "2026-03-17",
+    startDate: "2026-03-18",
+    endDate: "2026-03-21",
     week: 3,
     event_type: "Regional"
   },
@@ -24,8 +24,8 @@ const EVENT_DATA: Record<string, any> = {
     city: "Kenner",
     state_prov: "LA",
     country: "USA",
-    startDate: "2026-03-26",
-    endDate: "2026-03-29",
+    startDate: "2026-04-01",
+    endDate: "2026-04-04",
     week: 4,
     event_type: "Regional"
   }
