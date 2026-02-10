@@ -1,4 +1,5 @@
 // Scout Accuracy Status Colors and Labels
+import React from "react";
 
 export type AccuracyStatus = "undetermined" | "mentor-intervention" | "student-intervention" | "good" | "excellent" | "perfect";
 
