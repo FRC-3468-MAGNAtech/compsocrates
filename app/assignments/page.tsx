@@ -23,6 +23,7 @@ interface Scout {
   uid: string;
   displayName: string;
   role: string;
+  specialRole?: string; // FIX: Add this optional property
 }
 
 function AssignmentsContent() {
@@ -79,178 +80,235 @@ function AssignmentsContent() {
   async function createAssignment(matchKey: string, scoutId: string, robotPosition: 1 | 2 | 3) {
     if (!userData) return;
 
-    try {
-      const scout = scouts.find(s => s.uid === scoutId);
-      if (!scout) return;
+    const scout = scouts.find(s => s.uid === scoutId);
+    if (!scout) return;
 
+    try {
       await addDoc(collection(db, "matchAssignments"), {
         eventKey: selectedEvent,
         matchKey,
         scoutId,
         scoutName: scout.displayName,
         robotPosition,
-        assignedBy: userData.displayName,
+        assignedBy: userData.uid,
         assignedAt: Date.now(),
       });
-
-      loadData();
-      alert("Assignment created!");
+      await loadData();
+      setShowAssignModal(false);
     } catch (error) {
       console.error("Error creating assignment:", error);
-      alert("Failed to create assignment");
+      alert("Error creating assignment");
     }
   }
 
-  async function deleteAssignment(assignmentId: string) {
-    if (!confirm("Remove this assignment?")) return;
-
+  async function deleteAssignment(id: string) {
+    if (!confirm("Are you sure you want to delete this assignment?")) return;
+    
     try {
-      await deleteDoc(doc(db, "matchAssignments", assignmentId));
-      loadData();
+      await deleteDoc(doc(db, "matchAssignments", id));
+      await loadData();
     } catch (error) {
       console.error("Error deleting assignment:", error);
-      alert("Failed to delete assignment");
+      alert("Error deleting assignment");
     }
   }
-
-  // Group assignments by match
-  const assignmentsByMatch = assignments.reduce((acc, a) => {
-    if (!acc[a.matchKey]) acc[a.matchKey] = [];
-    acc[a.matchKey].push(a);
-    return acc;
-  }, {} as Record<string, Assignment[]>);
-
-  // Generate sample matches (Q1-Q50)
-  const allMatches = Array.from({ length: 50 }, (_, i) => `q${i + 1}`);
-  const unassignedMatches = allMatches.filter(m => !assignmentsByMatch[m] || assignmentsByMatch[m].length < 3);
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-          Match Assignments
-        </h1>
-        <p className="text-gray-600 mb-6">Assign scouts to specific matches and robots</p>
-
-        {/* Event Selector */}
-        <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Event</label>
-          <select
-            value={selectedEvent}
-            onChange={(e) => setSelectedEvent(e.target.value)}
-            className="w-full md:w-64 border rounded-lg p-2"
-          >
-            {events.map(e => (
-              <option key={e.key} value={e.key}>{e.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4 animate-spin">🔄</div>
-            <p className="text-gray-600">Loading assignments...</p>
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Assigned Matches */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-8">
+          <div className="flex items-center justify-between mb-8">
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Assigned Matches</h2>
-                <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
-                  {Object.keys(assignmentsByMatch).length}
-                </div>
-              </div>
+              <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+                Match Assignments
+              </h1>
+              <p className="text-gray-600">
+                Assign scouts to specific matches and robot positions
+              </p>
+            </div>
+            <button
+              onClick={() => setShowAssignModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded text-white font-semibold hover:opacity-90"
+              style={{ backgroundColor: "#c42221" }}
+            >
+              <Plus size={20} />
+              New Assignment
+            </button>
+          </div>
 
-              <div className="space-y-3">
-                {Object.keys(assignmentsByMatch).length === 0 ? (
-                  <div className="bg-white rounded-xl p-8 text-center text-gray-500">
-                    <Calendar className="mx-auto mb-2" size={48} />
-                    <p>No assignments yet</p>
-                  </div>
-                ) : (
-                  Object.entries(assignmentsByMatch)
-                    .sort(([a], [b]) => {
-                      const aNum = parseInt(a.slice(1));
-                      const bNum = parseInt(b.slice(1));
-                      return aNum - bNum;
-                    })
-                    .map(([matchKey, matchAssignments]) => (
-                      <div key={matchKey} className="bg-white rounded-xl shadow p-4">
-                        <div className="font-bold mb-2 uppercase">{matchKey}</div>
-                        <div className="space-y-2">
-                          {matchAssignments.map(a => (
-                            <div key={a.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-xs font-bold">
-                                  {a.robotPosition}
-                                </div>
-                                <span className="text-sm font-medium">{a.scoutName}</span>
-                              </div>
-                              <button
-                                onClick={() => deleteAssignment(a.id)}
-                                className="p-1 hover:bg-red-100 rounded text-red-600"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          ))}
+          {/* Event Selector */}
+          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Event
+            </label>
+            <select
+              value={selectedEvent}
+              onChange={(e) => setSelectedEvent(e.target.value)}
+              className="w-full max-w-md border rounded p-2"
+            >
+              {events.map(event => (
+                <option key={event.key} value={event.key}>
+                  {event.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Assignments List */}
+          {loading ? (
+            <div className="bg-white rounded-xl shadow-md p-12 text-center">
+              <div className="text-4xl mb-4">⏳</div>
+              <p className="text-gray-600">Loading assignments...</p>
+            </div>
+          ) : assignments.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-md p-12 text-center">
+              <div className="text-6xl mb-4">📋</div>
+              <h2 className="text-2xl font-semibold mb-2">No Assignments Yet</h2>
+              <p className="text-gray-600 mb-6">
+                Create assignments to organize your scouting team for this event.
+              </p>
+              <button
+                onClick={() => setShowAssignModal(true)}
+                className="px-6 py-3 rounded text-white font-semibold"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                Create First Assignment
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Match
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Scout
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Robot Position
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Assigned
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {assignments.map(assignment => (
+                    <tr key={assignment.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Calendar size={16} className="text-gray-400" />
+                          <span className="font-medium">{assignment.matchKey}</span>
                         </div>
-                      </div>
-                    ))
-                )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Users size={16} className="text-gray-400" />
+                          <span>{assignment.scoutName}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          Robot {assignment.robotPosition}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {new Date(assignment.assignedAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={() => deleteAssignment(assignment.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Assignment Modal */}
+          {showAssignModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+                <h2 className="text-2xl font-bold mb-4" style={{ color: "#c42221" }}>
+                  New Assignment
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Match Key
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., qm1, sf1m1"
+                      className="w-full border rounded p-2"
+                      id="matchKeyInput"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Scout
+                    </label>
+                    <select className="w-full border rounded p-2" id="scoutSelect">
+                      <option value="">Select Scout</option>
+                      {scouts.map(scout => (
+                        <option key={scout.uid} value={scout.uid}>
+                          {scout.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Robot Position
+                    </label>
+                    <select className="w-full border rounded p-2" id="positionSelect">
+                      <option value="">Select Position</option>
+                      <option value="1">Robot 1</option>
+                      <option value="2">Robot 2</option>
+                      <option value="3">Robot 3</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      const matchKey = (document.getElementById("matchKeyInput") as HTMLInputElement)?.value;
+                      const scoutId = (document.getElementById("scoutSelect") as HTMLSelectElement)?.value;
+                      const position = (document.getElementById("positionSelect") as HTMLSelectElement)?.value;
+                      
+                      if (matchKey && scoutId && position) {
+                        createAssignment(matchKey, scoutId, parseInt(position) as 1 | 2 | 3);
+                      } else {
+                        alert("Please fill in all fields");
+                      }
+                    }}
+                    className="flex-1 py-2 rounded text-white font-semibold"
+                    style={{ backgroundColor: "#c42221" }}
+                  >
+                    Create
+                  </button>
+                  <button
+                    onClick={() => setShowAssignModal(false)}
+                    className="flex-1 py-2 rounded border-2 border-gray-300 text-gray-700 font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
-
-            {/* Quick Assign */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Quick Assign</h2>
-                <div className="bg-gray-200 text-gray-800 px-3 py-1 rounded-full text-sm font-semibold">
-                  {scouts.length} scouts
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow p-4 mb-4">
-                <h3 className="font-semibold mb-3">Unassigned Matches</h3>
-                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                  {unassignedMatches.slice(0, 20).map(match => (
-                    <button
-                      key={match}
-                      onClick={() => {
-                        const matchKey = match;
-                        const scout = scouts[0];
-                        if (scout) createAssignment(matchKey, scout.uid, 1);
-                      }}
-                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded font-mono text-sm uppercase"
-                    >
-                      {match}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow p-4">
-                <h3 className="font-semibold mb-3">Available Scouts</h3>
-                <div className="space-y-2">
-                  {scouts.map(scout => (
-                    <div key={scout.uid} className="flex items-center gap-3 p-3 bg-gray-50 rounded">
-                      <Users size={20} className="text-gray-400" />
-                      <div className="flex-1">
-                        <div className="font-medium">{scout.displayName}</div>
-                        <div className="text-xs text-gray-600 capitalize">{scout.role}</div>
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {assignments.filter(a => a.scoutId === scout.uid).length} assigned
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
