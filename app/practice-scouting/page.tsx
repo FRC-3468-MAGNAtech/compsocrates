@@ -182,29 +182,28 @@ function PracticeScoutingContent() {
 
     setLoading(true);
     try {
-      // Calculate average accuracy across all 3 robots
-      const accuracies = allRobotData.map(data => calculateAccuracy(data, currentMatch.actualData));
-      const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
-
-      // Calculate average score
+      // Calculate average score across all 3 robots
       const scores = allRobotData.map(data => calculateScoutedScore(data));
       const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      
+      // Calculate average accuracy across all 3 robots
+      const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.officialData.score));
+      const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
 
       // Create session record
       const session: Omit<PracticeSession, 'id'> = {
         scoutName: userData.displayName,
-        matchId: currentMatch.id || '',
+        scoutId: userData.uid,
+        matchKey: currentMatch.matchKey,
         matchNumber: currentMatch.matchNumber,
-        matchType: currentMatch.matchType,
         teamNumber: currentMatch.teamNumber,
         difficulty: selectedDifficulty || 'easy',
-        mode: selectedMode || 'trial',
         scoutedData: allRobotData[0], // Store first robot as primary
-        actualData: currentMatch.actualData,
         scoutedScore: avgScore,
-        actualScore: currentMatch.actualScore,
+        officialScore: currentMatch.officialData.score,
         accuracy: avgAccuracy,
-        timestamp: Date.now(),
+        startedAt: Date.now() - 180000,
+        completedAt: Date.now(),
       };
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
@@ -217,6 +216,7 @@ function PracticeScoutingContent() {
       setLoading(false);
     }
   }
+
 
   function resetPractice() {
     setCurrentStep('select');
@@ -368,8 +368,7 @@ function PracticeScoutingContent() {
               {/* Match Info */}
               <div className="bg-black bg-opacity-90 text-white p-4">
                 <h3 className="font-semibold text-lg">
-                  {currentMatch.matchType === 'qualification' ? 'Qualification' : 
-                   currentMatch.matchType === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
+                  Practice Match {currentMatch.matchNumber}
                 </h3>
                 <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.teamNumber}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
