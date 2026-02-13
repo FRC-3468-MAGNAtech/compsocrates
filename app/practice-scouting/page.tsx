@@ -84,7 +84,7 @@ function PracticeScoutingContent() {
     
     if (!videoId) return url;
     
-    const controls = selectedMode === 'trial' ? 1 : 0;
+    const controls = selectedMode === 'trial' || selectedMode === null ? 1 : 0;
     
     return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=${controls}&disablekb=${controls === 0 ? 1 : 0}&modestbranding=1&rel=0&fs=0`;
   }
