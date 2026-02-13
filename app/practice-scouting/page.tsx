@@ -113,7 +113,7 @@ function PracticeScoutingContent() {
       setCurrentRobotIndex(0);
       setRobotSessions([]);
 
-     setFormData(prev => ({ ...prev, teamNumber: randomMatch.allianceTeams[0].toString() }));
+     setFormData(prev => ({ ...prev, teamNumber: randomMatch.allianceTeams?.[0]?.toString() || "" }));
 
       // Detect human player (usually position 2, but check match data)
       // For now, assume it's random or position 2
@@ -133,7 +133,7 @@ function PracticeScoutingContent() {
 setHumanPlayerRobot(null); // Reset human player tracking
 
   async function submitCurrentRobot() {
-    if (!currentMatch || !userData) return;
+    if (!currentMatch || !userData || !currentMatch.allianceTeams) return;
 
     const robotData = { ...formData };
     setRobotSessions(prev => [...prev, robotData]);
@@ -147,7 +147,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
     
     const notes = formData.notes;
     setFormData({
-      teamNumber: currentMatch.allianceTeams[currentRobotIndex + 1].toString(),
+      teamNumber: currentMatch.allianceTeams[currentRobotIndex + 1]?.toString() || "",
       startingPosition: "",
       leftStartingZone: false,
       autoCoralMissed: 0,
@@ -368,7 +368,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                   {currentMatch.matchType === 'qualification' ? 'Qualification' : 
                    currentMatch.matchType === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
                 </h3>
-                <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
+                <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams?.[currentRobotIndex] || "Unknown"}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
                 {selectedMode === 'competitive' && (
                   <p className="text-xs mt-2 text-yellow-300">⚠️ Video cannot be paused</p>
