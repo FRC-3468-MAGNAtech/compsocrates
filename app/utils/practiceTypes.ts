@@ -14,9 +14,8 @@ export interface PracticeMatch {
   alliance: 'red' | 'blue';
   allianceScore: number;
   
-  // Specific team to watch
-  teamPosition: number; // 0, 1, or 2 (index in team array)
-  teamNumber: number;
+  // FIX 3: All 3 teams in the alliance (instead of just one)
+  allianceTeams: number[]; // [team1, team2, team3]
   
   // Actual score for accuracy comparison
   actualScore: number;

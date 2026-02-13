@@ -121,37 +121,42 @@ async function setupPracticeMatches() {
           const alliance = match.alliances[allianceColor];
           const difficulty = categorizeMatchDifficulty(alliance.score);
           
-          // Create a practice match for each team on the alliance
-          for (let position = 0; position < alliance.team_keys.length; position++) {
-            const teamKey = alliance.team_keys[position];
-            const teamNumber = extractTeamNumber(teamKey);
-            
-            const practiceMatch = {
-              matchKey: match.key,
-              eventName: event.name,
-              eventKey: event.key,
-              matchNumber: match.match_number,
-              videoUrl,
-              difficulty,
-              alliance: allianceColor,
-              allianceScore: alliance.score,
-              teamPosition: position,
-              teamNumber,
-              officialScore: alliance.score,
+          // FIX 3: Store all 3 teams in one document
+          const allianceTeams = alliance.team_keys.map((key: string) => 
+            parseInt(extractTeamNumber(key))
+          );
+          
+          const practiceMatch = {
+            matchKey: match.key,
+            eventName: event.name,
+            eventKey: event.key,
+            matchNumber: match.match_number,
+            matchType: match.comp_level === 'qm' ? 'qualification' : 
+                      match.comp_level === 'qf' || match.comp_level === 'sf' || match.comp_level === 'f' ? 'playoff' : 
+                      'practice',
+            videoUrl,
+            difficulty,
+            alliance: allianceColor,
+            allianceScore: alliance.score,
+            allianceTeams, // All 3 teams here!
+            actualScore: alliance.score,
+            officialData: {
+              score: alliance.score,
               penaltyPoints: match.score_breakdown?.[allianceColor]?.foulPoints || 0,
-              createdAt: Date.now(),
-            };
+              breakdown: match.score_breakdown?.[allianceColor] || {},
+            },
+            createdAt: Date.now(),
+          };
+          
+          try {
+            await addToFirestore('practiceMatches', practiceMatch);
+            totalMatches++;
             
-            try {
-              await addToFirestore('practiceMatches', practiceMatch);
-              totalMatches++;
-              
-              if (totalMatches % 10 === 0) {
-                console.log(`✅ Added ${totalMatches} practice matches...`);
-              }
-            } catch (error) {
-              console.error(`❌ Error adding match ${match.key}:`, error);
+            if (totalMatches % 10 === 0) {
+              console.log(`✅ Added ${totalMatches} practice matches...`);
             }
+          } catch (error) {
+            console.error(`❌ Error adding match ${match.key}:`, error);
           }
         }
       }

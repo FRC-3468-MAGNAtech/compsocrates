@@ -344,6 +344,7 @@ function ScoutFormContent() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");
+  const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
   const [selectedMatch, setSelectedMatch] = useState<{ id: number; type?: "qualification" | "practice" | "finals"; bracket?: "upper" | "lower" }>({ 
     id: 23, 
     type: "qualification" 
@@ -381,13 +382,11 @@ function ScoutFormContent() {
     notes: "",
   });
 
-  const handleMatchSelect = (id: number, bracket?: "upper" | "lower") => {
-    if (bracket) {
-      setSelectedMatch({ id, type: "finals", bracket });
-    } else {
-      setSelectedMatch({ id, type: "qualification" });
-    }
-  };
+function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
+  // When called from finals bracket, id is which position, bracket is upper/lower
+  setSelectedMatch({ id: 0, type: "finals", bracket });
+  setFinalsStep("number");
+}
 
   const getMatchDisplay = () => {
     if (selectedMatch.type === "finals" && selectedMatch.bracket) {
@@ -942,11 +941,74 @@ function ScoutFormContent() {
         )}
 
         {/* STEP 4 — FINALS */}
-        {modalStep === "finals" && (
+        {modalStep === "finals" && finalsStep === "bracket" && (
           <FinalsBracket
             setSelectedMatch={handleMatchSelect}
             setModalOpen={setModalOpen}
           />
+        )}
+        
+        {modalStep === "finals" && finalsStep === "number" && (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <button
+                onClick={() => {
+                  setFinalsStep("bracket");
+                  setSelectedMatch({ id: 0, type: "qualification" });
+                }}
+                className="text-gray-600 hover:text-gray-900 flex items-center gap-2"
+              >
+                ← Back to Bracket
+              </button>
+              <h2 className="text-xl font-semibold">
+                Select Finals Match Number
+              </h2>
+              <div className="w-32"></div>
+            </div>
+
+            <p className="text-gray-600 mb-6 text-center">
+              Which finals match are you scouting?<br/>
+              <span className="text-sm">
+                ({selectedMatch.bracket === "upper" ? "Upper" : "Lower"} Bracket Finals)
+              </span>
+            </p>
+
+            <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
+              {[14, 15, 16].map(matchNum => (
+                <button
+                  key={matchNum}
+                  onClick={() => {
+                    setSelectedMatch(prev => ({
+                      ...prev,
+                      id: matchNum
+                    }));
+                    setModalOpen(false);
+                    setModalStep("type");
+                    setFinalsStep("bracket");
+                  }}
+                  className="group relative p-8 border-2 border-gray-300 rounded-2xl hover:border-red-500 hover:bg-red-50 transition-all hover:shadow-lg"
+                >
+                  <div className="text-center">
+                    <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "#c42221" }}>
+                      {matchNum}
+                    </div>
+                    <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">
+                      Finals Match {matchNum}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      {matchNum === 14 && "First Finals"}
+                      {matchNum === 15 && "Second Finals"}
+                      {matchNum === 16 && "Third Finals (if needed)"}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <p className="text-center text-sm text-gray-500 mt-6">
+              Select the specific finals match you're scouting
+            </p>
+          </>
         )}
       </Modal>
         </div>

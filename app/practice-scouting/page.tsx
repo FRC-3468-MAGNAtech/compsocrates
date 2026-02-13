@@ -33,6 +33,7 @@ function PracticeScoutingContent() {
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
   const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
   const [robotSessions, setRobotSessions] = useState<any[]>([]);
+  const [humanPlayerRobot, setHumanPlayerRobot] = useState<number | null>(null); // 0, 1, 2, or null
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -112,7 +113,13 @@ function PracticeScoutingContent() {
       setCurrentRobotIndex(0);
       setRobotSessions([]);
 
-      setFormData(prev => ({ ...prev, teamNumber: randomMatch.teamNumber.toString() }));
+     setFormData(prev => ({ ...prev, teamNumber: randomMatch.allianceTeams[0].toString() }));
+
+      // Detect human player (usually position 2, but check match data)
+      // For now, assume it's random or position 2
+      // In a real scenario, this would come from TBA match data
+      const humanPlayerPos = Math.floor(Math.random() * 3); // Random for demo
+      setHumanPlayerRobot(humanPlayerPos);
 
       setCurrentStep('practice');
     } catch (error) {
@@ -122,6 +129,8 @@ function PracticeScoutingContent() {
       setLoading(false);
     }
   }
+
+setHumanPlayerRobot(null); // Reset human player tracking
 
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
@@ -138,7 +147,7 @@ function PracticeScoutingContent() {
     
     const notes = formData.notes;
     setFormData({
-      teamNumber: currentMatch.teamNumber.toString(),
+      teamNumber: currentMatch.allianceTeams[currentRobotIndex + 1].toString(),
       startingPosition: "",
       leftStartingZone: false,
       autoCoralMissed: 0,
@@ -186,7 +195,6 @@ function PracticeScoutingContent() {
         matchId: currentMatch.id || '',
         matchNumber: currentMatch.matchNumber,
         matchType: currentMatch.matchType || 'practice',
-        teamNumber: currentMatch.teamNumber,
         difficulty: selectedDifficulty || 'easy',
         mode: selectedMode || 'trial',
         scoutedData: allRobotData[0],
@@ -360,7 +368,7 @@ function PracticeScoutingContent() {
                   {currentMatch.matchType === 'qualification' ? 'Qualification' : 
                    currentMatch.matchType === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
                 </h3>
-                <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.teamNumber}</p>
+                <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
                 {selectedMode === 'competitive' && (
                   <p className="text-xs mt-2 text-yellow-300">⚠️ Video cannot be paused</p>
@@ -389,6 +397,26 @@ function PracticeScoutingContent() {
                   ))}
                 </div>
               </div>
+
+              {humanPlayerRobot === currentRobotIndex && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-yellow-800">
+                        ⚠️ This match, include the <strong>Human Player</strong>
+                      </p>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        They operate a player station instead of a robot on the field
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* PRE-MATCH INFO */}
               <div className="bg-white rounded-xl shadow p-4">
