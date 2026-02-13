@@ -27,6 +27,8 @@ type PracticeMode = 'trial' | 'competitive';
 function PracticeScoutingContent() {
   const router = useRouter();
   const { userData } = useAuth();
+  
+  // State
   const [currentStep, setCurrentStep] = useState<'select' | 'practice' | 'results'>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | null>(null);
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
@@ -253,6 +255,18 @@ setHumanPlayerRobot(null); // Reset human player tracking
       incidents: [],
       notes: "",
     });
+  }
+
+  // Don't render until auth is ready
+  if (!userData) {
+    return (
+      <div className="flex h-screen bg-gray-100 items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-gray-300 border-t-red-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
