@@ -487,9 +487,9 @@ function AnalyticsPageContent() {
             )}
           </>
         )}
-        {activeView === "team-averages" && <div className="h-full flex items-center justify-center text-gray-500">Team Averages - Coming Soon</div>}
-        {activeView === "match-breakdown" && <div className="h-full flex items-center justify-center text-gray-500">Match Breakdown - Coming Soon</div>}
-        {activeView === "rankings" && <div className="h-full flex items-center justify-center text-gray-500">Rankings - Coming Soon</div>}
+        {activeView === "team-averages" && <TeamAveragesView rawData={filteredByEvent} showPractice={showPractice} selectedEvent={selectedEvent} />}
+        {activeView === "match-breakdown" && <MatchBreakdownView rawData={filteredByEvent} />}
+        {activeView === "rankings" && <RankingsView rawData={filteredByEvent} showPractice={showPractice} />}
       </div>
       </div>
     </div>
@@ -501,5 +501,151 @@ export default function AnalyticsPage() {
     <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
       <AnalyticsPageContent />
     </ProtectedRoute>
+  );
+}
+
+// ===== EMBEDDED VIEW COMPONENTS =====
+
+function TeamAveragesView({ rawData, showPractice, selectedEvent }: { rawData: Entry[], showPractice: boolean, selectedEvent: string }) {
+  const teamStats: { [team: string]: any } = {};
+  
+  rawData.forEach(entry => {
+    const team = entry.teamNumber;
+    if (!teamStats[team]) {
+      teamStats[team] = {
+        teamNumber: team,
+        entries: [],
+        totalScore: 0,
+        matchCount: 0,
+      };
+    }
+    teamStats[team].entries.push(entry);
+    teamStats[team].totalScore += scoreEntry(entry);
+    teamStats[team].matchCount++;
+  });
+
+  const teams = Object.values(teamStats).map(t => ({
+    ...t,
+    avgScore: t.matchCount > 0 ? Math.round(t.totalScore / t.matchCount) : 0,
+  })).sort((a, b) => b.avgScore - a.avgScore);
+
+  return (
+    <div className="p-6 overflow-y-auto">
+      <h2 className="text-2xl font-bold mb-4">Team Averages</h2>
+      <p className="text-sm text-gray-600 mb-4">{teams.length} teams • {rawData.length} total entries</p>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-3 text-left">Team</th>
+              <th className="p-3 text-left">Matches</th>
+              <th className="p-3 text-left">Avg Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map(team => (
+              <tr key={team.teamNumber} className="border-t">
+                <td className="p-3 font-semibold">{team.teamNumber}</td>
+                <td className="p-3">{team.matchCount}</td>
+                <td className="p-3 font-bold" style={{ color: "#c42221" }}>{team.avgScore}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RankingsView({ rawData, showPractice }: { rawData: Entry[], showPractice: boolean }) {
+  const teamStats: { [team: string]: any } = {};
+  
+  rawData.forEach(entry => {
+    const team = entry.teamNumber;
+    if (!teamStats[team]) {
+      teamStats[team] = {
+        teamNumber: team,
+        scores: [],
+      };
+    }
+    teamStats[team].scores.push(scoreEntry(entry));
+  });
+
+  const rankings = Object.values(teamStats).map(t => ({
+    teamNumber: t.teamNumber,
+    avgScore: t.scores.length > 0 ? Math.round(t.scores.reduce((a: number, b: number) => a + b, 0) / t.scores.length) : 0,
+    highScore: Math.max(...t.scores, 0),
+    matchesPlayed: t.scores.length,
+  })).sort((a, b) => b.avgScore - a.avgScore);
+
+  return (
+    <div className="p-6 overflow-y-auto">
+      <h2 className="text-2xl font-bold mb-4">Rankings</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-3 text-left">Rank</th>
+              <th className="p-3 text-left">Team</th>
+              <th className="p-3 text-left">Avg Score</th>
+              <th className="p-3 text-left">High Score</th>
+              <th className="p-3 text-left">Matches</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rankings.map((team, idx) => (
+              <tr key={team.teamNumber} className="border-t">
+                <td className="p-3">#{idx + 1}</td>
+                <td className="p-3 font-semibold">{team.teamNumber}</td>
+                <td className="p-3 font-bold" style={{ color: "#c42221" }}>{team.avgScore}</td>
+                <td className="p-3">{team.highScore}</td>
+                <td className="p-3">{team.matchesPlayed}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function MatchBreakdownView({ rawData }: { rawData: Entry[] }) {
+  const matchGroups: { [match: string]: Entry[] } = {};
+  
+  rawData.forEach(entry => {
+    const key = entry.matchNumber || "Unknown";
+    if (!matchGroups[key]) matchGroups[key] = [];
+    matchGroups[key].push(entry);
+  });
+
+  const matches = Object.entries(matchGroups).map(([match, entries]) => ({
+    match,
+    entries,
+    avgScore: entries.length > 0 ? Math.round(entries.reduce((sum, e) => sum + scoreEntry(e), 0) / entries.length) : 0,
+  })).sort((a, b) => {
+    const aNum = parseInt(a.match.replace(/\D/g, '')) || 0;
+    const bNum = parseInt(b.match.replace(/\D/g, '')) || 0;
+    return aNum - bNum;
+  });
+
+  return (
+    <div className="p-6 overflow-y-auto">
+      <h2 className="text-2xl font-bold mb-4">Match Breakdown</h2>
+      <div className="space-y-4">
+        {matches.map(m => (
+          <div key={m.match} className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold text-lg mb-2">Match {m.match}</h3>
+            <p className="text-sm text-gray-600">{m.entries.length} entries • Avg Score: {m.avgScore}</p>
+            <div className="mt-2 flex gap-2 flex-wrap">
+              {m.entries.map((e, i) => (
+                <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">
+                  Team {e.teamNumber}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

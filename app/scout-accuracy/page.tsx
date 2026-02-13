@@ -44,7 +44,7 @@ function ScoutAccuracyContent() {
         const scoutName = scoutDoc.data().displayName;
         
         // Get all scouting entries by this scout
-        const entriesQuery = query(collection(db, "scoutingEntries"), where("scoutName", "==", scoutName));
+        const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
         const entriesSnapshot = await getDocs(entriesQuery);
         
         // Get practice sessions from Firebase

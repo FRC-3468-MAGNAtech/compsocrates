@@ -92,6 +92,7 @@ export default function Sidebar() {
   const coachNavItems = [
     { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
     { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
+    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
     { href: "/form-builder", label: "Form Builder", icon: Wrench },
     { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: Target },
@@ -106,15 +107,8 @@ export default function Sidebar() {
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
   ];
 
-  // Coaches with special roles also get practice scouting
+  // Set navigation based on role
   let navItems = isCoach ? coachNavItems : scoutNavItems;
-  if (isCoach && hasSpecialRole) {
-    navItems = [
-      ...coachNavItems.slice(0, 2),
-      { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
-      ...coachNavItems.slice(2)
-    ];
-  }
 
   // Mobile overlay
   const MobileOverlay = () => (
