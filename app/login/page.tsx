@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
+import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 
 function LoginContent() {
   const router = useRouter();
@@ -76,6 +77,9 @@ function LoginContent() {
               />
             </div>
 
+            <GoogleSignInButton />
+            <div className="text-center my-4 text-gray-500">or</div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Password

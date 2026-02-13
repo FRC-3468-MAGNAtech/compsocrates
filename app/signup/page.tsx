@@ -6,6 +6,7 @@ import { collection, doc, setDoc, getDoc, addDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { UserCircle, Send } from "lucide-react";
+import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -182,6 +183,9 @@ export default function SignupPage() {
                 placeholder="john@example.com"
               />
             </div>
+
+            <GoogleSignInButton />
+            <div className="text-center my-4 text-gray-500">or</div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>

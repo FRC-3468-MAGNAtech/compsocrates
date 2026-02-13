@@ -329,38 +329,15 @@ function ScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
   
-  // Check if event is active
-  const eventActive = isEventActive();
-
-  // If no event is active, show lock screen
-  if (!eventActive) {
-    return (
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center p-8 bg-white rounded-xl shadow max-w-md">
-            <div className="text-6xl mb-4">📅</div>
-            <h2 className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
-              Event Not Active
-            </h2>
-            <p className="text-gray-600 mb-4">
-              The scout form is only available during competition events (Arkansas Regional: March 18-21 or Bayou Regional: April 1-4).
-            </p>
-            <p className="text-gray-600 text-sm mb-4">
-              Please use Practice Scouting to improve your skills until the event begins.
-            </p>
-            <button
-              onClick={() => router.push("/practice-scouting")}
-              className="px-6 py-2 rounded-lg text-white font-semibold"
-              style={{ backgroundColor: "#c42221" }}
-            >
-              Go to Practice Scouting
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+ // If no event is active, show lock screen
+  {!isEventActive() && (
+  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+    <p className="text-sm text-yellow-700">
+      ⚠️ Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
+      You can see the form though!
+    </p>
+  </div>
+)}
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

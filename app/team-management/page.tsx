@@ -18,6 +18,9 @@ interface TeamMember {
   teamId: string;
 }
 
+const [showRoleSelector, setShowRoleSelector] = useState(false);
+const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
+
 function TeamManagementContent() {
   const { userData } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -256,8 +259,10 @@ function TeamManagementContent() {
                                 Change Role
                               </button>
                               <button
-                                onClick={() => removeMember(member.uid)}
-                                className="px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm"
+                                onClick={() => {
+                                setSelectedMember(member);
+                                setShowRoleSelector(true);
+                              }}
                               >
                                 Remove
                               </button>
@@ -341,6 +346,17 @@ function TeamManagementContent() {
                     ℹ️ Only team admins can manage team members. Contact your team admin to make changes.
                   </p>
                 </div>
+              )}
+              {showRoleSelector && selectedMember && (
+                <RoleSelector
+                  currentRole={selectedMember.role}
+                  currentSpecialRoles={selectedMember.specialRoles || []}
+                  onSave={(role, specialRoles) => {
+                    handleUpdateRole(selectedMember.uid, role, specialRoles);
+                    setShowRoleSelector(false);
+                  }}
+                  onClose={() => setShowRoleSelector(false)}
+                />
               )}
             </>
           )}

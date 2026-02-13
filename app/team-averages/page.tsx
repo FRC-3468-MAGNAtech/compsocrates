@@ -42,7 +42,7 @@ function TeamAveragesContent() {
 
   async function loadTeams() {
     try {
-      const entriesSnap = await getDocs(collection(db, "scoutingEntries"));
+      const entriesSnap = await getDocs(collection(db, "scouting"));
       const teams = [...new Set(entriesSnap.docs.map(doc => doc.data().teamNumber))].sort();
       setAllTeams(teams);
       if (teams.length > 0) setSelectedTeam(teams[0]);
@@ -57,7 +57,7 @@ function TeamAveragesContent() {
     setLoading(true);
     try {
       const q = query(
-        collection(db, "scoutingEntries"),
+        collection(db, "scouting"),
         where("teamNumber", "==", teamNumber)
       );
       const snap = await getDocs(q);

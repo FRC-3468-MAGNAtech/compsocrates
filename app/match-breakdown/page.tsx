@@ -35,7 +35,7 @@ function MatchBreakdownContent() {
 
   async function loadMatches() {
     try {
-      const entriesSnap = await getDocs(collection(db, "scoutingEntries"));
+      const entriesSnap = await getDocs(collection(db, "scouting"));
       const matches = [...new Set(entriesSnap.docs.map(doc => doc.data().matchId || doc.data().matchNumber))]
         .filter(Boolean)
         .sort((a: any, b: any) => {
@@ -60,7 +60,7 @@ function MatchBreakdownContent() {
     setLoading(true);
     try {
       const entriesQuery = query(
-        collection(db, "scoutingEntries"),
+        collection(db, "scouting"),
         where("matchId", "==", matchId)
       );
       const entriesSnap = await getDocs(entriesQuery);

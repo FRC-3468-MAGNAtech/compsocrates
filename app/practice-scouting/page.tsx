@@ -8,7 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
-import { Play, Pause, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -31,12 +31,11 @@ function PracticeScoutingContent() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | null>(null);
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
-  const [currentRobotIndex, setCurrentRobotIndex] = useState(0); // 0, 1, or 2
+  const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
   const [robotSessions, setRobotSessions] = useState<any[]>([]);
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const [videoPaused, setVideoPaused] = useState(false);
 
   const [formData, setFormData] = useState({
     teamNumber: "",
@@ -69,7 +68,6 @@ function PracticeScoutingContent() {
     notes: "",
   });
 
-  // Convert YouTube URL to embed URL
   function getYouTubeEmbedUrl(url: string): string {
     if (!url) return "";
     
@@ -85,7 +83,6 @@ function PracticeScoutingContent() {
     
     if (!videoId) return url;
     
-    // Trial mode: allow controls. Competitive: no controls
     const controls = selectedMode === 'trial' ? 1 : 0;
     
     return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=${controls}&disablekb=${controls === 0 ? 1 : 0}&modestbranding=1&rel=0&fs=0`;
@@ -115,7 +112,6 @@ function PracticeScoutingContent() {
       setCurrentRobotIndex(0);
       setRobotSessions([]);
 
-      // Pre-fill first robot's team number
       setFormData(prev => ({ ...prev, teamNumber: randomMatch.teamNumber.toString() }));
 
       setCurrentStep('practice');
@@ -130,20 +126,16 @@ function PracticeScoutingContent() {
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
 
-    // Save current robot's data
     const robotData = { ...formData };
     setRobotSessions(prev => [...prev, robotData]);
 
-    // If this was robot 3 (index 2), end session
     if (currentRobotIndex === 2) {
       await submitPracticeSession([...robotSessions, robotData]);
       return;
     }
 
-    // Move to next robot
     setCurrentRobotIndex(prev => prev + 1);
     
-    // Reset form for next robot (keep notes)
     const notes = formData.notes;
     setFormData({
       teamNumber: currentMatch.teamNumber.toString(),
@@ -182,28 +174,26 @@ function PracticeScoutingContent() {
 
     setLoading(true);
     try {
-      // Calculate average score across all 3 robots
       const scores = allRobotData.map(data => calculateScoutedScore(data));
       const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-      
-      // Calculate average accuracy across all 3 robots
-      const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.officialData.score));
+
+      // FIXED: Use actualScore instead of officialData.score
+      const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.actualScore || 0));
       const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
 
-      // Create session record
-      const session: Omit<PracticeSession, 'id'> = {
+      const session: any = {
         scoutName: userData.displayName,
-        scoutId: userData.uid,
-        matchKey: currentMatch.matchKey,
+        matchId: currentMatch.id || '',
         matchNumber: currentMatch.matchNumber,
+        matchType: currentMatch.matchType || 'practice',
         teamNumber: currentMatch.teamNumber,
         difficulty: selectedDifficulty || 'easy',
-        scoutedData: allRobotData[0], // Store first robot as primary
+        mode: selectedMode || 'trial',
+        scoutedData: allRobotData[0],
+        actualScore: currentMatch.actualScore || 0,
         scoutedScore: avgScore,
-        officialScore: currentMatch.officialData.score,
         accuracy: avgAccuracy,
-        startedAt: Date.now() - 180000,
-        completedAt: Date.now(),
+        timestamp: Date.now(),
       };
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
@@ -211,12 +201,11 @@ function PracticeScoutingContent() {
       setCurrentStep('results');
     } catch (error) {
       console.error('Error submitting practice session:', error);
-      alert('Error submitting practice session.');
+      alert('Error submitting practice session: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
   }
-
 
   function resetPractice() {
     setCurrentStep('select');
@@ -368,7 +357,8 @@ function PracticeScoutingContent() {
               {/* Match Info */}
               <div className="bg-black bg-opacity-90 text-white p-4">
                 <h3 className="font-semibold text-lg">
-                  Practice Match {currentMatch.matchNumber}
+                  {currentMatch.matchType === 'qualification' ? 'Qualification' : 
+                   currentMatch.matchType === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
                 </h3>
                 <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.teamNumber}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
@@ -400,7 +390,7 @@ function PracticeScoutingContent() {
                 </div>
               </div>
 
-              {/* Form sections... (same as before but simplified for space) */}
+              {/* PRE-MATCH INFO */}
               <div className="bg-white rounded-xl shadow p-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Pre-Match Info</h2>
                 <div className="space-y-3">
@@ -421,7 +411,106 @@ function PracticeScoutingContent() {
                 </div>
               </div>
 
-              {/* Submit button */}
+              {/* AUTONOMOUS */}
+              <div className="bg-white rounded-xl shadow p-4">
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Autonomous</h2>
+                <label className="flex items-center gap-2 cursor-pointer mb-3">
+                  <input type="checkbox" checked={formData.leftStartingZone} onChange={(e) => setFormData({ ...formData, leftStartingZone: e.target.checked })} className="w-4 h-4" />
+                  <span className="text-sm font-medium text-gray-700">Left Starting Zone</span>
+                </label>
+                <div className="border-t pt-3">
+                  <h3 className="font-semibold text-base mb-2">Auto Coral</h3>
+                  <Counter label="Missed" value={formData.autoCoralMissed} onChange={(val) => setFormData({ ...formData, autoCoralMissed: val })} />
+                  <Counter label="Level 1" value={formData.autoCoralL1} onChange={(val) => setFormData({ ...formData, autoCoralL1: val })} />
+                  <Counter label="Level 2" value={formData.autoCoralL2} onChange={(val) => setFormData({ ...formData, autoCoralL2: val })} />
+                  <Counter label="Level 3" value={formData.autoCoralL3} onChange={(val) => setFormData({ ...formData, autoCoralL3: val })} />
+                  <Counter label="Level 4" value={formData.autoCoralL4} onChange={(val) => setFormData({ ...formData, autoCoralL4: val })} />
+                </div>
+                <div className="border-t pt-3 mt-3">
+                  <h3 className="font-semibold text-base mb-2">Auto Algae Processor</h3>
+                  <Counter label="Missed" value={formData.autoAlgaeProcessorMissed} onChange={(val) => setFormData({ ...formData, autoAlgaeProcessorMissed: val })} />
+                  <Counter label="Scored" value={formData.autoAlgaeProcessorScored} onChange={(val) => setFormData({ ...formData, autoAlgaeProcessorScored: val })} />
+                </div>
+                <div className="border-t pt-3 mt-3">
+                  <h3 className="font-semibold text-base mb-2">Auto Algae Net</h3>
+                  <Counter label="Missed" value={formData.autoAlgaeNetMissed} onChange={(val) => setFormData({ ...formData, autoAlgaeNetMissed: val })} />
+                  <Counter label="Scored" value={formData.autoAlgaeNetScored} onChange={(val) => setFormData({ ...formData, autoAlgaeNetScored: val })} />
+                </div>
+              </div>
+
+              {/* TELEOP */}
+              <div className="bg-white rounded-xl shadow p-4">
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Teleop</h2>
+                <div className="border-b pb-3">
+                  <h3 className="font-semibold text-base mb-2">Teleop Coral</h3>
+                  <Counter label="Missed" value={formData.teleopCoralMissed} onChange={(val) => setFormData({ ...formData, teleopCoralMissed: val })} />
+                  <Counter label="Level 1" value={formData.teleopCoralL1} onChange={(val) => setFormData({ ...formData, teleopCoralL1: val })} />
+                  <Counter label="Level 2" value={formData.teleopCoralL2} onChange={(val) => setFormData({ ...formData, teleopCoralL2: val })} />
+                  <Counter label="Level 3" value={formData.teleopCoralL3} onChange={(val) => setFormData({ ...formData, teleopCoralL3: val })} />
+                  <Counter label="Level 4" value={formData.teleopCoralL4} onChange={(val) => setFormData({ ...formData, teleopCoralL4: val })} />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer my-3">
+                  <input type="checkbox" checked={formData.teleopAlgaeRemoved} onChange={(e) => setFormData({ ...formData, teleopAlgaeRemoved: e.target.checked })} className="w-4 h-4" />
+                  <span className="text-sm font-medium text-gray-700">Removed Algae from Reef</span>
+                </label>
+                <div className="border-t pt-3">
+                  <h3 className="font-semibold text-base mb-2">Teleop Processor</h3>
+                  <Counter label="Missed" value={formData.teleopProcessorMissed} onChange={(val) => setFormData({ ...formData, teleopProcessorMissed: val })} />
+                  <Counter label="Scored" value={formData.teleopProcessorScored} onChange={(val) => setFormData({ ...formData, teleopProcessorScored: val })} />
+                </div>
+                <div className="border-t pt-3 mt-3">
+                  <h3 className="font-semibold text-base mb-2">Teleop Algae Net – Robot</h3>
+                  <Counter label="Missed" value={formData.teleopNetRobotMissed} onChange={(val) => setFormData({ ...formData, teleopNetRobotMissed: val })} />
+                  <Counter label="Scored" value={formData.teleopNetRobotScored} onChange={(val) => setFormData({ ...formData, teleopNetRobotScored: val })} />
+                </div>
+                <div className="border-t pt-3 mt-3">
+                  <h3 className="font-semibold text-base mb-2">Teleop Algae Net – Human</h3>
+                  <Counter label="Missed" value={formData.teleopNetHumanMissed} onChange={(val) => setFormData({ ...formData, teleopNetHumanMissed: val })} />
+                  <Counter label="Scored" value={formData.teleopNetHumanScored} onChange={(val) => setFormData({ ...formData, teleopNetHumanScored: val })} />
+                </div>
+              </div>
+
+              {/* ENDGAME */}
+              <div className="bg-white rounded-xl shadow p-4">
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Endgame</h2>
+                <Counter label="Failed Climb" value={formData.failedClimb} onChange={(val) => setFormData({ ...formData, failedClimb: val })} />
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stage Status</label>
+                  <select value={formData.stageStatus} onChange={(e) => setFormData({ ...formData, stageStatus: e.target.value })} className="w-full border rounded p-2">
+                    <option value="">Select Status</option>
+                    <option value="None">None</option>
+                    <option value="Parked">Parked</option>
+                    <option value="Shallow">Shallow</option>
+                    <option value="Deep">Deep</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* GENERAL */}
+              <div className="bg-white rounded-xl shadow p-4">
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>General</h2>
+                <div className="space-y-2">
+                  {['Died During Match', 'Never Started Match', 'Disabled by FRC', 'Recovered from Freeze', 'Tipped Over', 'Yellow Card', 'Red Card'].map((incident) => (
+                    <label key={incident} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.incidents.includes(incident)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData({ ...formData, incidents: [...formData.incidents, incident] });
+                          } else {
+                            setFormData({ ...formData, incidents: formData.incidents.filter(i => i !== incident) });
+                          }
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">{incident}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* SUBMIT BUTTON */}
               <div className="sticky bottom-0 bg-gray-100 pt-4 pb-2 space-y-2">
                 <button
                   onClick={submitCurrentRobot}
@@ -442,7 +531,7 @@ function PracticeScoutingContent() {
               </div>
             </div>
 
-            {/* Notes toggle */}
+            {/* NOTES TOGGLE BUTTON */}
             <button
               onClick={() => setNotesOpen(!notesOpen)}
               className="hidden md:block fixed right-0 top-1/2 -translate-y-1/2 bg-red-600 text-white px-2 py-8 rounded-l-lg shadow-lg hover:bg-red-700 z-10"
@@ -450,7 +539,7 @@ function PracticeScoutingContent() {
               {notesOpen ? <ChevronRight /> : <ChevronLeft />}
             </button>
 
-            {/* Notes panel */}
+            {/* NOTES PANEL */}
             <div className={`bg-white shadow-xl transition-all duration-300 overflow-y-auto ${notesOpen ? 'w-80' : 'w-0'} hidden md:block`}>
               {notesOpen && (
                 <div className="p-4">
@@ -475,7 +564,6 @@ function PracticeScoutingContent() {
             </h1>
             <p className="text-gray-600 mb-8">You've completed all 3 robots. Here's your score:</p>
 
-            {/* Accuracy */}
             <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center">
               <div className="inline-block px-4 py-1 bg-blue-100 text-blue-800 rounded-full text-sm mb-4">
                 {selectedMode === 'trial' ? 'Trial Mode' : 'Competitive Mode'}
@@ -485,6 +573,20 @@ function PracticeScoutingContent() {
                 {sessionResults.accuracy}%
               </div>
               <p className="text-gray-600">Average across all 3 robots</p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-md p-8 mb-6">
+              <h2 className="text-xl font-semibold mb-4">Score Comparison</h2>
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="font-semibold mb-2">Your Scouted Score</h3>
+                  <p className="text-4xl font-bold" style={{ color: "#c42221" }}>{sessionResults.scoutedScore}</p>
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-2">Actual Score</h3>
+                  <p className="text-4xl font-bold text-gray-700">{sessionResults.actualScore}</p>
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-4">

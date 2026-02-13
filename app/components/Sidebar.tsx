@@ -8,7 +8,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Wrench, Home, Menu, X, ChevronLeft, ChevronRight 
+  Wrench, Home, Menu, X, ChevronLeft, ChevronRight, Calendar 
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -96,6 +96,7 @@ export default function Sidebar() {
     { href: "/form-builder", label: "Form Builder", icon: Wrench },
     { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: Target },
     { href: "/team-management", label: "Team Management", icon: Users },
+    { href: "/assignments", label: "Assignments", icon: Calendar },
   ];
 
   const scoutNavItems = [
@@ -244,6 +245,13 @@ export default function Sidebar() {
                   onClick={() => setShowSettings(false)}
                 >
                   Account Settings
+                <Link
+                  href={`/profile/${userData.uid}`}
+                  className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
+                  onClick={() => setShowSettings(false)}
+                >
+                  View Profile
+                </Link>
                 </Link>
                 <button
                   onClick={async () => {

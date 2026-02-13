@@ -34,7 +34,7 @@ function RankingsContent() {
   async function loadRankings() {
     setLoading(true);
     try {
-      const entriesSnap = await getDocs(collection(db, "scoutingEntries"));
+      const entriesSnap = await getDocs(collection(db, "scouting"));
       const entries = entriesSnap.docs.map(doc => doc.data());
 
       // Group by team
