@@ -80,6 +80,7 @@ export interface PracticeSession {
   
   // Accuracy results
   scoutedScore: number;
+  actualScore: number;
   officialScore: number;
   accuracy: number; // 0-100 percentage
   
