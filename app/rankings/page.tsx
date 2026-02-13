@@ -5,31 +5,33 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import { useRouter } from "next/navigation";
-import { ChevronUp, ChevronDown, Trophy } from "lucide-react";
+import { Trophy, TrendingUp } from "lucide-react";
 
 interface TeamRanking {
-  rank: number;
   teamNumber: string;
   avgScore: number;
-  autoPoints: number;
-  teleopPoints: number;
-  climbRate: number;
   matchesPlayed: number;
+  highScore: number;
+  winRate: number;
 }
 
-type SortKey = "avgScore" | "autoPoints" | "teleopPoints" | "climbRate" | "matchesPlayed";
-
 function RankingsContent() {
-  const router = useRouter();
   const [rankings, setRankings] = useState<TeamRanking[]>([]);
+  const [selectedGame, setSelectedGame] = useState("REEFSCAPE");
+  const [selectedEvent, setSelectedEvent] = useState("all");
+  const [showPractice, setShowPractice] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("avgScore");
-  const [sortDesc, setSortDesc] = useState(true);
+
+  const events = [
+    { key: "all", name: "All Events" },
+    { key: "app-testing", name: "App Testing" },
+    { key: "rocketCity", name: "Rocket City Regional" },
+    { key: "bayou", name: "Bayou Regional" },
+  ];
 
   useEffect(() => {
     loadRankings();
-  }, []);
+  }, [selectedGame, selectedEvent, showPractice]);
 
   async function loadRankings() {
     setLoading(true);
@@ -37,77 +39,44 @@ function RankingsContent() {
       const entriesSnap = await getDocs(collection(db, "scouting"));
       const entries = entriesSnap.docs.map(doc => doc.data());
 
+      // Filter
+      const filtered = entries.filter(e => {
+        if (e.game !== selectedGame) return false;
+        if (!showPractice && e.matchType === "practice") return false;
+        // Add event filtering logic here
+        return true;
+      });
+
       // Group by team
-      const teamMap: Record<string, any[]> = {};
-      entries.forEach(e => {
-        if (!teamMap[e.teamNumber]) teamMap[e.teamNumber] = [];
-        teamMap[e.teamNumber].push(e);
-      });
-
-      // Calculate stats for each team
-      const teamRankings: TeamRanking[] = Object.entries(teamMap).map(([teamNumber, teamEntries]) => {
-        const totalAuto = teamEntries.reduce((sum, e) => {
-          let auto = 0;
-          if (e.leftStartingZone) auto += 3;
-          auto += (e.autoCoralL1 || 0) * 3;
-          auto += (e.autoCoralL2 || 0) * 4;
-          auto += (e.autoCoralL3 || 0) * 6;
-          auto += (e.autoCoralL4 || 0) * 7;
-          auto += (e.autoAlgaeProcessorScored || 0) * 6;
-          auto += (e.autoAlgaeNetScored || 0) * 4;
-          return sum + auto;
-        }, 0);
-
-        const totalTeleop = teamEntries.reduce((sum, e) => {
-          let teleop = 0;
-          teleop += (e.teleopCoralL1 || 0) * 2;
-          teleop += (e.teleopCoralL2 || 0) * 3;
-          teleop += (e.teleopCoralL3 || 0) * 4;
-          teleop += (e.teleopCoralL4 || 0) * 5;
-          teleop += (e.teleopProcessorScored || 0) * 6;
-          teleop += (e.teleopNetRobotScored || 0) * 4;
-          teleop += (e.teleopNetHumanScored || 0) * 4;
-          if (e.teleopAlgaeRemoved) teleop += 2;
-          return sum + teleop;
-        }, 0);
-
-        const totalEndgame = teamEntries.reduce((sum, e) => {
-          let endgame = 0;
-          if (e.stageStatus?.toLowerCase().includes("deep")) endgame = 12;
-          else if (e.stageStatus?.toLowerCase().includes("shallow")) endgame = 6;
-          else if (e.stageStatus?.toLowerCase().includes("park")) endgame = 2;
-          return sum + endgame;
-        }, 0);
-
-        const climbSuccesses = teamEntries.filter(e => 
-          e.stageStatus && !e.stageStatus.toLowerCase().includes("none")
-        ).length;
-
-        const avgScore = (totalAuto + totalTeleop + totalEndgame) / teamEntries.length;
-        const autoPoints = totalAuto / teamEntries.length;
-        const teleopPoints = totalTeleop / teamEntries.length;
-        const climbRate = (climbSuccesses / teamEntries.length) * 100;
-
-        return {
-          rank: 0,
-          teamNumber,
-          avgScore,
-          autoPoints,
-          teleopPoints,
-          climbRate,
-          matchesPlayed: teamEntries.length,
-        };
-      });
-
-      // Sort by avgScore descending by default
-      teamRankings.sort((a, b) => b.avgScore - a.avgScore);
+      const teamStats: { [team: string]: any } = {};
       
-      // Assign ranks
-      teamRankings.forEach((team, i) => {
-        team.rank = i + 1;
+      filtered.forEach(entry => {
+        const team = entry.teamNumber;
+        if (!teamStats[team]) {
+          teamStats[team] = {
+            scores: [],
+            wins: 0,
+            total: 0
+          };
+        }
+        
+        // Calculate score
+        const score = calculateScore(entry);
+        teamStats[team].scores.push(score);
+        teamStats[team].total++;
       });
 
-      setRankings(teamRankings);
+      // Convert to rankings
+      const rankingsList: TeamRanking[] = Object.entries(teamStats).map(([team, stats]) => ({
+        teamNumber: team,
+        avgScore: Math.round(stats.scores.reduce((a: number, b: number) => a + b, 0) / stats.scores.length),
+        matchesPlayed: stats.total,
+        highScore: Math.max(...stats.scores),
+        winRate: 0 // Calculate if win/loss data available
+      }));
+
+      rankingsList.sort((a, b) => b.avgScore - a.avgScore);
+      setRankings(rankingsList);
     } catch (error) {
       console.error("Error loading rankings:", error);
     } finally {
@@ -115,127 +84,175 @@ function RankingsContent() {
     }
   }
 
-  function handleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDesc(!sortDesc);
-    } else {
-      setSortKey(key);
-      setSortDesc(true);
-    }
-
-    const sorted = [...rankings].sort((a, b) => {
-      const aVal = a[key];
-      const bVal = b[key];
-      return sortDesc ? aVal - bVal : bVal - aVal;
-    });
-
-    // Reassign ranks
-    sorted.forEach((team, i) => {
-      team.rank = i + 1;
-    });
-
-    setRankings(sorted);
-  }
-
-  function SortHeader({ label, sortKey: key }: { label: string; sortKey: SortKey }) {
-    const isActive = sortKey === key;
-    return (
-      <th
-        onClick={() => handleSort(key)}
-        className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <span className="font-semibold">{label}</span>
-          {isActive && (
-            sortDesc ? <ChevronDown size={16} /> : <ChevronUp size={16} />
-          )}
-        </div>
-      </th>
-    );
+  function calculateScore(entry: any): number {
+    let score = 0;
+    if (entry.leftStartingZone) score += 3;
+    score += (entry.autoCoralL1 || 0) * 3;
+    score += (entry.autoCoralL2 || 0) * 4;
+    score += (entry.autoCoralL3 || 0) * 6;
+    score += (entry.autoCoralL4 || 0) * 7;
+    score += (entry.autoAlgaeProcessorScored || 0) * 6;
+    score += (entry.autoAlgaeNetScored || 0) * 4;
+    score += (entry.teleopCoralL1 || 0) * 2;
+    score += (entry.teleopCoralL2 || 0) * 3;
+    score += (entry.teleopCoralL3 || 0) * 4;
+    score += (entry.teleopCoralL4 || 0) * 5;
+    score += (entry.teleopProcessorScored || 0) * 6;
+    score += (entry.teleopNetRobotScored || 0) * 4;
+    score += (entry.teleopNetHumanScored || 0) * 4;
+    if (entry.teleopAlgaeRemoved) score += 2;
+    
+    const stage = (entry.stageStatus || "").toLowerCase();
+    if (stage.includes("deep")) score += 12;
+    else if (stage.includes("shallow")) score += 6;
+    else if (stage.includes("park")) score += 2;
+    
+    return score;
   }
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-          Team Rankings
-        </h1>
-        <p className="text-gray-600 mb-6">Sortable rankings of all scouted teams</p>
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-8">
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            Team Rankings
+          </h1>
+          <p className="text-gray-600 mb-8">
+            Team performance rankings based on average scores
+          </p>
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4 animate-spin">🔄</div>
-            <p className="text-gray-600">Loading rankings...</p>
+          {/* Filters */}
+          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+            <div className="grid md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Game
+                </label>
+                <select
+                  value={selectedGame}
+                  onChange={(e) => setSelectedGame(e.target.value)}
+                  className="w-full border rounded p-2"
+                >
+                  <option value="REEFSCAPE">REEFSCAPE</option>
+                  <option value="REBUILT">REBUILT</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Event
+                </label>
+                <select
+                  value={selectedEvent}
+                  onChange={(e) => setSelectedEvent(e.target.value)}
+                  className="w-full border rounded p-2"
+                >
+                  {events.map(event => (
+                    <option key={event.key} value={event.key}>
+                      {event.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showPractice}
+                    onChange={(e) => setShowPractice(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Include Practice Matches
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
-        ) : rankings.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-md p-8 text-center">
-            <p className="text-gray-600">No teams have been scouted yet</p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="overflow-x-auto">
+
+          {/* Rankings Table */}
+          {loading ? (
+            <div className="bg-white rounded-xl shadow-md p-12 text-center">
+              <div className="text-4xl mb-4">⏳</div>
+              <p className="text-gray-600">Loading rankings...</p>
+            </div>
+          ) : rankings.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-md p-12 text-center">
+              <div className="text-6xl mb-4">📊</div>
+              <h2 className="text-2xl font-semibold mb-2">No Data Available</h2>
+              <p className="text-gray-600">
+                No scouting data found for the selected game and filters.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b-2 border-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold w-20">Rank</th>
-                    <th className="px-4 py-3 text-left font-semibold">Team</th>
-                    <SortHeader label="Avg Score" sortKey="avgScore" />
-                    <SortHeader label="Auto" sortKey="autoPoints" />
-                    <SortHeader label="Teleop" sortKey="teleopPoints" />
-                    <SortHeader label="Climb %" sortKey="climbRate" />
-                    <SortHeader label="Matches" sortKey="matchesPlayed" />
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Rank
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Team
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Avg Score
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      High Score
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Matches
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {rankings.map((team) => (
-                    <tr
-                      key={team.teamNumber}
-                      onClick={() => router.push(`/analytics/team-averages?team=${team.teamNumber}`)}
-                      className="border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-4">
+                <tbody className="divide-y divide-gray-200">
+                  {rankings.map((team, index) => (
+                    <tr key={team.teamNumber} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          {team.rank <= 3 && (
+                          {index < 3 ? (
                             <Trophy
                               size={20}
                               className={
-                                team.rank === 1 ? "text-yellow-500" :
-                                team.rank === 2 ? "text-gray-400" :
-                                "text-amber-600"
+                                index === 0 ? "text-yellow-500" :
+                                index === 1 ? "text-gray-400" :
+                                "text-orange-600"
                               }
                             />
+                          ) : (
+                            <span className="text-gray-600">#{index + 1}</span>
                           )}
-                          <span className="font-bold text-lg">{team.rank}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-4">
-                        <span className="font-semibold text-lg">Team {team.teamNumber}</span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="font-bold" style={{ color: "#c42221" }}>
-                          {team.avgScore.toFixed(1)}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="font-semibold text-lg">
+                          {team.teamNumber}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-gray-700">{team.autoPoints.toFixed(1)}</td>
-                      <td className="px-4 py-4 text-gray-700">{team.teleopPoints.toFixed(1)}</td>
-                      <td className="px-4 py-4">
-                        <span className={`font-semibold ${
-                          team.climbRate >= 80 ? "text-green-600" :
-                          team.climbRate >= 50 ? "text-yellow-600" :
-                          "text-red-600"
-                        }`}>
-                          {team.climbRate.toFixed(0)}%
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-2xl font-bold" style={{ color: "#c42221" }}>
+                          {team.avgScore}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-gray-700">{team.matchesPlayed}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp size={16} className="text-green-600" />
+                          <span className="font-semibold">{team.highScore}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-600">
+                        {team.matchesPlayed}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

@@ -223,7 +223,6 @@ function TeamManagementContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-semibold mb-1">{teamName || "Your Team"}</h2>
-                    <p className="text-gray-600">Team ID: {userData?.teamId}</p>
                   </div>
                   <button
                     onClick={() => setShowInviteCode(!showInviteCode)}

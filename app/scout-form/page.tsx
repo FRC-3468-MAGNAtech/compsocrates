@@ -25,9 +25,11 @@ function Modal({
   const [visible, setVisible] = useState(false);
   const [height, setHeight] = useState<string | number>("auto");
   const [hasOpened, setHasOpened] = useState(false);
+  const [finalsMatch, setFinalsMatch] = useState("");
 
   const contentRef = useRef<HTMLDivElement | null>(null);
 
+  
   useEffect(() => {
     if (open) {
       setMounted(true);
