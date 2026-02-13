@@ -6,6 +6,7 @@ export interface PracticeMatch {
   eventName: string;
   eventKey: string;
   matchNumber: number;
+  matchType: 'qualification' | 'playoff' | 'practice';
   videoUrl: string;
   difficulty: 'easy' | 'medium' | 'hard';
   
