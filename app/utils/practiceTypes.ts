@@ -17,6 +17,9 @@ export interface PracticeMatch {
   teamPosition: number; // 0, 1, or 2 (index in team array)
   teamNumber: number;
   
+  // Actual score for accuracy comparison
+  actualScore: number;
+  
   // Official data for accuracy calculation
   officialData: {
     score: number;
