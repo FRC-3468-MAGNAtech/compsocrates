@@ -177,8 +177,8 @@ function PracticeScoutingContent() {
       const scores = allRobotData.map(data => calculateScoutedScore(data));
       const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 
-      // FIXED: Use actualScore instead of officialData.score
-      const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.actualScore || 0));
+      // Calculate accuracy using official score
+      const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.officialData.score));
       const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
 
       const session: any = {
@@ -190,7 +190,7 @@ function PracticeScoutingContent() {
         difficulty: selectedDifficulty || 'easy',
         mode: selectedMode || 'trial',
         scoutedData: allRobotData[0],
-        actualScore: currentMatch.actualScore || 0,
+        officialScore: currentMatch.officialData.score,
         scoutedScore: avgScore,
         accuracy: avgAccuracy,
         timestamp: Date.now(),
@@ -584,7 +584,7 @@ function PracticeScoutingContent() {
                 </div>
                 <div>
                   <h3 className="font-semibold mb-2">Actual Score</h3>
-                  <p className="text-4xl font-bold text-gray-700">{sessionResults.actualScore}</p>
+                  <p className="text-4xl font-bold text-gray-700">{sessionResults.officialScore}</p>
                 </div>
               </div>
             </div>

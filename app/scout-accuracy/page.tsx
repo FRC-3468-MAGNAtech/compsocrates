@@ -246,7 +246,7 @@ function ScoutAccuracyContent() {
                           <tr key={scout.scoutName} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="text-2xl">
-                                {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}
+                                #{index + 1}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">

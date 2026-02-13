@@ -41,7 +41,8 @@ function RankingsContent() {
 
       // Filter
       const filtered = entries.filter(e => {
-        if (e.game !== selectedGame) return false;
+        // NOTE: No game field yet - all entries are REEFSCAPE
+        // if (e.game !== selectedGame) return false;
         if (!showPractice && e.matchType === "practice") return false;
         // Add event filtering logic here
         return true;

@@ -42,7 +42,8 @@ function TeamAveragesContent() {
 
       // Filter
       const filtered = entries.filter(e => {
-        if (e.game !== selectedGame) return false;
+        // NOTE: No game field yet - all entries are REEFSCAPE
+        // if (e.game !== selectedGame) return false;
         if (!showPractice && e.matchType === "practice") return false;
         return true;
       });
