@@ -1,266 +1,651 @@
 "use client";
+export const dynamic = "force-dynamic";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useAuth } from "@/app/AuthContext";
-import { doc, getDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/app/firebase";
-import { 
-  BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Wrench, Home, Menu, X, ChevronLeft, ChevronRight, Calendar 
-} from "lucide-react";
+import ProtectedRoute from "@/app/components/ProtectedRoute";
+import Sidebar from "@/app/components/Sidebar";
+import { useAuth } from "@/app/AuthContext";
 
-export default function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [teamName, setTeamName] = useState<string>("");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const pathname = usePathname();
-  const { userData, logOut } = useAuth();
+// -------------------------
+// TYPES
+// -------------------------
+type Entry = {
+  id: string;
+  matchNumber?: string;
+  matchType?: "qualification" | "practice" | "finals";
+  teamNumber: string;
+  scoutName: string;
+  startingPosition: string;
+  leftStartingZone: boolean;
+  submittedAt?: number;
 
-  // Auto-collapse on mobile
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setCollapsed(true);
-      }
-    };
-    
-    // Set initial state
-    handleResize();
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  autoCoralMissed: number;
+  autoCoralL1: number;
+  autoCoralL2: number;
+  autoCoralL3: number;
+  autoCoralL4: number;
+  autoAlgaeProcessorMissed: number;
+  autoAlgaeProcessorScored: number;
+  autoAlgaeNetMissed: number;
+  autoAlgaeNetScored: number;
 
-  // Load collapsed state from localStorage (desktop only)
-  useEffect(() => {
-    if (window.innerWidth >= 768) {
-      const saved = localStorage.getItem("sidebarCollapsed");
-      if (saved) setCollapsed(JSON.parse(saved));
-    }
-  }, []);
+  teleopCoralMissed: number;
+  teleopCoralL1: number;
+  teleopCoralL2: number;
+  teleopCoralL3: number;
+  teleopCoralL4: number;
+  teleopAlgaeRemoved: boolean;
+  teleopProcessorMissed: number;
+  teleopProcessorScored: number;
+  teleopNetRobotMissed: number;
+  teleopNetRobotScored: number;
+  teleopNetHumanMissed: number;
+  teleopNetHumanScored: number;
 
-  // Save collapsed state to localStorage
-  useEffect(() => {
-    if (window.innerWidth >= 768) {
-      localStorage.setItem("sidebarCollapsed", JSON.stringify(collapsed));
-    }
-  }, [collapsed]);
+  failedClimb: number;
+  stageStatus: string;
 
-  // Load team name from Firestore
-  useEffect(() => {
-    async function loadTeamName() {
-      if (!userData?.teamId) return;
-      
-      try {
-        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        if (teamDoc.exists()) {
-          setTeamName(teamDoc.data().teamName || userData.teamId);
-        } else {
-          setTeamName(userData.teamId);
-        }
-      } catch (error) {
-        console.error("Error loading team name:", error);
-        setTeamName(userData.teamId);
-      }
-    }
-    
-    loadTeamName();
-  }, [userData?.teamId]);
+  incidents: string[];
+  notes: string;
 
-  if (!userData) return null;
+  timestamp: number;
+};
 
-  const isCoach = userData.role === "coach";
+// -------------------------
+// SCORING CONSTANTS
+// -------------------------
+const PTS = {
+  LEAVE: 3,
+  AUTO_CORAL_L1: 3,
+  AUTO_CORAL_L2: 4,
+  AUTO_CORAL_L3: 6,
+  AUTO_CORAL_L4: 7,
+  AUTO_ALGAE_PROC: 6,
+  AUTO_ALGAE_NET: 4,
+  TELE_CORAL_L1: 2,
+  TELE_CORAL_L2: 3,
+  TELE_CORAL_L3: 4,
+  TELE_CORAL_L4: 5,
+  TELE_ALGAE_PROC: 6,
+  TELE_ALGAE_NET_R: 4,
+  TELE_ALGAE_NET_H: 4,
+  CLIMB_PARK: 2,
+  CLIMB_SHALLOW: 6,
+  CLIMB_DEEP: 12
+};
+
+function scoreEntry(e: Entry) {
+  let s = 0;
+  if (e.leftStartingZone) s += PTS.LEAVE;
+  s += e.autoCoralL1 * PTS.AUTO_CORAL_L1;
+  s += e.autoCoralL2 * PTS.AUTO_CORAL_L2;
+  s += e.autoCoralL3 * PTS.AUTO_CORAL_L3;
+  s += e.autoCoralL4 * PTS.AUTO_CORAL_L4;
+  s += e.autoAlgaeProcessorScored * PTS.AUTO_ALGAE_PROC;
+  s += e.autoAlgaeNetScored * PTS.AUTO_ALGAE_NET;
+  s += e.teleopCoralL1 * PTS.TELE_CORAL_L1;
+  s += e.teleopCoralL2 * PTS.TELE_CORAL_L2;
+  s += e.teleopCoralL3 * PTS.TELE_CORAL_L3;
+  s += e.teleopCoralL4 * PTS.TELE_CORAL_L4;
+  s += e.teleopProcessorScored * PTS.TELE_ALGAE_PROC;
+  s += e.teleopNetRobotScored * PTS.TELE_ALGAE_NET_R;
+  s += e.teleopNetHumanScored * PTS.TELE_ALGAE_NET_H;
+  if (e.teleopAlgaeRemoved) s += 2;
+  const end = e.stageStatus.toLowerCase();
+  if (end.includes("deep")) s += PTS.CLIMB_DEEP;
+  else if (end.includes("shallow")) s += PTS.CLIMB_SHALLOW;
+  else if (end.includes("park") || end.includes("barge")) s += PTS.CLIMB_PARK;
+  return s;
+}
+
+// -------------------------
+// MATCH SORTING
+// -------------------------
+function parseMatchType(matchStr: string): { type: string; number: number; priority: number } {
+  if (!matchStr) return { type: "unknown", number: 0, priority: 999 };
   
-  // Check if user has special scout role
-  const hasSpecialRole = userData.specialRole && 
-    ["lead-scout", "lead-strategist", "pit-scout"].includes(userData.specialRole);
+  const str = matchStr.toString().toLowerCase();
+  
+  if (str.includes("practice") || str.startsWith("p")) {
+    const num = parseInt(str.replace(/\D/g, "")) || 0;
+    return { type: "practice", number: num, priority: 1 };
+  }
+  
+  if (str.includes("qual") || str.startsWith("q")) {
+    const num = parseInt(str.replace(/\D/g, "")) || 0;
+    return { type: "qualification", number: num, priority: 2 };
+  }
+  
+  if (str.includes("final") || str.includes("upper") || str.includes("lower") || str.startsWith("f")) {
+    const num = parseInt(str.replace(/\D/g, "")) || 0;
+    return { type: "finals", number: num, priority: 3 };
+  }
+  
+  const num = parseInt(str.replace(/\D/g, "")) || 0;
+  return { type: "unknown", number: num, priority: 999 };
+}
 
-  // Icon mapping
-  const iconMap = {
-    "📊": BarChart3,
-    "📝": ClipboardList,
-    "📈": TrendingUp,
-    "🔧": Wrench,
-    "🎯": Target,
-    "👥": Users,
-  };
+// -------------------------
+// SORTING
+// -------------------------
+type SortKey = keyof Entry | "score";
+type SortDir = "asc" | "desc";
 
-  // Navigation items based on role
-  const coachNavItems = [
-    { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
-    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
-    { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/form-builder", label: "Form Builder", icon: Wrench },
-    { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: Target },
-    { href: "/team-management", label: "Team Management", icon: Users },
-    { href: "/assignments", label: "Assignments", icon: Calendar },
-  ];
+function sortEntries(entries: Entry[], key: SortKey, dir: SortDir): Entry[] {
+  const withScore = entries.map(e => ({ ...e, score: scoreEntry(e) }));
+  return [...withScore].sort((a, b) => {
+    // Special handling for match number sorting
+    if (key === "matchNumber") {
+      const aMatch = parseMatchType(a.matchNumber || "");
+      const bMatch = parseMatchType(b.matchNumber || "");
+      
+      // First sort by type (Practice, Qualification, Finals)
+      if (aMatch.priority !== bMatch.priority) {
+        return dir === "asc" 
+          ? aMatch.priority - bMatch.priority 
+          : bMatch.priority - aMatch.priority;
+      }
+      
+      // Then by number within type
+      return dir === "asc"
+        ? aMatch.number - bMatch.number
+        : bMatch.number - aMatch.number;
+    }
+    
+    const av = a[key];
+    const bv = b[key];
+    if (typeof av === "number" && typeof bv === "number") {
+      return dir === "asc" ? av - bv : bv - av;
+    }
+    const as = (av ?? "").toString().toLowerCase();
+    const bs = (bv ?? "").toString().toLowerCase();
+    if (as < bs) return dir === "asc" ? -1 : 1;
+    if (as > bs) return dir === "asc" ? 1 : -1;
+    return 0;
+  }) as Entry[];
+}
 
-  const scoutNavItems = [
-    { href: "/scout-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
-    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
-    { href: "/analytics", label: "Analytics", icon: TrendingUp },
-  ];
+// -------------------------
+// EVENT DEFINITIONS
+// -------------------------
+type EventDefinition = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+};
 
-  // Set navigation based on role
-  let navItems = isCoach ? coachNavItems : scoutNavItems;
+const EVENTS: EventDefinition[] = [
+  { id: "rocket-city", name: "Rocket City", startDate: "2026-03-18", endDate: "2026-03-21" },
+  { id: "bayou", name: "Bayou", startDate: "2026-04-01", endDate: "2026-04-04" },
+  { id: "app-testing", name: "App Testing", startDate: "1970-01-01", endDate: "2099-12-31" }
+];
 
-  // Mobile overlay
-  const MobileOverlay = () => (
-    <>
-      {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-    </>
-  );
+const INCIDENT_LABELS: Record<string, string> = {
+  "died": "Died During Match",
+  "never-started": "Never Started Match",
+  "disabled": "Disabled by FRC",
+  "recovered": "Recovered from Freeze",
+  "tipped": "Tipped Over",
+  "yellow-card": "Yellow Card",
+  "red-card": "Red Card"
+};
+
+// -------------------------
+// MAIN PAGE
+// -------------------------
+function AnalyticsPageContent() {
+  const { userData } = useAuth();
+  const [rawData, setRawData] = useState<Entry[]>([]);
+  const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [activeView, setActiveView] = useState("raw-data");
+  const [selectedEvent, setSelectedEvent] = useState("all");
+  const [selectedGame, setSelectedGame] = useState("reefscape");
+  const [showPractice, setShowPractice] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const isCoach = userData?.role === "coach";
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    const snapshot = await getDocs(collection(db, "scouting"));
+    const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Entry[];
+    setRawData(entries);
+  }
+
+  async function handleDelete(id: string) {
+    if (deleteConfirm === id) {
+      try {
+        await deleteDoc(doc(db, "scouting", id));
+        await loadData();
+        setDeleteConfirm(null);
+        alert("Entry deleted successfully");
+      } catch (error) {
+        console.error("Error deleting entry:", error);
+        alert("Error deleting entry");
+      }
+    } else {
+      setDeleteConfirm(id);
+      setTimeout(() => setDeleteConfirm(null), 3000);
+    }
+  }
+
+  // Filter by practice/non-practice first
+  const filteredByPractice = showPractice 
+    ? rawData.filter(entry => entry.matchType === "practice")
+    : rawData.filter(entry => entry.matchType !== "practice");
+
+  // Then filter by event
+  const filteredByEvent = selectedEvent === "all" 
+    ? filteredByPractice 
+    : filteredByPractice.filter(entry => {
+        const event = EVENTS.find(e => e.id === selectedEvent);
+        if (!event) return true;
+        const entryTime = entry.submittedAt || entry.timestamp || 0;
+        const entryDate = new Date(entryTime);
+        const startDate = new Date(event.startDate + "T00:00:00");
+        const endDate = new Date(event.endDate + "T23:59:59");
+        return entryDate >= startDate && entryDate <= endDate;
+      });
+
+  const data = sortEntries(filteredByEvent, sortKey, sortDir);
+
+  function handleSort(key: SortKey) {
+    setSortKey(prevKey => {
+      if (prevKey === key) {
+        setSortDir(prevDir => (prevDir === "asc" ? "desc" : "asc"));
+        return prevKey;
+      } else {
+        setSortDir("asc");
+        return key;
+      }
+    });
+  }
+
+  function sortLabel(key: SortKey, label: string) {
+    if (sortKey !== key) return label;
+    return sortDir === "asc" ? `${label} ▲` : `${label} ▼`;
+  }
 
   return (
-    <>
-      <MobileOverlay />
-      
-      {/* Mobile hamburger button */}
-      <button
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg"
-        style={{ color: "#c42221" }}
+    <div className="flex h-screen bg-gray-100">
+      <Sidebar />
+      <div className="flex-1 flex h-screen bg-gray-100 overflow-hidden">
+      <div 
+        className={`bg-white border-r border-gray-200 flex flex-col shrink-0 transition-all duration-300 ${
+          sidebarCollapsed ? "w-0 overflow-hidden" : "w-64"
+        }`}
       >
-        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
-
-      <div
-        className={`
-          bg-white border-r border-gray-200 flex flex-col transition-all duration-300
-          ${collapsed ? "w-16" : "w-64"}
-          ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
-          md:translate-x-0
-          fixed md:sticky top-0 h-screen z-40
-        `}
-      >
-        {/* HEADER */}
         <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            {!collapsed && (
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-8 h-8 rounded text-white flex items-center justify-center font-bold text-sm"
-                  style={{ backgroundColor: "#c42221" }}
-                >
-                  CS
-                </div>
-                <div>
-                  <h1 className="text-sm font-bold">CompSocrates</h1>
-                  <p className="text-xs text-gray-600">Team {teamName}</p>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="p-1.5 hover:bg-gray-100 rounded text-gray-600 hidden md:block"
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-            </button>
+          <h1 className="text-xl font-bold" style={{ color: "#c42221" }}>Analytics</h1>
+          <p className="text-sm text-gray-600 mt-1">{data.length} entries</p>
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Event</label>
+            <select value={selectedEvent} onChange={(e) => setSelectedEvent(e.target.value)} className="w-full text-sm border rounded p-1.5">
+              <option value="all">All Events</option>
+              {EVENTS.map(event => (
+                <option key={event.id} value={event.id}>{event.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="mt-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={showPractice} 
+                onChange={(e) => setShowPractice(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-xs font-medium text-gray-600">Show Practice Matches</span>
+            </label>
           </div>
         </div>
-
-        {/* NAVIGATION */}
-        <nav className="flex-1 p-2 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`
-                  flex items-center gap-3 px-3 py-2 rounded mb-1 transition-colors
-                  ${isActive ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}
-                  ${collapsed ? "justify-center" : ""}
-                `}
-                title={collapsed ? item.label : ""}
-              >
-                <Icon size={20} />
-                {!collapsed && <span className="text-sm">{item.label}</span>}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 p-4 flex flex-col">
+          <button onClick={() => setActiveView("raw-data")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "raw-data" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Raw Data</button>
+          <button onClick={() => setActiveView("team-averages")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "team-averages" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Team Averages</button>
+          <button onClick={() => setActiveView("match-breakdown")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "match-breakdown" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Match Breakdown</button>
+          <button onClick={() => setActiveView("rankings")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "rankings" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Rankings</button>
         </nav>
+      </div>
 
-        {/* USER PROFILE */}
-        <div className="p-2 border-t border-gray-200 relative">
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`
-              w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100
-              ${collapsed ? "justify-center" : ""}
-            `}
-          >
-            <div
-              className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold text-gray-700"
-            >
-              {userData.displayName.substring(0, 2).toUpperCase()}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {activeView === "raw-data" && (
+          <>
+            <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-2 hover:bg-gray-100 rounded" title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+                  {sidebarCollapsed ? "→" : "←"}
+                </button>
+                <div className="h-6 w-px bg-gray-300" />
+                <span className="text-sm text-gray-600">{data.length} entries</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700">Game:</label>
+                <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} className="border rounded px-3 py-1.5 text-sm">
+                  <option value="reefscape">REEFSCAPE</option>
+                  <option value="rebuilt">REBUILT</option>
+                </select>
+              </div>
             </div>
-            {!collapsed && (
-              <div className="flex-1 text-left">
-                <p className="text-sm font-semibold text-gray-900">{userData.displayName}</p>
-                <p className="text-xs text-gray-600 capitalize">
-                  {userData.specialRole ? userData.specialRole.replace(/-/g, ' ') : userData.role}
-                </p>
+
+            {selectedGame === "reefscape" ? (
+              <div className="flex-1 p-4 overflow-hidden">
+                <div className="bg-white rounded-xl shadow h-full table-scroll">
+                  <table>
+                    <thead className="sticky-header">
+                      <tr>
+                        <th className="sticky-left-0 bg-red-300 z-30 text-center" colSpan={2}>Information</th>
+                        <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
+                        <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
+                        <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
+                        <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
+                        <th className="bg-gray-300 text-center" colSpan={5}>General</th>
+                        {isCoach && <th className="bg-orange-300 text-center" colSpan={1}>Actions</th>}
+                      </tr>
+                      <tr>
+                        <th className="sticky-left-0 bg-red-200 z-30 text-center" colSpan={2}>Information</th>
+                        <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
+                        <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
+                        <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
+                        <th className="bg-green-200 text-center" colSpan={2}>Algae Processor</th>
+                        <th className="bg-green-200 text-center" colSpan={2}>Algae Net</th>
+                        <th className="bg-blue-200 text-center" colSpan={5}>Coral</th>
+                        <th className="bg-blue-200 text-center" colSpan={1}>Algae Collection</th>
+                        <th className="bg-blue-200 text-center" colSpan={2}>Algae Processor</th>
+                        <th className="bg-blue-200 text-center" colSpan={2}>Algae Net (Robot)</th>
+                        <th className="bg-blue-200 text-center" colSpan={2}>Algae Net (Human)</th>
+                        <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
+                        <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
+                        <th className="bg-gray-200 text-center" colSpan={1}>Incidents</th>
+                        <th className="bg-gray-200 text-center" colSpan={1}>Notes</th>
+                        <th className="bg-gray-200 text-center" colSpan={3}>Accuracy</th>
+                        {isCoach && <th className="bg-orange-200 text-center" colSpan={1}>Actions</th>}
+                      </tr>
+                      <tr>
+                        <th className="sticky-left-0 z-30 cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
+                        <th className="sticky-left-1 z-30 cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("startingPosition")}>{sortLabel("startingPosition", "Starting Position")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("leftStartingZone")}>{sortLabel("leftStartingZone", "Leave")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralMissed")}>{sortLabel("autoCoralMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL1")}>{sortLabel("autoCoralL1", "L1")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL2")}>{sortLabel("autoCoralL2", "L2")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL3")}>{sortLabel("autoCoralL3", "L3")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL4")}>{sortLabel("autoCoralL4", "L4")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeProcessorMissed")}>{sortLabel("autoAlgaeProcessorMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeProcessorScored")}>{sortLabel("autoAlgaeProcessorScored", "Scored")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeNetMissed")}>{sortLabel("autoAlgaeNetMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeNetScored")}>{sortLabel("autoAlgaeNetScored", "Scored")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralMissed")}>{sortLabel("teleopCoralMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL1")}>{sortLabel("teleopCoralL1", "L1")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL2")}>{sortLabel("teleopCoralL2", "L2")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL3")}>{sortLabel("teleopCoralL3", "L3")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL4")}>{sortLabel("teleopCoralL4", "L4")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopAlgaeRemoved")}>{sortLabel("teleopAlgaeRemoved", "Remove Algae from Reef")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopProcessorMissed")}>{sortLabel("teleopProcessorMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopProcessorScored")}>{sortLabel("teleopProcessorScored", "Scored")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetRobotMissed")}>{sortLabel("teleopNetRobotMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetRobotScored")}>{sortLabel("teleopNetRobotScored", "Scored")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetHumanMissed")}>{sortLabel("teleopNetHumanMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetHumanScored")}>{sortLabel("teleopNetHumanScored", "Scored")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("failedClimb")}>{sortLabel("failedClimb", "Failed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("stageStatus")}>{sortLabel("stageStatus", "End Place")}</th>
+                        <th className="text-center">Incidents</th>
+                        <th className="text-center">Notes</th>
+                        <th className="text-center">Score</th>
+                        <th className="text-center">Alliance Accuracy</th>
+                        {isCoach && <th className="text-center">Comparison</th>}
+                        {isCoach && <th className="text-center">Delete</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.map((e) => {
+                        const score = scoreEntry(e);
+                        const positionLabels: Record<string, string> = {
+                          "not-there": "Not There",
+                          "processor": "Processor Side",
+                          "middle": "Middle",
+                          "opposite": "Opposite Side"
+                        };
+                        const stageLabels: Record<string, string> = {
+                          "not-parked": "Not Parked",
+                          "barge": "Parked in Barge Zone",
+                          "shallow": "Shallow Cage",
+                          "deep": "Deep Cage"
+                        };
+                        const incidentText = e.incidents?.map(inc => INCIDENT_LABELS[inc] || inc).join(", ") || "-";
+
+                        return (
+                          <tr key={e.id}>
+                            <td className="sticky-left-0 font-semibold bg-white z-20 text-center">
+                              {e.matchNumber ? (
+                                e.matchType === "finals" ? `F${e.matchNumber}` :
+                                e.matchType === "practice" ? `P${e.matchNumber}` :
+                                `Q${e.matchNumber}`
+                              ) : "-"}
+                            </td>
+                            <td className="sticky-left-1 font-semibold bg-white z-20 text-center">{e.teamNumber || "-"}</td>
+                            <td className="text-center">{e.scoutName || "-"}</td>
+                            <td className="text-center">{positionLabels[e.startingPosition] || e.startingPosition || "-"}</td>
+                            <td className="text-center">{e.leftStartingZone ? "Yes" : "-"}</td>
+                            <td className="text-center">{e.autoCoralMissed || "-"}</td>
+                            <td className="text-center">{e.autoCoralL1 || "-"}</td>
+                            <td className="text-center">{e.autoCoralL2 || "-"}</td>
+                            <td className="text-center">{e.autoCoralL3 || "-"}</td>
+                            <td className="text-center">{e.autoCoralL4 || "-"}</td>
+                            <td className="text-center">{e.autoAlgaeProcessorMissed || "-"}</td>
+                            <td className="text-center">{e.autoAlgaeProcessorScored || "-"}</td>
+                            <td className="text-center">{e.autoAlgaeNetMissed || "-"}</td>
+                            <td className="text-center">{e.autoAlgaeNetScored || "-"}</td>
+                            <td className="text-center">{e.teleopCoralMissed || "-"}</td>
+                            <td className="text-center">{e.teleopCoralL1 || "-"}</td>
+                            <td className="text-center">{e.teleopCoralL2 || "-"}</td>
+                            <td className="text-center">{e.teleopCoralL3 || "-"}</td>
+                            <td className="text-center">{e.teleopCoralL4 || "-"}</td>
+                            <td className="text-center">{e.teleopAlgaeRemoved ? "Yes" : "-"}</td>
+                            <td className="text-center">{e.teleopProcessorMissed || "-"}</td>
+                            <td className="text-center">{e.teleopProcessorScored || "-"}</td>
+                            <td className="text-center">{e.teleopNetRobotMissed || "-"}</td>
+                            <td className="text-center">{e.teleopNetRobotScored || "-"}</td>
+                            <td className="text-center">{e.teleopNetHumanMissed || "-"}</td>
+                            <td className="text-center">{e.teleopNetHumanScored || "-"}</td>
+                            <td className="text-center">{e.failedClimb || "-"}</td>
+                            <td className="text-center">{stageLabels[e.stageStatus] || e.stageStatus || "-"}</td>
+                            <td className="text-center" style={{ minWidth: "200px", maxWidth: "200px", whiteSpace: "normal", wordWrap: "break-word" }}>{incidentText}</td>
+                            <td className="text-center" style={{ minWidth: "200px", maxWidth: "200px", whiteSpace: "normal", wordWrap: "break-word" }}>{e.notes || "-"}</td>
+                            <td className="font-bold text-center">{score}</td>
+                            <td className="text-center">-</td>
+                            {isCoach && <td className="text-center">-</td>}
+                            {isCoach && (
+                              <td className="text-center">
+                                <button onClick={() => handleDelete(e.id)} className={`px-2 py-1 text-xs rounded transition-colors ${deleteConfirm === e.id ? "bg-red-600 text-white" : "bg-red-500 text-white hover:bg-red-600"}`}>
+                                  {deleteConfirm === e.id ? "Confirm?" : "Delete"}
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center p-8 bg-white rounded-xl shadow max-w-md">
+                  <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>REBUILT Form Not Available</h2>
+                  <p className="text-gray-600">The scouting form for REBUILT has not been created yet. Please select REEFSCAPE to view data.</p>
+                </div>
               </div>
             )}
-          </button>
-
-          {/* SETTINGS DROPDOWN */}
-          {showSettings && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowSettings(false)}
-              />
-              
-              <div
-                className={`
-                  absolute bottom-full mb-2 bg-white rounded-lg shadow-xl border border-gray-200 z-50
-                  ${collapsed ? "left-full ml-2 w-48" : "left-2 right-2"}
-                `}
-              >
-                <Link
-                  href="/account"
-                  className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700 rounded-t-lg"
-                  onClick={() => setShowSettings(false)}
-                >
-                  Account Settings
-                <Link
-                  href={`/profile/${userData.uid}`}
-                  className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
-                  onClick={() => setShowSettings(false)}
-                >
-                  View Profile
-                </Link>
-                </Link>
-                <button
-                  onClick={async () => {
-                    await logOut();
-                    setShowSettings(false);
-                  }}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600 rounded-b-lg"
-                >
-                  Log Out
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+          </>
+        )}
+        {activeView === "team-averages" && <TeamAveragesView rawData={filteredByEvent} showPractice={showPractice} selectedEvent={selectedEvent} />}
+        {activeView === "match-breakdown" && <MatchBreakdownView rawData={filteredByEvent} />}
+        {activeView === "rankings" && <RankingsView rawData={filteredByEvent} showPractice={showPractice} />}
       </div>
-    </>
+      </div>
+    </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
+      <AnalyticsPageContent />
+    </ProtectedRoute>
+  );
+}
+
+// ===== EMBEDDED VIEW COMPONENTS =====
+
+function TeamAveragesView({ rawData, showPractice, selectedEvent }: { rawData: Entry[], showPractice: boolean, selectedEvent: string }) {
+  const teamStats: { [team: string]: any } = {};
+  
+  rawData.forEach(entry => {
+    const team = entry.teamNumber;
+    if (!teamStats[team]) {
+      teamStats[team] = {
+        teamNumber: team,
+        entries: [],
+        totalScore: 0,
+        matchCount: 0,
+      };
+    }
+    teamStats[team].entries.push(entry);
+    teamStats[team].totalScore += scoreEntry(entry);
+    teamStats[team].matchCount++;
+  });
+
+  const teams = Object.values(teamStats).map(t => ({
+    ...t,
+    avgScore: t.matchCount > 0 ? Math.round(t.totalScore / t.matchCount) : 0,
+  })).sort((a, b) => b.avgScore - a.avgScore);
+
+  return (
+    <div className="p-6 overflow-y-auto">
+      <h2 className="text-2xl font-bold mb-4">Team Averages</h2>
+      <p className="text-sm text-gray-600 mb-4">{teams.length} teams • {rawData.length} total entries</p>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-3 text-left">Team</th>
+              <th className="p-3 text-left">Matches</th>
+              <th className="p-3 text-left">Avg Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map(team => (
+              <tr key={team.teamNumber} className="border-t">
+                <td className="p-3 font-semibold">{team.teamNumber}</td>
+                <td className="p-3">{team.matchCount}</td>
+                <td className="p-3 font-bold" style={{ color: "#c42221" }}>{team.avgScore}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RankingsView({ rawData, showPractice }: { rawData: Entry[], showPractice: boolean }) {
+  const teamStats: { [team: string]: any } = {};
+  
+  rawData.forEach(entry => {
+    const team = entry.teamNumber;
+    if (!teamStats[team]) {
+      teamStats[team] = {
+        teamNumber: team,
+        scores: [],
+      };
+    }
+    teamStats[team].scores.push(scoreEntry(entry));
+  });
+
+  const rankings = Object.values(teamStats).map(t => ({
+    teamNumber: t.teamNumber,
+    avgScore: t.scores.length > 0 ? Math.round(t.scores.reduce((a: number, b: number) => a + b, 0) / t.scores.length) : 0,
+    highScore: Math.max(...t.scores, 0),
+    matchesPlayed: t.scores.length,
+  })).sort((a, b) => b.avgScore - a.avgScore);
+
+  return (
+    <div className="p-6 overflow-y-auto">
+      <h2 className="text-2xl font-bold mb-4">Rankings</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-3 text-left">Rank</th>
+              <th className="p-3 text-left">Team</th>
+              <th className="p-3 text-left">Avg Score</th>
+              <th className="p-3 text-left">High Score</th>
+              <th className="p-3 text-left">Matches</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rankings.map((team, idx) => (
+              <tr key={team.teamNumber} className="border-t">
+                <td className="p-3">#{idx + 1}</td>
+                <td className="p-3 font-semibold">{team.teamNumber}</td>
+                <td className="p-3 font-bold" style={{ color: "#c42221" }}>{team.avgScore}</td>
+                <td className="p-3">{team.highScore}</td>
+                <td className="p-3">{team.matchesPlayed}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function MatchBreakdownView({ rawData }: { rawData: Entry[] }) {
+  const matchGroups: { [match: string]: Entry[] } = {};
+  
+  rawData.forEach(entry => {
+    const key = entry.matchNumber || "Unknown";
+    if (!matchGroups[key]) matchGroups[key] = [];
+    matchGroups[key].push(entry);
+  });
+
+  const matches = Object.entries(matchGroups).map(([match, entries]) => ({
+    match,
+    entries,
+    avgScore: entries.length > 0 ? Math.round(entries.reduce((sum, e) => sum + scoreEntry(e), 0) / entries.length) : 0,
+  })).sort((a, b) => {
+    const aNum = parseInt(a.match.replace(/\D/g, '')) || 0;
+    const bNum = parseInt(b.match.replace(/\D/g, '')) || 0;
+    return aNum - bNum;
+  });
+
+  return (
+    <div className="p-6 overflow-y-auto">
+      <h2 className="text-2xl font-bold mb-4">Match Breakdown</h2>
+      <div className="space-y-4">
+        {matches.map(m => (
+          <div key={m.match} className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold text-lg mb-2">Match {m.match}</h3>
+            <p className="text-sm text-gray-600">{m.entries.length} entries • Avg Score: {m.avgScore}</p>
+            <div className="mt-2 flex gap-2 flex-wrap">
+              {m.entries.map((e, i) => (
+                <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">
+                  Team {e.teamNumber}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

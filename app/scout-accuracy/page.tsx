@@ -92,9 +92,11 @@ function ScoutAccuracyContent() {
     }
   }
 
-  // Calculate TRUE scout count (only scouts + Lead Scouts)
+  // Calculate TRUE scout count (scouts + Lead Scouts + Pit Scouts)
   const actualScoutCount = scoutStats.filter(s => 
-    s.role === "scout" || (s.role === "coach" && s.specialRole === "Lead Scout")
+    s.role === "scout" || 
+    s.specialRole === "Lead Scout" || 
+    s.specialRole === "Pit Scout"
   ).length;
 
   function getAccuracyColor(accuracy: number): string {
@@ -167,9 +169,18 @@ function ScoutAccuracyContent() {
   }
 
   function getRoleBadge(role: string, specialRole?: string) {
-    if (role === "coach" && specialRole === "Lead Scout") {
+    // Special roles ALWAYS take priority
+    if (specialRole === "Lead Scout") {
       return { bg: "bg-purple-100", text: "text-purple-800", label: "Lead Scout" };
     }
+    if (specialRole === "Pit Scout") {
+      return { bg: "bg-indigo-100", text: "text-indigo-800", label: "Pit Scout" };
+    }
+    if (specialRole === "Lead Strategist") {
+      return { bg: "bg-pink-100", text: "text-pink-800", label: "Lead Strategist" };
+    }
+    
+    // Then check base role
     if (role === "scout") {
       return { bg: "bg-blue-100", text: "text-blue-800", label: "Scout" };
     }
@@ -219,7 +230,7 @@ function ScoutAccuracyContent() {
                     {actualScoutCount} / {scoutStats.length}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {actualScoutCount} scouts, {scoutStats.length - actualScoutCount} other roles
+                    {actualScoutCount} scout{actualScoutCount !== 1 ? 's' : ''}, {scoutStats.length - actualScoutCount} other role{scoutStats.length - actualScoutCount !== 1 ? 's' : ''}
                   </p>
                 </div>
 
