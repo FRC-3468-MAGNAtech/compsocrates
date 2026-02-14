@@ -1,41 +1,51 @@
-// Utility to properly sort matches by type (P, Q, F) then by number
+// FILE: app/utils/matchSorting.ts
+// COMPLETE NEW FILE - Match sorting utility
 
-export function sortMatches<T extends { matchId: string }>(matches: T[]): T[] {
+export function sortMatches(matches: string[]): string[] {
   return matches.sort((a, b) => {
-    const aId = a.matchId.toLowerCase();
-    const bId = b.matchId.toLowerCase();
+    const aStr = a.toString();
+    const bStr = b.toString();
     
-    // Extract type (first letter) and number
-    const aType = aId[0];
-    const bType = bId[0];
-    const aNum = parseInt(aId.slice(1)) || 0;
-    const bNum = parseInt(bId.slice(1)) || 0;
+    const aType = aStr[0]?.toLowerCase() || '';
+    const bType = bStr[0]?.toLowerCase() || '';
     
-    // Sort order: practice (p), qualification (q), finals (f)
-    const typeOrder: Record<string, number> = { 'p': 0, 'q': 1, 'f': 2 };
-    const aTypeOrder = typeOrder[aType] ?? 999;
-    const bTypeOrder = typeOrder[bType] ?? 999;
+    // Type order: Practice (p) -> Qualification (q) -> Finals (f)
+    const typeOrder: { [key: string]: number } = { p: 0, q: 1, f: 2 };
     
-    // First sort by type
+    const aTypeOrder = typeOrder[aType] !== undefined ? typeOrder[aType] : 99;
+    const bTypeOrder = typeOrder[bType] !== undefined ? typeOrder[bType] : 99;
+    
+    // Sort by type first
     if (aTypeOrder !== bTypeOrder) {
       return aTypeOrder - bTypeOrder;
     }
     
-    // Same type, sort by number
+    // Then by number
+    const aNum = parseInt(aStr.slice(1)) || 0;
+    const bNum = parseInt(bStr.slice(1)) || 0;
     return aNum - bNum;
   });
 }
 
-export function getMatchTypeName(matchId: string): string {
-  const type = matchId[0].toLowerCase();
-  if (type === 'p') return 'Practice';
-  if (type === 'q') return 'Qualification';
-  if (type === 'f') return 'Finals';
-  return 'Unknown';
-}
-
-export function formatMatchId(matchId: string): string {
-  const type = matchId[0].toUpperCase();
-  const num = matchId.slice(1);
-  return `${type}${num}`;
+export function formatMatchDisplay(matchId: string, matchType?: string): string {
+  const matchStr = matchId.toString();
+  const firstChar = matchStr[0]?.toLowerCase();
+  const number = matchStr.slice(1);
+  
+  // If matchType is provided, use that
+  if (matchType) {
+    const typeMap: { [key: string]: string } = {
+      practice: 'P',
+      qualification: 'Q',
+      finals: 'F',
+      playoff: 'F'
+    };
+    const prefix = typeMap[matchType.toLowerCase()] || 'Q';
+    return `${prefix}${number}`;
+  }
+  
+  // Otherwise infer from ID
+  if (firstChar === 'p') return `P${number}`;
+  if (firstChar === 'f') return `F${number}`;
+  return `Q${number}`;
 }

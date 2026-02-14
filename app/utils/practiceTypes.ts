@@ -1,52 +1,29 @@
-// Practice Scouting Type Definitions
+// FILE: app/utils/practiceTypes.ts
+// COMPLETE REWRITE - Added modes, proper types
 
 export interface PracticeMatch {
-  id: string;
-  matchKey: string;
-  eventName: string;
-  eventKey: string;
+  id?: string;
+  matchKey?: string;
+  eventName?: string;
+  eventKey?: string;
   matchNumber: number;
   matchType: 'qualification' | 'playoff' | 'practice';
   videoUrl: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  mode: 'trial' | 'competitive'; // NEW
   
-  // Alliance to scout
   alliance: 'red' | 'blue';
-  allianceScore: number;
+  allianceScore?: number;
   
-  // FIX 3: All 3 teams in the alliance (instead of just one)
-  allianceTeams: number[]; // [team1, team2, team3]
+  // Team numbers for all 3 robots
+  teamNumbers: number[]; // [team1, team2, team3]
+  humanPlayerPosition?: number; // 0, 1, or 2 - which robot scouts human
   
-  // Actual score for accuracy comparison
-  actualScore: number;
-  
-  // Official data for accuracy calculation
-  officialData: {
-    score: number;
-    penaltyPoints: number;
-    breakdown: any;
-  };
-  
-  createdAt: number;
-}
-
-export interface PracticeSession {
-  id: string;
-  scoutName: string;
-  scoutId: string;
-  
-  // Match information
-  matchKey: string;
-  matchNumber: number;
-  teamNumber: number;
-  difficulty: 'easy' | 'medium' | 'hard';
-  
-  // Scouted data (same structure as regular scouting)
-  scoutedData: {
+  // Actual data for all 3 robots
+  actualData: Array<{
     teamNumber: string;
     startingPosition: string;
     leftStartingZone: boolean;
-    
     autoCoralMissed: number;
     autoCoralL1: number;
     autoCoralL2: number;
@@ -56,7 +33,6 @@ export interface PracticeSession {
     autoAlgaeProcessorScored: number;
     autoAlgaeNetMissed: number;
     autoAlgaeNetScored: number;
-    
     teleopCoralMissed: number;
     teleopCoralL1: number;
     teleopCoralL2: number;
@@ -69,44 +45,45 @@ export interface PracticeSession {
     teleopNetRobotScored: number;
     teleopNetHumanMissed: number;
     teleopNetHumanScored: number;
-    
     failedClimb: number;
     stageStatus: string;
-    
     incidents: string[];
     notes: string;
-  };
+  }>;
   
-  // Accuracy results
-  scoutedScore: number;
   actualScore: number;
-  officialScore: number;
-  accuracy: number; // 0-100 percentage
+  createdAt?: number;
+}
+
+export interface PracticeSession {
+  id?: string;
+  scoutName: string;
+  scoutId?: string;
   
-  // Timestamps
-  startedAt: number;
-  completedAt: number;
+  matchKey?: string;
+  matchNumber: number;
+  matchType: 'qualification' | 'playoff' | 'practice';
+  difficulty: 'easy' | 'medium' | 'hard';
+  mode: 'trial' | 'competitive'; // NEW
+  
+  // All 3 robots scouted
+  robotsData: Array<{
+    teamNumber: number;
+    scoutedData: any;
+    actualData: any;
+    scoutedScore: number;
+    actualScore: number;
+    accuracy: number;
+  }>;
+  
+  overallAccuracy: number;
+  timestamp: number;
+  startedAt?: number;
+  completedAt?: number;
 }
 
-export interface PracticeStats {
-  totalSessions: number;
-  averageAccuracy: number;
-  bestAccuracy: number;
-  recentAccuracies: number[]; // Last 5
-  sessionsByDifficulty: {
-    easy: number;
-    medium: number;
-    hard: number;
-  };
-  accuracyByDifficulty: {
-    easy: number;
-    medium: number;
-    hard: number;
-  };
-}
-
-// Scoring constants (same as main app)
-export const SCORING_POINTS = {
+// Scoring constants
+const SCORING_POINTS = {
   LEAVE: 3,
   AUTO_CORAL_L1: 3,
   AUTO_CORAL_L2: 4,
@@ -127,48 +104,69 @@ export const SCORING_POINTS = {
   ALGAE_REMOVED: 2,
 };
 
-// Calculate score from scouted data
-export function calculateScoutedScore(data: PracticeSession['scoutedData']): number {
+export function calculateScoutedScore(data: any): number {
   let score = 0;
   
   if (data.leftStartingZone) score += SCORING_POINTS.LEAVE;
   
-  score += data.autoCoralL1 * SCORING_POINTS.AUTO_CORAL_L1;
-  score += data.autoCoralL2 * SCORING_POINTS.AUTO_CORAL_L2;
-  score += data.autoCoralL3 * SCORING_POINTS.AUTO_CORAL_L3;
-  score += data.autoCoralL4 * SCORING_POINTS.AUTO_CORAL_L4;
-  score += data.autoAlgaeProcessorScored * SCORING_POINTS.AUTO_ALGAE_PROC;
-  score += data.autoAlgaeNetScored * SCORING_POINTS.AUTO_ALGAE_NET;
+  score += (data.autoCoralL1 || 0) * SCORING_POINTS.AUTO_CORAL_L1;
+  score += (data.autoCoralL2 || 0) * SCORING_POINTS.AUTO_CORAL_L2;
+  score += (data.autoCoralL3 || 0) * SCORING_POINTS.AUTO_CORAL_L3;
+  score += (data.autoCoralL4 || 0) * SCORING_POINTS.AUTO_CORAL_L4;
+  score += (data.autoAlgaeProcessorScored || 0) * SCORING_POINTS.AUTO_ALGAE_PROC;
+  score += (data.autoAlgaeNetScored || 0) * SCORING_POINTS.AUTO_ALGAE_NET;
   
-  score += data.teleopCoralL1 * SCORING_POINTS.TELE_CORAL_L1;
-  score += data.teleopCoralL2 * SCORING_POINTS.TELE_CORAL_L2;
-  score += data.teleopCoralL3 * SCORING_POINTS.TELE_CORAL_L3;
-  score += data.teleopCoralL4 * SCORING_POINTS.TELE_CORAL_L4;
-  score += data.teleopProcessorScored * SCORING_POINTS.TELE_ALGAE_PROC;
-  score += data.teleopNetRobotScored * SCORING_POINTS.TELE_ALGAE_NET_R;
-  score += data.teleopNetHumanScored * SCORING_POINTS.TELE_ALGAE_NET_H;
+  score += (data.teleopCoralL1 || 0) * SCORING_POINTS.TELE_CORAL_L1;
+  score += (data.teleopCoralL2 || 0) * SCORING_POINTS.TELE_CORAL_L2;
+  score += (data.teleopCoralL3 || 0) * SCORING_POINTS.TELE_CORAL_L3;
+  score += (data.teleopCoralL4 || 0) * SCORING_POINTS.TELE_CORAL_L4;
+  score += (data.teleopProcessorScored || 0) * SCORING_POINTS.TELE_ALGAE_PROC;
+  score += (data.teleopNetRobotScored || 0) * SCORING_POINTS.TELE_ALGAE_NET_R;
+  score += (data.teleopNetHumanScored || 0) * SCORING_POINTS.TELE_ALGAE_NET_H;
   
   if (data.teleopAlgaeRemoved) score += SCORING_POINTS.ALGAE_REMOVED;
   
-  const endStatus = data.stageStatus.toLowerCase();
-  if (endStatus.includes('deep')) score += SCORING_POINTS.CLIMB_DEEP;
-  else if (endStatus.includes('shallow')) score += SCORING_POINTS.CLIMB_SHALLOW;
-  else if (endStatus.includes('park') || endStatus.includes('barge')) {
-    score += SCORING_POINTS.CLIMB_PARK;
-  }
+  const stage = (data.stageStatus || "").toLowerCase();
+  if (stage.includes('deep')) score += SCORING_POINTS.CLIMB_DEEP;
+  else if (stage.includes('shallow')) score += SCORING_POINTS.CLIMB_SHALLOW;
+  else if (stage.includes('park') || stage.includes('barge')) score += SCORING_POINTS.CLIMB_PARK;
   
   return score;
 }
 
-// Calculate accuracy percentage
-export function calculateAccuracy(
-  scoutedScore: number,
-  officialScore: number
-): number {
-  if (officialScore === 0) return 0;
+export function calculateAccuracy(scoutedData: any, actualData: any): number {
+  let totalFields = 0;
+  let correctFields = 0;
   
-  const error = Math.abs(officialScore - scoutedScore);
-  const accuracy = Math.max(0, (1 - error / officialScore) * 100);
+  const numericFields = [
+    'autoCoralMissed', 'autoCoralL1', 'autoCoralL2', 'autoCoralL3', 'autoCoralL4',
+    'autoAlgaeProcessorMissed', 'autoAlgaeProcessorScored',
+    'autoAlgaeNetMissed', 'autoAlgaeNetScored',
+    'teleopCoralMissed', 'teleopCoralL1', 'teleopCoralL2', 'teleopCoralL3', 'teleopCoralL4',
+    'teleopProcessorMissed', 'teleopProcessorScored',
+    'teleopNetRobotMissed', 'teleopNetRobotScored',
+    'teleopNetHumanMissed', 'teleopNetHumanScored',
+    'failedClimb'
+  ];
   
-  return Math.round(accuracy);
+  numericFields.forEach(field => {
+    totalFields++;
+    const scouted = scoutedData[field] || 0;
+    const actual = actualData[field] || 0;
+    if (Math.abs(scouted - actual) <= 1) correctFields++;
+  });
+  
+  if (scoutedData.leftStartingZone === actualData.leftStartingZone) correctFields++;
+  totalFields++;
+  
+  if (scoutedData.teleopAlgaeRemoved === actualData.teleopAlgaeRemoved) correctFields++;
+  totalFields++;
+  
+  if (scoutedData.startingPosition === actualData.startingPosition) correctFields++;
+  totalFields++;
+  
+  if (scoutedData.stageStatus === actualData.stageStatus) correctFields++;
+  totalFields++;
+  
+  return Math.round((correctFields / totalFields) * 100);
 }
