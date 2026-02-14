@@ -159,6 +159,7 @@ function TeamManagementContent() {
       await updateDoc(doc(db, "users", uid), {
         role,
         specialRoles,
+        specialRole: null, // Clear old singular field
       });
       await loadTeamData();
     } catch (error) {

@@ -206,7 +206,7 @@ function AnalyticsPageContent() {
   const [selectedGame, setSelectedGame] = useState("reefscape");
   const [showPractice, setShowPractice] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
 
   const isCoach = userData?.role === "coach";
 

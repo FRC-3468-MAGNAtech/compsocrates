@@ -36,7 +36,7 @@ function ScoutAccuracyContent() {
         const role = doc.data().role;
         const specialRole = doc.data().specialRole;
         // Include regular scouts AND coaches with "Lead Scout" special role
-        return role === "scout" || (role === "coach" && specialRole === "Lead Scout");
+        return role === "scout" || (role === "coach" && specialRole && ["lead-scout", "lead-strategist", "pit-scout"].includes(specialRole));
       });
 
       // Get scouting entries and practice sessions for each scout

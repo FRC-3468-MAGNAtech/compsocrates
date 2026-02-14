@@ -97,7 +97,8 @@ function PracticeScoutingPage() {
     } else {
       // Reset form for next robot
       resetForm();
-      setCurrentRobotPosition(Math.floor(Math.random() * 3) + 1);
+      // Cycle through robots 1→2→3
+      setCurrentRobotPosition(currentRobotPosition === 3 ? 1 : currentRobotPosition + 1);
     }
   }
 
@@ -229,7 +230,7 @@ function PracticeScoutingPage() {
                   <div>
                     <h3 className="font-bold text-yellow-900 mb-1">Scout Robot #{currentRobotPosition}</h3>
                     <p className="text-sm text-yellow-800">
-                      Focus on robot in position {currentRobotPosition}. Include human player points.
+                      Focus on robot in position {currentRobotPosition}.{currentRobotPosition === 3 ? ' Include human player points.' : ''}
                     </p>
                   </div>
                 </div>
