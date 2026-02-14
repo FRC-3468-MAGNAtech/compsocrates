@@ -8,6 +8,47 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 
+function formatMatchDisplay(entry: any): string {
+  if (!entry.matchType) {
+    return entry.matchNumber?.toString() || "-";
+  }
+  
+  const num = entry.matchNumber || "-";
+  
+  switch (entry.matchType) {
+    case 'practice':
+      return `Practice ${num}`;
+    
+    case 'qualification':
+      return `Qualification ${num}`;
+    
+    case 'finals':
+      if (entry.bracket) {
+        const bracket = entry.bracket === 'upper' ? 'Upper' : 'Lower';
+        return `${bracket} Finals ${num}`;
+      }
+      return `Finals ${num}`;
+    
+    case 'playoff':
+      return `Playoff ${num}`;
+    
+    default:
+      return num.toString();
+  }
+}
+
+const [isMobile, setIsMobile] = useState(false);
+
+useEffect(() => {
+  const checkMobile = () => {
+    setIsMobile(window.innerWidth < 768);
+  };
+  
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  return () => window.removeEventListener('resize', checkMobile);
+}, []);
+
 // -------------------------
 // TYPES
 // -------------------------
@@ -206,7 +247,7 @@ function AnalyticsPageContent() {
   const [selectedGame, setSelectedGame] = useState("reefscape");
   const [showPractice, setShowPractice] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const isCoach = userData?.role === "coach";
 
@@ -369,8 +410,8 @@ function AnalyticsPageContent() {
                         {isCoach && <th className="bg-orange-200 text-center" colSpan={1}>Actions</th>}
                       </tr>
                       <tr>
-                        <th className="sticky-left-0 z-30 cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
-                        <th className="sticky-left-1 z-30 cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
+                        <th className={`cursor-pointer hover:bg-gray-100 text-center ${!isMobile ? 'sticky-left-0 z-30' : ''}`}></th>
+                        <th className={`cursor-pointer hover:bg-gray-100 text-center ${!isMobile ? 'sticky-left-1 z-30' : ''}`}></th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("startingPosition")}>{sortLabel("startingPosition", "Starting Position")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("leftStartingZone")}>{sortLabel("leftStartingZone", "Leave")}</th>
@@ -424,14 +465,14 @@ function AnalyticsPageContent() {
 
                         return (
                           <tr key={e.id}>
-                            <td className="sticky-left-0 font-semibold bg-white z-20 text-center">
+                            <td className={`font-semibold bg-white ${!isMobile ? 'sticky-left-0 z-20' : ''}`}>
                               {e.matchNumber ? (
                                 e.matchType === "finals" ? `F${e.matchNumber}` :
                                 e.matchType === "practice" ? `P${e.matchNumber}` :
                                 `Q${e.matchNumber}`
                               ) : "-"}
                             </td>
-                            <td className="sticky-left-1 font-semibold bg-white z-20 text-center">{e.teamNumber || "-"}</td>
+                            <td className={`font-semibold bg-white ${!isMobile ? 'sticky-left-1 z-20' : ''}`}></td>
                             <td className="text-center">{e.scoutName || "-"}</td>
                             <td className="text-center">{positionLabels[e.startingPosition] || e.startingPosition || "-"}</td>
                             <td className="text-center">{e.leftStartingZone ? "Yes" : "-"}</td>
