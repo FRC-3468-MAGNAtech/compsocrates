@@ -17,6 +17,28 @@ interface MatchRobot {
   scoutName: string;
 }
 
+
+// Helper function to format match display name
+function getMatchDisplayName(matchId: string): string {
+  if (!matchId) return "Unknown Match";
+  
+  const str = matchId.toString().toLowerCase();
+  const num = matchId.replace(/\D/g, '') || "0";
+  
+  if (str.startsWith('p') || str.includes('practice')) {
+    return `Practice ${num}`;
+  }
+  if (str.startsWith('q') || str.includes('qual')) {
+    return `Qualification ${num}`;
+  }
+  if (str.startsWith('f') || str.includes('final')) {
+    return `Finals ${num}`;
+  }
+  
+  // Fallback
+  return `Match ${matchId}`;
+}
+
 function MatchBreakdownContent() {
   const [selectedMatch, setSelectedMatch] = useState("");
   const [matchData, setMatchData] = useState<MatchRobot[]>([]);
@@ -140,7 +162,7 @@ function MatchBreakdownContent() {
               className="w-full max-w-md border rounded p-2"
             >
               {allMatches.map(match => (
-                <option key={match} value={match}>{match}</option>
+                <option key={match} value={match}>{getMatchDisplayName(match)}</option>
               ))}
             </select>
           </div>
