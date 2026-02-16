@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
+import { LoadingSpinner } from "@/app/components/LoadingSpinner";
 
 interface ScoutStats {
   scoutName: string;
@@ -23,10 +24,18 @@ function ScoutAccuracyContent() {
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<"all" | "trial" | "competitive">("all");
 
   useEffect(() => {
     loadScoutStats();
   }, []);
+
+  // Reload when mode changes
+  useEffect(() => {
+    if (selectedMode) {
+      loadScoutStats();
+    }
+  }, [selectedMode]);
 
   async function loadScoutStats() {
     setLoading(true);
@@ -47,8 +56,18 @@ function ScoutAccuracyContent() {
         const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
         const entriesSnapshot = await getDocs(entriesQuery);
         
-        // Get practice sessions from Firebase
-        const practiceQuery = query(collection(db, "practiceSessions"), where("scoutName", "==", scoutName));
+        // Get practice sessions from Firebase (filtered by mode)
+        let practiceQuery = query(collection(db, "practiceSessions"), where("scoutName", "==", scoutName));
+        
+        // Filter by mode if not "all"
+        if (selectedMode !== "all") {
+          practiceQuery = query(
+            collection(db, "practiceSessions"),
+            where("scoutName", "==", scoutName),
+            where("mode", "==", selectedMode)
+          );
+        }
+        
         const practiceSnapshot = await getDocs(practiceQuery);
         
         let totalAccuracy = 0;
@@ -202,12 +221,17 @@ function ScoutAccuracyContent() {
           </h1>
           <p className="text-gray-600 mb-8">
             Track and verify the accuracy of your team members' data
+            {selectedMode !== "all" && (
+              <span className="text-sm text-gray-500 ml-2">
+                (Showing {selectedMode === "trial" ? "Trial" : "Competitive"} mode only)
+              </span>
+            )}
           </p>
 
           {loading ? (
             <div className="text-center py-12">
-              <div className="text-4xl mb-4">🔄</div>
-              <p className="text-gray-600">Loading statistics...</p>
+              <LoadingSpinner />
+              <p className="text-gray-600 mt-4">Loading statistics...</p>
             </div>
           ) : scoutStats.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md p-12 text-center">
@@ -219,6 +243,40 @@ function ScoutAccuracyContent() {
             </div>
           ) : (
             <>
+
+          {/* MODE TABS */}
+          <div className="bg-white rounded-xl shadow-md p-2 mb-6 flex gap-2">
+            <button
+              onClick={() => setSelectedMode("all")}
+              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                selectedMode === "all" 
+                  ? "bg-red-600 text-white" 
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              All Practice
+            </button>
+            <button
+              onClick={() => setSelectedMode("trial")}
+              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                selectedMode === "trial" 
+                  ? "bg-red-600 text-white" 
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Trial Mode
+            </button>
+            <button
+              onClick={() => setSelectedMode("competitive")}
+              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                selectedMode === "competitive" 
+                  ? "bg-red-600 text-white" 
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Competitive Mode
+            </button>
+          </div>
               {/* OVERVIEW STATS */}
               <div className="grid md:grid-cols-4 gap-6 mb-6">
                 <div className="bg-white rounded-xl shadow-md p-6">

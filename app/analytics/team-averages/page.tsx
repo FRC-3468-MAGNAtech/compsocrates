@@ -5,6 +5,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import { LoadingSpinner } from "@/app/components/LoadingSpinner";
 
 interface TeamAverage {
   teamNumber: string;
@@ -197,9 +198,9 @@ function TeamAveragesContent() {
 
           {/* Averages Table */}
           {loading ? (
-            <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <div className="text-4xl mb-4">⏳</div>
-              <p className="text-gray-600">Loading averages...</p>
+            <div className="text-center py-12">
+              <LoadingSpinner />
+              <p className="text-gray-600 mt-4">Loading team averages...</p>
             </div>
           ) : teamAverages.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md p-12 text-center">

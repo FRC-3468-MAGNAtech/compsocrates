@@ -1,13 +1,15 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
   User,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  sendEmailVerification
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
@@ -50,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   // Load user data from Firestore
   async function loadUserData(uid: string) {
@@ -86,6 +89,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isTeamAdmin: boolean
   ) {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    await sendEmailVerification(userCredential.user);
+    alert("Verification email sent! Please check your inbox.");
     
     // Update display name
     await updateProfile(userCredential.user, { displayName: name });
@@ -118,10 +123,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Listen for auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        await loadUserData(user.uid);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      
+      if (currentUser) {
+        // Check if email is verified
+        if (!currentUser.emailVerified) {
+          // Redirect to verification page
+          router.push("/verify-email");
+          setLoading(false);
+          return;
+        }
+
+        // Load user data
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          setUserData(userDoc.data() as UserData);
+        }
       } else {
         setUserData(null);
       }
@@ -129,7 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return unsubscribe;
-  }, []);
+  }, [router]);
 
   return (
     <AuthContext.Provider value={{ user, userData, loading, signUp, signIn, logOut, updateUserData }}>

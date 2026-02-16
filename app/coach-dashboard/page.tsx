@@ -6,6 +6,9 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { calculateTeamStats, getUpcomingEvents, formatActivity, type TeamStats, type UpcomingEvent } from "@/app/utils/stats-calculator";
+import { LoadingSpinner } from "@/app/components/LoadingSpinner";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import { db } from "@/app/firebase";
 
 function CoachDashboardContent() {
   const router = useRouter();
@@ -13,6 +16,9 @@ function CoachDashboardContent() {
   const [stats, setStats] = useState<TeamStats | null>(null);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingScoutCount, setEditingScoutCount] = useState(false);
+  const [scoutCountInput, setScoutCountInput] = useState('');
+  const [teamData, setTeamData] = useState<any>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -23,17 +29,41 @@ function CoachDashboardContent() {
     
     setLoading(true);
     try {
-      const [teamStats, events] = await Promise.all([
+      const [teamStats, events, teamDoc] = await Promise.all([
         calculateTeamStats(userData.teamId),
         getUpcomingEvents(),
+        getDoc(doc(db, "teams", userData.teamId)),
       ]);
       
       setStats(teamStats);
       setUpcomingEvents(events);
+      if (teamDoc.exists()) {
+        setTeamData(teamDoc.data());
+      }
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSaveScoutCount() {
+    if (!userData?.teamId) return;
+    
+    const count = parseInt(scoutCountInput);
+    if (isNaN(count) || count < 1 || count > 20) {
+      alert('Please enter a number between 1 and 20');
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "teams", userData.teamId), { scoutCount: count }, { merge: true });
+      setTeamData({ ...teamData, scoutCount: count });
+      setEditingScoutCount(false);
+      alert('Scout count updated!');
+    } catch (error) {
+      console.error('Error updating scout count:', error);
+      alert('Error updating scout count');
     }
   }
 
@@ -48,10 +78,7 @@ function CoachDashboardContent() {
           <p className="text-gray-600 mb-8">Welcome back! Here's what's happening with your team.</p>
 
           {loading ? (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-4 animate-spin">🔄</div>
-              <p className="text-gray-600">Loading dashboard...</p>
-            </div>
+            <LoadingSpinner message="Loading dashboard..." />
           ) : (
             <>
               {/* UPCOMING EVENTS - Show Arkansas and Bayou */}
@@ -125,6 +152,60 @@ function CoachDashboardContent() {
                     {stats?.averageAccuracy || 0}%
                   </p>
                   <p className="text-sm text-gray-600 mt-1">Scout reliability</p>
+                </div>
+              </div>
+
+              {/* SCOUT COUNT CONFIGURATION */}
+              <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4">Team Configuration</h3>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">Expected Scouts per Match</p>
+                    {editingScoutCount ? (
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number"
+                          value={scoutCountInput}
+                          onChange={(e) => setScoutCountInput(e.target.value)}
+                          className="border rounded px-3 py-2 w-24"
+                          min="1"
+                          max="20"
+                          placeholder="6"
+                        />
+                        <button 
+                          onClick={handleSaveScoutCount}
+                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                        >
+                          Save
+                        </button>
+                        <button 
+                          onClick={() => setEditingScoutCount(false)}
+                          className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 text-sm font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-4">
+                        <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
+                          {teamData?.scoutCount || 6}
+                        </p>
+                        <button 
+                          onClick={() => {
+                            setScoutCountInput((teamData?.scoutCount || 6).toString());
+                            setEditingScoutCount(true);
+                          }}
+                          className="text-sm text-blue-600 hover:underline font-medium"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">This number is used to calculate</p>
+                    <p className="text-xs text-gray-500">scout accuracy thresholds</p>
+                  </div>
                 </div>
               </div>
 

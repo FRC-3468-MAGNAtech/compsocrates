@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { Trophy, TrendingUp } from "lucide-react";
+import { LoadingSpinner } from "@/app/components/LoadingSpinner";
 
 interface TeamRanking {
   teamNumber: string;
@@ -175,9 +176,9 @@ function RankingsContent() {
 
           {/* Rankings Table */}
           {loading ? (
-            <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <div className="text-4xl mb-4">⏳</div>
-              <p className="text-gray-600">Loading rankings...</p>
+            <div className="text-center py-12">
+              <LoadingSpinner />
+              <p className="text-gray-600 mt-4">Loading rankings...</p>
             </div>
           ) : rankings.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md p-12 text-center">

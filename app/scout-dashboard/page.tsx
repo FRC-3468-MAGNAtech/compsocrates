@@ -8,6 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents } from "@/app/utils/stats-calculator";
+import { LoadingSpinner } from "@/app/components/LoadingSpinner";
 
 type ScoutStats = {
   matchesScoutedCount: number;
@@ -91,8 +92,8 @@ function ScoutDashboardContent() {
 
           {loading ? (
             <div className="text-center py-12">
-              <div className="text-4xl mb-4 animate-spin">🔄</div>
-              <p className="text-gray-600">Loading dashboard...</p>
+              <LoadingSpinner />
+              <p className="text-gray-600 mt-4">Loading dashboard...</p>
             </div>
           ) : (
             <>

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, updateDoc, doc, query, where, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, updateDoc, doc, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { getTeamName } from "@/app/utils/stats-calculator";
 import { X } from "lucide-react";
+import { LoadingSpinner } from "@/app/components/LoadingSpinner";
+import TeamRequestsPanel from "@/app/components/TeamRequestsPanel";
 
 interface TeamMember {
   uid: string;
@@ -156,10 +158,12 @@ function TeamManagementContent() {
 
   async function handleUpdateRole(uid: string, role: string, specialRoles: string[]) {
     try {
-      await updateDoc(doc(db, "users", uid), {
+      const updateData: any = {
         role,
-        specialRoles,
-      });
+        specialRoles: specialRoles || [],
+      };
+      
+      await updateDoc(doc(db, "users", uid), updateData);
       await loadTeamData();
     } catch (error) {
       console.error("Error updating role:", error);
@@ -213,9 +217,8 @@ function TeamManagementContent() {
           </p>
 
           {loading ? (
-            <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <div className="text-4xl mb-4">⏳</div>
-              <p className="text-gray-600">Loading team...</p>
+            <div className="text-center py-12">
+              <LoadingSpinner />
             </div>
           ) : (
             <>
@@ -333,6 +336,8 @@ function TeamManagementContent() {
                   </table>
                 </div>
               </div>
+
+              {isUserAdmin && <TeamRequestsPanel />}
 
               {!isUserAdmin && (
                 <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded mt-6">
