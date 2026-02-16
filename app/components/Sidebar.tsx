@@ -147,7 +147,7 @@ export default function Sidebar() {
         {/* HEADER */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            {(!collapsed || isMobileMenuOpen) && (
+            {!collapsed && (
               <div className="flex items-center gap-2">
                 <div
                   className="w-8 h-8 rounded text-white flex items-center justify-center font-bold text-sm"
@@ -189,7 +189,7 @@ export default function Sidebar() {
                 title={collapsed ? item.label : ""}
               >
                 <Icon size={20} />
-                {(!collapsed || isMobileMenuOpen) && <span className="text-sm">{item.label}</span>}
+                {!collapsed && <span className="text-sm">{item.label}</span>}
               </Link>
             );
           })}
@@ -209,7 +209,7 @@ export default function Sidebar() {
             >
               {userData.displayName.substring(0, 2).toUpperCase()}
             </div>
-            {(!collapsed || isMobileMenuOpen) && (
+            {!collapsed && (
               <div className="flex-1 text-left">
                 <p className="text-sm font-semibold text-gray-900">{userData.displayName}</p>
                 <p className="text-xs text-gray-600 capitalize">
@@ -234,18 +234,18 @@ export default function Sidebar() {
                 `}
               >
                 <Link
-                  href={`/profile/${userData.uid}`}
+                  href="/account"
                   className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700 rounded-t-lg"
+                  onClick={() => setShowSettings(false)}
+                >
+                  Account Settings
+                <Link
+                  href={`/profile/${userData.uid}`}
+                  className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
                   onClick={() => setShowSettings(false)}
                 >
                   View Profile
                 </Link>
-                <Link
-                  href="/account"
-                  className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
-                  onClick={() => setShowSettings(false)}
-                >
-                  Account Settings
                 </Link>
                 <button
                   onClick={async () => {

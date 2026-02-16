@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { Trophy, Users } from "lucide-react";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 interface MatchRobot {
   teamNumber: string;
@@ -169,7 +170,7 @@ function MatchBreakdownContent() {
 
           {loading ? (
             <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <div className="text-4xl mb-4">⏳</div>
+              <LoadingSpinner />
               <p className="text-gray-600">Loading match data...</p>
             </div>
           ) : matchData.length === 0 ? (

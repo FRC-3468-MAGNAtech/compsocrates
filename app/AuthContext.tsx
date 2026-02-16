@@ -26,26 +26,31 @@ export type UserData = {
   specialRole?: SpecialRole;
   teamId: string;
   isTeamAdmin: boolean;
+  photoURL?: string;
 };
 
 type AuthContextType = {
   user: User | null;
+  currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
   signUp: (email: string, password: string, name: string, role: UserRole, teamId: string, isTeamAdmin: boolean) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   logOut: () => Promise<void>;
   updateUserData: (updates: Partial<UserData>) => Promise<void>;
+  refreshUserData: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  currentUser: null,
   userData: null,
   loading: true,
   signUp: async () => {},
   signIn: async () => {},
   logOut: async () => {},
   updateUserData: async () => {},
+  refreshUserData: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -77,6 +82,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Error updating user data:", error);
       throw error;
     }
+  }
+
+  // Refresh user data from Firestore
+  async function refreshUserData() {
+    if (!user) return;
+    await loadUserData(user.uid);
   }
 
   // Sign up new user
@@ -150,7 +161,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading, signUp, signIn, logOut, updateUserData }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      currentUser: user,
+      userData, 
+      loading, 
+      signUp, 
+      signIn, 
+      logOut, 
+      updateUserData,
+      refreshUserData
+    }}>
       {children}
     </AuthContext.Provider>
   );

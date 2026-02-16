@@ -1,232 +1,275 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import { User, Trophy, Target, Calendar, Award } from "lucide-react";
+import { Trophy, Users } from "lucide-react";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
-interface UserProfile {
-  uid: string;
-  displayName: string;
-  email: string;
-  role: "scout" | "coach";
-  specialRole?: string;
-  teamId: string;
-  isTeamAdmin: boolean;
-  profilePicture?: string;
-  createdAt: number;
+interface MatchRobot {
+  teamNumber: string;
+  alliance: "red" | "blue";
+  autoPoints: number;
+  teleopPoints: number;
+  endgamePoints: number;
+  totalPoints: number;
+  scoutName: string;
 }
 
-interface UserStats {
-  matchesScouted: number;
-  averageAccuracy: number;
-  practiceSessionsCompleted: number;
-  recentActivity: any[];
+
+// Helper function to format match display name
+function getMatchDisplayName(matchId: string): string {
+  if (!matchId) return "Unknown Match";
+  
+  const str = matchId.toString().toLowerCase();
+  const num = matchId.replace(/\D/g, '') || "0";
+  
+  if (str.startsWith('p') || str.includes('practice')) {
+    return `Practice ${num}`;
+  }
+  if (str.startsWith('q') || str.includes('qual')) {
+    return `Qualification ${num}`;
+  }
+  if (str.startsWith('f') || str.includes('final')) {
+    return `Finals ${num}`;
+  }
+  
+  // Fallback
+  return `Match ${matchId}`;
 }
 
-function ProfileContent() {
-  const params = useParams();
-  const userId = params.userId as string;
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [teamName, setTeamName] = useState("");
+function MatchBreakdownContent() {
+  const [selectedMatch, setSelectedMatch] = useState("");
+  const [matchData, setMatchData] = useState<MatchRobot[]>([]);
+  const [allMatches, setAllMatches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadProfile();
-  }, [userId]);
+    loadMatches();
+  }, []);
 
-  async function loadProfile() {
-    setLoading(true);
+  useEffect(() => {
+    if (selectedMatch) {
+      loadMatchData(selectedMatch);
+    }
+  }, [selectedMatch]);
+
+  async function loadMatches() {
     try {
-      // Load user profile
-      const userDoc = await getDoc(doc(db, "users", userId));
-      if (!userDoc.exists()) {
-        setLoading(false);
-        return;
-      }
-
-      const userData = { uid: userDoc.id, ...userDoc.data() } as UserProfile;
-      setProfile(userData);
-
-      // Load team name
-      if (userData.teamId) {
-        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        if (teamDoc.exists()) {
-          setTeamName(teamDoc.data().teamName || userData.teamId);
-        }
-      }
-
-      // Load stats
-      const entriesQuery = query(
-        collection(db, "scoutingEntries"),
-        where("scoutName", "==", userData.displayName)
-      );
-      const entriesSnap = await getDocs(entriesQuery);
-      const matchesScouted = entriesSnap.size;
-
-      const practiceQuery = query(
-        collection(db, "practiceSessions"),
-        where("scoutName", "==", userData.displayName)
-      );
-      const practiceSnap = await getDocs(practiceQuery);
-      
-      let totalAccuracy = 0;
-      practiceSnap.forEach(doc => {
-        const data = doc.data();
-        if (data.accuracy) totalAccuracy += data.accuracy;
-      });
-      const averageAccuracy = practiceSnap.size > 0 ? Math.round(totalAccuracy / practiceSnap.size) : 0;
-
-      // Recent activity
-      const recentEntries = entriesSnap.docs
-        .map(doc => doc.data())
-        .sort((a, b) => (b.submittedAt || b.timestamp || 0) - (a.submittedAt || a.timestamp || 0))
-        .slice(0, 5);
-
-      setStats({
-        matchesScouted,
-        averageAccuracy,
-        practiceSessionsCompleted: practiceSnap.size,
-        recentActivity: recentEntries,
-      });
+      const entriesSnap = await getDocs(collection(db, "scouting"));
+      const matches = [...new Set(entriesSnap.docs.map(doc => doc.data().matchId || doc.data().matchNumber))]
+        .filter(Boolean)
+        .sort((a: any, b: any) => {
+          const aType = a[0].toLowerCase();
+          const bType = b[0].toLowerCase();
+          const typeOrder: { [key: string]: number } = { p: 0, q: 1, f: 2 }; // FIX: Properly typed
+          if (typeOrder[aType] !== typeOrder[bType]) {
+            return typeOrder[aType] - typeOrder[bType];
+          }
+          return parseInt(a.slice(1)) - parseInt(b.slice(1));
+        });
+      setAllMatches(matches);
+      if (matches.length > 0) setSelectedMatch(matches[0]);
     } catch (error) {
-      console.error("Error loading profile:", error);
+      console.error("Error loading matches:", error);
     } finally {
       setLoading(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-4xl animate-spin">🔄</div>
-        </div>
-      </div>
-    );
+  async function loadMatchData(matchId: string) {
+    setLoading(true);
+    try {
+      const entriesQuery = query(
+        collection(db, "scouting"),
+        where("matchId", "==", matchId)
+      );
+      const entriesSnap = await getDocs(entriesQuery);
+      
+      const robots: MatchRobot[] = entriesSnap.docs.map(doc => {
+        const data = doc.data();
+        
+        // Calculate points (simplified)
+        const autoPoints = (data.autoCoralL1 || 0) * 3 + 
+                          (data.autoCoralL2 || 0) * 4 + 
+                          (data.autoCoralL3 || 0) * 6 + 
+                          (data.autoCoralL4 || 0) * 7 +
+                          (data.autoAlgaeProcessorScored || 0) * 6 +
+                          (data.autoAlgaeNetScored || 0) * 4 +
+                          (data.leftStartingZone ? 3 : 0);
+        
+        const teleopPoints = (data.teleopCoralL1 || 0) * 2 + 
+                            (data.teleopCoralL2 || 0) * 3 + 
+                            (data.teleopCoralL3 || 0) * 4 + 
+                            (data.teleopCoralL4 || 0) * 5 +
+                            (data.teleopProcessorScored || 0) * 6 +
+                            (data.teleopNetRobotScored || 0) * 4 +
+                            (data.teleopNetHumanScored || 0) * 4 +
+                            (data.teleopAlgaeRemoved ? 2 : 0);
+        
+        let endgamePoints = 0;
+        const stage = (data.stageStatus || "").toLowerCase();
+        if (stage.includes("deep")) endgamePoints = 12;
+        else if (stage.includes("shallow")) endgamePoints = 6;
+        else if (stage.includes("park")) endgamePoints = 2;
+        
+        return {
+          teamNumber: data.teamNumber || "Unknown",
+          alliance: data.alliance || "blue",
+          autoPoints,
+          teleopPoints,
+          endgamePoints,
+          totalPoints: autoPoints + teleopPoints + endgamePoints,
+          scoutName: data.scoutName || "Unknown"
+        };
+      });
+      
+      setMatchData(robots);
+    } catch (error) {
+      console.error("Error loading match data:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (!profile) {
-    return (
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <User size={64} className="mx-auto mb-4 text-gray-400" />
-            <h2 className="text-2xl font-bold text-gray-700">User Not Found</h2>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const redAlliance = matchData.filter(r => r.alliance === "red");
+  const blueAlliance = matchData.filter(r => r.alliance === "blue");
+  
+  const redTotal = redAlliance.reduce((sum, r) => sum + r.totalPoints, 0);
+  const blueTotal = blueAlliance.reduce((sum, r) => sum + r.totalPoints, 0);
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        {/* Profile Header */}
-        <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-          <div className="flex items-start gap-6">
-            {/* Profile Picture */}
-            <div className="flex-shrink-0">
-              {profile.profilePicture ? (
-                <img
-                  src={profile.profilePicture}
-                  alt={profile.displayName}
-                  className="w-24 h-24 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white text-3xl font-bold">
-                  {profile.displayName.substring(0, 2).toUpperCase()}
-                </div>
-              )}
-            </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-8">
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            Match Breakdown
+          </h1>
+          <p className="text-gray-600 mb-8">
+            Detailed analysis of match performance by alliance
+          </p>
 
-            {/* Info */}
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold mb-2">{profile.displayName}</h1>
-              <div className="flex flex-wrap gap-2 mb-3">
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold capitalize">
-                  {profile.specialRole ? profile.specialRole.replace(/-/g, ' ') : profile.role}
-                </span>
-                {profile.isTeamAdmin && (
-                  <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-semibold">
-                    Team Admin
-                  </span>
-                )}
-              </div>
-              <p className="text-gray-600">Team {teamName}</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Member since {new Date(profile.createdAt).toLocaleDateString()}
+          {/* Match Selector */}
+          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Match
+            </label>
+            <select
+              value={selectedMatch}
+              onChange={(e) => setSelectedMatch(e.target.value)}
+              className="w-full max-w-md border rounded p-2"
+            >
+              {allMatches.map(match => (
+                <option key={match} value={match}>{getMatchDisplayName(match)}</option>
+              ))}
+            </select>
+          </div>
+
+          {loading ? (
+            <div className="bg-white rounded-xl shadow-md p-12 text-center">
+              <LoadingSpinner />
+              <p className="text-gray-600">Loading match data...</p>
+            </div>
+          ) : matchData.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-md p-12 text-center">
+              <div className="text-6xl mb-4">📊</div>
+              <h2 className="text-2xl font-semibold mb-2">No Data Available</h2>
+              <p className="text-gray-600">
+                No scouting data found for this match.
               </p>
             </div>
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-gray-700">Matches Scouted</h3>
-              <Trophy className="text-blue-500" size={24} />
-            </div>
-            <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
-              {stats?.matchesScouted || 0}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-gray-700">Accuracy</h3>
-              <Target className="text-green-500" size={24} />
-            </div>
-            <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
-              {stats?.averageAccuracy || 0}%
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
-              <Award className="text-yellow-500" size={24} />
-            </div>
-            <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
-              {stats?.practiceSessionsCompleted || 0}
-            </p>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Calendar className="text-gray-400" size={20} />
-            <h2 className="text-xl font-bold">Recent Activity</h2>
-          </div>
-
-          {!stats?.recentActivity || stats.recentActivity.length === 0 ? (
-            <p className="text-center py-8 text-gray-500">No recent activity</p>
           ) : (
-            <div className="space-y-3">
-              {stats.recentActivity.map((entry, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">
-                      Scouted Team {entry.teamNumber}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Match {entry.matchId || entry.matchNumber}
-                    </p>
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Red Alliance */}
+              <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                <div className="bg-red-500 text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Trophy size={24} />
+                    <h2 className="text-xl font-bold">Red Alliance</h2>
                   </div>
-                  <div className="text-sm text-gray-500">
-                    {new Date(entry.submittedAt || entry.timestamp).toLocaleDateString()}
-                  </div>
+                  <div className="text-2xl font-bold">{redTotal}</div>
                 </div>
-              ))}
+                <div className="p-6">
+                  {redAlliance.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No data available</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {redAlliance.map((robot, idx) => (
+                        <div key={idx} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-lg">Team {robot.teamNumber}</span>
+                            <span className="text-xl font-bold" style={{ color: "#c42221" }}>
+                              {robot.totalPoints}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div>
+                              <p className="text-gray-600">Auto</p>
+                              <p className="font-semibold">{robot.autoPoints}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Teleop</p>
+                              <p className="font-semibold">{robot.teleopPoints}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Endgame</p>
+                              <p className="font-semibold">{robot.endgamePoints}</p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">Scouted by: {robot.scoutName}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Blue Alliance */}
+              <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                <div className="bg-blue-500 text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Trophy size={24} />
+                    <h2 className="text-xl font-bold">Blue Alliance</h2>
+                  </div>
+                  <div className="text-2xl font-bold">{blueTotal}</div>
+                </div>
+                <div className="p-6">
+                  {blueAlliance.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No data available</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {blueAlliance.map((robot, idx) => (
+                        <div key={idx} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-lg">Team {robot.teamNumber}</span>
+                            <span className="text-xl font-bold text-blue-600">
+                              {robot.totalPoints}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div>
+                              <p className="text-gray-600">Auto</p>
+                              <p className="font-semibold">{robot.autoPoints}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Teleop</p>
+                              <p className="font-semibold">{robot.teleopPoints}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Endgame</p>
+                              <p className="font-semibold">{robot.endgamePoints}</p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">Scouted by: {robot.scoutName}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -235,10 +278,10 @@ function ProfileContent() {
   );
 }
 
-export default function ProfilePage() {
+export default function MatchBreakdownPage() {
   return (
     <ProtectedRoute requireAuth={true}>
-      <ProfileContent />
+      <MatchBreakdownContent />
     </ProtectedRoute>
   );
 }

@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { Calendar, Users, Trash2, Plus } from "lucide-react";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 interface Assignment {
   id: string;
@@ -158,7 +159,7 @@ function AssignmentsContent() {
           {/* Assignments List */}
           {loading ? (
             <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <div className="text-4xl mb-4">⏳</div>
+              <LoadingSpinner />
               <p className="text-gray-600">Loading assignments...</p>
             </div>
           ) : assignments.length === 0 ? (

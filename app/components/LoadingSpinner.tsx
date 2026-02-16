@@ -1,5 +1,5 @@
 // Consistent loading spinner component
-export function LoadingSpinner({ message = "Loading..." }: { message?: string }) {
+export default function LoadingSpinner({ message = "Loading..." }: { message?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-12">
       <div className="relative w-16 h-16 mb-4">

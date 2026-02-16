@@ -7,6 +7,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db, auth } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
 
 function AccountContent() {
   const { user, userData } = useAuth();
@@ -168,6 +169,12 @@ function AccountContent() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* PROFILE PICTURE */}
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Profile Picture</h2>
+            <ProfilePictureUpload />
           </div>
 
           {/* CHANGE EMAIL */}
