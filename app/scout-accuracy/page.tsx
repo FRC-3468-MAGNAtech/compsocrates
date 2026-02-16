@@ -6,7 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
-import { LoadingSpinner } from "@/app/components/LoadingSpinner";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 interface ScoutStats {
   scoutName: string;

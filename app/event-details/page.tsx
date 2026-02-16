@@ -6,7 +6,7 @@ import { collection, doc, setDoc, getDocs, query, where } from "firebase/firesto
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import { LoadingSpinner } from "@/app/components/LoadingSpinner";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { Download, Users, Calendar, MapPin } from "lucide-react";
 
 const EVENT_DATA: Record<string, any> = {

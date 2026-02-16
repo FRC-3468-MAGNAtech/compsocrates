@@ -8,7 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents } from "@/app/utils/stats-calculator";
-import { LoadingSpinner } from "@/app/components/LoadingSpinner";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 type ScoutStats = {
   matchesScoutedCount: number;
