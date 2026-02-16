@@ -89,7 +89,7 @@ function EventDetailsContent() {
     setImporting(true);
     try {
       // Fetch teams from TBA API
-      const response = await fetch(\`https://www.thebluealliance.com/api/v3/event/\${eventKey}/teams\`, {
+      const response = await fetch(`https://www.thebluealliance.com/api/v3/event/${eventKey}/teams`, {
         headers: {
           'X-TBA-Auth-Key': 'your-tba-api-key-here' // NOTE: Should come from settings
         }
@@ -115,13 +115,13 @@ function EventDetailsContent() {
         };
 
         await setDoc(
-          doc(db, "eventTeams", \`\${eventKey}_\${team.team_number}\`),
+          doc(db, "eventTeams", `${eventKey}_${team.team_number}`),
           teamDoc
         );
         saved++;
       }
 
-      alert(\`Successfully imported \${saved} teams!\`);
+      alert(`Successfully imported ${saved} teams!`);
       loadTeamsFromFirebase();
     } catch (error) {
       console.error("Error importing teams:", error);
@@ -176,31 +176,31 @@ function EventDetailsContent() {
               <nav className="flex">
                 <button
                   onClick={() => setActiveTab("overview")}
-                  className={\`px-6 py-4 text-sm font-medium border-b-2 \${
+                  className={`px-6 py-4 text-sm font-medium border-b-2 ${
                     activeTab === "overview"
                       ? "border-red-600 text-red-600"
                       : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  }\`}
+                  }`}
                 >
                   Overview
                 </button>
                 <button
                   onClick={() => setActiveTab("teams")}
-                  className={\`px-6 py-4 text-sm font-medium border-b-2 \${
+                  className={`px-6 py-4 text-sm font-medium border-b-2 ${
                     activeTab === "teams"
                       ? "border-red-600 text-red-600"
                       : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  }\`}
+                  }`}
                 >
                   Teams ({teams.length})
                 </button>
                 <button
                   onClick={() => setActiveTab("schedule")}
-                  className={\`px-6 py-4 text-sm font-medium border-b-2 \${
+                  className={`px-6 py-4 text-sm font-medium border-b-2 ${
                     activeTab === "schedule"
                       ? "border-red-600 text-red-600"
                       : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  }\`}
+                  }`}
                 >
                   Schedule
                 </button>
