@@ -2,7 +2,8 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+import { collection, getDocs, deleteDoc, doc, addDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -193,10 +194,25 @@ const INCIDENT_LABELS: Record<string, string> = {
   "red-card": "Red Card"
 };
 
+const positionLabels: Record<string, string> = {
+  "Not There": "Not There",
+  "Processor Side": "Processor Side",
+  "Middle": "Middle",
+  "Opposite Side": "Opposite Side"
+};
+
+const stageLabels: Record<string, string> = {
+  "None": "None",
+  "Park": "Park",
+  "Shallow Cage": "Shallow",
+  "Deep Cage": "Deep"
+};
+
 // -------------------------
 // MAIN PAGE
 // -------------------------
 function AnalyticsPageContent() {
+  const router = useRouter();
   const { userData } = useAuth();
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
@@ -207,6 +223,18 @@ function AnalyticsPageContent() {
   const [showPractice, setShowPractice] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setSidebarCollapsed(true);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const isCoach = userData?.role === "coach";
 
@@ -274,6 +302,151 @@ function AnalyticsPageContent() {
     return sortDir === "asc" ? `${label} ▲` : `${label} ▼`;
   }
 
+  // Export data to CSV
+  function exportToCSV() {
+    if (filteredByEvent.length === 0) {
+      alert("No data to export");
+      return;
+    }
+
+    const headers = [
+      "Match", "Type", "Team", "Scout", "Position", "Left Zone",
+      "Auto Coral L1-4", "Auto Coral Missed",
+      "Auto Processor", "Auto Net",
+      "Teleop Coral L1-4", "Teleop Coral Missed",
+      "Teleop Processor", "Teleop Net Robot", "Teleop Net Human",
+      "Stage", "Notes", "Timestamp"
+    ];
+
+    const rows = filteredByEvent.map((e: Entry) => [
+      e.matchNumber || "",
+      e.matchType || "",
+      e.teamNumber || "",
+      e.scoutName || "",
+      e.startingPosition || "",
+      e.leftStartingZone ? "Y" : "N",
+      `${e.autoCoralL1}/${e.autoCoralL2}/${e.autoCoralL3}/${e.autoCoralL4}`,
+      e.autoCoralMissed || 0,
+      `${e.autoAlgaeProcessorScored}/${e.autoAlgaeProcessorMissed}`,
+      `${e.autoAlgaeNetScored}/${e.autoAlgaeNetMissed}`,
+      `${e.teleopCoralL1}/${e.teleopCoralL2}/${e.teleopCoralL3}/${e.teleopCoralL4}`,
+      e.teleopCoralMissed || 0,
+      `${e.teleopProcessorScored}/${e.teleopProcessorMissed}`,
+      `${e.teleopNetRobotScored}/${e.teleopNetRobotMissed}`,
+      `${e.teleopNetHumanScored}/${e.teleopNetHumanMissed}`,
+      e.stageStatus || "",
+      (e.notes || "").replace(/,/g, ";"),
+      e.timestamp || ""
+    ]);
+
+    const csv = [
+      headers.join(","),
+      ...rows.map((r: any[]) => r.map((c: any) => String(c).includes(",") ? `"${c}"` : c).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `analytics-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Import data from CSV
+  async function importFromCSV(event: React.ChangeEvent<HTMLInputElement>) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const text = e.target?.result as string;
+      const lines = text.split('\n');
+      const headers = lines[0].split(',');
+      
+      let imported = 0;
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        
+        const values = lines[i].split(',');
+        const entry: any = {
+          matchNumber: values[0],
+          matchType: values[1],
+          teamNumber: values[2],
+          scoutName: values[3],
+          startingPosition: values[4],
+          leftStartingZone: values[5] === 'Y',
+          timestamp: Date.now(),
+          submittedAt: Date.now()
+        };
+
+        // Parse Auto Coral L1-4
+        const autoCoralStr = values[6].replace(/"/g, '');
+        const autoCoral = autoCoralStr.split('/');
+        entry.autoCoralL1 = parseInt(autoCoral[0]) || 0;
+        entry.autoCoralL2 = parseInt(autoCoral[1]) || 0;
+        entry.autoCoralL3 = parseInt(autoCoral[2]) || 0;
+        entry.autoCoralL4 = parseInt(autoCoral[3]) || 0;
+        entry.autoCoralMissed = parseInt(values[7]) || 0;
+
+        // Parse Auto Processor
+        const autoProc = values[8].replace(/"/g, '').split('/');
+        entry.autoAlgaeProcessorScored = parseInt(autoProc[0]) || 0;
+        entry.autoAlgaeProcessorMissed = parseInt(autoProc[1]) || 0;
+
+        // Parse Auto Net
+        const autoNet = values[9].replace(/"/g, '').split('/');
+        entry.autoAlgaeNetScored = parseInt(autoNet[0]) || 0;
+        entry.autoAlgaeNetMissed = parseInt(autoNet[1]) || 0;
+
+        // Parse Teleop Coral L1-4
+        const teleopCoralStr = values[10].replace(/"/g, '');
+        const teleopCoral = teleopCoralStr.split('/');
+        entry.teleopCoralL1 = parseInt(teleopCoral[0]) || 0;
+        entry.teleopCoralL2 = parseInt(teleopCoral[1]) || 0;
+        entry.teleopCoralL3 = parseInt(teleopCoral[2]) || 0;
+        entry.teleopCoralL4 = parseInt(teleopCoral[3]) || 0;
+        entry.teleopCoralMissed = parseInt(values[11]) || 0;
+
+        // Parse Teleop Processor
+        const teleopProc = values[12].replace(/"/g, '').split('/');
+        entry.teleopProcessorScored = parseInt(teleopProc[0]) || 0;
+        entry.teleopProcessorMissed = parseInt(teleopProc[1]) || 0;
+
+        // Parse Teleop Net Robot
+        const teleopNetR = values[13].replace(/"/g, '').split('/');
+        entry.teleopNetRobotScored = parseInt(teleopNetR[0]) || 0;
+        entry.teleopNetRobotMissed = parseInt(teleopNetR[1]) || 0;
+
+        // Parse Teleop Net Human
+        const teleopNetH = values[14].replace(/"/g, '').split('/');
+        entry.teleopNetHumanScored = parseInt(teleopNetH[0]) || 0;
+        entry.teleopNetHumanMissed = parseInt(teleopNetH[1]) || 0;
+
+        entry.teleopAlgaeRemoved = false;
+        entry.stageStatus = values[15] || "";
+        entry.failedClimb = 0;
+        entry.incidents = [];
+        entry.notes = values[16]?.replace(/"/g, '').replace(/;/g, ',') || "";
+
+        // Save to Firestore
+        await addDoc(collection(db, "scouting"), entry);
+        imported++;
+      }
+
+      alert(`Successfully imported ${imported} entries!`);
+      await loadData();
+    } catch (error) {
+      console.error("Error importing CSV:", error);
+      alert("Error importing CSV. Please check the file format.");
+    }
+  };
+
+  reader.readAsText(file);
+  event.target.value = ''; // Reset input
+}
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
@@ -308,10 +481,10 @@ function AnalyticsPageContent() {
           </div>
         </div>
         <nav className="flex-1 p-4 flex flex-col">
-          <button onClick={() => setActiveView("raw-data")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "raw-data" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Raw Data</button>
-          <button onClick={() => setActiveView("team-averages")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "team-averages" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Team Averages</button>
-          <button onClick={() => setActiveView("match-breakdown")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "match-breakdown" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Match Breakdown</button>
-          <button onClick={() => setActiveView("rankings")} className={`w-full text-left px-3 py-2 rounded mb-2 ${activeView === "rankings" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Rankings</button>
+          <button onClick={() => setActiveView("raw-data")} title="Raw Data" className={`w-full ${sidebarCollapsed ? "text-center" : "text-left"} px-3 py-2 rounded mb-2 ${activeView === "raw-data" ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}`}>Raw Data</button>
+          <button onClick={() => router.push("/analytics/team-averages")} className="w-full text-left px-3 py-2 rounded mb-2 hover:bg-gray-100 text-gray-700">Team Averages</button>
+          <button onClick={() => router.push("/analytics/match-breakdown")} className="w-full text-left px-3 py-2 rounded mb-2 hover:bg-gray-100 text-gray-700">Match Breakdown</button>
+          <button onClick={() => router.push("/analytics/rankings")} className="w-full text-left px-3 py-2 rounded mb-2 hover:bg-gray-100 text-gray-700">Rankings</button>
         </nav>
       </div>
 
@@ -327,6 +500,22 @@ function AnalyticsPageContent() {
                 <span className="text-sm text-gray-600">{data.length} entries</span>
               </div>
               <div className="flex items-center gap-3">
+                <button 
+                  onClick={exportToCSV}
+                  className="px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                >
+                  Export CSV
+                </button>
+                <label className="px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium cursor-pointer">
+                  Import CSV
+                  <input 
+                    type="file" 
+                    accept=".csv" 
+                    onChange={importFromCSV}
+                    className="hidden"
+                  />
+                </label>
+                <div className="h-6 w-px bg-gray-300" />
                 <label className="text-sm font-medium text-gray-700">Game:</label>
                 <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} className="border rounded px-3 py-1.5 text-sm">
                   <option value="reefscape">REEFSCAPE</option>
@@ -374,54 +563,41 @@ function AnalyticsPageContent() {
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("startingPosition")}>{sortLabel("startingPosition", "Starting Position")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("leftStartingZone")}>{sortLabel("leftStartingZone", "Leave")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralMissed")}>{sortLabel("autoCoralMissed", "Missed")}</th>
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralMissed")}>{sortLabel("autoCoralMissed", "Auto Coral Missed")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL1")}>{sortLabel("autoCoralL1", "L1")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL2")}>{sortLabel("autoCoralL2", "L2")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL3")}>{sortLabel("autoCoralL3", "L3")}</th>
                         <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoCoralL4")}>{sortLabel("autoCoralL4", "L4")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeProcessorMissed")}>{sortLabel("autoAlgaeProcessorMissed", "Missed")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeProcessorScored")}>{sortLabel("autoAlgaeProcessorScored", "Scored")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeNetMissed")}>{sortLabel("autoAlgaeNetMissed", "Missed")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("autoAlgaeNetScored")}>{sortLabel("autoAlgaeNetScored", "Scored")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralMissed")}>{sortLabel("teleopCoralMissed", "Missed")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL1")}>{sortLabel("teleopCoralL1", "L1")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL2")}>{sortLabel("teleopCoralL2", "L2")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL3")}>{sortLabel("teleopCoralL3", "L3")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopCoralL4")}>{sortLabel("teleopCoralL4", "L4")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopAlgaeRemoved")}>{sortLabel("teleopAlgaeRemoved", "Remove Algae from Reef")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopProcessorMissed")}>{sortLabel("teleopProcessorMissed", "Missed")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopProcessorScored")}>{sortLabel("teleopProcessorScored", "Scored")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetRobotMissed")}>{sortLabel("teleopNetRobotMissed", "Missed")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetRobotScored")}>{sortLabel("teleopNetRobotScored", "Scored")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetHumanMissed")}>{sortLabel("teleopNetHumanMissed", "Missed")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("teleopNetHumanScored")}>{sortLabel("teleopNetHumanScored", "Scored")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("failedClimb")}>{sortLabel("failedClimb", "Failed")}</th>
-                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("stageStatus")}>{sortLabel("stageStatus", "End Place")}</th>
+                        <th className="text-center">Processor Missed</th>
+                        <th className="text-center">Processor Scored</th>
+                        <th className="text-center">Net Missed</th>
+                        <th className="text-center">Net Scored</th>
+                        <th className="text-center">Coral Missed</th>
+                        <th className="text-center">L1</th>
+                        <th className="text-center">L2</th>
+                        <th className="text-center">L3</th>
+                        <th className="text-center">L4</th>
+                        <th className="text-center">Algae Removed</th>
+                        <th className="text-center">Processor Missed</th>
+                        <th className="text-center">Processor Scored</th>
+                        <th className="text-center">Net (Robot) Missed</th>
+                        <th className="text-center">Net (Robot) Scored</th>
+                        <th className="text-center">Net (Human) Missed</th>
+                        <th className="text-center">Net (Human) Scored</th>
+                        <th className="text-center">Failed Climb</th>
+                        <th className="text-center">Stage Status</th>
                         <th className="text-center">Incidents</th>
                         <th className="text-center">Notes</th>
-                        <th className="text-center">Score</th>
-                        <th className="text-center">Alliance Accuracy</th>
-                        {isCoach && <th className="text-center">Comparison</th>}
-                        {isCoach && <th className="text-center">Delete</th>}
+                        <th className="cursor-pointer hover:bg-gray-100 text-center" onClick={() => handleSort("score")}>{sortLabel("score", "Score")}</th>
+                        <th className="text-center">Scouted Pts</th>
+                        {isCoach && <th className="text-center">Accuracy</th>}
+                        {isCoach && <th className="text-center">Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {data.map((e) => {
                         const score = scoreEntry(e);
-                        const positionLabels: Record<string, string> = {
-                          "not-there": "Not There",
-                          "processor": "Processor Side",
-                          "middle": "Middle",
-                          "opposite": "Opposite Side"
-                        };
-                        const stageLabels: Record<string, string> = {
-                          "not-parked": "Not Parked",
-                          "barge": "Parked in Barge Zone",
-                          "shallow": "Shallow Cage",
-                          "deep": "Deep Cage"
-                        };
-                        const incidentText = e.incidents?.map(inc => INCIDENT_LABELS[inc] || inc).join(", ") || "-";
-
+                        const incidentText = e.incidents.map(i => INCIDENT_LABELS[i] || i).join(", ") || "-";
                         return (
                           <tr key={e.id}>
                             <td className="sticky-left-0 font-semibold bg-white z-20 text-center">
@@ -487,9 +663,6 @@ function AnalyticsPageContent() {
             )}
           </>
         )}
-        {activeView === "team-averages" && <TeamAveragesView rawData={filteredByEvent} showPractice={showPractice} selectedEvent={selectedEvent} />}
-        {activeView === "match-breakdown" && <MatchBreakdownView rawData={filteredByEvent} />}
-        {activeView === "rankings" && <RankingsView rawData={filteredByEvent} showPractice={showPractice} />}
       </div>
       </div>
     </div>
@@ -501,151 +674,5 @@ export default function AnalyticsPage() {
     <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
       <AnalyticsPageContent />
     </ProtectedRoute>
-  );
-}
-
-// ===== EMBEDDED VIEW COMPONENTS =====
-
-function TeamAveragesView({ rawData, showPractice, selectedEvent }: { rawData: Entry[], showPractice: boolean, selectedEvent: string }) {
-  const teamStats: { [team: string]: any } = {};
-  
-  rawData.forEach(entry => {
-    const team = entry.teamNumber;
-    if (!teamStats[team]) {
-      teamStats[team] = {
-        teamNumber: team,
-        entries: [],
-        totalScore: 0,
-        matchCount: 0,
-      };
-    }
-    teamStats[team].entries.push(entry);
-    teamStats[team].totalScore += scoreEntry(entry);
-    teamStats[team].matchCount++;
-  });
-
-  const teams = Object.values(teamStats).map(t => ({
-    ...t,
-    avgScore: t.matchCount > 0 ? Math.round(t.totalScore / t.matchCount) : 0,
-  })).sort((a, b) => b.avgScore - a.avgScore);
-
-  return (
-    <div className="p-6 overflow-y-auto">
-      <h2 className="text-2xl font-bold mb-4">Team Averages</h2>
-      <p className="text-sm text-gray-600 mb-4">{teams.length} teams • {rawData.length} total entries</p>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3 text-left">Team</th>
-              <th className="p-3 text-left">Matches</th>
-              <th className="p-3 text-left">Avg Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {teams.map(team => (
-              <tr key={team.teamNumber} className="border-t">
-                <td className="p-3 font-semibold">{team.teamNumber}</td>
-                <td className="p-3">{team.matchCount}</td>
-                <td className="p-3 font-bold" style={{ color: "#c42221" }}>{team.avgScore}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function RankingsView({ rawData, showPractice }: { rawData: Entry[], showPractice: boolean }) {
-  const teamStats: { [team: string]: any } = {};
-  
-  rawData.forEach(entry => {
-    const team = entry.teamNumber;
-    if (!teamStats[team]) {
-      teamStats[team] = {
-        teamNumber: team,
-        scores: [],
-      };
-    }
-    teamStats[team].scores.push(scoreEntry(entry));
-  });
-
-  const rankings = Object.values(teamStats).map(t => ({
-    teamNumber: t.teamNumber,
-    avgScore: t.scores.length > 0 ? Math.round(t.scores.reduce((a: number, b: number) => a + b, 0) / t.scores.length) : 0,
-    highScore: Math.max(...t.scores, 0),
-    matchesPlayed: t.scores.length,
-  })).sort((a, b) => b.avgScore - a.avgScore);
-
-  return (
-    <div className="p-6 overflow-y-auto">
-      <h2 className="text-2xl font-bold mb-4">Rankings</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3 text-left">Rank</th>
-              <th className="p-3 text-left">Team</th>
-              <th className="p-3 text-left">Avg Score</th>
-              <th className="p-3 text-left">High Score</th>
-              <th className="p-3 text-left">Matches</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rankings.map((team, idx) => (
-              <tr key={team.teamNumber} className="border-t">
-                <td className="p-3">#{idx + 1}</td>
-                <td className="p-3 font-semibold">{team.teamNumber}</td>
-                <td className="p-3 font-bold" style={{ color: "#c42221" }}>{team.avgScore}</td>
-                <td className="p-3">{team.highScore}</td>
-                <td className="p-3">{team.matchesPlayed}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function MatchBreakdownView({ rawData }: { rawData: Entry[] }) {
-  const matchGroups: { [match: string]: Entry[] } = {};
-  
-  rawData.forEach(entry => {
-    const key = entry.matchNumber || "Unknown";
-    if (!matchGroups[key]) matchGroups[key] = [];
-    matchGroups[key].push(entry);
-  });
-
-  const matches = Object.entries(matchGroups).map(([match, entries]) => ({
-    match,
-    entries,
-    avgScore: entries.length > 0 ? Math.round(entries.reduce((sum, e) => sum + scoreEntry(e), 0) / entries.length) : 0,
-  })).sort((a, b) => {
-    const aNum = parseInt(a.match.replace(/\D/g, '')) || 0;
-    const bNum = parseInt(b.match.replace(/\D/g, '')) || 0;
-    return aNum - bNum;
-  });
-
-  return (
-    <div className="p-6 overflow-y-auto">
-      <h2 className="text-2xl font-bold mb-4">Match Breakdown</h2>
-      <div className="space-y-4">
-        {matches.map(m => (
-          <div key={m.match} className="bg-white rounded-lg shadow p-4">
-            <h3 className="font-bold text-lg mb-2">Match {m.match}</h3>
-            <p className="text-sm text-gray-600">{m.entries.length} entries • Avg Score: {m.avgScore}</p>
-            <div className="mt-2 flex gap-2 flex-wrap">
-              {m.entries.map((e, i) => (
-                <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">
-                  Team {e.teamNumber}
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
