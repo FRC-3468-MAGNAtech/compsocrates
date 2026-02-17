@@ -8,6 +8,7 @@ import { db, auth } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
+import ThemePicker from "@/app/components/ThemePicker";
 
 function AccountContent() {
   const { user, userData } = useAuth();
@@ -175,6 +176,15 @@ function AccountContent() {
           <div className="bg-white rounded-xl shadow p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Profile Picture</h2>
             <ProfilePictureUpload />
+          </div>
+
+          {/* THEMES */}
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-2">Appearance</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Choose a theme with smooth gradients, including pride flag color themes.
+            </p>
+            <ThemePicker />
           </div>
 
           {/* CHANGE EMAIL */}

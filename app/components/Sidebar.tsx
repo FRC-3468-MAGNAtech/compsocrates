@@ -6,9 +6,10 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import ThemePicker from "@/app/components/ThemePicker";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Wrench, Menu, X, ChevronLeft, ChevronRight, Calendar 
+  Wrench, Menu, X, ChevronLeft, ChevronRight, Calendar, Star
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -66,6 +67,7 @@ export default function Sidebar() {
     { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
+    { href: "/pick-list", label: "Pick List", icon: Star },
     { href: "/form-builder", label: "Form Builder", icon: Wrench },
     { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: Target },
     { href: "/team-management", label: "Team Management", icon: Users },
@@ -77,6 +79,7 @@ export default function Sidebar() {
     { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
+    { href: "/pick-list", label: "Pick List", icon: Star },
   ];
 
   // Set navigation based on role
@@ -95,7 +98,7 @@ export default function Sidebar() {
       <button
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg"
-        style={{ color: "#c42221" }}
+        style={{ color: "var(--primary-color)" }}
       >
         {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
@@ -116,7 +119,7 @@ export default function Sidebar() {
               <div className="flex items-center gap-2">
                 <div
                   className="w-8 h-8 rounded text-white flex items-center justify-center font-bold text-sm"
-                  style={{ backgroundColor: "#c42221" }}
+                  style={{ background: "var(--primary-gradient)" }}
                 >
                   CS
                 </div>
@@ -148,7 +151,7 @@ export default function Sidebar() {
                 onClick={() => setIsMobileMenuOpen(false)}
                 className={`
                   flex items-center gap-3 px-3 py-2 rounded mb-1 transition-colors
-                  ${isActive ? "bg-red-100 text-red-800 font-semibold" : "hover:bg-gray-100 text-gray-700"}
+                  ${isActive ? "theme-primary-solid text-white font-semibold" : "hover:bg-gray-100 text-gray-700"}
                   ${collapsed ? "justify-center" : ""}
                 `}
                 title={collapsed ? item.label : ""}
@@ -212,6 +215,9 @@ export default function Sidebar() {
                 >
                   View Profile
                 </Link>
+                <div className="px-2 py-1 border-t border-gray-100">
+                  <ThemePicker compact />
+                </div>
                 <button
                   onClick={async () => {
                     await logOut();

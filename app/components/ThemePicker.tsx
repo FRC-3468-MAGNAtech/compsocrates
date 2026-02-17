@@ -8,18 +8,23 @@ import { themes, getTheme, applyTheme, saveTheme, loadTheme } from "@/app/utils/
 import { useAuth } from "@/app/AuthContext";
 import { Palette, Check } from "lucide-react";
 
-export default function ThemePicker() {
+export default function ThemePicker({ compact = false }: { compact?: boolean }) {
   const { userData } = useAuth();
   const [selectedTheme, setSelectedTheme] = useState("default");
   const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
-    if (userData?.uid) {
-      const savedTheme = loadTheme(userData.uid);
-      setSelectedTheme(savedTheme);
-      applyTheme(getTheme(savedTheme));
-    }
+    const savedTheme = userData?.uid ? loadTheme(userData.uid) : "default";
+    applyTheme(getTheme(savedTheme));
   }, [userData?.uid]);
+
+  function togglePicker() {
+    if (!showPicker) {
+      const savedTheme = userData?.uid ? loadTheme(userData.uid) : "default";
+      setSelectedTheme(savedTheme);
+    }
+    setShowPicker(!showPicker);
+  }
 
   function handleThemeSelect(themeId: string) {
     if (!userData?.uid) return;
@@ -50,12 +55,14 @@ export default function ThemePicker() {
   return (
     <div className="relative">
       <button
-        onClick={() => setShowPicker(!showPicker)}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+        onClick={togglePicker}
+        className={`flex items-center gap-2 rounded-lg hover:bg-gray-100 transition-colors ${
+          compact ? "w-full px-2 py-2 text-sm" : "px-4 py-2"
+        }`}
         title="Change Theme"
       >
         <Palette size={20} />
-        <span className="text-sm font-medium">Theme</span>
+        <span className="font-medium">{compact ? "Themes" : "Theme"}</span>
       </button>
 
       {showPicker && (
@@ -69,15 +76,15 @@ export default function ThemePicker() {
                 onClick={() => setShowPicker(false)}
                 className="p-2 hover:bg-gray-100 rounded-lg"
               >
-                ✕
+                Close
               </button>
             </div>
 
             {/* Theme Categories */}
             <div className="space-y-8">
-              {/* Pride Flags 🏳️‍🌈 */}
+              {/* Pride Flags */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-gray-700">🏳️‍🌈 Pride Flags</h3>
+                <h3 className="text-lg font-semibold mb-4 text-gray-700">Pride Flags</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                   {prideThemes.map(theme => (
                     <button
@@ -160,7 +167,7 @@ export default function ThemePicker() {
 
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <p className="text-sm text-gray-600 text-center">
-                🏳️‍🌈 Be proud, be you! Theme preferences are saved locally to your device
+                Theme preferences are saved locally to your device.
               </p>
             </div>
           </div>

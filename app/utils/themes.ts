@@ -135,7 +135,7 @@ export const themes: Theme[] = [
   // LGBTQ+ PRIDE FLAGS 🏳️‍🌈
   {
     id: "pride-rainbow",
-    name: "Pride 🏳️‍🌈",
+    name: "Pride Rainbow",
     gradient: "linear-gradient(180deg, #e40303 0%, #ff8c00 16.67%, #ffed00 33.33%, #008026 50%, #24408e 66.67%, #732982 83.33%, #732982 100%)",
     primaryColor: "#e40303",
     accentColor: "#732982",
@@ -144,7 +144,7 @@ export const themes: Theme[] = [
   },
   {
     id: "lesbian",
-    name: "Lesbian 🧡",
+    name: "Lesbian",
     gradient: "linear-gradient(180deg, #d62800 0%, #ff9b56 20%, #ffffff 40%, #d462a6 60%, #a40062 80%, #a40062 100%)",
     primaryColor: "#d62800",
     accentColor: "#a40062",
@@ -152,8 +152,8 @@ export const themes: Theme[] = [
     bgColor: "#fff5f5"
   },
   {
-    id: "gay-men",
-    name: "Gay Men 💙",
+    id: "gay",
+    name: "Gay",
     gradient: "linear-gradient(180deg, #078d70 0%, #26ceaa 16.67%, #98e8c1 33.33%, #ffffff 50%, #7bade2 66.67%, #5049cc 83.33%, #3d1a78 100%)",
     primaryColor: "#078d70",
     accentColor: "#3d1a78",
@@ -162,7 +162,7 @@ export const themes: Theme[] = [
   },
   {
     id: "bisexual",
-    name: "Bisexual 💖",
+    name: "Bisexual",
     gradient: "linear-gradient(180deg, #d60270 0%, #d60270 40%, #9b4f96 50%, #0038a8 60%, #0038a8 100%)",
     primaryColor: "#d60270",
     accentColor: "#0038a8",
@@ -171,7 +171,7 @@ export const themes: Theme[] = [
   },
   {
     id: "pansexual",
-    name: "Pansexual 💗",
+    name: "Pansexual",
     gradient: "linear-gradient(180deg, #ff218c 0%, #ff218c 33.33%, #ffd800 33.33%, #ffd800 66.67%, #21b1ff 66.67%, #21b1ff 100%)",
     primaryColor: "#ff218c",
     accentColor: "#21b1ff",
@@ -180,7 +180,7 @@ export const themes: Theme[] = [
   },
   {
     id: "transgender",
-    name: "Transgender 🩵",
+    name: "Transgender",
     gradient: "linear-gradient(180deg, #5bcffb 0%, #5bcffb 20%, #f5abb9 20%, #f5abb9 40%, #ffffff 40%, #ffffff 60%, #f5abb9 60%, #f5abb9 80%, #5bcffb 80%, #5bcffb 100%)",
     primaryColor: "#5bcffb",
     accentColor: "#f5abb9",
@@ -189,7 +189,7 @@ export const themes: Theme[] = [
   },
   {
     id: "nonbinary",
-    name: "Nonbinary 💛",
+    name: "Nonbinary",
     gradient: "linear-gradient(180deg, #fff430 0%, #fff430 25%, #ffffff 25%, #ffffff 50%, #9c59d1 50%, #9c59d1 75%, #2c2c2c 75%, #2c2c2c 100%)",
     primaryColor: "#fff430",
     accentColor: "#9c59d1",
@@ -198,7 +198,7 @@ export const themes: Theme[] = [
   },
   {
     id: "genderfluid",
-    name: "Genderfluid 🩷",
+    name: "Genderfluid",
     gradient: "linear-gradient(180deg, #ff76a4 0%, #ff76a4 20%, #ffffff 20%, #ffffff 40%, #c011d7 40%, #c011d7 60%, #2f2f2f 60%, #2f2f2f 80%, #2f3cbe 80%, #2f3cbe 100%)",
     primaryColor: "#ff76a4",
     accentColor: "#2f3cbe",
@@ -207,7 +207,7 @@ export const themes: Theme[] = [
   },
   {
     id: "asexual",
-    name: "Asexual 🖤",
+    name: "Asexual",
     gradient: "linear-gradient(180deg, #000000 0%, #000000 25%, #a3a3a3 25%, #a3a3a3 50%, #ffffff 50%, #ffffff 75%, #800080 75%, #800080 100%)",
     primaryColor: "#800080",
     accentColor: "#000000",
@@ -216,7 +216,7 @@ export const themes: Theme[] = [
   },
   {
     id: "demisexual",
-    name: "Demisexual 🩶",
+    name: "Demisexual",
     gradient: "linear-gradient(180deg, #ffffff 0%, #ffffff 25%, #6e0070 25%, #6e0070 50%, #d3d3d3 50%, #d3d3d3 75%, #000000 75%, #000000 100%)",
     primaryColor: "#6e0070",
     accentColor: "#000000",
@@ -225,7 +225,7 @@ export const themes: Theme[] = [
   },
   {
     id: "aromantic",
-    name: "Aromantic 💚",
+    name: "Aromantic",
     gradient: "linear-gradient(180deg, #3da542 0%, #3da542 20%, #a7d379 20%, #a7d379 40%, #ffffff 40%, #ffffff 60%, #a9a9a9 60%, #a9a9a9 80%, #000000 80%, #000000 100%)",
     primaryColor: "#3da542",
     accentColor: "#000000",
@@ -234,7 +234,7 @@ export const themes: Theme[] = [
   },
   {
     id: "genderqueer",
-    name: "Genderqueer 💜",
+    name: "Genderqueer",
     gradient: "linear-gradient(180deg, #b57edc 0%, #b57edc 33.33%, #ffffff 33.33%, #ffffff 66.67%, #4a8123 66.67%, #4a8123 100%)",
     primaryColor: "#b57edc",
     accentColor: "#4a8123",
@@ -243,7 +243,7 @@ export const themes: Theme[] = [
   },
   {
     id: "agender",
-    name: "Agender 🤍",
+    name: "Agender",
     gradient: "linear-gradient(180deg, #000000 0%, #000000 14.29%, #b9b9b9 14.29%, #b9b9b9 28.57%, #ffffff 28.57%, #ffffff 42.86%, #b8f483 42.86%, #b8f483 57.14%, #ffffff 57.14%, #ffffff 71.43%, #b9b9b9 71.43%, #b9b9b9 85.71%, #000000 85.71%, #000000 100%)",
     primaryColor: "#b8f483",
     accentColor: "#000000",
@@ -252,7 +252,7 @@ export const themes: Theme[] = [
   },
   {
     id: "polysexual",
-    name: "Polysexual 💗",
+    name: "Polysexual",
     gradient: "linear-gradient(180deg, #f61cb9 0%, #f61cb9 33.33%, #07d569 33.33%, #07d569 66.67%, #1c92f6 66.67%, #1c92f6 100%)",
     primaryColor: "#f61cb9",
     accentColor: "#1c92f6",
@@ -261,7 +261,7 @@ export const themes: Theme[] = [
   },
   {
     id: "omnisexual",
-    name: "Omnisexual 💗",
+    name: "Omnisexual",
     gradient: "linear-gradient(180deg, #ff9bcd 0%, #ff9bcd 20%, #ff53a6 20%, #ff53a6 40%, #200044 40%, #200044 60%, #686bff 60%, #686bff 80%, #a1dbff 80%, #a1dbff 100%)",
     primaryColor: "#ff53a6",
     accentColor: "#200044",
