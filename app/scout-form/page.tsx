@@ -729,7 +729,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
 
       {/* RIGHT COLUMN — NOTES PANEL (DESKTOP) */}
       <div className="hidden md:block w-80 p-4">
-        <div className="bg-white rounded-xl shadow p-4 flex flex-col" style={{ height: 'calc(100vh - 2rem)' }}>
+        <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: 'calc(100vh - 2rem)' }}>
           <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
             Notes
           </h2>
@@ -753,17 +753,31 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
         </button>
 
         {notesOpen && (
-          <div className="fixed right-0 top-0 h-full w-64 bg-white shadow-xl p-4 z-50">
+          <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40"
+            onClick={() => setNotesOpen(false)}
+          />
+          <div className="fixed right-0 top-0 h-full w-[92vw] max-w-md bg-white shadow-xl p-4 z-50">
+            <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
               Notes
             </h2>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="px-3 py-1 rounded bg-gray-100 text-gray-700"
+              >
+                Close
+              </button>
+            </div>
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full h-[85%] border rounded p-2 resize-none"
+              className="w-full h-[88%] border rounded p-2 resize-none"
               placeholder="Write notes here..."
             />
           </div>
+          </>
         )}
       </div>
 

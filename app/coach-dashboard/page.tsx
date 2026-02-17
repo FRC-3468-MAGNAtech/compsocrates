@@ -17,7 +17,8 @@ function CoachDashboardContent() {
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingScoutCount, setEditingScoutCount] = useState(false);
-  const [scoutCountInput, setScoutCountInput] = useState('');
+  const [scoutCountInput, setScoutCountInput] = useState("");
+  const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
   const [teamData, setTeamData] = useState<any>(null);
 
   useEffect(() => {
@@ -31,7 +32,7 @@ function CoachDashboardContent() {
     try {
       const [teamStats, events, teamDoc] = await Promise.all([
         calculateTeamStats(userData.teamId),
-        getUpcomingEvents(),
+        getUpcomingEvents(userData.teamId),
         getDoc(doc(db, "teams", userData.teamId)),
       ]);
       
@@ -64,6 +65,29 @@ function CoachDashboardContent() {
     } catch (error) {
       console.error('Error updating scout count:', error);
       alert('Error updating scout count');
+    }
+  }
+
+  async function handleSaveEventScoutCounts() {
+    if (!userData?.teamId) return;
+    const payload: Record<string, number> = {};
+    for (const [eventKey, rawValue] of Object.entries(eventScoutCountInputs)) {
+      const count = parseInt(rawValue, 10);
+      if (isNaN(count) || count < 1 || count > 20) {
+        alert("Each event scout count must be between 1 and 20.");
+        return;
+      }
+      payload[eventKey] = count;
+    }
+
+    try {
+      await setDoc(doc(db, "teams", userData.teamId), { eventScoutCounts: payload }, { merge: true });
+      setTeamData({ ...teamData, eventScoutCounts: payload });
+      setEditingScoutCount(false);
+      alert("Event scout counts updated.");
+    } catch (error) {
+      console.error("Error updating event scout counts:", error);
+      alert("Error updating event scout counts");
     }
   }
 
@@ -162,37 +186,77 @@ function CoachDashboardContent() {
                   <div>
                     <p className="text-sm text-gray-600 mb-2">Expected Scouts per Match</p>
                     {editingScoutCount ? (
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="number"
-                          value={scoutCountInput}
-                          onChange={(e) => setScoutCountInput(e.target.value)}
-                          className="border rounded px-3 py-2 w-24"
-                          min="1"
-                          max="20"
-                          placeholder="6"
-                        />
-                        <button 
-                          onClick={handleSaveScoutCount}
-                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
-                        >
-                          Save
-                        </button>
-                        <button 
-                          onClick={() => setEditingScoutCount(false)}
-                          className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 text-sm font-medium"
-                        >
-                          Cancel
-                        </button>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-700 w-28">Default</span>
+                          <input
+                            type="number"
+                            value={scoutCountInput}
+                            onChange={(e) => setScoutCountInput(e.target.value)}
+                            className="border rounded px-3 py-2 w-24"
+                            min="1"
+                            max="20"
+                            placeholder="6"
+                          />
+                          <button
+                            onClick={handleSaveScoutCount}
+                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                          >
+                            Save Default
+                          </button>
+                        </div>
+                        {upcomingEvents.map((event) => (
+                          <div key={event.key} className="flex items-center gap-2">
+                            <span className="text-sm text-gray-700 w-28">{event.name.split(" ")[0]}</span>
+                            <input
+                              type="number"
+                              value={eventScoutCountInputs[event.key] ?? ""}
+                              onChange={(e) =>
+                                setEventScoutCountInputs((prev) => ({ ...prev, [event.key]: e.target.value }))
+                              }
+                              className="border rounded px-3 py-2 w-24"
+                              min="1"
+                              max="20"
+                              placeholder={String(teamData?.scoutCount || 6)}
+                            />
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleSaveEventScoutCounts}
+                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                          >
+                            Save Event Counts
+                          </button>
+                          <button
+                            onClick={() => setEditingScoutCount(false)}
+                            className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 text-sm font-medium"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex items-center gap-4">
-                        <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
-                          {teamData?.scoutCount || 6}
-                        </p>
+                        <div>
+                          <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
+                            {teamData?.scoutCount || 6}
+                          </p>
+                          {upcomingEvents.map((event) => (
+                            <p key={event.key} className="text-xs text-gray-600">
+                              {event.name}: {teamData?.eventScoutCounts?.[event.key] || teamData?.scoutCount || 6}
+                            </p>
+                          ))}
+                        </div>
                         <button 
                           onClick={() => {
                             setScoutCountInput((teamData?.scoutCount || 6).toString());
+                            const currentEventCounts = teamData?.eventScoutCounts || {};
+                            const initialInputs: Record<string, string> = {};
+                            upcomingEvents.forEach((event) => {
+                              initialInputs[event.key] = String(currentEventCounts[event.key] || teamData?.scoutCount || 6);
+                            });
+                            setEventScoutCountInputs(initialInputs);
                             setEditingScoutCount(true);
                           }}
                           className="text-sm text-blue-600 hover:underline font-medium"
@@ -245,7 +309,7 @@ function CoachDashboardContent() {
                     className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
                     <div className="text-2xl mb-2">🎯</div>
-                    <h3 className="font-semibold mb-1">Check Scout Accuracy</h3>
+                    <h3 className="font-semibold mb-1">Scout Accuracy</h3>
                     <p className="text-sm text-gray-600">Review scout performance</p>
                   </button>
                 </div>

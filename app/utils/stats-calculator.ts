@@ -1,6 +1,7 @@
 // Utility functions to calculate real statistics from Firebase data
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { APP_EVENTS } from "@/app/utils/events";
 
 export interface TeamStats {
   totalEntries: number;
@@ -57,6 +58,7 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   // Get team members - FIXED: Include coaches with special roles as scouts
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
   const usersSnapshot = await getDocs(usersQuery);
+  const teamMemberNames = new Set(usersSnapshot.docs.map((d) => d.data().displayName));
   const scouts = usersSnapshot.docs.filter(doc => {
     const data = doc.data();
     const specialRole = normalize(data.specialRole);
@@ -77,7 +79,7 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   
   practiceSnapshot.forEach((doc) => {
     const data = doc.data();
-    if (data.accuracy !== undefined) {
+    if (data.accuracy !== undefined && teamMemberNames.has(data.scoutName)) {
       totalAccuracy += data.accuracy;
       practiceCount++;
     }
@@ -137,28 +139,26 @@ export function formatActivity(activity: Activity): string {
 }
 
 // Get upcoming events - hardcoded for Arkansas and Bayou
-export async function getUpcomingEvents(): Promise<UpcomingEvent[]> {
+export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[]> {
   const now = new Date();
-  
-  const events = [
-    {
-      name: "Arkansas Regional",
-      location: "Little Rock, AR",
-      startDate: "2026-03-18",
-      endDate: "2026-03-21",
-      key: "2026arli"
-    },
-    {
-      name: "Bayou Regional",
-      location: "Kenner, LA",
-      startDate: "2026-04-01",
-      endDate: "2026-04-04",
-      key: "2026labr"
+  let selectedEventKeys: string[] = [];
+
+  if (teamId) {
+    const teamDoc = await getDoc(doc(db, "teams", teamId));
+    if (teamDoc.exists()) {
+      const teamData = teamDoc.data();
+      if (Array.isArray(teamData.selectedEvents)) {
+        selectedEventKeys = teamData.selectedEvents;
+      }
     }
-  ];
+  }
+
+  const events = selectedEventKeys.length
+    ? APP_EVENTS.filter((event) => selectedEventKeys.includes(event.key))
+    : APP_EVENTS;
 
   return events.map(event => {
-    const startDate = new Date(event.startDate);
+    const startDate = new Date(`${event.startDate}T12:00:00`);
     const daysUntil = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
     return {

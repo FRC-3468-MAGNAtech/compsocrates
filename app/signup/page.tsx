@@ -9,6 +9,7 @@ import Link from "next/link";
 import { collection, addDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
+import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -205,6 +206,13 @@ export default function SignupPage() {
             {loading ? "Creating Account..." : "Sign Up"}
           </button>
         </form>
+
+        <div className="my-6 flex items-center gap-4">
+          <div className="flex-1 border-t border-gray-300"></div>
+          <span className="text-sm text-gray-500">OR</span>
+          <div className="flex-1 border-t border-gray-300"></div>
+        </div>
+        <GoogleSignInButton />
 
         <p className="text-center text-sm text-gray-600 mt-6">
           Already have an account?{" "}

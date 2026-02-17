@@ -507,7 +507,7 @@ function ScoutAccuracyContent() {
                           onClick={() => resetScoutSessions(selectedScoutData.scoutName)}
                           className="mt-4 px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm font-medium"
                         >
-                          Reset {selectedMode} Sessions
+                          Reset {selectedMode === "trial" ? "Trial" : "Competitive"} Sessions
                         </button>
                       </div>
 

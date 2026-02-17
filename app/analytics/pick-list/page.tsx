@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { useAuth } from "@/app/AuthContext";
 
 type TeamPick = {
   teamNumber: string;
@@ -30,6 +31,7 @@ type ScoutingEntry = {
 };
 
 function PickListContent() {
+  const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState("REEFSCAPE");
   const [pickedTeams, setPickedTeams] = useState<TeamPick[]>([]);
@@ -47,6 +49,22 @@ function PickListContent() {
     }
     loadEntries();
   }, []);
+
+  useEffect(() => {
+    if (!userData?.uid) return;
+    const saved = localStorage.getItem(`pick-list-${userData.uid}`);
+    if (!saved) return;
+    try {
+      setPickedTeams(JSON.parse(saved));
+    } catch {
+      setPickedTeams([]);
+    }
+  }, [userData?.uid]);
+
+  useEffect(() => {
+    if (!userData?.uid) return;
+    localStorage.setItem(`pick-list-${userData.uid}`, JSON.stringify(pickedTeams));
+  }, [pickedTeams, userData?.uid]);
 
   const teams = useMemo(() => {
     const grouped: Record<string, number[]> = {};

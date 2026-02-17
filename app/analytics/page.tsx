@@ -222,7 +222,12 @@ function AnalyticsPageContent() {
   const [selectedGame, setSelectedGame] = useState("reefscape");
   const [showPractice, setShowPractice] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const saved = localStorage.getItem("analytics-sidebar-collapsed");
+    if (saved !== null) return saved === "true";
+    return window.innerWidth < 1024;
+  });
 
   async function loadData() {
     const snapshot = await getDocs(collection(db, "scouting"));
@@ -230,17 +235,9 @@ function AnalyticsPageContent() {
     setRawData(entries);
   }
 
-  // Auto-collapse sidebar on mobile
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setSidebarCollapsed(true);
-      }
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    localStorage.setItem("analytics-sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   const isCoach = userData?.role === "coach";
 

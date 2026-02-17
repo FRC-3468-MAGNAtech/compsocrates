@@ -9,31 +9,25 @@ import { db } from "@/app/firebase";
 import ThemePicker from "@/app/components/ThemePicker";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Wrench, Menu, X, ChevronLeft, ChevronRight, Calendar, Star
+  Wrench, Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings
 } from "lucide-react";
 
 export default function Sidebar() {
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const saved = localStorage.getItem("sidebar-collapsed");
+    if (saved !== null) return saved === "true";
+    return window.innerWidth < 1024;
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [teamName, setTeamName] = useState<string>("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const { userData, logOut } = useAuth();
 
-  // Auto-collapse on mobile
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setCollapsed(true);
-      }
-    };
-    
-    // Set initial state
-    handleResize();
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    localStorage.setItem("sidebar-collapsed", String(collapsed));
+  }, [collapsed]);
 
   // Load team name from Firestore
   useEffect(() => {
@@ -65,21 +59,25 @@ export default function Sidebar() {
   const coachNavItems = [
     { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
     { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
+    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/analytics/pick-list", label: "Pick List", icon: Star },
+    { href: "/people", label: "People", icon: UserCircle2 },
     { href: "/form-builder", label: "Form Builder", icon: Wrench },
-    { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: Target },
+    { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
     { href: "/team-management", label: "Team Management", icon: Users },
     { href: "/assignments", label: "Assignments", icon: Calendar },
+    { href: "/event-selection", label: "Event Selection", icon: Calendar },
   ];
 
   const scoutNavItems = [
     { href: "/scout-dashboard", label: "Dashboard", icon: BarChart3 },
     { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
+    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/analytics/pick-list", label: "Pick List", icon: Star },
+    { href: "/people", label: "People", icon: UserCircle2 },
+    { href: "/event-selection", label: "Event Selection", icon: Calendar },
   ];
 
   // Set navigation based on role
@@ -106,7 +104,7 @@ export default function Sidebar() {
       <div
         className={`
           bg-white border-r border-gray-200 flex flex-col transition-all duration-300
-          ${collapsed ? "w-16" : "w-64"}
+          ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}
           ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
           md:translate-x-0
           fixed md:sticky top-0 h-screen z-40
@@ -172,11 +170,19 @@ export default function Sidebar() {
               ${collapsed ? "justify-center" : ""}
             `}
           >
-            <div
-              className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold text-gray-700"
-            >
-              {userData.displayName.substring(0, 2).toUpperCase()}
-            </div>
+            {userData.photoURL ? (
+              <img
+                src={userData.photoURL}
+                alt="Profile"
+                className="w-8 h-8 rounded-full object-cover border border-gray-200"
+              />
+            ) : (
+              <div
+                className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold text-gray-700"
+              >
+                {userData.displayName.substring(0, 2).toUpperCase()}
+              </div>
+            )}
             {showText && (
               <div className="flex-1 text-left">
                 <p className="text-sm font-semibold text-gray-900">{userData.displayName}</p>
@@ -208,6 +214,18 @@ export default function Sidebar() {
                 >
                   Account Settings
                 </Link>
+                {(isCoach || userData.isTeamAdmin) && (
+                  <Link
+                    href="/settings/api-keys"
+                    className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
+                    onClick={() => setShowSettings(false)}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Settings size={14} />
+                      Team API Keys
+                    </span>
+                  </Link>
+                )}
                 <Link
                   href={`/profile/${userData.uid}`}
                   className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"

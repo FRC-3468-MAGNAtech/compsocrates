@@ -134,6 +134,10 @@ function TeamManagementContent() {
   }
 
   async function handleUpdateRole(uid: string, role: string, specialRoles: string[]) {
+    if (!isUserAdmin) {
+      alert("Only team admins can change roles.");
+      return;
+    }
     try {
       const isTeamAdmin = specialRoles.includes("team-admin");
       const filteredSpecialRoles = specialRoles.filter((r) => r !== "team-admin");
@@ -218,16 +222,14 @@ function TeamManagementContent() {
           <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
             Team Management
           </h1>
-          <p className="text-gray-600 mb-8">
-            Manage your team members and their roles
-          </p>
+          <p className="text-gray-600 mb-8">Manage your team members and their roles</p>
 
           {/* Team Info */}
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold mb-1">{teamName || "Your Team"}</h2>
-                <p className="text-gray-600">Team ID: {userData?.teamId}</p>
+                <p className="text-gray-600">Manage members, requests, and roles.</p>
               </div>
               <button
                 onClick={() => setShowInviteCode(!showInviteCode)}
@@ -329,10 +331,12 @@ function TeamManagementContent() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => {
+                              if (!isUserAdmin) return;
                               setSelectedMember(member);
                               setShowRoleSelector(true);
                             }}
-                            className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+                            disabled={!isUserAdmin}
+                            className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Change Roles
                           </button>

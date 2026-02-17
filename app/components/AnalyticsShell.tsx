@@ -27,16 +27,16 @@ export default function AnalyticsShell({
   onSelectedGameChange,
 }: AnalyticsShellProps) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const saved = localStorage.getItem("analytics-sidebar-collapsed");
+    if (saved !== null) return saved === "true";
+    return window.innerWidth < 1024;
+  });
 
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) setCollapsed(true);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    localStorage.setItem("analytics-sidebar-collapsed", String(collapsed));
+  }, [collapsed]);
 
   return (
     <div className="flex h-screen bg-gray-100">

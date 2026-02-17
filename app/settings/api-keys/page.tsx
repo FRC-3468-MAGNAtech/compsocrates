@@ -71,6 +71,20 @@ function APIKeysContent() {
     );
   }
 
+  if (userData && !(userData.role === "coach" || userData.isTeamAdmin)) {
+    return (
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
+        <div className="flex-1 overflow-auto p-8">
+          <div className="max-w-xl bg-white rounded-xl shadow-md p-6">
+            <h1 className="text-2xl font-bold mb-2 theme-text">Team API Keys</h1>
+            <p className="text-gray-600">Only team admins and coaches can manage API keys.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
@@ -165,7 +179,7 @@ function APIKeysContent() {
 
 export default function APIKeysPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
       <APIKeysContent />
     </ProtectedRoute>
   );

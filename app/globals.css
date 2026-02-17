@@ -128,6 +128,24 @@ main {
   color: var(--primary-color);
 }
 
+.bg-red-600,
+.bg-red-700 {
+  background-color: var(--primary-color) !important;
+}
+
+.text-red-600,
+.text-red-700,
+.border-red-600,
+.border-red-700 {
+  color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+}
+
+.bg-red-100,
+.hover\:bg-red-50:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 14%, white) !important;
+}
+
 button[style*="backgroundColor: #c42221"],
 button[style*="background-color: #c42221"] {
   background: var(--primary-gradient) !important;

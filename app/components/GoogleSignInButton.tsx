@@ -28,8 +28,8 @@ export default function GoogleSignInButton() {
           createdAt: Date.now(),
         });
 
-        // Redirect to team selection
-        router.push("/select-team");
+        // Redirect to account/team setup
+        router.push("/account");
       } else {
         // Existing user - redirect to dashboard
         const userData = userDoc.data();

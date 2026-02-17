@@ -23,6 +23,12 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
     if (specialRoles.includes(role)) {
       setSpecialRoles(specialRoles.filter(r => r !== role));
     } else {
+      const exclusiveSpecialRoles = ["lead-scout", "lead-strategist", "pit-scout"];
+      if (exclusiveSpecialRoles.includes(role)) {
+        const withoutExclusive = specialRoles.filter((r) => !exclusiveSpecialRoles.includes(r));
+        setSpecialRoles([...withoutExclusive, role]);
+        return;
+      }
       setSpecialRoles([...specialRoles, role]);
     }
   }
@@ -80,6 +86,9 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
           <label className="block text-sm font-semibold text-gray-700 mb-3">
             Special Roles (select all that apply)
           </label>
+          <p className="text-xs text-gray-500 mb-3">
+            Lead Scout, Lead Strategist, and Pit Scout are mutually exclusive.
+          </p>
           <div className="space-y-2">
             {specialRoleOptions.map(option => (
               <label

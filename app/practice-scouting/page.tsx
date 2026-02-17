@@ -109,16 +109,36 @@ function PracticeScoutingContent() {
       }
 
       const randomMatch = matches[Math.floor(Math.random() * matches.length)];
-      setCurrentMatch(randomMatch);
+      const fallbackTeams = Array.isArray(randomMatch.allianceTeams) && randomMatch.allianceTeams.length >= 3
+        ? randomMatch.allianceTeams
+        : [1111, 2222, 3333];
+      const safeOfficialScore =
+        typeof randomMatch.officialData?.score === "number"
+          ? randomMatch.officialData.score
+          : typeof randomMatch.actualScore === "number"
+          ? randomMatch.actualScore
+          : 0;
+
+      const safeMatch: PracticeMatch = {
+        ...randomMatch,
+        allianceTeams: fallbackTeams,
+        officialData: {
+          score: safeOfficialScore,
+          penaltyPoints: Number(randomMatch.officialData?.penaltyPoints || 0),
+          breakdown: randomMatch.officialData?.breakdown || {},
+        },
+      };
+
+      setCurrentMatch(safeMatch);
       setCurrentRobotIndex(0);
       setRobotSessions([]);
 
-     setFormData(prev => ({ ...prev, teamNumber: randomMatch.allianceTeams[0].toString() }));
+      setFormData(prev => ({ ...prev, teamNumber: safeMatch.allianceTeams[0].toString() }));
 
       // Detect human player (usually position 2, but check match data)
       // For now, assume it's random or position 2
       // In a real scenario, this would come from TBA match data
-      const humanPlayerPos = Math.floor(Math.random() * 3); // Random for demo
+      const humanPlayerPos = Math.floor(Math.random() * safeMatch.allianceTeams.length); // Random for demo
       setHumanPlayerRobot(humanPlayerPos);
 
       setCurrentStep('practice');
