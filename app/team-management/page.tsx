@@ -4,12 +4,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, deleteDoc, setDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import RoleSelector from "@/app/components/RoleSelector";
 import { useAuth } from "@/app/AuthContext";
-import { X, Check, Clock, Users } from "lucide-react";
+import { X, Check, Clock } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getTeamName } from "@/app/utils/stats-calculator";
 
@@ -134,13 +135,18 @@ function TeamManagementContent() {
 
   async function handleUpdateRole(uid: string, role: string, specialRoles: string[]) {
     try {
+      const isTeamAdmin = specialRoles.includes("team-admin");
+      const filteredSpecialRoles = specialRoles.filter((r) => r !== "team-admin");
       await updateDoc(doc(db, "users", uid), {
         role,
-        specialRole: specialRoles.includes("lead-scout") ? "lead-scout" : 
-                    specialRoles.includes("lead-strategist") ? "lead-strategist" :
-                    specialRoles.includes("pit-scout") ? "pit-scout" : null,
-        specialRoles,
+        specialRole: filteredSpecialRoles.includes("lead-scout") ? "lead-scout" : 
+                    filteredSpecialRoles.includes("lead-strategist") ? "lead-strategist" :
+                    filteredSpecialRoles.includes("pit-scout") ? "pit-scout" : null,
+        specialRoles: filteredSpecialRoles,
+        isTeamAdmin,
       });
+      setShowRoleSelector(false);
+      setSelectedMember(null);
       await loadTeamData();
     } catch (error) {
       console.error("Error updating role:", error);
@@ -178,6 +184,17 @@ function TeamManagementContent() {
       console.error("Error making admin:", error);
       alert("Error updating admin status");
     }
+  }
+
+  async function handleLeaveTeam() {
+    if (!userData?.uid) return;
+    if (!confirm("Leave this team? You will need to request access again to rejoin.")) return;
+    await handleKickMember(userData.uid);
+  }
+
+  function formatRole(member: TeamMember): string {
+    if (member.specialRole) return member.specialRole.replace(/-/g, " ");
+    return member.role;
   }
 
   const isUserAdmin = userData?.isTeamAdmin || false;
@@ -274,8 +291,90 @@ function TeamManagementContent() {
             </div>
           )}
 
-          {/* Team Members Table - EXISTING CODE CONTINUES HERE */}
-          {/* ... rest of your existing team management table ... */}
+          {/* Team Members */}
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Team Members</h2>
+              <button
+                onClick={handleLeaveTeam}
+                className="px-3 py-2 rounded border border-red-300 text-red-700 hover:bg-red-50 text-sm font-semibold"
+              >
+                Leave Team
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admin</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {members.map((member) => (
+                    <tr key={member.uid}>
+                      <td className="px-6 py-4">
+                        <p className="font-semibold">{member.displayName}</p>
+                        <p className="text-sm text-gray-600">{member.email}</p>
+                      </td>
+                      <td className="px-6 py-4 capitalize">
+                        {formatRole(member)}
+                      </td>
+                      <td className="px-6 py-4">
+                        {member.isTeamAdmin ? "Yes" : "No"}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedMember(member);
+                              setShowRoleSelector(true);
+                            }}
+                            className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+                          >
+                            Change Roles
+                          </button>
+                          {isUserAdmin && !member.isTeamAdmin && (
+                            <button
+                              onClick={() => handleMakeAdmin(member.uid)}
+                              className="px-3 py-1.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-800 text-sm"
+                            >
+                              Make Admin
+                            </button>
+                          )}
+                          {isUserAdmin && member.uid !== userData?.uid && (
+                            <button
+                              onClick={() => handleKickMember(member.uid)}
+                              className="px-3 py-1.5 rounded bg-red-100 hover:bg-red-200 text-red-800 text-sm"
+                            >
+                              Kick
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {showRoleSelector && selectedMember && (
+            <RoleSelector
+              currentRole={selectedMember.role}
+              currentSpecialRoles={[
+                ...(selectedMember.specialRoles || []),
+                ...(selectedMember.isTeamAdmin ? ["team-admin"] : []),
+              ]}
+              onSave={(role, specialRoles) => handleUpdateRole(selectedMember.uid, role, specialRoles)}
+              onClose={() => {
+                setShowRoleSelector(false);
+                setSelectedMember(null);
+              }}
+            />
+          )}
 
         </div>
       </div>

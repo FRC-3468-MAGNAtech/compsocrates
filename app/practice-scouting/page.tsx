@@ -130,8 +130,6 @@ function PracticeScoutingContent() {
     }
   }
 
-setHumanPlayerRobot(null); // Reset human player tracking
-
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
 
@@ -275,7 +273,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                     onClick={() => setSelectedMode('trial')}
                     className="p-6 border-2 border-blue-300 rounded-lg hover:bg-blue-50 text-left transition-colors"
                   >
-                    <div className="text-3xl mb-2">🎓</div>
+                    <div className="text-sm font-semibold mb-2 text-blue-700">TRIAL</div>
                     <h3 className="font-semibold text-lg mb-1">Trial Mode</h3>
                     <p className="text-sm text-gray-600 mb-2">For Learning</p>
                     <ul className="text-xs text-gray-500 space-y-1">
@@ -289,7 +287,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                     onClick={() => setSelectedMode('competitive')}
                     className="p-6 border-2 border-red-300 rounded-lg hover:bg-red-50 text-left transition-colors"
                   >
-                    <div className="text-3xl mb-2">🏆</div>
+                    <div className="text-sm font-semibold mb-2 text-red-700">COMP</div>
                     <h3 className="font-semibold text-lg mb-1">Competitive Mode</h3>
                     <p className="text-sm text-gray-600 mb-2">Test Your Skills</p>
                     <ul className="text-xs text-gray-500 space-y-1">
@@ -317,7 +315,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                     disabled={loading}
                     className="p-6 border-2 border-green-300 rounded-lg hover:bg-green-50 text-left transition-colors disabled:opacity-50"
                   >
-                    <div className="text-3xl mb-2">🟢</div>
+                    <div className="text-sm font-semibold mb-2 text-green-700">EASY</div>
                     <h3 className="font-semibold text-lg mb-1">Easy</h3>
                     <p className="text-sm text-gray-600">Low-scoring matches</p>
                   </button>
@@ -327,7 +325,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                     disabled={loading}
                     className="p-6 border-2 border-yellow-300 rounded-lg hover:bg-yellow-50 text-left transition-colors disabled:opacity-50"
                   >
-                    <div className="text-3xl mb-2">🟡</div>
+                    <div className="text-sm font-semibold mb-2 text-yellow-700">MEDIUM</div>
                     <h3 className="font-semibold text-lg mb-1">Medium</h3>
                     <p className="text-sm text-gray-600">Average matches</p>
                   </button>
@@ -337,7 +335,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                     disabled={loading}
                     className="p-6 border-2 border-red-300 rounded-lg hover:bg-red-50 text-left transition-colors disabled:opacity-50"
                   >
-                    <div className="text-3xl mb-2">🔴</div>
+                    <div className="text-sm font-semibold mb-2 text-red-700">HARD</div>
                     <h3 className="font-semibold text-lg mb-1">Hard</h3>
                     <p className="text-sm text-gray-600">High-scoring matches</p>
                   </button>
@@ -371,7 +369,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                 <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
                 {selectedMode === 'competitive' && (
-                  <p className="text-xs mt-2 text-yellow-300">⚠️ Video cannot be paused</p>
+                  <p className="text-xs mt-2 text-yellow-300">Video cannot be paused in competitive mode.</p>
                 )}
               </div>
             </div>
@@ -408,7 +406,7 @@ setHumanPlayerRobot(null); // Reset human player tracking
                     </div>
                     <div className="ml-3">
                       <p className="text-sm font-medium text-yellow-800">
-                        ⚠️ This match, include the <strong>Human Player</strong>
+                        This match includes the <strong>Human Player</strong>
                       </p>
                       <p className="text-xs text-yellow-700 mt-1">
                         They operate a player station instead of a robot on the field

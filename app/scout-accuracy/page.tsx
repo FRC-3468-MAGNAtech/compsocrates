@@ -7,11 +7,13 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { Users, Target, ClipboardList } from "lucide-react";
 
 interface ScoutStats {
   scoutName: string;
   role: string;
   specialRole?: string;
+  specialRoles?: string[];
   totalEntries: number;
   practiceSessionsCompleted: number;
   averageAccuracy: number;
@@ -24,18 +26,22 @@ function ScoutAccuracyContent() {
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
-  const [selectedMode, setSelectedMode] = useState<"all" | "trial" | "competitive">("all");
+  const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
 
   useEffect(() => {
     loadScoutStats();
   }, []);
 
-  // Reload when mode changes
   useEffect(() => {
-    if (selectedMode) {
-      loadScoutStats();
-    }
+    loadScoutStats();
   }, [selectedMode]);
+
+  const normalize = (value: string | null | undefined) =>
+    (value || "").toLowerCase().replace(/\s+/g, "-");
+
+  const hasSpecialRole = (scout: ScoutStats, role: string) =>
+    normalize(scout.specialRole) === role ||
+    (Array.isArray(scout.specialRoles) && scout.specialRoles.map(normalize).includes(role));
 
   async function loadScoutStats() {
     setLoading(true);
@@ -51,22 +57,18 @@ function ScoutAccuracyContent() {
         const scoutName = memberData.displayName;
         const role = memberData.role;
         const specialRole = memberData.specialRole;
+        const specialRoles = memberData.specialRoles || [];
         
         // Get all scouting entries by this person
         const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
         const entriesSnapshot = await getDocs(entriesQuery);
         
-        // Get practice sessions from Firebase (filtered by mode)
-        let practiceQuery = query(collection(db, "practiceSessions"), where("scoutName", "==", scoutName));
-        
-        // Filter by mode if not "all"
-        if (selectedMode !== "all") {
-          practiceQuery = query(
-            collection(db, "practiceSessions"),
-            where("scoutName", "==", scoutName),
-            where("mode", "==", selectedMode)
-          );
-        }
+        // Filter by selected practice mode
+        const practiceQuery = query(
+          collection(db, "practiceSessions"),
+          where("scoutName", "==", scoutName),
+          where("mode", "==", selectedMode)
+        );
         
         const practiceSnapshot = await getDocs(practiceQuery);
         
@@ -94,6 +96,7 @@ function ScoutAccuracyContent() {
           scoutName,
           role,
           specialRole,
+          specialRoles,
           totalEntries: entriesSnapshot.size,
           practiceSessionsCompleted: practiceSnapshot.size,
           averageAccuracy,
@@ -111,11 +114,9 @@ function ScoutAccuracyContent() {
     }
   }
 
-  // Calculate TRUE scout count (scouts + Lead Scouts + Pit Scouts)
+  // Count active scouts only: base scouts + lead scouts (all roles still shown in leaderboard)
   const actualScoutCount = scoutStats.filter(s => 
-    s.role === "scout" || 
-    s.specialRole === "Lead Scout" || 
-    s.specialRole === "Pit Scout"
+    s.role === "scout" || hasSpecialRole(s, "lead-scout")
   ).length;
 
   function getAccuracyColor(accuracy: number): string {
@@ -146,18 +147,10 @@ function ScoutAccuracyContent() {
     // 90-99 = Excellent
     // 100 = Perfect (implied)
     
-    if (accuracy === 100) {
-      return {
-        bg: "bg-purple-100",
-        text: "text-purple-800",
-        label: "Perfect! ⭐",
-        showWarning: false
-      };
-    }
     if (accuracy >= 90) {
       return {
         bg: "bg-green-100",
-        text: "text-green-800",
+        text: "text-green-700",
         label: "Excellent",
         showWarning: false
       };
@@ -189,13 +182,14 @@ function ScoutAccuracyContent() {
 
   function getRoleBadge(role: string, specialRole?: string) {
     // Special roles ALWAYS take priority
-    if (specialRole === "Lead Scout") {
+    const normalized = normalize(specialRole);
+    if (normalized === "lead-scout") {
       return { bg: "bg-purple-100", text: "text-purple-800", label: "Lead Scout" };
     }
-    if (specialRole === "Pit Scout") {
+    if (normalized === "pit-scout") {
       return { bg: "bg-indigo-100", text: "text-indigo-800", label: "Pit Scout" };
     }
-    if (specialRole === "Lead Strategist") {
+    if (normalized === "lead-strategist") {
       return { bg: "bg-pink-100", text: "text-pink-800", label: "Lead Strategist" };
     }
     
@@ -221,11 +215,9 @@ function ScoutAccuracyContent() {
           </h1>
           <p className="text-gray-600 mb-8">
             Track and verify the accuracy of your team members' data
-            {selectedMode !== "all" && (
-              <span className="text-sm text-gray-500 ml-2">
-                (Showing {selectedMode === "trial" ? "Trial" : "Competitive"} mode only)
-              </span>
-            )}
+            <span className="text-sm text-gray-500 ml-2">
+              (Showing {selectedMode === "trial" ? "Trial" : "Competitive"} mode only)
+            </span>
           </p>
 
           {loading ? (
@@ -246,16 +238,6 @@ function ScoutAccuracyContent() {
 
           {/* MODE TABS */}
           <div className="bg-white rounded-xl shadow-md p-2 mb-6 flex gap-2">
-            <button
-              onClick={() => setSelectedMode("all")}
-              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                selectedMode === "all" 
-                  ? "bg-red-600 text-white" 
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              All Practice
-            </button>
             <button
               onClick={() => setSelectedMode("trial")}
               className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
@@ -282,7 +264,7 @@ function ScoutAccuracyContent() {
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-700">Scouts / Members</h3>
-                    <span className="text-2xl">👥</span>
+                    <Users size={22} className="text-gray-500" />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {actualScoutCount} / {scoutStats.length}
@@ -295,7 +277,7 @@ function ScoutAccuracyContent() {
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-700">Avg. Accuracy</h3>
-                    <span className="text-2xl">🎯</span>
+                    <Target size={22} className="text-gray-500" />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {scoutStats.length > 0 
@@ -307,7 +289,7 @@ function ScoutAccuracyContent() {
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
-                    <span className="text-2xl">💪</span>
+                    <ClipboardList size={22} className="text-gray-500" />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {scoutStats.reduce((sum, s) => sum + s.practiceSessionsCompleted, 0)}
@@ -317,7 +299,7 @@ function ScoutAccuracyContent() {
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-700">Total Entries</h3>
-                    <span className="text-2xl">📝</span>
+                    <ClipboardList size={22} className="text-gray-500" />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {scoutStats.reduce((sum, s) => sum + s.totalEntries, 0)}
@@ -513,24 +495,21 @@ function ScoutAccuracyContent() {
                         
                         return (
                           <div className={`p-4 rounded-lg ${badge.bg} border ${
-                            badge.label.includes("Perfect") || badge.label === "Excellent" ? "border-green-200" :
+                            badge.label === "Excellent" ? "border-green-200" :
                             badge.label === "Good" ? "border-green-700" :
                             badge.label === "Student Intervention" ? "border-orange-200" :
                             badge.label === "Undetermined" ? "border-gray-200" :
                             "border-red-200"
                           }`}>
                             <h3 className="font-semibold mb-2">
-                              {badge.label.includes("Perfect") ? "🌟 Perfect Score!" :
-                               badge.label === "Excellent" ? "✅ Excellent Performance!" :
-                               badge.label === "Good" ? "✓ Good Performance" :
-                               badge.label === "Student Intervention" ? "⚠️ Needs Improvement" :
-                               badge.label === "Undetermined" ? "📊 Status Pending" :
-                               "🚨 Immediate Action Required"}
+                              {badge.label === "Excellent" ? "Excellent Performance" :
+                               badge.label === "Good" ? "Good Performance" :
+                               badge.label === "Student Intervention" ? "Needs Improvement" :
+                               badge.label === "Undetermined" ? "Status Pending" :
+                               "Immediate Action Required"}
                             </h3>
                             <p className="text-sm">
-                              {badge.label.includes("Perfect")
-                                ? `${selectedScoutData.scoutName} achieved perfect accuracy! Outstanding performance.`
-                                : badge.label === "Excellent"
+                              {badge.label === "Excellent"
                                 ? `${selectedScoutData.scoutName} is performing excellently and is ready for competition scouting.`
                                 : badge.label === "Good"
                                 ? `${selectedScoutData.scoutName} is performing well. Consider a few more practice sessions to reach excellent status.`

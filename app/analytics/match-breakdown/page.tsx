@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import { Trophy, Users } from "lucide-react";
+import { Trophy } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { sortMatches } from "@/app/utils/matchSorting";
 
 interface MatchRobot {
   teamNumber: string;
@@ -59,19 +60,22 @@ function MatchBreakdownContent() {
   async function loadMatches() {
     try {
       const entriesSnap = await getDocs(collection(db, "scouting"));
-      const matches = [...new Set(entriesSnap.docs.map(doc => doc.data().matchId || doc.data().matchNumber))]
-        .filter(Boolean)
-        .sort((a: any, b: any) => {
-          const aType = a[0].toLowerCase();
-          const bType = b[0].toLowerCase();
-          const typeOrder: { [key: string]: number } = { p: 0, q: 1, f: 2 }; // FIX: Properly typed
-          if (typeOrder[aType] !== typeOrder[bType]) {
-            return typeOrder[aType] - typeOrder[bType];
-          }
-          return parseInt(a.slice(1)) - parseInt(b.slice(1));
-        });
-      setAllMatches(matches);
-      if (matches.length > 0) setSelectedMatch(matches[0]);
+      const normalized = entriesSnap.docs
+        .map((d) => d.data())
+        .map((data: any) => {
+          if (data.matchId) return data.matchId.toString().toLowerCase();
+          const num = String(data.matchNumber || "").replace(/\D/g, "");
+          if (!num) return "";
+          const type = data.matchType === "practice" ? "p" : data.matchType === "finals" ? "f" : "q";
+          return `${type}${num}`;
+        })
+        .filter(Boolean);
+
+      const uniqueMatches = [...new Set(normalized)];
+      const sorted = sortMatches(uniqueMatches.map((matchId) => ({ matchId }))).map((m) => m.matchId);
+
+      setAllMatches(sorted);
+      if (sorted.length > 0) setSelectedMatch(sorted[0]);
     } catch (error) {
       console.error("Error loading matches:", error);
     } finally {
@@ -82,14 +86,17 @@ function MatchBreakdownContent() {
   async function loadMatchData(matchId: string) {
     setLoading(true);
     try {
-      const entriesQuery = query(
-        collection(db, "scouting"),
-        where("matchId", "==", matchId)
-      );
-      const entriesSnap = await getDocs(entriesQuery);
+      const entriesSnap = await getDocs(collection(db, "scouting"));
+      const entries = entriesSnap.docs
+        .map((d) => d.data())
+        .filter((data: any) => {
+          const normalizedId = data.matchId
+            ? data.matchId.toString().toLowerCase()
+            : `${data.matchType === "practice" ? "p" : data.matchType === "finals" ? "f" : "q"}${String(data.matchNumber || "").replace(/\D/g, "")}`;
+          return normalizedId === matchId.toLowerCase();
+        });
       
-      const robots: MatchRobot[] = entriesSnap.docs.map(doc => {
-        const data = doc.data();
+      const robots: MatchRobot[] = entries.map((data: any) => {
         
         // Calculate points (simplified)
         const autoPoints = (data.autoCoralL1 || 0) * 3 + 

@@ -25,7 +25,6 @@ function Modal({
   const [visible, setVisible] = useState(false);
   const [height, setHeight] = useState<string | number>("auto");
   const [hasOpened, setHasOpened] = useState(false);
-  const [finalsMatch, setFinalsMatch] = useState("");
 
   const contentRef = useRef<HTMLDivElement | null>(null);
 
@@ -134,10 +133,10 @@ function MatchBox({
     upcoming: "bg-red-500",
   };
 
-  const badgeEmojis: Record<MatchStatus, string> = {
-    completed: "✔️",
-    next: "⏳",
-    upcoming: "❌",
+  const badgeText: Record<MatchStatus, string> = {
+    completed: "Done",
+    next: "Next",
+    upcoming: "Up",
   };
 
   return (
@@ -159,7 +158,7 @@ function MatchBox({
           ${badgeColors[match.status]}
         `}
       >
-        {badgeEmojis[match.status]}
+        {badgeText[match.status]}
       </div>
       <div className="pt-1.5 pb-1 px-1.5">
         <div className="font-semibold text-[11px] leading-tight">{match.label}</div>
@@ -330,16 +329,7 @@ function FinalsBracket({
 function ScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  
- // If no event is active, show lock screen
-  {!isEventActive() && (
-  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-    <p className="text-sm text-yellow-700">
-      ⚠️ Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
-      You can see the form though!
-    </p>
-  </div>
-)}
+  const showEventWarning = !isEventActive();
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -427,6 +417,13 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
       {/* LEFT COLUMN */}
       <div className="flex-1 p-4 space-y-6 max-w-3xl">
+        {showEventWarning && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+            <p className="text-sm text-yellow-700">
+              Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
+            </p>
+          </div>
+        )}
         {/* MATCH SELECTOR HEADER */}
         <div
           className="bg-white rounded-xl shadow p-4 border-l-4"
@@ -668,8 +665,15 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                 const { addDoc, collection } = await import("firebase/firestore");
                 const { db } = await import("@/app/firebase");
                 
+                const matchPrefix = selectedMatch.type === "practice"
+                  ? "p"
+                  : selectedMatch.type === "finals"
+                  ? "f"
+                  : "q";
+                const matchId = `${matchPrefix}${selectedMatch.id}`;
                 const submission = {
                   ...formData,
+                  matchId,
                   matchNumber: selectedMatch.id.toString(),
                   matchType: selectedMatch.type || "qualification",
                   bracket: selectedMatch.bracket || null,
@@ -725,7 +729,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
 
       {/* RIGHT COLUMN — NOTES PANEL (DESKTOP) */}
       <div className="hidden md:block w-80 p-4">
-        <div className="bg-white rounded-xl shadow p-4 sticky top-4 flex flex-col" style={{ height: 'calc(100vh - 2rem)' }}>
+        <div className="bg-white rounded-xl shadow p-4 flex flex-col" style={{ height: 'calc(100vh - 2rem)' }}>
           <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
             Notes
           </h2>
@@ -886,10 +890,10 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                 upcoming: "bg-red-500",
               };
 
-              const badgeEmojis: Record<MatchStatus, string> = {
-                completed: "✔️",
-                next: "⏳",
-                upcoming: "❌",
+              const badgeText: Record<MatchStatus, string> = {
+                completed: "Done",
+                next: "Next",
+                upcoming: "Up",
               };
 
               return (
@@ -913,7 +917,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                           ${badgeColors[status]}
                         `}
                       >
-                        {badgeEmojis[status]}
+                        {badgeText[status]}
                       </div>
 
                       <div className="mt-3">

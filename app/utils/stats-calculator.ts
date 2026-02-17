@@ -51,16 +51,21 @@ export async function getTeamEntries(teamId: string) {
 // Calculate comprehensive team stats
 export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   const entries = await getTeamEntries(teamId);
+  const normalize = (value: string | null | undefined) =>
+    (value || "").toLowerCase().replace(/\s+/g, "-");
   
   // Get team members - FIXED: Include coaches with special roles as scouts
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
   const usersSnapshot = await getDocs(usersQuery);
   const scouts = usersSnapshot.docs.filter(doc => {
     const data = doc.data();
+    const specialRole = normalize(data.specialRole);
+    const specialRoles = Array.isArray(data.specialRoles) ? data.specialRoles.map(normalize) : [];
     // Count scouts AND coaches with special scout roles
     return data.role === "scout" || 
-           (data.role === "coach" && data.specialRole && 
-            ["lead-scout", "lead-strategist", "pit-scout"].includes(data.specialRole));
+           (data.role === "coach" &&
+            (["lead-scout", "lead-strategist", "pit-scout"].includes(specialRole) ||
+             specialRoles.some((role) => ["lead-scout", "lead-strategist", "pit-scout"].includes(role))));
   });
 
   // Get practice sessions from Firebase to calculate REAL average accuracy

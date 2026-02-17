@@ -86,7 +86,7 @@ export default function LandingPage() {
           {/* Feature 1 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
-              <span className="text-white text-2xl">📊</span>
+              <span className="text-white text-sm font-bold">RT</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Real-Time Analytics</h4>
             <p className="text-gray-600">
@@ -97,7 +97,7 @@ export default function LandingPage() {
           {/* Feature 2 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
-              <span className="text-white text-2xl">📱</span>
+              <span className="text-white text-sm font-bold">M</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Mobile-First Design</h4>
             <p className="text-gray-600">
@@ -108,7 +108,7 @@ export default function LandingPage() {
           {/* Feature 3 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
-              <span className="text-white text-2xl">🎯</span>
+              <span className="text-white text-sm font-bold">SA</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Scout Accuracy Tracking</h4>
             <p className="text-gray-600">
@@ -119,7 +119,7 @@ export default function LandingPage() {
           {/* Feature 4 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
-              <span className="text-white text-2xl">🏆</span>
+              <span className="text-white text-sm font-bold">MS</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Match Strategy Builder</h4>
             <p className="text-gray-600">
@@ -130,7 +130,7 @@ export default function LandingPage() {
           {/* Feature 5 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
-              <span className="text-white text-2xl">🔧</span>
+              <span className="text-white text-sm font-bold">FB</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Custom Form Builder</h4>
             <p className="text-gray-600">
@@ -141,7 +141,7 @@ export default function LandingPage() {
           {/* Feature 6 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
-              <span className="text-white text-2xl">👥</span>
+              <span className="text-white text-sm font-bold">TC</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Team Collaboration</h4>
             <p className="text-gray-600">

@@ -5,6 +5,7 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { Key, Check, X, AlertCircle } from "lucide-react";
+import { LoadingSpinnerSmall } from "@/app/components/LoadingSpinner";
 
 export default function TBAKeySettings() {
   const { userData } = useAuth();
@@ -100,7 +101,12 @@ export default function TBAKeySettings() {
   }
 
   if (loading) {
-    return <div className="text-sm text-gray-500">Loading...</div>;
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <LoadingSpinnerSmall />
+        <span>Loading...</span>
+      </div>
+    );
   }
 
   return (

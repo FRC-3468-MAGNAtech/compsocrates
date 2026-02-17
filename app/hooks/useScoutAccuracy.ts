@@ -32,10 +32,14 @@ export function useScoutAccuracy(teamId?: string) {
         const usersSnapshot = await getDocs(usersQuery);
         const users = usersSnapshot.docs.map(doc => doc.data());
         
-        // Count scouts AND lead scouts (coaches with "Lead Scout" special role)
+        const normalize = (value: string | null | undefined) =>
+          (value || "").toLowerCase().replace(/\s+/g, "-");
+
+        // Count scouts + lead scouts (legacy and normalized values)
         const totalScouts = users.filter((u: any) => 
           u.role === 'scout' || 
-          (u.role === 'coach' && u.specialRole === 'Lead Scout')
+          normalize(u.specialRole) === 'lead-scout' ||
+          Array.isArray(u.specialRoles) && u.specialRoles.map(normalize).includes('lead-scout')
         ).length;
         
         // Get all practice sessions

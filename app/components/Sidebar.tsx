@@ -8,11 +8,11 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Wrench, Home, Menu, X, ChevronLeft, ChevronRight, Calendar 
+  Wrench, Menu, X, ChevronLeft, ChevronRight, Calendar 
 } from "lucide-react";
 
 export default function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [teamName, setTeamName] = useState<string>("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -33,21 +33,6 @@ export default function Sidebar() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  // Load collapsed state from localStorage (desktop only)
-  useEffect(() => {
-    if (window.innerWidth >= 768) {
-      const saved = localStorage.getItem("sidebarCollapsed");
-      if (saved) setCollapsed(JSON.parse(saved));
-    }
-  }, []);
-
-  // Save collapsed state to localStorage
-  useEffect(() => {
-    if (window.innerWidth >= 768) {
-      localStorage.setItem("sidebarCollapsed", JSON.stringify(collapsed));
-    }
-  }, [collapsed]);
 
   // Load team name from Firestore
   useEffect(() => {
@@ -73,20 +58,7 @@ export default function Sidebar() {
   if (!userData) return null;
 
   const isCoach = userData.role === "coach";
-  
-  // Check if user has special scout role
-  const hasSpecialRole = userData.specialRole && 
-    ["lead-scout", "lead-strategist", "pit-scout"].includes(userData.specialRole);
-
-  // Icon mapping
-  const iconMap = {
-    "📊": BarChart3,
-    "📝": ClipboardList,
-    "📈": TrendingUp,
-    "🔧": Wrench,
-    "🎯": Target,
-    "👥": Users,
-  };
+  const showText = !collapsed || isMobileMenuOpen;
 
   // Navigation items based on role
   const coachNavItems = [
@@ -108,23 +80,16 @@ export default function Sidebar() {
   ];
 
   // Set navigation based on role
-  let navItems = isCoach ? coachNavItems : scoutNavItems;
+  const navItems = isCoach ? coachNavItems : scoutNavItems;
 
-  // Mobile overlay
-  const MobileOverlay = () => (
+  return (
     <>
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
-    </>
-  );
-
-  return (
-    <>
-      <MobileOverlay />
       
       {/* Mobile hamburger button */}
       <button
@@ -189,7 +154,7 @@ export default function Sidebar() {
                 title={collapsed ? item.label : ""}
               >
                 <Icon size={20} />
-                {!collapsed && <span className="text-sm">{item.label}</span>}
+                {showText && <span className="text-sm sidebar-text">{item.label}</span>}
               </Link>
             );
           })}
@@ -209,7 +174,7 @@ export default function Sidebar() {
             >
               {userData.displayName.substring(0, 2).toUpperCase()}
             </div>
-            {!collapsed && (
+            {showText && (
               <div className="flex-1 text-left">
                 <p className="text-sm font-semibold text-gray-900">{userData.displayName}</p>
                 <p className="text-xs text-gray-600 capitalize">
@@ -239,13 +204,13 @@ export default function Sidebar() {
                   onClick={() => setShowSettings(false)}
                 >
                   Account Settings
+                </Link>
                 <Link
                   href={`/profile/${userData.uid}`}
                   className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
                   onClick={() => setShowSettings(false)}
                 >
                   View Profile
-                </Link>
                 </Link>
                 <button
                   onClick={async () => {

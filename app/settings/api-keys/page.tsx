@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { Key, Save, Eye, EyeOff } from "lucide-react";
 
@@ -64,7 +65,7 @@ function APIKeysContent() {
       <div className="flex h-screen">
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
-          <p>Loading...</p>
+          <LoadingSpinner message="Loading API settings..." />
         </div>
       </div>
     );
