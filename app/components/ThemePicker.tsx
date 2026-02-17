@@ -38,7 +38,7 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
 
   // Pride flag themes
   const prideThemes = themes.filter(t => 
-    ["pride-rainbow", "lesbian", "gay-men", "bisexual", "pansexual", "transgender", 
+    ["pride-rainbow", "lesbian", "gay", "bisexual", "pansexual", "transgender", 
      "nonbinary", "genderfluid", "asexual", "demisexual", "aromantic", "genderqueer",
      "agender", "polysexual", "omnisexual"].includes(t.id)
   );
@@ -67,7 +67,7 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
 
       {showPicker && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[80vh] overflow-y-auto p-6 m-4">
+          <div className="bg-white rounded-xl shadow-xl w-[95vw] max-w-6xl max-h-[90vh] overflow-y-auto p-6 m-2">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>
                 Choose Your Theme

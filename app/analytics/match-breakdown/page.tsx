@@ -1,287 +1,155 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import Sidebar from "@/app/components/Sidebar";
-import { Trophy } from "lucide-react";
+import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { sortMatches } from "@/app/utils/matchSorting";
 
-interface MatchRobot {
+type MatchEntry = {
+  matchId: string;
   teamNumber: string;
-  alliance: "red" | "blue";
-  autoPoints: number;
-  teleopPoints: number;
-  endgamePoints: number;
-  totalPoints: number;
   scoutName: string;
-}
+  totalScore: number;
+};
 
+type ScoutingEntry = {
+  matchId?: string;
+  matchNumber?: string;
+  matchType?: string;
+  teamNumber?: string;
+  scoutName?: string;
+  leftStartingZone?: boolean;
+  autoCoralL1?: number;
+  autoCoralL2?: number;
+  autoCoralL3?: number;
+  autoCoralL4?: number;
+  teleopCoralL1?: number;
+  teleopCoralL2?: number;
+  teleopCoralL3?: number;
+  teleopCoralL4?: number;
+};
 
-// Helper function to format match display name
-function getMatchDisplayName(matchId: string): string {
-  if (!matchId) return "Unknown Match";
-  
-  const str = matchId.toString().toLowerCase();
-  const num = matchId.replace(/\D/g, '') || "0";
-  
-  if (str.startsWith('p') || str.includes('practice')) {
-    return `Practice ${num}`;
-  }
-  if (str.startsWith('q') || str.includes('qual')) {
-    return `Qualification ${num}`;
-  }
-  if (str.startsWith('f') || str.includes('final')) {
-    return `Finals ${num}`;
-  }
-  
-  // Fallback
+function formatMatchLabel(matchId: string): string {
+  const id = matchId.toLowerCase();
+  const num = id.replace(/\D/g, "");
+  if (id.startsWith("p")) return `Practice ${num}`;
+  if (id.startsWith("q")) return `Qualification ${num}`;
+  if (id.startsWith("f")) return `Finals ${num}`;
   return `Match ${matchId}`;
 }
 
 function MatchBreakdownContent() {
+  const [entries, setEntries] = useState<ScoutingEntry[]>([]);
+  const [selectedGame, setSelectedGame] = useState("REEFSCAPE");
   const [selectedMatch, setSelectedMatch] = useState("");
-  const [matchData, setMatchData] = useState<MatchRobot[]>([]);
-  const [allMatches, setAllMatches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadMatches();
+    async function loadEntries() {
+      setLoading(true);
+      try {
+        const snap = await getDocs(collection(db, "scouting"));
+        const rows = snap.docs.map((d) => d.data());
+        setEntries(rows);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadEntries();
   }, []);
 
+  const matches = useMemo(() => {
+    const ids = entries
+      .map((e) => {
+        if (e.matchId) return String(e.matchId).toLowerCase();
+        const num = String(e.matchNumber || "").replace(/\D/g, "");
+        const prefix = e.matchType === "practice" ? "p" : e.matchType === "finals" ? "f" : "q";
+        return num ? `${prefix}${num}` : "";
+      })
+      .filter(Boolean);
+    return sortMatches([...new Set(ids)].map((matchId) => ({ matchId }))).map((m) => m.matchId);
+  }, [entries]);
+
   useEffect(() => {
-    if (selectedMatch) {
-      loadMatchData(selectedMatch);
+    if (!selectedMatch && matches.length > 0) {
+      setSelectedMatch(matches[0]);
     }
-  }, [selectedMatch]);
+  }, [matches, selectedMatch]);
 
-  async function loadMatches() {
-    try {
-      const entriesSnap = await getDocs(collection(db, "scouting"));
-      const normalized = entriesSnap.docs
-        .map((d) => d.data())
-        .map((data: any) => {
-          if (data.matchId) return data.matchId.toString().toLowerCase();
-          const num = String(data.matchNumber || "").replace(/\D/g, "");
-          if (!num) return "";
-          const type = data.matchType === "practice" ? "p" : data.matchType === "finals" ? "f" : "q";
-          return `${type}${num}`;
-        })
-        .filter(Boolean);
-
-      const uniqueMatches = [...new Set(normalized)];
-      const sorted = sortMatches(uniqueMatches.map((matchId) => ({ matchId }))).map((m) => m.matchId);
-
-      setAllMatches(sorted);
-      if (sorted.length > 0) setSelectedMatch(sorted[0]);
-    } catch (error) {
-      console.error("Error loading matches:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadMatchData(matchId: string) {
-    setLoading(true);
-    try {
-      const entriesSnap = await getDocs(collection(db, "scouting"));
-      const entries = entriesSnap.docs
-        .map((d) => d.data())
-        .filter((data: any) => {
-          const normalizedId = data.matchId
-            ? data.matchId.toString().toLowerCase()
-            : `${data.matchType === "practice" ? "p" : data.matchType === "finals" ? "f" : "q"}${String(data.matchNumber || "").replace(/\D/g, "")}`;
-          return normalizedId === matchId.toLowerCase();
-        });
-      
-      const robots: MatchRobot[] = entries.map((data: any) => {
-        
-        // Calculate points (simplified)
-        const autoPoints = (data.autoCoralL1 || 0) * 3 + 
-                          (data.autoCoralL2 || 0) * 4 + 
-                          (data.autoCoralL3 || 0) * 6 + 
-                          (data.autoCoralL4 || 0) * 7 +
-                          (data.autoAlgaeProcessorScored || 0) * 6 +
-                          (data.autoAlgaeNetScored || 0) * 4 +
-                          (data.leftStartingZone ? 3 : 0);
-        
-        const teleopPoints = (data.teleopCoralL1 || 0) * 2 + 
-                            (data.teleopCoralL2 || 0) * 3 + 
-                            (data.teleopCoralL3 || 0) * 4 + 
-                            (data.teleopCoralL4 || 0) * 5 +
-                            (data.teleopProcessorScored || 0) * 6 +
-                            (data.teleopNetRobotScored || 0) * 4 +
-                            (data.teleopNetHumanScored || 0) * 4 +
-                            (data.teleopAlgaeRemoved ? 2 : 0);
-        
-        let endgamePoints = 0;
-        const stage = (data.stageStatus || "").toLowerCase();
-        if (stage.includes("deep")) endgamePoints = 12;
-        else if (stage.includes("shallow")) endgamePoints = 6;
-        else if (stage.includes("park")) endgamePoints = 2;
-        
-        return {
-          teamNumber: data.teamNumber || "Unknown",
-          alliance: data.alliance || "blue",
-          autoPoints,
-          teleopPoints,
-          endgamePoints,
-          totalPoints: autoPoints + teleopPoints + endgamePoints,
-          scoutName: data.scoutName || "Unknown"
-        };
-      });
-      
-      setMatchData(robots);
-    } catch (error) {
-      console.error("Error loading match data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const redAlliance = matchData.filter(r => r.alliance === "red");
-  const blueAlliance = matchData.filter(r => r.alliance === "blue");
-  
-  const redTotal = redAlliance.reduce((sum, r) => sum + r.totalPoints, 0);
-  const blueTotal = blueAlliance.reduce((sum, r) => sum + r.totalPoints, 0);
+  const matchRows = useMemo<MatchEntry[]>(() => {
+    if (!selectedMatch) return [];
+    return entries
+      .filter((e) => {
+        const id = e.matchId
+          ? String(e.matchId).toLowerCase()
+          : `${e.matchType === "practice" ? "p" : e.matchType === "finals" ? "f" : "q"}${String(e.matchNumber || "").replace(/\D/g, "")}`;
+        return id === selectedMatch;
+      })
+      .map((e) => ({
+        matchId: selectedMatch,
+        teamNumber: e.teamNumber || "-",
+        scoutName: e.scoutName || "-",
+        totalScore:
+          (e.leftStartingZone ? 3 : 0) +
+          (e.autoCoralL1 || 0) * 3 +
+          (e.autoCoralL2 || 0) * 4 +
+          (e.autoCoralL3 || 0) * 6 +
+          (e.autoCoralL4 || 0) * 7 +
+          (e.teleopCoralL1 || 0) * 2 +
+          (e.teleopCoralL2 || 0) * 3 +
+          (e.teleopCoralL3 || 0) * 4 +
+          (e.teleopCoralL4 || 0) * 5,
+      }));
+  }, [entries, selectedMatch]);
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-            Match Breakdown
-          </h1>
-          <p className="text-gray-600 mb-8">
-            Detailed analysis of match performance by alliance
-          </p>
+    <AnalyticsShell entriesCount={entries.length} selectedGame={selectedGame} onSelectedGameChange={setSelectedGame}>
+      <h1 className="text-3xl font-bold mb-2 theme-text">Match Breakdown</h1>
+      <p className="text-gray-600 mb-6">Detailed view by selected match.</p>
 
-          {/* Match Selector */}
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Match
-            </label>
-            <select
-              value={selectedMatch}
-              onChange={(e) => setSelectedMatch(e.target.value)}
-              className="w-full max-w-md border rounded p-2"
-            >
-              {allMatches.map(match => (
-                <option key={match} value={match}>{getMatchDisplayName(match)}</option>
-              ))}
-            </select>
-          </div>
-
-          {loading ? (
-            <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <LoadingSpinner />
-              <p className="text-gray-600">Loading match data...</p>
-            </div>
-          ) : matchData.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <div className="text-6xl mb-4">📊</div>
-              <h2 className="text-2xl font-semibold mb-2">No Data Available</h2>
-              <p className="text-gray-600">
-                No scouting data found for this match.
-              </p>
-            </div>
-          ) : (
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Red Alliance */}
-              <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                <div className="bg-red-500 text-white p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Trophy size={24} />
-                    <h2 className="text-xl font-bold">Red Alliance</h2>
-                  </div>
-                  <div className="text-2xl font-bold">{redTotal}</div>
-                </div>
-                <div className="p-6">
-                  {redAlliance.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No data available</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {redAlliance.map((robot, idx) => (
-                        <div key={idx} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-bold text-lg">Team {robot.teamNumber}</span>
-                            <span className="text-xl font-bold" style={{ color: "#c42221" }}>
-                              {robot.totalPoints}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div>
-                              <p className="text-gray-600">Auto</p>
-                              <p className="font-semibold">{robot.autoPoints}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-600">Teleop</p>
-                              <p className="font-semibold">{robot.teleopPoints}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-600">Endgame</p>
-                              <p className="font-semibold">{robot.endgamePoints}</p>
-                            </div>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-2">Scouted by: {robot.scoutName}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Blue Alliance */}
-              <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                <div className="bg-blue-500 text-white p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Trophy size={24} />
-                    <h2 className="text-xl font-bold">Blue Alliance</h2>
-                  </div>
-                  <div className="text-2xl font-bold">{blueTotal}</div>
-                </div>
-                <div className="p-6">
-                  {blueAlliance.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No data available</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {blueAlliance.map((robot, idx) => (
-                        <div key={idx} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-bold text-lg">Team {robot.teamNumber}</span>
-                            <span className="text-xl font-bold text-blue-600">
-                              {robot.totalPoints}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div>
-                              <p className="text-gray-600">Auto</p>
-                              <p className="font-semibold">{robot.autoPoints}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-600">Teleop</p>
-                              <p className="font-semibold">{robot.teleopPoints}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-600">Endgame</p>
-                              <p className="font-semibold">{robot.endgamePoints}</p>
-                            </div>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-2">Scouted by: {robot.scoutName}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="bg-white rounded-xl shadow-md p-4 mb-4">
+        <label className="text-sm text-gray-600 mr-2">Select Match:</label>
+        <select
+          value={selectedMatch}
+          onChange={(e) => setSelectedMatch(e.target.value)}
+          className="border rounded px-3 py-2"
+        >
+          {matches.map((m) => (
+            <option key={m} value={m}>
+              {formatMatchLabel(m)}
+            </option>
+          ))}
+        </select>
       </div>
-    </div>
+
+      {loading ? (
+        <LoadingSpinner message="Loading match data..." />
+      ) : (
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scout</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {matchRows.map((row, idx) => (
+                <tr key={`${row.teamNumber}-${idx}`}>
+                  <td className="px-6 py-4 font-semibold">{row.teamNumber}</td>
+                  <td className="px-6 py-4">{row.scoutName}</td>
+                  <td className="px-6 py-4 text-xl font-bold theme-text">{row.totalScore}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </AnalyticsShell>
   );
 }
 

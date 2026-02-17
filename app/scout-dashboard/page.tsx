@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -75,6 +75,24 @@ function ScoutDashboardContent() {
       console.error("Error loading dashboard data:", error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function resetMyPracticeSessions() {
+    if (!userData) return;
+    if (!confirm("Reset your practice session counter by deleting your practice sessions?")) return;
+    try {
+      const practiceQuery = query(
+        collection(db, "practiceSessions"),
+        where("scoutName", "==", userData.displayName)
+      );
+      const practiceSnapshot = await getDocs(practiceQuery);
+      await Promise.all(practiceSnapshot.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
+      await loadDashboardData();
+      alert("Practice sessions reset.");
+    } catch (error) {
+      console.error("Error resetting practice sessions:", error);
+      alert("Failed to reset practice sessions.");
     }
   }
 
@@ -191,6 +209,12 @@ function ScoutDashboardContent() {
                     {stats?.practiceSessionsCount || 0}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">Completed</p>
+                  <button
+                    onClick={resetMyPracticeSessions}
+                    className="mt-3 text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                  >
+                    Reset Sessions
+                  </button>
                 </div>
               </div>
 

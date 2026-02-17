@@ -224,6 +224,12 @@ function AnalyticsPageContent() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  async function loadData() {
+    const snapshot = await getDocs(collection(db, "scouting"));
+    const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Entry[];
+    setRawData(entries);
+  }
+
   // Auto-collapse sidebar on mobile
   useEffect(() => {
     const handleResize = () => {
@@ -239,14 +245,9 @@ function AnalyticsPageContent() {
   const isCoach = userData?.role === "coach";
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, []);
-
-  async function loadData() {
-    const snapshot = await getDocs(collection(db, "scouting"));
-    const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Entry[];
-    setRawData(entries);
-  }
 
   async function handleDelete(id: string) {
     if (deleteConfirm === id) {
@@ -341,7 +342,7 @@ function AnalyticsPageContent() {
 
     const csv = [
       headers.join(","),
-      ...rows.map((r: any[]) => r.map((c: any) => String(c).includes(",") ? `"${c}"` : c).join(","))
+      ...rows.map((r: (string | number)[]) => r.map((c: string | number) => String(c).includes(",") ? `"${c}"` : c).join(","))
     ].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv" });
@@ -363,16 +364,14 @@ function AnalyticsPageContent() {
     try {
       const text = e.target?.result as string;
       const lines = text.split('\n');
-      const headers = lines[0].split(',');
-      
       let imported = 0;
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         
         const values = lines[i].split(',');
-        const entry: any = {
+        const entry: Partial<Entry> = {
           matchNumber: values[0],
-          matchType: values[1],
+          matchType: values[1] as "qualification" | "practice" | "finals",
           teamNumber: values[2],
           scoutName: values[3],
           startingPosition: values[4],
@@ -485,6 +484,7 @@ function AnalyticsPageContent() {
           <button onClick={() => router.push("/analytics/team-averages")} className="w-full text-left px-3 py-2 rounded mb-2 hover:bg-gray-100 text-gray-700">Team Averages</button>
           <button onClick={() => router.push("/analytics/match-breakdown")} className="w-full text-left px-3 py-2 rounded mb-2 hover:bg-gray-100 text-gray-700">Match Breakdown</button>
           <button onClick={() => router.push("/analytics/rankings")} className="w-full text-left px-3 py-2 rounded mb-2 hover:bg-gray-100 text-gray-700">Rankings</button>
+          <button onClick={() => router.push("/analytics/pick-list")} className="w-full text-left px-3 py-2 rounded mb-2 hover:bg-gray-100 text-gray-700">Pick List</button>
         </nav>
       </div>
 

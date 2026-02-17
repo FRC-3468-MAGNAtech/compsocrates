@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -204,6 +204,25 @@ function ScoutAccuracyContent() {
   }
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
+
+  async function resetScoutSessions(scoutName: string) {
+    if (!confirm(`Delete ${selectedMode} practice sessions for ${scoutName}?`)) return;
+    try {
+      const sessionsQuery = query(
+        collection(db, "practiceSessions"),
+        where("scoutName", "==", scoutName),
+        where("mode", "==", selectedMode)
+      );
+      const snap = await getDocs(sessionsQuery);
+      await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
+      await loadScoutStats();
+      setSelectedScout(null);
+      alert("Sessions reset.");
+    } catch (error) {
+      console.error("Error resetting scout sessions:", error);
+      alert("Failed to reset sessions.");
+    }
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -484,6 +503,12 @@ function ScoutAccuracyContent() {
                             </span>
                           </div>
                         </div>
+                        <button
+                          onClick={() => resetScoutSessions(selectedScoutData.scoutName)}
+                          className="mt-4 px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm font-medium"
+                        >
+                          Reset {selectedMode} Sessions
+                        </button>
                       </div>
 
                       {/* RECOMMENDATIONS */}

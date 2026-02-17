@@ -67,7 +67,7 @@ export default function Sidebar() {
     { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/pick-list", label: "Pick List", icon: Star },
+    { href: "/analytics/pick-list", label: "Pick List", icon: Star },
     { href: "/form-builder", label: "Form Builder", icon: Wrench },
     { href: "/scout-accuracy", label: "Check Scout Accuracy", icon: Target },
     { href: "/team-management", label: "Team Management", icon: Users },
@@ -79,7 +79,7 @@ export default function Sidebar() {
     { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/pick-list", label: "Pick List", icon: Star },
+    { href: "/analytics/pick-list", label: "Pick List", icon: Star },
   ];
 
   // Set navigation based on role

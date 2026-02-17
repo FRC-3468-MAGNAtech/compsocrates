@@ -305,12 +305,17 @@ export function getTheme(themeId: string): Theme {
 
 export function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
+
+  const softPrimary = theme.primaryColor.length === 7 ? `${theme.primaryColor}22` : theme.primaryColor;
+  const softAccent = theme.accentColor.length === 7 ? `${theme.accentColor}22` : theme.accentColor;
+  const pageGradient = `linear-gradient(140deg, ${softPrimary} 0%, ${softAccent} 45%, #f8fafc 100%)`;
   
   document.documentElement.style.setProperty('--primary-color', theme.primaryColor);
   document.documentElement.style.setProperty('--accent-color', theme.accentColor);
   document.documentElement.style.setProperty('--primary-gradient', theme.gradient);
   document.documentElement.style.setProperty('--theme-text', theme.textColor);
   document.documentElement.style.setProperty('--theme-bg', theme.bgColor);
+  document.documentElement.style.setProperty('--theme-page-gradient', pageGradient);
 }
 
 export function saveTheme(userId: string, themeId: string) {

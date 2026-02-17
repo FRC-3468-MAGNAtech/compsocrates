@@ -1,34 +1,30 @@
-/* FILE: app/globals.css */
-/* COMPLETE REWRITE - Theme support with CSS variables */
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Default theme colors */
   --primary-color: #c42221;
   --accent-color: #8b1818;
   --primary-gradient: linear-gradient(135deg, #c42221 0%, #8b1818 100%);
   --theme-text: #ffffff;
   --theme-bg: #f9fafb;
-  
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+  --theme-page-gradient: linear-gradient(140deg, #fef2f2 0%, #fee2e2 45%, #f8fafc 100%);
+  --foreground-rgb: 17, 24, 39;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: var(--theme-bg);
+  background: var(--theme-page-gradient);
+  background-attachment: fixed;
+}
+
+main {
+  background: transparent;
+}
+
+.bg-gray-100,
+.bg-gray-50 {
+  background: transparent !important;
 }
 
 @layer utilities {
@@ -37,7 +33,87 @@ body {
   }
 }
 
-/* Theme-aware components */
+/* ANALYTICS TABLE STYLES */
+.table-scroll {
+  overflow: auto;
+  position: relative;
+}
+
+.table-scroll table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+}
+
+.table-scroll th,
+.table-scroll td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  text-align: center; /* CHANGED FROM LEFT TO CENTER */
+  font-size: 13px;
+  white-space: nowrap;
+  background: white;
+  vertical-align: middle; /* CENTER VERTICALLY TOO */
+}
+
+.table-scroll th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+/* STICKY HEADER (all 3 rows) */
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.sticky-header th {
+  position: sticky;
+  top: 0;
+}
+
+/* STICKY LEFT COLUMNS - Only Match and Team now */
+/* Match column (leftmost) */
+.sticky-left-0 {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 25 !important;
+  background: white !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  min-width: 100px;
+}
+
+/* Team column (second from left) */
+.sticky-left-1 {
+  position: sticky !important;
+  left: 80px !important; /* Width of Match column */
+  z-index: 25 !important;
+  background: white !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+}
+
+/* HEADER CELLS IN STICKY COLUMNS - Higher z-index */
+.sticky-header .sticky-left-0,
+.sticky-header .sticky-left-1 {
+  z-index: 30 !important;
+}
+
+/* ENSURE MINIMUM COLUMN WIDTHS */
+.table-scroll th:nth-child(1),
+.table-scroll th:nth-child(2) {
+  min-width: 80px;
+}
+
+/* Wider columns for incidents and notes - allow wrapping */
+.table-scroll td[style*="minWidth"] {
+  white-space: normal !important;
+  word-wrap: break-word;
+}
+
 .theme-primary {
   background: var(--primary-gradient);
   color: var(--theme-text);
@@ -52,133 +128,15 @@ body {
   color: var(--primary-color);
 }
 
-.theme-border {
-  border-color: var(--primary-color);
-}
-
-.theme-hover:hover {
-  background-color: var(--accent-color);
-}
-
-/* Apply theme to buttons */
 button[style*="backgroundColor: #c42221"],
 button[style*="background-color: #c42221"] {
   background: var(--primary-gradient) !important;
 }
 
-/* Apply theme to text */
 h1[style*="color: #c42221"],
 h2[style*="color: #c42221"],
 h3[style*="color: #c42221"],
 span[style*="color: #c42221"],
 p[style*="color: #c42221"] {
   color: var(--primary-color) !important;
-}
-
-/* Match table column widths */
-table td:nth-child(2),
-table th:nth-child(2) {
-  min-width: 90px !important;
-  max-width: 90px !important;
-}
-
-table td:nth-child(3),
-table th:nth-child(3) {
-  min-width: 120px !important;
-  max-width: 120px !important;
-}
-
-table td,
-table th {
-  min-width: 70px !important;
-  max-width: 70px !important;
-  padding: 12px 16px !important;
-  white-space: nowrap !important;
-}
-
-/* Loading Spinner */
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-/* Mobile Responsive Fixes */
-@media (max-width: 768px) {
-  /* Non-sticky analytics sidebar on mobile */
-  .analytics-sidebar {
-    position: relative !important;
-    top: auto !important;
-    max-height: none !important;
-  }
-  
-  /* Full width on mobile */
-  .analytics-content {
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-  
-  /* Better mobile padding */
-  .mobile-padding {
-    padding: 1rem !important;
-  }
-  
-  /* Mobile table improvements */
-  table {
-    font-size: 0.875rem !important;
-  }
-  
-  table td,
-  table th {
-    padding: 8px 12px !important;
-    min-width: 60px !important;
-  }
-  
-  /* Sidebar text visibility */
-  .sidebar-text {
-    display: block !important;
-  }
-}
-
-/* Ensure analytics sidebar not sticky anywhere */
-.analytics-sidebar-wrapper {
-  position: relative !important;
-}
-
-/* Smooth transitions */
-* {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-/* Scrollbar styling with theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--primary-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-color);
-}
-
-/* Theme preview cards */
-.theme-card {
-  transition: transform 0.2s ease-in-out;
-}
-
-.theme-card:hover {
-  transform: scale(1.05);
 }
