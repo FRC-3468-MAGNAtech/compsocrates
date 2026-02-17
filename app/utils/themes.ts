@@ -309,6 +309,9 @@ export function applyTheme(theme: Theme) {
   const softPrimary = theme.primaryColor.length === 7 ? `${theme.primaryColor}22` : theme.primaryColor;
   const softAccent = theme.accentColor.length === 7 ? `${theme.accentColor}22` : theme.accentColor;
   const pageGradient = `linear-gradient(140deg, ${softPrimary} 0%, ${softAccent} 45%, #f8fafc 100%)`;
+  const surfaceColor = `color-mix(in srgb, ${theme.bgColor} 82%, white 18%)`;
+  const surfaceRaisedColor = `color-mix(in srgb, ${theme.bgColor} 70%, white 30%)`;
+  const borderColor = `color-mix(in srgb, ${theme.primaryColor} 18%, #d1d5db 82%)`;
   
   document.documentElement.style.setProperty('--primary-color', theme.primaryColor);
   document.documentElement.style.setProperty('--accent-color', theme.accentColor);
@@ -316,6 +319,9 @@ export function applyTheme(theme: Theme) {
   document.documentElement.style.setProperty('--theme-text', theme.textColor);
   document.documentElement.style.setProperty('--theme-bg', theme.bgColor);
   document.documentElement.style.setProperty('--theme-page-gradient', pageGradient);
+  document.documentElement.style.setProperty('--theme-surface', surfaceColor);
+  document.documentElement.style.setProperty('--theme-surface-raised', surfaceRaisedColor);
+  document.documentElement.style.setProperty('--theme-border', borderColor);
 }
 
 export function saveTheme(userId: string, themeId: string) {

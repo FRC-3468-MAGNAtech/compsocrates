@@ -1,39 +1,80 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
-import { Calendar, Users, Trash2, Plus } from "lucide-react";
+import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 
 interface Assignment {
   id: string;
   eventKey: string;
   matchKey: string;
+  matchLabel: string;
   scoutId: string;
   scoutName: string;
-  robotPosition: 1 | 2 | 3;
+  teamNumber: number;
   assignedBy: string;
   assignedAt: number;
 }
 
-interface Scout {
+interface TeamMember {
   uid: string;
   displayName: string;
   role: string;
-  specialRole?: string; // FIX: Add this optional property
+}
+
+type MatchOption = {
+  key: string;
+  label: string;
+  teams: number[];
+};
+
+function compLevelPriority(compLevel: string) {
+  if (compLevel === "qm") return 0;
+  if (compLevel === "ef") return 1;
+  if (compLevel === "qf") return 2;
+  if (compLevel === "sf") return 3;
+  if (compLevel === "f") return 4;
+  return 999;
+}
+
+function matchLabel(match: TBAMatch) {
+  if (match.comp_level === "qm") return `Qualification ${match.match_number}`;
+  if (match.comp_level === "f") return `Finals ${match.match_number}`;
+  if (match.comp_level === "sf") return `Semifinal ${match.set_number}-${match.match_number}`;
+  if (match.comp_level === "qf") return `Quarterfinal ${match.set_number}-${match.match_number}`;
+  if (match.comp_level === "ef") return `Octofinal ${match.set_number}-${match.match_number}`;
+  return match.key;
 }
 
 function AssignmentsContent() {
   const { userData } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [scouts, setScouts] = useState<Scout[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
   const [selectedEvent, setSelectedEvent] = useState("2026arli");
   const [loading, setLoading] = useState(true);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
+  const [eventAttendees, setEventAttendees] = useState<Record<string, string[]>>({});
+
+  const [selectedMatchKey, setSelectedMatchKey] = useState("");
+  const [selectedScoutId, setSelectedScoutId] = useState("");
+  const [selectedTeamNumber, setSelectedTeamNumber] = useState("");
 
   const events = [
     { key: "2026arli", name: "Arkansas Regional" },
@@ -46,31 +87,46 @@ function AssignmentsContent() {
 
   async function loadData() {
     if (!userData?.teamId) return;
-    
     setLoading(true);
     try {
-      // Load scouts
-      const scoutsQuery = query(
-        collection(db, "users"),
-        where("teamId", "==", userData.teamId)
-      );
-      const scoutsSnap = await getDocs(scoutsQuery);
-      const scoutsList = scoutsSnap.docs
-        .map(doc => ({ uid: doc.id, ...doc.data() } as Scout))
-        .filter(u => u.role === "scout" || (u.role === "coach" && u.specialRole));
-      setScouts(scoutsList);
+      const [membersSnap, assignmentsSnap, teamDoc] = await Promise.all([
+        getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
+        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", selectedEvent))),
+        getDoc(doc(db, "teams", userData.teamId)),
+      ]);
 
-      // Load assignments
-      const assignmentsQuery = query(
-        collection(db, "matchAssignments"),
-        where("eventKey", "==", selectedEvent)
+      setMembers(membersSnap.docs.map((memberDoc) => ({ uid: memberDoc.id, ...memberDoc.data() } as TeamMember)));
+      setAssignments(
+        assignmentsSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...assignmentDoc.data(),
+        })) as Assignment[]
       );
-      const assignmentsSnap = await getDocs(assignmentsQuery);
-      const assignmentsList = assignmentsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Assignment[];
-      setAssignments(assignmentsList);
+
+      const teamData = teamDoc.exists() ? teamDoc.data() : {};
+      setEventAttendees(teamData.eventAttendees || {});
+
+      try {
+        const matches = await getEventMatches(selectedEvent);
+        const sorted = [...matches].sort((a, b) => {
+          const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
+          if (priorityDiff !== 0) return priorityDiff;
+          if (a.set_number !== b.set_number) return a.set_number - b.set_number;
+          return a.match_number - b.match_number;
+        });
+
+        const options = sorted.map((match) => ({
+          key: match.key,
+          label: matchLabel(match),
+          teams: [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+            .map((teamKey) => parseInt(teamKey.replace("frc", ""), 10))
+            .filter((teamNumber) => !Number.isNaN(teamNumber)),
+        }));
+        setMatchOptions(options);
+      } catch (error) {
+        console.error("Unable to fetch TBA matches for assignments:", error);
+        setMatchOptions([]);
+      }
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {
@@ -78,24 +134,32 @@ function AssignmentsContent() {
     }
   }
 
-  async function createAssignment(matchKey: string, scoutId: string, robotPosition: 1 | 2 | 3) {
-    if (!userData) return;
+  const selectedMatch = useMemo(
+    () => matchOptions.find((match) => match.key === selectedMatchKey) || null,
+    [matchOptions, selectedMatchKey]
+  );
 
-    const scout = scouts.find(s => s.uid === scoutId);
+  async function createAssignment() {
+    if (!userData || !selectedMatch || !selectedScoutId || !selectedTeamNumber) return;
+    const scout = members.find((member) => member.uid === selectedScoutId);
     if (!scout) return;
 
     try {
       await addDoc(collection(db, "matchAssignments"), {
         eventKey: selectedEvent,
-        matchKey,
-        scoutId,
+        matchKey: selectedMatch.key,
+        matchLabel: selectedMatch.label,
+        scoutId: selectedScoutId,
         scoutName: scout.displayName,
-        robotPosition,
+        teamNumber: parseInt(selectedTeamNumber, 10),
         assignedBy: userData.uid,
         assignedAt: Date.now(),
       });
-      await loadData();
+      setSelectedMatchKey("");
+      setSelectedScoutId("");
+      setSelectedTeamNumber("");
       setShowAssignModal(false);
+      await loadData();
     } catch (error) {
       console.error("Error creating assignment:", error);
       alert("Error creating assignment");
@@ -104,13 +168,31 @@ function AssignmentsContent() {
 
   async function deleteAssignment(id: string) {
     if (!confirm("Are you sure you want to delete this assignment?")) return;
-    
     try {
       await deleteDoc(doc(db, "matchAssignments", id));
       await loadData();
     } catch (error) {
       console.error("Error deleting assignment:", error);
       alert("Error deleting assignment");
+    }
+  }
+
+  function toggleAttendee(displayName: string) {
+    const current = eventAttendees[selectedEvent] || [];
+    const updated = current.includes(displayName)
+      ? current.filter((name) => name !== displayName)
+      : [...current, displayName];
+    setEventAttendees((prev) => ({ ...prev, [selectedEvent]: updated }));
+  }
+
+  async function saveAttendees() {
+    if (!userData?.teamId) return;
+    try {
+      await setDoc(doc(db, "teams", userData.teamId), { eventAttendees }, { merge: true });
+      alert("Event attendees saved.");
+    } catch (error) {
+      console.error("Error saving attendees:", error);
+      alert("Could not save attendees.");
     }
   }
 
@@ -121,34 +203,27 @@ function AssignmentsContent() {
         <div className="p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
-                Match Assignments
-              </h1>
-              <p className="text-gray-600">
-                Assign scouts to specific matches and robot positions
-              </p>
+              <h1 className="text-3xl font-bold mb-2 theme-text">Match Assignments</h1>
+              <p className="text-gray-600">Assign team members and set who is attending each event.</p>
             </div>
             <button
               onClick={() => setShowAssignModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded text-white font-semibold hover:opacity-90"
-              style={{ backgroundColor: "#c42221" }}
+              style={{ backgroundColor: "var(--primary-color)" }}
             >
               <Plus size={20} />
               New Assignment
             </button>
           </div>
 
-          {/* Event Selector */}
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Event
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Event</label>
             <select
               value={selectedEvent}
               onChange={(e) => setSelectedEvent(e.target.value)}
               className="w-full max-w-md border rounded p-2"
             >
-              {events.map(event => (
+              {events.map((event) => (
                 <option key={event.key} value={event.key}>
                   {event.name}
                 </option>
@@ -156,7 +231,32 @@ function AssignmentsContent() {
             </select>
           </div>
 
-          {/* Assignments List */}
+          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Event Attendance</h2>
+              <button
+                onClick={saveAttendees}
+                className="px-4 py-2 rounded text-white text-sm font-medium"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Save Attendees
+              </button>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3">
+              {members.map((member) => (
+                <label key={member.uid} className="flex items-center gap-2 p-3 border rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={(eventAttendees[selectedEvent] || []).includes(member.displayName)}
+                    onChange={() => toggleAttendee(member.displayName)}
+                  />
+                  <span className="font-medium">{member.displayName}</span>
+                  <span className="text-xs text-gray-500 capitalize">{member.role}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {loading ? (
             <div className="bg-white rounded-xl shadow-md p-12 text-center">
               <LoadingSpinner />
@@ -164,15 +264,13 @@ function AssignmentsContent() {
             </div>
           ) : assignments.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <div className="text-6xl mb-4">📋</div>
+              <ClipboardCheck size={56} className="mx-auto mb-4 text-gray-400" />
               <h2 className="text-2xl font-semibold mb-2">No Assignments Yet</h2>
-              <p className="text-gray-600 mb-6">
-                Create assignments to organize your scouting team for this event.
-              </p>
+              <p className="text-gray-600 mb-6">Create assignments to organize your scouting team for this event.</p>
               <button
                 onClick={() => setShowAssignModal(true)}
                 className="px-6 py-3 rounded text-white font-semibold"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Create First Assignment
               </button>
@@ -182,30 +280,20 @@ function AssignmentsContent() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Match
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Scout
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Robot Position
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Assigned
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Actions
-                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {assignments.map(assignment => (
+                  {assignments.map((assignment) => (
                     <tr key={assignment.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <Calendar size={16} className="text-gray-400" />
-                          <span className="font-medium">{assignment.matchKey}</span>
+                          <span className="font-medium">{assignment.matchLabel || assignment.matchKey}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -216,17 +304,14 @@ function AssignmentsContent() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                          Robot {assignment.robotPosition}
+                          Team {assignment.teamNumber}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {new Date(assignment.assignedAt).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => deleteAssignment(assignment.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
+                        <button onClick={() => deleteAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
                           <Trash2 size={18} />
                         </button>
                       </td>
@@ -237,65 +322,67 @@ function AssignmentsContent() {
             </div>
           )}
 
-          {/* Assignment Modal */}
           {showAssignModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-                <h2 className="text-2xl font-bold mb-4" style={{ color: "#c42221" }}>
-                  New Assignment
-                </h2>
+                <h2 className="text-2xl font-bold mb-4 theme-text">New Assignment</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Match Key
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g., qm1, sf1m1"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Match</label>
+                    <select
                       className="w-full border rounded p-2"
-                      id="matchKeyInput"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Scout
-                    </label>
-                    <select className="w-full border rounded p-2" id="scoutSelect">
-                      <option value="">Select Scout</option>
-                      {scouts.map(scout => (
-                        <option key={scout.uid} value={scout.uid}>
-                          {scout.displayName}
+                      value={selectedMatchKey}
+                      onChange={(e) => {
+                        setSelectedMatchKey(e.target.value);
+                        setSelectedTeamNumber("");
+                      }}
+                    >
+                      <option value="">Select Match</option>
+                      {matchOptions.map((match) => (
+                        <option key={match.key} value={match.key}>
+                          {match.label}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Robot Position
-                    </label>
-                    <select className="w-full border rounded p-2" id="positionSelect">
-                      <option value="">Select Position</option>
-                      <option value="1">Robot 1</option>
-                      <option value="2">Robot 2</option>
-                      <option value="3">Robot 3</option>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Member</label>
+                    <select
+                      className="w-full border rounded p-2"
+                      value={selectedScoutId}
+                      onChange={(e) => setSelectedScoutId(e.target.value)}
+                    >
+                      <option value="">Select Member</option>
+                      {members.map((member) => (
+                        <option key={member.uid} value={member.uid}>
+                          {member.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                    <select
+                      className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
+                      value={selectedTeamNumber}
+                      onChange={(e) => setSelectedTeamNumber(e.target.value)}
+                      disabled={!selectedMatch}
+                    >
+                      <option value="">{selectedMatch ? "Select Team" : "Select Match First"}</option>
+                      {selectedMatch?.teams.map((team) => (
+                        <option key={team} value={team}>
+                          Team {team}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-3 mt-6">
                   <button
-                    onClick={() => {
-                      const matchKey = (document.getElementById("matchKeyInput") as HTMLInputElement)?.value;
-                      const scoutId = (document.getElementById("scoutSelect") as HTMLSelectElement)?.value;
-                      const position = (document.getElementById("positionSelect") as HTMLSelectElement)?.value;
-                      
-                      if (matchKey && scoutId && position) {
-                        createAssignment(matchKey, scoutId, parseInt(position) as 1 | 2 | 3);
-                      } else {
-                        alert("Please fill in all fields");
-                      }
-                    }}
-                    className="flex-1 py-2 rounded text-white font-semibold"
-                    style={{ backgroundColor: "#c42221" }}
+                    onClick={createAssignment}
+                    className="flex-1 py-2 rounded text-white font-semibold disabled:opacity-50"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                    disabled={!selectedMatchKey || !selectedScoutId || !selectedTeamNumber}
                   >
                     Create
                   </button>

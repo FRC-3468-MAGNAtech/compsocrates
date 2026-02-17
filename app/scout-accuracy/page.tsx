@@ -206,7 +206,7 @@ function ScoutAccuracyContent() {
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
 
   async function resetScoutSessions(scoutName: string) {
-    if (!confirm(`Delete ${selectedMode} practice sessions for ${scoutName}?`)) return;
+    if (!confirm(`Delete ${selectedMode} practice sessions and scouted entries for ${scoutName}?`)) return;
     try {
       const sessionsQuery = query(
         collection(db, "practiceSessions"),
@@ -215,12 +215,20 @@ function ScoutAccuracyContent() {
       );
       const snap = await getDocs(sessionsQuery);
       await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
+
+      const entriesQuery = query(
+        collection(db, "scouting"),
+        where("scoutName", "==", scoutName)
+      );
+      const entriesSnap = await getDocs(entriesQuery);
+      await Promise.all(entriesSnap.docs.map((d) => deleteDoc(doc(db, "scouting", d.id))));
+
       await loadScoutStats();
       setSelectedScout(null);
-      alert("Sessions reset.");
+      alert("Sessions and entries reset.");
     } catch (error) {
       console.error("Error resetting scout sessions:", error);
-      alert("Failed to reset sessions.");
+      alert("Failed to reset sessions and entries.");
     }
   }
 
@@ -233,7 +241,7 @@ function ScoutAccuracyContent() {
             Scout Accuracy
           </h1>
           <p className="text-gray-600 mb-8">
-            Track and verify the accuracy of your team members' data
+            Track and verify the accuracy of your team members&apos; data
             <span className="text-sm text-gray-500 ml-2">
               (Showing {selectedMode === "trial" ? "Trial" : "Competitive"} mode only)
             </span>

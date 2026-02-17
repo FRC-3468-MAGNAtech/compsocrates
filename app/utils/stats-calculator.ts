@@ -6,6 +6,7 @@ import { APP_EVENTS } from "@/app/utils/events";
 export interface TeamStats {
   totalEntries: number;
   activeScouts: number;
+  totalScouts: number;
   averageAccuracy: number;
   entriesByEvent: Record<string, number>;
   entriesByScout: Record<string, number>;
@@ -32,14 +33,23 @@ export interface UpcomingEvent {
 }
 
 // Get all scouting entries for a team
-export async function getTeamEntries(teamId: string) {
+type ScoutingEntry = Record<string, unknown> & {
+  id?: string;
+  scoutName?: string;
+  teamNumber?: string;
+  matchNumber?: string;
+  submittedAt?: number;
+  timestamp?: number;
+};
+
+export async function getTeamEntries(teamId: string): Promise<ScoutingEntry[]> {
   // First get all team members
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
   const usersSnapshot = await getDocs(usersQuery);
   const scoutNames = usersSnapshot.docs.map(doc => doc.data().displayName);
 
   // Get all scouting entries by team scouts
-  const allEntries: any[] = [];
+  const allEntries: ScoutingEntry[] = [];
   for (const scoutName of scoutNames) {
     const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
     const entriesSnapshot = await getDocs(entriesQuery);
@@ -63,33 +73,43 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
     const data = doc.data();
     const specialRole = normalize(data.specialRole);
     const specialRoles = Array.isArray(data.specialRoles) ? data.specialRoles.map(normalize) : [];
-    // Count scouts AND coaches with special scout roles
-    return data.role === "scout" || 
-           (data.role === "coach" &&
-            (["lead-scout", "lead-strategist", "pit-scout"].includes(specialRole) ||
-             specialRoles.some((role) => ["lead-scout", "lead-strategist", "pit-scout"].includes(role))));
+    // Scout-readiness should reflect members who can be assigned match scouting.
+    return data.role === "scout" || specialRole === "lead-scout" || specialRoles.includes("lead-scout");
   });
+  const scoutNames = scouts.map((doc) => doc.data().displayName);
 
   // Get practice sessions from Firebase to calculate REAL average accuracy
   const practiceQuery = query(collection(db, "practiceSessions"));
   const practiceSnapshot = await getDocs(practiceQuery);
   
-  let totalAccuracy = 0;
-  let practiceCount = 0;
-  
-  practiceSnapshot.forEach((doc) => {
-    const data = doc.data();
+  const accuracyByScout: Record<string, { total: number; count: number }> = {};
+  practiceSnapshot.forEach((docSnap) => {
+    const data = docSnap.data();
     if (data.accuracy !== undefined && teamMemberNames.has(data.scoutName)) {
-      totalAccuracy += data.accuracy;
-      practiceCount++;
+      if (!accuracyByScout[data.scoutName]) {
+        accuracyByScout[data.scoutName] = { total: 0, count: 0 };
+      }
+      accuracyByScout[data.scoutName].total += data.accuracy;
+      accuracyByScout[data.scoutName].count += 1;
     }
   });
 
-  const avgAccuracy = practiceCount > 0 ? Math.round(totalAccuracy / practiceCount) : 0;
+  const scoutAverages = scoutNames
+    .map((name) => accuracyByScout[name])
+    .filter((value): value is { total: number; count: number } => Boolean(value && value.count > 0))
+    .map((value) => value.total / value.count);
+
+  const avgAccuracy = scoutAverages.length > 0
+    ? Math.round(scoutAverages.reduce((sum, value) => sum + value, 0) / scoutAverages.length)
+    : 0;
+  const readyScoutCount = scoutNames.filter((name) => {
+    const data = accuracyByScout[name];
+    return Boolean(data && data.count > 0 && (data.total / data.count) >= 80);
+  }).length;
 
   // Count entries by event (based on submittedAt timestamp)
   const entriesByEvent: Record<string, number> = {};
-  entries.forEach(entry => {
+  entries.forEach(() => {
     const event = "Current Event"; // In real app, would map timestamp to event
     entriesByEvent[event] = (entriesByEvent[event] || 0) + 1;
   });
@@ -116,7 +136,8 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
 
   return {
     totalEntries: entries.length,
-    activeScouts: scouts.length, // FIXED: Now includes lead scouts
+    activeScouts: readyScoutCount,
+    totalScouts: scouts.length,
     averageAccuracy: avgAccuracy,
     entriesByEvent,
     entriesByScout,

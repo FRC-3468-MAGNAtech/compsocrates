@@ -7,8 +7,14 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { calculateTeamStats, getUpcomingEvents, formatActivity, type TeamStats, type UpcomingEvent } from "@/app/utils/stats-calculator";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+
+interface TeamData {
+  scoutCount?: number;
+  eventScoutCounts?: Record<string, number>;
+  eventAttendees?: Record<string, string[]>;
+}
 
 function CoachDashboardContent() {
   const router = useRouter();
@@ -19,7 +25,8 @@ function CoachDashboardContent() {
   const [editingScoutCount, setEditingScoutCount] = useState(false);
   const [scoutCountInput, setScoutCountInput] = useState("");
   const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
-  const [teamData, setTeamData] = useState<any>(null);
+  const [teamData, setTeamData] = useState<TeamData | null>(null);
+  const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -30,10 +37,12 @@ function CoachDashboardContent() {
     
     setLoading(true);
     try {
-      const [teamStats, events, teamDoc] = await Promise.all([
+      const [teamStats, events, teamDoc, usersSnap, practiceSnap] = await Promise.all([
         calculateTeamStats(userData.teamId),
         getUpcomingEvents(userData.teamId),
         getDoc(doc(db, "teams", userData.teamId)),
+        getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
+        getDocs(collection(db, "practiceSessions")),
       ]);
       
       setStats(teamStats);
@@ -41,6 +50,31 @@ function CoachDashboardContent() {
       if (teamDoc.exists()) {
         setTeamData(teamDoc.data());
       }
+
+      const normalize = (value: string | null | undefined) =>
+        (value || "").toLowerCase().replace(/\s+/g, "-");
+      const scouts = usersSnap.docs.filter((userDoc) => {
+        const data = userDoc.data();
+        const specialRole = normalize(data.specialRole);
+        const specialRoles = Array.isArray(data.specialRoles) ? data.specialRoles.map(normalize) : [];
+        return data.role === "scout" || specialRole === "lead-scout" || specialRoles.includes("lead-scout");
+      });
+      const scoutNames = scouts.map((docSnap) => docSnap.data().displayName);
+
+      const accuracyMap: Record<string, { total: number; count: number }> = {};
+      practiceSnap.forEach((practiceDoc) => {
+        const data = practiceDoc.data();
+        if (!scoutNames.includes(data.scoutName) || typeof data.accuracy !== "number") return;
+        if (!accuracyMap[data.scoutName]) accuracyMap[data.scoutName] = { total: 0, count: 0 };
+        accuracyMap[data.scoutName].total += data.accuracy;
+        accuracyMap[data.scoutName].count += 1;
+      });
+
+      const ready = scoutNames.filter((name) => {
+        const entry = accuracyMap[name];
+        return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
+      });
+      setReadyScoutNames(ready);
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -99,7 +133,7 @@ function CoachDashboardContent() {
           <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
             Dashboard
           </h1>
-          <p className="text-gray-600 mb-8">Welcome back! Here's what's happening with your team.</p>
+          <p className="text-gray-600 mb-8">Welcome back! Here&apos;s what&apos;s happening with your team.</p>
 
           {loading ? (
             <LoadingSpinner message="Loading dashboard..." />
@@ -126,7 +160,18 @@ function CoachDashboardContent() {
                             </div>
                             <div>
                               <p className="text-sm text-gray-600">Scouts Ready</p>
-                              <p className="text-2xl font-bold">{stats?.activeScouts || 0}/8</p>
+                              <p className="text-2xl font-bold">
+                                {(() => {
+                                  const expected = teamData?.eventScoutCounts?.[event.key] || teamData?.scoutCount || 6;
+                                  const attendees = Array.isArray(teamData?.eventAttendees?.[event.key])
+                                    ? teamData.eventAttendees[event.key]
+                                    : [];
+                                  const readyAttendees = attendees.length > 0
+                                    ? attendees.filter((name: string) => readyScoutNames.includes(name)).length
+                                    : readyScoutNames.length;
+                                  return `${readyAttendees}/${expected}`;
+                                })()}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -164,7 +209,9 @@ function CoachDashboardContent() {
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {stats?.activeScouts || 0}
                   </p>
-                  <p className="text-sm text-gray-600 mt-1">Ready to scout</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Ready scouts ({stats?.totalScouts || 0} total)
+                  </p>
                 </div>
 
                 <div className="bg-white rounded-xl shadow-md p-6">

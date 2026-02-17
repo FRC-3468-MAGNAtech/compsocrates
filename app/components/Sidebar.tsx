@@ -58,7 +58,7 @@ export default function Sidebar() {
   // Navigation items based on role
   const coachNavItems = [
     { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
+    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
     { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
@@ -72,7 +72,7 @@ export default function Sidebar() {
 
   const scoutNavItems = [
     { href: "/scout-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Scout Form", icon: ClipboardList },
+    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
     { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
@@ -150,7 +150,7 @@ export default function Sidebar() {
                 className={`
                   flex items-center gap-3 px-3 py-2 rounded mb-1 transition-colors
                   ${isActive ? "theme-primary-solid text-white font-semibold" : "hover:bg-gray-100 text-gray-700"}
-                  ${collapsed ? "justify-center" : ""}
+                  ${collapsed && !isMobileMenuOpen ? "justify-center" : "justify-start"}
                 `}
                 title={collapsed ? item.label : ""}
               >
@@ -167,7 +167,7 @@ export default function Sidebar() {
             onClick={() => setShowSettings(!showSettings)}
             className={`
               w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100
-              ${collapsed ? "justify-center" : ""}
+              ${collapsed && !isMobileMenuOpen ? "justify-center" : "justify-start"}
             `}
           >
             {userData.photoURL ? (

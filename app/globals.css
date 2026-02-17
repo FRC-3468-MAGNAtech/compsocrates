@@ -9,6 +9,9 @@
   --theme-text: #ffffff;
   --theme-bg: #f9fafb;
   --theme-page-gradient: linear-gradient(140deg, #fef2f2 0%, #fee2e2 45%, #f8fafc 100%);
+  --theme-surface: #ffffff;
+  --theme-surface-raised: #ffffff;
+  --theme-border: #e5e7eb;
   --foreground-rgb: 17, 24, 39;
 }
 
@@ -22,9 +25,20 @@ main {
   background: transparent;
 }
 
+.bg-white {
+  background-color: var(--theme-surface) !important;
+}
+
 .bg-gray-100,
 .bg-gray-50 {
-  background: transparent !important;
+  background-color: var(--theme-surface-raised) !important;
+}
+
+.border,
+.border-gray-100,
+.border-gray-200,
+.border-gray-300 {
+  border-color: var(--theme-border) !important;
 }
 
 @layer utilities {
@@ -149,6 +163,11 @@ main {
 button[style*="backgroundColor: #c42221"],
 button[style*="background-color: #c42221"] {
   background: var(--primary-gradient) !important;
+}
+
+[style*="borderColor: #c42221"],
+[style*="border-color: #c42221"] {
+  border-color: var(--primary-color) !important;
 }
 
 h1[style*="color: #c42221"],

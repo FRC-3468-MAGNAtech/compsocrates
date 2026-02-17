@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -32,7 +32,7 @@ function PracticeScoutingContent() {
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
   const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
-  const [robotSessions, setRobotSessions] = useState<any[]>([]);
+  const [robotSessions, setRobotSessions] = useState<Array<Record<string, unknown>>>([]);
   const [humanPlayerRobot, setHumanPlayerRobot] = useState<number | null>(null); // 0, 1, 2, or null
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
@@ -111,13 +111,19 @@ function PracticeScoutingContent() {
       const randomMatch = matches[Math.floor(Math.random() * matches.length)];
       const fallbackTeams = Array.isArray(randomMatch.allianceTeams) && randomMatch.allianceTeams.length >= 3
         ? randomMatch.allianceTeams
-        : [1111, 2222, 3333];
+        : [];
       const safeOfficialScore =
         typeof randomMatch.officialData?.score === "number"
           ? randomMatch.officialData.score
           : typeof randomMatch.actualScore === "number"
           ? randomMatch.actualScore
           : 0;
+
+      if (fallbackTeams.length < 3) {
+        alert("This practice match is missing team data. Please choose another difficulty.");
+        setLoading(false);
+        return;
+      }
 
       const safeMatch: PracticeMatch = {
         ...randomMatch,
@@ -135,11 +141,8 @@ function PracticeScoutingContent() {
 
       setFormData(prev => ({ ...prev, teamNumber: safeMatch.allianceTeams[0].toString() }));
 
-      // Detect human player (usually position 2, but check match data)
-      // For now, assume it's random or position 2
-      // In a real scenario, this would come from TBA match data
-      const humanPlayerPos = Math.floor(Math.random() * safeMatch.allianceTeams.length); // Random for demo
-      setHumanPlayerRobot(humanPlayerPos);
+      // Keep this deterministic so scouts can compare attempts against the same expected robot.
+      setHumanPlayerRobot(1);
 
       setCurrentStep('practice');
     } catch (error) {
@@ -196,7 +199,7 @@ function PracticeScoutingContent() {
     });
   }
 
-  async function submitPracticeSession(allRobotData: any[]) {
+  async function submitPracticeSession(allRobotData: Array<Record<string, unknown>>) {
     if (!currentMatch || !userData) return;
 
     setLoading(true);
@@ -208,7 +211,7 @@ function PracticeScoutingContent() {
       const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.officialData.score));
       const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
 
-      const session: any = {
+      const session: Partial<PracticeSession> & Record<string, unknown> = {
         scoutName: userData.displayName,
         matchId: currentMatch.id || '',
         matchNumber: currentMatch.matchNumber,
@@ -223,7 +226,7 @@ function PracticeScoutingContent() {
       };
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
-      setSessionResults({ ...session, id: docRef.id });
+      setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
     } catch (error) {
       console.error('Error submitting practice session:', error);
@@ -378,6 +381,9 @@ function PracticeScoutingContent() {
                   title="Practice Match Video"
                   frameBorder="0"
                 />
+                {selectedMode === "competitive" && (
+                  <div className="absolute inset-0 z-10" aria-hidden="true" />
+                )}
               </div>
 
               {/* Match Info */}
@@ -426,10 +432,7 @@ function PracticeScoutingContent() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm font-medium text-yellow-800">
-                        This match includes the <strong>Human Player</strong>
-                      </p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        They operate a player station instead of a robot on the field
+                        This match, include the <strong>Human Player</strong> score
                       </p>
                     </div>
                   </div>
@@ -608,7 +611,7 @@ function PracticeScoutingContent() {
             <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
               Practice Complete!
             </h1>
-            <p className="text-gray-600 mb-8">You've completed all 3 robots. Here's your score:</p>
+            <p className="text-gray-600 mb-8">You&apos;ve completed all 3 robots. Here&apos;s your score:</p>
 
             <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center">
               <div className="inline-block px-4 py-1 bg-blue-100 text-blue-800 rounded-full text-sm mb-4">

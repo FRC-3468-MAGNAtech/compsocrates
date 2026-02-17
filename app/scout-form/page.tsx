@@ -743,7 +743,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
       </div>
 
       {/* MOBILE NOTES DRAWER */}
-      <div className="md:hidden fixed right-0 top-1/2 transform -translate-y-1/2 z-40">
+      <div className="md:hidden fixed right-0 top-1/2 transform -translate-y-1/2 z-50">
         <button
           onClick={() => setNotesOpen(!notesOpen)}
           className="px-2 py-4 rounded-l-xl text-white"
@@ -758,7 +758,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
             className="fixed inset-0 bg-black/40 z-40"
             onClick={() => setNotesOpen(false)}
           />
-          <div className="fixed right-0 top-0 h-full w-[92vw] max-w-md bg-white shadow-xl p-4 z-50">
+          <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
             <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
               Notes
@@ -773,7 +773,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full h-[88%] border rounded p-2 resize-none"
+              className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
               placeholder="Write notes here..."
             />
           </div>
@@ -1024,7 +1024,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
             </div>
 
             <p className="text-center text-sm text-gray-500 mt-6">
-              Select the specific finals match you're scouting
+              Select the specific finals match you&apos;re scouting
             </p>
           </>
         )}
