@@ -123,10 +123,14 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
 
   // Get recent activity
   const recentEntries = entries
-    .sort((a, b) => (b.submittedAt || b.timestamp) - (a.submittedAt || a.timestamp))
+    .sort((a, b) => {
+      const bTime = typeof b.submittedAt === "number" ? b.submittedAt : (typeof b.timestamp === "number" ? b.timestamp : 0);
+      const aTime = typeof a.submittedAt === "number" ? a.submittedAt : (typeof a.timestamp === "number" ? a.timestamp : 0);
+      return bTime - aTime;
+    })
     .slice(0, 5)
     .map(entry => ({
-      id: entry.id,
+      id: entry.id || `${entry.scoutName || "unknown"}-${entry.timestamp || Date.now()}`,
       type: "scouting" as const,
       scoutName: entry.scoutName,
       teamNumber: entry.teamNumber,

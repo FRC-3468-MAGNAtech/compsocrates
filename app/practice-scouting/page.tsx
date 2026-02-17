@@ -23,6 +23,7 @@ const Counter = ({ label, value, onChange }: { label: string; value: number; onC
 );
 
 type PracticeMode = 'trial' | 'competitive';
+type ScoutedData = PracticeSession["scoutedData"];
 
 function PracticeScoutingContent() {
   const router = useRouter();
@@ -32,13 +33,13 @@ function PracticeScoutingContent() {
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
   const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
-  const [robotSessions, setRobotSessions] = useState<Array<Record<string, unknown>>>([]);
+  const [robotSessions, setRobotSessions] = useState<ScoutedData[]>([]);
   const [humanPlayerRobot, setHumanPlayerRobot] = useState<number | null>(null); // 0, 1, 2, or null
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ScoutedData>({
     teamNumber: "",
     startingPosition: "",
     leftStartingZone: false,
@@ -199,8 +200,9 @@ function PracticeScoutingContent() {
     });
   }
 
-  async function submitPracticeSession(allRobotData: Array<Record<string, unknown>>) {
+  async function submitPracticeSession(allRobotData: ScoutedData[]) {
     if (!currentMatch || !userData) return;
+    if (allRobotData.length === 0) return;
 
     setLoading(true);
     try {
