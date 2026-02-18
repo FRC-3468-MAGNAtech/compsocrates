@@ -30,12 +30,12 @@ export const themes: Theme[] = [
   // Default
   {
     id: "default",
-    name: "Midnight Blurple",
-    gradient: "linear-gradient(135deg, #5865f2 0%, #00a8fc 100%)",
-    primaryColor: "#5865f2",
-    accentColor: "#00a8fc",
+    name: "CompSocrates Red",
+    gradient: "linear-gradient(135deg, #c42221 0%, #8b1818 100%)",
+    primaryColor: "#c42221",
+    accentColor: "#8b1818",
     textColor: "#ffffff",
-    bgColor: "#0b1022"
+    bgColor: "#f9fafb"
   },
   
   // Blue variants
@@ -348,21 +348,41 @@ export function getTheme(themeId: string, userId?: string): Theme {
 export function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
 
-  const isDark = true;
+  const isDark = Boolean(theme.dark || theme.id.startsWith("dark-"));
   const [primaryR, primaryG, primaryB] = hexToRgbTuple(theme.primaryColor);
   const [accentR, accentG, accentB] = hexToRgbTuple(theme.accentColor);
-  const pageGradient = `
-    radial-gradient(1200px 700px at 15% -10%, ${hexToRgba(theme.primaryColor, 0.34)} 0%, transparent 62%),
-    radial-gradient(1100px 680px at 85% 108%, ${hexToRgba(theme.accentColor, 0.34)} 0%, transparent 60%),
-    linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%)
-  `;
-  const pageCanvas = "rgba(6, 10, 23, 0.56)";
-  const surfaceColor = "linear-gradient(160deg, rgba(18, 27, 53, 0.82) 0%, rgba(13, 20, 41, 0.86) 100%)";
-  const surfaceRaisedColor = "linear-gradient(160deg, rgba(22, 32, 62, 0.84) 0%, rgba(15, 24, 47, 0.88) 100%)";
-  const borderColor = `rgba(${primaryR}, ${primaryG}, ${primaryB}, 0.38)`;
-  const bodyText = "#e5e7eb";
-  const mutedText = "#c3cbe0";
-  const subtleText = "#94a3b8";
+  const pageGradient = isDark
+    ? `
+      radial-gradient(1200px 700px at 15% -10%, ${hexToRgba(theme.primaryColor, 0.34)} 0%, transparent 62%),
+      radial-gradient(1100px 680px at 85% 108%, ${hexToRgba(theme.accentColor, 0.34)} 0%, transparent 60%),
+      linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%)
+    `
+    : `
+      radial-gradient(1100px 650px at 12% -10%, ${hexToRgba(theme.primaryColor, 0.18)} 0%, transparent 62%),
+      radial-gradient(1000px 620px at 88% 105%, ${hexToRgba(theme.accentColor, 0.2)} 0%, transparent 58%),
+      linear-gradient(148deg, #f8fafc 0%, ${hexToRgba(theme.primaryColor, 0.08)} 40%, ${hexToRgba(theme.accentColor, 0.1)} 100%)
+    `;
+  const pageCanvas = isDark ? "rgba(6, 10, 23, 0.56)" : "rgba(255, 255, 255, 0.68)";
+  const surfaceColor = isDark
+    ? "linear-gradient(160deg, rgba(18, 27, 53, 0.82) 0%, rgba(13, 20, 41, 0.86) 100%)"
+    : "rgba(255, 255, 255, 0.92)";
+  const surfaceRaisedColor = isDark
+    ? "linear-gradient(160deg, rgba(22, 32, 62, 0.84) 0%, rgba(15, 24, 47, 0.88) 100%)"
+    : "rgba(255, 255, 255, 0.98)";
+  const borderColor = isDark
+    ? `rgba(${primaryR}, ${primaryG}, ${primaryB}, 0.38)`
+    : `rgba(${primaryR}, ${primaryG}, ${primaryB}, 0.24)`;
+  const bodyText = isDark ? "#e5e7eb" : "#111827";
+  const mutedText = isDark ? "#c3cbe0" : "#4b5563";
+  const subtleText = isDark ? "#94a3b8" : "#6b7280";
+  const prideThemeIds = new Set([
+    "pride-rainbow", "lesbian", "gay", "bisexual", "pansexual", "transgender",
+    "nonbinary", "genderfluid", "asexual", "demisexual", "aromantic", "genderqueer",
+    "agender", "polysexual", "omnisexual",
+  ]);
+  const actionButtonBg = prideThemeIds.has(theme.id)
+    ? theme.primaryColor
+    : theme.gradient;
   
   document.documentElement.style.setProperty('--primary-color', theme.primaryColor);
   document.documentElement.style.setProperty('--primary-rgb', `${primaryR}, ${primaryG}, ${primaryB}`);
@@ -379,6 +399,7 @@ export function applyTheme(theme: Theme) {
   document.documentElement.style.setProperty('--theme-body-text', bodyText);
   document.documentElement.style.setProperty('--theme-muted-text', mutedText);
   document.documentElement.style.setProperty('--theme-subtle-text', subtleText);
+  document.documentElement.style.setProperty('--theme-action-bg', actionButtonBg);
   document.documentElement.style.setProperty('--theme-is-dark', isDark ? "1" : "0");
 }
 

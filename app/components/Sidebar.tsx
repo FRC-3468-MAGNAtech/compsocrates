@@ -177,7 +177,12 @@ export default function Sidebar() {
               />
             ) : (
               <div
-                className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold text-gray-700"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
+                style={{
+                  background: "rgba(var(--primary-rgb), 0.22)",
+                  color: "var(--theme-body-text)",
+                  border: "1px solid rgba(var(--primary-rgb), 0.28)",
+                }}
               >
                 {userData.displayName.substring(0, 2).toUpperCase()}
               </div>

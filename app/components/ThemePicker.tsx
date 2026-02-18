@@ -71,7 +71,7 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
   );
 
   // Solid color themes
-  const solidThemes = themes.filter(t => 
+  const lightThemes = themes.filter(t => 
     ["default", "ocean-blue", "navy", "cyan", "purple", "lavender", "rose", 
      "pink", "emerald", "forest", "orange", "amber"].includes(t.id)
   );
@@ -93,15 +93,15 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
       </button>
 
       {showPicker && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-[95vw] max-w-6xl max-h-[90vh] overflow-y-auto p-6 m-2">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 bg-black/65 z-[120]">
+          <div className="absolute inset-0 bg-white overflow-y-auto p-6 md:p-10">
+            <div className="flex items-center justify-between mb-8 sticky top-0 bg-white/95 backdrop-blur py-3 z-10">
               <h2 className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>
                 Choose Your Theme
               </h2>
               <button
                 onClick={() => setShowPicker(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="px-4 py-2 hover:bg-gray-100 rounded-lg"
               >
                 Close
               </button>
@@ -146,7 +146,7 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
 
               {/* Pride Flags */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-gray-700">Pride Flags</h3>
+                <h3 className="text-lg font-semibold mb-4 text-gray-700">Pride Themes</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                   {prideThemes.map(theme => (
                     <button
@@ -174,9 +174,9 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
 
               {/* Solid Colors */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-gray-700">Solid Colors</h3>
+                <h3 className="text-lg font-semibold mb-4 text-gray-700">Light Themes</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {solidThemes.map(theme => (
+                  {lightThemes.map(theme => (
                     <button
                       key={theme.id}
                       onClick={() => handleThemeSelect(theme.id)}
