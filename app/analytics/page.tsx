@@ -181,13 +181,13 @@ function AnalyticsPageContent() {
   }, []);
 
   const filtered = useMemo(() => {
-    const byGameAndEvent = rawData.filter((entry) =>
-      entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)
-    );
-    const byPractice = showPractice
-      ? byGameAndEvent.filter((entry) => entry.matchType === "practice")
-      : byGameAndEvent.filter((entry) => entry.matchType !== "practice");
-    return byPractice;
+    if (showPractice) {
+      return rawData.filter((entry) => entry.matchType === "practice");
+    }
+    return rawData.filter((entry) => {
+      if (entry.matchType === "practice") return false;
+      return entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent);
+    });
   }, [rawData, selectedEvent, selectedGame, showPractice]);
 
   const data = useMemo(() => {

@@ -307,19 +307,35 @@ function ScoutAccuracyContent() {
     }
     if (!confirm(`Hard reset all scouting/practice data for ${scoutName}? This cannot be undone.`)) return;
     try {
-      const sessionsQuery = query(
-        collection(db, "practiceSessions"),
-        where("scoutName", "==", scoutName)
+      let scoutUid = "";
+      const userSnap = await getDocs(
+        query(
+          collection(db, "users"),
+          where("teamId", "==", userData?.teamId || ""),
+          where("displayName", "==", scoutName)
+        )
       );
-      const sessionsSnap = await getDocs(sessionsQuery);
-      await Promise.all(sessionsSnap.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
+      if (!userSnap.empty) {
+        scoutUid = userSnap.docs[0].id;
+      }
 
-      const entriesQuery = query(
-        collection(db, "scouting"),
-        where("scoutName", "==", scoutName)
-      );
-      const entriesSnap = await getDocs(entriesQuery);
-      await Promise.all(entriesSnap.docs.map((d) => deleteDoc(doc(db, "scouting", d.id))));
+      const practiceIds = new Set<string>();
+      const sessionsByName = await getDocs(query(collection(db, "practiceSessions"), where("scoutName", "==", scoutName)));
+      sessionsByName.docs.forEach((d) => practiceIds.add(d.id));
+      if (scoutUid) {
+        const sessionsByUid = await getDocs(query(collection(db, "practiceSessions"), where("scoutId", "==", scoutUid)));
+        sessionsByUid.docs.forEach((d) => practiceIds.add(d.id));
+      }
+      await Promise.all(Array.from(practiceIds).map((id) => deleteDoc(doc(db, "practiceSessions", id))));
+
+      const scoutingIds = new Set<string>();
+      const entriesByName = await getDocs(query(collection(db, "scouting"), where("scoutName", "==", scoutName)));
+      entriesByName.docs.forEach((d) => scoutingIds.add(d.id));
+      if (scoutUid) {
+        const entriesByUid = await getDocs(query(collection(db, "scouting"), where("scoutId", "==", scoutUid)));
+        entriesByUid.docs.forEach((d) => scoutingIds.add(d.id));
+      }
+      await Promise.all(Array.from(scoutingIds).map((id) => deleteDoc(doc(db, "scouting", id))));
 
       await loadScoutStats();
       setSelectedScout(null);

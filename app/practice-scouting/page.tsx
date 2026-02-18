@@ -96,6 +96,45 @@ function getMatchTeams(match: PracticeMatch & Record<string, unknown>): number[]
   return [];
 }
 
+function buildLegacyGroupedMatches(matches: PracticeMatch[]): PracticeMatch[] {
+  const grouped = new Map<string, PracticeMatch[]>();
+  for (const match of matches) {
+    const matchKey = String((match as unknown as Record<string, unknown>).matchKey || "");
+    const alliance = String((match as unknown as Record<string, unknown>).alliance || "");
+    const key = `${matchKey}::${alliance}`;
+    const bucket = grouped.get(key) || [];
+    bucket.push(match);
+    grouped.set(key, bucket);
+  }
+
+  const output: PracticeMatch[] = [];
+  for (const entries of grouped.values()) {
+    const teams = entries
+      .map((entry) => {
+        const raw = (entry as unknown as Record<string, unknown>).teamNumber;
+        const teamNumber = sanitizeAllianceTeams([raw])[0] || 0;
+        const teamPositionRaw = (entry as unknown as Record<string, unknown>).teamPosition;
+        const teamPosition =
+          typeof teamPositionRaw === "number"
+            ? teamPositionRaw
+            : typeof teamPositionRaw === "string"
+            ? Number(teamPositionRaw)
+            : 0;
+        return { teamNumber, teamPosition };
+      })
+      .filter((row) => row.teamNumber > 0)
+      .sort((a, b) => a.teamPosition - b.teamPosition)
+      .map((row) => row.teamNumber);
+
+    if (teams.length < 3) continue;
+    output.push({
+      ...entries[0],
+      allianceTeams: teams.slice(0, 3),
+    });
+  }
+  return output;
+}
+
 function readOfficialData(value: unknown): { score: number; penaltyPoints: number; breakdown: Record<string, unknown> } {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
@@ -237,14 +276,12 @@ function PracticeScoutingContent() {
 
       let candidateMatches = normalizedMatches;
       if (candidateMatches.length === 0) {
+        candidateMatches = buildLegacyGroupedMatches(matches);
+      }
+      if (candidateMatches.length === 0) {
         const allSnapshot = await getDocs(collection(db, "practiceMatches"));
         const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        candidateMatches = allMatches
-          .map((match) => {
-            const parsedTeams = getMatchTeams(match as unknown as PracticeMatch & Record<string, unknown>);
-            return { ...match, allianceTeams: parsedTeams };
-          })
-          .filter((match) => match.allianceTeams.length >= 3);
+        candidateMatches = buildLegacyGroupedMatches(allMatches);
       }
       if (candidateMatches.length === 0) {
         alert("No practice matches have valid alliance team data. Please add team numbers to practice match docs.");
@@ -257,6 +294,8 @@ function PracticeScoutingContent() {
       const safeOfficialScore =
         typeof official.score === "number" && official.score > 0
           ? official.score
+          : typeof (randomMatch as unknown as Record<string, unknown>).officialScore === "number"
+          ? Number((randomMatch as unknown as Record<string, unknown>).officialScore)
           : typeof randomMatch.actualScore === "number"
           ? randomMatch.actualScore
           : 0;
@@ -384,12 +423,14 @@ function PracticeScoutingContent() {
           addDoc(collection(db, "scouting"), {
             ...robotData,
             scoutName: userData.displayName,
+            scoutId: userData.uid,
             matchId: `p${currentMatch.matchNumber}`,
             matchNumber: String(currentMatch.matchNumber),
             matchType: "practice",
             eventKey,
             eventName,
             game: "REBUILT",
+            accuracy: sessionAccuracy,
             timestamp: now,
             submittedAt: now,
             practiceMode: selectedMode || "trial",
