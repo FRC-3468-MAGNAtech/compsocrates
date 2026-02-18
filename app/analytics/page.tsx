@@ -128,15 +128,12 @@ type SortKey = keyof Entry | "score";
 type SortDir = "asc" | "desc";
 
 function AnalyticsPageContent() {
+  const LOCKED_GAME: AnalyticsGame = "REEFSCAPE";
   const { userData } = useAuth();
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => {
-    if (typeof window === "undefined") return "REBUILT";
-    const saved = localStorage.getItem("analytics-selected-game");
-    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REBUILT";
-  });
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(LOCKED_GAME);
   const [selectedEvent, setSelectedEvent] = useState(() => {
     if (typeof window === "undefined") return "all";
     return localStorage.getItem("analytics-selected-event") || "all";
@@ -146,9 +143,9 @@ function AnalyticsPageContent() {
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
-    if (typeof window === "undefined") return "REBUILT";
+    if (typeof window === "undefined") return LOCKED_GAME;
     const saved = localStorage.getItem("analytics-selected-game");
-    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REBUILT";
+    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : LOCKED_GAME;
   });
   const [importEvent, setImportEvent] = useState("app-testing");
 
@@ -161,10 +158,10 @@ function AnalyticsPageContent() {
     localStorage.setItem("analytics-selected-event", selectedEvent);
   }, [selectedGame, selectedEvent]);
 
-  function handleGameChange(nextGame: AnalyticsGame) {
-    const validEvents = getEventsForGame(nextGame).map((event) => event.id);
-    setSelectedGame(nextGame);
-    setImportGame(nextGame);
+  function handleGameChange(_nextGame: AnalyticsGame) {
+    const validEvents = getEventsForGame(LOCKED_GAME).map((event) => event.id);
+    setSelectedGame(LOCKED_GAME);
+    setImportGame(LOCKED_GAME);
     if (selectedEvent !== "all" && !validEvents.includes(selectedEvent)) {
       setSelectedEvent("all");
     }
@@ -247,16 +244,75 @@ function AnalyticsPageContent() {
       alert("No data to export");
       return;
     }
-    const headers = ["Match", "Type", "Team", "Scout", "Position", "Left Zone", "Notes", "Timestamp"];
+    const headers = [
+      "Match",
+      "Team",
+      "Scout",
+      "Starting Position",
+      "Leave",
+      "Auto Coral Missed",
+      "Auto Coral L1",
+      "Auto Coral L2",
+      "Auto Coral L3",
+      "Auto Coral L4",
+      "Auto Algae Processor Missed",
+      "Auto Algae Processor Scored",
+      "Auto Algae Net Missed",
+      "Auto Algae Net Scored",
+      "Tele Coral Missed",
+      "Tele Coral L1",
+      "Tele Coral L2",
+      "Tele Coral L3",
+      "Tele Coral L4",
+      "Remove Algae from Reef",
+      "Tele Processor Missed",
+      "Tele Processor Scored",
+      "Tele Net Robot Missed",
+      "Tele Net Robot Scored",
+      "Tele Net Human Missed",
+      "Tele Net Human Scored",
+      "Climb Failed",
+      "End Place",
+      "Miscellaneous",
+      "Comments",
+      "Alliance Accuracy",
+      "Script Status",
+    ];
     const rows = filtered.map((entry) => [
-      entry.matchNumber || "",
-      entry.matchType || "",
+      matchLabel(entry),
       entry.teamNumber || "",
       entry.scoutName || "",
       entry.startingPosition || "",
-      entry.leftStartingZone ? "Y" : "N",
+      entry.leftStartingZone ? "1" : "0",
+      entry.autoCoralMissed || 0,
+      entry.autoCoralL1 || 0,
+      entry.autoCoralL2 || 0,
+      entry.autoCoralL3 || 0,
+      entry.autoCoralL4 || 0,
+      entry.autoAlgaeProcessorMissed || 0,
+      entry.autoAlgaeProcessorScored || 0,
+      entry.autoAlgaeNetMissed || 0,
+      entry.autoAlgaeNetScored || 0,
+      entry.teleopCoralMissed || 0,
+      entry.teleopCoralL1 || 0,
+      entry.teleopCoralL2 || 0,
+      entry.teleopCoralL3 || 0,
+      entry.teleopCoralL4 || 0,
+      entry.teleopAlgaeRemoved ? "1" : "0",
+      entry.teleopProcessorMissed || 0,
+      entry.teleopProcessorScored || 0,
+      entry.teleopNetRobotMissed || 0,
+      entry.teleopNetRobotScored || 0,
+      entry.teleopNetHumanMissed || 0,
+      entry.teleopNetHumanScored || 0,
+      entry.failedClimb || 0,
+      entry.stageStatus || "",
+      (entry.incidents || []).join(";"),
       (entry.notes || "").replace(/,/g, ";"),
-      entry.timestamp || "",
+      typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
+        ? (entry as Entry & { accuracy?: number }).accuracy
+        : "",
+      typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "",
     ]);
     const csv = [
       headers.join(","),
@@ -293,15 +349,45 @@ function AnalyticsPageContent() {
           const values = lines[i].split(",").map((value) => value.trim());
           const match = normalizeMatchLabel(values[0] || values[1] || "");
           const now = Date.now();
+          const parseNum = (value: string, fallback = 0) => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : fallback;
+          };
+          const parseBool = (value: string) => value === "1" || /^y(es)?$/i.test(value);
           await addDoc(collection(db, "scouting"), {
             matchId: match.matchId,
             matchNumber: match.matchNumber,
             matchType: match.matchType,
-            teamNumber: values[2],
-            scoutName: values[3],
-            startingPosition: values[4],
-            leftStartingZone: values[5] === "Y",
-            notes: values[6]?.replace(/"/g, "").replace(/;/g, ",") || "",
+            teamNumber: values[1] || "",
+            scoutName: values[2] || "",
+            startingPosition: values[3] || "",
+            leftStartingZone: parseBool(values[4] || ""),
+            autoCoralMissed: parseNum(values[5]),
+            autoCoralL1: parseNum(values[6]),
+            autoCoralL2: parseNum(values[7]),
+            autoCoralL3: parseNum(values[8]),
+            autoCoralL4: parseNum(values[9]),
+            autoAlgaeProcessorMissed: parseNum(values[10]),
+            autoAlgaeProcessorScored: parseNum(values[11]),
+            autoAlgaeNetMissed: parseNum(values[12]),
+            autoAlgaeNetScored: parseNum(values[13]),
+            teleopCoralMissed: parseNum(values[14]),
+            teleopCoralL1: parseNum(values[15]),
+            teleopCoralL2: parseNum(values[16]),
+            teleopCoralL3: parseNum(values[17]),
+            teleopCoralL4: parseNum(values[18]),
+            teleopAlgaeRemoved: parseBool(values[19] || ""),
+            teleopProcessorMissed: parseNum(values[20]),
+            teleopProcessorScored: parseNum(values[21]),
+            teleopNetRobotMissed: parseNum(values[22]),
+            teleopNetRobotScored: parseNum(values[23]),
+            teleopNetHumanMissed: parseNum(values[24]),
+            teleopNetHumanScored: parseNum(values[25]),
+            failedClimb: parseNum(values[26]),
+            stageStatus: values[27] || "",
+            incidents: (values[28] || "").split(";").map((item) => item.trim()).filter(Boolean),
+            notes: values[29]?.replace(/"/g, "").replace(/;/g, ",") || "",
+            accuracy: values[30] ? parseNum(values[30]) : undefined,
             eventKey: importEvent,
             eventName: importEventOptions.find((option) => option.id === importEvent)?.name || "App Testing",
             game: importGame,
@@ -365,7 +451,6 @@ function AnalyticsPageContent() {
                   className="w-full border rounded p-2"
                 >
                   <option value="REEFSCAPE">REEFSCAPE</option>
-                  <option value="REBUILT">REBUILT</option>
                 </select>
               </div>
               <div>
@@ -413,7 +498,7 @@ function AnalyticsPageContent() {
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
-              <th className="bg-pink-300 text-center" colSpan={3}>General</th>
+              <th className="bg-pink-300 text-center" colSpan={4}>General</th>
               {isCoach && <th className="bg-orange-300 text-center" colSpan={1}>Actions</th>}
             </tr>
             <tr>
@@ -430,9 +515,9 @@ function AnalyticsPageContent() {
               <th className="bg-blue-200 text-center" colSpan={2}>Algae Net (Human)</th>
               <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
               <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
-              <th className="bg-pink-200 text-center" colSpan={1}>Misc</th>
-              <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
-              <th className="bg-pink-200 text-center" colSpan={1}>Score</th>
+              <th className="bg-pink-200 text-center" colSpan={2}>Comments</th>
+              <th className="bg-pink-200 text-center" colSpan={1}>Accuracy Script</th>
+              <th className="bg-pink-200 text-center" colSpan={1}>Script Status</th>
               {isCoach && <th className="bg-orange-200 text-center">Delete</th>}
             </tr>
             <tr>
@@ -464,9 +549,10 @@ function AnalyticsPageContent() {
               <th className="text-center">Scored</th>
               <th className="text-center">Failed</th>
               <th className="text-center">End Place</th>
-              <th className="text-center">Incidents</th>
+              <th className="text-center">Miscellaneous</th>
               <th className="text-center">Comments</th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("score")}>{sortLabel("score", "Score")}</th>
+              <th className="text-center">Alliance Accuracy</th>
+              <th className="text-center">Script Status</th>
               {isCoach && <th className="text-center">Actions</th>}
             </tr>
           </thead>
@@ -505,7 +591,8 @@ function AnalyticsPageContent() {
                   {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                 </td>
                 <td className="text-center">{entry.notes || "-"}</td>
-                <td className="text-center font-bold">{scoreEntry(entry)}</td>
+                <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? `${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%` : "-"}</td>
+                <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                 {isCoach && (
                   <td className="text-center">
                     <button

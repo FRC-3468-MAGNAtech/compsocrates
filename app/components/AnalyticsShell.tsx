@@ -16,7 +16,7 @@ type AnalyticsShellProps = {
 };
 
 const analyticsLinks = [
-  { href: "/analytics", label: "Raw Data" },
+  { href: "/analytics", label: "Match Analytics" },
   { href: "/analytics/team-averages", label: "Team Averages" },
   { href: "/analytics/match-breakdown", label: "Match Breakdown" },
   { href: "/analytics/rankings", label: "Rankings" },

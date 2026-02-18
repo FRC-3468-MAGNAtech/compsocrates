@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { isEventActive } from "@/app/utils/eventDates";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
 import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/app/firebase";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -114,6 +115,12 @@ interface Match {
   status: MatchStatus;
   bracket?: "upper" | "lower";
 }
+
+type ActivePresetField = {
+  id: string;
+  type?: string;
+  options?: string[];
+};
 
 function MatchBox({
   match,
@@ -330,7 +337,6 @@ function FinalsBracket({
    MAIN PAGE
 -------------------------------------------------------- */
 function ScoutFormContent() {
-  const router = useRouter();
   const { userData } = useAuth();
   const showEventWarning = !isEventActive();
 
@@ -338,9 +344,11 @@ function ScoutFormContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
+  const [activeFormName, setActiveFormName] = useState("");
+  const [activeFormFields, setActiveFormFields] = useState<ActivePresetField[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<{ id: number; type?: "qualification" | "practice" | "finals"; bracket?: "upper" | "lower" }>({ 
-    id: 23, 
-    type: "qualification" 
+    id: 0,
+    type: undefined,
   });
 
   const [formData, setFormData] = useState({
@@ -375,6 +383,22 @@ function ScoutFormContent() {
     notes: "",
   });
 
+  useEffect(() => {
+    async function loadActivePreset() {
+      if (!userData?.teamId) return;
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      if (!teamDoc.exists()) return;
+      const activeMatchFormPresetId = teamDoc.data().activeMatchFormPresetId as string | undefined;
+      if (!activeMatchFormPresetId) return;
+      const presetDoc = await getDoc(doc(db, "formPresets", activeMatchFormPresetId));
+      if (!presetDoc.exists()) return;
+      const preset = presetDoc.data() as { name?: string; fields?: ActivePresetField[] };
+      setActiveFormName(preset.name || "");
+      setActiveFormFields(Array.isArray(preset.fields) ? preset.fields : []);
+    }
+    loadActivePreset();
+  }, [userData?.teamId]);
+
 function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
   // When called from finals bracket, id is which position, bracket is upper/lower
   setSelectedMatch({ id: 0, type: "finals", bracket });
@@ -382,6 +406,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
 }
 
   const getMatchDisplay = () => {
+    if (!selectedMatch.type || selectedMatch.id <= 0) return "No match is set";
     if (selectedMatch.type === "finals" && selectedMatch.bracket) {
       const bracketName = selectedMatch.bracket === "upper" ? "Upper" : "Lower";
       return `${bracketName} Bracket Match ${selectedMatch.id}`;
@@ -391,6 +416,14 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
       return `Qualification Match ${selectedMatch.id}`;
     }
   };
+
+  const activeTeamField = activeFormFields.find(
+    (field) => field.id === "team" || field.id === "teamNumber"
+  );
+  const presetTeamOptions = Array.isArray(activeTeamField?.options)
+    ? activeTeamField.options.filter((option) => option.trim().length > 0)
+    : [];
+  const allowManualTeamEntry = showEventWarning || activeTeamField?.type === "number" || activeTeamField?.type === "text";
 
   const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
     <div className="flex items-center justify-between py-2">
@@ -432,7 +465,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
           className="bg-white rounded-xl shadow p-4 border-l-4"
           style={{ borderColor: "#c42221" }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-lg font-semibold">Assigned Match:</span>
             <span className="text-lg font-semibold" style={{ color: "#c42221" }}>
               {getMatchDisplay()}
@@ -447,6 +480,11 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
             >
               Fix
             </button>
+            {activeFormName && (
+              <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
+                Active Preset: {activeFormName}
+              </span>
+            )}
           </div>
         </div>
 
@@ -473,19 +511,39 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Team Number
               </label>
-              <select
-                value={formData.teamNumber}
-                onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
-                className="w-full border rounded p-2"
-              >
-                <option value="">Select Team</option>
-                <option value="1234">1234</option>
-                <option value="5678">5678</option>
-                <option value="9012">9012</option>
-                <option value="3456">3456</option>
-                <option value="7890">7890</option>
-                <option value="1122">1122</option>
-              </select>
+              {allowManualTeamEntry ? (
+                <input
+                  type="text"
+                  value={formData.teamNumber}
+                  onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
+                  className="w-full border rounded p-2"
+                  placeholder={showEventWarning ? "No match is set - enter team number" : "Enter team number"}
+                />
+              ) : (
+                <select
+                  value={formData.teamNumber}
+                  onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
+                  className="w-full border rounded p-2"
+                >
+                  <option value="">Select Team</option>
+                  {presetTeamOptions.length > 0 ? (
+                    presetTeamOptions.map((teamOption) => (
+                      <option key={teamOption} value={teamOption}>
+                        {teamOption}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="1234">1234</option>
+                      <option value="5678">5678</option>
+                      <option value="9012">9012</option>
+                      <option value="3456">3456</option>
+                      <option value="7890">7890</option>
+                      <option value="1122">1122</option>
+                    </>
+                  )}
+                </select>
+              )}
             </div>
 
             <div>
@@ -672,16 +730,19 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                   ? "p"
                   : selectedMatch.type === "finals"
                   ? "f"
-                  : "q";
-                const matchId = `${matchPrefix}${selectedMatch.id}`;
+                  : selectedMatch.type === "qualification"
+                  ? "q"
+                  : "u";
+                const safeMatchNumber = selectedMatch.id > 0 ? selectedMatch.id : 0;
+                const matchId = `${matchPrefix}${safeMatchNumber}`;
                 const now = Date.now();
                 const eventKey = classifyRebuiltEventByTimestamp(now);
                 const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
                 const submission = {
                   ...formData,
                   matchId,
-                  matchNumber: selectedMatch.id.toString(),
-                  matchType: selectedMatch.type || "qualification",
+                  matchNumber: safeMatchNumber.toString(),
+                  matchType: selectedMatch.type || "practice",
                   bracket: selectedMatch.bracket || null,
                   eventKey,
                   eventName,

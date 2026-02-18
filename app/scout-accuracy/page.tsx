@@ -8,6 +8,7 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { Users, Target, ClipboardList } from "lucide-react";
+import { getEventsForGame } from "@/app/utils/analyticsEvents";
 
 interface ScoutStats {
   scoutName: string;
@@ -21,20 +22,67 @@ interface ScoutStats {
   recentAccuracies: number[];
 }
 
+type ScoutingEntry = {
+  scoutName?: string;
+  eventKey?: string;
+  matchType?: string;
+  game?: string;
+  matchId?: string;
+  teamNumber?: string;
+  leftStartingZone?: boolean;
+  autoCoralL1?: number;
+  autoCoralL2?: number;
+  autoCoralL3?: number;
+  autoCoralL4?: number;
+  autoAlgaeProcessorScored?: number;
+  autoAlgaeNetScored?: number;
+  teleopCoralL1?: number;
+  teleopCoralL2?: number;
+  teleopCoralL3?: number;
+  teleopCoralL4?: number;
+  teleopAlgaeRemoved?: boolean;
+  teleopProcessorScored?: number;
+  teleopNetRobotScored?: number;
+  teleopNetHumanScored?: number;
+  stageStatus?: string;
+};
+
+function scoreScoutingEntry(entry: ScoutingEntry): number {
+  let score = 0;
+  if (entry.leftStartingZone) score += 3;
+  score += (entry.autoCoralL1 || 0) * 3;
+  score += (entry.autoCoralL2 || 0) * 4;
+  score += (entry.autoCoralL3 || 0) * 6;
+  score += (entry.autoCoralL4 || 0) * 7;
+  score += (entry.autoAlgaeProcessorScored || 0) * 6;
+  score += (entry.autoAlgaeNetScored || 0) * 4;
+  score += (entry.teleopCoralL1 || 0) * 2;
+  score += (entry.teleopCoralL2 || 0) * 3;
+  score += (entry.teleopCoralL3 || 0) * 4;
+  score += (entry.teleopCoralL4 || 0) * 5;
+  score += (entry.teleopProcessorScored || 0) * 6;
+  score += (entry.teleopNetRobotScored || 0) * 4;
+  score += (entry.teleopNetHumanScored || 0) * 4;
+  if (entry.teleopAlgaeRemoved) score += 2;
+  const end = (entry.stageStatus || "").toLowerCase();
+  if (end.includes("deep")) score += 12;
+  else if (end.includes("shallow")) score += 6;
+  else if (end.includes("park") || end.includes("barge")) score += 2;
+  return score;
+}
+
 function ScoutAccuracyContent() {
   const { userData } = useAuth();
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
+  const [accuracyView, setAccuracyView] = useState<"practice" | "competition">("practice");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
+  const [selectedCompetitionEvent, setSelectedCompetitionEvent] = useState("all");
 
   useEffect(() => {
     loadScoutStats();
-  }, []);
-
-  useEffect(() => {
-    loadScoutStats();
-  }, [selectedMode]);
+  }, [selectedMode, accuracyView, selectedCompetitionEvent, userData?.teamId]);
 
   const normalize = (value: string | null | undefined) =>
     (value || "").toLowerCase().replace(/\s+/g, "-");
@@ -50,32 +98,80 @@ function ScoutAccuracyContent() {
       const teamQuery = query(collection(db, "users"), where("teamId", "==", userData?.teamId));
       const teamSnapshot = await getDocs(teamQuery);
       const allMembers = teamSnapshot.docs;
+      const memberData = allMembers.map((memberDoc) => {
+        const data = memberDoc.data();
+        return {
+          scoutName: data.displayName as string,
+          role: data.role as string,
+          specialRole: data.specialRole as string | undefined,
+          specialRoles: (data.specialRoles || []) as string[],
+        };
+      });
+      const scoutNames = memberData.map((member) => member.scoutName);
 
-      // Get scouting entries and practice sessions for EVERY team member
-      const statsPromises = allMembers.map(async (memberDoc) => {
-        const memberData = memberDoc.data();
-        const scoutName = memberData.displayName;
-        const role = memberData.role;
-        const specialRole = memberData.specialRole;
-        const specialRoles = memberData.specialRoles || [];
-        
-        // Get all scouting entries by this person
-        const entriesQuery = query(collection(db, "scouting"), where("scoutName", "==", scoutName));
-        const entriesSnapshot = await getDocs(entriesQuery);
-        
-        // Filter by selected practice mode
+      const scoutEntrySnapshots = await Promise.all(
+        scoutNames.map((scoutName) => getDocs(query(collection(db, "scouting"), where("scoutName", "==", scoutName))))
+      );
+      const entriesByScout = scoutNames.reduce<Record<string, ScoutingEntry[]>>((acc, scoutName, index) => {
+        acc[scoutName] = scoutEntrySnapshots[index].docs.map((entryDoc) => entryDoc.data() as ScoutingEntry);
+        return acc;
+      }, {});
+
+      const statsPromises = memberData.map(async (member) => {
+        const entries = entriesByScout[member.scoutName] || [];
+
+        if (accuracyView === "competition") {
+          const allCompetitionEntries = Object.values(entriesByScout)
+            .flat()
+            .filter((entry) => entry.matchType !== "practice" && entry.game === "REEFSCAPE")
+            .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
+
+          const baselineByMatch = allCompetitionEntries.reduce<Record<string, number[]>>((acc, entry) => {
+            const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(scoreScoutingEntry(entry));
+            return acc;
+          }, {});
+
+          const scoutCompetitionEntries = entries
+            .filter((entry) => entry.matchType !== "practice" && entry.game === "REEFSCAPE")
+            .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
+          const competitionAccuracies = scoutCompetitionEntries.map((entry) => {
+            const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
+            const baselineScores = baselineByMatch[key] || [];
+            const baseline = baselineScores.length
+              ? baselineScores.reduce((sum, value) => sum + value, 0) / baselineScores.length
+              : 0;
+            const score = scoreScoutingEntry(entry);
+            if (baseline <= 0) return 0;
+            return Math.max(0, Math.round((1 - Math.abs(score - baseline) / baseline) * 100));
+          });
+          const averageAccuracy = competitionAccuracies.length
+            ? Math.round(competitionAccuracies.reduce((sum, value) => sum + value, 0) / competitionAccuracies.length)
+            : 0;
+
+          return {
+            scoutName: member.scoutName,
+            role: member.role,
+            specialRole: member.specialRole,
+            specialRoles: member.specialRoles,
+            totalEntries: entries.length,
+            practiceSessionsCompleted: competitionAccuracies.length,
+            averageAccuracy,
+            lastPracticeDate: Date.now(),
+            recentAccuracies: competitionAccuracies.slice(-5).reverse(),
+          };
+        }
+
         const practiceQuery = query(
           collection(db, "practiceSessions"),
-          where("scoutName", "==", scoutName),
+          where("scoutName", "==", member.scoutName),
           where("mode", "==", selectedMode)
         );
-        
         const practiceSnapshot = await getDocs(practiceQuery);
-        
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];
         let lastPracticeDate = 0;
-        
         practiceSnapshot.forEach((doc) => {
           const data = doc.data();
           if (data.accuracy !== undefined) {
@@ -86,18 +182,15 @@ function ScoutAccuracyContent() {
             lastPracticeDate = data.timestamp;
           }
         });
-        
-        // Sort recent accuracies and take last 5
         recentAccuracies = recentAccuracies.sort((a, b) => b - a).slice(0, 5);
-        
         const averageAccuracy = practiceSnapshot.size > 0 ? Math.round(totalAccuracy / practiceSnapshot.size) : 0;
 
         return {
-          scoutName,
-          role,
-          specialRole,
-          specialRoles,
-          totalEntries: entriesSnapshot.size,
+          scoutName: member.scoutName,
+          role: member.role,
+          specialRole: member.specialRole,
+          specialRoles: member.specialRoles,
+          totalEntries: entries.length,
           practiceSessionsCompleted: practiceSnapshot.size,
           averageAccuracy,
           lastPracticeDate: lastPracticeDate || Date.now(),
@@ -207,22 +300,34 @@ function ScoutAccuracyContent() {
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
 
   async function resetScoutSessions(scoutName: string) {
-    if (!confirm(`Delete ${selectedMode} practice sessions and scouted entries for ${scoutName}?`)) return;
+    if (!confirm(`Delete ${accuracyView === "competition" ? "competition scouting entries" : `${selectedMode} practice sessions and scouted entries`} for ${scoutName}?`)) return;
     try {
-      const sessionsQuery = query(
-        collection(db, "practiceSessions"),
-        where("scoutName", "==", scoutName),
-        where("mode", "==", selectedMode)
-      );
-      const snap = await getDocs(sessionsQuery);
-      await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
+      if (accuracyView === "practice") {
+        const sessionsQuery = query(
+          collection(db, "practiceSessions"),
+          where("scoutName", "==", scoutName),
+          where("mode", "==", selectedMode)
+        );
+        const snap = await getDocs(sessionsQuery);
+        await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
+      }
 
       const entriesQuery = query(
         collection(db, "scouting"),
         where("scoutName", "==", scoutName)
       );
       const entriesSnap = await getDocs(entriesQuery);
-      await Promise.all(entriesSnap.docs.map((d) => deleteDoc(doc(db, "scouting", d.id))));
+      await Promise.all(
+        entriesSnap.docs
+          .filter((d) => {
+            if (accuracyView === "competition") {
+              const data = d.data() as ScoutingEntry;
+              return data.matchType !== "practice";
+            }
+            return true;
+          })
+          .map((d) => deleteDoc(doc(db, "scouting", d.id)))
+      );
 
       await loadScoutStats();
       setSelectedScout(null);
@@ -244,7 +349,7 @@ function ScoutAccuracyContent() {
           <p className="text-gray-600 mb-8">
             Track and verify the accuracy of your team members&apos; data
             <span className="text-sm text-gray-500 ml-2">
-              (Showing {selectedMode === "trial" ? "Trial" : "Competitive"} mode only)
+              ({accuracyView === "practice" ? `Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode` : "Showing competition mode"})
             </span>
           </p>
 
@@ -258,7 +363,7 @@ function ScoutAccuracyContent() {
               <div className="text-6xl mb-4">📊</div>
               <h2 className="text-2xl font-semibold mb-2">No Data Yet</h2>
               <p className="text-gray-600">
-                Scout accuracy tracking will appear once team members complete practice sessions.
+                Scout accuracy tracking will appear once team members complete sessions.
               </p>
             </div>
           ) : (
@@ -267,9 +372,12 @@ function ScoutAccuracyContent() {
           {/* MODE TABS */}
           <div className="bg-white rounded-xl shadow-md p-2 mb-6 flex gap-2">
             <button
-              onClick={() => setSelectedMode("trial")}
+              onClick={() => {
+                setAccuracyView("practice");
+                setSelectedMode("trial");
+              }}
               className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                selectedMode === "trial" 
+                accuracyView === "practice" && selectedMode === "trial"
                   ? "bg-red-600 text-white" 
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
@@ -277,16 +385,46 @@ function ScoutAccuracyContent() {
               Trial Mode
             </button>
             <button
-              onClick={() => setSelectedMode("competitive")}
+              onClick={() => {
+                setAccuracyView("practice");
+                setSelectedMode("competitive");
+              }}
               className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                selectedMode === "competitive" 
+                accuracyView === "practice" && selectedMode === "competitive"
                   ? "bg-red-600 text-white" 
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               Competitive Mode
             </button>
+            <button
+              onClick={() => setAccuracyView("competition")}
+              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                accuracyView === "competition"
+                  ? "bg-red-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Competition Accuracy
+            </button>
           </div>
+          {accuracyView === "competition" && (
+            <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Competition</label>
+              <select
+                value={selectedCompetitionEvent}
+                onChange={(event) => setSelectedCompetitionEvent(event.target.value)}
+                className="w-full md:w-96 border rounded p-2"
+              >
+                <option value="all">All Competitions</option>
+                {getEventsForGame("REEFSCAPE").map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
               {/* OVERVIEW STATS */}
               <div className="grid md:grid-cols-4 gap-6 mb-6">
                 <div className="bg-white rounded-xl shadow-md p-6">
@@ -316,7 +454,7 @@ function ScoutAccuracyContent() {
 
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
+                    <h3 className="font-semibold text-gray-700">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</h3>
                     <ClipboardList size={22} className="text-gray-500" />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
@@ -456,17 +594,15 @@ function ScoutAccuracyContent() {
                             </p>
                           </div>
                           <div className="p-4 bg-gray-50 rounded-lg">
-                            <p className="text-sm text-gray-600 mb-1">Practice Sessions</p>
-                            <p className="text-4xl font-bold" style={{ color: "#c42221" }}>
-                              {selectedScoutData.practiceSessionsCompleted}
-                            </p>
+                            <p className="text-sm text-gray-600 mb-1">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</p>
+                            <p className="text-4xl font-bold" style={{ color: "#c42221" }}>{selectedScoutData.practiceSessionsCompleted}</p>
                           </div>
                         </div>
                       </div>
 
                       {/* RECENT ACCURACY SCORES */}
                       <div>
-                        <h3 className="text-lg font-semibold mb-4">Recent Practice Scores</h3>
+                        <h3 className="text-lg font-semibold mb-4">{accuracyView === "competition" ? "Recent Competition Accuracy" : "Recent Practice Scores"}</h3>
                         {selectedScoutData.recentAccuracies.length > 0 ? (
                           <div className="space-y-2">
                             {selectedScoutData.recentAccuracies.map((accuracy, i) => (
@@ -491,7 +627,7 @@ function ScoutAccuracyContent() {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-gray-500 text-center py-4">No practice sessions completed yet</p>
+                          <p className="text-gray-500 text-center py-4">No sessions completed yet</p>
                         )}
                       </div>
 
@@ -516,7 +652,7 @@ function ScoutAccuracyContent() {
                           onClick={() => resetScoutSessions(selectedScoutData.scoutName)}
                           className="mt-4 px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm font-medium"
                         >
-                          Reset {selectedMode === "trial" ? "Trial" : "Competitive"} Sessions
+                          Reset {accuracyView === "competition" ? "Competition Entries" : `${selectedMode === "trial" ? "Trial" : "Competitive"} Sessions`}
                         </button>
                       </div>
 

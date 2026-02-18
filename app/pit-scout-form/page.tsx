@@ -7,7 +7,6 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 type PitFormState = {
@@ -41,7 +40,6 @@ type PitFormState = {
 function PitScoutFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
@@ -108,7 +106,7 @@ function PitScoutFormContent() {
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
           <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
             <div className="bg-white rounded-xl shadow p-4">
-              <h1 className="text-2xl font-bold mb-2 theme-text">Pit Scout Form</h1>
+              <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scout Form</h1>
               <p className="text-sm text-gray-600">Structured to match your Match Scout form flow.</p>
             </div>
 
@@ -253,25 +251,16 @@ function PitScoutFormContent() {
             </div>
           </form>
 
-          <button
-            onClick={() => setNotesOpen(!notesOpen)}
-            className="hidden md:block fixed right-0 top-1/2 -translate-y-1/2 bg-red-600 text-white px-2 py-8 rounded-l-lg shadow-lg hover:bg-red-700 z-10"
-          >
-            {notesOpen ? <ChevronRight /> : <ChevronLeft />}
-          </button>
-
-          <div className={`bg-white shadow-xl transition-all duration-300 overflow-y-auto ${notesOpen ? "w-80" : "w-0"} hidden md:block`}>
-            {notesOpen && (
-              <div className="p-4 sticky top-4">
-                <h2 className="text-lg font-semibold mb-3 theme-text">Notes</h2>
-                <textarea
-                  value={form.notes}
-                  onChange={(event) => setForm({ ...form, notes: event.target.value })}
-                  className="w-full border rounded p-3 h-[70vh]"
-                  placeholder="Team comments and observations..."
-                />
-              </div>
-            )}
+          <div className="hidden md:block w-80 p-4">
+            <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
+              <h2 className="text-xl font-semibold mb-2 theme-text">Notes</h2>
+              <textarea
+                value={form.notes}
+                onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                className="flex-1 border rounded p-2 resize-none"
+                placeholder="Team comments and observations..."
+              />
+            </div>
           </div>
 
           <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
@@ -314,4 +303,3 @@ export default function PitScoutFormPage() {
     </ProtectedRoute>
   );
 }
-

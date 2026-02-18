@@ -7,7 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENTS } from "@/app/utils/events";
-import { filterEventsByLocation, getEventsByYear, type TBAEvent } from "@/app/utils/tba-api";
+import { filterEventsByLocation, type TBAEvent } from "@/app/utils/tba-api";
 
 function EventSelectionContent() {
   const { userData } = useAuth();
@@ -31,34 +31,22 @@ function EventSelectionContent() {
   useEffect(() => {
     async function loadEvents() {
       setLoadingEvents(true);
-      try {
-        const year = new Date().getFullYear();
-        const tbaEvents = await getEventsByYear(year);
-        setEvents(
-          tbaEvents
-            .filter((event) => event.country === "USA")
-            .sort((a, b) => a.start_date.localeCompare(b.start_date))
-        );
-      } catch (error) {
-        console.error("Failed to load events from TBA, using fallback list:", error);
-        setEvents(
-          APP_EVENTS.map((event) => ({
-            key: event.key,
-            name: event.name,
-            event_code: event.key,
-            event_type: 0,
-            start_date: event.startDate,
-            end_date: event.endDate,
-            year: new Date(event.startDate).getFullYear(),
-            city: event.location,
-            state_prov: "",
-            country: "USA",
-            week: 0,
-          }))
-        );
-      } finally {
-        setLoadingEvents(false);
-      }
+      setEvents(
+        APP_EVENTS.map((event) => ({
+          key: event.key,
+          name: event.name,
+          event_code: event.key,
+          event_type: 0,
+          start_date: event.startDate,
+          end_date: event.endDate,
+          year: new Date(event.startDate).getFullYear(),
+          city: event.city,
+          state_prov: event.state_prov,
+          country: event.country,
+          week: event.week,
+        }))
+      );
+      setLoadingEvents(false);
     }
     loadEvents();
   }, []);

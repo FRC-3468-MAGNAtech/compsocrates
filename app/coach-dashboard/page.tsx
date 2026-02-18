@@ -237,7 +237,7 @@ function CoachDashboardContent() {
 
               {/* SCOUT COUNT CONFIGURATION */}
               <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-                <h3 className="text-lg font-semibold mb-4">Team Configuration | Expected Scouts Per Event</h3>
+                <h3 className="text-lg font-semibold mb-4">Team Configuration</h3>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-2">Expected Scouts Per Event</p>

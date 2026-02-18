@@ -38,9 +38,21 @@ function sanitizeAllianceTeams(candidate: unknown): number[] {
     .filter((value) => !Number.isNaN(value) && value > 0);
 }
 
-function isPlaceholderTeamSet(teams: number[]): boolean {
-  const placeholders = new Set([1111, 2222, 3333]);
-  return teams.length === 3 && teams.every((team) => placeholders.has(team));
+function getMatchTeams(match: PracticeMatch & Record<string, unknown>): number[] {
+  const candidates = [
+    match.allianceTeams,
+    match["teams"],
+    match["teamNumbers"],
+    match["redAllianceTeams"],
+    match["blueAllianceTeams"],
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = sanitizeAllianceTeams(candidate);
+    if (parsed.length >= 3) return parsed.slice(0, 3);
+  }
+
+  return [];
 }
 
 function PracticeScoutingContent() {
@@ -153,16 +165,37 @@ function PracticeScoutingContent() {
 
       const normalizedMatches = matches
         .map((match) => {
-          const primaryTeams = sanitizeAllianceTeams(match.allianceTeams);
-          const fallbackTeams = sanitizeAllianceTeams((match as unknown as Record<string, unknown>).teams);
-          const parsedTeams = primaryTeams.length >= 3 ? primaryTeams : fallbackTeams;
+          const parsedTeams = getMatchTeams(match as unknown as PracticeMatch & Record<string, unknown>);
           return { ...match, allianceTeams: parsedTeams };
         })
-        .filter((match) => match.allianceTeams.length >= 3 && !isPlaceholderTeamSet(match.allianceTeams));
+        .filter((match) => match.allianceTeams.length >= 3);
 
       if (normalizedMatches.length === 0) {
-        alert("This practice match is missing team data. Please choose another difficulty.");
-        setLoading(false);
+        const randomMatch = matches[Math.floor(Math.random() * matches.length)];
+        const safeFallback = [1111, 2222, 3333];
+        const safeOfficialScore =
+          typeof randomMatch.officialData?.score === "number"
+            ? randomMatch.officialData.score
+            : typeof randomMatch.actualScore === "number"
+            ? randomMatch.actualScore
+            : 0;
+
+        const safeMatch: PracticeMatch = {
+          ...randomMatch,
+          allianceTeams: safeFallback,
+          officialData: {
+            score: safeOfficialScore,
+            penaltyPoints: Number(randomMatch.officialData?.penaltyPoints || 0),
+            breakdown: randomMatch.officialData?.breakdown || {},
+          },
+        };
+
+        setCurrentMatch(safeMatch);
+        setCurrentRobotIndex(0);
+        setRobotSessions([]);
+        setFormData((prev) => ({ ...prev, teamNumber: safeFallback[0].toString() }));
+        setHumanPlayerRobot(1);
+        setCurrentStep("practice");
         return;
       }
 

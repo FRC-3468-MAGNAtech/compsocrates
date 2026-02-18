@@ -335,17 +335,11 @@ export function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
 
   const isDark = Boolean(theme.dark || theme.id.startsWith("dark-"));
-  const softPrimary = theme.primaryColor.length === 7 ? `${theme.primaryColor}${isDark ? "66" : "33"}` : theme.primaryColor;
-  const softAccent = theme.accentColor.length === 7 ? `${theme.accentColor}${isDark ? "66" : "33"}` : theme.accentColor;
   const pageGradient = isDark
-    ? `radial-gradient(circle at top left, ${softPrimary} 0%, transparent 40%), radial-gradient(circle at bottom right, ${softAccent} 0%, transparent 40%), linear-gradient(160deg, ${theme.bgColor} 0%, #05070b 100%)`
-    : `linear-gradient(140deg, ${softPrimary} 0%, ${softAccent} 45%, #f8fafc 100%)`;
-  const surfaceColor = isDark
-    ? `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 92%, black 8%) 0%, color-mix(in srgb, ${theme.bgColor} 84%, black 16%) 100%)`
-    : `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 88%, white 12%) 0%, color-mix(in srgb, ${theme.bgColor} 80%, white 20%) 100%)`;
-  const surfaceRaisedColor = isDark
-    ? `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 86%, black 14%) 0%, color-mix(in srgb, ${theme.bgColor} 78%, black 22%) 100%)`
-    : `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 78%, white 22%) 0%, color-mix(in srgb, ${theme.bgColor} 70%, white 30%) 100%)`;
+    ? `radial-gradient(circle at top left, color-mix(in srgb, ${theme.primaryColor} 48%, transparent) 0%, transparent 40%), radial-gradient(circle at bottom right, color-mix(in srgb, ${theme.accentColor} 44%, transparent) 0%, transparent 42%), ${theme.gradient}`
+    : `linear-gradient(165deg, color-mix(in srgb, ${theme.primaryColor} 85%, white 15%) 0%, color-mix(in srgb, ${theme.accentColor} 82%, white 18%) 100%)`;
+  const surfaceColor = isDark ? "#111827" : "#ffffff";
+  const surfaceRaisedColor = isDark ? "color-mix(in srgb, #111827 86%, black 14%)" : "#ffffff";
   const borderColor = `color-mix(in srgb, ${theme.primaryColor} 18%, #d1d5db 82%)`;
   const bodyText = isDark ? "#f8fafc" : "#111827";
   const mutedText = isDark ? "#d1d5db" : "#4b5563";

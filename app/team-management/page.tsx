@@ -202,6 +202,8 @@ function TeamManagementContent() {
   }
 
   const isUserAdmin = userData?.isTeamAdmin || false;
+  const normalizedTeamLabel = teamName?.trim() || "Your Team";
+  const displayTeamLabel = /^team\b/i.test(normalizedTeamLabel) ? normalizedTeamLabel : `Team ${normalizedTeamLabel}`;
 
   if (loading) {
     return (
@@ -228,7 +230,7 @@ function TeamManagementContent() {
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-semibold mb-1">{teamName || "Your Team"}</h2>
+                <h2 className="text-xl font-semibold mb-1">{displayTeamLabel}</h2>
                 <p className="text-gray-600">Manage members, requests, and roles.</p>
               </div>
               <button
@@ -243,7 +245,7 @@ function TeamManagementContent() {
               <div className="mt-4 p-4 bg-gray-50 rounded">
                 <p className="text-sm text-gray-600 mb-2">Team Join Code:</p>
                 <p className="text-2xl font-mono font-bold" style={{ color: "#c42221" }}>
-                  {userData?.teamId}
+                  Team {userData?.teamId}
                 </p>
               </div>
             )}

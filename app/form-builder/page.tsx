@@ -18,6 +18,38 @@ interface FormField {
   required: boolean;
 }
 
+const REEFSCAPE_MATCH_PRESET_FIELDS: FormField[] = [
+  { id: "scoutName", label: "Scout Name", type: "text", section: "Pre-Match", required: true },
+  { id: "team", label: "Team Number", type: "number", section: "Pre-Match", required: true },
+  { id: "startingPosition", label: "Starting Position", type: "select", section: "Pre-Match", options: ["Not There", "Processor Side", "Middle", "Opposite Side"], required: true },
+  { id: "leftStartingZone", label: "Left Starting Zone", type: "checkbox", section: "Autonomous", required: false },
+  { id: "autoCoralMissed", label: "Auto Coral Missed", type: "number", section: "Autonomous", required: false },
+  { id: "autoCoralL1", label: "Auto Coral L1", type: "number", section: "Autonomous", required: false },
+  { id: "autoCoralL2", label: "Auto Coral L2", type: "number", section: "Autonomous", required: false },
+  { id: "autoCoralL3", label: "Auto Coral L3", type: "number", section: "Autonomous", required: false },
+  { id: "autoCoralL4", label: "Auto Coral L4", type: "number", section: "Autonomous", required: false },
+  { id: "autoAlgaeProcessorMissed", label: "Auto Algae Processor Missed", type: "number", section: "Autonomous", required: false },
+  { id: "autoAlgaeProcessorScored", label: "Auto Algae Processor Scored", type: "number", section: "Autonomous", required: false },
+  { id: "autoAlgaeNetMissed", label: "Auto Algae Net Missed", type: "number", section: "Autonomous", required: false },
+  { id: "autoAlgaeNetScored", label: "Auto Algae Net Scored", type: "number", section: "Autonomous", required: false },
+  { id: "teleopCoralMissed", label: "Teleop Coral Missed", type: "number", section: "Teleop", required: false },
+  { id: "teleopCoralL1", label: "Teleop Coral L1", type: "number", section: "Teleop", required: false },
+  { id: "teleopCoralL2", label: "Teleop Coral L2", type: "number", section: "Teleop", required: false },
+  { id: "teleopCoralL3", label: "Teleop Coral L3", type: "number", section: "Teleop", required: false },
+  { id: "teleopCoralL4", label: "Teleop Coral L4", type: "number", section: "Teleop", required: false },
+  { id: "teleopAlgaeRemoved", label: "Removed Algae from Reef", type: "checkbox", section: "Teleop", required: false },
+  { id: "teleopProcessorMissed", label: "Teleop Processor Missed", type: "number", section: "Teleop", required: false },
+  { id: "teleopProcessorScored", label: "Teleop Processor Scored", type: "number", section: "Teleop", required: false },
+  { id: "teleopNetRobotMissed", label: "Teleop Net (Robot) Missed", type: "number", section: "Teleop", required: false },
+  { id: "teleopNetRobotScored", label: "Teleop Net (Robot) Scored", type: "number", section: "Teleop", required: false },
+  { id: "teleopNetHumanMissed", label: "Teleop Net (Human) Missed", type: "number", section: "Teleop", required: false },
+  { id: "teleopNetHumanScored", label: "Teleop Net (Human) Scored", type: "number", section: "Teleop", required: false },
+  { id: "failedClimb", label: "Failed Climb", type: "number", section: "Endgame", required: false },
+  { id: "stageStatus", label: "End Place", type: "select", section: "Endgame", options: ["Not Parked", "Parked in Barge Zone", "Shallow Cage", "Deep Cage"], required: false },
+  { id: "incidents", label: "Miscellaneous", type: "text", section: "Post-Match", required: false },
+  { id: "notes", label: "Comments", type: "text", section: "Post-Match", required: false },
+];
+
 function FormBuilderContent() {
   const { userData } = useAuth();
   const [formName, setFormName] = useState("Reefscape 2025 Scouting Form");
@@ -171,6 +203,13 @@ function FormBuilderContent() {
     reader.readAsText(file);
   }
 
+  function loadBuiltInReefscapePreset() {
+    setFormName("3468 REEFSCAPE Match Scout Form");
+    setFields(REEFSCAPE_MATCH_PRESET_FIELDS);
+    setActiveSection("Pre-Match");
+    setShowAddField(false);
+  }
+
   const fieldsBySection = sections.reduce((acc, section) => {
     acc[section] = fields.filter(f => f.section === section);
     return acc;
@@ -191,6 +230,13 @@ function FormBuilderContent() {
               </p>
             </div>
             <div className="flex gap-3">
+              <button
+                onClick={loadBuiltInReefscapePreset}
+                className="px-4 py-2 rounded-lg text-white font-medium"
+                style={{ background: "var(--primary-gradient)" }}
+              >
+                Load 3468 REEFSCAPE Preset
+              </button>
               <button
                 onClick={savePresetToCloud}
                 disabled={savingCloud}
