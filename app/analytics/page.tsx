@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
@@ -14,6 +14,9 @@ type Entry = {
   matchNumber?: string;
   matchType?: "qualification" | "practice" | "finals";
   matchId?: string;
+  scoutId?: string;
+  practiceMode?: "trial" | "competitive";
+  isPracticeScouting?: boolean;
   eventKey?: string;
   eventName?: string;
   game?: string;
@@ -118,10 +121,15 @@ function matchNumberValue(value?: string) {
 
 function matchLabel(entry: Entry) {
   const num = entry.matchNumber || "-";
+  if (isPracticeScoutingEntry(entry)) return `Q${num}`;
   if (entry.matchType === "practice") return `P${num}`;
   if (entry.matchType === "qualification") return `Q${num}`;
   if (entry.matchType === "finals") return `F${num}`;
   return num;
+}
+
+function isPracticeScoutingEntry(entry: Entry) {
+  return entry.isPracticeScouting || entry.matchType === "practice" || Boolean(entry.practiceMode);
 }
 
 type SortKey = keyof Entry | "score";
@@ -158,7 +166,7 @@ function AnalyticsPageContent() {
     localStorage.setItem("analytics-selected-event", selectedEvent);
   }, [selectedGame, selectedEvent]);
 
-  function handleGameChange(_nextGame: AnalyticsGame) {
+  function handleGameChange() {
     const validEvents = getEventsForGame(LOCKED_GAME).map((event) => event.id);
     setSelectedGame(LOCKED_GAME);
     setImportGame(LOCKED_GAME);
@@ -182,10 +190,10 @@ function AnalyticsPageContent() {
 
   const filtered = useMemo(() => {
     if (showPractice) {
-      return rawData.filter((entry) => entry.matchType === "practice");
+      return rawData.filter((entry) => isPracticeScoutingEntry(entry));
     }
     return rawData.filter((entry) => {
-      if (entry.matchType === "practice") return false;
+      if (isPracticeScoutingEntry(entry)) return false;
       return entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent);
     });
   }, [rawData, selectedEvent, selectedGame, showPractice]);
@@ -212,13 +220,35 @@ function AnalyticsPageContent() {
     });
   }, [filtered, sortDir, sortKey]);
 
-  async function handleDelete(id: string) {
-    if (deleteConfirm !== id) {
-      setDeleteConfirm(id);
+  async function handleDelete(entry: Entry) {
+    if (deleteConfirm !== entry.id) {
+      setDeleteConfirm(entry.id);
       setTimeout(() => setDeleteConfirm(null), 3000);
       return;
     }
-    await deleteDoc(doc(db, "scouting", id));
+    if (isPracticeScoutingEntry(entry)) {
+      const scoutName = entry.scoutName;
+      const scoutUid = entry.scoutId || "";
+      const practiceIds = new Set<string>();
+      const scoutingIds = new Set<string>();
+
+      const sessionsByName = await getDocs(query(collection(db, "practiceSessions"), where("scoutName", "==", scoutName)));
+      sessionsByName.docs.forEach((d) => practiceIds.add(d.id));
+      const scoutingByName = await getDocs(query(collection(db, "scouting"), where("scoutName", "==", scoutName)));
+      scoutingByName.docs.forEach((d) => scoutingIds.add(d.id));
+
+      if (scoutUid) {
+        const sessionsByUid = await getDocs(query(collection(db, "practiceSessions"), where("scoutId", "==", scoutUid)));
+        sessionsByUid.docs.forEach((d) => practiceIds.add(d.id));
+        const scoutingByUid = await getDocs(query(collection(db, "scouting"), where("scoutId", "==", scoutUid)));
+        scoutingByUid.docs.forEach((d) => scoutingIds.add(d.id));
+      }
+
+      await Promise.all(Array.from(practiceIds).map((id) => deleteDoc(doc(db, "practiceSessions", id))));
+      await Promise.all(Array.from(scoutingIds).map((id) => deleteDoc(doc(db, "scouting", id))));
+    } else {
+      await deleteDoc(doc(db, "scouting", entry.id));
+    }
     setDeleteConfirm(null);
     await loadData();
   }
@@ -596,7 +626,7 @@ function AnalyticsPageContent() {
                 {isCoach && (
                   <td className="text-center">
                     <button
-                      onClick={() => handleDelete(entry.id)}
+                      onClick={() => handleDelete(entry)}
                       className={`px-2 py-1 text-xs rounded ${
                         deleteConfirm === entry.id ? "bg-red-700 text-white" : "bg-red-500 text-white"
                       }`}

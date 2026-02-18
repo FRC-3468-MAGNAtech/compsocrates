@@ -8,7 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
 import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
@@ -159,6 +159,19 @@ function readOfficialData(value: unknown): { score: number; penaltyPoints: numbe
   return { score: 0, penaltyPoints: 0, breakdown: {} };
 }
 
+function getScoutDevice() {
+  if (typeof window === "undefined") {
+    return { deviceType: "pc" as const, details: { ua: "", platform: "", viewport: "" } };
+  }
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const viewport = `${window.innerWidth}x${window.innerHeight}`;
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches || false;
+  const mobileByUa = /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(ua);
+  const deviceType = coarsePointer || mobileByUa ? "mobile" as const : "pc" as const;
+  return { deviceType, details: { ua, platform, viewport } };
+}
+
 function PracticeScoutingContent() {
   const router = useRouter();
   const { userData } = useAuth();
@@ -172,6 +185,7 @@ function PracticeScoutingContent() {
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const [formData, setFormData] = useState<ScoutedData>({
@@ -221,8 +235,9 @@ function PracticeScoutingContent() {
     if (!videoId) return url;
     
     const controls = selectedMode === 'trial' ? 1 : 0;
+    const muted = selectedMode === "competitive" ? 1 : 0;
     
-    return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=${controls}&disablekb=${controls === 0 ? 1 : 0}&modestbranding=1&rel=0&fs=0&enablejsapi=1&playsinline=1`;
+    return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=${muted}&controls=${controls}&disablekb=${controls === 0 ? 1 : 0}&modestbranding=1&rel=0&fs=0&enablejsapi=1&playsinline=1`;
   }
 
   useEffect(() => {
@@ -390,6 +405,7 @@ function PracticeScoutingContent() {
       const sessionAccuracy = calculateAccuracy(totalScoutedScore, officialAllianceScore);
 
       const now = Date.now();
+      const device = getScoutDevice();
       const eventKey = currentMatch.eventKey || classifyRebuiltEventByTimestamp(now);
       const eventName = APP_EVENT_BY_KEY[eventKey]?.name || currentMatch.eventName || "App Testing";
 
@@ -406,11 +422,13 @@ function PracticeScoutingContent() {
         allScoutedData: allRobotData,
         eventKey,
         eventName,
-        game: "REBUILT",
+        game: "REEFSCAPE",
         officialScore: officialAllianceScore,
         actualScore: officialAllianceScore,
         scoutedScore: totalScoutedScore,
         accuracy: sessionAccuracy,
+        deviceType: device.deviceType,
+        deviceDetails: device.details,
         timestamp: now,
         startedAt: now,
         completedAt: now,
@@ -424,17 +442,20 @@ function PracticeScoutingContent() {
             ...robotData,
             scoutName: userData.displayName,
             scoutId: userData.uid,
-            matchId: `p${currentMatch.matchNumber}`,
+            matchId: `q${currentMatch.matchNumber}`,
             matchNumber: String(currentMatch.matchNumber),
-            matchType: "practice",
+            matchType: "qualification",
             eventKey,
             eventName,
-            game: "REBUILT",
+            game: "REEFSCAPE",
             accuracy: sessionAccuracy,
             timestamp: now,
             submittedAt: now,
             practiceMode: selectedMode || "trial",
             difficulty: selectedDifficulty || "easy",
+            isPracticeScouting: true,
+            deviceType: device.deviceType,
+            deviceDetails: device.details,
           })
         )
       );
@@ -458,6 +479,7 @@ function PracticeScoutingContent() {
     setRobotSessions([]);
     setHumanPlayerRobot(null);
     setSessionResults(null);
+    setMobileNotesOpen(false);
     setFormData({
       teamNumber: "",
       startingPosition: "",
@@ -593,7 +615,7 @@ function PracticeScoutingContent() {
                   ref={iframeRef}
                   src={getYouTubeEmbedUrl(currentMatch.videoUrl)}
                   className="w-full h-full"
-                  allow="autoplay; encrypted-media"
+                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
                   title="Practice Match Video"
                   frameBorder="0"
                 />
@@ -603,7 +625,7 @@ function PracticeScoutingContent() {
               </div>
 
               {/* Match Info */}
-              <div className="bg-black bg-opacity-90 text-white p-4">
+              <div className="hidden md:block bg-black bg-opacity-90 text-white p-4">
                 <h3 className="font-semibold text-lg">
                   {currentMatch.matchType === 'qualification' ? 'Qualification' : 
                    currentMatch.matchType === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
@@ -818,6 +840,44 @@ function PracticeScoutingContent() {
                 </div>
               )}
             </div>
+
+            {/* MOBILE STICKY NOTES */}
+            <button
+              onClick={() => setMobileNotesOpen(true)}
+              className="md:hidden fixed right-2 top-1/2 -translate-y-1/2 bg-red-600 text-white px-2 py-5 rounded-l-lg shadow-lg z-30"
+              aria-label="Open notes"
+            >
+              <ChevronLeft />
+            </button>
+            {mobileNotesOpen && (
+              <div className="md:hidden fixed inset-0 z-40">
+                <button
+                  className="absolute inset-0 bg-black/40"
+                  onClick={() => setMobileNotesOpen(false)}
+                  aria-label="Close notes overlay"
+                />
+                <div className="absolute right-0 top-0 h-full w-[85vw] max-w-sm bg-white shadow-2xl overflow-y-auto">
+                  <div className="sticky top-0 z-10 bg-white border-b p-3 flex items-center justify-between">
+                    <h2 className="text-base font-semibold" style={{ color: "#c42221" }}>Notes</h2>
+                    <button
+                      onClick={() => setMobileNotesOpen(false)}
+                      className="p-1 rounded hover:bg-gray-100"
+                      aria-label="Close notes"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="p-3">
+                    <textarea
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      className="w-full border rounded p-2 h-[70vh]"
+                      placeholder="Optional notes..."
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

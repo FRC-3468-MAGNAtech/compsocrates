@@ -20,6 +20,13 @@ interface ScoutStats {
   averageAccuracy: number;
   lastPracticeDate: number;
   recentAccuracies: number[];
+  deviceBreakdown?: {
+    mobileCount: number;
+    pcCount: number;
+    mobileAvg: number;
+    pcAvg: number;
+    betterDevice: "mobile" | "pc" | "tie" | null;
+  };
 }
 
 type ScoutingEntry = {
@@ -28,6 +35,10 @@ type ScoutingEntry = {
   matchType?: string;
   game?: string;
   matchId?: string;
+  scoutId?: string;
+  practiceMode?: string;
+  isPracticeScouting?: boolean;
+  deviceType?: "mobile" | "pc";
   teamNumber?: string;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
@@ -46,6 +57,20 @@ type ScoutingEntry = {
   teleopNetHumanScored?: number;
   stageStatus?: string;
 };
+
+function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }>) {
+  const mobile = points.filter((p) => p.deviceType === "mobile");
+  const pc = points.filter((p) => p.deviceType === "pc");
+  const mobileAvg = mobile.length ? mobile.reduce((sum, p) => sum + p.accuracy, 0) / mobile.length : 0;
+  const pcAvg = pc.length ? pc.reduce((sum, p) => sum + p.accuracy, 0) / pc.length : 0;
+  let betterDevice: "mobile" | "pc" | "tie" | null = null;
+  if (mobile.length > 0 && pc.length > 0) {
+    if (mobileAvg > pcAvg) betterDevice = "mobile";
+    else if (pcAvg > mobileAvg) betterDevice = "pc";
+    else betterDevice = "tie";
+  }
+  return { mobileCount: mobile.length, pcCount: pc.length, mobileAvg, pcAvg, betterDevice };
+}
 
 function scoreScoutingEntry(entry: ScoutingEntry): number {
   let score = 0;
@@ -123,7 +148,11 @@ function ScoutAccuracyContent() {
         if (accuracyView === "competition") {
           const allCompetitionEntries = Object.values(entriesByScout)
             .flat()
-            .filter((entry) => entry.matchType !== "practice" && entry.game === "REEFSCAPE")
+            .filter(
+              (entry) =>
+                entry.game === "REEFSCAPE" &&
+                (entry.matchType !== "practice" || entry.isPracticeScouting || Boolean(entry.practiceMode))
+            )
             .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
 
           const baselineByMatch = allCompetitionEntries.reduce<Record<string, number[]>>((acc, entry) => {
@@ -134,7 +163,11 @@ function ScoutAccuracyContent() {
           }, {});
 
           const scoutCompetitionEntries = entries
-            .filter((entry) => entry.matchType !== "practice" && entry.game === "REEFSCAPE")
+            .filter(
+              (entry) =>
+                entry.game === "REEFSCAPE" &&
+                (entry.matchType !== "practice" || entry.isPracticeScouting || Boolean(entry.practiceMode))
+            )
             .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
           const competitionAccuracies = scoutCompetitionEntries.map((entry) => {
             const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
@@ -146,6 +179,10 @@ function ScoutAccuracyContent() {
             if (baseline <= 0) return 0;
             return Math.max(0, Math.round((1 - Math.abs(score - baseline) / baseline) * 100));
           });
+          const competitionDevicePoints = scoutCompetitionEntries.map((entry, index) => ({
+            deviceType: entry.deviceType,
+            accuracy: competitionAccuracies[index] || 0,
+          }));
           const averageAccuracy = competitionAccuracies.length
             ? Math.round(competitionAccuracies.reduce((sum, value) => sum + value, 0) / competitionAccuracies.length)
             : 0;
@@ -160,6 +197,7 @@ function ScoutAccuracyContent() {
             averageAccuracy,
             lastPracticeDate: Date.now(),
             recentAccuracies: competitionAccuracies.slice(-5).reverse(),
+            deviceBreakdown: getDeviceBreakdown(competitionDevicePoints),
           };
         }
 
@@ -172,11 +210,16 @@ function ScoutAccuracyContent() {
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];
         let lastPracticeDate = 0;
+        const practiceDevicePoints: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }> = [];
         practiceSnapshot.forEach((doc) => {
           const data = doc.data();
           if (data.accuracy !== undefined) {
             totalAccuracy += data.accuracy;
             recentAccuracies.push(data.accuracy);
+            practiceDevicePoints.push({
+              deviceType: data.deviceType as "mobile" | "pc" | undefined,
+              accuracy: Number(data.accuracy || 0),
+            });
           }
           if (data.timestamp > lastPracticeDate) {
             lastPracticeDate = data.timestamp;
@@ -195,6 +238,7 @@ function ScoutAccuracyContent() {
           averageAccuracy,
           lastPracticeDate: lastPracticeDate || Date.now(),
           recentAccuracies,
+          deviceBreakdown: getDeviceBreakdown(practiceDevicePoints),
         };
       });
 
@@ -655,6 +699,20 @@ function ScoutAccuracyContent() {
                                 : "Never"}
                             </span>
                           </div>
+                          {selectedScoutData.deviceBreakdown &&
+                            selectedScoutData.deviceBreakdown.mobileCount > 0 &&
+                            selectedScoutData.deviceBreakdown.pcCount > 0 && (
+                              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <span className="text-gray-700">Better Device</span>
+                                <span className="font-bold">
+                                  {selectedScoutData.deviceBreakdown.betterDevice === "tie"
+                                    ? "Equal on PC and Mobile"
+                                    : selectedScoutData.deviceBreakdown.betterDevice === "mobile"
+                                    ? "Mobile"
+                                    : "PC"}
+                                </span>
+                              </div>
+                            )}
                         </div>
                         <button
                           onClick={() => resetScoutSessions(selectedScoutData.scoutName)}

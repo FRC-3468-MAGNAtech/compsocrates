@@ -10,55 +10,13 @@
   --primary-gradient: linear-gradient(135deg, #c42221 0%, #8b1818 100%);
   --theme-action-bg: linear-gradient(135deg, #c42221 0%, #8b1818 100%);
   --theme-text: #ffffff;
-  --theme-bg: #f9fafb;
-  --theme-page-gradient: radial-gradient(1100px 650px at 12% -10%, rgba(196, 34, 33, 0.18) 0%, transparent 62%), radial-gradient(1000px 620px at 88% 105%, rgba(139, 24, 24, 0.2) 0%, transparent 58%), linear-gradient(148deg, #f8fafc 0%, rgba(196, 34, 33, 0.08) 40%, rgba(139, 24, 24, 0.1) 100%);
-  --theme-page-canvas: rgba(255, 255, 255, 0.68);
-  --theme-surface: rgba(255, 255, 255, 0.92);
-  --theme-surface-raised: rgba(255, 255, 255, 0.98);
-  --theme-border: rgba(196, 34, 33, 0.24);
   --theme-body-text: #111827;
-  --theme-muted-text: #4b5563;
-  --theme-subtle-text: #6b7280;
-  --theme-is-dark: 0;
-  --foreground-rgb: 17, 24, 39;
 }
 
 body {
   color: var(--theme-body-text);
-  background: var(--theme-page-gradient);
-  background-attachment: fixed;
+  background: #f3f4f6;
   min-height: 100vh;
-}
-
-main {
-  background: transparent;
-}
-
-.bg-white {
-  background: var(--theme-surface) !important;
-}
-
-.bg-gray-100,
-.bg-gray-50 {
-  background: var(--theme-page-canvas) !important;
-  backdrop-filter: blur(4px);
-}
-
-.bg-gray-200 {
-  background: rgba(0, 0, 0, 0.06) !important;
-}
-
-.hover\:bg-gray-50:hover,
-.hover\:bg-gray-100:hover,
-.hover\:bg-gray-200:hover {
-  background: rgba(0, 0, 0, 0.06) !important;
-}
-
-.border,
-.border-gray-100,
-.border-gray-200,
-.border-gray-300 {
-  border-color: var(--theme-border) !important;
 }
 
 @layer utilities {
@@ -67,7 +25,6 @@ main {
   }
 }
 
-/* ANALYTICS TABLE STYLES */
 .table-scroll {
   overflow: auto;
   position: relative;
@@ -82,13 +39,13 @@ main {
 
 .table-scroll th,
 .table-scroll td {
-  border: 1px solid var(--theme-border);
+  border: 1px solid #e5e7eb;
   padding: 8px 12px;
-  text-align: center; /* CHANGED FROM LEFT TO CENTER */
+  text-align: center;
   font-size: 13px;
   white-space: nowrap;
-  background: var(--theme-surface);
-  vertical-align: middle; /* CENTER VERTICALLY TOO */
+  background: #ffffff;
+  vertical-align: middle;
 }
 
 .table-scroll th {
@@ -98,7 +55,6 @@ main {
   letter-spacing: 0.5px;
 }
 
-/* STICKY HEADER (all 3 rows) */
 .sticky-header {
   position: sticky;
   top: 0;
@@ -110,39 +66,33 @@ main {
   top: 0;
 }
 
-/* STICKY LEFT COLUMNS - Only Match and Team now */
-/* Match column (leftmost) */
 .sticky-left-0 {
   position: sticky !important;
   left: 0 !important;
   z-index: 25 !important;
-  background: var(--theme-surface) !important;
+  background: #ffffff !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
   min-width: 100px;
 }
 
-/* Team column (second from left) */
 .sticky-left-1 {
   position: sticky !important;
-  left: 80px !important; /* Width of Match column */
+  left: 80px !important;
   z-index: 25 !important;
-  background: var(--theme-surface) !important;
+  background: #ffffff !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
-/* HEADER CELLS IN STICKY COLUMNS - Higher z-index */
 .sticky-header .sticky-left-0,
 .sticky-header .sticky-left-1 {
   z-index: 30 !important;
 }
 
-/* ENSURE MINIMUM COLUMN WIDTHS */
 .table-scroll th:nth-child(1),
 .table-scroll th:nth-child(2) {
   min-width: 80px;
 }
 
-/* Wider columns for incidents and notes - allow wrapping */
 .table-scroll td[style*="minWidth"] {
   white-space: normal !important;
   word-wrap: break-word;
@@ -160,109 +110,4 @@ main {
 
 .theme-text {
   color: var(--primary-color);
-}
-
-.bg-white.rounded-xl.shadow,
-.bg-white.rounded-xl.shadow-md {
-  border: 1px solid rgba(var(--primary-rgb), 0.28);
-  backdrop-filter: blur(14px) saturate(1.06);
-  box-shadow:
-    0 22px 40px -30px rgba(var(--primary-rgb), 0.46),
-    0 18px 28px -26px rgba(2, 6, 23, 0.7) !important;
-}
-
-.bg-white.rounded-xl.shadow p,
-.bg-white.rounded-xl.shadow-md p {
-  color: var(--theme-muted-text);
-}
-
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-select,
-textarea {
-  background: var(--theme-surface-raised) !important;
-  color: var(--theme-body-text) !important;
-  border-color: rgba(var(--primary-rgb), 0.32) !important;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--theme-subtle-text) !important;
-}
-
-.theme-page-header {
-  color: var(--primary-color);
-  letter-spacing: 0.01em;
-}
-
-.theme-section-title {
-  color: var(--primary-color);
-  font-weight: 700;
-}
-
-.theme-action-btn {
-  background: var(--theme-action-bg) !important;
-  color: var(--theme-text) !important;
-  border: 1px solid rgba(var(--primary-rgb), 0.36);
-}
-
-.theme-outline-btn {
-  border: 1px solid rgba(var(--primary-rgb), 0.38);
-  color: var(--primary-color);
-  background: rgba(var(--primary-rgb), 0.12);
-}
-
-.text-gray-900,
-.text-gray-800,
-.text-gray-700 {
-  color: var(--theme-body-text) !important;
-}
-
-.text-gray-600,
-.text-gray-500 {
-  color: var(--theme-muted-text) !important;
-}
-
-.text-gray-400 {
-  color: var(--theme-subtle-text) !important;
-}
-
-.bg-black\/40 {
-  background-color: rgba(0, 0, 0, calc(0.35 + (var(--theme-is-dark) * 0.2))) !important;
-}
-
-.bg-red-50,
-.bg-red-100,
-.bg-red-200,
-.hover\:bg-red-50:hover,
-.hover\:bg-red-100:hover {
-  background-color: rgba(var(--primary-rgb), 0.18) !important;
-}
-
-button[style*="backgroundColor: #c42221"],
-button[style*="background-color: #c42221"],
-button[style*="backgroundColor:#c42221"],
-button[style*="background-color:#c42221"],
-button[style*="background-color:rgb(196,34,33)"],
-button[style*="background-color: rgb(196, 34, 33)"] {
-  background: var(--theme-action-bg) !important;
-}
-
-[style*="borderColor: #c42221"],
-[style*="border-color: #c42221"],
-[style*="borderColor:#c42221"],
-[style*="border-color:#c42221"] {
-  border-color: var(--primary-color) !important;
-}
-
-h1[style*="color: #c42221"],
-h2[style*="color: #c42221"],
-h3[style*="color: #c42221"],
-span[style*="color: #c42221"],
-p[style*="color: #c42221"],
-h1[style*="color:#c42221"],
-h2[style*="color:#c42221"],
-h3[style*="color:#c42221"],
-span[style*="color:#c42221"],
-p[style*="color:#c42221"] {
-  color: var(--primary-color) !important;
 }

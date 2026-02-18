@@ -2,14 +2,16 @@
 
 import { useEffect } from "react";
 import { useAuth } from "@/app/AuthContext";
-import { applyTheme, getTheme, loadTheme } from "@/app/utils/themes";
+import { applyTheme, getTheme, saveTheme } from "@/app/utils/themes";
 
 export default function ThemeInitializer() {
   const { userData } = useAuth();
 
   useEffect(() => {
-    const themeId = userData?.uid ? loadTheme(userData.uid) : "default";
-    applyTheme(getTheme(themeId, userData?.uid));
+    applyTheme(getTheme("default", userData?.uid));
+    if (userData?.uid) {
+      saveTheme(userData.uid, "default");
+    }
   }, [userData?.uid]);
 
   return null;
