@@ -606,10 +606,10 @@ function PracticeScoutingContent() {
 
         {/* STEP 2: PRACTICE SCOUTING */}
         {currentStep === 'practice' && currentMatch && (
-          <div className="h-screen flex flex-col md:flex-row">
+          <div className="min-h-screen flex flex-col md:flex-row">
             {/* VIDEO PLAYER */}
-            <div className="flex-1 bg-black flex flex-col">
-              <div className="flex-1 flex items-center justify-center relative">
+            <div className="bg-black flex flex-col md:flex-1">
+              <div className="h-[58vh] md:h-auto md:flex-1 flex items-center justify-center relative">
                 <iframe
                   key={`${currentMatch.id}-${currentRobotIndex}`}
                   ref={iframeRef}

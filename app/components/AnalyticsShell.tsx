@@ -96,11 +96,19 @@ export default function AnalyticsShell({
         </aside>
 
         <div className="flex-1 flex flex-col overflow-hidden">
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="md:hidden fixed right-4 top-4 z-50 px-3 py-2 rounded border border-gray-200 bg-white shadow hover:bg-gray-100"
+            title={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
+            aria-label={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
+          >
+            {collapsed ? ">" : "<"}
+          </button>
           <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setCollapsed((v) => !v)}
-                className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                className="hidden md:inline-block px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
                 title={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
               >
                 {collapsed ? ">" : "<"}
