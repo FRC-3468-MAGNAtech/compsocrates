@@ -336,8 +336,11 @@ export function applyTheme(theme: Theme) {
 
   const isDark = Boolean(theme.dark || theme.id.startsWith("dark-"));
   const pageGradient = isDark
-    ? `radial-gradient(circle at top left, color-mix(in srgb, ${theme.primaryColor} 48%, transparent) 0%, transparent 40%), radial-gradient(circle at bottom right, color-mix(in srgb, ${theme.accentColor} 44%, transparent) 0%, transparent 42%), ${theme.gradient}`
-    : `linear-gradient(165deg, color-mix(in srgb, ${theme.primaryColor} 85%, white 15%) 0%, color-mix(in srgb, ${theme.accentColor} 82%, white 18%) 100%)`;
+    ? `radial-gradient(circle at top left, color-mix(in srgb, ${theme.primaryColor} 52%, transparent) 0%, transparent 40%), radial-gradient(circle at bottom right, color-mix(in srgb, ${theme.accentColor} 46%, transparent) 0%, transparent 44%), ${theme.gradient}`
+    : `linear-gradient(160deg, color-mix(in srgb, #ffffff 72%, transparent) 0%, color-mix(in srgb, #ffffff 58%, transparent) 65%, color-mix(in srgb, #ffffff 62%, transparent) 100%), ${theme.gradient}`;
+  const pageCanvas = isDark
+    ? "color-mix(in srgb, #0f172a 72%, transparent)"
+    : "color-mix(in srgb, #ffffff 76%, transparent)";
   const surfaceColor = isDark ? "#111827" : "#ffffff";
   const surfaceRaisedColor = isDark ? "color-mix(in srgb, #111827 86%, black 14%)" : "#ffffff";
   const borderColor = `color-mix(in srgb, ${theme.primaryColor} 18%, #d1d5db 82%)`;
@@ -351,6 +354,7 @@ export function applyTheme(theme: Theme) {
   document.documentElement.style.setProperty('--theme-text', theme.textColor);
   document.documentElement.style.setProperty('--theme-bg', theme.bgColor);
   document.documentElement.style.setProperty('--theme-page-gradient', pageGradient);
+  document.documentElement.style.setProperty('--theme-page-canvas', pageCanvas);
   document.documentElement.style.setProperty('--theme-surface', surfaceColor);
   document.documentElement.style.setProperty('--theme-surface-raised', surfaceRaisedColor);
   document.documentElement.style.setProperty('--theme-border', borderColor);

@@ -9,6 +9,7 @@
   --theme-text: #ffffff;
   --theme-bg: #f9fafb;
   --theme-page-gradient: linear-gradient(140deg, #fef2f2 0%, #fee2e2 45%, #f8fafc 100%);
+  --theme-page-canvas: color-mix(in srgb, #ffffff 78%, transparent);
   --theme-surface: #ffffff;
   --theme-surface-raised: #ffffff;
   --theme-border: #e5e7eb;
@@ -23,6 +24,7 @@ body {
   color: var(--theme-body-text);
   background: var(--theme-page-gradient);
   background-attachment: fixed;
+  min-height: 100vh;
 }
 
 main {
@@ -35,7 +37,8 @@ main {
 
 .bg-gray-100,
 .bg-gray-50 {
-  background: var(--theme-surface-raised) !important;
+  background: var(--theme-page-canvas) !important;
+  backdrop-filter: blur(2px);
 }
 
 .border,
@@ -144,6 +147,41 @@ main {
 
 .theme-text {
   color: var(--primary-color);
+}
+
+.bg-white.rounded-xl.shadow,
+.bg-white.rounded-xl.shadow-md {
+  border: 1px solid color-mix(in srgb, var(--primary-color) 10%, var(--theme-border) 90%);
+  box-shadow:
+    0 10px 30px -24px color-mix(in srgb, var(--primary-color) 40%, transparent),
+    0 10px 20px -20px rgba(15, 23, 42, 0.35) !important;
+}
+
+.bg-white.rounded-xl.shadow p,
+.bg-white.rounded-xl.shadow-md p {
+  color: var(--theme-muted-text);
+}
+
+.theme-page-header {
+  color: var(--primary-color);
+  letter-spacing: 0.01em;
+}
+
+.theme-section-title {
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+.theme-action-btn {
+  background: var(--primary-gradient) !important;
+  color: var(--theme-text) !important;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+}
+
+.theme-outline-btn {
+  border: 1px solid color-mix(in srgb, var(--primary-color) 34%, transparent);
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 8%, #ffffff 92%);
 }
 
 .text-gray-900,
