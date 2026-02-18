@@ -298,43 +298,35 @@ function ScoutAccuracyContent() {
   }
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
+  const canResetScoutData = Boolean(userData?.isTeamAdmin);
 
   async function resetScoutSessions(scoutName: string) {
-    if (!confirm(`Delete ${accuracyView === "competition" ? "competition scouting entries" : `${selectedMode} practice sessions and scouted entries`} for ${scoutName}?`)) return;
+    if (!canResetScoutData) {
+      alert("Only team admins can reset scout data.");
+      return;
+    }
+    if (!confirm(`Hard reset all scouting/practice data for ${scoutName}? This cannot be undone.`)) return;
     try {
-      if (accuracyView === "practice") {
-        const sessionsQuery = query(
-          collection(db, "practiceSessions"),
-          where("scoutName", "==", scoutName),
-          where("mode", "==", selectedMode)
-        );
-        const snap = await getDocs(sessionsQuery);
-        await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
-      }
+      const sessionsQuery = query(
+        collection(db, "practiceSessions"),
+        where("scoutName", "==", scoutName)
+      );
+      const sessionsSnap = await getDocs(sessionsQuery);
+      await Promise.all(sessionsSnap.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
 
       const entriesQuery = query(
         collection(db, "scouting"),
         where("scoutName", "==", scoutName)
       );
       const entriesSnap = await getDocs(entriesQuery);
-      await Promise.all(
-        entriesSnap.docs
-          .filter((d) => {
-            if (accuracyView === "competition") {
-              const data = d.data() as ScoutingEntry;
-              return data.matchType !== "practice";
-            }
-            return true;
-          })
-          .map((d) => deleteDoc(doc(db, "scouting", d.id)))
-      );
+      await Promise.all(entriesSnap.docs.map((d) => deleteDoc(doc(db, "scouting", d.id))));
 
       await loadScoutStats();
       setSelectedScout(null);
-      alert("Sessions and entries reset.");
+      alert("Hard reset complete.");
     } catch (error) {
       console.error("Error resetting scout sessions:", error);
-      alert("Failed to reset sessions and entries.");
+      alert("Failed to hard reset scout data.");
     }
   }
 
@@ -650,10 +642,14 @@ function ScoutAccuracyContent() {
                         </div>
                         <button
                           onClick={() => resetScoutSessions(selectedScoutData.scoutName)}
-                          className="mt-4 px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm font-medium"
+                          disabled={!canResetScoutData}
+                          className="mt-4 px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Reset {accuracyView === "competition" ? "Competition Entries" : `${selectedMode === "trial" ? "Trial" : "Competitive"} Sessions`}
+                          Hard Reset Scout Data
                         </button>
+                        {!canResetScoutData && (
+                          <p className="text-xs text-gray-500 mt-2">Only team admins can reset scout data.</p>
+                        )}
                       </div>
 
                       {/* RECOMMENDATIONS */}

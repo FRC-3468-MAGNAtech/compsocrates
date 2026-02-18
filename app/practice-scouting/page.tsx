@@ -28,18 +28,44 @@ type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
 
 function sanitizeAllianceTeams(candidate: unknown): number[] {
-  if (!Array.isArray(candidate)) return [];
-  return candidate
-    .map((value) => {
-      if (typeof value === "number") return value;
-      if (typeof value === "string") return parseInt(value.replace(/[^\d]/g, ""), 10);
-      return NaN;
-    })
-    .filter((value) => !Number.isNaN(value) && value > 0);
+  const parseValues = (values: unknown[]): number[] =>
+    values
+      .map((value) => {
+        if (typeof value === "number") return value;
+        if (typeof value === "string") return parseInt(value.replace(/[^\d]/g, ""), 10);
+        return NaN;
+      })
+      .filter((value) => !Number.isNaN(value) && value > 0);
+
+  if (Array.isArray(candidate)) return parseValues(candidate);
+  if (typeof candidate === "string") {
+    const trimmed = candidate.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parseValues(parsed);
+      } catch {
+        return parseValues(trimmed.split(","));
+      }
+    }
+    return parseValues(trimmed.split(","));
+  }
+  return [];
 }
 
 function getMatchTeams(match: PracticeMatch & Record<string, unknown>): number[] {
-  const alliances = match["alliances"] as Record<string, unknown> | undefined;
+  const rawAlliances = match["alliances"];
+  let alliances: Record<string, unknown> | undefined;
+  if (rawAlliances && typeof rawAlliances === "object") {
+    alliances = rawAlliances as Record<string, unknown>;
+  } else if (typeof rawAlliances === "string") {
+    try {
+      const parsed = JSON.parse(rawAlliances) as Record<string, unknown>;
+      alliances = parsed;
+    } catch {
+      alliances = undefined;
+    }
+  }
   const allianceSide = typeof match["alliance"] === "string" ? String(match["alliance"]).toLowerCase() : "";
   const preferredAlliance =
     allianceSide === "blue"
@@ -68,6 +94,30 @@ function getMatchTeams(match: PracticeMatch & Record<string, unknown>): number[]
   }
 
   return [];
+}
+
+function readOfficialData(value: unknown): { score: number; penaltyPoints: number; breakdown: Record<string, unknown> } {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return {
+      score: typeof record.score === "number" ? record.score : 0,
+      penaltyPoints: typeof record.penaltyPoints === "number" ? record.penaltyPoints : 0,
+      breakdown: typeof record.breakdown === "object" && record.breakdown ? (record.breakdown as Record<string, unknown>) : {},
+    };
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      return {
+        score: typeof parsed.score === "number" ? parsed.score : 0,
+        penaltyPoints: typeof parsed.penaltyPoints === "number" ? parsed.penaltyPoints : 0,
+        breakdown: typeof parsed.breakdown === "object" && parsed.breakdown ? (parsed.breakdown as Record<string, unknown>) : {},
+      };
+    } catch {
+      return { score: 0, penaltyPoints: 0, breakdown: {} };
+    }
+  }
+  return { score: 0, penaltyPoints: 0, breakdown: {} };
 }
 
 function PracticeScoutingContent() {
@@ -203,9 +253,10 @@ function PracticeScoutingContent() {
 
       const randomMatch = candidateMatches[Math.floor(Math.random() * candidateMatches.length)];
       const fallbackTeams = randomMatch.allianceTeams.slice(0, 3);
+      const official = readOfficialData(randomMatch.officialData);
       const safeOfficialScore =
-        typeof randomMatch.officialData?.score === "number"
-          ? randomMatch.officialData.score
+        typeof official.score === "number" && official.score > 0
+          ? official.score
           : typeof randomMatch.actualScore === "number"
           ? randomMatch.actualScore
           : 0;
@@ -215,8 +266,8 @@ function PracticeScoutingContent() {
         allianceTeams: fallbackTeams,
         officialData: {
           score: safeOfficialScore,
-          penaltyPoints: Number(randomMatch.officialData?.penaltyPoints || 0),
-          breakdown: randomMatch.officialData?.breakdown || {},
+          penaltyPoints: Number(official.penaltyPoints || 0),
+          breakdown: official.breakdown || {},
         },
       };
 
@@ -497,6 +548,7 @@ function PracticeScoutingContent() {
             <div className="flex-1 bg-black flex flex-col">
               <div className="flex-1 flex items-center justify-center relative">
                 <iframe
+                  key={`${currentMatch.id}-${currentRobotIndex}`}
                   ref={iframeRef}
                   src={getYouTubeEmbedUrl(currentMatch.videoUrl)}
                   className="w-full h-full"
