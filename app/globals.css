@@ -8,15 +8,15 @@
   --primary-gradient: linear-gradient(135deg, #c42221 0%, #8b1818 100%);
   --theme-text: #ffffff;
   --theme-bg: #f9fafb;
-  --theme-page-gradient: linear-gradient(140deg, #fef2f2 0%, #fee2e2 45%, #f8fafc 100%);
-  --theme-page-canvas: color-mix(in srgb, #ffffff 78%, transparent);
-  --theme-surface: #ffffff;
-  --theme-surface-raised: #ffffff;
-  --theme-border: #e5e7eb;
-  --theme-body-text: #111827;
-  --theme-muted-text: #4b5563;
-  --theme-subtle-text: #6b7280;
-  --theme-is-dark: 0;
+  --theme-page-gradient: radial-gradient(1200px 700px at 15% -10%, rgba(196, 34, 33, 0.34) 0%, transparent 62%), radial-gradient(1100px 680px at 85% 108%, rgba(139, 24, 24, 0.34) 0%, transparent 60%), linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%);
+  --theme-page-canvas: color-mix(in srgb, #060a17 52%, transparent);
+  --theme-surface: linear-gradient(160deg, rgba(18, 27, 53, 0.82) 0%, rgba(13, 20, 41, 0.86) 100%);
+  --theme-surface-raised: linear-gradient(160deg, rgba(22, 32, 62, 0.84) 0%, rgba(15, 24, 47, 0.88) 100%);
+  --theme-border: color-mix(in srgb, #c42221 34%, rgba(148, 163, 184, 0.35) 66%);
+  --theme-body-text: #e5e7eb;
+  --theme-muted-text: #c3cbe0;
+  --theme-subtle-text: #94a3b8;
+  --theme-is-dark: 1;
   --foreground-rgb: 17, 24, 39;
 }
 
@@ -38,7 +38,7 @@ main {
 .bg-gray-100,
 .bg-gray-50 {
   background: var(--theme-page-canvas) !important;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(4px);
 }
 
 .border,
@@ -151,15 +151,29 @@ main {
 
 .bg-white.rounded-xl.shadow,
 .bg-white.rounded-xl.shadow-md {
-  border: 1px solid color-mix(in srgb, var(--primary-color) 10%, var(--theme-border) 90%);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 16%, var(--theme-border) 84%);
+  backdrop-filter: blur(14px) saturate(1.06);
   box-shadow:
-    0 10px 30px -24px color-mix(in srgb, var(--primary-color) 40%, transparent),
-    0 10px 20px -20px rgba(15, 23, 42, 0.35) !important;
+    0 22px 40px -30px color-mix(in srgb, var(--primary-color) 56%, transparent),
+    0 18px 28px -26px rgba(2, 6, 23, 0.7) !important;
 }
 
 .bg-white.rounded-xl.shadow p,
 .bg-white.rounded-xl.shadow-md p {
   color: var(--theme-muted-text);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  background: color-mix(in srgb, var(--theme-surface-raised) 92%, transparent) !important;
+  color: var(--theme-body-text) !important;
+  border-color: color-mix(in srgb, var(--primary-color) 22%, var(--theme-border) 78%) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--theme-subtle-text) !important;
 }
 
 .theme-page-header {

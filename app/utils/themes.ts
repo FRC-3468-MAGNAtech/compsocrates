@@ -334,19 +334,19 @@ export function getTheme(themeId: string, userId?: string): Theme {
 export function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
 
-  const isDark = Boolean(theme.dark || theme.id.startsWith("dark-"));
-  const pageGradient = isDark
-    ? `radial-gradient(circle at top left, color-mix(in srgb, ${theme.primaryColor} 52%, transparent) 0%, transparent 40%), radial-gradient(circle at bottom right, color-mix(in srgb, ${theme.accentColor} 46%, transparent) 0%, transparent 44%), ${theme.gradient}`
-    : `linear-gradient(160deg, color-mix(in srgb, #ffffff 72%, transparent) 0%, color-mix(in srgb, #ffffff 58%, transparent) 65%, color-mix(in srgb, #ffffff 62%, transparent) 100%), ${theme.gradient}`;
-  const pageCanvas = isDark
-    ? "color-mix(in srgb, #0f172a 72%, transparent)"
-    : "color-mix(in srgb, #ffffff 76%, transparent)";
-  const surfaceColor = isDark ? "#111827" : "#ffffff";
-  const surfaceRaisedColor = isDark ? "color-mix(in srgb, #111827 86%, black 14%)" : "#ffffff";
-  const borderColor = `color-mix(in srgb, ${theme.primaryColor} 18%, #d1d5db 82%)`;
-  const bodyText = isDark ? "#f8fafc" : "#111827";
-  const mutedText = isDark ? "#d1d5db" : "#4b5563";
-  const subtleText = isDark ? "#9ca3af" : "#6b7280";
+  const isDark = true;
+  const pageGradient = `
+    radial-gradient(1200px 700px at 15% -10%, color-mix(in srgb, ${theme.primaryColor} 34%, transparent) 0%, transparent 62%),
+    radial-gradient(1100px 680px at 85% 108%, color-mix(in srgb, ${theme.accentColor} 34%, transparent) 0%, transparent 60%),
+    linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%)
+  `;
+  const pageCanvas = "color-mix(in srgb, #060a17 52%, transparent)";
+  const surfaceColor = "linear-gradient(160deg, rgba(18, 27, 53, 0.82) 0%, rgba(13, 20, 41, 0.86) 100%)";
+  const surfaceRaisedColor = "linear-gradient(160deg, rgba(22, 32, 62, 0.84) 0%, rgba(15, 24, 47, 0.88) 100%)";
+  const borderColor = `color-mix(in srgb, ${theme.primaryColor} 34%, rgba(148, 163, 184, 0.35) 66%)`;
+  const bodyText = "#e5e7eb";
+  const mutedText = "#c3cbe0";
+  const subtleText = "#94a3b8";
   
   document.documentElement.style.setProperty('--primary-color', theme.primaryColor);
   document.documentElement.style.setProperty('--accent-color', theme.accentColor);
