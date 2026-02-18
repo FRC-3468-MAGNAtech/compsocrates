@@ -606,10 +606,10 @@ function PracticeScoutingContent() {
 
         {/* STEP 2: PRACTICE SCOUTING */}
         {currentStep === 'practice' && currentMatch && (
-          <div className="min-h-screen flex flex-col md:flex-row">
+          <div className="h-screen flex flex-col md:flex-row">
             {/* VIDEO PLAYER */}
-            <div className="bg-black flex flex-col md:flex-1">
-              <div className="h-[58vh] md:h-auto md:flex-1 flex items-center justify-center relative">
+            <div className="shrink-0 bg-black md:flex md:flex-col md:flex-1">
+              <div className="relative w-full aspect-video md:aspect-auto md:flex-1">
                 <iframe
                   key={`${currentMatch.id}-${currentRobotIndex}`}
                   ref={iframeRef}
@@ -639,7 +639,7 @@ function PracticeScoutingContent() {
             </div>
 
             {/* SCOUTING FORM */}
-            <div className="w-full md:w-96 overflow-y-auto bg-gray-100 p-4 space-y-4">
+            <div className="w-full md:w-96 flex-1 overflow-y-auto bg-gray-100 p-4 space-y-4">
               {/* Progress indicator */}
               <div className="bg-white rounded-lg p-4">
                 <div className="flex justify-between items-center mb-2">
