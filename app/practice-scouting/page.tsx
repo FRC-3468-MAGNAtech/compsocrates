@@ -39,12 +39,27 @@ function sanitizeAllianceTeams(candidate: unknown): number[] {
 }
 
 function getMatchTeams(match: PracticeMatch & Record<string, unknown>): number[] {
+  const alliances = match["alliances"] as Record<string, unknown> | undefined;
+  const allianceSide = typeof match["alliance"] === "string" ? String(match["alliance"]).toLowerCase() : "";
+  const preferredAlliance =
+    allianceSide === "blue"
+      ? alliances?.["blue"] as Record<string, unknown> | undefined
+      : alliances?.["red"] as Record<string, unknown> | undefined;
+  const alternateAlliance =
+    allianceSide === "blue"
+      ? alliances?.["red"] as Record<string, unknown> | undefined
+      : alliances?.["blue"] as Record<string, unknown> | undefined;
+
   const candidates = [
     match.allianceTeams,
     match["teams"],
     match["teamNumbers"],
     match["redAllianceTeams"],
     match["blueAllianceTeams"],
+    preferredAlliance?.["team_keys"],
+    preferredAlliance?.["teams"],
+    alternateAlliance?.["team_keys"],
+    alternateAlliance?.["teams"],
   ];
 
   for (const candidate of candidates) {
@@ -170,36 +185,23 @@ function PracticeScoutingContent() {
         })
         .filter((match) => match.allianceTeams.length >= 3);
 
-      if (normalizedMatches.length === 0) {
-        const randomMatch = matches[Math.floor(Math.random() * matches.length)];
-        const safeFallback = [1111, 2222, 3333];
-        const safeOfficialScore =
-          typeof randomMatch.officialData?.score === "number"
-            ? randomMatch.officialData.score
-            : typeof randomMatch.actualScore === "number"
-            ? randomMatch.actualScore
-            : 0;
-
-        const safeMatch: PracticeMatch = {
-          ...randomMatch,
-          allianceTeams: safeFallback,
-          officialData: {
-            score: safeOfficialScore,
-            penaltyPoints: Number(randomMatch.officialData?.penaltyPoints || 0),
-            breakdown: randomMatch.officialData?.breakdown || {},
-          },
-        };
-
-        setCurrentMatch(safeMatch);
-        setCurrentRobotIndex(0);
-        setRobotSessions([]);
-        setFormData((prev) => ({ ...prev, teamNumber: safeFallback[0].toString() }));
-        setHumanPlayerRobot(1);
-        setCurrentStep("practice");
+      let candidateMatches = normalizedMatches;
+      if (candidateMatches.length === 0) {
+        const allSnapshot = await getDocs(collection(db, "practiceMatches"));
+        const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+        candidateMatches = allMatches
+          .map((match) => {
+            const parsedTeams = getMatchTeams(match as unknown as PracticeMatch & Record<string, unknown>);
+            return { ...match, allianceTeams: parsedTeams };
+          })
+          .filter((match) => match.allianceTeams.length >= 3);
+      }
+      if (candidateMatches.length === 0) {
+        alert("No practice matches have valid alliance team data. Please add team numbers to practice match docs.");
         return;
       }
 
-      const randomMatch = normalizedMatches[Math.floor(Math.random() * normalizedMatches.length)];
+      const randomMatch = candidateMatches[Math.floor(Math.random() * candidateMatches.length)];
       const fallbackTeams = randomMatch.allianceTeams.slice(0, 3);
       const safeOfficialScore =
         typeof randomMatch.officialData?.score === "number"
@@ -224,8 +226,7 @@ function PracticeScoutingContent() {
 
       setFormData(prev => ({ ...prev, teamNumber: safeMatch.allianceTeams[0].toString() }));
 
-      // Keep this deterministic so scouts can compare attempts against the same expected robot.
-      setHumanPlayerRobot(1);
+      setHumanPlayerRobot(Math.floor(Math.random() * 3));
 
       setCurrentStep('practice');
     } catch (error) {
@@ -289,11 +290,14 @@ function PracticeScoutingContent() {
     setLoading(true);
     try {
       const scores = allRobotData.map(data => calculateScoutedScore(data));
-      const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-
-      // Calculate accuracy using official score
-      const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.officialData.score));
-      const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
+      const totalScoutedScore = scores.reduce((a, b) => a + b, 0);
+      const officialAllianceScore =
+        typeof currentMatch.officialData?.score === "number"
+          ? currentMatch.officialData.score
+          : typeof currentMatch.actualScore === "number"
+          ? currentMatch.actualScore
+          : 0;
+      const sessionAccuracy = calculateAccuracy(totalScoutedScore, officialAllianceScore);
 
       const now = Date.now();
       const eventKey = currentMatch.eventKey || classifyRebuiltEventByTimestamp(now);
@@ -309,12 +313,14 @@ function PracticeScoutingContent() {
         difficulty: selectedDifficulty || 'easy',
         mode: selectedMode || 'trial',
         scoutedData: allRobotData[0],
+        allScoutedData: allRobotData,
         eventKey,
         eventName,
         game: "REBUILT",
-        officialScore: currentMatch.officialData.score,
-        scoutedScore: avgScore,
-        accuracy: avgAccuracy,
+        officialScore: officialAllianceScore,
+        actualScore: officialAllianceScore,
+        scoutedScore: totalScoutedScore,
+        accuracy: sessionAccuracy,
         timestamp: now,
         startedAt: now,
         completedAt: now,
@@ -358,6 +364,7 @@ function PracticeScoutingContent() {
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
     setRobotSessions([]);
+    setHumanPlayerRobot(null);
     setSessionResults(null);
     setFormData({
       teamNumber: "",
@@ -737,7 +744,7 @@ function PracticeScoutingContent() {
               <div className="text-6xl font-bold mb-4" style={{ color: sessionResults.accuracy >= 90 ? "#22c55e" : sessionResults.accuracy >= 75 ? "#eab308" : "#ef4444" }}>
                 {sessionResults.accuracy}%
               </div>
-              <p className="text-gray-600">Average across all 3 robots</p>
+              <p className="text-gray-600">Based on total alliance score from all 3 robots</p>
             </div>
 
             <div className="bg-white rounded-xl shadow-md p-8 mb-6">
