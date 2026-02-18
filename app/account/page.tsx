@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { doc, updateDoc } from "firebase/firestore";
-import { db, auth } from "@/app/firebase";
+import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
@@ -24,6 +24,13 @@ function AccountContent() {
 
   const [newEmail, setNewEmail] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
+  const [profileBio, setProfileBio] = useState(userData?.bio || "");
+  const [profileVisibility, setProfileVisibility] = useState<"team" | "public" | "private">(userData?.profileVisibility || "team");
+
+  useEffect(() => {
+    setProfileBio(userData?.bio || "");
+    setProfileVisibility(userData?.profileVisibility || "team");
+  }, [userData?.bio, userData?.profileVisibility]);
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -59,12 +66,14 @@ function AccountContent() {
 
       setSuccess("Password updated successfully!");
       setPasswords({ current: "", new: "", confirm: "" });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Password update error:", err);
-      if (err.code === "auth/wrong-password") {
+      const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      if (code === "auth/wrong-password") {
         setError("Current password is incorrect");
       } else {
-        setError(err.message || "Failed to update password");
+        setError(message || "Failed to update password");
       }
     }
 
@@ -99,14 +108,16 @@ function AccountContent() {
       setSuccess("Email updated successfully!");
       setNewEmail("");
       setEmailPassword("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Email update error:", err);
-      if (err.code === "auth/wrong-password") {
+      const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      if (code === "auth/wrong-password") {
         setError("Password is incorrect");
-      } else if (err.code === "auth/email-already-in-use") {
+      } else if (code === "auth/email-already-in-use") {
         setError("This email is already in use");
       } else {
-        setError(err.message || "Failed to update email");
+        setError(message || "Failed to update email");
       }
     }
 
@@ -114,6 +125,25 @@ function AccountContent() {
   }
 
   if (!userData) return null;
+
+  async function handleSaveProfilePreferences() {
+    if (!user?.uid) return;
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        bio: profileBio.trim(),
+        profileVisibility,
+      });
+      setSuccess("Profile settings updated.");
+    } catch (err) {
+      console.error("Profile preference update error:", err);
+      setError("Failed to update profile settings.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -176,6 +206,45 @@ function AccountContent() {
           <div className="bg-white rounded-xl shadow p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Profile Picture</h2>
             <ProfilePictureUpload />
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Profile Preferences</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Profile Visibility</label>
+                <select
+                  value={profileVisibility}
+                  onChange={(event) => setProfileVisibility(event.target.value as "team" | "public" | "private")}
+                  className="w-full border rounded-lg p-3"
+                >
+                  <option value="team">Team Only</option>
+                  <option value="public">Public</option>
+                  <option value="private">Private</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Team only shows your profile to teammates. Private hides it from other users.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+                <textarea
+                  value={profileBio}
+                  onChange={(event) => setProfileBio(event.target.value)}
+                  className="w-full border rounded-lg p-3 h-24"
+                  placeholder="Short bio for your profile"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveProfilePreferences}
+                disabled={loading}
+                className="px-6 py-2 rounded-lg text-white font-semibold disabled:opacity-50"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Save Profile Preferences
+              </button>
+            </div>
           </div>
 
           {/* THEMES */}

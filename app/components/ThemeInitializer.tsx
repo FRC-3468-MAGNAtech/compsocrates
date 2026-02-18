@@ -9,7 +9,7 @@ export default function ThemeInitializer() {
 
   useEffect(() => {
     const themeId = userData?.uid ? loadTheme(userData.uid) : "default";
-    applyTheme(getTheme(themeId));
+    applyTheme(getTheme(themeId, userData?.uid));
   }, [userData?.uid]);
 
   return null;

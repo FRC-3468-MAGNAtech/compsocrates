@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { addDoc, collection, doc, getDocs, query, setDoc, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import { useAuth } from "@/app/AuthContext";
+import { db } from "@/app/firebase";
 
 type FieldType = "number" | "checkbox" | "text" | "select" | "rating";
 
@@ -16,6 +19,7 @@ interface FormField {
 }
 
 function FormBuilderContent() {
+  const { userData } = useAuth();
   const [formName, setFormName] = useState("Reefscape 2025 Scouting Form");
   const [fields, setFields] = useState<FormField[]>([
     { id: "match", label: "Match Number", type: "number", section: "Pre-Match", required: true },
@@ -23,6 +27,9 @@ function FormBuilderContent() {
   ]);
   const [activeSection, setActiveSection] = useState("Pre-Match");
   const [showAddField, setShowAddField] = useState(false);
+  const [cloudForms, setCloudForms] = useState<Array<{ id: string; name: string; fields: FormField[] }>>([]);
+  const [selectedCloudFormId, setSelectedCloudFormId] = useState("");
+  const [savingCloud, setSavingCloud] = useState(false);
   
   const [newField, setNewField] = useState<FormField>({
     id: "",
@@ -34,6 +41,19 @@ function FormBuilderContent() {
   });
 
   const sections = ["Pre-Match", "Autonomous", "Teleop", "Endgame", "Post-Match"];
+
+  useEffect(() => {
+    async function loadCloudForms() {
+      if (!userData?.teamId) return;
+      const cloudQuery = query(collection(db, "formPresets"), where("teamId", "==", userData.teamId));
+      const snapshot = await getDocs(cloudQuery);
+      setCloudForms(snapshot.docs.map((presetDoc) => ({
+        id: presetDoc.id,
+        ...(presetDoc.data() as { name: string; fields: FormField[] }),
+      })));
+    }
+    loadCloudForms();
+  }, [userData?.teamId]);
 
   function addField() {
     if (!newField.label) return;
@@ -85,6 +105,48 @@ function FormBuilderContent() {
     a.click();
   }
 
+  async function savePresetToCloud() {
+    if (!userData?.teamId || !userData.uid) return;
+    setSavingCloud(true);
+    try {
+      await addDoc(collection(db, "formPresets"), {
+        teamId: userData.teamId,
+        name: formName,
+        fields,
+        formType: "match",
+        createdBy: userData.uid,
+        createdAt: Date.now(),
+      });
+      alert("Preset saved to cloud.");
+      const cloudQuery = query(collection(db, "formPresets"), where("teamId", "==", userData.teamId));
+      const snapshot = await getDocs(cloudQuery);
+      setCloudForms(snapshot.docs.map((presetDoc) => ({
+        id: presetDoc.id,
+        ...(presetDoc.data() as { name: string; fields: FormField[] }),
+      })));
+    } finally {
+      setSavingCloud(false);
+    }
+  }
+
+  function loadCloudPreset(presetId: string) {
+    setSelectedCloudFormId(presetId);
+    const preset = cloudForms.find((item) => item.id === presetId);
+    if (!preset) return;
+    setFormName(preset.name);
+    setFields(preset.fields);
+  }
+
+  async function setAsActiveMatchForm() {
+    if (!userData?.teamId || !selectedCloudFormId) return;
+    await setDoc(
+      doc(db, "teams", userData.teamId),
+      { activeMatchFormPresetId: selectedCloudFormId },
+      { merge: true }
+    );
+    alert("Active match form preset updated.");
+  }
+
   function importForm(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -129,6 +191,14 @@ function FormBuilderContent() {
               </p>
             </div>
             <div className="flex gap-3">
+              <button
+                onClick={savePresetToCloud}
+                disabled={savingCloud}
+                className="px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                {savingCloud ? "Saving..." : "Save To Cloud"}
+              </button>
               <label
                 className="px-4 py-2 rounded-lg text-white font-medium cursor-pointer"
                 style={{ backgroundColor: "#666" }}
@@ -366,7 +436,7 @@ function FormBuilderContent() {
                   <div className="text-center py-8">
                     <div className="text-4xl mb-4">📝</div>
                     <p className="text-gray-600 mb-4">
-                      Click "+ Add Field" to create a new field, or click on an existing field to edit it.
+                      Click &quot;+ Add Field&quot; to create a new field, or click on an existing field to edit it.
                     </p>
                     <div className="space-y-2 text-sm text-left bg-gray-50 p-4 rounded-lg">
                       <p className="font-semibold">Field Types:</p>
@@ -389,6 +459,27 @@ function FormBuilderContent() {
                     <p>Required Fields: <strong>{fields.filter(f => f.required).length}</strong></p>
                     <p>Sections: <strong>{sections.length}</strong></p>
                   </div>
+                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Cloud Presets</label>
+                    <select
+                      value={selectedCloudFormId}
+                      onChange={(event) => loadCloudPreset(event.target.value)}
+                      className="w-full border rounded p-2"
+                    >
+                      <option value="">Select cloud preset</option>
+                      {cloudForms.map((preset) => (
+                        <option key={preset.id} value={preset.id}>{preset.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={setAsActiveMatchForm}
+                      disabled={!selectedCloudFormId}
+                      className="w-full py-2 rounded text-white disabled:opacity-50"
+                      style={{ background: "var(--primary-gradient)" }}
+                    >
+                      Set As Active Match Form
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -406,3 +497,4 @@ export default function FormBuilderPage() {
     </ProtectedRoute>
   );
 }
+

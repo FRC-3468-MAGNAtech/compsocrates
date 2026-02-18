@@ -9,6 +9,7 @@ import { calculateTeamStats, getUpcomingEvents, formatActivity, type TeamStats, 
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { doc, setDoc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 interface TeamData {
   scoutCount?: number;
@@ -26,7 +27,7 @@ function CoachDashboardContent() {
   const [scoutCountInput, setScoutCountInput] = useState("");
   const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
   const [teamData, setTeamData] = useState<TeamData | null>(null);
-  const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
+  const [readyScoutNamesByEvent, setReadyScoutNamesByEvent] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     loadDashboardData();
@@ -61,20 +62,27 @@ function CoachDashboardContent() {
       });
       const scoutNames = scouts.map((docSnap) => docSnap.data().displayName);
 
-      const accuracyMap: Record<string, { total: number; count: number }> = {};
+      const accuracyMapByEvent: Record<string, Record<string, { total: number; count: number }>> = {};
       practiceSnap.forEach((practiceDoc) => {
         const data = practiceDoc.data();
         if (!scoutNames.includes(data.scoutName) || typeof data.accuracy !== "number") return;
-        if (!accuracyMap[data.scoutName]) accuracyMap[data.scoutName] = { total: 0, count: 0 };
-        accuracyMap[data.scoutName].total += data.accuracy;
-        accuracyMap[data.scoutName].count += 1;
+        const eventKey = (data.eventKey as string) || classifyRebuiltEventByTimestamp(Number(data.timestamp || 0));
+        if (!accuracyMapByEvent[eventKey]) accuracyMapByEvent[eventKey] = {};
+        if (!accuracyMapByEvent[eventKey][data.scoutName]) {
+          accuracyMapByEvent[eventKey][data.scoutName] = { total: 0, count: 0 };
+        }
+        accuracyMapByEvent[eventKey][data.scoutName].total += data.accuracy;
+        accuracyMapByEvent[eventKey][data.scoutName].count += 1;
       });
 
-      const ready = scoutNames.filter((name) => {
-        const entry = accuracyMap[name];
-        return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
+      const computedReadyByEvent: Record<string, string[]> = {};
+      Object.entries(accuracyMapByEvent).forEach(([eventKey, eventAccuracies]) => {
+        computedReadyByEvent[eventKey] = scoutNames.filter((name) => {
+          const entry = eventAccuracies[name];
+          return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
+        });
       });
-      setReadyScoutNames(ready);
+      setReadyScoutNamesByEvent(computedReadyByEvent);
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -166,9 +174,10 @@ function CoachDashboardContent() {
                                   const attendees = Array.isArray(teamData?.eventAttendees?.[event.key])
                                     ? teamData.eventAttendees[event.key]
                                     : [];
+                                  const readyNames = readyScoutNamesByEvent[event.key] || [];
                                   const readyAttendees = attendees.length > 0
-                                    ? attendees.filter((name: string) => readyScoutNames.includes(name)).length
-                                    : readyScoutNames.length;
+                                    ? attendees.filter((name: string) => readyNames.includes(name)).length
+                                    : readyNames.length;
                                   return `${readyAttendees}/${expected}`;
                                 })()}
                               </p>
@@ -228,10 +237,10 @@ function CoachDashboardContent() {
 
               {/* SCOUT COUNT CONFIGURATION */}
               <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-                <h3 className="text-lg font-semibold mb-4">Team Configuration</h3>
+                <h3 className="text-lg font-semibold mb-4">Team Configuration | Expected Scouts Per Event</h3>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 mb-2">Expected Scouts per Match</p>
+                    <p className="text-sm text-gray-600 mb-2">Expected Scouts Per Event</p>
                     {editingScoutCount ? (
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">

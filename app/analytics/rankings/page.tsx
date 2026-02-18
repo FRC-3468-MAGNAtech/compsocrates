@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { entryMatchesAnalyticsFilters, getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 type TeamRanking = {
   teamNumber: string;
@@ -15,6 +16,10 @@ type TeamRanking = {
 };
 
 type ScoutingEntry = {
+  eventKey?: string;
+  submittedAt?: number;
+  timestamp?: number;
+  game?: string;
   teamNumber?: string;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
@@ -34,8 +39,21 @@ type ScoutingEntry = {
 
 function RankingsContent() {
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedEvent, setSelectedEvent] = useState("all");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const savedGame = localStorage.getItem("analytics-selected-game");
+    const savedEvent = localStorage.getItem("analytics-selected-event");
+    if (savedGame === "REEFSCAPE" || savedGame === "REBUILT") setSelectedGame(savedGame);
+    if (savedEvent) setSelectedEvent(savedEvent);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("analytics-selected-game", selectedGame);
+    localStorage.setItem("analytics-selected-event", selectedEvent);
+  }, [selectedGame, selectedEvent]);
 
   useEffect(() => {
     async function loadEntries() {
@@ -50,9 +68,14 @@ function RankingsContent() {
     loadEntries();
   }, []);
 
+  const filteredEntries = useMemo(
+    () => entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)),
+    [entries, selectedEvent, selectedGame]
+  );
+
   const rankings = useMemo(() => {
     const teamScores: Record<string, number[]> = {};
-    entries.forEach((e) => {
+    filteredEntries.forEach((e) => {
       const team = e.teamNumber;
       if (!team) return;
       const score =
@@ -81,10 +104,17 @@ function RankingsContent() {
       matches: scores.length,
     }));
     return rows.sort((a, b) => b.avgScore - a.avgScore);
-  }, [entries]);
+  }, [filteredEntries]);
 
   return (
-    <AnalyticsShell entriesCount={entries.length} selectedGame={selectedGame} onSelectedGameChange={setSelectedGame}>
+    <AnalyticsShell
+      entriesCount={filteredEntries.length}
+      selectedGame={selectedGame}
+      onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+      selectedEvent={selectedEvent}
+      eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
+      onSelectedEventChange={setSelectedEvent}
+    >
       <h1 className="text-3xl font-bold mb-2 theme-text">Rankings</h1>
       <p className="text-gray-600 mb-6">Teams ranked by average score.</p>
 

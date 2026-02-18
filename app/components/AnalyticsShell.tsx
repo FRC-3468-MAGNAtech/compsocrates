@@ -10,6 +10,9 @@ type AnalyticsShellProps = {
   entriesCount: number;
   selectedGame: string;
   onSelectedGameChange: (game: string) => void;
+  selectedEvent?: string;
+  eventOptions?: Array<{ id: string; name: string }>;
+  onSelectedEventChange?: (eventId: string) => void;
 };
 
 const analyticsLinks = [
@@ -18,6 +21,7 @@ const analyticsLinks = [
   { href: "/analytics/match-breakdown", label: "Match Breakdown" },
   { href: "/analytics/rankings", label: "Rankings" },
   { href: "/analytics/pick-list", label: "Pick List" },
+  { href: "/analytics/pit", label: "Pit Analytics" },
 ];
 
 export default function AnalyticsShell({
@@ -25,6 +29,9 @@ export default function AnalyticsShell({
   entriesCount,
   selectedGame,
   onSelectedGameChange,
+  selectedEvent,
+  eventOptions = [],
+  onSelectedEventChange,
 }: AnalyticsShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(() => {
@@ -51,6 +58,22 @@ export default function AnalyticsShell({
             <h2 className="text-lg font-bold" style={{ color: "var(--primary-color)" }}>
               Analytics
             </h2>
+            {eventOptions.length > 0 && onSelectedEventChange && (
+              <div className="mt-3">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Event</label>
+                <select
+                  value={selectedEvent}
+                  onChange={(event) => onSelectedEventChange(event.target.value)}
+                  className="w-full border rounded px-2 py-1.5 text-sm"
+                >
+                  {eventOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <nav className="p-3 space-y-1">
             {analyticsLinks.map((item) => {

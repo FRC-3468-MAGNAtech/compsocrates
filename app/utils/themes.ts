@@ -9,6 +9,7 @@ export interface Theme {
   accentColor: string;
   textColor: string;
   bgColor: string;
+  dark?: boolean;
 }
 
 export const themes: Theme[] = [
@@ -277,7 +278,8 @@ export const themes: Theme[] = [
     primaryColor: "#7f1d1d",
     accentColor: "#450a0a",
     textColor: "#ffffff",
-    bgColor: "#1f2937"
+    bgColor: "#111827",
+    dark: true
   },
   {
     id: "dark-blue",
@@ -286,7 +288,8 @@ export const themes: Theme[] = [
     primaryColor: "#1e3a8a",
     accentColor: "#0c1e47",
     textColor: "#ffffff",
-    bgColor: "#1f2937"
+    bgColor: "#0f172a",
+    dark: true
   },
   {
     id: "dark-purple",
@@ -295,23 +298,58 @@ export const themes: Theme[] = [
     primaryColor: "#581c87",
     accentColor: "#3b0764",
     textColor: "#ffffff",
-    bgColor: "#1f2937"
+    bgColor: "#111827",
+    dark: true
   },
 ];
 
-export function getTheme(themeId: string): Theme {
-  return themes.find(t => t.id === themeId) || themes[0];
+const CUSTOM_THEME_KEY = (userId: string) => `theme-custom-${userId}`;
+
+export function saveCustomTheme(userId: string, theme: Theme) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(CUSTOM_THEME_KEY(userId), JSON.stringify(theme));
+}
+
+export function loadCustomTheme(userId: string): Theme | null {
+  if (typeof localStorage === "undefined") return null;
+  const raw = localStorage.getItem(CUSTOM_THEME_KEY(userId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Theme;
+    if (!parsed?.gradient || !parsed?.primaryColor || !parsed?.accentColor) return null;
+    return { ...parsed, id: "custom", name: parsed.name || "Custom Gradient" };
+  } catch {
+    return null;
+  }
+}
+
+export function getTheme(themeId: string, userId?: string): Theme {
+  if (themeId === "custom" && userId) {
+    const custom = loadCustomTheme(userId);
+    if (custom) return custom;
+  }
+  return themes.find((theme) => theme.id === themeId) || themes[0];
 }
 
 export function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
 
-  const softPrimary = theme.primaryColor.length === 7 ? `${theme.primaryColor}22` : theme.primaryColor;
-  const softAccent = theme.accentColor.length === 7 ? `${theme.accentColor}22` : theme.accentColor;
-  const pageGradient = `linear-gradient(140deg, ${softPrimary} 0%, ${softAccent} 45%, #f8fafc 100%)`;
-  const surfaceColor = `color-mix(in srgb, ${theme.bgColor} 82%, white 18%)`;
-  const surfaceRaisedColor = `color-mix(in srgb, ${theme.bgColor} 70%, white 30%)`;
+  const isDark = Boolean(theme.dark || theme.id.startsWith("dark-"));
+  const softPrimary = theme.primaryColor.length === 7 ? `${theme.primaryColor}${isDark ? "66" : "33"}` : theme.primaryColor;
+  const softAccent = theme.accentColor.length === 7 ? `${theme.accentColor}${isDark ? "66" : "33"}` : theme.accentColor;
+  const pageGradient = isDark
+    ? `radial-gradient(circle at top left, ${softPrimary} 0%, transparent 40%), radial-gradient(circle at bottom right, ${softAccent} 0%, transparent 40%), linear-gradient(160deg, ${theme.bgColor} 0%, #05070b 100%)`
+    : `linear-gradient(140deg, ${softPrimary} 0%, ${softAccent} 45%, #f8fafc 100%)`;
+  const surfaceColor = isDark
+    ? `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 92%, black 8%) 0%, color-mix(in srgb, ${theme.bgColor} 84%, black 16%) 100%)`
+    : `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 88%, white 12%) 0%, color-mix(in srgb, ${theme.bgColor} 80%, white 20%) 100%)`;
+  const surfaceRaisedColor = isDark
+    ? `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 86%, black 14%) 0%, color-mix(in srgb, ${theme.bgColor} 78%, black 22%) 100%)`
+    : `linear-gradient(145deg, color-mix(in srgb, ${theme.bgColor} 78%, white 22%) 0%, color-mix(in srgb, ${theme.bgColor} 70%, white 30%) 100%)`;
   const borderColor = `color-mix(in srgb, ${theme.primaryColor} 18%, #d1d5db 82%)`;
+  const bodyText = isDark ? "#f8fafc" : "#111827";
+  const mutedText = isDark ? "#d1d5db" : "#4b5563";
+  const subtleText = isDark ? "#9ca3af" : "#6b7280";
   
   document.documentElement.style.setProperty('--primary-color', theme.primaryColor);
   document.documentElement.style.setProperty('--accent-color', theme.accentColor);
@@ -322,6 +360,10 @@ export function applyTheme(theme: Theme) {
   document.documentElement.style.setProperty('--theme-surface', surfaceColor);
   document.documentElement.style.setProperty('--theme-surface-raised', surfaceRaisedColor);
   document.documentElement.style.setProperty('--theme-border', borderColor);
+  document.documentElement.style.setProperty('--theme-body-text', bodyText);
+  document.documentElement.style.setProperty('--theme-muted-text', mutedText);
+  document.documentElement.style.setProperty('--theme-subtle-text', subtleText);
+  document.documentElement.style.setProperty('--theme-is-dark', isDark ? "1" : "0");
 }
 
 export function saveTheme(userId: string, themeId: string) {

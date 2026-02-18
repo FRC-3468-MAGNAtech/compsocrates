@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { themes, getTheme, applyTheme, saveTheme, loadTheme } from "@/app/utils/themes";
+import { themes, getTheme, applyTheme, saveTheme, loadTheme, saveCustomTheme, loadCustomTheme } from "@/app/utils/themes";
 import { useAuth } from "@/app/AuthContext";
 import { Palette, Check } from "lucide-react";
 
@@ -12,15 +12,22 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
   const { userData } = useAuth();
   const [selectedTheme, setSelectedTheme] = useState("default");
   const [showPicker, setShowPicker] = useState(false);
+  const [customStart, setCustomStart] = useState("#1d4ed8");
+  const [customEnd, setCustomEnd] = useState("#7c3aed");
 
   useEffect(() => {
     const savedTheme = userData?.uid ? loadTheme(userData.uid) : "default";
-    applyTheme(getTheme(savedTheme));
+    applyTheme(getTheme(savedTheme, userData?.uid));
   }, [userData?.uid]);
 
   function togglePicker() {
     if (!showPicker) {
       const savedTheme = userData?.uid ? loadTheme(userData.uid) : "default";
+      const custom = userData?.uid ? loadCustomTheme(userData.uid) : null;
+      if (custom) {
+        setCustomStart(custom.primaryColor);
+        setCustomEnd(custom.accentColor);
+      }
       setSelectedTheme(savedTheme);
     }
     setShowPicker(!showPicker);
@@ -30,9 +37,29 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
     if (!userData?.uid) return;
     
     setSelectedTheme(themeId);
-    const theme = getTheme(themeId);
+    const theme = getTheme(themeId, userData.uid);
     applyTheme(theme);
     saveTheme(userData.uid, themeId);
+    setShowPicker(false);
+  }
+
+  function applyCustomTheme() {
+    if (!userData?.uid) return;
+    const customTheme = {
+      id: "custom",
+      name: "Custom Gradient",
+      gradient: `linear-gradient(135deg, ${customStart} 0%, ${customEnd} 100%)`,
+      primaryColor: customStart,
+      accentColor: customEnd,
+      textColor: "#ffffff",
+      bgColor: "#f8fafc",
+      dark: false,
+    };
+
+    saveCustomTheme(userData.uid, customTheme);
+    saveTheme(userData.uid, "custom");
+    setSelectedTheme("custom");
+    applyTheme(customTheme);
     setShowPicker(false);
   }
 
@@ -82,6 +109,41 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
 
             {/* Theme Categories */}
             <div className="space-y-8">
+              {/* Custom Gradient */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-gray-700">Custom Gradient</h3>
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <div className="h-20 rounded-lg mb-4" style={{ background: `linear-gradient(135deg, ${customStart} 0%, ${customEnd} 100%)` }} />
+                  <div className="grid sm:grid-cols-2 gap-3 mb-4">
+                    <label className="text-sm font-medium text-gray-700">
+                      Start Color
+                      <input
+                        type="color"
+                        value={customStart}
+                        onChange={(event) => setCustomStart(event.target.value)}
+                        className="w-full h-10 mt-1"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-gray-700">
+                      End Color
+                      <input
+                        type="color"
+                        value={customEnd}
+                        onChange={(event) => setCustomEnd(event.target.value)}
+                        className="w-full h-10 mt-1"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    onClick={applyCustomTheme}
+                    className="px-4 py-2 rounded text-white font-semibold"
+                    style={{ background: `linear-gradient(135deg, ${customStart} 0%, ${customEnd} 100%)` }}
+                  >
+                    Apply Custom Theme
+                  </button>
+                </div>
+              </div>
+
               {/* Pride Flags */}
               <div>
                 <h3 className="text-lg font-semibold mb-4 text-gray-700">Pride Flags</h3>

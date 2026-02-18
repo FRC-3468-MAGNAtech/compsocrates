@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -9,6 +9,8 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { APP_EVENT_BY_KEY } from "@/app/utils/events";
+import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -25,6 +27,22 @@ const Counter = ({ label, value, onChange }: { label: string; value: number; onC
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
 
+function sanitizeAllianceTeams(candidate: unknown): number[] {
+  if (!Array.isArray(candidate)) return [];
+  return candidate
+    .map((value) => {
+      if (typeof value === "number") return value;
+      if (typeof value === "string") return parseInt(value.replace(/[^\d]/g, ""), 10);
+      return NaN;
+    })
+    .filter((value) => !Number.isNaN(value) && value > 0);
+}
+
+function isPlaceholderTeamSet(teams: number[]): boolean {
+  const placeholders = new Set([1111, 2222, 3333]);
+  return teams.length === 3 && teams.every((team) => placeholders.has(team));
+}
+
 function PracticeScoutingContent() {
   const router = useRouter();
   const { userData } = useAuth();
@@ -38,6 +56,7 @@ function PracticeScoutingContent() {
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const [formData, setFormData] = useState<ScoutedData>({
     teamNumber: "",
@@ -87,8 +106,31 @@ function PracticeScoutingContent() {
     
     const controls = selectedMode === 'trial' ? 1 : 0;
     
-    return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=${controls}&disablekb=${controls === 0 ? 1 : 0}&modestbranding=1&rel=0&fs=0`;
+    return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=${controls}&disablekb=${controls === 0 ? 1 : 0}&modestbranding=1&rel=0&fs=0&enablejsapi=1&playsinline=1`;
   }
+
+  useEffect(() => {
+    if (selectedMode !== "competitive") return;
+
+    const interval = setInterval(() => {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+        "*"
+      );
+    }, 900);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === " " || event.key.toLowerCase() === "k") {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+    };
+  }, [selectedMode, currentMatch?.id]);
 
   async function selectPracticeMatch(difficulty: 'easy' | 'medium' | 'hard', mode: PracticeMode) {
     setLoading(true);
@@ -109,22 +151,29 @@ function PracticeScoutingContent() {
         return;
       }
 
-      const randomMatch = matches[Math.floor(Math.random() * matches.length)];
-      const fallbackTeams = Array.isArray(randomMatch.allianceTeams) && randomMatch.allianceTeams.length >= 3
-        ? randomMatch.allianceTeams
-        : [];
+      const normalizedMatches = matches
+        .map((match) => {
+          const primaryTeams = sanitizeAllianceTeams(match.allianceTeams);
+          const fallbackTeams = sanitizeAllianceTeams((match as unknown as Record<string, unknown>).teams);
+          const parsedTeams = primaryTeams.length >= 3 ? primaryTeams : fallbackTeams;
+          return { ...match, allianceTeams: parsedTeams };
+        })
+        .filter((match) => match.allianceTeams.length >= 3 && !isPlaceholderTeamSet(match.allianceTeams));
+
+      if (normalizedMatches.length === 0) {
+        alert("This practice match is missing team data. Please choose another difficulty.");
+        setLoading(false);
+        return;
+      }
+
+      const randomMatch = normalizedMatches[Math.floor(Math.random() * normalizedMatches.length)];
+      const fallbackTeams = randomMatch.allianceTeams.slice(0, 3);
       const safeOfficialScore =
         typeof randomMatch.officialData?.score === "number"
           ? randomMatch.officialData.score
           : typeof randomMatch.actualScore === "number"
           ? randomMatch.actualScore
           : 0;
-
-      if (fallbackTeams.length < 3) {
-        alert("This practice match is missing team data. Please choose another difficulty.");
-        setLoading(false);
-        return;
-      }
 
       const safeMatch: PracticeMatch = {
         ...randomMatch,
@@ -213,21 +262,52 @@ function PracticeScoutingContent() {
       const accuracies = scores.map(scoutedScore => calculateAccuracy(scoutedScore, currentMatch.officialData.score));
       const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
 
+      const now = Date.now();
+      const eventKey = currentMatch.eventKey || classifyRebuiltEventByTimestamp(now);
+      const eventName = APP_EVENT_BY_KEY[eventKey]?.name || currentMatch.eventName || "App Testing";
+
       const session: Partial<PracticeSession> & Record<string, unknown> = {
         scoutName: userData.displayName,
+        scoutId: userData.uid,
         matchId: currentMatch.id || '',
+        matchKey: currentMatch.matchKey || "",
         matchNumber: currentMatch.matchNumber,
         matchType: currentMatch.matchType || 'practice',
         difficulty: selectedDifficulty || 'easy',
         mode: selectedMode || 'trial',
         scoutedData: allRobotData[0],
+        eventKey,
+        eventName,
+        game: "REBUILT",
         officialScore: currentMatch.officialData.score,
         scoutedScore: avgScore,
         accuracy: avgAccuracy,
-        timestamp: Date.now(),
+        timestamp: now,
+        startedAt: now,
+        completedAt: now,
       };
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
+
+      await Promise.all(
+        allRobotData.map((robotData) =>
+          addDoc(collection(db, "scouting"), {
+            ...robotData,
+            scoutName: userData.displayName,
+            matchId: `p${currentMatch.matchNumber}`,
+            matchNumber: String(currentMatch.matchNumber),
+            matchType: "practice",
+            eventKey,
+            eventName,
+            game: "REBUILT",
+            timestamp: now,
+            submittedAt: now,
+            practiceMode: selectedMode || "trial",
+            difficulty: selectedDifficulty || "easy",
+          })
+        )
+      );
+
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
     } catch (error) {
@@ -377,6 +457,7 @@ function PracticeScoutingContent() {
             <div className="flex-1 bg-black flex flex-col">
               <div className="flex-1 flex items-center justify-center relative">
                 <iframe
+                  ref={iframeRef}
                   src={getYouTubeEmbedUrl(currentMatch.videoUrl)}
                   className="w-full h-full"
                   allow="autoplay; encrypted-media"

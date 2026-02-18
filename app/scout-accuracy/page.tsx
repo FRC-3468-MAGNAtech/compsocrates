@@ -118,6 +118,7 @@ function ScoutAccuracyContent() {
   const actualScoutCount = scoutStats.filter(s => 
     s.role === "scout" || hasSpecialRole(s, "lead-scout")
   ).length;
+  const scoutOnlyStats = scoutStats.filter((s) => s.role === "scout" || hasSpecialRole(s, "lead-scout"));
 
   function getAccuracyColor(accuracy: number): string {
     if (accuracy >= 95) return "text-green-600";
@@ -307,8 +308,8 @@ function ScoutAccuracyContent() {
                     <Target size={22} className="text-gray-500" />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
-                    {scoutStats.length > 0 
-                      ? Math.round(scoutStats.reduce((sum, s) => sum + s.averageAccuracy, 0) / scoutStats.length)
+                    {scoutOnlyStats.length > 0 
+                      ? Math.round(scoutOnlyStats.reduce((sum, s) => sum + s.averageAccuracy, 0) / scoutOnlyStats.length)
                       : 0}%
                   </p>
                 </div>

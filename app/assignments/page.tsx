@@ -42,6 +42,9 @@ type MatchOption = {
   key: string;
   label: string;
   teams: number[];
+  compLevel: TBAMatch["comp_level"];
+  matchNumber: number;
+  setNumber: number;
 };
 
 function compLevelPriority(compLevel: string) {
@@ -75,6 +78,7 @@ function AssignmentsContent() {
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [selectedScoutId, setSelectedScoutId] = useState("");
   const [selectedTeamNumber, setSelectedTeamNumber] = useState("");
+  const [selectedMatchType, setSelectedMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
 
   const events = [
     { key: "2026arli", name: "Arkansas Regional" },
@@ -121,6 +125,9 @@ function AssignmentsContent() {
           teams: [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
             .map((teamKey) => parseInt(teamKey.replace("frc", ""), 10))
             .filter((teamNumber) => !Number.isNaN(teamNumber)),
+          compLevel: match.comp_level,
+          matchNumber: match.match_number,
+          setNumber: match.set_number,
         }));
         setMatchOptions(options);
       } catch (error) {
@@ -138,6 +145,16 @@ function AssignmentsContent() {
     () => matchOptions.find((match) => match.key === selectedMatchKey) || null,
     [matchOptions, selectedMatchKey]
   );
+
+  const typeFilteredMatches = useMemo(() => {
+    if (selectedMatchType === "practice") {
+      return matchOptions.filter((match) => match.compLevel === "qm").slice(0, 20);
+    }
+    if (selectedMatchType === "qualification") {
+      return matchOptions.filter((match) => match.compLevel === "qm");
+    }
+    return matchOptions.filter((match) => match.compLevel !== "qm");
+  }, [matchOptions, selectedMatchType]);
 
   async function createAssignment() {
     if (!userData || !selectedMatch || !selectedScoutId || !selectedTeamNumber) return;
@@ -158,6 +175,7 @@ function AssignmentsContent() {
       setSelectedMatchKey("");
       setSelectedScoutId("");
       setSelectedTeamNumber("");
+      setSelectedMatchType("qualification");
       setShowAssignModal(false);
       await loadData();
     } catch (error) {
@@ -329,21 +347,57 @@ function AssignmentsContent() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Match</label>
-                    <select
-                      className="w-full border rounded p-2"
-                      value={selectedMatchKey}
-                      onChange={(e) => {
-                        setSelectedMatchKey(e.target.value);
-                        setSelectedTeamNumber("");
-                      }}
-                    >
-                      <option value="">Select Match</option>
-                      {matchOptions.map((match) => (
-                        <option key={match.key} value={match.key}>
-                          {match.label}
-                        </option>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <button
+                        onClick={() => {
+                          setSelectedMatchType("practice");
+                          setSelectedMatchKey("");
+                          setSelectedTeamNumber("");
+                        }}
+                        className={`py-2 rounded text-sm font-medium ${selectedMatchType === "practice" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                      >
+                        Practice
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedMatchType("qualification");
+                          setSelectedMatchKey("");
+                          setSelectedTeamNumber("");
+                        }}
+                        className={`py-2 rounded text-sm font-medium ${selectedMatchType === "qualification" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                      >
+                        Qual
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedMatchType("finals");
+                          setSelectedMatchKey("");
+                          setSelectedTeamNumber("");
+                        }}
+                        className={`py-2 rounded text-sm font-medium ${selectedMatchType === "finals" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                      >
+                        Finals
+                      </button>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto border rounded p-2 space-y-2">
+                      {typeFilteredMatches.map((match) => (
+                        <button
+                          key={match.key}
+                          onClick={() => {
+                            setSelectedMatchKey(match.key);
+                            setSelectedTeamNumber("");
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded border ${
+                            selectedMatchKey === match.key ? "border-red-500 bg-red-50" : "border-gray-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span className="font-medium">{match.label}</span>
+                        </button>
                       ))}
-                    </select>
+                      {typeFilteredMatches.length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-4">No matches found for this type.</p>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Member</label>

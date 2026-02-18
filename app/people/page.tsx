@@ -26,10 +26,16 @@ function PeopleContent() {
       if (!userData?.teamId) return;
       const usersQuery = query(collection(db, "users"), where("teamId", "==", userData.teamId));
       const snapshot = await getDocs(usersQuery);
-      setMembers(snapshot.docs.map((doc) => ({ uid: doc.id, ...doc.data() } as TeamMember)));
+      const nextMembers = snapshot.docs
+        .map((doc) => ({ uid: doc.id, ...doc.data() } as TeamMember))
+        .filter((member) => {
+          const visibility = (member as TeamMember & { profileVisibility?: "team" | "public" | "private" }).profileVisibility || "team";
+          return visibility !== "private" || member.uid === userData.uid;
+        });
+      setMembers(nextMembers);
     }
     loadMembers();
-  }, [userData?.teamId]);
+  }, [userData?.teamId, userData?.uid]);
 
   return (
     <div className="flex h-screen bg-gray-100">

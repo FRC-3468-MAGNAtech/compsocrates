@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { entryMatchesAnalyticsFilters, getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 type TeamAverage = {
   teamNumber: string;
@@ -17,6 +18,10 @@ type TeamAverage = {
 };
 
 type ScoutingEntry = {
+  eventKey?: string;
+  submittedAt?: number;
+  timestamp?: number;
+  game?: string;
   teamNumber?: string;
   leftStartingZone?: boolean;
   stageStatus?: string;
@@ -38,8 +43,21 @@ type ScoutingEntry = {
 
 function TeamAveragesContent() {
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedEvent, setSelectedEvent] = useState("all");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const savedGame = localStorage.getItem("analytics-selected-game");
+    const savedEvent = localStorage.getItem("analytics-selected-event");
+    if (savedGame === "REEFSCAPE" || savedGame === "REBUILT") setSelectedGame(savedGame);
+    if (savedEvent) setSelectedEvent(savedEvent);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("analytics-selected-game", selectedGame);
+    localStorage.setItem("analytics-selected-event", selectedEvent);
+  }, [selectedGame, selectedEvent]);
 
   useEffect(() => {
     async function loadEntries() {
@@ -54,9 +72,14 @@ function TeamAveragesContent() {
     loadEntries();
   }, []);
 
+  const filteredEntries = useMemo(
+    () => entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)),
+    [entries, selectedEvent, selectedGame]
+  );
+
   const averages = useMemo(() => {
     const teamData: Record<string, number[]> = {};
-    entries.forEach((e) => {
+    filteredEntries.forEach((e) => {
       const team = e.teamNumber;
       if (!team) return;
       const auto = (e.autoCoralL1 || 0) * 3 + (e.autoCoralL2 || 0) * 4 + (e.autoCoralL3 || 0) * 6 + (e.autoCoralL4 || 0) * 7 + (e.autoAlgaeProcessorScored || 0) * 6 + (e.autoAlgaeNetScored || 0) * 4 + (e.leftStartingZone ? 3 : 0);
@@ -80,10 +103,17 @@ function TeamAveragesContent() {
       };
     });
     return rows.sort((a, b) => b.avgTotal - a.avgTotal);
-  }, [entries]);
+  }, [filteredEntries]);
 
   return (
-    <AnalyticsShell entriesCount={entries.length} selectedGame={selectedGame} onSelectedGameChange={setSelectedGame}>
+    <AnalyticsShell
+      entriesCount={filteredEntries.length}
+      selectedGame={selectedGame}
+      onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+      selectedEvent={selectedEvent}
+      eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
+      onSelectedEventChange={setSelectedEvent}
+    >
       <h1 className="text-3xl font-bold mb-2 theme-text">Team Averages</h1>
       <p className="text-gray-600 mb-6">Average performance by team.</p>
 

@@ -6,6 +6,8 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { isEventActive } from "@/app/utils/eventDates";
+import { APP_EVENT_BY_KEY } from "@/app/utils/events";
+import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -31,6 +33,7 @@ function Modal({
   
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMounted(true);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -671,14 +674,20 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                   ? "f"
                   : "q";
                 const matchId = `${matchPrefix}${selectedMatch.id}`;
+                const now = Date.now();
+                const eventKey = classifyRebuiltEventByTimestamp(now);
+                const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
                 const submission = {
                   ...formData,
                   matchId,
                   matchNumber: selectedMatch.id.toString(),
                   matchType: selectedMatch.type || "qualification",
                   bracket: selectedMatch.bracket || null,
-                  timestamp: Date.now(),
-                  submittedAt: Date.now(), // Track when form was submitted for event filtering
+                  eventKey,
+                  eventName,
+                  game: "REBUILT",
+                  timestamp: now,
+                  submittedAt: now,
                 };
                 
                 await addDoc(collection(db, "scouting"), submission);

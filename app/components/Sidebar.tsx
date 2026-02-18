@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
-import ThemePicker from "@/app/components/ThemePicker";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
   Wrench, Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings
@@ -150,7 +149,7 @@ export default function Sidebar() {
                 className={`
                   flex items-center gap-3 px-3 py-2 rounded mb-1 transition-colors
                   ${isActive ? "theme-primary-solid text-white font-semibold" : "hover:bg-gray-100 text-gray-700"}
-                  ${collapsed && !isMobileMenuOpen ? "justify-center" : "justify-start"}
+                  justify-start
                 `}
                 title={collapsed ? item.label : ""}
               >
@@ -167,7 +166,7 @@ export default function Sidebar() {
             onClick={() => setShowSettings(!showSettings)}
             className={`
               w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100
-              ${collapsed && !isMobileMenuOpen ? "justify-center" : "justify-start"}
+              justify-start
             `}
           >
             {userData.photoURL ? (
@@ -233,9 +232,6 @@ export default function Sidebar() {
                 >
                   View Profile
                 </Link>
-                <div className="px-2 py-1 border-t border-gray-100">
-                  <ThemePicker compact />
-                </div>
                 <button
                   onClick={async () => {
                     await logOut();

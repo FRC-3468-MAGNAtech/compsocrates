@@ -24,9 +24,12 @@ export type UserData = {
   displayName: string;
   role: UserRole;
   specialRole?: SpecialRole;
+  specialRoles?: string[];
   teamId: string;
   isTeamAdmin: boolean;
   photoURL?: string;
+  bio?: string;
+  profileVisibility?: "team" | "public" | "private";
 };
 
 type AuthContextType = {
@@ -113,8 +116,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: name,
       role: role,
       specialRole: null,
+      specialRoles: [],
       teamId: teamId,
       isTeamAdmin: isTeamAdmin,
+      profileVisibility: "team",
+      bio: "",
     };
     
     await setDoc(doc(db, "users", userCredential.user.uid), userData);
