@@ -12,16 +12,30 @@ export interface Theme {
   dark?: boolean;
 }
 
+function hexToRgbTuple(hex: string): [number, number, number] {
+  const normalized = hex.replace("#", "");
+  if (normalized.length !== 6) return [196, 34, 33];
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return [r, g, b];
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgbTuple(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export const themes: Theme[] = [
   // Default
   {
     id: "default",
-    name: "CompSocrates Red",
-    gradient: "linear-gradient(135deg, #c42221 0%, #8b1818 100%)",
-    primaryColor: "#c42221",
-    accentColor: "#8b1818",
+    name: "Midnight Blurple",
+    gradient: "linear-gradient(135deg, #5865f2 0%, #00a8fc 100%)",
+    primaryColor: "#5865f2",
+    accentColor: "#00a8fc",
     textColor: "#ffffff",
-    bgColor: "#f9fafb"
+    bgColor: "#0b1022"
   },
   
   // Blue variants
@@ -335,21 +349,25 @@ export function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
 
   const isDark = true;
+  const [primaryR, primaryG, primaryB] = hexToRgbTuple(theme.primaryColor);
+  const [accentR, accentG, accentB] = hexToRgbTuple(theme.accentColor);
   const pageGradient = `
-    radial-gradient(1200px 700px at 15% -10%, color-mix(in srgb, ${theme.primaryColor} 34%, transparent) 0%, transparent 62%),
-    radial-gradient(1100px 680px at 85% 108%, color-mix(in srgb, ${theme.accentColor} 34%, transparent) 0%, transparent 60%),
+    radial-gradient(1200px 700px at 15% -10%, ${hexToRgba(theme.primaryColor, 0.34)} 0%, transparent 62%),
+    radial-gradient(1100px 680px at 85% 108%, ${hexToRgba(theme.accentColor, 0.34)} 0%, transparent 60%),
     linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%)
   `;
-  const pageCanvas = "color-mix(in srgb, #060a17 52%, transparent)";
+  const pageCanvas = "rgba(6, 10, 23, 0.56)";
   const surfaceColor = "linear-gradient(160deg, rgba(18, 27, 53, 0.82) 0%, rgba(13, 20, 41, 0.86) 100%)";
   const surfaceRaisedColor = "linear-gradient(160deg, rgba(22, 32, 62, 0.84) 0%, rgba(15, 24, 47, 0.88) 100%)";
-  const borderColor = `color-mix(in srgb, ${theme.primaryColor} 34%, rgba(148, 163, 184, 0.35) 66%)`;
+  const borderColor = `rgba(${primaryR}, ${primaryG}, ${primaryB}, 0.38)`;
   const bodyText = "#e5e7eb";
   const mutedText = "#c3cbe0";
   const subtleText = "#94a3b8";
   
   document.documentElement.style.setProperty('--primary-color', theme.primaryColor);
+  document.documentElement.style.setProperty('--primary-rgb', `${primaryR}, ${primaryG}, ${primaryB}`);
   document.documentElement.style.setProperty('--accent-color', theme.accentColor);
+  document.documentElement.style.setProperty('--accent-rgb', `${accentR}, ${accentG}, ${accentB}`);
   document.documentElement.style.setProperty('--primary-gradient', theme.gradient);
   document.documentElement.style.setProperty('--theme-text', theme.textColor);
   document.documentElement.style.setProperty('--theme-bg', theme.bgColor);

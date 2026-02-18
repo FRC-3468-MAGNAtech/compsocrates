@@ -3,16 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --primary-color: #c42221;
-  --accent-color: #8b1818;
-  --primary-gradient: linear-gradient(135deg, #c42221 0%, #8b1818 100%);
+  --primary-color: #5865f2;
+  --primary-rgb: 88, 101, 242;
+  --accent-color: #00a8fc;
+  --accent-rgb: 0, 168, 252;
+  --primary-gradient: linear-gradient(135deg, #5865f2 0%, #00a8fc 100%);
   --theme-text: #ffffff;
   --theme-bg: #f9fafb;
-  --theme-page-gradient: radial-gradient(1200px 700px at 15% -10%, rgba(196, 34, 33, 0.34) 0%, transparent 62%), radial-gradient(1100px 680px at 85% 108%, rgba(139, 24, 24, 0.34) 0%, transparent 60%), linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%);
-  --theme-page-canvas: color-mix(in srgb, #060a17 52%, transparent);
+  --theme-page-gradient: radial-gradient(1200px 700px at 15% -10%, rgba(88, 101, 242, 0.34) 0%, transparent 62%), radial-gradient(1100px 680px at 85% 108%, rgba(0, 168, 252, 0.34) 0%, transparent 60%), linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%);
+  --theme-page-canvas: rgba(6, 10, 23, 0.56);
   --theme-surface: linear-gradient(160deg, rgba(18, 27, 53, 0.82) 0%, rgba(13, 20, 41, 0.86) 100%);
   --theme-surface-raised: linear-gradient(160deg, rgba(22, 32, 62, 0.84) 0%, rgba(15, 24, 47, 0.88) 100%);
-  --theme-border: color-mix(in srgb, #c42221 34%, rgba(148, 163, 184, 0.35) 66%);
+  --theme-border: rgba(88, 101, 242, 0.38);
   --theme-body-text: #e5e7eb;
   --theme-muted-text: #c3cbe0;
   --theme-subtle-text: #94a3b8;
@@ -22,9 +24,18 @@
 
 body {
   color: var(--theme-body-text);
+  background: #090f1f;
+  min-height: 100vh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
   background: var(--theme-page-gradient);
   background-attachment: fixed;
-  min-height: 100vh;
+  pointer-events: none;
 }
 
 main {
@@ -39,6 +50,16 @@ main {
 .bg-gray-50 {
   background: var(--theme-page-canvas) !important;
   backdrop-filter: blur(4px);
+}
+
+.bg-gray-200 {
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.hover\:bg-gray-50:hover,
+.hover\:bg-gray-100:hover,
+.hover\:bg-gray-200:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
 }
 
 .border,
@@ -151,10 +172,10 @@ main {
 
 .bg-white.rounded-xl.shadow,
 .bg-white.rounded-xl.shadow-md {
-  border: 1px solid color-mix(in srgb, var(--primary-color) 16%, var(--theme-border) 84%);
+  border: 1px solid rgba(var(--primary-rgb), 0.28);
   backdrop-filter: blur(14px) saturate(1.06);
   box-shadow:
-    0 22px 40px -30px color-mix(in srgb, var(--primary-color) 56%, transparent),
+    0 22px 40px -30px rgba(var(--primary-rgb), 0.46),
     0 18px 28px -26px rgba(2, 6, 23, 0.7) !important;
 }
 
@@ -166,9 +187,9 @@ main {
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 select,
 textarea {
-  background: color-mix(in srgb, var(--theme-surface-raised) 92%, transparent) !important;
+  background: rgba(18, 27, 53, 0.65) !important;
   color: var(--theme-body-text) !important;
-  border-color: color-mix(in srgb, var(--primary-color) 22%, var(--theme-border) 78%) !important;
+  border-color: rgba(var(--primary-rgb), 0.32) !important;
 }
 
 input::placeholder,
@@ -189,13 +210,13 @@ textarea::placeholder {
 .theme-action-btn {
   background: var(--primary-gradient) !important;
   color: var(--theme-text) !important;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  border: 1px solid rgba(var(--primary-rgb), 0.36);
 }
 
 .theme-outline-btn {
-  border: 1px solid color-mix(in srgb, var(--primary-color) 34%, transparent);
+  border: 1px solid rgba(var(--primary-rgb), 0.38);
   color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 8%, #ffffff 92%);
+  background: rgba(var(--primary-rgb), 0.12);
 }
 
 .text-gray-900,
@@ -217,31 +238,46 @@ textarea::placeholder {
   background-color: rgba(0, 0, 0, calc(0.35 + (var(--theme-is-dark) * 0.2))) !important;
 }
 
-.bg-red-600,
-.bg-red-700 {
-  background-color: var(--primary-color) !important;
+[class*="bg-red-"] {
+  background-color: rgba(var(--primary-rgb), 0.82) !important;
 }
-
-.text-red-600,
-.text-red-700,
-.border-red-600,
-.border-red-700 {
+[class*="text-red-"] {
   color: var(--primary-color) !important;
+}
+[class*="border-red-"] {
   border-color: var(--primary-color) !important;
 }
+[class*="hover:bg-red-"]:hover {
+  background-color: rgba(var(--primary-rgb), 0.28) !important;
+}
+[class*="hover:border-red-"]:hover {
+  border-color: var(--primary-color) !important;
+}
+[class*="hover:text-red-"]:hover {
+  color: var(--primary-color) !important;
+}
 
+.bg-red-50,
 .bg-red-100,
-.hover\:bg-red-50:hover {
-  background-color: color-mix(in srgb, var(--primary-color) 14%, white) !important;
+.bg-red-200,
+.hover\:bg-red-50:hover,
+.hover\:bg-red-100:hover {
+  background-color: rgba(var(--primary-rgb), 0.18) !important;
 }
 
 button[style*="backgroundColor: #c42221"],
-button[style*="background-color: #c42221"] {
+button[style*="background-color: #c42221"],
+button[style*="backgroundColor:#c42221"],
+button[style*="background-color:#c42221"],
+button[style*="background-color:rgb(196,34,33)"],
+button[style*="background-color: rgb(196, 34, 33)"] {
   background: var(--primary-gradient) !important;
 }
 
 [style*="borderColor: #c42221"],
-[style*="border-color: #c42221"] {
+[style*="border-color: #c42221"],
+[style*="borderColor:#c42221"],
+[style*="border-color:#c42221"] {
   border-color: var(--primary-color) !important;
 }
 
@@ -249,6 +285,11 @@ h1[style*="color: #c42221"],
 h2[style*="color: #c42221"],
 h3[style*="color: #c42221"],
 span[style*="color: #c42221"],
-p[style*="color: #c42221"] {
+p[style*="color: #c42221"],
+h1[style*="color:#c42221"],
+h2[style*="color:#c42221"],
+h3[style*="color:#c42221"],
+span[style*="color:#c42221"],
+p[style*="color:#c42221"] {
   color: var(--primary-color) !important;
 }
