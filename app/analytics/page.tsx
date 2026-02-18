@@ -166,7 +166,8 @@ function AnalyticsPageContent() {
     localStorage.setItem("analytics-selected-event", selectedEvent);
   }, [selectedGame, selectedEvent]);
 
-  function handleGameChange() {
+  function handleGameChange(nextGame: AnalyticsGame) {
+    void nextGame;
     const validEvents = getEventsForGame(LOCKED_GAME).map((event) => event.id);
     setSelectedGame(LOCKED_GAME);
     setImportGame(LOCKED_GAME);
