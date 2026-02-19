@@ -57,8 +57,8 @@ export default function Sidebar() {
   // Navigation items based on role
   const coachNavItems = [
     { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Match Scouting Form", icon: ClipboardList },
-    { href: "/pit-scout-form", label: "Pit Scouting Form", icon: ClipboardList },
+    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
+    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
     { href: "/form-builder", label: "Form Builder", icon: Wrench },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
@@ -71,8 +71,8 @@ export default function Sidebar() {
 
   const scoutNavItems = [
     { href: "/scout-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Match Scouting Form", icon: ClipboardList },
-    { href: "/pit-scout-form", label: "Pit Scouting Form", icon: ClipboardList },
+    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
+    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/event-selection", label: "Event Selection", icon: Calendar },

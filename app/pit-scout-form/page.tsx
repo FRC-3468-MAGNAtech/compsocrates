@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { addDoc, collection } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
-import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 type PitFormState = {
   scoutName: string;
@@ -41,6 +40,8 @@ function PitScoutFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [activeFormName, setActiveFormName] = useState("");
+  const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
     teamNumber: "",
@@ -69,6 +70,22 @@ function PitScoutFormContent() {
     notes: "",
   });
 
+  useEffect(() => {
+    async function loadActivePitPreset() {
+      if (!userData?.teamId) return;
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      if (!teamDoc.exists()) return;
+      const activePitFormPresetId = teamDoc.data().activePitFormPresetId as string | undefined;
+      if (!activePitFormPresetId) return;
+      const presetDoc = await getDoc(doc(db, "formPresets", activePitFormPresetId));
+      if (!presetDoc.exists()) return;
+      const preset = presetDoc.data() as { name?: string; game?: "REEFSCAPE" | "REBUILT" };
+      setActiveFormName(preset.name || "");
+      setActiveFormGame(preset.game === "REBUILT" ? "REBUILT" : "REEFSCAPE");
+    }
+    void loadActivePitPreset();
+  }, [userData?.teamId]);
+
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid) return;
@@ -76,13 +93,13 @@ function PitScoutFormContent() {
     setSaving(true);
     try {
       const now = Date.now();
-      const eventKey = classifyRebuiltEventByTimestamp(now);
+      const eventKey = "app-testing";
       const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
       await addDoc(collection(db, "pitScouting"), {
         ...form,
         eventKey,
         eventName,
-        game: "REBUILT",
+        game: activeFormGame,
         teamId: userData.teamId || "",
         submittedBy: userData.uid,
         createdAt: now,
@@ -106,7 +123,10 @@ function PitScoutFormContent() {
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
           <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
             <div className="bg-white rounded-xl shadow p-4">
-              <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scout Form</h1>
+              <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scouting Form</h1>
+              {activeFormName && (
+                <p className="text-sm text-gray-600">Active Preset: {activeFormName} ({activeFormGame})</p>
+              )}
             </div>
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
               <p className="text-sm text-yellow-700">

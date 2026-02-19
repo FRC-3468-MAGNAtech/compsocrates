@@ -262,12 +262,20 @@ function PracticeScoutingContent() {
     setSelectedMode(mode);
 
     try {
-      const matchesQuery = query(
-        collection(db, 'practiceMatches'),
-        where('difficulty', '==', difficulty)
-      );
-      const matchesSnapshot = await getDocs(matchesQuery);
-      const matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+      let matches: PracticeMatch[] = [];
+      try {
+        const matchesQuery = query(
+          collection(db, 'practiceMatches'),
+          where('difficulty', '==', difficulty)
+        );
+        const matchesSnapshot = await getDocs(matchesQuery);
+        matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+      } catch (queryError) {
+        const allSnapshot = await getDocs(collection(db, "practiceMatches"));
+        const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+        matches = allMatches.filter((match) => match.difficulty === difficulty);
+        console.warn("Difficulty query failed; using fallback practice match load.", queryError);
+      }
 
       if (matches.length === 0) {
         alert('No practice matches available for this difficulty.');
@@ -329,7 +337,12 @@ function PracticeScoutingContent() {
       setCurrentStep('practice');
     } catch (error) {
       console.error('Error loading practice match:', error);
-      alert('Error loading practice match.');
+      const details = (error as { code?: string; message?: string })?.message || "";
+      if (details.toLowerCase().includes("permission")) {
+        alert("Error loading practice match. Check Firestore rules for read access to practiceMatches.");
+      } else {
+        alert('Error loading practice match.');
+      }
     } finally {
       setLoading(false);
     }

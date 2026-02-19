@@ -6,7 +6,6 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { isEventActive } from "@/app/utils/eventDates";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
-import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 
@@ -345,6 +344,7 @@ function ScoutFormContent() {
   const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
   const [activeFormName, setActiveFormName] = useState("");
+  const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [activeFormFields, setActiveFormFields] = useState<ActivePresetField[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<{ id: number; type?: "qualification" | "practice" | "finals"; bracket?: "upper" | "lower" }>({ 
     id: 0,
@@ -392,8 +392,9 @@ function ScoutFormContent() {
       if (!activeMatchFormPresetId) return;
       const presetDoc = await getDoc(doc(db, "formPresets", activeMatchFormPresetId));
       if (!presetDoc.exists()) return;
-      const preset = presetDoc.data() as { name?: string; fields?: ActivePresetField[] };
+      const preset = presetDoc.data() as { name?: string; fields?: ActivePresetField[]; game?: "REEFSCAPE" | "REBUILT" };
       setActiveFormName(preset.name || "");
+      setActiveFormGame(preset.game === "REBUILT" ? "REBUILT" : "REEFSCAPE");
       setActiveFormFields(Array.isArray(preset.fields) ? preset.fields : []);
     }
     loadActivePreset();
@@ -765,7 +766,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                 const safeMatchNumber = selectedMatch.id > 0 ? selectedMatch.id : 0;
                 const matchId = `${matchPrefix}${safeMatchNumber}`;
                 const now = Date.now();
-                const eventKey = classifyRebuiltEventByTimestamp(now);
+                const eventKey = "app-testing";
                 const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
                 const penaltyPoints = 0;
                 const submission = {
@@ -776,7 +777,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                   bracket: selectedMatch.bracket || null,
                   eventKey,
                   eventName,
-                  game: "REBUILT",
+                  game: activeFormGame,
                   penaltyPoints,
                   scoutedScore: calculateSubmissionScore(penaltyPoints),
                   timestamp: now,

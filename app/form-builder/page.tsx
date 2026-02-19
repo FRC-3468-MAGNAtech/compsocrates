@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, setDoc, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 
-type FieldType = "number" | "checkbox" | "text" | "select" | "rating";
+type FieldType = "number" | "checkbox" | "text" | "select" | "rating" | "slider";
 
 interface FormField {
   id: string;
@@ -15,6 +15,7 @@ interface FormField {
   type: FieldType;
   section: string;
   options?: string[];
+  scaleLabels?: string[];
   required: boolean;
 }
 
@@ -50,17 +51,35 @@ const REEFSCAPE_MATCH_PRESET_FIELDS: FormField[] = [
   { id: "notes", label: "Comments", type: "text", section: "Post-Match", required: false },
 ];
 
+const REEFSCAPE_PIT_PRESET_FIELDS: FormField[] = [
+  { id: "scoutName", label: "Scout Name", type: "text", section: "Pre-Match", required: true },
+  { id: "teamNumber", label: "Team Number", type: "number", section: "Pre-Match", required: true },
+  { id: "robotPictureUrl", label: "Picture of Robot", type: "text", section: "Pre-Match", required: false },
+  { id: "pitDisposition", label: "Pit Disposition", type: "checkbox", section: "Pre-Match", required: false },
+  { id: "driveDisposition", label: "Drive Disposition", type: "checkbox", section: "Pre-Match", required: false },
+  { id: "driveBaseType", label: "Drive Base Type", type: "select", section: "Teleop", options: ["Swerve L1", "Swerve L2", "Swerve L3", "Tank", "Mecanum"], required: false },
+  { id: "centerOfGravity", label: "Center of Gravity", type: "select", section: "Teleop", options: ["Low", "Center", "High"], required: false },
+  { id: "bargeCapability", label: "Barge Capability", type: "select", section: "Endgame", options: ["Can climb shallow cage", "Can climb deep cage"], required: false },
+  { id: "autoCapabilities", label: "Auto Capabilities", type: "text", section: "Autonomous", required: false },
+  { id: "rating", label: "Overall Robot Rating", type: "slider", section: "Post-Match", scaleLabels: ["Poor", "Limited", "Average", "Strong", "Elite"], required: false },
+  { id: "notes", label: "Notes", type: "text", section: "Post-Match", required: false },
+];
+
 function FormBuilderContent() {
   const { userData } = useAuth();
   const [formName, setFormName] = useState("Reefscape 2025 Scouting Form");
+  const [formType, setFormType] = useState<"match" | "pit">("match");
+  const [formGame, setFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [fields, setFields] = useState<FormField[]>([
     { id: "match", label: "Match Number", type: "number", section: "Pre-Match", required: true },
     { id: "team", label: "Team Number", type: "number", section: "Pre-Match", required: true },
   ]);
   const [activeSection, setActiveSection] = useState("Pre-Match");
   const [showAddField, setShowAddField] = useState(false);
-  const [cloudForms, setCloudForms] = useState<Array<{ id: string; name: string; fields: FormField[] }>>([]);
+  const [cloudForms, setCloudForms] = useState<Array<{ id: string; name: string; fields: FormField[]; formType?: "match" | "pit"; game?: "REEFSCAPE" | "REBUILT" }>>([]);
   const [selectedCloudFormId, setSelectedCloudFormId] = useState("");
+  const [showPresetsMenu, setShowPresetsMenu] = useState(false);
+  const [showSavedFormsMenu, setShowSavedFormsMenu] = useState(false);
   const [savingCloud, setSavingCloud] = useState(false);
   
   const [newField, setNewField] = useState<FormField>({
@@ -69,6 +88,7 @@ function FormBuilderContent() {
     type: "number",
     section: "Pre-Match",
     options: [],
+    scaleLabels: ["", "", "", "", ""],
     required: false,
   });
 
@@ -76,15 +96,9 @@ function FormBuilderContent() {
 
   useEffect(() => {
     async function loadCloudForms() {
-      if (!userData?.teamId) return;
-      const cloudQuery = query(collection(db, "formPresets"), where("teamId", "==", userData.teamId));
-      const snapshot = await getDocs(cloudQuery);
-      setCloudForms(snapshot.docs.map((presetDoc) => ({
-        id: presetDoc.id,
-        ...(presetDoc.data() as { name: string; fields: FormField[] }),
-      })));
+      await refreshCloudForms();
     }
-    loadCloudForms();
+    void loadCloudForms();
   }, [userData?.teamId]);
 
   function addField() {
@@ -98,6 +112,7 @@ function FormBuilderContent() {
       type: "number",
       section: activeSection,
       options: [],
+      scaleLabels: ["", "", "", "", ""],
       required: false,
     });
     setShowAddField(false);
@@ -125,6 +140,8 @@ function FormBuilderContent() {
   function exportForm() {
     const formData = {
       name: formName,
+      formType,
+      game: formGame,
       fields,
       createdAt: Date.now(),
     };
@@ -137,6 +154,16 @@ function FormBuilderContent() {
     a.click();
   }
 
+  async function refreshCloudForms() {
+    if (!userData?.teamId) return;
+    const cloudQuery = query(collection(db, "formPresets"), where("teamId", "==", userData.teamId));
+    const snapshot = await getDocs(cloudQuery);
+    setCloudForms(snapshot.docs.map((presetDoc) => ({
+      id: presetDoc.id,
+      ...(presetDoc.data() as { name: string; fields: FormField[]; formType?: "match" | "pit"; game?: "REEFSCAPE" | "REBUILT" }),
+    })));
+  }
+
   async function savePresetToCloud() {
     if (!userData?.teamId || !userData.uid) return;
     setSavingCloud(true);
@@ -145,20 +172,43 @@ function FormBuilderContent() {
         teamId: userData.teamId,
         name: formName,
         fields,
-        formType: "match",
+        formType,
+        game: formGame,
         createdBy: userData.uid,
         createdAt: Date.now(),
       });
-      alert("Preset saved to cloud.");
-      const cloudQuery = query(collection(db, "formPresets"), where("teamId", "==", userData.teamId));
-      const snapshot = await getDocs(cloudQuery);
-      setCloudForms(snapshot.docs.map((presetDoc) => ({
-        id: presetDoc.id,
-        ...(presetDoc.data() as { name: string; fields: FormField[] }),
-      })));
+      alert("Form saved.");
+      await refreshCloudForms();
     } finally {
       setSavingCloud(false);
     }
+  }
+
+  async function updateSelectedSavedForm() {
+    if (!userData?.teamId || !selectedCloudFormId) return;
+    await setDoc(
+      doc(db, "formPresets", selectedCloudFormId),
+      {
+        teamId: userData.teamId,
+        name: formName,
+        fields,
+        formType,
+        game: formGame,
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
+    alert("Saved form updated.");
+    await refreshCloudForms();
+  }
+
+  async function deleteSelectedSavedForm() {
+    if (!selectedCloudFormId) return;
+    if (!confirm("Delete this saved form?")) return;
+    await deleteDoc(doc(db, "formPresets", selectedCloudFormId));
+    setSelectedCloudFormId("");
+    await refreshCloudForms();
+    alert("Saved form deleted.");
   }
 
   function loadCloudPreset(presetId: string) {
@@ -167,16 +217,23 @@ function FormBuilderContent() {
     if (!preset) return;
     setFormName(preset.name);
     setFields(preset.fields);
+    setFormType(preset.formType || "match");
+    setFormGame(preset.game || "REEFSCAPE");
   }
 
-  async function setAsActiveMatchForm() {
+  async function setAsActiveAppliedForm() {
     if (!userData?.teamId || !selectedCloudFormId) return;
+    const selected = cloudForms.find((preset) => preset.id === selectedCloudFormId);
+    const selectedType = selected?.formType || formType;
+    const selectedGame = selected?.game || formGame;
     await setDoc(
       doc(db, "teams", userData.teamId),
-      { activeMatchFormPresetId: selectedCloudFormId },
+      selectedType === "pit"
+        ? { activePitFormPresetId: selectedCloudFormId, activePitGame: selectedGame }
+        : { activeMatchFormPresetId: selectedCloudFormId, activeMatchGame: selectedGame },
       { merge: true }
     );
-    alert("Active match form preset updated.");
+    alert(`Active ${selectedType} form preset updated (${selectedGame}).`);
   }
 
   function importForm(event: React.ChangeEvent<HTMLInputElement>) {
@@ -191,6 +248,12 @@ function FormBuilderContent() {
         
         if (imported.name && Array.isArray(imported.fields)) {
           setFormName(imported.name);
+          if (imported.formType === "match" || imported.formType === "pit") {
+            setFormType(imported.formType);
+          }
+          if (imported.game === "REEFSCAPE" || imported.game === "REBUILT") {
+            setFormGame(imported.game);
+          }
           setFields(imported.fields);
           alert("Form imported successfully!");
         } else {
@@ -203,9 +266,11 @@ function FormBuilderContent() {
     reader.readAsText(file);
   }
 
-  function loadBuiltInReefscapePreset() {
-    setFormName("3468 REEFSCAPE Match Scout Form");
-    setFields(REEFSCAPE_MATCH_PRESET_FIELDS);
+  function loadBuiltInPreset(name: string, presetFields: FormField[]) {
+    setFormName(name);
+    setFields(presetFields);
+    setFormGame("REEFSCAPE");
+    setFormType(name.toLowerCase().includes("pit") ? "pit" : "match");
     setActiveSection("Pre-Match");
     setShowAddField(false);
   }
@@ -230,20 +295,44 @@ function FormBuilderContent() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={loadBuiltInReefscapePreset}
-                className="px-4 py-2 rounded-lg text-white font-medium"
-                style={{ background: "var(--primary-gradient)" }}
-              >
-                Load 3468 REEFSCAPE Preset
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowPresetsMenu((prev) => !prev)}
+                  className="px-4 py-2 rounded-lg text-white font-medium"
+                  style={{ background: "var(--primary-gradient)" }}
+                >
+                  Presets
+                </button>
+                {showPresetsMenu && (
+                  <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden">
+                    <button
+                      onClick={() => {
+                        loadBuiltInPreset("3468 REEFSCAPE Match Scout Form", REEFSCAPE_MATCH_PRESET_FIELDS);
+                        setShowPresetsMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm"
+                    >
+                      3468 REEFSCAPE Match Scout Form
+                    </button>
+                    <button
+                      onClick={() => {
+                        loadBuiltInPreset("3468 REEFSCAPE Pit Scout Form", REEFSCAPE_PIT_PRESET_FIELDS);
+                        setShowPresetsMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm"
+                    >
+                      3468 REEFSCAPE Pit Scout Form
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={savePresetToCloud}
                 disabled={savingCloud}
                 className="px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >
-                {savingCloud ? "Saving..." : "Save To Cloud"}
+                {savingCloud ? "Saving..." : "Save Form"}
               </button>
               <label
                 className="px-4 py-2 rounded-lg text-white font-medium cursor-pointer"
@@ -282,6 +371,30 @@ function FormBuilderContent() {
                   className="w-full border rounded-lg p-3 text-lg font-semibold"
                   style={{ borderColor: "#c42221" }}
                 />
+                <div className="grid md:grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Form Type</label>
+                    <select
+                      value={formType}
+                      onChange={(event) => setFormType(event.target.value as "match" | "pit")}
+                      className="w-full border rounded-lg p-2"
+                    >
+                      <option value="match">Match</option>
+                      <option value="pit">Pit</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Game</label>
+                    <select
+                      value={formGame}
+                      onChange={(event) => setFormGame(event.target.value as "REEFSCAPE" | "REBUILT")}
+                      className="w-full border rounded-lg p-2"
+                    >
+                      <option value="REEFSCAPE">REEFSCAPE</option>
+                      <option value="REBUILT">REBUILT</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {/* SECTIONS */}
@@ -321,6 +434,9 @@ function FormBuilderContent() {
                                 Type: <span className="font-mono">{field.type}</span>
                                 {field.options && field.options.length > 0 && (
                                   <> • Options: {field.options.join(", ")}</>
+                                )}
+                                {field.scaleLabels && field.scaleLabels.some((label) => label.trim().length > 0) && (
+                                  <> • Scale: {field.scaleLabels.map((label, i) => `${i + 1}=${label || "-"}`).join(", ")}</>
                                 )}
                               </p>
                             </div>
@@ -406,14 +522,24 @@ function FormBuilderContent() {
                       </label>
                       <select
                         value={newField.type}
-                        onChange={(e) => setNewField({ ...newField, type: e.target.value as FieldType })}
+                        onChange={(e) => {
+                          const type = e.target.value as FieldType;
+                          setNewField({
+                            ...newField,
+                            type,
+                            scaleLabels: type === "slider" || type === "rating"
+                              ? (newField.scaleLabels && newField.scaleLabels.length === 5 ? newField.scaleLabels : ["", "", "", "", ""])
+                              : newField.scaleLabels,
+                          });
+                        }}
                         className="w-full border rounded-lg p-2"
                       >
                         <option value="number">Number Counter</option>
                         <option value="checkbox">Checkbox</option>
                         <option value="text">Text Input</option>
                         <option value="select">Dropdown</option>
-                        <option value="rating">Rating (1-5)</option>
+                        <option value="slider">Slider (1-5)</option>
+                        <option value="rating">Rating (Legacy 1-5)</option>
                       </select>
                     </div>
 
@@ -431,6 +557,30 @@ function FormBuilderContent() {
                           })}
                           className="w-full border rounded-lg p-2"
                         />
+                      </div>
+                    )}
+
+                    {(newField.type === "slider" || newField.type === "rating") && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Slider Meanings (1 to 5)
+                        </label>
+                        <div className="space-y-2">
+                          {[1, 2, 3, 4, 5].map((value, index) => (
+                            <input
+                              key={value}
+                              type="text"
+                              value={newField.scaleLabels?.[index] || ""}
+                              onChange={(event) => {
+                                const next = [...(newField.scaleLabels || ["", "", "", "", ""])];
+                                next[index] = event.target.value;
+                                setNewField({ ...newField, scaleLabels: next });
+                              }}
+                              placeholder={`What does ${value} mean?`}
+                              className="w-full border rounded-lg p-2"
+                            />
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -491,7 +641,8 @@ function FormBuilderContent() {
                         <li>• <strong>Checkbox:</strong> For yes/no questions</li>
                         <li>• <strong>Text:</strong> For notes and comments</li>
                         <li>• <strong>Dropdown:</strong> For predefined choices</li>
-                        <li>• <strong>Rating:</strong> For 1-5 scale assessments</li>
+                        <li>• <strong>Slider:</strong> For 1-5 scale with custom meanings</li>
+                        <li>• <strong>Rating:</strong> Legacy 1-5 scale</li>
                       </ul>
                     </div>
                   </div>
@@ -506,24 +657,60 @@ function FormBuilderContent() {
                     <p>Sections: <strong>{sections.length}</strong></p>
                   </div>
                   <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">Cloud Presets</label>
-                    <select
-                      value={selectedCloudFormId}
-                      onChange={(event) => loadCloudPreset(event.target.value)}
-                      className="w-full border rounded p-2"
-                    >
-                      <option value="">Select cloud preset</option>
-                      {cloudForms.map((preset) => (
-                        <option key={preset.id} value={preset.id}>{preset.name}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-medium text-gray-700">Saved Forms</label>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowSavedFormsMenu((prev) => !prev)}
+                        className="w-full border rounded p-2 text-left bg-white"
+                      >
+                        {selectedCloudFormId
+                          ? cloudForms.find((preset) => preset.id === selectedCloudFormId)?.name || "Saved Forms"
+                          : "Saved Forms"}
+                      </button>
+                      {showSavedFormsMenu && (
+                        <div className="absolute left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white border border-gray-200 rounded shadow z-20">
+                          {cloudForms.length === 0 ? (
+                            <p className="px-3 py-2 text-sm text-gray-500">No saved forms yet.</p>
+                          ) : (
+                            cloudForms.map((preset) => (
+                              <button
+                                key={preset.id}
+                                onClick={() => {
+                                  loadCloudPreset(preset.id);
+                                  setShowSavedFormsMenu(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
+                              >
+                                {preset.name} ({preset.formType || "match"} • {preset.game || "REEFSCAPE"})
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <button
-                      onClick={setAsActiveMatchForm}
+                      onClick={updateSelectedSavedForm}
+                      disabled={!selectedCloudFormId}
+                      className="w-full py-2 rounded text-white disabled:opacity-50"
+                      style={{ backgroundColor: "#1f7a3d" }}
+                    >
+                      Update Selected Form
+                    </button>
+                    <button
+                      onClick={deleteSelectedSavedForm}
+                      disabled={!selectedCloudFormId}
+                      className="w-full py-2 rounded text-white disabled:opacity-50"
+                      style={{ backgroundColor: "#b42318" }}
+                    >
+                      Delete Selected Form
+                    </button>
+                    <button
+                      onClick={setAsActiveAppliedForm}
                       disabled={!selectedCloudFormId}
                       className="w-full py-2 rounded text-white disabled:opacity-50"
                       style={{ background: "var(--primary-gradient)" }}
                     >
-                      Set As Active Match Form
+                      Set As Active Applied Form
                     </button>
                   </div>
                 </div>
