@@ -107,11 +107,16 @@ function PitScoutFormContent() {
           <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
             <div className="bg-white rounded-xl shadow p-4">
               <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scout Form</h1>
-              <p className="text-sm text-gray-600">Structured to match your Match Scout form flow.</p>
+            </div>
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+              <p className="text-sm text-yellow-700">
+                Note: Pit scouting form is currently not used for live event workflow.
+              </p>
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
               <h2 className="text-lg font-semibold theme-text">Information</h2>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Scout Name</label>
               <input
                 value={form.scoutName}
                 onChange={(event) => setForm({ ...form, scoutName: event.target.value })}
@@ -119,6 +124,7 @@ function PitScoutFormContent() {
                 placeholder="Scout Name"
                 required
               />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
               <input
                 value={form.teamNumber}
                 onChange={(event) => setForm({ ...form, teamNumber: event.target.value })}
@@ -126,11 +132,12 @@ function PitScoutFormContent() {
                 placeholder="Team Number"
                 required
               />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Picture of Robot</label>
               <input
                 value={form.robotPictureUrl}
                 onChange={(event) => setForm({ ...form, robotPictureUrl: event.target.value })}
                 className="w-full border rounded p-3"
-                placeholder="Picture of Robot URL"
+                placeholder="Paste robot picture URL"
               />
             </div>
 
@@ -156,24 +163,26 @@ function PitScoutFormContent() {
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
               <h2 className="text-lg font-semibold theme-text">Robot</h2>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Drive Base Type</label>
               <select
                 value={form.driveBaseType}
                 onChange={(event) => setForm({ ...form, driveBaseType: event.target.value })}
                 className="w-full border rounded p-3"
               >
-                <option value="">Drive Base Type</option>
+                <option value="">Select Drive Base Type</option>
                 <option>Swerve L1</option>
                 <option>Swerve L2</option>
                 <option>Swerve L3</option>
                 <option>Tank</option>
                 <option>Mecanum</option>
               </select>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Center of Gravity</label>
               <select
                 value={form.centerOfGravity}
                 onChange={(event) => setForm({ ...form, centerOfGravity: event.target.value })}
                 className="w-full border rounded p-3"
               >
-                <option value="">Center of Gravity</option>
+                <option value="">Select Center of Gravity</option>
                 <option>Low</option>
                 <option>Center</option>
                 <option>High</option>
@@ -200,12 +209,13 @@ function PitScoutFormContent() {
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
               <h2 className="text-lg font-semibold theme-text">Auto / Endgame</h2>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Barge Capability</label>
               <select
                 value={form.bargeCapability}
                 onChange={(event) => setForm({ ...form, bargeCapability: event.target.value })}
                 className="w-full border rounded p-3"
               >
-                <option value="">Barge Capability</option>
+                <option value="">Select Barge Capability</option>
                 <option>Can climb shallow cage</option>
                 <option>Can climb deep cage</option>
               </select>
@@ -258,7 +268,7 @@ function PitScoutFormContent() {
                 value={form.notes}
                 onChange={(event) => setForm({ ...form, notes: event.target.value })}
                 className="flex-1 border rounded p-2 resize-none"
-                placeholder="Team comments and observations..."
+                placeholder="Optional notes..."
               />
             </div>
           </div>

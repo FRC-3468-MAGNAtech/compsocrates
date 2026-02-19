@@ -33,13 +33,21 @@ type ScoutingEntry = {
   teleopCoralL2?: number;
   teleopCoralL3?: number;
   teleopCoralL4?: number;
+  penaltyPoints?: number;
+  practiceMode?: string;
+  isPracticeScouting?: boolean;
 };
+
+function isPracticeEntry(entry: ScoutingEntry) {
+  return entry.matchType === "practice" || Boolean(entry.practiceMode) || Boolean(entry.isPracticeScouting);
+}
 
 function PickListContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
+  const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [pickedTeams, setPickedTeams] = useState<TeamPick[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -84,15 +92,15 @@ function PickListContent() {
     localStorage.setItem(`pick-list-${userData.uid}`, JSON.stringify(pickedTeams));
   }, [pickedTeams, userData?.uid]);
 
-  const filteredEntries = useMemo(
-    () => entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)),
-    [entries, selectedEvent, selectedGame]
-  );
+  const filteredEntries = useMemo(() => {
+    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const teams = useMemo(() => {
     const grouped: Record<string, number[]> = {};
     filteredEntries.forEach((e) => {
-      if (!e.teamNumber || e.matchType === "practice") return;
+      if (!e.teamNumber) return;
       const score =
         (e.leftStartingZone ? 3 : 0) +
         (e.autoCoralL1 || 0) * 3 +
@@ -102,7 +110,8 @@ function PickListContent() {
         (e.teleopCoralL1 || 0) * 2 +
         (e.teleopCoralL2 || 0) * 3 +
         (e.teleopCoralL3 || 0) * 4 +
-        (e.teleopCoralL4 || 0) * 5;
+        (e.teleopCoralL4 || 0) * 5 +
+        Number(e.penaltyPoints || 0);
       if (!grouped[e.teamNumber]) grouped[e.teamNumber] = [];
       grouped[e.teamNumber].push(score);
     });
@@ -133,6 +142,8 @@ function PickListContent() {
       entriesCount={filteredEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+      practiceMatchesOnly={practiceMatchesOnly}
+      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
       onSelectedEventChange={setSelectedEvent}

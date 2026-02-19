@@ -35,12 +35,21 @@ type ScoutingEntry = {
   teleopProcessorScored?: number;
   teleopNetRobotScored?: number;
   teleopNetHumanScored?: number;
+  penaltyPoints?: number;
+  matchType?: string;
+  practiceMode?: string;
+  isPracticeScouting?: boolean;
 };
+
+function isPracticeEntry(entry: ScoutingEntry) {
+  return entry.matchType === "practice" || Boolean(entry.practiceMode) || Boolean(entry.isPracticeScouting);
+}
 
 function RankingsContent() {
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
+  const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -68,10 +77,10 @@ function RankingsContent() {
     loadEntries();
   }, []);
 
-  const filteredEntries = useMemo(
-    () => entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)),
-    [entries, selectedEvent, selectedGame]
-  );
+  const filteredEntries = useMemo(() => {
+    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const rankings = useMemo(() => {
     const teamScores: Record<string, number[]> = {};
@@ -92,7 +101,8 @@ function RankingsContent() {
         (e.teleopCoralL4 || 0) * 5 +
         (e.teleopProcessorScored || 0) * 6 +
         (e.teleopNetRobotScored || 0) * 4 +
-        (e.teleopNetHumanScored || 0) * 4;
+        (e.teleopNetHumanScored || 0) * 4 +
+        Number(e.penaltyPoints || 0);
       if (!teamScores[team]) teamScores[team] = [];
       teamScores[team].push(score);
     });
@@ -111,6 +121,8 @@ function RankingsContent() {
       entriesCount={filteredEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+      practiceMatchesOnly={practiceMatchesOnly}
+      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
       onSelectedEventChange={setSelectedEvent}

@@ -38,6 +38,7 @@ function ProfileContent() {
     avgAccuracy: 0,
     eventsScouted: 0,
   });
+  const [seasonGameBreakdown, setSeasonGameBreakdown] = useState<Array<{ season: number; game: string; count: number }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -83,6 +84,25 @@ function ProfileContent() {
           const entry = entryDoc.data();
           if (entry.eventKey) eventKeys.add(entry.eventKey);
         });
+        const seasonGameMap = new Map<string, { season: number; game: string; count: number }>();
+        scoutingSnap.docs.forEach((entryDoc) => {
+          const entry = entryDoc.data() as Record<string, unknown>;
+          const eventKey = String(entry.eventKey || "");
+          const eventSeason = parseInt(eventKey.slice(0, 4), 10);
+          const fallbackSeason = typeof entry.timestamp === "number" ? new Date(entry.timestamp).getFullYear() : new Date().getFullYear();
+          const season = Number.isFinite(eventSeason) ? eventSeason : fallbackSeason;
+          const game = String(entry.game || "Unknown");
+          const key = `${season}-${game}`;
+          const existing = seasonGameMap.get(key) || { season, game, count: 0 };
+          existing.count += 1;
+          seasonGameMap.set(key, existing);
+        });
+        setSeasonGameBreakdown(
+          Array.from(seasonGameMap.values()).sort((a, b) => {
+            if (a.season !== b.season) return b.season - a.season;
+            return a.game.localeCompare(b.game);
+          })
+        );
 
         let accuracyTotal = 0;
         let accuracyCount = 0;
@@ -177,6 +197,33 @@ function ProfileContent() {
                   <p className="text-xs text-gray-500">Events</p>
                   <p className="text-2xl font-bold">{stats.eventsScouted}</p>
                 </div>
+              </div>
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">By Season / Game</h3>
+                {seasonGameBreakdown.length === 0 ? (
+                  <p className="text-sm text-gray-500">No scouting entries yet.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-500">
+                          <th className="py-1">Season</th>
+                          <th className="py-1">Game</th>
+                          <th className="py-1 text-right">Entries</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {seasonGameBreakdown.map((row) => (
+                          <tr key={`${row.season}-${row.game}`} className="border-t border-gray-100">
+                            <td className="py-1">{row.season}</td>
+                            <td className="py-1">{row.game}</td>
+                            <td className="py-1 text-right font-semibold">{row.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>

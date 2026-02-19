@@ -40,12 +40,20 @@ type PitEntry = {
   betterAt?: string;
   rating?: number;
   notes?: string;
+  matchType?: string;
+  practiceMode?: string;
+  isPracticeScouting?: boolean;
 };
+
+function isPracticeEntry(entry: PitEntry) {
+  return entry.matchType === "practice" || Boolean(entry.practiceMode) || Boolean(entry.isPracticeScouting);
+}
 
 function PitAnalyticsContent() {
   const [entries, setEntries] = useState<PitEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
+  const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -84,16 +92,18 @@ function PitAnalyticsContent() {
     [entries]
   );
 
-  const filtered = useMemo(
-    () => normalized.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)),
-    [normalized, selectedEvent, selectedGame]
-  );
+  const filtered = useMemo(() => {
+    const gameFiltered = normalized.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+  }, [normalized, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   return (
     <AnalyticsShell
       entriesCount={filtered.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+      practiceMatchesOnly={practiceMatchesOnly}
+      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
@@ -164,4 +174,3 @@ export default function PitAnalyticsPage() {
     </ProtectedRoute>
   );
 }
-

@@ -446,6 +446,30 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
     </div>
   );
 
+  function calculateSubmissionScore(penaltyPoints = 0) {
+    let score = 0;
+    if (formData.leftStartingZone) score += 3;
+    score += formData.autoCoralL1 * 3;
+    score += formData.autoCoralL2 * 4;
+    score += formData.autoCoralL3 * 6;
+    score += formData.autoCoralL4 * 7;
+    score += formData.autoAlgaeProcessorScored * 6;
+    score += formData.autoAlgaeNetScored * 4;
+    score += formData.teleopCoralL1 * 2;
+    score += formData.teleopCoralL2 * 3;
+    score += formData.teleopCoralL3 * 4;
+    score += formData.teleopCoralL4 * 5;
+    score += formData.teleopProcessorScored * 6;
+    score += formData.teleopNetRobotScored * 4;
+    score += formData.teleopNetHumanScored * 4;
+    if (formData.teleopAlgaeRemoved) score += 2;
+    const stageStatus = formData.stageStatus.toLowerCase();
+    if (stageStatus.includes("deep")) score += 12;
+    else if (stageStatus.includes("shallow")) score += 6;
+    else if (stageStatus.includes("park") || stageStatus.includes("barge")) score += 2;
+    return score + penaltyPoints;
+  }
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
@@ -453,6 +477,11 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
       {/* LEFT COLUMN */}
       <div className="flex-1 p-4 space-y-6 max-w-3xl">
+        <div className="bg-white rounded-xl shadow p-4">
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            Match Scouting Form
+          </h1>
+        </div>
         {showEventWarning && (
           <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
             <p className="text-sm text-yellow-700">
@@ -738,6 +767,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                 const now = Date.now();
                 const eventKey = classifyRebuiltEventByTimestamp(now);
                 const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
+                const penaltyPoints = 0;
                 const submission = {
                   ...formData,
                   matchId,
@@ -747,6 +777,8 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                   eventKey,
                   eventName,
                   game: "REBUILT",
+                  penaltyPoints,
+                  scoutedScore: calculateSubmissionScore(penaltyPoints),
                   timestamp: now,
                   submittedAt: now,
                 };
@@ -807,7 +839,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             className="flex-1 border rounded p-2 resize-none"
-            placeholder="Write notes here..."
+            placeholder="Optionl notes"
           />
         </div>
       </div>

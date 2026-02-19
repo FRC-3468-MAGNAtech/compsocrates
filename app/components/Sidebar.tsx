@@ -57,26 +57,26 @@ export default function Sidebar() {
   // Navigation items based on role
   const coachNavItems = [
     { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
-    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
-    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
-    { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/people", label: "People", icon: UserCircle2 },
+    { href: "/scout-form", label: "Match Scouting Form", icon: ClipboardList },
+    { href: "/pit-scout-form", label: "Pit Scouting Form", icon: ClipboardList },
     { href: "/form-builder", label: "Form Builder", icon: Wrench },
+    { href: "/analytics", label: "Analytics", icon: TrendingUp },
+    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
-    { href: "/team-management", label: "Team Management", icon: Users },
-    { href: "/assignments", label: "Assignments", icon: Calendar },
     { href: "/event-selection", label: "Event Selection", icon: Calendar },
+    { href: "/assignments", label: "Assignments", icon: Calendar },
+    { href: "/people", label: "People", icon: UserCircle2 },
+    { href: "/team-management", label: "Team Management", icon: Users },
   ];
 
   const scoutNavItems = [
     { href: "/scout-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
-    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
-    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
+    { href: "/scout-form", label: "Match Scouting Form", icon: ClipboardList },
+    { href: "/pit-scout-form", label: "Pit Scouting Form", icon: ClipboardList },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/people", label: "People", icon: UserCircle2 },
+    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/event-selection", label: "Event Selection", icon: Calendar },
+    { href: "/people", label: "People", icon: UserCircle2 },
   ];
 
   // Set navigation based on role

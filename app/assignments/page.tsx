@@ -45,6 +45,7 @@ type MatchOption = {
   compLevel: TBAMatch["comp_level"];
   matchNumber: number;
   setNumber: number;
+  scheduleTime: number;
 };
 
 function compLevelPriority(compLevel: string) {
@@ -128,6 +129,7 @@ function AssignmentsContent() {
           compLevel: match.comp_level,
           matchNumber: match.match_number,
           setNumber: match.set_number,
+          scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
         }));
         setMatchOptions(options);
       } catch (error) {
@@ -145,6 +147,17 @@ function AssignmentsContent() {
     () => matchOptions.find((match) => match.key === selectedMatchKey) || null,
     [matchOptions, selectedMatchKey]
   );
+  const activeOrNextMatchKey = useMemo(() => {
+    const now = Date.now() / 1000;
+    const timedMatches = [...matchOptions]
+      .filter((match) => match.scheduleTime > 0)
+      .sort((a, b) => a.scheduleTime - b.scheduleTime);
+    if (timedMatches.length === 0) return "";
+    const active = timedMatches.find((match) => now >= match.scheduleTime && now <= match.scheduleTime + 8 * 60);
+    if (active) return active.key;
+    const next = timedMatches.find((match) => match.scheduleTime >= now);
+    return next?.key || timedMatches[timedMatches.length - 1].key;
+  }, [matchOptions]);
 
   const typeFilteredMatches = useMemo(() => {
     if (selectedMatchType === "practice") {
@@ -192,6 +205,58 @@ function AssignmentsContent() {
     } catch (error) {
       console.error("Error deleting assignment:", error);
       alert("Error deleting assignment");
+    }
+  }
+
+  async function randomizeAllAssignments() {
+    if (!userData || !selectedEvent) return;
+    const qualificationMatches = matchOptions.filter((match) => match.compLevel === "qm");
+    if (qualificationMatches.length === 0) {
+      alert("No qualification matches available to randomize.");
+      return;
+    }
+
+    const attendeeNames = eventAttendees[selectedEvent] || [];
+    const attendeeMembers = members.filter((member) => attendeeNames.includes(member.displayName));
+    const eligibleMembers = (attendeeMembers.length > 0 ? attendeeMembers : members).filter(
+      (member) => member.displayName.trim().length > 0
+    );
+    if (eligibleMembers.length === 0) {
+      alert("No available members to assign.");
+      return;
+    }
+
+    if (!confirm("Randomize all qualification assignments for this event? Existing assignments will be replaced.")) return;
+
+    try {
+      const existing = assignments.filter((assignment) => assignment.eventKey === selectedEvent);
+      await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
+
+      const newAssignments: Array<Omit<Assignment, "id">> = [];
+      let scoutPointer = 0;
+      qualificationMatches.forEach((match) => {
+        match.teams.forEach((teamNumber) => {
+          const scout = eligibleMembers[scoutPointer % eligibleMembers.length];
+          scoutPointer += 1;
+          newAssignments.push({
+            eventKey: selectedEvent,
+            matchKey: match.key,
+            matchLabel: match.label,
+            scoutId: scout.uid,
+            scoutName: scout.displayName,
+            teamNumber,
+            assignedBy: userData.uid,
+            assignedAt: Date.now(),
+          });
+        });
+      });
+
+      await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "matchAssignments"), assignment)));
+      await loadData();
+      alert(`Randomized ${newAssignments.length} assignments across ${qualificationMatches.length} matches.`);
+    } catch (error) {
+      console.error("Error randomizing assignments:", error);
+      alert("Error randomizing assignments.");
     }
   }
 
@@ -339,6 +404,59 @@ function AssignmentsContent() {
               </table>
             </div>
           )}
+
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Match Schedule</h2>
+                <p className="text-sm text-gray-600">Live schedule with assigned scouts for each team.</p>
+              </div>
+              <button
+                onClick={randomizeAllAssignments}
+                className="px-4 py-2 rounded text-white text-sm font-semibold"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Randomize All
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {matchOptions.map((match) => {
+                    const matchAssignments = assignments.filter((assignment) => assignment.matchKey === match.key);
+                    const isActive = activeOrNextMatchKey === match.key;
+                    return (
+                      <tr key={match.key} className={isActive ? "bg-yellow-50" : ""}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-medium">{match.label}</span>
+                          {isActive && <span className="ml-2 text-xs font-semibold text-yellow-700">ACTIVE/NEXT</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {match.scheduleTime > 0
+                            ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                            : "TBD"}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {matchAssignments.length === 0
+                            ? "Unassigned"
+                            : matchAssignments
+                                .map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`)
+                                .join(" | ")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
           {showAssignModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

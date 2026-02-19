@@ -17,9 +17,11 @@ type Entry = {
   scoutId?: string;
   practiceMode?: "trial" | "competitive";
   isPracticeScouting?: boolean;
+  practiceSessionId?: string;
   eventKey?: string;
   eventName?: string;
   game?: string;
+  penaltyPoints?: number;
   teamNumber: string;
   scoutName: string;
   startingPosition: string;
@@ -100,6 +102,7 @@ function scoreEntry(e: Entry) {
   s += e.teleopNetRobotScored * PTS.TELE_ALGAE_NET_R;
   s += e.teleopNetHumanScored * PTS.TELE_ALGAE_NET_H;
   if (e.teleopAlgaeRemoved) s += 2;
+  s += Number(e.penaltyPoints || 0);
   const end = e.stageStatus.toLowerCase();
   if (end.includes("deep")) s += PTS.CLIMB_DEEP;
   else if (end.includes("shallow")) s += PTS.CLIMB_SHALLOW;
@@ -136,24 +139,23 @@ type SortKey = keyof Entry | "score";
 type SortDir = "asc" | "desc";
 
 function AnalyticsPageContent() {
-  const LOCKED_GAME: AnalyticsGame = "REEFSCAPE";
   const { userData } = useAuth();
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(LOCKED_GAME);
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState(() => {
     if (typeof window === "undefined") return "all";
     return localStorage.getItem("analytics-selected-event") || "all";
   });
-  const [showPractice, setShowPractice] = useState(false);
+  const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
-    if (typeof window === "undefined") return LOCKED_GAME;
+    if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
-    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : LOCKED_GAME;
+    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
   });
   const [importEvent, setImportEvent] = useState("app-testing");
 
@@ -167,10 +169,9 @@ function AnalyticsPageContent() {
   }, [selectedGame, selectedEvent]);
 
   function handleGameChange(nextGame: AnalyticsGame) {
-    void nextGame;
-    const validEvents = getEventsForGame(LOCKED_GAME).map((event) => event.id);
-    setSelectedGame(LOCKED_GAME);
-    setImportGame(LOCKED_GAME);
+    const validEvents = getEventsForGame(nextGame).map((event) => event.id);
+    setSelectedGame(nextGame);
+    setImportGame(nextGame);
     if (selectedEvent !== "all" && !validEvents.includes(selectedEvent)) {
       setSelectedEvent("all");
     }
@@ -190,19 +191,19 @@ function AnalyticsPageContent() {
   }, []);
 
   const filtered = useMemo(() => {
-    if (showPractice) {
-      return rawData.filter((entry) => isPracticeScoutingEntry(entry));
-    }
     return rawData.filter((entry) => {
-      if (isPracticeScoutingEntry(entry)) return false;
-      return entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent);
+      if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)) return false;
+      if (practiceMatchesOnly) return isPracticeScoutingEntry(entry);
+      return !isPracticeScoutingEntry(entry);
     });
-  }, [rawData, selectedEvent, selectedGame, showPractice]);
+  }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const data = useMemo(() => {
     const withScore = filtered.map((entry) => ({ ...entry, score: scoreEntry(entry) }));
     return withScore.sort((a, b) => {
       if (sortKey === "matchNumber") {
+        const eventDiff = String(a.eventName || a.eventKey || "").localeCompare(String(b.eventName || b.eventKey || ""));
+        if (eventDiff !== 0) return sortDir === "asc" ? eventDiff : -eventDiff;
         const typeDiff = matchPriority(a.matchType) - matchPriority(b.matchType);
         if (typeDiff !== 0) return sortDir === "asc" ? typeDiff : -typeDiff;
         const numDiff = matchNumberValue(a.matchNumber) - matchNumberValue(b.matchNumber);
@@ -228,25 +229,14 @@ function AnalyticsPageContent() {
       return;
     }
     if (isPracticeScoutingEntry(entry)) {
-      const scoutName = entry.scoutName;
-      const scoutUid = entry.scoutId || "";
-      const practiceIds = new Set<string>();
-      const scoutingIds = new Set<string>();
-
-      const sessionsByName = await getDocs(query(collection(db, "practiceSessions"), where("scoutName", "==", scoutName)));
-      sessionsByName.docs.forEach((d) => practiceIds.add(d.id));
-      const scoutingByName = await getDocs(query(collection(db, "scouting"), where("scoutName", "==", scoutName)));
-      scoutingByName.docs.forEach((d) => scoutingIds.add(d.id));
-
-      if (scoutUid) {
-        const sessionsByUid = await getDocs(query(collection(db, "practiceSessions"), where("scoutId", "==", scoutUid)));
-        sessionsByUid.docs.forEach((d) => practiceIds.add(d.id));
-        const scoutingByUid = await getDocs(query(collection(db, "scouting"), where("scoutId", "==", scoutUid)));
-        scoutingByUid.docs.forEach((d) => scoutingIds.add(d.id));
+      const sessionId = entry.practiceSessionId;
+      if (sessionId) {
+        await deleteDoc(doc(db, "practiceSessions", sessionId));
+        const sameSession = await getDocs(query(collection(db, "scouting"), where("practiceSessionId", "==", sessionId)));
+        await Promise.all(sameSession.docs.map((sessionEntryDoc) => deleteDoc(doc(db, "scouting", sessionEntryDoc.id))));
+      } else {
+        await deleteDoc(doc(db, "scouting", entry.id));
       }
-
-      await Promise.all(Array.from(practiceIds).map((id) => deleteDoc(doc(db, "practiceSessions", id))));
-      await Promise.all(Array.from(scoutingIds).map((id) => deleteDoc(doc(db, "scouting", id))));
     } else {
       await deleteDoc(doc(db, "scouting", entry.id));
     }
@@ -444,15 +434,13 @@ function AnalyticsPageContent() {
       entriesCount={data.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => handleGameChange(game as AnalyticsGame)}
+      practiceMatchesOnly={practiceMatchesOnly}
+      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
     >
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <label className="text-sm text-gray-600 flex items-center gap-2">
-          <input type="checkbox" checked={showPractice} onChange={(e) => setShowPractice(e.target.checked)} />
-          Show Practice Matches
-        </label>
         <button className="px-3 py-1.5 text-sm rounded bg-green-600 text-white" onClick={exportToCSV}>
           Export CSV
         </button>
@@ -482,6 +470,7 @@ function AnalyticsPageContent() {
                   className="w-full border rounded p-2"
                 >
                   <option value="REEFSCAPE">REEFSCAPE</option>
+                  <option value="REBUILT">REBUILT</option>
                 </select>
               </div>
               <div>

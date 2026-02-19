@@ -187,6 +187,7 @@ function PracticeScoutingContent() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const formPaneRef = useRef<HTMLDivElement | null>(null);
 
   const [formData, setFormData] = useState<ScoutedData>({
     teamNumber: "",
@@ -250,16 +251,8 @@ function PracticeScoutingContent() {
       );
     }, 900);
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === " " || event.key.toLowerCase() === "k") {
-        event.preventDefault();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown, { capture: true });
     return () => {
       clearInterval(interval);
-      window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
   }, [selectedMode, currentMatch?.id]);
 
@@ -386,6 +379,7 @@ function PracticeScoutingContent() {
       incidents: [],
       notes,
     });
+    formPaneRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function submitPracticeSession(allRobotData: ScoutedData[]) {
@@ -395,7 +389,9 @@ function PracticeScoutingContent() {
     setLoading(true);
     try {
       const scores = allRobotData.map(data => calculateScoutedScore(data));
-      const totalScoutedScore = scores.reduce((a, b) => a + b, 0);
+      const baseScoutedScore = scores.reduce((a, b) => a + b, 0);
+      const penaltyPoints = Number(currentMatch.officialData?.penaltyPoints || 0);
+      const totalScoutedScore = baseScoutedScore + penaltyPoints;
       const officialAllianceScore =
         typeof currentMatch.officialData?.score === "number"
           ? currentMatch.officialData.score
@@ -426,6 +422,7 @@ function PracticeScoutingContent() {
         officialScore: officialAllianceScore,
         actualScore: officialAllianceScore,
         scoutedScore: totalScoutedScore,
+        penaltyPoints,
         accuracy: sessionAccuracy,
         deviceType: device.deviceType,
         deviceDetails: device.details,
@@ -454,6 +451,8 @@ function PracticeScoutingContent() {
             practiceMode: selectedMode || "trial",
             difficulty: selectedDifficulty || "easy",
             isPracticeScouting: true,
+            practiceSessionId: docRef.id,
+            penaltyPoints,
             deviceType: device.deviceType,
             deviceDetails: device.details,
           })
@@ -639,7 +638,7 @@ function PracticeScoutingContent() {
             </div>
 
             {/* SCOUTING FORM */}
-            <div className="w-full md:w-96 flex-1 overflow-y-auto bg-gray-100 p-4 space-y-4">
+            <div ref={formPaneRef} className="w-full md:w-96 flex-1 max-h-[44vh] md:max-h-none overflow-y-auto bg-gray-100 p-4 space-y-4">
               {/* Progress indicator */}
               <div className="bg-white rounded-lg p-4">
                 <div className="flex justify-between items-center mb-2">

@@ -10,6 +10,8 @@ type AnalyticsShellProps = {
   entriesCount: number;
   selectedGame: string;
   onSelectedGameChange: (game: string) => void;
+  practiceMatchesOnly?: boolean;
+  onPracticeMatchesOnlyChange?: (practiceOnly: boolean) => void;
   selectedEvent?: string;
   eventOptions?: Array<{ id: string; name: string }>;
   onSelectedEventChange?: (eventId: string) => void;
@@ -29,6 +31,8 @@ export default function AnalyticsShell({
   entriesCount,
   selectedGame,
   onSelectedGameChange,
+  practiceMatchesOnly = false,
+  onPracticeMatchesOnlyChange,
   selectedEvent,
   eventOptions = [],
   onSelectedEventChange,
@@ -116,6 +120,16 @@ export default function AnalyticsShell({
               <span className="text-sm text-gray-600">{entriesCount} entries</span>
             </div>
             <div className="flex items-center gap-2">
+              {onPracticeMatchesOnlyChange && (
+                <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+                  <input
+                    type="checkbox"
+                    checked={practiceMatchesOnly}
+                    onChange={(event) => onPracticeMatchesOnlyChange(event.target.checked)}
+                  />
+                  Practice Matches
+                </label>
+              )}
               <label className="text-sm text-gray-600">Game:</label>
               <select
                 value={selectedGame}
@@ -127,7 +141,20 @@ export default function AnalyticsShell({
               </select>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-6">{children}</div>
+          <div className="flex-1 overflow-y-auto p-6">
+            {selectedGame === "REBUILT" ? (
+              <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-md border border-red-200 p-8 text-center">
+                <h2 className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
+                  REBUILT Analytics Is Not Ready
+                </h2>
+                <p className="text-gray-700">
+                  This section is intentionally blocked for now. Switch back to REEFSCAPE to view analytics data.
+                </p>
+              </div>
+            ) : (
+              children
+            )}
+          </div>
         </div>
       </div>
     </div>

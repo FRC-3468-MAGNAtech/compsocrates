@@ -56,6 +56,7 @@ type ScoutingEntry = {
   teleopNetRobotScored?: number;
   teleopNetHumanScored?: number;
   stageStatus?: string;
+  penaltyPoints?: number;
 };
 
 function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }>) {
@@ -89,6 +90,7 @@ function scoreScoutingEntry(entry: ScoutingEntry): number {
   score += (entry.teleopNetRobotScored || 0) * 4;
   score += (entry.teleopNetHumanScored || 0) * 4;
   if (entry.teleopAlgaeRemoved) score += 2;
+  score += Number(entry.penaltyPoints || 0);
   const end = (entry.stageStatus || "").toLowerCase();
   if (end.includes("deep")) score += 12;
   else if (end.includes("shallow")) score += 6;
@@ -151,7 +153,9 @@ function ScoutAccuracyContent() {
             .filter(
               (entry) =>
                 entry.game === "REEFSCAPE" &&
-                (entry.matchType !== "practice" || entry.isPracticeScouting || Boolean(entry.practiceMode))
+                entry.matchType !== "practice" &&
+                !entry.isPracticeScouting &&
+                !entry.practiceMode
             )
             .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
 
@@ -166,7 +170,9 @@ function ScoutAccuracyContent() {
             .filter(
               (entry) =>
                 entry.game === "REEFSCAPE" &&
-                (entry.matchType !== "practice" || entry.isPracticeScouting || Boolean(entry.practiceMode))
+                entry.matchType !== "practice" &&
+                !entry.isPracticeScouting &&
+                !entry.practiceMode
             )
             .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
           const competitionAccuracies = scoutCompetitionEntries.map((entry) => {
@@ -179,12 +185,13 @@ function ScoutAccuracyContent() {
             if (baseline <= 0) return 0;
             return Math.max(0, Math.round((1 - Math.abs(score - baseline) / baseline) * 100));
           });
+          const nonZeroCompetitionAccuracies = competitionAccuracies.filter((value) => value > 0);
           const competitionDevicePoints = scoutCompetitionEntries.map((entry, index) => ({
             deviceType: entry.deviceType,
             accuracy: competitionAccuracies[index] || 0,
           }));
-          const averageAccuracy = competitionAccuracies.length
-            ? Math.round(competitionAccuracies.reduce((sum, value) => sum + value, 0) / competitionAccuracies.length)
+          const averageAccuracy = nonZeroCompetitionAccuracies.length
+            ? Math.round(nonZeroCompetitionAccuracies.reduce((sum, value) => sum + value, 0) / nonZeroCompetitionAccuracies.length)
             : 0;
 
           return {
@@ -193,10 +200,10 @@ function ScoutAccuracyContent() {
             specialRole: member.specialRole,
             specialRoles: member.specialRoles,
             totalEntries: entries.length,
-            practiceSessionsCompleted: competitionAccuracies.length,
+            practiceSessionsCompleted: scoutCompetitionEntries.length,
             averageAccuracy,
             lastPracticeDate: Date.now(),
-            recentAccuracies: competitionAccuracies.slice(-5).reverse(),
+            recentAccuracies: nonZeroCompetitionAccuracies.slice(-5).reverse(),
             deviceBreakdown: getDeviceBreakdown(competitionDevicePoints),
           };
         }
@@ -213,7 +220,7 @@ function ScoutAccuracyContent() {
         const practiceDevicePoints: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }> = [];
         practiceSnapshot.forEach((doc) => {
           const data = doc.data();
-          if (data.accuracy !== undefined) {
+          if (typeof data.accuracy === "number") {
             totalAccuracy += data.accuracy;
             recentAccuracies.push(data.accuracy);
             practiceDevicePoints.push({
@@ -225,8 +232,11 @@ function ScoutAccuracyContent() {
             lastPracticeDate = data.timestamp;
           }
         });
-        recentAccuracies = recentAccuracies.sort((a, b) => b - a).slice(0, 5);
-        const averageAccuracy = practiceSnapshot.size > 0 ? Math.round(totalAccuracy / practiceSnapshot.size) : 0;
+        const nonZeroRecentAccuracies = recentAccuracies.filter((value) => value > 0);
+        recentAccuracies = nonZeroRecentAccuracies.sort((a, b) => b - a).slice(0, 5);
+        const averageAccuracy = nonZeroRecentAccuracies.length > 0
+          ? Math.round(totalAccuracy / nonZeroRecentAccuracies.length)
+          : 0;
 
         return {
           scoutName: member.scoutName,

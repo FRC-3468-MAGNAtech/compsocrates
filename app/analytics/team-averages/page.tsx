@@ -39,12 +39,21 @@ type ScoutingEntry = {
   teleopNetRobotScored?: number;
   teleopNetHumanScored?: number;
   teleopAlgaeRemoved?: boolean;
+  penaltyPoints?: number;
+  matchType?: string;
+  practiceMode?: string;
+  isPracticeScouting?: boolean;
 };
+
+function isPracticeEntry(entry: ScoutingEntry) {
+  return entry.matchType === "practice" || Boolean(entry.practiceMode) || Boolean(entry.isPracticeScouting);
+}
 
 function TeamAveragesContent() {
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
+  const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -72,10 +81,10 @@ function TeamAveragesContent() {
     loadEntries();
   }, []);
 
-  const filteredEntries = useMemo(
-    () => entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)),
-    [entries, selectedEvent, selectedGame]
-  );
+  const filteredEntries = useMemo(() => {
+    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const averages = useMemo(() => {
     const teamData: Record<string, number[]> = {};
@@ -86,7 +95,7 @@ function TeamAveragesContent() {
       const tele = (e.teleopCoralL1 || 0) * 2 + (e.teleopCoralL2 || 0) * 3 + (e.teleopCoralL3 || 0) * 4 + (e.teleopCoralL4 || 0) * 5 + (e.teleopProcessorScored || 0) * 6 + (e.teleopNetRobotScored || 0) * 4 + (e.teleopNetHumanScored || 0) * 4 + (e.teleopAlgaeRemoved ? 2 : 0);
       const stage = String(e.stageStatus || "").toLowerCase();
       const end = stage.includes("deep") ? 12 : stage.includes("shallow") ? 6 : stage.includes("park") ? 2 : 0;
-      const total = auto + tele + end;
+      const total = auto + tele + end + Number(e.penaltyPoints || 0);
       if (!teamData[team]) teamData[team] = [];
       teamData[team].push(total);
     });
@@ -110,6 +119,8 @@ function TeamAveragesContent() {
       entriesCount={filteredEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+      practiceMatchesOnly={practiceMatchesOnly}
+      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
