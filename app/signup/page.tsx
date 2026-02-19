@@ -7,9 +7,20 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { collection, addDoc, doc, getDoc } from "firebase/firestore";
-import { db } from "@/app/firebase";
+import { auth, db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
+
+async function resolveTeamCode(code: string): Promise<string | null> {
+  const normalized = code.trim();
+  if (!normalized) return null;
+  const attempts = [normalized, normalized.toUpperCase(), normalized.toLowerCase()];
+  for (const attempt of attempts) {
+    const teamDoc = await getDoc(doc(db, "teams", attempt));
+    if (teamDoc.exists()) return attempt;
+  }
+  return null;
+}
 
 export default function SignupPage() {
   const router = useRouter();
@@ -49,8 +60,8 @@ export default function SignupPage() {
         router.push("/dashboard");
       } else {
         // Verify team exists
-        const teamDoc = await getDoc(doc(db, "teams", joinCode));
-        if (!teamDoc.exists()) {
+        const resolvedTeamCode = await resolveTeamCode(joinCode);
+        if (!resolvedTeamCode) {
           setError("Team not found. Please check the join code.");
           setLoading(false);
           return;
@@ -61,11 +72,11 @@ export default function SignupPage() {
 
         // Create join request
         await addDoc(collection(db, "teamJoinRequests"), {
-          userId: email, // Will update with actual UID after verification
+          userId: auth.currentUser?.uid || email,
           userEmail: email,
           userName: displayName,
           userRole: role,
-          teamId: joinCode,
+          teamId: resolvedTeamCode,
           status: "pending",
           createdAt: Date.now()
         });

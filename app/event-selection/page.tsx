@@ -37,15 +37,17 @@ function EventSelectionContent() {
         const teamData = teamDoc.exists() ? teamDoc.data() : {};
         const encryptedKey =
           typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
+        const plainKey =
+          typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
         const year = new Date().getFullYear();
-        if (!encryptedKey) {
+        if (!encryptedKey && !plainKey) {
           throw new Error("Team TBA key is not configured.");
         }
 
         const response = await fetch("/api/tba/events", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ year, encryptedKey }),
+          body: JSON.stringify({ year, encryptedKey, plainKey }),
         });
         if (!response.ok) {
           throw new Error(`Unable to load events (${response.status})`);

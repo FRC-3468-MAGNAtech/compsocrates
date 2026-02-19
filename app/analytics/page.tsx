@@ -400,7 +400,21 @@ function AnalyticsPageContent() {
         if (lines.length < 2) {
           throw new Error("CSV has no data rows.");
         }
-        const headers = parseCsvLine(lines[0]).map(normalizeHeader);
+        const findHeaderRowIndex = () => {
+          for (let row = 0; row < Math.min(lines.length, 8); row += 1) {
+            const cells = parseCsvLine(lines[row]).map(normalizeHeader);
+            if (
+              cells.includes("match") &&
+              (cells.includes("team") || cells.includes("teamnumber")) &&
+              cells.includes("scout")
+            ) {
+              return row;
+            }
+          }
+          return 0;
+        };
+        const headerRowIndex = findHeaderRowIndex();
+        const headers = parseCsvLine(lines[headerRowIndex]).map(normalizeHeader);
         const column = (aliases: string[], fallbackIndex: number) => {
           for (const alias of aliases) {
             const idx = headers.indexOf(normalizeHeader(alias));
@@ -442,7 +456,7 @@ function AnalyticsPageContent() {
 
         let imported = 0;
         let skipped = 0;
-        for (let i = 1; i < lines.length; i++) {
+        for (let i = headerRowIndex + 1; i < lines.length; i++) {
           if (!lines[i].trim()) continue;
           const values = parseCsvLine(lines[i]);
           const matchRaw = (values[idxMatch] || "").trim();
@@ -462,7 +476,11 @@ function AnalyticsPageContent() {
             rowSignals.includes("endgame") ||
             rowSignals.includes("general") ||
             rowSignals.includes("actions");
-          if (looksLikeHeaderRow || !/\d/.test(matchRaw)) {
+          const hasLikelyData =
+            /\d/.test(matchRaw) ||
+            /\d/.test(teamRaw) ||
+            values.some((value, idx) => idx !== idxScout && /\d/.test(String(value || "")));
+          if (looksLikeHeaderRow || !hasLikelyData) {
             skipped += 1;
             continue;
           }

@@ -15,6 +15,29 @@ type TeamJoinRequest = {
   createdAt?: number;
 };
 
+async function fetchPendingRequestsByEmail(email: string): Promise<TeamJoinRequest[]> {
+  if (!email) return [];
+  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userEmail", "==", email));
+  const requestsSnap = await getDocs(requestsQuery);
+  return requestsSnap.docs
+    .map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }))
+    .filter((request) => request.status === "pending") as TeamJoinRequest[];
+}
+
+async function resolveTeamCode(code: string): Promise<string | null> {
+  const normalized = code.trim();
+  if (!normalized) return null;
+  const attempts = [normalized, normalized.toUpperCase(), normalized.toLowerCase()];
+  for (const attempt of attempts) {
+    const teamDoc = await getDoc(doc(db, "teams", attempt));
+    if (teamDoc.exists()) return attempt;
+  }
+  return null;
+}
+
 function NoTeamDashboardContent() {
   const router = useRouter();
   const { user, userData, logOut } = useAuth();
@@ -36,22 +59,7 @@ function NoTeamDashboardContent() {
       setLoading(true);
       try {
         const email = userData.email || user.email || "";
-        if (!email) {
-          setPendingRequests([]);
-          return;
-        }
-        const requestsQuery = query(
-          collection(db, "teamJoinRequests"),
-          where("userEmail", "==", email),
-          where("status", "==", "pending")
-        );
-        const requestsSnap = await getDocs(requestsQuery);
-        setPendingRequests(
-          requestsSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...docSnap.data(),
-          })) as TeamJoinRequest[]
-        );
+        setPendingRequests(await fetchPendingRequestsByEmail(email));
       } catch (error) {
         console.error("Error loading pending requests:", error);
       } finally {
@@ -73,15 +81,15 @@ function NoTeamDashboardContent() {
       return;
     }
 
-    if (pendingRequests.some((request) => request.teamId === normalizedTeamCode)) {
+    if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
       setRequestError("You already have a pending request for that team.");
       return;
     }
 
     setSubmittingRequest(true);
     try {
-      const teamDoc = await getDoc(doc(db, "teams", normalizedTeamCode));
-      if (!teamDoc.exists()) {
+      const resolvedTeamCode = await resolveTeamCode(normalizedTeamCode);
+      if (!resolvedTeamCode) {
         setRequestError("Team not found. Please check the team code.");
         return;
       }
@@ -91,24 +99,14 @@ function NoTeamDashboardContent() {
         userEmail: userData.email || user.email || "",
         userName: userData.displayName || user.displayName || "",
         userRole: requestedRole,
-        teamId: normalizedTeamCode,
+        teamId: resolvedTeamCode,
         status: "pending",
         createdAt: Date.now(),
       });
 
-      const refreshedQuery = query(
-        collection(db, "teamJoinRequests"),
-        where("userEmail", "==", userData.email || user.email || ""),
-        where("status", "==", "pending")
-      );
-      const refreshedSnap = await getDocs(refreshedQuery);
-      setPendingRequests(
-        refreshedSnap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        })) as TeamJoinRequest[]
-      );
+      setPendingRequests(await fetchPendingRequestsByEmail(userData.email || user.email || ""));
       setTeamCode("");
+      setRequestError("");
     } catch (error) {
       console.error("Error creating team request:", error);
       setRequestError("Unable to create request right now.");

@@ -8,11 +8,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const year = Number(body?.year);
     const encryptedKey = typeof body?.encryptedKey === "string" ? body.encryptedKey : "";
-    if (!Number.isFinite(year) || !encryptedKey) {
-      return NextResponse.json({ error: "Missing year or encrypted key" }, { status: 400 });
+    const plainKey = typeof body?.plainKey === "string" ? body.plainKey.trim() : "";
+    if (!Number.isFinite(year) || (!encryptedKey && !plainKey)) {
+      return NextResponse.json({ error: "Missing year or API key" }, { status: 400 });
     }
 
-    const key = decryptTbaKey(encryptedKey);
+    const key = encryptedKey ? decryptTbaKey(encryptedKey) : plainKey;
     const tbaResponse = await fetch(`https://www.thebluealliance.com/api/v3/events/${year}`, {
       headers: {
         "X-TBA-Auth-Key": key,

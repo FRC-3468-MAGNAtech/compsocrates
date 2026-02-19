@@ -48,33 +48,43 @@ function APIKeysContent() {
 
     setSaving(true);
     try {
+      let storedEncrypted = false;
       const encryptionResponse = await fetch("/api/tba/encrypt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: apiKey.trim() }),
       });
-      if (!encryptionResponse.ok) {
-        throw new Error("Failed to encrypt API key");
-      }
-      const encryptionPayload = await encryptionResponse.json();
-      const encryptedKey =
-        typeof encryptionPayload?.encryptedKey === "string" ? encryptionPayload.encryptedKey : "";
-      if (!encryptedKey) {
-        throw new Error("No encrypted key returned");
+      if (encryptionResponse.ok) {
+        const encryptionPayload = await encryptionResponse.json();
+        const encryptedKey =
+          typeof encryptionPayload?.encryptedKey === "string" ? encryptionPayload.encryptedKey : "";
+        if (encryptedKey) {
+          await setDoc(
+            doc(db, "teams", userData.teamId),
+            {
+              tbaApiKeyEncrypted: encryptedKey,
+              tbaApiKey: deleteField(),
+            },
+            { merge: true }
+          );
+          storedEncrypted = true;
+        }
       }
 
-      await setDoc(
-        doc(db, "teams", userData.teamId),
-        {
-          tbaApiKeyEncrypted: encryptedKey,
-          tbaApiKey: deleteField(),
-        },
-        { merge: true }
-      );
+      if (!storedEncrypted) {
+        // Fallback for environments missing server encryption secret.
+        await setDoc(
+          doc(db, "teams", userData.teamId),
+          {
+            tbaApiKey: apiKey.trim(),
+          },
+          { merge: true }
+        );
+      }
 
       setHasStoredKey(true);
       setApiKey("");
-      alert("API key saved successfully!");
+      alert(storedEncrypted ? "API key saved successfully!" : "API key saved (fallback mode).");
     } catch (error) {
       console.error("Error saving API key:", error);
       alert("Failed to save API key");

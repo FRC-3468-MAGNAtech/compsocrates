@@ -44,6 +44,7 @@ function isPracticeEntry(entry: ScoutingEntry) {
 
 function PickListContent() {
   const { userData } = useAuth();
+  const isCoach = userData?.role === "coach";
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -131,11 +132,13 @@ function PickListContent() {
   }, [filteredEntries, pickedTeams]);
 
   function pickTeam(team: TeamPick) {
+    if (!isCoach) return;
     if (pickedTeams.some((p) => p.teamNumber === team.teamNumber)) return;
     setPickedTeams((prev) => [...prev, { ...team, picked: true, pickOrder: prev.length + 1 }]);
   }
 
   function removeTeam(teamNumber: string) {
+    if (!isCoach) return;
     const next = pickedTeams.filter((p) => p.teamNumber !== teamNumber).map((p, i) => ({ ...p, pickOrder: i + 1 }));
     setPickedTeams(next);
   }
@@ -153,6 +156,11 @@ function PickListContent() {
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Pick List</h1>
       <p className="text-gray-600 mb-6">Build and reorder your preferred alliance picks.</p>
+      {!isCoach && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-6">
+          View only: only coaches can add or remove teams from the pick list.
+        </p>
+      )}
 
       {loading ? (
         <LoadingSpinner message="Loading pick list..." />
@@ -169,9 +177,13 @@ function PickListContent() {
                     <p className="font-semibold">Team {team.teamNumber}</p>
                     <p className="text-sm text-gray-600">Avg {team.avgScore} | High {team.highScore}</p>
                   </div>
-                  <button onClick={() => pickTeam(team)} className="px-3 py-1.5 rounded theme-primary text-sm">
-                    Pick
-                  </button>
+                  {isCoach ? (
+                    <button onClick={() => pickTeam(team)} className="px-3 py-1.5 rounded theme-primary text-sm">
+                      Pick
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-500">Coach only</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -190,12 +202,16 @@ function PickListContent() {
                     </p>
                     <p className="text-sm text-gray-600">Avg {team.avgScore} | High {team.highScore}</p>
                   </div>
-                  <button
-                    onClick={() => removeTeam(team.teamNumber)}
-                    className="px-3 py-1.5 rounded bg-red-100 text-red-700 text-sm"
-                  >
-                    Remove
-                  </button>
+                  {isCoach ? (
+                    <button
+                      onClick={() => removeTeam(team.teamNumber)}
+                      className="px-3 py-1.5 rounded bg-red-100 text-red-700 text-sm"
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-500">Coach only</span>
+                  )}
                 </div>
               ))}
             </div>

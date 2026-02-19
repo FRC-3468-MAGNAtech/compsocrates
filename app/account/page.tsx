@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
+import { useRouter } from "next/navigation";
 import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -9,6 +10,7 @@ import ThemePicker from "@/app/components/ThemePicker";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 function AccountContent() {
+  const router = useRouter();
   const { user, userData, updateUserData, refreshUserData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -154,6 +156,17 @@ function AccountContent() {
             Account Settings
           </h1>
           <p className="text-gray-600 mb-8">Manage your account information and security</p>
+          {!userData.teamId && (
+            <div className="mb-6">
+              <button
+                onClick={() => router.push("/dashboard")}
+                className="px-4 py-2 rounded text-white font-semibold"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                Back To Dashboard
+              </button>
+            </div>
+          )}
 
           {/* SUCCESS/ERROR MESSAGES */}
           {error && (
