@@ -11,16 +11,8 @@ export type AnalyticsEventOption = {
 };
 
 const LEGACY_REEFSCAPE_EVENTS: AnalyticsEventOption[] = [
-  // Keep legacy practice/testing event keys available for REEFSCAPE analytics filters.
-  { id: "2025lake", key: "2025lake", name: "Bayou Regional (2025)", startDate: "2025-04-01", endDate: "2025-04-04" },
-  { id: "2025alhu", key: "2025alhu", name: "Rocket City Regional (2025)", startDate: "2025-03-18", endDate: "2025-03-21" },
-  ...APP_EVENTS.map((event) => ({
-    id: event.key,
-    key: event.key,
-    name: event.name,
-    startDate: event.startDate,
-    endDate: event.endDate,
-  })),
+  { id: "2025alhu", key: "2025alhu", name: "Rocket City Regional", startDate: "2025-03-18", endDate: "2025-03-21" },
+  { id: "2025lake", key: "2025lake", name: "Bayou Regional", startDate: "2025-04-01", endDate: "2025-04-04" },
   { id: "app-testing", name: "App Testing" },
 ];
 
@@ -49,6 +41,10 @@ export function getEventOptionsForEntries(
   entries: AnalyticsEntryLike[],
   game: AnalyticsGame
 ): AnalyticsEventOption[] {
+  if (game === "REEFSCAPE") {
+    return LEGACY_REEFSCAPE_EVENTS;
+  }
+
   const base = getEventsForGame(game);
   const byId = new Map<string, AnalyticsEventOption>(base.map((event) => [event.id, event]));
 

@@ -674,7 +674,7 @@ function PracticeScoutingContent() {
             </div>
 
             {/* SCOUTING FORM */}
-            <div ref={formPaneRef} className="w-full md:w-96 flex-1 max-h-[44vh] md:max-h-none overflow-y-auto bg-gray-100 p-4 space-y-4">
+            <div ref={formPaneRef} className="w-full md:w-96 flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4">
               {/* Progress indicator */}
               <div className="bg-white rounded-lg p-4">
                 <div className="flex justify-between items-center mb-2">
@@ -891,7 +891,7 @@ function PracticeScoutingContent() {
                   onClick={() => setMobileNotesOpen(false)}
                   aria-label="Close notes overlay"
                 />
-                <div className="absolute right-0 top-0 h-full w-[85vw] max-w-sm bg-white shadow-2xl overflow-y-auto">
+                <div className="absolute bottom-0 left-0 right-0 h-[38vh] min-h-[220px] max-h-[45vh] bg-white shadow-2xl rounded-t-2xl overflow-y-auto">
                   <div className="sticky top-0 z-10 bg-white border-b p-3 flex items-center justify-between">
                     <h2 className="text-base font-semibold" style={{ color: "#c42221" }}>Notes</h2>
                     <button
@@ -906,7 +906,7 @@ function PracticeScoutingContent() {
                     <textarea
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      className="w-full border rounded p-2 h-[70vh]"
+                      className="w-full border rounded p-2 h-[26vh] min-h-[140px]"
                       placeholder="Optional notes..."
                     />
                   </div>

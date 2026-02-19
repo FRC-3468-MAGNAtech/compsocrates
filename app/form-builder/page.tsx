@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, query, setDoc, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
@@ -94,7 +94,6 @@ function FormBuilderContent() {
   const [selectedCloudFormId, setSelectedCloudFormId] = useState("");
   const [savedFormsModalOpen, setSavedFormsModalOpen] = useState(false);
   const [presetsModalOpen, setPresetsModalOpen] = useState(false);
-  const [savingCloud, setSavingCloud] = useState(false);
   
   const [newField, setNewField] = useState<FormField>({
     id: "",
@@ -184,26 +183,6 @@ function FormBuilderContent() {
       id: presetDoc.id,
       ...(presetDoc.data() as { name: string; fields: FormField[]; formType?: "match" | "pit"; game?: "REEFSCAPE" | "REBUILT" }),
     })));
-  }
-
-  async function savePresetToCloud() {
-    if (!userData?.teamId || !userData.uid) return;
-    setSavingCloud(true);
-    try {
-      await addDoc(collection(db, "formPresets"), {
-        teamId: userData.teamId,
-        name: formName,
-        fields,
-        formType,
-        game: formGame,
-        createdBy: userData.uid,
-        createdAt: Date.now(),
-      });
-      alert("Form saved.");
-      await refreshCloudForms();
-    } finally {
-      setSavingCloud(false);
-    }
   }
 
   async function updateSelectedSavedForm() {
@@ -357,19 +336,11 @@ function FormBuilderContent() {
               >
                 Saved Forms
               </button>
-              <button
-                onClick={savePresetToCloud}
-                disabled={savingCloud}
-                className="px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                {savingCloud ? "Saving..." : "Save Form"}
-              </button>
               <label
                 className="px-4 py-2 rounded-lg text-white font-medium cursor-pointer"
                 style={{ backgroundColor: "#666" }}
               >
-                📥 Import Form
+                Import Form
                 <input
                   type="file"
                   accept=".json"
@@ -382,7 +353,7 @@ function FormBuilderContent() {
                 className="px-4 py-2 rounded-lg text-white font-medium"
                 style={{ backgroundColor: "#c42221" }}
               >
-                💾 Export Form
+                Export Form
               </button>
             </div>
           </div>
@@ -687,41 +658,6 @@ function FormBuilderContent() {
                     <p>Required Fields: <strong>{fields.filter(f => f.required).length}</strong></p>
                     <p>Sections: <strong>{sections.length}</strong></p>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">Saved Forms</label>
-                    <button
-                      onClick={openSavedFormsModal}
-                      className="w-full border rounded p-2 text-left bg-white"
-                    >
-                      {selectedCloudFormId
-                        ? cloudForms.find((preset) => preset.id === selectedCloudFormId)?.name || "Saved Forms"
-                        : "Saved Forms"}
-                    </button>
-                    <button
-                      onClick={updateSelectedSavedForm}
-                      disabled={!selectedCloudFormId}
-                      className="w-full py-2 rounded text-white disabled:opacity-50"
-                      style={{ backgroundColor: "#1f7a3d" }}
-                    >
-                      Update Selected Form
-                    </button>
-                    <button
-                      onClick={deleteSelectedSavedForm}
-                      disabled={!selectedCloudFormId}
-                      className="w-full py-2 rounded text-white disabled:opacity-50"
-                      style={{ backgroundColor: "#b42318" }}
-                    >
-                      Delete Selected Form
-                    </button>
-                    <button
-                      onClick={setAsActiveAppliedForm}
-                      disabled={!selectedCloudFormId}
-                      className="w-full py-2 rounded text-white disabled:opacity-50"
-                      style={{ background: "var(--primary-gradient)" }}
-                    >
-                      Set As Active Applied Form
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -778,7 +714,6 @@ function FormBuilderContent() {
                     key={preset.id}
                     onClick={() => {
                       loadCloudPreset(preset.id);
-                      setSavedFormsModalOpen(false);
                     }}
                     className={`w-full text-left px-4 py-3 rounded border ${
                       selectedCloudFormId === preset.id ? "border-red-400 bg-red-50" : "border-gray-200 hover:bg-gray-50"
@@ -826,7 +761,21 @@ function FormBuilderContent() {
 export default function FormBuilderPage() {
   return (
     <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
-      <FormBuilderContent />
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar />
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-8">
+            <div className="bg-white rounded-xl shadow-md p-8 border-l-4" style={{ borderColor: "#c42221" }}>
+              <h1 className="text-3xl font-bold mb-3" style={{ color: "#c42221" }}>
+                Form Builder
+              </h1>
+              <p className="text-gray-700">
+                This page is not ready yet and is temporarily blocked.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </ProtectedRoute>
   );
 }

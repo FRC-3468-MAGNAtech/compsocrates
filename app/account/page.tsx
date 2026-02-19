@@ -9,7 +9,7 @@ import ThemePicker from "@/app/components/ThemePicker";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 function AccountContent() {
-  const { user, userData } = useAuth();
+  const { user, userData, updateUserData, refreshUserData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -130,10 +130,11 @@ function AccountContent() {
     setError("");
     setSuccess("");
     try {
-      await updateSecureUserDoc(user.uid, {
+      await updateUserData({
         bio: profileBio.trim(),
         profileVisibility,
       });
+      await refreshUserData();
       setSuccess("Profile settings updated.");
     } catch (err) {
       console.error("Profile preference update error:", err);

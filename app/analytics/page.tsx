@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, getDocs } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
@@ -178,7 +178,11 @@ function AnalyticsPageContent() {
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => {
+    if (typeof window === "undefined") return "REEFSCAPE";
+    const saved = localStorage.getItem("analytics-selected-game");
+    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
+  });
   const [selectedEvent, setSelectedEvent] = useState(() => {
     if (typeof window === "undefined") return "all";
     return localStorage.getItem("analytics-selected-event") || "all";
@@ -275,6 +279,13 @@ function AnalyticsPageContent() {
       setSortDir("asc");
       return key;
     });
+  }
+
+  async function handleDeleteEntry(entryId: string) {
+    const ok = window.confirm("Delete this scouting entry?");
+    if (!ok) return;
+    await deleteDoc(doc(db, "scouting", entryId));
+    await loadData();
   }
 
   function sortLabel(key: SortKey, label: string) {
@@ -430,10 +441,33 @@ function AnalyticsPageContent() {
         const idxAccuracy = column(["allianceaccuracy", "accuracy"], 30);
 
         let imported = 0;
+        let skipped = 0;
         for (let i = 1; i < lines.length; i++) {
           if (!lines[i].trim()) continue;
           const values = parseCsvLine(lines[i]);
-          const match = normalizeMatchLabel(values[idxMatch] || values[idxTeam] || "");
+          const matchRaw = (values[idxMatch] || "").trim();
+          const teamRaw = (values[idxTeam] || "").trim();
+          const scoutRaw = (values[idxScout] || "").trim();
+          const startRaw = (values[idxStartingPos] || "").trim();
+          const rowSignals = [matchRaw, teamRaw, scoutRaw, startRaw].map(normalizeHeader);
+          const looksLikeHeaderRow =
+            rowSignals.includes("match") ||
+            rowSignals.includes("team") ||
+            rowSignals.includes("scout") ||
+            rowSignals.includes("startingposition") ||
+            rowSignals.includes("information") ||
+            rowSignals.includes("prematch") ||
+            rowSignals.includes("autonomous") ||
+            rowSignals.includes("teleop") ||
+            rowSignals.includes("endgame") ||
+            rowSignals.includes("general") ||
+            rowSignals.includes("actions");
+          if (looksLikeHeaderRow || !/\d/.test(matchRaw)) {
+            skipped += 1;
+            continue;
+          }
+
+          const match = normalizeMatchLabel(matchRaw);
           const now = Date.now();
           const parseNum = (value: string, fallback = 0) => {
             const parsed = Number(value);
@@ -473,7 +507,7 @@ function AnalyticsPageContent() {
             stageStatus: values[idxEndPlace] || "",
             incidents: (values[idxIncidents] || "").split(";").map((item) => item.trim()).filter(Boolean),
             notes: values[idxComments] || "",
-            accuracy: values[idxAccuracy] ? parseNum(values[idxAccuracy]) : undefined,
+            ...(values[idxAccuracy] ? { accuracy: parseNum(values[idxAccuracy]) } : {}),
             eventKey: importEvent,
             eventName: importEventOptions.find((option) => option.id === importEvent)?.name || "App Testing",
             game: importGame,
@@ -482,7 +516,7 @@ function AnalyticsPageContent() {
           });
           imported += 1;
         }
-        alert(`Successfully imported ${imported} entries`);
+        alert(`Successfully imported ${imported} entries${skipped ? ` (${skipped} rows skipped)` : ""}`);
         await loadData();
         setShowImportDialog(false);
         setPendingImportFile(null);
@@ -603,6 +637,7 @@ function AnalyticsPageContent() {
               <th className="bg-pink-200 text-center" colSpan={2}>Comments</th>
               <th className="bg-pink-200 text-center" colSpan={1}>Accuracy Script</th>
               <th className="bg-pink-200 text-center" colSpan={1}>Script Status</th>
+              <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
             </tr>
             <tr>
               <th className="sticky-left-0 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
@@ -637,6 +672,7 @@ function AnalyticsPageContent() {
               <th className="text-center">Comments</th>
               <th className="text-center">Alliance Accuracy</th>
               <th className="text-center">Script Status</th>
+              <th className="text-center">Delete</th>
             </tr>
           </thead>
           <tbody>
@@ -676,6 +712,15 @@ function AnalyticsPageContent() {
                 <td className="text-center">{entry.notes || "-"}</td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? `${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%` : "-"}</td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
+                <td className="text-center">
+                  <button
+                    onClick={() => void handleDeleteEntry(entry.id)}
+                    className="px-3 py-1 rounded text-white text-sm"
+                    style={{ backgroundColor: "#dc2626" }}
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

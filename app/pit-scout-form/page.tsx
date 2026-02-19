@@ -40,7 +40,6 @@ function PitScoutFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
-  const [activeFormName, setActiveFormName] = useState("");
   const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
@@ -79,8 +78,7 @@ function PitScoutFormContent() {
       if (!activePitFormPresetId) return;
       const presetDoc = await getDoc(doc(db, "formPresets", activePitFormPresetId));
       if (!presetDoc.exists()) return;
-      const preset = presetDoc.data() as { name?: string; game?: "REEFSCAPE" | "REBUILT" };
-      setActiveFormName(preset.name || "");
+      const preset = presetDoc.data() as { game?: "REEFSCAPE" | "REBUILT" };
       setActiveFormGame(preset.game === "REBUILT" ? "REBUILT" : "REEFSCAPE");
     }
     void loadActivePitPreset();
@@ -124,9 +122,6 @@ function PitScoutFormContent() {
           <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
             <div className="bg-white rounded-xl shadow p-4">
               <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scout Form</h1>
-              {activeFormName && (
-                <p className="text-sm text-gray-600">Active Preset: {activeFormName} ({activeFormGame})</p>
-              )}
             </div>
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
               <p className="text-sm text-yellow-700">

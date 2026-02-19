@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocFromServer, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -55,16 +55,19 @@ function ProfileContent() {
       if (!params?.userId) return;
       setLoading(true);
       try {
-        const userSnap = await getDoc(doc(db, "users", params.userId));
+        const userSnap = await getDocFromServer(doc(db, "users", params.userId));
         if (!userSnap.exists()) {
           setProfile(null);
           return;
         }
         const user = userSnap.data() as UserProfile;
-        setProfile(user);
-        const visibility = user.profileVisibility || "team";
-        const sameUser = userData?.uid === user.uid;
-        const sameTeam = Boolean(userData?.teamId && user.teamId && userData.teamId === user.teamId);
+        const sameUser = userData?.uid === params.userId || userData?.uid === user.uid;
+        const mergedProfile = sameUser && userData
+          ? ({ ...user, ...userData, uid: params.userId } as UserProfile)
+          : user;
+        setProfile(mergedProfile);
+        const visibility = mergedProfile.profileVisibility || "team";
+        const sameTeam = Boolean(userData?.teamId && mergedProfile.teamId && userData.teamId === mergedProfile.teamId);
         const visible =
           visibility === "public" ||
           sameUser ||
@@ -73,19 +76,19 @@ function ProfileContent() {
 
         if (!visible) return;
 
-        if (user.teamId) {
-          const teamSnap = await getDoc(doc(db, "teams", user.teamId));
+        if (mergedProfile.teamId) {
+          const teamSnap = await getDoc(doc(db, "teams", mergedProfile.teamId));
           if (teamSnap.exists()) {
             const teamData = teamSnap.data() as TeamDoc;
-          setTeamLabel(teamData.teamNumber || teamData.teamName || user.teamId);
+          setTeamLabel(teamData.teamNumber || teamData.teamName || mergedProfile.teamId);
           } else {
-            setTeamLabel(user.teamId);
+            setTeamLabel(mergedProfile.teamId);
           }
         }
 
         const [scoutingSnap, practiceSnap] = await Promise.all([
-          getDocs(query(collection(db, "scouting"), where("scoutName", "==", user.displayName))),
-          getDocs(query(collection(db, "practiceSessions"), where("scoutName", "==", user.displayName))),
+          getDocs(query(collection(db, "scouting"), where("scoutName", "==", mergedProfile.displayName))),
+          getDocs(query(collection(db, "practiceSessions"), where("scoutName", "==", mergedProfile.displayName))),
         ]);
 
         const eventKeys = new Set<string>();

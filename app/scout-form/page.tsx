@@ -87,6 +87,12 @@ function Modal({
           }
         `}
       >
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50 z-10"
+        >
+          Cancel
+        </button>
         <div
           style={{ height }}
           className={`
@@ -343,7 +349,6 @@ function ScoutFormContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
-  const [activeFormName, setActiveFormName] = useState("");
   const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [activeFormFields, setActiveFormFields] = useState<ActivePresetField[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<{ id: number; type?: "qualification" | "practice" | "finals"; bracket?: "upper" | "lower" }>({ 
@@ -393,7 +398,6 @@ function ScoutFormContent() {
       const presetDoc = await getDoc(doc(db, "formPresets", activeMatchFormPresetId));
       if (!presetDoc.exists()) return;
       const preset = presetDoc.data() as { name?: string; fields?: ActivePresetField[]; game?: "REEFSCAPE" | "REBUILT" };
-      setActiveFormName(preset.name || "");
       setActiveFormGame(preset.game === "REBUILT" ? "REBUILT" : "REEFSCAPE");
       setActiveFormFields(Array.isArray(preset.fields) ? preset.fields : []);
     }
@@ -510,11 +514,6 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
             >
               Fix
             </button>
-            {activeFormName && (
-              <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
-                Active Preset: {activeFormName}
-              </span>
-            )}
           </div>
         </div>
 

@@ -8,7 +8,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Wrench, Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings
+  Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -49,7 +49,7 @@ export default function Sidebar() {
     loadTeamName();
   }, [userData?.teamId]);
 
-  if (!userData) return null;
+  if (!userData?.teamId) return null;
 
   const isCoach = userData.role === "coach";
   const showText = !collapsed || isMobileMenuOpen;
@@ -59,7 +59,6 @@ export default function Sidebar() {
     { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
     { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
     { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
-    { href: "/form-builder", label: "Form Builder", icon: Wrench },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
