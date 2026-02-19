@@ -19,12 +19,16 @@ async function fetchPendingRequestsByEmail(email: string): Promise<TeamJoinReque
   if (!email) return [];
   const requestsQuery = query(collection(db, "teamJoinRequests"), where("userEmail", "==", email));
   const requestsSnap = await getDocs(requestsQuery);
-  return requestsSnap.docs
-    .map((docSnap) => ({
+  const allRequests: TeamJoinRequest[] = requestsSnap.docs.map((docSnap) => {
+    const data = docSnap.data() as Record<string, unknown>;
+    return {
       id: docSnap.id,
-      ...docSnap.data(),
-    }))
-    .filter((request) => request.status === "pending") as TeamJoinRequest[];
+      teamId: String(data.teamId || ""),
+      status: String(data.status || ""),
+      createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
+    };
+  });
+  return allRequests.filter((request) => request.status === "pending");
 }
 
 async function resolveTeamCode(code: string): Promise<string | null> {
