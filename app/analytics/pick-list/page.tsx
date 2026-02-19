@@ -7,7 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
-import { entryMatchesAnalyticsFilters, getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 type TeamPick = {
   teamNumber: string;
@@ -54,14 +54,17 @@ function PickListContent() {
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
     const savedEvent = localStorage.getItem("analytics-selected-event");
+    const savedPractice = localStorage.getItem("analytics-practice-matches-only");
     if (savedGame === "REEFSCAPE" || savedGame === "REBUILT") setSelectedGame(savedGame);
     if (savedEvent) setSelectedEvent(savedEvent);
+    if (savedPractice !== null) setPracticeMatchesOnly(savedPractice === "true");
   }, []);
 
   useEffect(() => {
     localStorage.setItem("analytics-selected-game", selectedGame);
     localStorage.setItem("analytics-selected-event", selectedEvent);
-  }, [selectedGame, selectedEvent]);
+    localStorage.setItem("analytics-practice-matches-only", String(practiceMatchesOnly));
+  }, [selectedGame, selectedEvent, practiceMatchesOnly]);
 
   useEffect(() => {
     async function loadEntries() {
@@ -145,7 +148,7 @@ function PickListContent() {
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
+      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(entries, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Pick List</h1>

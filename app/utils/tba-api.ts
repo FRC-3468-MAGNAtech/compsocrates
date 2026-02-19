@@ -2,7 +2,7 @@
 // This file provides functions to fetch real FRC event data
 
 const TBA_BASE_URL = "https://www.thebluealliance.com/api/v3";
-const TBA_API_KEY = process.env.NEXT_PUBLIC_TBA_API_KEY || ""; // Add your key to .env.local
+const TBA_API_KEY = process.env.NEXT_PUBLIC_TBA_API_KEY || ""; // Fallback key from .env.local
 
 // Types
 export interface TBAEvent {
@@ -50,10 +50,15 @@ export interface TBAMatch {
 }
 
 // Helper to make TBA API calls
-async function tbaFetch(endpoint: string) {
+async function tbaFetch(endpoint: string, apiKey?: string) {
+  const resolvedApiKey = apiKey || TBA_API_KEY;
+  if (!resolvedApiKey) {
+    throw new Error("TBA API key not configured");
+  }
+
   const response = await fetch(`${TBA_BASE_URL}${endpoint}`, {
     headers: {
-      "X-TBA-Auth-Key": TBA_API_KEY,
+      "X-TBA-Auth-Key": resolvedApiKey,
     },
     cache: "no-store", // Always get fresh data
   });
@@ -66,33 +71,33 @@ async function tbaFetch(endpoint: string) {
 }
 
 // Get all events for a specific year
-export async function getEventsByYear(year: number): Promise<TBAEvent[]> {
-  return tbaFetch(`/events/${year}`);
+export async function getEventsByYear(year: number, apiKey?: string): Promise<TBAEvent[]> {
+  return tbaFetch(`/events/${year}`, apiKey);
 }
 
 // Get a specific event by key (e.g., "2026arli" for 2026 Arkansas Regional at Little Rock)
-export async function getEvent(eventKey: string): Promise<TBAEvent> {
-  return tbaFetch(`/event/${eventKey}`);
+export async function getEvent(eventKey: string, apiKey?: string): Promise<TBAEvent> {
+  return tbaFetch(`/event/${eventKey}`, apiKey);
 }
 
 // Get all teams at an event
-export async function getEventTeams(eventKey: string): Promise<TBATeam[]> {
-  return tbaFetch(`/event/${eventKey}/teams`);
+export async function getEventTeams(eventKey: string, apiKey?: string): Promise<TBATeam[]> {
+  return tbaFetch(`/event/${eventKey}/teams`, apiKey);
 }
 
 // Get all matches at an event
-export async function getEventMatches(eventKey: string): Promise<TBAMatch[]> {
-  return tbaFetch(`/event/${eventKey}/matches`);
+export async function getEventMatches(eventKey: string, apiKey?: string): Promise<TBAMatch[]> {
+  return tbaFetch(`/event/${eventKey}/matches`, apiKey);
 }
 
 // Get team info
-export async function getTeam(teamNumber: number): Promise<TBATeam> {
-  return tbaFetch(`/team/frc${teamNumber}`);
+export async function getTeam(teamNumber: number, apiKey?: string): Promise<TBATeam> {
+  return tbaFetch(`/team/frc${teamNumber}`, apiKey);
 }
 
 // Get events a team is attending this year
-export async function getTeamEvents(teamNumber: number, year: number): Promise<TBAEvent[]> {
-  return tbaFetch(`/team/frc${teamNumber}/events/${year}`);
+export async function getTeamEvents(teamNumber: number, year: number, apiKey?: string): Promise<TBAEvent[]> {
+  return tbaFetch(`/team/frc${teamNumber}/events/${year}`, apiKey);
 }
 
 // Helper: Format match type for display

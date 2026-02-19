@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { sendEmailVerification } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/app/firebase";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 export default function VerifyEmailPage() {
   const { user } = useAuth();
@@ -12,11 +15,14 @@ export default function VerifyEmailPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if already verified
-    if (user?.emailVerified) {
-      router.push("/scout-dashboard");
+    async function routeVerifiedUser() {
+      if (!user?.emailVerified) return;
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const userData = userDoc.exists() ? userDoc.data() : null;
+      router.push(getDashboardRoute(userData as { role?: "coach" | "scout"; teamId?: string } | null));
     }
-  }, [user?.emailVerified, router]);
+    routeVerifiedUser();
+  }, [user?.emailVerified, user?.uid, router]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -45,8 +51,9 @@ export default function VerifyEmailPage() {
 
     await user.reload();
     if (user.emailVerified) {
-      alert("Email verified! Redirecting...");
-      router.push("/scout-dashboard");
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const userData = userDoc.exists() ? userDoc.data() : null;
+      router.push(getDashboardRoute(userData as { role?: "coach" | "scout"; teamId?: string } | null));
     } else {
       alert("Email not verified yet. Please check your inbox.");
     }

@@ -9,6 +9,7 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents } from "@/app/utils/stats-calculator";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 type ScoutStats = {
   matchesScoutedCount: number;
@@ -24,8 +25,13 @@ function ScoutDashboardContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (userData && !userData.teamId) {
+      setLoading(false);
+      router.push(getDashboardRoute(userData));
+      return;
+    }
     loadDashboardData();
-  }, [userData]);
+  }, [userData, router]);
 
   async function loadDashboardData() {
     if (!userData) return;

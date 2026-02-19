@@ -2,10 +2,10 @@
 
 import { useState, useRef } from "react";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, updateDoc } from "firebase/firestore";
-import { storage, db } from "@/app/firebase";
+import { storage } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { Camera, Upload, X } from "lucide-react";
+import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 export default function ProfilePictureUpload() {
   const { currentUser, userData, refreshUserData } = useAuth();
@@ -54,7 +54,7 @@ export default function ProfilePictureUpload() {
       const downloadURL = await getDownloadURL(storageRef);
 
       // Update user document
-      await updateDoc(doc(db, "users", currentUser.uid), {
+      await updateSecureUserDoc(currentUser.uid, {
         photoURL: downloadURL
       });
 

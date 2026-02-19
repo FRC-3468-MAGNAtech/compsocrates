@@ -45,8 +45,8 @@ export default function SignupPage() {
       if (isCreatingTeam) {
         // Create new team
         await signUp(email, password, displayName, role, joinCode, true);
-        alert("Account created! Please check your email to verify your account before signing in.");
-        router.push("/login");
+        alert("Account created! Please verify your email to continue.");
+        router.push("/dashboard");
       } else {
         // Verify team exists
         const teamDoc = await getDoc(doc(db, "teams", joinCode));
@@ -71,7 +71,7 @@ export default function SignupPage() {
         });
 
         alert("Account created! Please verify your email and wait for team admin approval.");
-        router.push("/login");
+        router.push("/dashboard");
       }
     } catch (error: any) {
       console.error("Signup error:", error);

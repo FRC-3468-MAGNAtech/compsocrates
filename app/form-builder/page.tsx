@@ -52,18 +52,32 @@ const REEFSCAPE_MATCH_PRESET_FIELDS: FormField[] = [
 ];
 
 const REEFSCAPE_PIT_PRESET_FIELDS: FormField[] = [
-  { id: "scoutName", label: "Scout Name", type: "text", section: "Pre-Match", required: true },
-  { id: "teamNumber", label: "Team Number", type: "number", section: "Pre-Match", required: true },
-  { id: "robotPictureUrl", label: "Picture of Robot", type: "text", section: "Pre-Match", required: false },
-  { id: "pitDisposition", label: "Pit Disposition", type: "checkbox", section: "Pre-Match", required: false },
-  { id: "driveDisposition", label: "Drive Disposition", type: "checkbox", section: "Pre-Match", required: false },
-  { id: "driveBaseType", label: "Drive Base Type", type: "select", section: "Teleop", options: ["Swerve L1", "Swerve L2", "Swerve L3", "Tank", "Mecanum"], required: false },
-  { id: "centerOfGravity", label: "Center of Gravity", type: "select", section: "Teleop", options: ["Low", "Center", "High"], required: false },
-  { id: "bargeCapability", label: "Barge Capability", type: "select", section: "Endgame", options: ["Can climb shallow cage", "Can climb deep cage"], required: false },
-  { id: "autoCapabilities", label: "Auto Capabilities", type: "text", section: "Autonomous", required: false },
-  { id: "rating", label: "Overall Robot Rating", type: "slider", section: "Post-Match", scaleLabels: ["Poor", "Limited", "Average", "Strong", "Elite"], required: false },
-  { id: "notes", label: "Notes", type: "text", section: "Post-Match", required: false },
+  { id: "scoutName", label: "Scout Name", type: "text", section: "Information", required: true },
+  { id: "teamNumber", label: "Team Number", type: "number", section: "Information", required: true },
+  { id: "robotPictureUrl", label: "Picture of Robot", type: "text", section: "Information", required: false },
+  { id: "pitDisposition", label: "Pit Disposition", type: "checkbox", section: "Disposition", required: false },
+  { id: "driveDisposition", label: "Drive Disposition", type: "checkbox", section: "Disposition", required: false },
+  { id: "driveBaseType", label: "Drive Base Type", type: "select", section: "Robot", options: ["Swerve L1", "Swerve L2", "Swerve L3", "Tank", "Mecanum"], required: false },
+  { id: "centerOfGravity", label: "Center of Gravity", type: "select", section: "Robot", options: ["Low", "Center", "High"], required: false },
+  { id: "collectCoralStation", label: "Can receive coral from the station", type: "checkbox", section: "Coral", required: false },
+  { id: "collectCoralGround", label: "Can pick up coral from the ground", type: "checkbox", section: "Coral", required: false },
+  { id: "collectAlgaeReef", label: "Can collect algae from reef", type: "checkbox", section: "Algae", required: false },
+  { id: "collectAlgaeGround", label: "Can pick up algae from ground", type: "checkbox", section: "Algae", required: false },
+  { id: "bargeCapability", label: "Barge Capability", type: "select", section: "Auto / Endgame", options: ["Can climb shallow cage", "Can climb deep cage"], required: false },
+  { id: "autoCapabilities", label: "Auto Capabilities", type: "text", section: "Auto / Endgame", required: false },
+  { id: "rating", label: "Overall Robot Rating", type: "slider", section: "Auto / Endgame", scaleLabels: ["Poor", "Limited", "Average", "Strong", "Elite"], required: false },
+  { id: "notes", label: "Notes", type: "text", section: "Auto / Endgame", required: false },
 ];
+
+function normalizeSectionForType(section: string, type: "match" | "pit"): string {
+  if (type === "match") return section;
+  if (section === "Information" || section === "Disposition" || section === "Robot" || section === "Coral" || section === "Algae" || section === "Auto / Endgame") {
+    return section;
+  }
+  if (section === "Pre-Match") return "Information";
+  if (section === "Autonomous" || section === "Endgame" || section === "Post-Match") return "Auto / Endgame";
+  return "Robot";
+}
 
 function FormBuilderContent() {
   const { userData } = useAuth();
@@ -78,8 +92,8 @@ function FormBuilderContent() {
   const [showAddField, setShowAddField] = useState(false);
   const [cloudForms, setCloudForms] = useState<Array<{ id: string; name: string; fields: FormField[]; formType?: "match" | "pit"; game?: "REEFSCAPE" | "REBUILT" }>>([]);
   const [selectedCloudFormId, setSelectedCloudFormId] = useState("");
-  const [showPresetsMenu, setShowPresetsMenu] = useState(false);
-  const [showSavedFormsMenu, setShowSavedFormsMenu] = useState(false);
+  const [savedFormsModalOpen, setSavedFormsModalOpen] = useState(false);
+  const [presetsModalOpen, setPresetsModalOpen] = useState(false);
   const [savingCloud, setSavingCloud] = useState(false);
   
   const [newField, setNewField] = useState<FormField>({
@@ -92,7 +106,9 @@ function FormBuilderContent() {
     required: false,
   });
 
-  const sections = ["Pre-Match", "Autonomous", "Teleop", "Endgame", "Post-Match"];
+  const matchSections = ["Pre-Match", "Autonomous", "Teleop", "Endgame", "Post-Match"];
+  const pitSections = ["Information", "Disposition", "Robot", "Coral", "Algae", "Auto / Endgame"];
+  const sections = formType === "pit" ? pitSections : matchSections;
 
   useEffect(() => {
     async function loadCloudForms() {
@@ -100,6 +116,12 @@ function FormBuilderContent() {
     }
     void loadCloudForms();
   }, [userData?.teamId]);
+
+  useEffect(() => {
+    if (!sections.includes(activeSection)) {
+      setActiveSection(sections[0]);
+    }
+  }, [activeSection, sections]);
 
   function addField() {
     if (!newField.label) return;
@@ -198,6 +220,12 @@ function FormBuilderContent() {
       },
       { merge: true }
     );
+    const selectedName = formName;
+    setCloudForms((prev) =>
+      prev.map((item) =>
+        item.id === selectedCloudFormId ? { ...item, name: selectedName, fields, formType, game: formGame } : item
+      )
+    );
     alert("Saved form updated.");
     await refreshCloudForms();
   }
@@ -215,10 +243,12 @@ function FormBuilderContent() {
     setSelectedCloudFormId(presetId);
     const preset = cloudForms.find((item) => item.id === presetId);
     if (!preset) return;
+    const targetType = preset.formType || "match";
+    setFormType(targetType);
     setFormName(preset.name);
-    setFields(preset.fields);
-    setFormType(preset.formType || "match");
+    setFields(preset.fields.map((field) => ({ ...field, section: normalizeSectionForType(field.section, targetType) })));
     setFormGame(preset.game || "REEFSCAPE");
+    setActiveSection(targetType === "pit" ? "Information" : "Pre-Match");
   }
 
   async function setAsActiveAppliedForm() {
@@ -226,6 +256,10 @@ function FormBuilderContent() {
     const selected = cloudForms.find((preset) => preset.id === selectedCloudFormId);
     const selectedType = selected?.formType || formType;
     const selectedGame = selected?.game || formGame;
+    if (selectedGame === "REBUILT") {
+      alert("Assigning REBUILT forms is disabled for now.");
+      return;
+    }
     await setDoc(
       doc(db, "teams", userData.teamId),
       selectedType === "pit"
@@ -233,6 +267,9 @@ function FormBuilderContent() {
         : { activeMatchFormPresetId: selectedCloudFormId, activeMatchGame: selectedGame },
       { merge: true }
     );
+    if (selectedType === "match") {
+      localStorage.setItem("analytics-selected-game", selectedGame);
+    }
     alert(`Active ${selectedType} form preset updated (${selectedGame}).`);
   }
 
@@ -254,7 +291,9 @@ function FormBuilderContent() {
           if (imported.game === "REEFSCAPE" || imported.game === "REBUILT") {
             setFormGame(imported.game);
           }
-          setFields(imported.fields);
+          const targetType = imported.formType === "pit" ? "pit" : "match";
+          setFields(imported.fields.map((field: FormField) => ({ ...field, section: normalizeSectionForType(field.section, targetType) })));
+          setActiveSection(targetType === "pit" ? "Information" : "Pre-Match");
           alert("Form imported successfully!");
         } else {
           alert("Invalid form file format");
@@ -270,9 +309,18 @@ function FormBuilderContent() {
     setFormName(name);
     setFields(presetFields);
     setFormGame("REEFSCAPE");
-    setFormType(name.toLowerCase().includes("pit") ? "pit" : "match");
-    setActiveSection("Pre-Match");
+    const targetType = name.toLowerCase().includes("pit") ? "pit" : "match";
+    setFormType(targetType);
+    setActiveSection(targetType === "pit" ? "Information" : "Pre-Match");
     setShowAddField(false);
+  }
+
+  function openPresetsModal() {
+    setPresetsModalOpen(true);
+  }
+
+  function openSavedFormsModal() {
+    setSavedFormsModalOpen(true);
   }
 
   const fieldsBySection = sections.reduce((acc, section) => {
@@ -295,37 +343,20 @@ function FormBuilderContent() {
               </p>
             </div>
             <div className="flex gap-3">
-              <div className="relative">
-                <button
-                  onClick={() => setShowPresetsMenu((prev) => !prev)}
-                  className="px-4 py-2 rounded-lg text-white font-medium"
-                  style={{ background: "var(--primary-gradient)" }}
-                >
-                  Presets
-                </button>
-                {showPresetsMenu && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden">
-                    <button
-                      onClick={() => {
-                        loadBuiltInPreset("3468 REEFSCAPE Match Scout Form", REEFSCAPE_MATCH_PRESET_FIELDS);
-                        setShowPresetsMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm"
-                    >
-                      3468 REEFSCAPE Match Scout Form
-                    </button>
-                    <button
-                      onClick={() => {
-                        loadBuiltInPreset("3468 REEFSCAPE Pit Scout Form", REEFSCAPE_PIT_PRESET_FIELDS);
-                        setShowPresetsMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm"
-                    >
-                      3468 REEFSCAPE Pit Scout Form
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={openPresetsModal}
+                className="px-4 py-2 rounded-lg text-white font-medium"
+                style={{ background: "var(--primary-gradient)" }}
+              >
+                Presets
+              </button>
+              <button
+                onClick={openSavedFormsModal}
+                className="px-4 py-2 rounded-lg text-white font-medium"
+                style={{ backgroundColor: "#374151" }}
+              >
+                Saved Forms
+              </button>
               <button
                 onClick={savePresetToCloud}
                 disabled={savingCloud}
@@ -658,36 +689,14 @@ function FormBuilderContent() {
                   </div>
                   <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Saved Forms</label>
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowSavedFormsMenu((prev) => !prev)}
-                        className="w-full border rounded p-2 text-left bg-white"
-                      >
-                        {selectedCloudFormId
-                          ? cloudForms.find((preset) => preset.id === selectedCloudFormId)?.name || "Saved Forms"
-                          : "Saved Forms"}
-                      </button>
-                      {showSavedFormsMenu && (
-                        <div className="absolute left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white border border-gray-200 rounded shadow z-20">
-                          {cloudForms.length === 0 ? (
-                            <p className="px-3 py-2 text-sm text-gray-500">No saved forms yet.</p>
-                          ) : (
-                            cloudForms.map((preset) => (
-                              <button
-                                key={preset.id}
-                                onClick={() => {
-                                  loadCloudPreset(preset.id);
-                                  setShowSavedFormsMenu(false);
-                                }}
-                                className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
-                              >
-                                {preset.name} ({preset.formType || "match"} • {preset.game || "REEFSCAPE"})
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      onClick={openSavedFormsModal}
+                      className="w-full border rounded p-2 text-left bg-white"
+                    >
+                      {selectedCloudFormId
+                        ? cloudForms.find((preset) => preset.id === selectedCloudFormId)?.name || "Saved Forms"
+                        : "Saved Forms"}
+                    </button>
                     <button
                       onClick={updateSelectedSavedForm}
                       disabled={!selectedCloudFormId}
@@ -719,6 +728,97 @@ function FormBuilderContent() {
           </div>
         </div>
       </div>
+
+      {presetsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold" style={{ color: "#c42221" }}>Presets</h2>
+              <button onClick={() => setPresetsModalOpen(false)} className="px-3 py-1 border rounded">Close</button>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  loadBuiltInPreset("3468 REEFSCAPE Match Scout Form", REEFSCAPE_MATCH_PRESET_FIELDS);
+                  setPresetsModalOpen(false);
+                }}
+                className="w-full py-3 rounded text-white font-medium"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                3468 REEFSCAPE Match Scout Form
+              </button>
+              <button
+                onClick={() => {
+                  loadBuiltInPreset("3468 REEFSCAPE Pit Scout Form", REEFSCAPE_PIT_PRESET_FIELDS);
+                  setPresetsModalOpen(false);
+                }}
+                className="w-full py-3 rounded text-white font-medium"
+                style={{ backgroundColor: "#c42221" }}
+              >
+                3468 REEFSCAPE Pit Scout Form
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {savedFormsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold" style={{ color: "#c42221" }}>Saved Forms</h2>
+              <button onClick={() => setSavedFormsModalOpen(false)} className="px-3 py-1 border rounded">Close</button>
+            </div>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {cloudForms.length === 0 ? (
+                <p className="text-sm text-gray-500">No saved forms yet.</p>
+              ) : (
+                cloudForms.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      loadCloudPreset(preset.id);
+                      setSavedFormsModalOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 rounded border ${
+                      selectedCloudFormId === preset.id ? "border-red-400 bg-red-50" : "border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <p className="font-medium">{preset.name}</p>
+                    <p className="text-xs text-gray-600">{preset.formType || "match"} • {preset.game || "REEFSCAPE"}</p>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="mt-4 grid md:grid-cols-3 gap-2">
+              <button
+                onClick={updateSelectedSavedForm}
+                disabled={!selectedCloudFormId}
+                className="py-2 rounded text-white disabled:opacity-50"
+                style={{ backgroundColor: "#1f7a3d" }}
+              >
+                Update Selected
+              </button>
+              <button
+                onClick={deleteSelectedSavedForm}
+                disabled={!selectedCloudFormId}
+                className="py-2 rounded text-white disabled:opacity-50"
+                style={{ backgroundColor: "#b42318" }}
+              >
+                Delete Selected
+              </button>
+              <button
+                onClick={setAsActiveAppliedForm}
+                disabled={!selectedCloudFormId}
+                className="py-2 rounded text-white disabled:opacity-50"
+                style={{ background: "var(--primary-gradient)" }}
+              >
+                Set Active Form
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

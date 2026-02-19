@@ -1,7 +1,9 @@
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth, db } from "@/app/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
+import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 export default function GoogleSignInButton() {
   const router = useRouter();
@@ -18,7 +20,7 @@ export default function GoogleSignInButton() {
       if (!userDoc.exists()) {
         // New user - create basic document
         // They'll need to select team/role after
-        await setDoc(doc(db, "users", user.uid), {
+        await setSecureUserDoc(user.uid, {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || user.email?.split("@")[0] || "User",
@@ -28,16 +30,10 @@ export default function GoogleSignInButton() {
           createdAt: Date.now(),
         });
 
-        // Redirect to account/team setup
-        router.push("/account");
+        router.push("/dashboard");
       } else {
-        // Existing user - redirect to dashboard
-        const userData = userDoc.data();
-        if (userData.role === "coach") {
-          router.push("/coach-dashboard");
-        } else {
-          router.push("/scout-dashboard");
-        }
+        const userData = userDoc.data() as { role?: "coach" | "scout"; teamId?: string };
+        router.push(getDashboardRoute(userData));
       }
     } catch (error: any) {
       console.error("Google sign-in error:", error);

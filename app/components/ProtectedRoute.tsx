@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth, UserRole } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 type ProtectedRouteProps = {
   children: React.ReactNode;
@@ -18,6 +19,7 @@ export default function ProtectedRoute({
 }: ProtectedRouteProps) {
   const { user, userData, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (loading) return;
@@ -30,26 +32,25 @@ export default function ProtectedRoute({
 
     // If user is logged in but trying to access login/signup
     if (!requireAuth && user) {
-      // Redirect to appropriate dashboard
-      if (userData?.role === "coach") {
-        router.push("/coach-dashboard");
-      } else {
-        router.push("/scout-dashboard");
-      }
+      router.push(getDashboardRoute(userData));
       return;
+    }
+
+    // If user has no team, force no-team dashboard except allowed onboarding pages.
+    if (requireAuth && user && userData && !userData.teamId) {
+      const allowNoTeam = pathname === "/dashboard" || pathname === "/account" || pathname === "/verify-email";
+      if (!allowNoTeam) {
+        router.push("/dashboard");
+        return;
+      }
     }
 
     // If specific roles are required
     if (allowedRoles && userData && !allowedRoles.includes(userData.role)) {
-      // Redirect to their appropriate dashboard
-      if (userData.role === "coach") {
-        router.push("/coach-dashboard");
-      } else {
-        router.push("/scout-dashboard");
-      }
+      router.push(getDashboardRoute(userData));
       return;
     }
-  }, [user, userData, loading, requireAuth, allowedRoles, router]);
+  }, [user, userData, loading, requireAuth, allowedRoles, router, pathname]);
 
   // Show loading state
   if (loading) {

@@ -104,7 +104,7 @@ function PitScoutFormContent() {
         submittedBy: userData.uid,
         createdAt: now,
       });
-      alert("Pit scouting form submitted.");
+      alert("Pit scout form submitted.");
       setForm((prev) => ({
         ...prev,
         teamNumber: "",
@@ -123,14 +123,14 @@ function PitScoutFormContent() {
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
           <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
             <div className="bg-white rounded-xl shadow p-4">
-              <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scouting Form</h1>
+              <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scout Form</h1>
               {activeFormName && (
                 <p className="text-sm text-gray-600">Active Preset: {activeFormName} ({activeFormGame})</p>
               )}
             </div>
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
               <p className="text-sm text-yellow-700">
-                Note: Pit scouting form is currently not used for live event workflow.
+                Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
               </p>
             </div>
 

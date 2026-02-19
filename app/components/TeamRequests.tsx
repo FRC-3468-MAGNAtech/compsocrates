@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, query, where, getDocs, updateDoc, doc, deleteDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { CheckCircle, XCircle, Clock, Mail } from "lucide-react";
+import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 interface TeamRequest {
   id: string;
@@ -62,7 +63,7 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
       }
 
       const userDoc = usersSnapshot.docs[0];
-      await updateDoc(doc(db, "users", userDoc.id), {
+      await updateSecureUserDoc(userDoc.id, {
         teamId: teamId,
         role: request.requestedRole,
       });

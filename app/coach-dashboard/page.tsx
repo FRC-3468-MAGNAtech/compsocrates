@@ -10,6 +10,7 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { doc, setDoc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 interface TeamData {
   scoutCount?: number;
@@ -30,8 +31,13 @@ function CoachDashboardContent() {
   const [readyScoutNamesByEvent, setReadyScoutNamesByEvent] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
+    if (userData && !userData.teamId) {
+      setLoading(false);
+      router.push(getDashboardRoute(userData));
+      return;
+    }
     loadDashboardData();
-  }, [userData?.teamId]);
+  }, [userData?.teamId, userData, router]);
 
   async function loadDashboardData() {
     if (!userData?.teamId) return;

@@ -13,6 +13,7 @@ import { useAuth } from "@/app/AuthContext";
 import { X, Check, Clock } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getTeamName } from "@/app/utils/stats-calculator";
+import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 interface TeamMember {
   uid: string;
@@ -107,7 +108,7 @@ function TeamManagementContent() {
       
       if (!usersSnap.empty) {
         const userDoc = usersSnap.docs[0];
-        await updateDoc(doc(db, "users", userDoc.id), {
+        await updateSecureUserDoc(userDoc.id, {
           teamId: request.teamId
         });
       }
@@ -141,7 +142,7 @@ function TeamManagementContent() {
     try {
       const isTeamAdmin = specialRoles.includes("team-admin");
       const filteredSpecialRoles = specialRoles.filter((r) => r !== "team-admin");
-      await updateDoc(doc(db, "users", uid), {
+      await updateSecureUserDoc(uid, {
         role,
         specialRole: filteredSpecialRoles.includes("lead-scout") ? "lead-scout" : 
                     filteredSpecialRoles.includes("lead-strategist") ? "lead-strategist" :
@@ -162,7 +163,7 @@ function TeamManagementContent() {
     if (!confirm("Are you sure you want to remove this member from the team?")) return;
     
     try {
-      await updateDoc(doc(db, "users", uid), {
+      await updateSecureUserDoc(uid, {
         teamId: "",
         role: "scout",
         specialRoles: [],
@@ -180,7 +181,7 @@ function TeamManagementContent() {
     if (!confirm("Are you sure you want to make this person a team admin?")) return;
     
     try {
-      await updateDoc(doc(db, "users", uid), {
+      await updateSecureUserDoc(uid, {
         isTeamAdmin: true,
       });
       await loadTeamData();
@@ -245,7 +246,7 @@ function TeamManagementContent() {
               <div className="mt-4 p-4 bg-gray-50 rounded">
                 <p className="text-sm text-gray-600 mb-2">Team Join Code:</p>
                 <p className="text-2xl font-mono font-bold" style={{ color: "#c42221" }}>
-                  Team {userData?.teamId}
+                  {userData?.teamId}
                 </p>
               </div>
             )}

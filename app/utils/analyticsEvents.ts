@@ -11,8 +11,16 @@ export type AnalyticsEventOption = {
 };
 
 const LEGACY_REEFSCAPE_EVENTS: AnalyticsEventOption[] = [
-  { id: "rocket-city", name: "Rocket City Regional", startDate: "2025-03-18", endDate: "2025-03-21" },
-  { id: "bayou-reefscape", name: "Bayou Regional", startDate: "2025-04-01", endDate: "2025-04-04" },
+  // Keep legacy practice/testing event keys available for REEFSCAPE analytics filters.
+  { id: "2025lake", key: "2025lake", name: "Bayou Regional (2025)", startDate: "2025-04-01", endDate: "2025-04-04" },
+  { id: "2025alhu", key: "2025alhu", name: "Rocket City Regional (2025)", startDate: "2025-03-18", endDate: "2025-03-21" },
+  ...APP_EVENTS.map((event) => ({
+    id: event.key,
+    key: event.key,
+    name: event.name,
+    startDate: event.startDate,
+    endDate: event.endDate,
+  })),
   { id: "app-testing", name: "App Testing" },
 ];
 
@@ -29,6 +37,39 @@ const REBUILT_EVENTS: AnalyticsEventOption[] = [
 
 export function getEventsForGame(game: AnalyticsGame): AnalyticsEventOption[] {
   return game === "REBUILT" ? REBUILT_EVENTS : LEGACY_REEFSCAPE_EVENTS;
+}
+
+type AnalyticsEntryLike = {
+  eventKey?: string;
+  eventName?: string;
+  game?: string;
+};
+
+export function getEventOptionsForEntries(
+  entries: AnalyticsEntryLike[],
+  game: AnalyticsGame
+): AnalyticsEventOption[] {
+  const base = getEventsForGame(game);
+  const byId = new Map<string, AnalyticsEventOption>(base.map((event) => [event.id, event]));
+
+  entries.forEach((entry) => {
+    const entryGame = (entry.game || "REEFSCAPE") as AnalyticsGame;
+    if (entryGame !== game) return;
+    const key = String(entry.eventKey || "").trim();
+    if (!key) return;
+    if (byId.has(key)) return;
+    byId.set(key, {
+      id: key,
+      key,
+      name: String(entry.eventName || key),
+    });
+  });
+
+  return Array.from(byId.values()).sort((a, b) => {
+    if (a.id === "app-testing") return 1;
+    if (b.id === "app-testing") return -1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 export function isInEventWindow(timestamp: number, startDate?: string, endDate?: string): boolean {
@@ -77,7 +118,7 @@ export function entryMatchesAnalyticsFilters(
   game: AnalyticsGame,
   eventId: string
 ): boolean {
-  if ((entry.game || "REBUILT") !== game) return false;
+  if ((entry.game || "REEFSCAPE") !== game) return false;
   if (eventId === "all") return true;
 
   const eventKey = entry.eventKey || classifyRebuiltEventByTimestamp(entry.submittedAt || entry.timestamp || 0);

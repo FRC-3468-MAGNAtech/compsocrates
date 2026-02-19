@@ -7,7 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENTS } from "@/app/utils/events";
-import { filterEventsByLocation, getEventsByYear, type TBAEvent } from "@/app/utils/tba-api";
+import { filterEventsByLocation, type TBAEvent } from "@/app/utils/tba-api";
 
 function EventSelectionContent() {
   const { userData } = useAuth();
@@ -30,11 +30,28 @@ function EventSelectionContent() {
 
   useEffect(() => {
     async function loadEvents() {
+      if (!userData?.teamId) return;
       setLoadingEvents(true);
       try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const teamData = teamDoc.exists() ? teamDoc.data() : {};
+        const encryptedKey =
+          typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
         const year = new Date().getFullYear();
-        const tbaEvents = await getEventsByYear(year);
-        setEvents(tbaEvents);
+        if (!encryptedKey) {
+          throw new Error("Team TBA key is not configured.");
+        }
+
+        const response = await fetch("/api/tba/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year, encryptedKey }),
+        });
+        if (!response.ok) {
+          throw new Error(`Unable to load events (${response.status})`);
+        }
+        const payload = await response.json();
+        setEvents(Array.isArray(payload.events) ? payload.events : []);
       } catch (error) {
         console.error("Falling back to static event list:", error);
         setEvents(
@@ -56,7 +73,7 @@ function EventSelectionContent() {
       setLoadingEvents(false);
     }
     loadEvents();
-  }, []);
+  }, [userData?.teamId]);
 
   const filteredEvents = useMemo(() => {
     if (!searchTerm.trim()) return events;

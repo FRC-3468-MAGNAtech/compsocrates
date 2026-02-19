@@ -7,9 +7,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
+import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,7 +29,14 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      router.push("/");
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        router.push("/dashboard");
+        return;
+      }
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      const data = userDoc.exists() ? userDoc.data() : null;
+      router.push(getDashboardRoute(data as { role?: "coach" | "scout"; teamId?: string } | null));
     } catch (error: any) {
       console.error("Login error:", error);
       setError(error.message || "Invalid email or password");
@@ -50,7 +59,7 @@ export default function LoginPage() {
       
       if (!userDoc.exists()) {
         // New user - redirect to complete profile
-        await setDoc(doc(db, "users", user.uid), {
+        await setSecureUserDoc(user.uid, {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || user.email?.split('@')[0] || "User",
@@ -60,18 +69,12 @@ export default function LoginPage() {
           isTeamAdmin: false,
           createdAt: Date.now()
         });
-        
-        alert("Welcome! Please join or create a team.");
-        router.push("/account");
+
+        router.push("/dashboard");
       } else {
         // Existing user - check if they have a team
         const userData = userDoc.data();
-        if (!userData.teamId) {
-          alert("Please join or create a team.");
-          router.push("/account");
-        } else {
-          router.push("/");
-        }
+        router.push(getDashboardRoute(userData));
       }
     } catch (error: any) {
       console.error("Google sign-in error:", error);

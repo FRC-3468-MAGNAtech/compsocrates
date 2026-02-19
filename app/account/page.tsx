@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ThemePicker from "@/app/components/ThemePicker";
+import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 function AccountContent() {
   const { user, userData } = useAuth();
@@ -100,7 +99,7 @@ function AccountContent() {
       await updateEmail(user, newEmail);
 
       // Update email in Firestore
-      await updateDoc(doc(db, "users", user.uid), {
+      await updateSecureUserDoc(user.uid, {
         email: newEmail,
       });
 
@@ -131,7 +130,7 @@ function AccountContent() {
     setError("");
     setSuccess("");
     try {
-      await updateDoc(doc(db, "users", user.uid), {
+      await updateSecureUserDoc(user.uid, {
         bio: profileBio.trim(),
         profileVisibility,
       });

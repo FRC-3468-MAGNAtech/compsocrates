@@ -11,8 +11,9 @@ import {
   updateProfile,
   sendEmailVerification
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
+import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 // User data structure
 export type UserRole = "scout" | "coach";
@@ -67,7 +68,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const userDoc = await getDoc(doc(db, "users", uid));
       if (userDoc.exists()) {
-        setUserData(userDoc.data() as UserData);
+        const data = userDoc.data() as UserData & { encryptedUserData?: string };
+        setUserData(data);
+        if (!data.encryptedUserData) {
+          await setSecureUserDoc(uid, data, true);
+        }
       }
     } catch (error) {
       console.error("Error loading user data:", error);
@@ -79,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     
     try {
-      await setDoc(doc(db, "users", user.uid), updates, { merge: true });
+      await setSecureUserDoc(user.uid, updates as Record<string, unknown>, true);
       setUserData(prev => prev ? { ...prev, ...updates } : null);
     } catch (error) {
       console.error("Error updating user data:", error);
@@ -123,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       bio: "",
     };
     
-    await setDoc(doc(db, "users", userCredential.user.uid), userData);
+    await setSecureUserDoc(userCredential.user.uid, userData as unknown as Record<string, unknown>, false);
   }
 
   // Sign in existing user

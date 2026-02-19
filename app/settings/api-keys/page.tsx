@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { deleteField, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -13,6 +13,7 @@ function APIKeysContent() {
   const { userData } = useAuth();
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [hasStoredKey, setHasStoredKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -26,7 +27,9 @@ function APIKeysContent() {
     try {
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       if (teamDoc.exists()) {
-        setApiKey(teamDoc.data().tbaApiKey || "");
+        const data = teamDoc.data();
+        setHasStoredKey(Boolean(data.tbaApiKeyEncrypted || data.tbaApiKey));
+        setApiKey("");
       }
     } catch (error) {
       console.error("Error loading API key:", error);
@@ -45,12 +48,32 @@ function APIKeysContent() {
 
     setSaving(true);
     try {
+      const encryptionResponse = await fetch("/api/tba/encrypt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: apiKey.trim() }),
+      });
+      if (!encryptionResponse.ok) {
+        throw new Error("Failed to encrypt API key");
+      }
+      const encryptionPayload = await encryptionResponse.json();
+      const encryptedKey =
+        typeof encryptionPayload?.encryptedKey === "string" ? encryptionPayload.encryptedKey : "";
+      if (!encryptedKey) {
+        throw new Error("No encrypted key returned");
+      }
+
       await setDoc(
         doc(db, "teams", userData.teamId),
-        { tbaApiKey: apiKey.trim() },
+        {
+          tbaApiKeyEncrypted: encryptedKey,
+          tbaApiKey: deleteField(),
+        },
         { merge: true }
       );
-      
+
+      setHasStoredKey(true);
+      setApiKey("");
       alert("API key saved successfully!");
     } catch (error) {
       console.error("Error saving API key:", error);
@@ -130,6 +153,9 @@ function APIKeysContent() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 API Key
               </label>
+              {hasStoredKey && (
+                <p className="text-xs text-green-700 mb-2">A key is already saved (encrypted at rest).</p>
+              )}
               <div className="relative">
                 <input
                   type={showKey ? "text" : "password"}

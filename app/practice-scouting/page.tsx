@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -10,7 +10,6 @@ import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
-import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -172,9 +171,21 @@ function getScoutDevice() {
   return { deviceType, details: { ua, platform, viewport } };
 }
 
+function getPracticeEventKey(match: PracticeMatch): string {
+  const explicitKey = String((match as unknown as Record<string, unknown>).eventKey || "").trim();
+  if (explicitKey) return explicitKey;
+
+  const matchKey = String((match as unknown as Record<string, unknown>).matchKey || "").trim().toLowerCase();
+  const parsed = matchKey.match(/^(\d{4}[a-z0-9]+)_/);
+  if (parsed?.[1]) return parsed[1];
+
+  return "app-testing";
+}
+
 function PracticeScoutingContent() {
   const router = useRouter();
   const { userData } = useAuth();
+  const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [currentStep, setCurrentStep] = useState<'select' | 'practice' | 'results'>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | null>(null);
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
@@ -255,6 +266,17 @@ function PracticeScoutingContent() {
       clearInterval(interval);
     };
   }, [selectedMode, currentMatch?.id]);
+
+  useEffect(() => {
+    async function loadActiveMatchGame() {
+      if (!userData?.teamId) return;
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      if (!teamDoc.exists()) return;
+      const value = teamDoc.data().activeMatchGame;
+      setActiveMatchGame(value === "REBUILT" ? "REBUILT" : "REEFSCAPE");
+    }
+    void loadActiveMatchGame();
+  }, [userData?.teamId]);
 
   async function selectPracticeMatch(difficulty: 'easy' | 'medium' | 'hard', mode: PracticeMode) {
     setLoading(true);
@@ -415,7 +437,8 @@ function PracticeScoutingContent() {
 
       const now = Date.now();
       const device = getScoutDevice();
-      const eventKey = currentMatch.eventKey || classifyRebuiltEventByTimestamp(now);
+      const resolvedEventKey = getPracticeEventKey(currentMatch);
+      const eventKey = APP_EVENT_BY_KEY[resolvedEventKey] ? resolvedEventKey : "app-testing";
       const eventName = APP_EVENT_BY_KEY[eventKey]?.name || currentMatch.eventName || "App Testing";
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
@@ -431,7 +454,7 @@ function PracticeScoutingContent() {
         allScoutedData: allRobotData,
         eventKey,
         eventName,
-        game: "REEFSCAPE",
+        game: activeMatchGame,
         officialScore: officialAllianceScore,
         actualScore: officialAllianceScore,
         scoutedScore: totalScoutedScore,
@@ -457,7 +480,7 @@ function PracticeScoutingContent() {
             matchType: "qualification",
             eventKey,
             eventName,
-            game: "REEFSCAPE",
+            game: activeMatchGame,
             accuracy: sessionAccuracy,
             timestamp: now,
             submittedAt: now,

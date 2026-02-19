@@ -38,7 +38,16 @@ function ProfileContent() {
     avgAccuracy: 0,
     eventsScouted: 0,
   });
-  const [seasonGameBreakdown, setSeasonGameBreakdown] = useState<Array<{ season: number; game: string; count: number }>>([]);
+  const [scoutingBreakdown, setScoutingBreakdown] = useState<
+    Array<{
+      season: number;
+      game: string;
+      event: string;
+      scoutingType: "Trial" | "Competitive" | "Real Competition";
+      difficulty: string;
+      count: number;
+    }>
+  >([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -84,23 +93,56 @@ function ProfileContent() {
           const entry = entryDoc.data();
           if (entry.eventKey) eventKeys.add(entry.eventKey);
         });
-        const seasonGameMap = new Map<string, { season: number; game: string; count: number }>();
+        const breakdownMap = new Map<
+          string,
+          {
+            season: number;
+            game: string;
+            event: string;
+            scoutingType: "Trial" | "Competitive" | "Real Competition";
+            difficulty: string;
+            count: number;
+          }
+        >();
         scoutingSnap.docs.forEach((entryDoc) => {
           const entry = entryDoc.data() as Record<string, unknown>;
           const eventKey = String(entry.eventKey || "");
           const eventSeason = parseInt(eventKey.slice(0, 4), 10);
-          const fallbackSeason = typeof entry.timestamp === "number" ? new Date(entry.timestamp).getFullYear() : new Date().getFullYear();
+          const fallbackTimestamp =
+            (typeof entry.timestamp === "number" ? entry.timestamp : 0) ||
+            (typeof entry.submittedAt === "number" ? entry.submittedAt : 0);
+          const fallbackSeason = fallbackTimestamp > 0 ? new Date(fallbackTimestamp).getFullYear() : new Date().getFullYear();
           const season = Number.isFinite(eventSeason) ? eventSeason : fallbackSeason;
-          const game = String(entry.game || "Unknown");
-          const key = `${season}-${game}`;
-          const existing = seasonGameMap.get(key) || { season, game, count: 0 };
+          const game = String(entry.game || "REEFSCAPE");
+          const event = String(entry.eventName || entry.eventKey || "Unknown");
+          const practiceMode = String(entry.practiceMode || "").toLowerCase();
+          const isPractice = Boolean(entry.isPracticeScouting) || Boolean(practiceMode);
+          const scoutingType: "Trial" | "Competitive" | "Real Competition" = isPractice
+            ? practiceMode === "competitive"
+              ? "Competitive"
+              : "Trial"
+            : "Real Competition";
+          const difficulty = String(entry.difficulty || (isPractice ? "Unknown" : "N/A"));
+          const key = `${season}|${game}|${event}|${scoutingType}|${difficulty}`;
+          const existing = breakdownMap.get(key) || { season, game, event, scoutingType, difficulty, count: 0 };
           existing.count += 1;
-          seasonGameMap.set(key, existing);
+          breakdownMap.set(key, existing);
         });
-        setSeasonGameBreakdown(
-          Array.from(seasonGameMap.values()).sort((a, b) => {
+        const scoutingTypeOrder: Record<string, number> = {
+          "Real Competition": 0,
+          Competitive: 1,
+          Trial: 2,
+        };
+        setScoutingBreakdown(
+          Array.from(breakdownMap.values()).sort((a, b) => {
             if (a.season !== b.season) return b.season - a.season;
-            return a.game.localeCompare(b.game);
+            const gameCompare = a.game.localeCompare(b.game);
+            if (gameCompare !== 0) return gameCompare;
+            const eventCompare = a.event.localeCompare(b.event);
+            if (eventCompare !== 0) return eventCompare;
+            const typeCompare = (scoutingTypeOrder[a.scoutingType] ?? 99) - (scoutingTypeOrder[b.scoutingType] ?? 99);
+            if (typeCompare !== 0) return typeCompare;
+            return a.difficulty.localeCompare(b.difficulty);
           })
         );
 
@@ -199,8 +241,8 @@ function ProfileContent() {
                 </div>
               </div>
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">By Season / Game</h3>
-                {seasonGameBreakdown.length === 0 ? (
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">By Season / Game / Event / Type / Difficulty</h3>
+                {scoutingBreakdown.length === 0 ? (
                   <p className="text-sm text-gray-500">No scouting entries yet.</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -209,14 +251,20 @@ function ProfileContent() {
                         <tr className="text-left text-gray-500">
                           <th className="py-1">Season</th>
                           <th className="py-1">Game</th>
+                          <th className="py-1">Event</th>
+                          <th className="py-1">Type</th>
+                          <th className="py-1">Difficulty</th>
                           <th className="py-1 text-right">Entries</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {seasonGameBreakdown.map((row) => (
-                          <tr key={`${row.season}-${row.game}`} className="border-t border-gray-100">
+                        {scoutingBreakdown.map((row) => (
+                          <tr key={`${row.season}-${row.game}-${row.event}-${row.scoutingType}-${row.difficulty}`} className="border-t border-gray-100">
                             <td className="py-1">{row.season}</td>
                             <td className="py-1">{row.game}</td>
+                            <td className="py-1">{row.event}</td>
+                            <td className="py-1">{row.scoutingType}</td>
+                            <td className="py-1">{row.difficulty}</td>
                             <td className="py-1 text-right font-semibold">{row.count}</td>
                           </tr>
                         ))}

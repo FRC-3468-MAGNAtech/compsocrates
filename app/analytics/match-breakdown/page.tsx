@@ -7,7 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { sortMatches } from "@/app/utils/matchSorting";
-import { entryMatchesAnalyticsFilters, getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 type MatchEntry = {
   matchId: string;
@@ -53,6 +53,21 @@ function formatMatchLabel(matchId: string): string {
   return `Match ${matchId}`;
 }
 
+function normalizeMatchId(entry: ScoutingEntry): string {
+  const direct = String(entry.matchId || "").toLowerCase();
+  if (direct) {
+    const qm = direct.match(/_qm(\d+)/);
+    if (qm) return `q${qm[1]}`;
+    const finals = direct.match(/_f(\d+)/);
+    if (finals) return `f${finals[1]}`;
+    const short = direct.match(/^([pqf])\D*(\d+)/);
+    if (short) return `${short[1]}${short[2]}`;
+  }
+  const num = String(entry.matchNumber || "").replace(/\D/g, "");
+  const prefix = entry.matchType === "practice" ? "p" : entry.matchType === "finals" ? "f" : "q";
+  return num ? `${prefix}${num}` : "";
+}
+
 function MatchBreakdownContent() {
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
@@ -64,14 +79,17 @@ function MatchBreakdownContent() {
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
     const savedEvent = localStorage.getItem("analytics-selected-event");
+    const savedPractice = localStorage.getItem("analytics-practice-matches-only");
     if (savedGame === "REEFSCAPE" || savedGame === "REBUILT") setSelectedGame(savedGame);
     if (savedEvent) setSelectedEvent(savedEvent);
+    if (savedPractice !== null) setPracticeMatchesOnly(savedPractice === "true");
   }, []);
 
   useEffect(() => {
     localStorage.setItem("analytics-selected-game", selectedGame);
     localStorage.setItem("analytics-selected-event", selectedEvent);
-  }, [selectedGame, selectedEvent]);
+    localStorage.setItem("analytics-practice-matches-only", String(practiceMatchesOnly));
+  }, [selectedGame, selectedEvent, practiceMatchesOnly]);
 
   useEffect(() => {
     async function loadEntries() {
@@ -93,19 +111,16 @@ function MatchBreakdownContent() {
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const matches = useMemo(() => {
-    const ids = filteredEntries
-      .map((e) => {
-        if (e.matchId) return String(e.matchId).toLowerCase();
-        const num = String(e.matchNumber || "").replace(/\D/g, "");
-        const prefix = e.matchType === "practice" ? "p" : e.matchType === "finals" ? "f" : "q";
-        return num ? `${prefix}${num}` : "";
-      })
-      .filter(Boolean);
+    const ids = filteredEntries.map((e) => normalizeMatchId(e)).filter(Boolean);
     return sortMatches([...new Set(ids)].map((matchId) => ({ matchId }))).map((m) => m.matchId);
   }, [filteredEntries]);
 
   useEffect(() => {
-    if (!selectedMatch && matches.length > 0) {
+    if (matches.length === 0) {
+      if (selectedMatch) setSelectedMatch("");
+      return;
+    }
+    if (!selectedMatch || !matches.includes(selectedMatch)) {
       setSelectedMatch(matches[0]);
     }
   }, [matches, selectedMatch]);
@@ -113,12 +128,7 @@ function MatchBreakdownContent() {
   const matchRows = useMemo<MatchEntry[]>(() => {
     if (!selectedMatch) return [];
     return filteredEntries
-      .filter((e) => {
-        const id = e.matchId
-          ? String(e.matchId).toLowerCase()
-          : `${e.matchType === "practice" ? "p" : e.matchType === "finals" ? "f" : "q"}${String(e.matchNumber || "").replace(/\D/g, "")}`;
-        return id === selectedMatch;
-      })
+      .filter((e) => normalizeMatchId(e) === selectedMatch)
       .map((e) => ({
         matchId: selectedMatch,
         teamNumber: e.teamNumber || "-",
@@ -145,7 +155,7 @@ function MatchBreakdownContent() {
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)]}
+      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(entries, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Match Breakdown</h1>

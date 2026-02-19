@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { deleteField, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { Key, Check, X, AlertCircle } from "lucide-react";
@@ -26,10 +26,10 @@ export default function TBAKeySettings() {
 
     try {
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-      if (teamDoc.exists() && teamDoc.data().tbaApiKey) {
-        const key = teamDoc.data().tbaApiKey;
-        setSavedKey(key);
-        setApiKey(key);
+      if (teamDoc.exists() && (teamDoc.data().tbaApiKeyEncrypted || teamDoc.data().tbaApiKey)) {
+        // We no longer display plaintext keys after save.
+        setSavedKey("configured");
+        setApiKey("");
       }
     } catch (error) {
       console.error("Error loading TBA key:", error);
@@ -69,12 +69,29 @@ export default function TBAKeySettings() {
         return;
       }
 
-      // Save to team document
+      const encryptionResponse = await fetch("/api/tba/encrypt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: apiKey.trim() }),
+      });
+      if (!encryptionResponse.ok) {
+        throw new Error("Failed to encrypt key");
+      }
+      const encryptionPayload = await encryptionResponse.json();
+      const encryptedKey =
+        typeof encryptionPayload?.encryptedKey === "string" ? encryptionPayload.encryptedKey : "";
+      if (!encryptedKey) {
+        throw new Error("No encrypted key returned");
+      }
+
+      // Save encrypted key to team document
       await updateDoc(doc(db, "teams", userData.teamId), {
-        tbaApiKey: apiKey.trim()
+        tbaApiKeyEncrypted: encryptedKey,
+        tbaApiKey: deleteField(),
       });
 
-      setSavedKey(apiKey.trim());
+      setSavedKey("configured");
+      setApiKey("");
       setIsEditing(false);
       alert("TBA API key saved successfully!");
     } catch (error) {
@@ -87,7 +104,7 @@ export default function TBAKeySettings() {
   }
 
   function handleCancel() {
-    setApiKey(savedKey);
+    setApiKey("");
     setIsEditing(false);
     setIsValid(null);
   }
@@ -130,7 +147,7 @@ export default function TBAKeySettings() {
           {!isEditing && savedKey ? (
             <div className="flex items-center gap-3">
               <div className="bg-gray-100 px-4 py-2 rounded-lg font-mono text-sm flex-1">
-                {savedKey.substring(0, 20)}...{savedKey.substring(savedKey.length - 8)}
+                Key saved (encrypted)
               </div>
               <button
                 onClick={() => setIsEditing(true)}

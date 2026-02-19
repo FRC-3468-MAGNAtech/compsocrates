@@ -2,12 +2,17 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
-import { useAuth } from "@/app/AuthContext";
-import { entryMatchesAnalyticsFilters, getEventsForGame, normalizeMatchLabel, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import {
+  entryMatchesAnalyticsFilters,
+  getEventOptionsForEntries,
+  getEventsForGame,
+  normalizeMatchLabel,
+  type AnalyticsGame,
+} from "@/app/utils/analyticsEvents";
 
 type Entry = {
   id: string;
@@ -135,11 +140,41 @@ function isPracticeScoutingEntry(entry: Entry) {
   return entry.isPracticeScouting || entry.matchType === "practice" || Boolean(entry.practiceMode);
 }
 
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (ch === "," && !inQuotes) {
+      values.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  values.push(current);
+  return values.map((value) => value.trim());
+}
+
+function normalizeHeader(header: string) {
+  return header.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 type SortKey = keyof Entry | "score";
 type SortDir = "asc" | "desc";
 
 function AnalyticsPageContent() {
-  const { userData } = useAuth();
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -149,7 +184,6 @@ function AnalyticsPageContent() {
     return localStorage.getItem("analytics-selected-event") || "all";
   });
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
@@ -159,14 +193,24 @@ function AnalyticsPageContent() {
   });
   const [importEvent, setImportEvent] = useState("app-testing");
 
-  const isCoach = userData?.role === "coach";
-  const eventOptions = useMemo(() => [{ id: "all", name: "All Events" }, ...getEventsForGame(selectedGame)], [selectedGame]);
+  const eventOptions = useMemo(
+    () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(rawData, selectedGame)],
+    [rawData, selectedGame]
+  );
   const importEventOptions = useMemo(() => getEventsForGame(importGame), [importGame]);
+
+  useEffect(() => {
+    const savedPractice = localStorage.getItem("analytics-practice-matches-only");
+    if (savedPractice !== null) {
+      setPracticeMatchesOnly(savedPractice === "true");
+    }
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("analytics-selected-game", selectedGame);
     localStorage.setItem("analytics-selected-event", selectedEvent);
-  }, [selectedGame, selectedEvent]);
+    localStorage.setItem("analytics-practice-matches-only", String(practiceMatchesOnly));
+  }, [selectedGame, selectedEvent, practiceMatchesOnly]);
 
   function handleGameChange(nextGame: AnalyticsGame) {
     const validEvents = getEventsForGame(nextGame).map((event) => event.id);
@@ -221,28 +265,6 @@ function AnalyticsPageContent() {
       return 0;
     });
   }, [filtered, sortDir, sortKey]);
-
-  async function handleDelete(entry: Entry) {
-    if (deleteConfirm !== entry.id) {
-      setDeleteConfirm(entry.id);
-      setTimeout(() => setDeleteConfirm(null), 3000);
-      return;
-    }
-    if (isPracticeScoutingEntry(entry)) {
-      const sessionId = entry.practiceSessionId;
-      if (sessionId) {
-        await deleteDoc(doc(db, "practiceSessions", sessionId));
-        const sameSession = await getDocs(query(collection(db, "scouting"), where("practiceSessionId", "==", sessionId)));
-        await Promise.all(sameSession.docs.map((sessionEntryDoc) => deleteDoc(doc(db, "scouting", sessionEntryDoc.id))));
-      } else {
-        await deleteDoc(doc(db, "scouting", entry.id));
-      }
-    } else {
-      await deleteDoc(doc(db, "scouting", entry.id));
-    }
-    setDeleteConfirm(null);
-    await loadData();
-  }
 
   function handleSort(key: SortKey) {
     setSortKey((prevKey) => {
@@ -363,52 +385,95 @@ function AnalyticsPageContent() {
     reader.onload = async (loadEvent) => {
       try {
         const text = loadEvent.target?.result as string;
-        const lines = text.split("\n");
+        const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+        if (lines.length < 2) {
+          throw new Error("CSV has no data rows.");
+        }
+        const headers = parseCsvLine(lines[0]).map(normalizeHeader);
+        const column = (aliases: string[], fallbackIndex: number) => {
+          for (const alias of aliases) {
+            const idx = headers.indexOf(normalizeHeader(alias));
+            if (idx >= 0) return idx;
+          }
+          return fallbackIndex;
+        };
+        const idxMatch = column(["match"], 0);
+        const idxTeam = column(["team"], 1);
+        const idxScout = column(["scout"], 2);
+        const idxStartingPos = column(["startingposition"], 3);
+        const idxLeave = column(["leave"], 4);
+        const idxAutoCoralMissed = column(["autocoralmissed"], 5);
+        const idxAutoCoralL1 = column(["autocorall1"], 6);
+        const idxAutoCoralL2 = column(["autocorall2"], 7);
+        const idxAutoCoralL3 = column(["autocorall3"], 8);
+        const idxAutoCoralL4 = column(["autocorall4"], 9);
+        const idxAutoAlgaeProcMissed = column(["autoalgaeprocessormissed"], 10);
+        const idxAutoAlgaeProcScored = column(["autoalgaeprocessorscored"], 11);
+        const idxAutoAlgaeNetMissed = column(["autoalgaenetmissed"], 12);
+        const idxAutoAlgaeNetScored = column(["autoalgaenetscored"], 13);
+        const idxTeleCoralMissed = column(["telecoralmissed"], 14);
+        const idxTeleCoralL1 = column(["telecorall1"], 15);
+        const idxTeleCoralL2 = column(["telecorall2"], 16);
+        const idxTeleCoralL3 = column(["telecorall3"], 17);
+        const idxTeleCoralL4 = column(["telecorall4"], 18);
+        const idxRemovedReef = column(["removealgaefromreef", "removedreef"], 19);
+        const idxTeleProcMissed = column(["teleprocessormissed"], 20);
+        const idxTeleProcScored = column(["teleprocessorscored"], 21);
+        const idxTeleNetRobotMissed = column(["telenetrobotmissed"], 22);
+        const idxTeleNetRobotScored = column(["telenetrobotscored"], 23);
+        const idxTeleNetHumanMissed = column(["telenethumanmissed"], 24);
+        const idxTeleNetHumanScored = column(["telenethumanscored"], 25);
+        const idxFailedClimb = column(["climbfailed", "failed"], 26);
+        const idxEndPlace = column(["endplace", "stagestatus"], 27);
+        const idxIncidents = column(["miscellaneous", "incidents"], 28);
+        const idxComments = column(["comments", "notes"], 29);
+        const idxAccuracy = column(["allianceaccuracy", "accuracy"], 30);
+
         let imported = 0;
         for (let i = 1; i < lines.length; i++) {
           if (!lines[i].trim()) continue;
-          const values = lines[i].split(",").map((value) => value.trim());
-          const match = normalizeMatchLabel(values[0] || values[1] || "");
+          const values = parseCsvLine(lines[i]);
+          const match = normalizeMatchLabel(values[idxMatch] || values[idxTeam] || "");
           const now = Date.now();
           const parseNum = (value: string, fallback = 0) => {
             const parsed = Number(value);
             return Number.isFinite(parsed) ? parsed : fallback;
           };
-          const parseBool = (value: string) => value === "1" || /^y(es)?$/i.test(value);
+          const parseBool = (value: string) => value === "1" || /^y(es)?$/i.test(value) || /^true$/i.test(value);
           await addDoc(collection(db, "scouting"), {
             matchId: match.matchId,
             matchNumber: match.matchNumber,
             matchType: match.matchType,
-            teamNumber: values[1] || "",
-            scoutName: values[2] || "",
-            startingPosition: values[3] || "",
-            leftStartingZone: parseBool(values[4] || ""),
-            autoCoralMissed: parseNum(values[5]),
-            autoCoralL1: parseNum(values[6]),
-            autoCoralL2: parseNum(values[7]),
-            autoCoralL3: parseNum(values[8]),
-            autoCoralL4: parseNum(values[9]),
-            autoAlgaeProcessorMissed: parseNum(values[10]),
-            autoAlgaeProcessorScored: parseNum(values[11]),
-            autoAlgaeNetMissed: parseNum(values[12]),
-            autoAlgaeNetScored: parseNum(values[13]),
-            teleopCoralMissed: parseNum(values[14]),
-            teleopCoralL1: parseNum(values[15]),
-            teleopCoralL2: parseNum(values[16]),
-            teleopCoralL3: parseNum(values[17]),
-            teleopCoralL4: parseNum(values[18]),
-            teleopAlgaeRemoved: parseBool(values[19] || ""),
-            teleopProcessorMissed: parseNum(values[20]),
-            teleopProcessorScored: parseNum(values[21]),
-            teleopNetRobotMissed: parseNum(values[22]),
-            teleopNetRobotScored: parseNum(values[23]),
-            teleopNetHumanMissed: parseNum(values[24]),
-            teleopNetHumanScored: parseNum(values[25]),
-            failedClimb: parseNum(values[26]),
-            stageStatus: values[27] || "",
-            incidents: (values[28] || "").split(";").map((item) => item.trim()).filter(Boolean),
-            notes: values[29]?.replace(/"/g, "").replace(/;/g, ",") || "",
-            accuracy: values[30] ? parseNum(values[30]) : undefined,
+            teamNumber: values[idxTeam] || "",
+            scoutName: values[idxScout] || "",
+            startingPosition: values[idxStartingPos] || "",
+            leftStartingZone: parseBool(values[idxLeave] || ""),
+            autoCoralMissed: parseNum(values[idxAutoCoralMissed]),
+            autoCoralL1: parseNum(values[idxAutoCoralL1]),
+            autoCoralL2: parseNum(values[idxAutoCoralL2]),
+            autoCoralL3: parseNum(values[idxAutoCoralL3]),
+            autoCoralL4: parseNum(values[idxAutoCoralL4]),
+            autoAlgaeProcessorMissed: parseNum(values[idxAutoAlgaeProcMissed]),
+            autoAlgaeProcessorScored: parseNum(values[idxAutoAlgaeProcScored]),
+            autoAlgaeNetMissed: parseNum(values[idxAutoAlgaeNetMissed]),
+            autoAlgaeNetScored: parseNum(values[idxAutoAlgaeNetScored]),
+            teleopCoralMissed: parseNum(values[idxTeleCoralMissed]),
+            teleopCoralL1: parseNum(values[idxTeleCoralL1]),
+            teleopCoralL2: parseNum(values[idxTeleCoralL2]),
+            teleopCoralL3: parseNum(values[idxTeleCoralL3]),
+            teleopCoralL4: parseNum(values[idxTeleCoralL4]),
+            teleopAlgaeRemoved: parseBool(values[idxRemovedReef] || ""),
+            teleopProcessorMissed: parseNum(values[idxTeleProcMissed]),
+            teleopProcessorScored: parseNum(values[idxTeleProcScored]),
+            teleopNetRobotMissed: parseNum(values[idxTeleNetRobotMissed]),
+            teleopNetRobotScored: parseNum(values[idxTeleNetRobotScored]),
+            teleopNetHumanMissed: parseNum(values[idxTeleNetHumanMissed]),
+            teleopNetHumanScored: parseNum(values[idxTeleNetHumanScored]),
+            failedClimb: parseNum(values[idxFailedClimb]),
+            stageStatus: values[idxEndPlace] || "",
+            incidents: (values[idxIncidents] || "").split(";").map((item) => item.trim()).filter(Boolean),
+            notes: values[idxComments] || "",
+            accuracy: values[idxAccuracy] ? parseNum(values[idxAccuracy]) : undefined,
             eventKey: importEvent,
             eventName: importEventOptions.find((option) => option.id === importEvent)?.name || "App Testing",
             game: importGame,
@@ -423,7 +488,8 @@ function AnalyticsPageContent() {
         setPendingImportFile(null);
       } catch (error) {
         console.error("Import failed:", error);
-        alert("Error importing CSV");
+        const message = error instanceof Error ? error.message : "Unknown error";
+        alert(`Error importing CSV: ${message}`);
       }
     };
     reader.readAsText(pendingImportFile);
@@ -519,7 +585,6 @@ function AnalyticsPageContent() {
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
               <th className="bg-pink-300 text-center" colSpan={4}>General</th>
-              {isCoach && <th className="bg-orange-300 text-center" colSpan={1}>Actions</th>}
             </tr>
             <tr>
               <th className="sticky-left-0 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -538,7 +603,6 @@ function AnalyticsPageContent() {
               <th className="bg-pink-200 text-center" colSpan={2}>Comments</th>
               <th className="bg-pink-200 text-center" colSpan={1}>Accuracy Script</th>
               <th className="bg-pink-200 text-center" colSpan={1}>Script Status</th>
-              {isCoach && <th className="bg-orange-200 text-center">Delete</th>}
             </tr>
             <tr>
               <th className="sticky-left-0 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
@@ -573,7 +637,6 @@ function AnalyticsPageContent() {
               <th className="text-center">Comments</th>
               <th className="text-center">Alliance Accuracy</th>
               <th className="text-center">Script Status</th>
-              {isCoach && <th className="text-center">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -613,18 +676,6 @@ function AnalyticsPageContent() {
                 <td className="text-center">{entry.notes || "-"}</td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? `${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%` : "-"}</td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
-                {isCoach && (
-                  <td className="text-center">
-                    <button
-                      onClick={() => handleDelete(entry)}
-                      className={`px-2 py-1 text-xs rounded ${
-                        deleteConfirm === entry.id ? "bg-red-700 text-white" : "bg-red-500 text-white"
-                      }`}
-                    >
-                      {deleteConfirm === entry.id ? "Confirm?" : "Delete"}
-                    </button>
-                  </td>
-                )}
               </tr>
             ))}
           </tbody>
