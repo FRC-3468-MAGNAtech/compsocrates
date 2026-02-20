@@ -970,7 +970,7 @@ function AnalyticsPageContent() {
               <th className="text-center">Failed</th>
               <th className="text-center">End Place</th>
               <th className="text-center">Miscellaneous</th>
-              <th className="text-center">Comments</th>
+              <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
               <th className="text-center">Alliance Accuracy</th>
               <th className="text-center">Script Status</th>
               <th className="text-center">Delete</th>
@@ -1010,7 +1010,9 @@ function AnalyticsPageContent() {
                 <td className="text-center">
                   {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                 </td>
-                <td className="text-center">{entry.notes || "-"}</td>
+                <td className="text-left align-top" style={{ minWidth: "260px", whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                  {entry.notes || "-"}
+                </td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? `${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%` : "-"}</td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                 <td className="text-center">

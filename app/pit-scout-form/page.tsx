@@ -84,6 +84,11 @@ function PitScoutFormContent() {
     void loadActivePitPreset();
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    if (!userData?.displayName) return;
+    setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
+  }, [userData?.displayName]);
+
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid) return;
@@ -134,8 +139,8 @@ function PitScoutFormContent() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Scout Name</label>
               <input
                 value={form.scoutName}
-                onChange={(event) => setForm({ ...form, scoutName: event.target.value })}
-                className="w-full border rounded p-3 bg-gray-100"
+                disabled
+                className="w-full border rounded p-3 bg-gray-100 text-gray-600"
                 placeholder="Scout Name"
                 required
               />
