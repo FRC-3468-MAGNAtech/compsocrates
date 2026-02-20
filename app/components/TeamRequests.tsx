@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { CheckCircle, XCircle, Clock, Mail } from "lucide-react";
-import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 interface TeamRequest {
   id: string;
@@ -53,30 +52,14 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
     }
 
     try {
-      let targetUserId = "";
-      if (request.userId) {
-        const directUserDoc = await getDoc(doc(db, "users", request.userId));
-        if (directUserDoc.exists()) {
-          targetUserId = request.userId;
-        }
-      }
+      const targetUserId = String(request.userId || "").trim();
       if (!targetUserId) {
-        const usersQuery = query(
-          collection(db, "users"),
-          where("email", "==", request.userEmail)
-        );
-        const usersSnapshot = await getDocs(usersQuery);
-        if (!usersSnapshot.empty) {
-          targetUserId = usersSnapshot.docs[0].id;
-        }
-      }
-      if (!targetUserId) {
-        alert("User not found");
+        alert("Request is missing a user ID. Ask the scout to re-submit.");
         return;
       }
 
       // Add user first; only then mark request approved.
-      await updateSecureUserDoc(targetUserId, {
+      await updateDoc(doc(db, "users", targetUserId), {
         teamId,
         role: resolvedRole,
       });

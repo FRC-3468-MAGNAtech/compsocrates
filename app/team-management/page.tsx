@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -107,34 +107,16 @@ function TeamManagementContent() {
   async function handleApproveRequest(request: JoinRequest) {
     try {
       const resolvedRole = (request.requestedRole || request.userRole || "scout") as "coach" | "scout";
-
-      let targetUserId = "";
-      if (request.userId) {
-        const directUserDoc = await getDoc(doc(db, "users", request.userId));
-        if (directUserDoc.exists()) {
-          targetUserId = request.userId;
-        }
-      }
-
-      if (!targetUserId && request.userEmail) {
-        const usersQuery = query(
-          collection(db, "users"),
-          where("email", "==", request.userEmail)
-        );
-        const usersSnap = await getDocs(usersQuery);
-        if (!usersSnap.empty) {
-          targetUserId = usersSnap.docs[0].id;
-        }
-      }
+      const targetUserId = String(request.userId || "").trim();
 
       if (!targetUserId) {
-        alert("Unable to find the user account for this request.");
+        alert("This request is missing a user ID. Ask the scout to submit a new request.");
         return;
       }
 
       // 1) First add the user to the team.
       // If this fails, keep the request pending so admins can retry.
-      await updateSecureUserDoc(targetUserId, {
+      await updateDoc(doc(db, "users", targetUserId), {
         teamId: request.teamId,
         role: resolvedRole,
       });

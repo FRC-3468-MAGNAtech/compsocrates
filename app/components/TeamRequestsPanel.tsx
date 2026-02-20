@@ -5,7 +5,6 @@ import { collection, query, where, getDocs, updateDoc, doc } from "firebase/fire
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { UserCheck, UserX, Clock, Mail } from "lucide-react";
-import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 interface TeamRequest {
   id: string;
@@ -57,23 +56,16 @@ export default function TeamRequestsPanel() {
     if (!confirm(`Approve ${request.userName} to join as ${resolvedRole}?`)) return;
 
     try {
-      // 1. Find and update user document
-      const usersQuery = query(
-        collection(db, "users"),
-        where("email", "==", request.userEmail)
-      );
-      const usersSnapshot = await getDocs(usersQuery);
-      
-      if (!usersSnapshot.empty) {
-        const userDoc = usersSnapshot.docs[0];
-        await updateSecureUserDoc(userDoc.id, {
-          teamId: userData?.teamId,
-          role: resolvedRole
-        });
-      } else {
-        alert("User not found");
+      const targetUserId = String(request.userId || "").trim();
+      if (!targetUserId) {
+        alert("Request is missing a user ID. Ask the scout to re-submit.");
         return;
       }
+      // 1. Add user to team
+      await updateDoc(doc(db, "users", targetUserId), {
+        teamId: userData?.teamId,
+        role: resolvedRole
+      });
 
       // 2. Mark request approved after user update succeeds.
       await updateDoc(doc(db, "teamJoinRequests", request.id), {

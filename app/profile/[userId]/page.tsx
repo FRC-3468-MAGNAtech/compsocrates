@@ -34,6 +34,7 @@ function ProfileContent() {
   const [canView, setCanView] = useState(true);
   const [stats, setStats] = useState({
     totalEntries: 0,
+    practiceEntries: 0,
     practiceSessions: 0,
     avgAccuracy: 0,
     eventsScouted: 0,
@@ -113,6 +114,7 @@ function ProfileContent() {
             accuracyCount: number;
           }
         >();
+        let practiceEntries = 0;
         scoutingSnap.docs.forEach((entryDoc) => {
           const entry = entryDoc.data() as Record<string, unknown>;
           const eventKey = String(entry.eventKey || "");
@@ -135,7 +137,11 @@ function ProfileContent() {
             ? `M${matchNumber}`
             : "Unknown";
           const practiceMode = String(entry.practiceMode || "").toLowerCase();
-          const isPractice = Boolean(entry.isPracticeScouting) || Boolean(practiceMode);
+          const isPractice =
+            Boolean(entry.isPracticeScouting) ||
+            Boolean(practiceMode) ||
+            String(entry.matchType || "").toLowerCase() === "practice";
+          if (isPractice) practiceEntries += 1;
           const scoutingType: "Trial" | "Competitive" | "Real Competition" = isPractice
             ? practiceMode === "competitive"
               ? "Competitive"
@@ -194,6 +200,7 @@ function ProfileContent() {
 
         setStats({
           totalEntries: scoutingSnap.size,
+          practiceEntries,
           practiceSessions: practiceSnap.size,
           avgAccuracy: accuracyCount > 0 ? Math.round(accuracyTotal / accuracyCount) : 0,
           eventsScouted: eventKeys.size,
@@ -215,6 +222,10 @@ function ProfileContent() {
       </div>
     );
   }
+  const entriesLabel =
+    stats.totalEntries > 0 && stats.practiceEntries === stats.totalEntries
+      ? "Practice Entries"
+      : "Scouting Entries";
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -261,11 +272,11 @@ function ProfileContent() {
               <div className="md:hidden -mx-2 px-2 overflow-x-auto touch-pan-x snap-x snap-mandatory">
                 <div className="flex gap-4 w-max pb-2">
                   <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
-                    <p className="text-xs text-gray-500">Entries</p>
+                    <p className="text-xs text-gray-500">{entriesLabel}</p>
                     <p className="text-2xl font-bold">{stats.totalEntries}</p>
                   </div>
                   <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
-                    <p className="text-xs text-gray-500">Sessions</p>
+                    <p className="text-xs text-gray-500">Practice Sessions</p>
                     <p className="text-2xl font-bold">{stats.practiceSessions}</p>
                   </div>
                   <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
@@ -280,11 +291,11 @@ function ProfileContent() {
               </div>
               <div className="hidden md:grid grid-cols-4 gap-3 text-center">
                 <div className="p-3 border border-gray-200 rounded-lg">
-                  <p className="text-xs text-gray-500">Entries</p>
+                  <p className="text-xs text-gray-500">{entriesLabel}</p>
                   <p className="text-2xl font-bold">{stats.totalEntries}</p>
                 </div>
                 <div className="p-3 border border-gray-200 rounded-lg">
-                  <p className="text-xs text-gray-500">Sessions</p>
+                  <p className="text-xs text-gray-500">Practice Sessions</p>
                   <p className="text-2xl font-bold">{stats.practiceSessions}</p>
                 </div>
                 <div className="p-3 border border-gray-200 rounded-lg">
