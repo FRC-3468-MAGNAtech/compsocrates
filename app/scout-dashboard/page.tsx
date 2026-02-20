@@ -19,6 +19,8 @@ type ScoutStats = {
   practiceSessionsCount: number;
 };
 
+type MatchEntry = Record<string, unknown>;
+
 type DashboardMatch = {
   key: string;
   label: string;
@@ -66,6 +68,20 @@ function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
     }));
 }
 
+function isRealCompetitionEntry(entry: MatchEntry): boolean {
+  const game = String(entry.game || "REEFSCAPE").toUpperCase();
+  const matchType = String(entry.matchType || "").toLowerCase();
+  const practiceMode = String(entry.practiceMode || "").toLowerCase();
+  const isPracticeScouting = Boolean(entry.isPracticeScouting);
+  return (
+    game === "REEFSCAPE" &&
+    matchType !== "practice" &&
+    !isPracticeScouting &&
+    practiceMode !== "trial" &&
+    practiceMode !== "competitive"
+  );
+}
+
 function ScoutDashboardContent() {
   const router = useRouter();
   const { userData } = useAuth();
@@ -91,11 +107,13 @@ function ScoutDashboardContent() {
     try {
       // Get scout's scouting entries
       const entriesQuery = query(
-        collection(db, "scoutingEntries"),
+        collection(db, "scouting"),
         where("scoutName", "==", userData.displayName)
       );
       const entriesSnapshot = await getDocs(entriesQuery);
-      const matchesScoutedCount = entriesSnapshot.size;
+      const matchesScoutedCount = entriesSnapshot.docs
+        .map((docSnap) => docSnap.data() as MatchEntry)
+        .filter(isRealCompetitionEntry).length;
 
       // Get scout's practice sessions
       const practiceQuery = query(
@@ -157,7 +175,7 @@ function ScoutDashboardContent() {
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
-        <div className="p-8 max-w-4xl">
+        <div className="p-8">
           <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
             Dashboard
           </h1>

@@ -75,7 +75,6 @@ export default function Sidebar() {
     { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
-    { href: "/event-selection", label: "Event Selection", icon: Calendar },
     { href: "/people", label: "People", icon: UserCircle2 },
     ...(userData.isTeamAdmin ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
     ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),

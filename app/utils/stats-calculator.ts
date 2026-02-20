@@ -42,6 +42,20 @@ type ScoutingEntry = Record<string, unknown> & {
   timestamp?: number;
 };
 
+function isRealCompetitionEntry(entry: ScoutingEntry): boolean {
+  const game = String(entry.game || "REEFSCAPE").toUpperCase();
+  const matchType = String(entry.matchType || "").toLowerCase();
+  const practiceMode = String(entry.practiceMode || "").toLowerCase();
+  const isPracticeScouting = Boolean(entry.isPracticeScouting);
+  return (
+    game === "REEFSCAPE" &&
+    matchType !== "practice" &&
+    !isPracticeScouting &&
+    practiceMode !== "trial" &&
+    practiceMode !== "competitive"
+  );
+}
+
 export async function getTeamEntries(teamId: string): Promise<ScoutingEntry[]> {
   // First get all team members
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
@@ -62,6 +76,7 @@ export async function getTeamEntries(teamId: string): Promise<ScoutingEntry[]> {
 // Calculate comprehensive team stats
 export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   const entries = await getTeamEntries(teamId);
+  const competitionEntries = entries.filter(isRealCompetitionEntry);
   const normalize = (value: string | null | undefined) =>
     (value || "").toLowerCase().replace(/\s+/g, "-");
   
@@ -109,20 +124,20 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
 
   // Count entries by event (based on submittedAt timestamp)
   const entriesByEvent: Record<string, number> = {};
-  entries.forEach(() => {
-    const event = "Current Event"; // In real app, would map timestamp to event
+  competitionEntries.forEach((entry) => {
+    const event = String(entry.eventName || entry.eventKey || "Current Event");
     entriesByEvent[event] = (entriesByEvent[event] || 0) + 1;
   });
 
   // Count entries by scout
   const entriesByScout: Record<string, number> = {};
-  entries.forEach(entry => {
+  competitionEntries.forEach(entry => {
     const scout = entry.scoutName || "Unknown";
     entriesByScout[scout] = (entriesByScout[scout] || 0) + 1;
   });
 
   // Get recent activity
-  const recentEntries = entries
+  const recentEntries = competitionEntries
     .sort((a, b) => {
       const bTime = typeof b.submittedAt === "number" ? b.submittedAt : (typeof b.timestamp === "number" ? b.timestamp : 0);
       const aTime = typeof a.submittedAt === "number" ? a.submittedAt : (typeof a.timestamp === "number" ? a.timestamp : 0);
@@ -139,7 +154,7 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
     }));
 
   return {
-    totalEntries: entries.length,
+    totalEntries: competitionEntries.length,
     activeScouts: readyScoutCount,
     totalScouts: scouts.length,
     averageAccuracy: avgAccuracy,
