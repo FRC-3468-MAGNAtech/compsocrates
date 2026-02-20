@@ -208,13 +208,20 @@ function ScoutDashboardContent() {
 
               {/* PRACTICE REMINDER */}
               {needsPractice && (
-                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6">
+                <div
+                  className="rounded-xl p-6 mb-6 border-l-4"
+                  style={{
+                    backgroundColor: "var(--theme-surface-raised)",
+                    borderColor: "rgba(var(--primary-rgb), 0.45)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  }}
+                >
                   <div className="flex items-start gap-4">
-                    <span className="text-yellow-700 mt-0.5">
+                    <span className="mt-0.5" style={{ color: "var(--primary-color)" }}>
                       <TriangleAlert size={28} />
                     </span>
                     <div className="flex-1">
-                      <h3 className="font-semibold mb-1">Practice Scouting Required</h3>
+                      <h3 className="font-semibold mb-1 text-gray-900">Practice Scouting Required</h3>
                       <p className="text-sm text-gray-700 mb-3">
                         You need to complete {3 - (stats?.practiceSessionsCount || 0)} more practice session(s) to verify your accuracy before the event.
                       </p>

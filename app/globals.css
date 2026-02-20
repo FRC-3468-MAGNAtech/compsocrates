@@ -225,6 +225,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Unified form controls across light/dark themes */
+input:not([type]),
 input[type="text"],
 input[type="email"],
 input[type="password"],
@@ -250,6 +251,7 @@ textarea:disabled {
   opacity: 1;
 }
 
+input:not([type])::placeholder,
 input[type="text"]::placeholder,
 input[type="email"]::placeholder,
 input[type="password"]::placeholder,
@@ -262,6 +264,7 @@ textarea::placeholder {
   opacity: 0.9;
 }
 
+input:not([type]):focus,
 input[type="text"]:focus,
 input[type="email"]:focus,
 input[type="password"]:focus,

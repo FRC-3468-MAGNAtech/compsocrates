@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
+import { Image as ImageIcon, Link as LinkIcon, Trash2 } from "lucide-react";
 
 type PitFormState = {
   scoutName: string;
@@ -40,6 +41,7 @@ function PitScoutFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [robotPictureUrlInput, setRobotPictureUrlInput] = useState("");
   const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
@@ -89,6 +91,33 @@ function PitScoutFormContent() {
     setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
   }, [userData?.displayName]);
 
+  const isValidImageUrl = (value: string): boolean => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch {
+      return false;
+    }
+  };
+
+  const applyRobotPictureUrl = () => {
+    const normalized = robotPictureUrlInput.trim();
+    if (!normalized) {
+      setForm((prev) => ({ ...prev, robotPictureUrl: "" }));
+      return;
+    }
+    if (!isValidImageUrl(normalized)) {
+      alert("Please enter a valid http(s) image URL.");
+      return;
+    }
+    setForm((prev) => ({ ...prev, robotPictureUrl: normalized }));
+  };
+
+  const clearRobotPictureUrl = () => {
+    setRobotPictureUrlInput("");
+    setForm((prev) => ({ ...prev, robotPictureUrl: "" }));
+  };
+
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid) return;
@@ -114,6 +143,7 @@ function PitScoutFormContent() {
         robotPictureUrl: "",
         notes: "",
       }));
+      setRobotPictureUrlInput("");
     } finally {
       setSaving(false);
     }
@@ -138,6 +168,7 @@ function PitScoutFormContent() {
               <h2 className="text-lg font-semibold theme-text">Information</h2>
               <label className="block text-sm font-medium text-gray-700 mb-1">Scout Name</label>
               <input
+                type="text"
                 value={form.scoutName}
                 disabled
                 className="w-full border rounded p-3 bg-gray-100 text-gray-600"
@@ -146,6 +177,7 @@ function PitScoutFormContent() {
               />
               <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
               <input
+                type="text"
                 value={form.teamNumber}
                 onChange={(event) => setForm({ ...form, teamNumber: event.target.value })}
                 className="w-full border rounded p-3"
@@ -153,12 +185,49 @@ function PitScoutFormContent() {
                 required
               />
               <label className="block text-sm font-medium text-gray-700 mb-1">Picture of Robot</label>
-              <input
-                value={form.robotPictureUrl}
-                onChange={(event) => setForm({ ...form, robotPictureUrl: event.target.value })}
-                className="w-full border rounded p-3"
-                placeholder="Paste robot picture URL"
-              />
+              <div className="rounded-lg border p-3 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-lg border flex items-center justify-center overflow-hidden bg-gray-100">
+                    {form.robotPictureUrl ? (
+                      <img
+                        src={form.robotPictureUrl}
+                        alt="Robot preview"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <ImageIcon size={20} className="text-gray-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="url"
+                      value={robotPictureUrlInput}
+                      onChange={(event) => setRobotPictureUrlInput(event.target.value)}
+                      className="w-full border rounded p-3"
+                      placeholder="https://example.com/robot.jpg"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={applyRobotPictureUrl}
+                        className="px-3 py-2 rounded text-white text-sm font-semibold flex items-center gap-2"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        <LinkIcon size={14} />
+                        Apply URL
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearRobotPictureUrl}
+                        className="px-3 py-2 rounded border text-sm font-semibold flex items-center gap-2"
+                      >
+                        <Trash2 size={14} />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
@@ -240,6 +309,7 @@ function PitScoutFormContent() {
                 <option>Can climb deep cage</option>
               </select>
               <input
+                type="text"
                 value={form.autoCapabilities}
                 onChange={(event) => setForm({ ...form, autoCapabilities: event.target.value })}
                 className="w-full border rounded p-3"

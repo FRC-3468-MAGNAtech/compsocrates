@@ -705,7 +705,14 @@ function PracticeScoutingContent() {
                 <div className="grid md:grid-cols-2 gap-4 mb-8">
                   <button
                     onClick={() => setSelectedMode('trial')}
-                    className="p-6 border-2 border-blue-300 rounded-lg hover:bg-black/5 text-left transition-colors"
+                    className="p-6 border-2 border-blue-300 rounded-lg text-left transition-colors"
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = "rgba(59, 130, 246, 0.14)";
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = "transparent";
+                    }}
                   >
                     <div className="text-sm font-semibold mb-2 text-blue-700">TRIAL</div>
                     <h3 className="font-semibold text-lg mb-1">Trial Mode</h3>
@@ -754,7 +761,14 @@ function PracticeScoutingContent() {
                   <button
                     onClick={() => selectPracticeMatch('easy', selectedMode)}
                     disabled={loading}
-                    className="p-6 border-2 border-green-300 rounded-lg hover:bg-black/5 text-left transition-colors disabled:opacity-50"
+                    className="p-6 border-2 border-green-300 rounded-lg text-left transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = "rgba(34, 197, 94, 0.14)";
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = "transparent";
+                    }}
                   >
                     <div className="text-sm font-semibold mb-2 text-green-700">EASY</div>
                     <h3 className="font-semibold text-lg mb-1">Easy</h3>
@@ -764,7 +778,14 @@ function PracticeScoutingContent() {
                   <button
                     onClick={() => selectPracticeMatch('medium', selectedMode)}
                     disabled={loading}
-                    className="p-6 border-2 border-yellow-300 rounded-lg hover:bg-black/5 text-left transition-colors disabled:opacity-50"
+                    className="p-6 border-2 border-yellow-300 rounded-lg text-left transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = "rgba(234, 179, 8, 0.16)";
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = "transparent";
+                    }}
                   >
                     <div className="text-sm font-semibold mb-2 text-yellow-700">MEDIUM</div>
                     <h3 className="font-semibold text-lg mb-1">Medium</h3>
