@@ -147,13 +147,38 @@ function AccountContent() {
     }
   }
 
+  async function handleLeaveTeam() {
+    if (!user?.uid || !userData?.teamId) return;
+    if (!confirm("Leave this team? You will need to request access again to rejoin.")) return;
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      await updateSecureUserDoc(user.uid, {
+        teamId: "",
+        role: "scout",
+        specialRoles: [],
+        specialRole: null,
+        isTeamAdmin: false,
+      });
+      await refreshUserData();
+      setSuccess("You left the team.");
+      router.push("/dashboard");
+    } catch (err) {
+      console.error("Leave team error:", err);
+      setError("Failed to leave team.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
       
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Account Settings
           </h1>
           <p className="text-gray-600 mb-8">Manage your account information and security</p>
@@ -162,7 +187,7 @@ function AccountContent() {
               <button
                 onClick={() => router.push("/dashboard")}
                 className="px-4 py-2 rounded text-white font-semibold"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Back To Dashboard
               </button>
@@ -220,6 +245,23 @@ function AccountContent() {
             <ProfilePictureUpload />
           </div>
 
+          {userData.teamId && (
+            <div className="bg-white rounded-xl shadow p-6 mb-6">
+              <h2 className="text-xl font-semibold mb-2">Team Membership</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                You are currently on team <span className="font-semibold">{userData.teamId}</span>.
+              </p>
+              <button
+                type="button"
+                onClick={handleLeaveTeam}
+                disabled={loading}
+                className="px-4 py-2 rounded border border-red-300 text-red-700 hover:bg-red-50 text-sm font-semibold disabled:opacity-50"
+              >
+                Leave Team
+              </button>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Profile Preferences</h2>
             <div className="space-y-4">
@@ -262,9 +304,7 @@ function AccountContent() {
           {/* THEMES */}
           <div className="bg-white rounded-xl shadow p-6 mb-6">
             <h2 className="text-xl font-semibold mb-2">Appearance</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Theme selection is temporarily disabled for release stability.
-            </p>
+            <p className="text-sm text-gray-600 mb-4">Pick a light, dark, or pride theme.</p>
             <ThemePicker />
           </div>
 
@@ -305,7 +345,7 @@ function AccountContent() {
                 type="submit"
                 disabled={loading}
                 className="px-6 py-2 rounded-lg text-white font-semibold disabled:opacity-50"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 {loading ? "Updating..." : "Update Email"}
               </button>
@@ -363,7 +403,7 @@ function AccountContent() {
                 type="submit"
                 disabled={loading}
                 className="px-6 py-2 rounded-lg text-white font-semibold disabled:opacity-50"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 {loading ? "Updating..." : "Update Password"}
               </button>
@@ -382,3 +422,4 @@ export default function AccountPage() {
     </ProtectedRoute>
   );
 }
+

@@ -207,12 +207,6 @@ function TeamManagementContent() {
     }
   }
 
-  async function handleLeaveTeam() {
-    if (!userData?.uid) return;
-    if (!confirm("Leave this team? You will need to request access again to rejoin.")) return;
-    await handleKickMember(userData.uid);
-  }
-
   function formatRole(member: TeamMember): string {
     if (member.specialRole) return member.specialRole.replace(/-/g, " ");
     return member.role;
@@ -238,7 +232,7 @@ function TeamManagementContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Team Management
           </h1>
           <p className="text-gray-600 mb-8">Manage your team members and their roles</p>
@@ -253,7 +247,7 @@ function TeamManagementContent() {
               <button
                 onClick={() => setShowInviteCode(!showInviteCode)}
                 className="px-4 py-2 rounded text-white font-semibold"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 {showInviteCode ? "Hide" : "Show"} Join Code
               </button>
@@ -261,7 +255,7 @@ function TeamManagementContent() {
             {showInviteCode && (
               <div className="mt-4 p-4 bg-gray-50 rounded">
                 <p className="text-sm text-gray-600 mb-2">Team Join Code:</p>
-                <p className="text-2xl font-mono font-bold" style={{ color: "#c42221" }}>
+                <p className="text-2xl font-mono font-bold" style={{ color: "var(--primary-color)" }}>
                   {userData?.teamId}
                 </p>
               </div>
@@ -314,14 +308,8 @@ function TeamManagementContent() {
 
           {/* Team Members */}
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+            <div className="p-6 border-b border-gray-200">
               <h2 className="text-xl font-semibold">Team Members</h2>
-              <button
-                onClick={handleLeaveTeam}
-                className="px-3 py-2 rounded border border-red-300 text-red-700 hover:bg-red-50 text-sm font-semibold"
-              >
-                Leave Team
-              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -412,3 +400,4 @@ export default function TeamManagementPage() {
     </ProtectedRoute>
   );
 }
+

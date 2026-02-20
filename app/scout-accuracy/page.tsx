@@ -523,7 +523,7 @@ function ScoutAccuracyContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Scout Accuracy
           </h1>
           <p className="text-gray-600 mb-8">
@@ -638,7 +638,7 @@ function ScoutAccuracyContent() {
                     <h3 className="font-semibold text-gray-700">Scouts / Members</h3>
                     <Users size={22} className="text-gray-500" />
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {actualScoutCount} / {scoutStats.length}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
@@ -651,7 +651,7 @@ function ScoutAccuracyContent() {
                     <h3 className="font-semibold text-gray-700">Avg. Accuracy</h3>
                     <Target size={22} className="text-gray-500" />
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {scoutOnlyStatsWithAccuracy.length > 0 
                       ? Math.round(scoutOnlyStatsWithAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) / scoutOnlyStatsWithAccuracy.length)
                       : 0}%
@@ -663,7 +663,7 @@ function ScoutAccuracyContent() {
                     <h3 className="font-semibold text-gray-700">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</h3>
                     <ClipboardList size={22} className="text-gray-500" />
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {scoutStats.reduce((sum, s) => sum + s.practiceSessionsCompleted, 0)}
                   </p>
                 </div>
@@ -673,7 +673,7 @@ function ScoutAccuracyContent() {
                     <h3 className="font-semibold text-gray-700">Total Entries</h3>
                     <ClipboardList size={22} className="text-gray-500" />
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {scoutStats.reduce((sum, s) => sum + s.totalEntries, 0)}
                   </p>
                 </div>
@@ -754,7 +754,7 @@ function ScoutAccuracyContent() {
                               <button
                                 onClick={() => setSelectedScout(scout.scoutName)}
                                 className="text-sm font-medium hover:underline"
-                                style={{ color: "#c42221" }}
+                                style={{ color: "var(--primary-color)" }}
                               >
                                 View Details →
                               </button>
@@ -801,7 +801,7 @@ function ScoutAccuracyContent() {
                           </div>
                           <div className="p-4 bg-gray-50 rounded-lg">
                             <p className="text-sm text-gray-600 mb-1">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</p>
-                            <p className="text-4xl font-bold" style={{ color: "#c42221" }}>{selectedScoutData.practiceSessionsCompleted}</p>
+                            <p className="text-4xl font-bold" style={{ color: "var(--primary-color)" }}>{selectedScoutData.practiceSessionsCompleted}</p>
                           </div>
                         </div>
                       </div>
@@ -924,7 +924,7 @@ function ScoutAccuracyContent() {
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
                     <div className="p-6 border-b border-gray-200">
-                      <h2 className="text-xl font-bold" style={{ color: "#c42221" }}>Session Recalculated</h2>
+                      <h2 className="text-xl font-bold" style={{ color: "var(--primary-color)" }}>Session Recalculated</h2>
                       <p className="text-sm text-gray-600 mt-1">Practice session {rerunResultModal.sessionId}</p>
                     </div>
                     <div className="p-6 space-y-3">
@@ -949,7 +949,7 @@ function ScoutAccuracyContent() {
                       <button
                         onClick={() => setRerunResultModal(null)}
                         className="w-full py-2 rounded text-white font-medium"
-                        style={{ backgroundColor: "#c42221" }}
+                        style={{ backgroundColor: "var(--primary-color)" }}
                       >
                         Close
                       </button>
@@ -972,3 +972,4 @@ export default function ScoutAccuracyPage() {
     </ProtectedRoute>
   );
 }
+

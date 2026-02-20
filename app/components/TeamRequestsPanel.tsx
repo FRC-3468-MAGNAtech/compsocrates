@@ -121,7 +121,7 @@ export default function TeamRequestsPanel() {
   return (
     <div className="bg-white rounded-xl shadow-md p-6">
       <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-        <Clock size={24} style={{ color: "#c42221" }} />
+        <Clock size={24} style={{ color: "var(--primary-color)" }} />
         Pending Join Requests ({requests.length})
       </h2>
 
@@ -166,3 +166,4 @@ export default function TeamRequestsPanel() {
     </div>
   );
 }
+

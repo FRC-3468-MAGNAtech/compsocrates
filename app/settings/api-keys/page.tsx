@@ -124,7 +124,7 @@ function APIKeysContent() {
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-2xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Team API Keys
             </h1>
             <p className="text-gray-600">
@@ -134,7 +134,7 @@ function APIKeysContent() {
 
           <div className="bg-white rounded-xl shadow-md p-6">
             <div className="flex items-center gap-3 mb-4">
-              <Key size={24} style={{ color: "#c42221" }} />
+              <Key size={24} style={{ color: "var(--primary-color)" }} />
               <h2 className="text-xl font-semibold">The Blue Alliance API Key</h2>
             </div>
 
@@ -188,7 +188,7 @@ function APIKeysContent() {
               onClick={handleSave}
               disabled={saving}
               className="w-full py-3 rounded-lg font-semibold text-white flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-              style={{ backgroundColor: "#c42221" }}
+              style={{ backgroundColor: "var(--primary-color)" }}
             >
               {saving ? (
                 <>Saving...</>
@@ -220,3 +220,4 @@ export default function APIKeysPage() {
     </ProtectedRoute>
   );
 }
+

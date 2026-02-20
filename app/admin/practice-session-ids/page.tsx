@@ -196,7 +196,7 @@ function PracticeSessionIdsContent() {
         <Sidebar />
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-xl bg-white rounded-xl shadow-md p-6">
-            <h1 className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>Practice Session IDs</h1>
+            <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Practice Session IDs</h1>
             <p className="text-gray-600">Only team admins can access this page.</p>
           </div>
         </div>
@@ -208,7 +208,7 @@ function PracticeSessionIdsContent() {
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
       <div className="flex-1 overflow-auto p-8">
-        <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>Practice Session IDs</h1>
+        <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Practice Session IDs</h1>
         <p className="text-gray-600 mb-6">Search practice session document IDs from Firebase.</p>
 
         <div className="bg-white rounded-xl shadow-md p-4 mb-4 flex gap-3 items-center">
@@ -222,7 +222,7 @@ function PracticeSessionIdsContent() {
             onClick={() => void loadRecords()}
             disabled={loading}
             className="px-3 py-2 rounded text-white disabled:opacity-60"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             Refresh
           </button>
@@ -289,3 +289,4 @@ export default function PracticeSessionIdsPage() {
     </ProtectedRoute>
   );
 }
+

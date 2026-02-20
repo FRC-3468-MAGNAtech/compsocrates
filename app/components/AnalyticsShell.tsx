@@ -144,7 +144,7 @@ export default function AnalyticsShell({
           <div className="flex-1 overflow-y-auto p-6">
             {selectedGame === "REBUILT" ? (
               <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-md border border-red-200 p-8 text-center">
-                <h2 className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
+                <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
                   REBUILT Analytics Is Not Ready
                 </h2>
                 <p className="text-gray-700">
@@ -160,3 +160,4 @@ export default function AnalyticsShell({
     </div>
   );
 }
+

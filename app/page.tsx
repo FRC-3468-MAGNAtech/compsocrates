@@ -22,10 +22,10 @@ export default function LandingPage() {
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
               <span className="text-white text-xl font-bold">CS</span>
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "#c42221" }}>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>
               CompSocrates
             </h1>
           </div>
@@ -34,7 +34,7 @@ export default function LandingPage() {
               <button
                 onClick={() => router.push(userData.role === "coach" ? "/coach-dashboard" : "/scout-dashboard")}
                 className="px-4 py-2 rounded-lg text-white font-medium"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Dashboard
               </button>
@@ -49,7 +49,7 @@ export default function LandingPage() {
                 <button
                   onClick={() => router.push("/signup")}
                   className="px-4 py-2 rounded-lg text-white font-medium"
-                  style={{ backgroundColor: "#c42221" }}
+                  style={{ backgroundColor: "var(--primary-color)" }}
                 >
                   Get Started
                 </button>
@@ -62,7 +62,7 @@ export default function LandingPage() {
       {/* HERO SECTION */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <div className="text-center max-w-3xl mx-auto">
-          <h2 className="text-5xl font-bold mb-6" style={{ color: "#c42221" }}>
+          <h2 className="text-5xl font-bold mb-6" style={{ color: "var(--primary-color)" }}>
             Strategic Scouting for FRC Teams
           </h2>
           <p className="text-xl text-gray-600 mb-8">
@@ -71,7 +71,7 @@ export default function LandingPage() {
           <button
             onClick={() => router.push("/signup")}
             className="px-8 py-4 rounded-lg text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-shadow"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             Start Scouting Today
           </button>
@@ -85,7 +85,7 @@ export default function LandingPage() {
         <div className="grid md:grid-cols-3 gap-8">
           {/* Feature 1 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
+            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
               <span className="text-white text-sm font-bold">RT</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Real-Time Analytics</h4>
@@ -96,7 +96,7 @@ export default function LandingPage() {
 
           {/* Feature 2 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
+            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
               <span className="text-white text-sm font-bold">M</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Mobile-First Design</h4>
@@ -107,7 +107,7 @@ export default function LandingPage() {
 
           {/* Feature 3 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
+            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
               <span className="text-white text-sm font-bold">SA</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Scout Accuracy Tracking</h4>
@@ -118,7 +118,7 @@ export default function LandingPage() {
 
           {/* Feature 4 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
+            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
               <span className="text-white text-sm font-bold">MS</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Match Strategy Builder</h4>
@@ -129,7 +129,7 @@ export default function LandingPage() {
 
           {/* Feature 5 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
+            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
               <span className="text-white text-sm font-bold">FB</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Custom Form Builder</h4>
@@ -140,7 +140,7 @@ export default function LandingPage() {
 
           {/* Feature 6 */}
           <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "#c42221" }}>
+            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
               <span className="text-white text-sm font-bold">TC</span>
             </div>
             <h4 className="text-xl font-semibold mb-3">Team Collaboration</h4>
@@ -158,7 +158,7 @@ export default function LandingPage() {
           
           <div className="grid md:grid-cols-4 gap-8">
             <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "#c42221" }}>
+              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
                 1
               </div>
               <h4 className="font-semibold mb-2">Create Your Team</h4>
@@ -166,7 +166,7 @@ export default function LandingPage() {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "#c42221" }}>
+              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
                 2
               </div>
               <h4 className="font-semibold mb-2">Configure Your Form</h4>
@@ -174,7 +174,7 @@ export default function LandingPage() {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "#c42221" }}>
+              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
                 3
               </div>
               <h4 className="font-semibold mb-2">Scout Matches</h4>
@@ -182,7 +182,7 @@ export default function LandingPage() {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "#c42221" }}>
+              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
                 4
               </div>
               <h4 className="font-semibold mb-2">Analyze & Win</h4>
@@ -195,7 +195,7 @@ export default function LandingPage() {
       {/* CTA SECTION */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <div className="bg-gradient-to-r from-red-50 to-red-100 rounded-2xl p-12 text-center">
-          <h3 className="text-3xl font-bold mb-4" style={{ color: "#c42221" }}>
+          <h3 className="text-3xl font-bold mb-4" style={{ color: "var(--primary-color)" }}>
             Ready to Transform Your Scouting?
           </h3>
           <p className="text-lg text-gray-700 mb-8 max-w-2xl mx-auto">
@@ -204,7 +204,7 @@ export default function LandingPage() {
           <button
             onClick={() => router.push("/signup")}
             className="px-8 py-4 rounded-lg text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-shadow"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             Get Started Free
           </button>
@@ -253,3 +253,4 @@ export default function LandingPage() {
     </div>
   );
 }
+

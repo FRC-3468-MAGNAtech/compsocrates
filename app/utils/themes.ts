@@ -1,16 +1,20 @@
-// FILE: app/utils/themes.ts
-// COMPLETE REWRITE - Theme definitions with LGBTQ+ Pride flags
-
 export interface Theme {
   id: string;
   name: string;
-  gradient: string;
+  category: "light" | "dark" | "pride";
   primaryColor: string;
   accentColor: string;
-  textColor: string;
   bgColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
+  subtleTextColor: string;
+  headingFont: string;
+  bodyFont: string;
   dark?: boolean;
 }
+
+export const DEFAULT_THEME_ID = "light-compsocrates";
 
 function hexToRgbTuple(hex: string): [number, number, number] {
   const normalized = hex.replace("#", "");
@@ -21,299 +25,211 @@ function hexToRgbTuple(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const [r, g, b] = hexToRgbTuple(hex);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 export const themes: Theme[] = [
-  // Default
+  // Light
   {
-    id: "default",
-    name: "CompSocrates Red",
-    gradient: "linear-gradient(135deg, #c42221 0%, #8b1818 100%)",
+    id: "light-compsocrates",
+    name: "CompSocrates Light",
+    category: "light",
     primaryColor: "#c42221",
     accentColor: "#8b1818",
-    textColor: "#ffffff",
-    bgColor: "#f9fafb"
-  },
-  
-  // Blue variants
-  {
-    id: "ocean-blue",
-    name: "Ocean Blue",
-    gradient: "linear-gradient(135deg, #2563eb 0%, #1e40af 100%)",
-    primaryColor: "#2563eb",
-    accentColor: "#1e40af",
-    textColor: "#ffffff",
-    bgColor: "#f0f9ff"
+    bgColor: "#f3f4f6",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#4b5563",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
-    id: "navy",
-    name: "Navy",
-    gradient: "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)",
-    primaryColor: "#1e3a8a",
-    accentColor: "#0f172a",
-    textColor: "#ffffff",
-    bgColor: "#f8fafc"
+    id: "light-atlantic",
+    name: "Atlantic",
+    category: "light",
+    primaryColor: "#1463c2",
+    accentColor: "#0c3f8a",
+    bgColor: "#eff6ff",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#334155",
+    subtleTextColor: "#64748b",
+    headingFont: "'Verdana', 'Segoe UI', sans-serif",
+    bodyFont: "'Tahoma', 'Segoe UI', sans-serif",
   },
   {
-    id: "cyan",
-    name: "Cyan",
-    gradient: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
-    primaryColor: "#06b6d4",
-    accentColor: "#0891b2",
-    textColor: "#ffffff",
-    bgColor: "#ecfeff"
-  },
-  
-  // Purple variants
-  {
-    id: "purple",
-    name: "Purple",
-    gradient: "linear-gradient(135deg, #9333ea 0%, #7e22ce 100%)",
-    primaryColor: "#9333ea",
-    accentColor: "#7e22ce",
-    textColor: "#ffffff",
-    bgColor: "#faf5ff"
+    id: "light-emerald",
+    name: "Emerald Light",
+    category: "light",
+    primaryColor: "#0f8a5f",
+    accentColor: "#0b5d42",
+    bgColor: "#ecfdf5",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#334155",
+    subtleTextColor: "#64748b",
+    headingFont: "'Gill Sans', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Calibri', 'Segoe UI', sans-serif",
   },
   {
-    id: "lavender",
-    name: "Lavender",
-    gradient: "linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%)",
-    primaryColor: "#a78bfa",
-    accentColor: "#8b5cf6",
-    textColor: "#ffffff",
-    bgColor: "#f5f3ff"
+    id: "light-amber",
+    name: "Amber Light",
+    category: "light",
+    primaryColor: "#b36b00",
+    accentColor: "#7a4a00",
+    bgColor: "#fffbeb",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#374151",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Georgia', 'Times New Roman', serif",
+    bodyFont: "'Cambria', 'Segoe UI', serif",
   },
-  
-  // Pink/Rose
+
+  // Dark
   {
-    id: "rose",
-    name: "Rose",
-    gradient: "linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)",
-    primaryColor: "#f43f5e",
-    accentColor: "#e11d48",
-    textColor: "#ffffff",
-    bgColor: "#fff1f2"
-  },
-  {
-    id: "pink",
-    name: "Pink",
-    gradient: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
-    primaryColor: "#ec4899",
-    accentColor: "#db2777",
-    textColor: "#ffffff",
-    bgColor: "#fdf2f8"
-  },
-  
-  // Green variants
-  {
-    id: "emerald",
-    name: "Emerald",
-    gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-    primaryColor: "#10b981",
-    accentColor: "#059669",
-    textColor: "#ffffff",
-    bgColor: "#ecfdf5"
+    id: "dark-compsocrates",
+    name: "CompSocrates Dark",
+    category: "dark",
+    primaryColor: "#c42221",
+    accentColor: "#8b1818",
+    bgColor: "#0f1117",
+    surfaceColor: "#171a22",
+    textColor: "#e5e7eb",
+    mutedTextColor: "#cbd5e1",
+    subtleTextColor: "#94a3b8",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
+    dark: true,
   },
   {
-    id: "forest",
-    name: "Forest",
-    gradient: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
-    primaryColor: "#22c55e",
-    accentColor: "#16a34a",
-    textColor: "#ffffff",
-    bgColor: "#f0fdf4"
-  },
-  
-  // Orange/Yellow
-  {
-    id: "orange",
-    name: "Orange",
-    gradient: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
-    primaryColor: "#f97316",
-    accentColor: "#ea580c",
-    textColor: "#ffffff",
-    bgColor: "#fff7ed"
+    id: "dark-indigo",
+    name: "Indigo Dark",
+    category: "dark",
+    primaryColor: "#7c87ff",
+    accentColor: "#4953d8",
+    bgColor: "#0d1326",
+    surfaceColor: "#131b33",
+    textColor: "#e5e7eb",
+    mutedTextColor: "#cbd5e1",
+    subtleTextColor: "#94a3b8",
+    headingFont: "'Verdana', 'Segoe UI', sans-serif",
+    bodyFont: "'Tahoma', 'Segoe UI', sans-serif",
+    dark: true,
   },
   {
-    id: "amber",
-    name: "Amber",
-    gradient: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-    primaryColor: "#f59e0b",
-    accentColor: "#d97706",
-    textColor: "#ffffff",
-    bgColor: "#fffbeb"
+    id: "dark-forest",
+    name: "Forest Dark",
+    category: "dark",
+    primaryColor: "#3ebd87",
+    accentColor: "#20885e",
+    bgColor: "#0f1e1a",
+    surfaceColor: "#152823",
+    textColor: "#e5e7eb",
+    mutedTextColor: "#cbd5e1",
+    subtleTextColor: "#94a3b8",
+    headingFont: "'Gill Sans', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Calibri', 'Segoe UI', sans-serif",
+    dark: true,
   },
-  
-  // LGBTQ+ PRIDE FLAGS 🏳️‍🌈
+  {
+    id: "dark-copper",
+    name: "Copper Dark",
+    category: "dark",
+    primaryColor: "#f48f4f",
+    accentColor: "#c8642c",
+    bgColor: "#1a1310",
+    surfaceColor: "#241b16",
+    textColor: "#e5e7eb",
+    mutedTextColor: "#d1d5db",
+    subtleTextColor: "#9ca3af",
+    headingFont: "'Georgia', 'Times New Roman', serif",
+    bodyFont: "'Cambria', 'Segoe UI', serif",
+    dark: true,
+  },
+
+  // Pride
   {
     id: "pride-rainbow",
     name: "Pride Rainbow",
-    gradient: "linear-gradient(180deg, #e40303 0%, #ff8c00 16.67%, #ffed00 33.33%, #008026 50%, #24408e 66.67%, #732982 83.33%, #732982 100%)",
+    category: "pride",
     primaryColor: "#e40303",
-    accentColor: "#732982",
-    textColor: "#ffffff",
-    bgColor: "#fff9f0"
+    accentColor: "#24408e",
+    bgColor: "#fff9f3",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#374151",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Franklin Gothic Medium', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
-    id: "lesbian",
-    name: "Lesbian",
-    gradient: "linear-gradient(180deg, #d62800 0%, #ff9b56 20%, #ffffff 40%, #d462a6 60%, #a40062 80%, #a40062 100%)",
-    primaryColor: "#d62800",
-    accentColor: "#a40062",
-    textColor: "#ffffff",
-    bgColor: "#fff5f5"
-  },
-  {
-    id: "gay",
-    name: "Gay",
-    gradient: "linear-gradient(180deg, #078d70 0%, #26ceaa 16.67%, #98e8c1 33.33%, #ffffff 50%, #7bade2 66.67%, #5049cc 83.33%, #3d1a78 100%)",
-    primaryColor: "#078d70",
-    accentColor: "#3d1a78",
-    textColor: "#ffffff",
-    bgColor: "#f0fdf9"
-  },
-  {
-    id: "bisexual",
-    name: "Bisexual",
-    gradient: "linear-gradient(180deg, #d60270 0%, #d60270 40%, #9b4f96 50%, #0038a8 60%, #0038a8 100%)",
-    primaryColor: "#d60270",
-    accentColor: "#0038a8",
-    textColor: "#ffffff",
-    bgColor: "#fdf2f8"
-  },
-  {
-    id: "pansexual",
-    name: "Pansexual",
-    gradient: "linear-gradient(180deg, #ff218c 0%, #ff218c 33.33%, #ffd800 33.33%, #ffd800 66.67%, #21b1ff 66.67%, #21b1ff 100%)",
-    primaryColor: "#ff218c",
-    accentColor: "#21b1ff",
-    textColor: "#ffffff",
-    bgColor: "#fff9fb"
-  },
-  {
-    id: "transgender",
-    name: "Transgender",
-    gradient: "linear-gradient(180deg, #5bcffb 0%, #5bcffb 20%, #f5abb9 20%, #f5abb9 40%, #ffffff 40%, #ffffff 60%, #f5abb9 60%, #f5abb9 80%, #5bcffb 80%, #5bcffb 100%)",
+    id: "pride-trans",
+    name: "Trans Pride",
+    category: "pride",
     primaryColor: "#5bcffb",
     accentColor: "#f5abb9",
-    textColor: "#ffffff",
-    bgColor: "#f0f9ff"
+    bgColor: "#f0f9ff",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#374151",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
-    id: "nonbinary",
-    name: "Nonbinary",
-    gradient: "linear-gradient(180deg, #fff430 0%, #fff430 25%, #ffffff 25%, #ffffff 50%, #9c59d1 50%, #9c59d1 75%, #2c2c2c 75%, #2c2c2c 100%)",
-    primaryColor: "#fff430",
-    accentColor: "#9c59d1",
-    textColor: "#2c2c2c",
-    bgColor: "#fffef0"
+    id: "pride-bi",
+    name: "Bi Pride",
+    category: "pride",
+    primaryColor: "#d60270",
+    accentColor: "#0038a8",
+    bgColor: "#fdf2f8",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#374151",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Century Gothic', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
-    id: "genderfluid",
-    name: "Genderfluid",
-    gradient: "linear-gradient(180deg, #ff76a4 0%, #ff76a4 20%, #ffffff 20%, #ffffff 40%, #c011d7 40%, #c011d7 60%, #2f2f2f 60%, #2f2f2f 80%, #2f3cbe 80%, #2f3cbe 100%)",
-    primaryColor: "#ff76a4",
-    accentColor: "#2f3cbe",
-    textColor: "#ffffff",
-    bgColor: "#fff5f9"
+    id: "pride-pan",
+    name: "Pan Pride",
+    category: "pride",
+    primaryColor: "#ff218c",
+    accentColor: "#21b1ff",
+    bgColor: "#fff5fa",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#374151",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Arial Black', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
-    id: "asexual",
-    name: "Asexual",
-    gradient: "linear-gradient(180deg, #000000 0%, #000000 25%, #a3a3a3 25%, #a3a3a3 50%, #ffffff 50%, #ffffff 75%, #800080 75%, #800080 100%)",
-    primaryColor: "#800080",
-    accentColor: "#000000",
-    textColor: "#ffffff",
-    bgColor: "#faf5ff"
+    id: "pride-lesbian",
+    name: "Lesbian Pride",
+    category: "pride",
+    primaryColor: "#d62800",
+    accentColor: "#a40062",
+    bgColor: "#fff5f5",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#374151",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Franklin Gothic Medium', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
-    id: "demisexual",
-    name: "Demisexual",
-    gradient: "linear-gradient(180deg, #ffffff 0%, #ffffff 25%, #6e0070 25%, #6e0070 50%, #d3d3d3 50%, #d3d3d3 75%, #000000 75%, #000000 100%)",
-    primaryColor: "#6e0070",
-    accentColor: "#000000",
-    textColor: "#ffffff",
-    bgColor: "#faf5ff"
-  },
-  {
-    id: "aromantic",
-    name: "Aromantic",
-    gradient: "linear-gradient(180deg, #3da542 0%, #3da542 20%, #a7d379 20%, #a7d379 40%, #ffffff 40%, #ffffff 60%, #a9a9a9 60%, #a9a9a9 80%, #000000 80%, #000000 100%)",
-    primaryColor: "#3da542",
-    accentColor: "#000000",
-    textColor: "#ffffff",
-    bgColor: "#f0fdf4"
-  },
-  {
-    id: "genderqueer",
-    name: "Genderqueer",
-    gradient: "linear-gradient(180deg, #b57edc 0%, #b57edc 33.33%, #ffffff 33.33%, #ffffff 66.67%, #4a8123 66.67%, #4a8123 100%)",
-    primaryColor: "#b57edc",
-    accentColor: "#4a8123",
-    textColor: "#ffffff",
-    bgColor: "#faf5ff"
-  },
-  {
-    id: "agender",
-    name: "Agender",
-    gradient: "linear-gradient(180deg, #000000 0%, #000000 14.29%, #b9b9b9 14.29%, #b9b9b9 28.57%, #ffffff 28.57%, #ffffff 42.86%, #b8f483 42.86%, #b8f483 57.14%, #ffffff 57.14%, #ffffff 71.43%, #b9b9b9 71.43%, #b9b9b9 85.71%, #000000 85.71%, #000000 100%)",
-    primaryColor: "#b8f483",
-    accentColor: "#000000",
-    textColor: "#000000",
-    bgColor: "#f9fafb"
-  },
-  {
-    id: "polysexual",
-    name: "Polysexual",
-    gradient: "linear-gradient(180deg, #f61cb9 0%, #f61cb9 33.33%, #07d569 33.33%, #07d569 66.67%, #1c92f6 66.67%, #1c92f6 100%)",
-    primaryColor: "#f61cb9",
-    accentColor: "#1c92f6",
-    textColor: "#ffffff",
-    bgColor: "#fff1f9"
-  },
-  {
-    id: "omnisexual",
-    name: "Omnisexual",
-    gradient: "linear-gradient(180deg, #ff9bcd 0%, #ff9bcd 20%, #ff53a6 20%, #ff53a6 40%, #200044 40%, #200044 60%, #686bff 60%, #686bff 80%, #a1dbff 80%, #a1dbff 100%)",
-    primaryColor: "#ff53a6",
-    accentColor: "#200044",
-    textColor: "#ffffff",
-    bgColor: "#fff5f9"
-  },
-  
-  // Dark modes
-  {
-    id: "dark-red",
-    name: "Dark Red",
-    gradient: "linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%)",
-    primaryColor: "#7f1d1d",
-    accentColor: "#450a0a",
-    textColor: "#ffffff",
-    bgColor: "#111827",
-    dark: true
-  },
-  {
-    id: "dark-blue",
-    name: "Dark Blue",
-    gradient: "linear-gradient(135deg, #1e3a8a 0%, #0c1e47 100%)",
-    primaryColor: "#1e3a8a",
-    accentColor: "#0c1e47",
-    textColor: "#ffffff",
-    bgColor: "#0f172a",
-    dark: true
-  },
-  {
-    id: "dark-purple",
-    name: "Dark Purple",
-    gradient: "linear-gradient(135deg, #581c87 0%, #3b0764 100%)",
-    primaryColor: "#581c87",
-    accentColor: "#3b0764",
-    textColor: "#ffffff",
-    bgColor: "#111827",
-    dark: true
+    id: "pride-nonbinary",
+    name: "Nonbinary Pride",
+    category: "pride",
+    primaryColor: "#9c59d1",
+    accentColor: "#2c2c2c",
+    bgColor: "#fffef0",
+    surfaceColor: "#ffffff",
+    textColor: "#111827",
+    mutedTextColor: "#374151",
+    subtleTextColor: "#6b7280",
+    headingFont: "'Century Gothic', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
 ];
 
@@ -330,7 +246,7 @@ export function loadCustomTheme(userId: string): Theme | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Theme;
-    if (!parsed?.gradient || !parsed?.primaryColor || !parsed?.accentColor) return null;
+    if (!parsed?.primaryColor || !parsed?.accentColor) return null;
     return { ...parsed, id: "custom", name: parsed.name || "Custom Gradient" };
   } catch {
     return null;
@@ -342,63 +258,40 @@ export function getTheme(themeId: string, userId?: string): Theme {
     const custom = loadCustomTheme(userId);
     if (custom) return custom;
   }
-  return themes.find((theme) => theme.id === themeId) || themes[0];
+  return themes.find((theme) => theme.id === themeId) || themes.find((theme) => theme.id === DEFAULT_THEME_ID) || themes[0];
 }
 
 export function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
 
-  const isDark = Boolean(theme.dark || theme.id.startsWith("dark-"));
+  const isDark = Boolean(theme.dark || theme.category === "dark");
   const [primaryR, primaryG, primaryB] = hexToRgbTuple(theme.primaryColor);
   const [accentR, accentG, accentB] = hexToRgbTuple(theme.accentColor);
-  const pageGradient = isDark
-    ? `
-      radial-gradient(1200px 700px at 15% -10%, ${hexToRgba(theme.primaryColor, 0.34)} 0%, transparent 62%),
-      radial-gradient(1100px 680px at 85% 108%, ${hexToRgba(theme.accentColor, 0.34)} 0%, transparent 60%),
-      linear-gradient(145deg, #0a1020 0%, #0f1730 38%, #11142a 70%, #0b1022 100%)
-    `
-    : `
-      radial-gradient(1100px 650px at 12% -10%, ${hexToRgba(theme.primaryColor, 0.18)} 0%, transparent 62%),
-      radial-gradient(1000px 620px at 88% 105%, ${hexToRgba(theme.accentColor, 0.2)} 0%, transparent 58%),
-      linear-gradient(148deg, #f8fafc 0%, ${hexToRgba(theme.primaryColor, 0.08)} 40%, ${hexToRgba(theme.accentColor, 0.1)} 100%)
-    `;
-  const pageCanvas = isDark ? "rgba(6, 10, 23, 0.56)" : "rgba(255, 255, 255, 0.68)";
-  const surfaceColor = isDark
-    ? "linear-gradient(160deg, rgba(18, 27, 53, 0.82) 0%, rgba(13, 20, 41, 0.86) 100%)"
-    : "rgba(255, 255, 255, 0.92)";
-  const surfaceRaisedColor = isDark
-    ? "linear-gradient(160deg, rgba(22, 32, 62, 0.84) 0%, rgba(15, 24, 47, 0.88) 100%)"
-    : "rgba(255, 255, 255, 0.98)";
+  const pageCanvas = theme.bgColor;
+  const surfaceColor = theme.surfaceColor;
+  const surfaceRaisedColor = theme.surfaceColor;
   const borderColor = isDark
     ? `rgba(${primaryR}, ${primaryG}, ${primaryB}, 0.38)`
     : `rgba(${primaryR}, ${primaryG}, ${primaryB}, 0.24)`;
-  const bodyText = isDark ? "#e5e7eb" : "#111827";
-  const mutedText = isDark ? "#c3cbe0" : "#4b5563";
-  const subtleText = isDark ? "#94a3b8" : "#6b7280";
-  const prideThemeIds = new Set([
-    "pride-rainbow", "lesbian", "gay", "bisexual", "pansexual", "transgender",
-    "nonbinary", "genderfluid", "asexual", "demisexual", "aromantic", "genderqueer",
-    "agender", "polysexual", "omnisexual",
-  ]);
-  const actionButtonBg = prideThemeIds.has(theme.id)
-    ? theme.primaryColor
-    : theme.gradient;
+  const actionButtonBg = theme.primaryColor;
   
   document.documentElement.style.setProperty('--primary-color', theme.primaryColor);
   document.documentElement.style.setProperty('--primary-rgb', `${primaryR}, ${primaryG}, ${primaryB}`);
   document.documentElement.style.setProperty('--accent-color', theme.accentColor);
   document.documentElement.style.setProperty('--accent-rgb', `${accentR}, ${accentG}, ${accentB}`);
-  document.documentElement.style.setProperty('--primary-gradient', theme.gradient);
-  document.documentElement.style.setProperty('--theme-text', theme.textColor);
+  document.documentElement.style.setProperty('--primary-gradient', theme.primaryColor);
+  document.documentElement.style.setProperty('--theme-text', "#ffffff");
   document.documentElement.style.setProperty('--theme-bg', theme.bgColor);
-  document.documentElement.style.setProperty('--theme-page-gradient', pageGradient);
+  document.documentElement.style.setProperty('--theme-page-gradient', theme.bgColor);
   document.documentElement.style.setProperty('--theme-page-canvas', pageCanvas);
   document.documentElement.style.setProperty('--theme-surface', surfaceColor);
   document.documentElement.style.setProperty('--theme-surface-raised', surfaceRaisedColor);
   document.documentElement.style.setProperty('--theme-border', borderColor);
-  document.documentElement.style.setProperty('--theme-body-text', bodyText);
-  document.documentElement.style.setProperty('--theme-muted-text', mutedText);
-  document.documentElement.style.setProperty('--theme-subtle-text', subtleText);
+  document.documentElement.style.setProperty('--theme-body-text', theme.textColor);
+  document.documentElement.style.setProperty('--theme-muted-text', theme.mutedTextColor);
+  document.documentElement.style.setProperty('--theme-subtle-text', theme.subtleTextColor);
+  document.documentElement.style.setProperty('--theme-font-heading', theme.headingFont);
+  document.documentElement.style.setProperty('--theme-font-body', theme.bodyFont);
   document.documentElement.style.setProperty('--theme-action-bg', actionButtonBg);
   document.documentElement.style.setProperty('--theme-is-dark', isDark ? "1" : "0");
 }
@@ -409,6 +302,7 @@ export function saveTheme(userId: string, themeId: string) {
 }
 
 export function loadTheme(userId: string): string {
-  if (typeof localStorage === 'undefined') return 'default';
-  return localStorage.getItem(`theme-${userId}`) || 'default';
+  if (typeof localStorage === 'undefined') return DEFAULT_THEME_ID;
+  return localStorage.getItem(`theme-${userId}`) || DEFAULT_THEME_ID;
 }
+

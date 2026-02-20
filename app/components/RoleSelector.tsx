@@ -52,7 +52,7 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
           <label className="block text-sm font-semibold text-gray-700 mb-3">Base Role (choose one)</label>
           <div className="space-y-2">
             <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                   style={{ borderColor: baseRole === "scout" ? "#c42221" : "#e5e7eb" }}>
+                   style={{ borderColor: baseRole === "scout" ? "var(--primary-color)" : "#e5e7eb" }}>
               <input
                 type="radio"
                 checked={baseRole === "scout"}
@@ -66,7 +66,7 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
             </label>
 
             <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                   style={{ borderColor: baseRole === "coach" ? "#c42221" : "#e5e7eb" }}>
+                   style={{ borderColor: baseRole === "coach" ? "var(--primary-color)" : "#e5e7eb" }}>
               <input
                 type="radio"
                 checked={baseRole === "coach"}
@@ -94,7 +94,7 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
               <label
                 key={option.value}
                 className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                style={{ borderColor: specialRoles.includes(option.value) ? "#c42221" : "#e5e7eb" }}
+                style={{ borderColor: specialRoles.includes(option.value) ? "var(--primary-color)" : "#e5e7eb" }}
               >
                 <input
                   type="checkbox"
@@ -113,7 +113,7 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
           <button
             onClick={handleSave}
             className="flex-1 py-2 rounded-lg text-white font-semibold"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             Save Changes
           </button>
@@ -128,3 +128,4 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
     </div>
   );
 }
+

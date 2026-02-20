@@ -145,7 +145,7 @@ function MatchBreakdownContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Match Breakdown
           </h1>
           <p className="text-gray-600 mb-8">
@@ -201,7 +201,7 @@ function MatchBreakdownContent() {
                         <div key={idx} className="border rounded-lg p-4">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-bold text-lg">Team {robot.teamNumber}</span>
-                            <span className="text-xl font-bold" style={{ color: "#c42221" }}>
+                            <span className="text-xl font-bold" style={{ color: "var(--primary-color)" }}>
                               {robot.totalPoints}
                             </span>
                           </div>

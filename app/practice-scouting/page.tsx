@@ -667,7 +667,7 @@ function PracticeScoutingContent() {
         {/* STEP 1: MODE & DIFFICULTY SELECTION */}
         {currentStep === 'select' && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto">
-            <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Practice Scouting
             </h1>
             <p className="text-gray-600 mb-8">Improve your accuracy by practicing with real match footage.</p>
@@ -682,7 +682,7 @@ function PracticeScoutingContent() {
                   <button
                     onClick={() => restorePracticeDraft(pendingDraft)}
                     className="px-4 py-2 rounded text-white font-semibold"
-                    style={{ backgroundColor: "#c42221" }}
+                    style={{ backgroundColor: "var(--primary-color)" }}
                   >
                     Resume Session
                   </button>
@@ -782,7 +782,7 @@ function PracticeScoutingContent() {
         {currentStep === 'break' && currentMatch && breakCompletedRobotIndex !== null && (
           <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
             <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8">
-              <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+              <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
                 Robot {breakCompletedRobotIndex + 1} Complete
               </h1>
               <p className="text-gray-700 text-lg mb-3">
@@ -795,7 +795,7 @@ function PracticeScoutingContent() {
                 <button
                   onClick={continueToNextRobot}
                   className="flex-1 py-3 rounded-lg text-white font-semibold"
-                  style={{ backgroundColor: "#c42221" }}
+                  style={{ backgroundColor: "var(--primary-color)" }}
                 >
                   Continue To Robot {currentRobotIndex + 2} (Team {currentMatch.allianceTeams[currentRobotIndex + 1]})
                 </button>
@@ -885,7 +885,7 @@ function PracticeScoutingContent() {
 
               {/* PRE-MATCH INFO */}
               <div className="bg-white rounded-xl shadow p-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Pre-Match Info</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
@@ -906,7 +906,7 @@ function PracticeScoutingContent() {
 
               {/* AUTONOMOUS */}
               <div className="bg-white rounded-xl shadow p-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Autonomous</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
                 <label className="flex items-center gap-2 cursor-pointer mb-3">
                   <input type="checkbox" checked={formData.leftStartingZone} onChange={(e) => setFormData({ ...formData, leftStartingZone: e.target.checked })} className="w-4 h-4" />
                   <span className="text-sm font-medium text-gray-700">Left Starting Zone</span>
@@ -933,7 +933,7 @@ function PracticeScoutingContent() {
 
               {/* TELEOP */}
               <div className="bg-white rounded-xl shadow p-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Teleop</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Teleop</h2>
                 <div className="border-b pb-3">
                   <h3 className="font-semibold text-base mb-2">Teleop Coral</h3>
                   <Counter label="Missed" value={formData.teleopCoralMissed} onChange={(val) => setFormData({ ...formData, teleopCoralMissed: val })} />
@@ -965,7 +965,7 @@ function PracticeScoutingContent() {
 
               {/* ENDGAME */}
               <div className="bg-white rounded-xl shadow p-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Endgame</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Endgame</h2>
                 <Counter label="Failed Climb" value={formData.failedClimb} onChange={(val) => setFormData({ ...formData, failedClimb: val })} />
                 <div className="mt-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stage Status</label>
@@ -981,7 +981,7 @@ function PracticeScoutingContent() {
 
               {/* GENERAL */}
               <div className="bg-white rounded-xl shadow p-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>General</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>General</h2>
                 <div className="space-y-2">
                   {['Died During Match', 'Never Started Match', 'Disabled by FRC', 'Recovered from Freeze', 'Tipped Over', 'Yellow Card', 'Red Card'].map((incident) => (
                     <label key={incident} className="flex items-center gap-2 cursor-pointer">
@@ -1009,7 +1009,7 @@ function PracticeScoutingContent() {
                   onClick={submitCurrentRobot}
                   disabled={loading}
                   className="w-full py-3 rounded-lg text-white font-semibold disabled:opacity-50"
-                  style={{ backgroundColor: "#c42221" }}
+                  style={{ backgroundColor: "var(--primary-color)" }}
                 >
                   {loading ? "Submitting..." : 
                    currentRobotIndex === 2 ? "Finish Session" : 
@@ -1036,7 +1036,7 @@ function PracticeScoutingContent() {
             <div className={`bg-white shadow-xl transition-all duration-300 overflow-y-auto ${notesOpen ? 'w-80' : 'w-0'} hidden md:block`}>
               {notesOpen && (
                 <div className="p-4">
-                  <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>Notes</h2>
+                  <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Notes</h2>
                   <textarea
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -1064,7 +1064,7 @@ function PracticeScoutingContent() {
                 />
                 <div className="absolute bottom-0 left-0 right-0 h-[38vh] min-h-[220px] max-h-[45vh] bg-white shadow-2xl rounded-t-2xl overflow-y-auto">
                   <div className="sticky top-0 z-10 bg-white border-b p-3 flex items-center justify-between">
-                    <h2 className="text-base font-semibold" style={{ color: "#c42221" }}>Notes</h2>
+                    <h2 className="text-base font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
                     <button
                       onClick={() => setMobileNotesOpen(false)}
                       className="p-1 rounded hover:bg-gray-100"
@@ -1090,7 +1090,7 @@ function PracticeScoutingContent() {
         {/* STEP 3: RESULTS */}
         {currentStep === 'results' && sessionResults && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto">
-            <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+            <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Practice Complete!
             </h1>
             <p className="text-gray-600 mb-8">You&apos;ve completed all 3 robots. Here&apos;s your score:</p>
@@ -1111,7 +1111,7 @@ function PracticeScoutingContent() {
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <h3 className="font-semibold mb-2">Your Scouted Score</h3>
-                  <p className="text-4xl font-bold" style={{ color: "#c42221" }}>{sessionResults.scoutedScore}</p>
+                  <p className="text-4xl font-bold" style={{ color: "var(--primary-color)" }}>{sessionResults.scoutedScore}</p>
                 </div>
                 <div>
                   <h3 className="font-semibold mb-2">Actual Score</h3>
@@ -1121,7 +1121,7 @@ function PracticeScoutingContent() {
             </div>
 
             <div className="flex gap-4">
-              <button onClick={resetPractice} className="flex-1 py-3 rounded-lg text-white font-semibold" style={{ backgroundColor: "#c42221" }}>
+              <button onClick={resetPractice} className="flex-1 py-3 rounded-lg text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
                 Practice Again
               </button>
               <button onClick={() => router.push("/scout-dashboard")} className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50">
@@ -1142,3 +1142,4 @@ export default function PracticeScouting() {
     </ProtectedRoute>
   );
 }
+

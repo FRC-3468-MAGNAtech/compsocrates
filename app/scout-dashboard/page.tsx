@@ -176,7 +176,7 @@ function ScoutDashboardContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Dashboard
           </h1>
           <p className="text-gray-600 mb-8">Ready to scout? Here's your assignment.</p>
@@ -200,7 +200,7 @@ function ScoutDashboardContent() {
                 <button
                   onClick={() => router.push("/scout-form")}
                   className="px-6 py-3 rounded-lg text-white font-semibold"
-                  style={{ backgroundColor: "#c42221" }}
+                  style={{ backgroundColor: "var(--primary-color)" }}
                 >
                   Scout Manually
                 </button>
@@ -221,7 +221,7 @@ function ScoutDashboardContent() {
                       <button
                         onClick={() => router.push("/practice-scouting")}
                         className="px-4 py-2 rounded-lg text-white font-medium"
-                        style={{ backgroundColor: "#c42221" }}
+                        style={{ backgroundColor: "var(--primary-color)" }}
                       >
                         Start Practice Session
                       </button>
@@ -244,7 +244,7 @@ function ScoutDashboardContent() {
                             className={`px-4 py-2 rounded-lg whitespace-nowrap font-medium transition-colors ${
                               activeEventKey === event.key ? "text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                             }`}
-                            style={activeEventKey === event.key ? { backgroundColor: "#c42221" } : {}}
+                            style={activeEventKey === event.key ? { backgroundColor: "var(--primary-color)" } : {}}
                           >
                             {event.name}
                           </button>
@@ -258,11 +258,11 @@ function ScoutDashboardContent() {
                     const eventMatches = eventMatchesByKey[event.key] || [];
                     return (
                       <div className="space-y-4">
-                        <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "#c42221" }}>
+                        <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                           <div className="flex items-start justify-between">
                             <div>
                               <h2 className="text-xl font-semibold mb-1">Upcoming Event</h2>
-                              <p className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
+                              <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
                                 {event.name}
                               </p>
                               <p className="text-gray-600 flex flex-wrap items-center gap-2">
@@ -279,7 +279,7 @@ function ScoutDashboardContent() {
                             <button
                               onClick={() => router.push(`/event-details/${event.key}`)}
                               className="px-4 py-2 rounded-lg text-white font-medium"
-                              style={{ backgroundColor: "#c42221" }}
+                              style={{ backgroundColor: "var(--primary-color)" }}
                             >
                               View Details
                             </button>
@@ -336,7 +336,7 @@ function ScoutDashboardContent() {
                     <h3 className="font-semibold text-gray-700">Matches Scouted</h3>
                     <ClipboardList size={22} />
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {stats?.matchesScoutedCount || 0}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">This season</p>
@@ -347,7 +347,7 @@ function ScoutDashboardContent() {
                     <h3 className="font-semibold text-gray-700">Accuracy Score</h3>
                     <Target size={22} />
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {stats?.accuracyScore || 0}%
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
@@ -362,7 +362,7 @@ function ScoutDashboardContent() {
                     <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
                     <Dumbbell size={22} />
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
+                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {stats?.practiceSessionsCount || 0}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">Completed</p>
@@ -425,3 +425,4 @@ export default function ScoutDashboard() {
     </ProtectedRoute>
   );
 }
+

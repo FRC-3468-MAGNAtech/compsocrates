@@ -14,7 +14,7 @@ function AdminPanelContent() {
         <Sidebar />
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-xl bg-white rounded-xl shadow-md p-6">
-            <h1 className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>Admin Panel</h1>
+            <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Admin Panel</h1>
             <p className="text-gray-600">Only team admins can access this panel.</p>
           </div>
         </div>
@@ -27,7 +27,7 @@ function AdminPanelContent() {
       <Sidebar />
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-3xl">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>Admin Panel</h1>
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Admin Panel</h1>
           <p className="text-gray-600 mb-8">Search Firestore IDs for scouting and practice session records.</p>
 
           <div className="grid md:grid-cols-2 gap-4">
@@ -53,4 +53,5 @@ export default function AdminPanelPage() {
     </ProtectedRoute>
   );
 }
+
 

@@ -136,10 +136,10 @@ function EventDetailsContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "#c42221" }}>
+          <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+                <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
                   {event.name}
                 </h1>
                 <p className="text-lg text-gray-600">
@@ -167,19 +167,19 @@ function EventDetailsContent() {
             <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-gray-200">
               <div className="text-center">
                 <p className="text-sm text-gray-600">Event Type</p>
-                <p className="text-2xl font-bold" style={{ color: "#c42221" }}>
+                <p className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>
                   {event.event_type}
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-sm text-gray-600">Week</p>
-                <p className="text-2xl font-bold" style={{ color: "#c42221" }}>
+                <p className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>
                   {event.week}
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-sm text-gray-600">Event Key</p>
-                <p className="text-lg font-mono font-bold" style={{ color: "#c42221" }}>
+                <p className="text-lg font-mono font-bold" style={{ color: "var(--primary-color)" }}>
                   {event.key}
                 </p>
               </div>
@@ -194,7 +194,7 @@ function EventDetailsContent() {
                   ? "text-white"
                   : "bg-white text-gray-700 hover:bg-gray-50"
               }`}
-              style={activeTab === "overview" ? { backgroundColor: "#c42221" } : {}}
+              style={activeTab === "overview" ? { backgroundColor: "var(--primary-color)" } : {}}
             >
               Overview
             </button>
@@ -205,7 +205,7 @@ function EventDetailsContent() {
                   ? "text-white"
                   : "bg-white text-gray-700 hover:bg-gray-50"
               }`}
-              style={activeTab === "teams" ? { backgroundColor: "#c42221" } : {}}
+              style={activeTab === "teams" ? { backgroundColor: "var(--primary-color)" } : {}}
             >
               Teams
             </button>
@@ -216,7 +216,7 @@ function EventDetailsContent() {
                   ? "text-white"
                   : "bg-white text-gray-700 hover:bg-gray-50"
               }`}
-              style={activeTab === "schedule" ? { backgroundColor: "#c42221" } : {}}
+              style={activeTab === "schedule" ? { backgroundColor: "var(--primary-color)" } : {}}
             >
               Schedule
             </button>
@@ -299,3 +299,4 @@ export default function EventDetailsPage() {
     </ProtectedRoute>
   );
 }
+

@@ -88,7 +88,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-4xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             CompSocrates
           </h1>
           <p className="text-gray-600">Sign in to your account</p>
@@ -131,7 +131,7 @@ export default function LoginPage() {
             type="submit"
             disabled={loading}
             className="w-full py-3 rounded-lg text-white font-semibold disabled:opacity-50"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             {loading ? "Signing In..." : "Sign In"}
           </button>
@@ -159,7 +159,7 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-gray-600 mt-6">
           Don't have an account?{" "}
-          <Link href="/signup" className="font-semibold hover:underline" style={{ color: "#c42221" }}>
+          <Link href="/signup" className="font-semibold hover:underline" style={{ color: "var(--primary-color)" }}>
             Sign Up
           </Link>
         </p>
@@ -167,3 +167,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

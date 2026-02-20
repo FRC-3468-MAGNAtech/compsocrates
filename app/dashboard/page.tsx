@@ -211,7 +211,7 @@ function NoTeamDashboardContent() {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl bg-white rounded-xl shadow p-8">
-        <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+        <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
           Dashboard
         </h1>
         <p className="text-gray-600 mb-6">
@@ -247,7 +247,7 @@ function NoTeamDashboardContent() {
             type="submit"
             disabled={submittingRequest}
             className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             {submittingRequest ? "Submitting..." : "Send Request"}
           </button>
@@ -289,7 +289,7 @@ function NoTeamDashboardContent() {
           <button
             onClick={() => router.push("/account")}
             className="px-4 py-2 rounded text-white font-semibold"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             Go to Account
           </button>
@@ -315,3 +315,4 @@ export default function NoTeamDashboardPage() {
     </ProtectedRoute>
   );
 }
+

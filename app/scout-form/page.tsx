@@ -503,7 +503,7 @@ function ScoutFormContent() {
       {/* LEFT COLUMN */}
       <div className="flex-1 p-4 space-y-6 max-w-3xl">
         <div className="bg-white rounded-xl shadow p-4">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Match Scouting Form
           </h1>
         </div>
@@ -517,11 +517,11 @@ function ScoutFormContent() {
         {/* MATCH SELECTOR HEADER */}
         <div
           className="bg-white rounded-xl shadow p-4 border-l-4"
-          style={{ borderColor: "#c42221" }}
+          style={{ borderColor: "var(--primary-color)" }}
         >
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-lg font-semibold">Assigned Match:</span>
-            <span className="text-lg font-semibold" style={{ color: "#c42221" }}>
+            <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>
               {getMatchDisplay()}
             </span>
             <button
@@ -530,7 +530,7 @@ function ScoutFormContent() {
                 setModalOpen(true);
               }}
               className="px-2 py-0.5 text-xs rounded text-white"
-              style={{ backgroundColor: "#c42221" }}
+              style={{ backgroundColor: "var(--primary-color)" }}
             >
               Fix
             </button>
@@ -539,7 +539,7 @@ function ScoutFormContent() {
 
         {/* SECTION 1: PRE-MATCH INFO */}
         <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
             Pre-Match Info
           </h2>
           
@@ -616,7 +616,7 @@ function ScoutFormContent() {
 
         {/* SECTION 2: AUTONOMOUS */}
         <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
             Autonomous
           </h2>
 
@@ -656,7 +656,7 @@ function ScoutFormContent() {
 
         {/* SECTION 3: TELEOP */}
         <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
             Teleop
           </h2>
 
@@ -702,7 +702,7 @@ function ScoutFormContent() {
 
         {/* SECTION 4: ENDGAME */}
         <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
             Endgame
           </h2>
 
@@ -728,7 +728,7 @@ function ScoutFormContent() {
 
         {/* SECTION 5: GENERAL */}
         <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "#c42221" }}>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
             General
           </h2>
 
@@ -768,7 +768,7 @@ function ScoutFormContent() {
         <div className="bg-white rounded-xl shadow p-4">
           <button
             className="w-full py-3 rounded text-white font-semibold"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
             onClick={async () => {
               try {
                 // Add to Firebase with proper labels
@@ -852,7 +852,7 @@ function ScoutFormContent() {
       {/* RIGHT COLUMN — NOTES PANEL (DESKTOP) */}
       <div className="hidden md:block w-80 p-4">
         <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: 'calc(100vh - 2rem)' }}>
-          <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
+          <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>
             Notes
           </h2>
           <textarea
@@ -869,7 +869,7 @@ function ScoutFormContent() {
         <button
           onClick={() => setMobileNotesOpen((prev) => !prev)}
           className="px-2 py-4 rounded-l-xl text-white"
-          style={{ backgroundColor: "#c42221" }}
+          style={{ backgroundColor: "var(--primary-color)" }}
         >
           {mobileNotesOpen ? ">" : "<"}
         </button>
@@ -882,7 +882,7 @@ function ScoutFormContent() {
           />
           <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
+              <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>
                 Notes
               </h2>
               <button
@@ -911,7 +911,7 @@ function ScoutFormContent() {
         {/* STEP 1 — SELECT MATCH TYPE */}
         {modalStep === "type" && (
           <>
-            <h2 className="text-xl font-semibold mb-4" style={{ color: "#c42221" }}>
+            <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
               Select Match Type
             </h2>
 
@@ -919,7 +919,7 @@ function ScoutFormContent() {
               <button
                 onClick={() => setModalStep("practice")}
                 className="w-full py-2 rounded text-white"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Practice
               </button>
@@ -927,7 +927,7 @@ function ScoutFormContent() {
               <button
                 onClick={() => setModalStep("qualification")}
                 className="w-full py-2 rounded text-white"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Qualification
               </button>
@@ -935,7 +935,7 @@ function ScoutFormContent() {
               <button
                 onClick={() => setModalStep("finals")}
                 className="w-full py-2 rounded text-white"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Finals
               </button>
@@ -946,7 +946,7 @@ function ScoutFormContent() {
         {/* STEP 2 — PRACTICE MATCH */}
         {modalStep === "practice" && (
           <>
-            <h2 className="text-xl font-semibold mb-4" style={{ color: "#c42221" }}>
+            <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
               Practice Match
             </h2>
 
@@ -963,7 +963,7 @@ function ScoutFormContent() {
 
             <button
               className="w-full py-2 rounded text-white"
-              style={{ backgroundColor: "#c42221" }}
+              style={{ backgroundColor: "var(--primary-color)" }}
               onClick={() => {
                 const input = document.getElementById("practiceMatchInput") as HTMLInputElement;
                 const matchNum = parseInt(input.value);
@@ -983,7 +983,7 @@ function ScoutFormContent() {
           <>
             <h2
               className="text-xl font-semibold mb-4"
-              style={{ color: "#c42221" }}
+              style={{ color: "var(--primary-color)" }}
             >
               Qualification Matches
             </h2>
@@ -1071,7 +1071,7 @@ function ScoutFormContent() {
 
             <button
               className="w-full mt-4 py-2 rounded text-white"
-              style={{ backgroundColor: "#c42221" }}
+              style={{ backgroundColor: "var(--primary-color)" }}
               onClick={() => setModalOpen(false)}
             >
               Close
@@ -1125,7 +1125,7 @@ function ScoutFormContent() {
                   className="group relative p-8 border-2 border-gray-300 rounded-2xl hover:border-red-500 hover:bg-red-50 transition-all hover:shadow-lg"
                 >
                   <div className="text-center">
-                    <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "#c42221" }}>
+                    <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
                       F{matchNum}
                     </div>
                     <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">
@@ -1160,3 +1160,4 @@ export default function Page() {
     </ProtectedRoute>
   );
 }
+

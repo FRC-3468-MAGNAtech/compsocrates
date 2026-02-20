@@ -7,16 +7,31 @@
   --primary-rgb: 196, 34, 33;
   --accent-color: #8b1818;
   --accent-rgb: 139, 24, 24;
-  --primary-gradient: linear-gradient(135deg, #c42221 0%, #8b1818 100%);
-  --theme-action-bg: linear-gradient(135deg, #c42221 0%, #8b1818 100%);
+  --primary-gradient: #c42221;
+  --theme-action-bg: #c42221;
   --theme-text: #ffffff;
+  --theme-bg: #f3f4f6;
+  --theme-page-canvas: #f3f4f6;
+  --theme-page-gradient: #f3f4f6;
+  --theme-surface: #ffffff;
+  --theme-surface-raised: #ffffff;
+  --theme-border: rgba(196, 34, 33, 0.24);
   --theme-body-text: #111827;
+  --theme-muted-text: #4b5563;
+  --theme-subtle-text: #6b7280;
+  --theme-font-heading: "Trebuchet MS", "Segoe UI", sans-serif;
+  --theme-font-body: "Segoe UI", "Tahoma", sans-serif;
 }
 
 body {
+  font-family: var(--theme-font-body);
   color: var(--theme-body-text);
-  background: #f3f4f6;
+  background: var(--theme-page-canvas);
   min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--theme-font-heading);
 }
 
 @layer utilities {
@@ -111,3 +126,4 @@ body {
 .theme-text {
   color: var(--primary-color);
 }
+

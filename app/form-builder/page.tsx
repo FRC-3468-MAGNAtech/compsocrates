@@ -314,7 +314,7 @@ function FormBuilderContent() {
         <div className="p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+              <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
                 Form Builder
               </h1>
               <p className="text-gray-600">
@@ -351,7 +351,7 @@ function FormBuilderContent() {
               <button
                 onClick={exportForm}
                 className="px-4 py-2 rounded-lg text-white font-medium"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Export Form
               </button>
@@ -371,7 +371,7 @@ function FormBuilderContent() {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="w-full border rounded-lg p-3 text-lg font-semibold"
-                  style={{ borderColor: "#c42221" }}
+                  style={{ borderColor: "var(--primary-color)" }}
                 />
                 <div className="grid md:grid-cols-2 gap-3 mt-3">
                   <div>
@@ -404,7 +404,7 @@ function FormBuilderContent() {
                 <div key={section} className="bg-white rounded-xl shadow-md overflow-hidden">
                   <div
                     className="p-4 flex items-center justify-between cursor-pointer"
-                    style={{ backgroundColor: activeSection === section ? "#c42221" : "#f9fafb" }}
+                    style={{ backgroundColor: activeSection === section ? "var(--primary-color)" : "#f9fafb" }}
                     onClick={() => setActiveSection(section)}
                   >
                     <h2 className={`text-xl font-semibold ${activeSection === section ? "text-white" : "text-gray-900"}`}>
@@ -618,7 +618,7 @@ function FormBuilderContent() {
                         onClick={addField}
                         disabled={!newField.label}
                         className="flex-1 py-2 rounded-lg text-white font-medium disabled:bg-gray-300"
-                        style={{ backgroundColor: newField.label ? "#c42221" : undefined }}
+                        style={{ backgroundColor: newField.label ? "var(--primary-color)" : undefined }}
                       >
                         Add Field
                       </button>
@@ -669,7 +669,7 @@ function FormBuilderContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold" style={{ color: "#c42221" }}>Presets</h2>
+              <h2 className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>Presets</h2>
               <button onClick={() => setPresetsModalOpen(false)} className="px-3 py-1 border rounded">Close</button>
             </div>
             <div className="space-y-3">
@@ -679,7 +679,7 @@ function FormBuilderContent() {
                   setPresetsModalOpen(false);
                 }}
                 className="w-full py-3 rounded text-white font-medium"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 3468 REEFSCAPE Match Scout Form
               </button>
@@ -689,7 +689,7 @@ function FormBuilderContent() {
                   setPresetsModalOpen(false);
                 }}
                 className="w-full py-3 rounded text-white font-medium"
-                style={{ backgroundColor: "#c42221" }}
+                style={{ backgroundColor: "var(--primary-color)" }}
               >
                 3468 REEFSCAPE Pit Scout Form
               </button>
@@ -702,7 +702,7 @@ function FormBuilderContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold" style={{ color: "#c42221" }}>Saved Forms</h2>
+              <h2 className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>Saved Forms</h2>
               <button onClick={() => setSavedFormsModalOpen(false)} className="px-3 py-1 border rounded">Close</button>
             </div>
             <div className="space-y-2 max-h-[50vh] overflow-y-auto">
@@ -765,8 +765,8 @@ export default function FormBuilderPage() {
         <Sidebar />
         <div className="flex-1 overflow-y-auto">
           <div className="p-8">
-            <div className="bg-white rounded-xl shadow-md p-8 border-l-4" style={{ borderColor: "#c42221" }}>
-              <h1 className="text-3xl font-bold mb-3" style={{ color: "#c42221" }}>
+            <div className="bg-white rounded-xl shadow-md p-8 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+              <h1 className="text-3xl font-bold mb-3" style={{ color: "var(--primary-color)" }}>
                 Form Builder
               </h1>
               <p className="text-gray-700">
@@ -779,4 +779,5 @@ export default function FormBuilderPage() {
     </ProtectedRoute>
   );
 }
+
 

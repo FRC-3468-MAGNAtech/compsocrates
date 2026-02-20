@@ -15,7 +15,7 @@ export default function FinalsMatchSelector({ onSelect, onBack }: FinalsMatchSel
   return (
     <div className="space-y-4">
       <div className="text-center mb-6">
-        <Trophy className="mx-auto mb-3" size={48} style={{ color: "#c42221" }} />
+        <Trophy className="mx-auto mb-3" size={48} style={{ color: "var(--primary-color)" }} />
         <h2 className="text-2xl font-bold mb-2">Which Finals Match?</h2>
         <p className="text-gray-600">Select which finals match you're scouting</p>
       </div>

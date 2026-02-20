@@ -202,7 +202,7 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-2" style={{ color: "#c42221" }}>
+          <h1 className="text-4xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             CompSocrates
           </h1>
           <p className="text-gray-600">Create your account</p>
@@ -318,7 +318,7 @@ export default function SignupPage() {
             type="submit"
             disabled={loading}
             className="w-full py-3 rounded-lg text-white font-semibold disabled:opacity-50"
-            style={{ backgroundColor: "#c42221" }}
+            style={{ backgroundColor: "var(--primary-color)" }}
           >
             {loading ? "Creating Account..." : "Sign Up"}
           </button>
@@ -333,7 +333,7 @@ export default function SignupPage() {
 
         <p className="text-center text-sm text-gray-600 mt-6">
           Already have an account?{" "}
-          <Link href="/login" className="font-semibold hover:underline" style={{ color: "#c42221" }}>
+          <Link href="/login" className="font-semibold hover:underline" style={{ color: "var(--primary-color)" }}>
             Sign In
           </Link>
         </p>
@@ -341,3 +341,4 @@ export default function SignupPage() {
     </div>
   );
 }
+
