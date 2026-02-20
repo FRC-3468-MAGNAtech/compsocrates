@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -35,17 +35,6 @@ async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequ
   });
 
   return Array.from(byId.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-}
-
-async function resolveTeamCode(code: string): Promise<string | null> {
-  const normalized = code.trim();
-  if (!normalized) return null;
-  const attempts = [normalized, normalized.toUpperCase(), normalized.toLowerCase()];
-  for (const attempt of attempts) {
-    const teamDoc = await getDoc(doc(db, "teams", attempt));
-    if (teamDoc.exists()) return attempt;
-  }
-  return null;
 }
 
 async function createTeamJoinRequestWithFallback(input: {
@@ -177,12 +166,7 @@ function NoTeamDashboardContent() {
       const refreshedPending = await fetchPendingRequestsForUser(user.uid);
       setPendingRequests(refreshedPending);
 
-      const resolvedTeamCode = await resolveTeamCode(normalizedTeamCode);
-      if (!resolvedTeamCode) {
-        setRequestError("Team not found. Please check the team code.");
-        return;
-      }
-      if (refreshedPending.some((request) => request.teamId.toLowerCase() === resolvedTeamCode.toLowerCase())) {
+      if (refreshedPending.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
         setRequestError("You already have a pending request for that team.");
         return;
       }
@@ -192,7 +176,7 @@ function NoTeamDashboardContent() {
         userEmail: userData.email || user.email || "",
         userName: userData.displayName || user.displayName || "",
         requestedRole,
-        teamId: resolvedTeamCode,
+        teamId: normalizedTeamCode,
       });
 
       setPendingRequests(await fetchPendingRequestsForUser(user.uid));

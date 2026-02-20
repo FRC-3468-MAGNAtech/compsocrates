@@ -6,22 +6,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
-
-async function resolveTeamCode(code: string): Promise<string | null> {
-  const normalized = code.trim();
-  if (!normalized) return null;
-  const attempts = [normalized, normalized.toUpperCase(), normalized.toLowerCase()];
-  for (const attempt of attempts) {
-    const teamDoc = await getDoc(doc(db, "teams", attempt));
-    if (teamDoc.exists()) return attempt;
-  }
-  return null;
-}
 
 async function waitForCurrentUid(timeoutMs = 5000): Promise<string | null> {
   if (auth.currentUser?.uid) return auth.currentUser.uid;
@@ -169,10 +158,9 @@ export default function SignupPage() {
         alert("Account created! Please verify your email to continue.");
         router.push("/dashboard");
       } else {
-        // Verify team exists
-        const resolvedTeamCode = await resolveTeamCode(joinCode);
-        if (!resolvedTeamCode) {
-          setError("Team not found. Please check the join code.");
+        const requestedTeamCode = joinCode.trim();
+        if (!requestedTeamCode) {
+          setError("Please enter a team join code.");
           setLoading(false);
           return;
         }
@@ -183,7 +171,7 @@ export default function SignupPage() {
         if (!resolvedUid) {
           throw new Error("Could not verify account session. Please sign in and send the join request from Dashboard.");
         }
-        const hasPending = await hasPendingJoinRequest(resolvedUid, resolvedTeamCode);
+        const hasPending = await hasPendingJoinRequest(resolvedUid, requestedTeamCode);
         if (hasPending) {
           alert("You already have a pending request for this team.");
           router.push("/dashboard");
@@ -196,7 +184,7 @@ export default function SignupPage() {
           userEmail: email,
           userName: displayName,
           requestedRole: role,
-          teamId: resolvedTeamCode,
+          teamId: requestedTeamCode,
         });
 
         alert("Account created! Please verify your email and wait for team admin approval.");
