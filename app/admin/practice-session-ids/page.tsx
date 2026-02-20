@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDocs, updateDoc, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -10,21 +10,78 @@ import { db } from "@/app/firebase";
 
 type PracticeSessionRecord = {
   id: string;
-  scoutName: string;
+  scoutNameSummary: string;
   scoutId: string;
-  matchKey: string;
+  matchSummary: string;
+  matchType: string;
+  game: string;
+  teamSummary: string;
   eventKey: string;
   eventName: string;
-  mode: string;
-  timestamp: number;
+  totalScoutedScore: number;
+  averageAccuracy?: number;
+  submittedAt: number;
 };
+
+type ScoutingEntry = Record<string, unknown>;
+
+function formatMatchId(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  const fx = raw.match(/^f(\d+)$/i);
+  if (fx) return `F${fx[1]}`;
+  const qx = raw.match(/^q(\d+)$/i);
+  if (qx) return `Q${qx[1]}`;
+  const px = raw.match(/^p(\d+)$/i);
+  if (px) return `P${px[1]}`;
+  return raw;
+}
+
+function formatMatchType(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  if (raw.toLowerCase() === "finals") return "Finals";
+  if (raw.toLowerCase() === "qualification") return "Qualification";
+  if (raw.toLowerCase() === "practice") return "Practice";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function computeEntryScore(entry: ScoutingEntry): number {
+  const num = (field: string) => Number(entry[field] || 0);
+  let score = 0;
+  if (Boolean(entry.leftStartingZone)) score += 3;
+  score += num("autoCoralL1") * 3;
+  score += num("autoCoralL2") * 4;
+  score += num("autoCoralL3") * 6;
+  score += num("autoCoralL4") * 7;
+  score += num("autoAlgaeProcessorScored") * 6;
+  score += num("autoAlgaeNetScored") * 4;
+  score += num("teleopCoralL1") * 2;
+  score += num("teleopCoralL2") * 3;
+  score += num("teleopCoralL3") * 4;
+  score += num("teleopCoralL4") * 5;
+  score += num("teleopProcessorScored") * 6;
+  score += num("teleopNetRobotScored") * 4;
+  score += num("teleopNetHumanScored") * 4;
+  score += num("penaltyPoints");
+  const end = String(entry.stageStatus || "").toLowerCase();
+  if (end.includes("deep")) score += 12;
+  else if (end.includes("shallow")) score += 6;
+  else if (end.includes("park") || end.includes("barge")) score += 2;
+  return score;
+}
+
+function buildSummary(values: string[], max = 3): string {
+  if (values.length === 0) return "-";
+  if (values.length <= max) return values.join(", ");
+  return `${values.slice(0, max).join(", ")} +${values.length - max} more`;
+}
 
 function PracticeSessionIdsContent() {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<PracticeSessionRecord[]>([]);
   const [search, setSearch] = useState("");
-  const [repairingRocketCity, setRepairingRocketCity] = useState(false);
 
   useEffect(() => {
     void loadRecords();
@@ -33,22 +90,73 @@ function PracticeSessionIdsContent() {
   async function loadRecords() {
     setLoading(true);
     try {
-      const sessionsSnap = await getDocs(collection(db, "practiceSessions"));
+      const [sessionsSnap, scoutingSnap] = await Promise.all([
+        getDocs(collection(db, "practiceSessions")),
+        getDocs(collection(db, "scouting")),
+      ]);
+      const entriesBySession = new Map<string, ScoutingEntry[]>();
+      scoutingSnap.docs.forEach((entryDoc) => {
+        const data = entryDoc.data() as ScoutingEntry;
+        const sessionId = String(data.practiceSessionId || "").trim();
+        if (!sessionId) return;
+        const current = entriesBySession.get(sessionId) || [];
+        current.push(data);
+        entriesBySession.set(sessionId, current);
+      });
+
       const loaded = sessionsSnap.docs
         .map((sessionDoc) => {
           const data = sessionDoc.data() as Record<string, unknown>;
+          const sessionId = sessionDoc.id;
+          const sessionEntries = entriesBySession.get(sessionId) || [];
+          const scouts = Array.from(
+            new Set(sessionEntries.map((entry) => String(entry.scoutName || "").trim()).filter(Boolean))
+          );
+          const matchIds = Array.from(
+            new Set(
+              sessionEntries
+                .map((entry) => String(entry.matchId || entry.matchNumber || "").trim())
+                .filter(Boolean)
+                .map(formatMatchId)
+            )
+          );
+          const teams = Array.from(
+            new Set(sessionEntries.map((entry) => String(entry.teamNumber || "").trim()).filter(Boolean))
+          );
+          const accuracies = sessionEntries
+            .map((entry) => Number(entry.accuracy))
+            .filter((value) => Number.isFinite(value) && value > 0);
+          const totalScoutedScore = sessionEntries.reduce((sum, entry) => {
+            const direct = Number(entry.scoutedScore);
+            return sum + (Number.isFinite(direct) && direct > 0 ? direct : computeEntryScore(entry));
+          }, 0);
+          const submittedAt = sessionEntries.reduce((latest, entry) => {
+            const ts = Number(entry.submittedAt || entry.timestamp || 0);
+            return ts > latest ? ts : latest;
+          }, Number(data.timestamp || 0));
+          const rawMatchType =
+            String(data.matchType || "").trim() ||
+            String(sessionEntries[0]?.matchType || "").trim() ||
+            "practice";
+          const game = String(data.game || sessionEntries[0]?.game || "").trim();
+
           return {
-            id: sessionDoc.id,
-            scoutName: String(data.scoutName || ""),
+            id: sessionId,
+            scoutNameSummary: buildSummary(scouts.length ? scouts : [String(data.scoutName || "").trim()].filter(Boolean)),
             scoutId: String(data.scoutId || ""),
-            matchKey: String(data.matchKey || ""),
+            matchSummary: buildSummary(matchIds.length ? matchIds : [String(data.matchKey || "").trim()].filter(Boolean)),
+            matchType: formatMatchType(rawMatchType),
+            game,
+            teamSummary: buildSummary(teams),
             eventKey: String(data.eventKey || ""),
             eventName: String(data.eventName || ""),
-            mode: String(data.mode || ""),
-            timestamp: Number(data.timestamp || 0),
+            totalScoutedScore: Math.round(totalScoutedScore),
+            averageAccuracy:
+              accuracies.length > 0 ? Math.round(accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length) : undefined,
+            submittedAt,
           } as PracticeSessionRecord;
         })
-        .sort((a, b) => b.timestamp - a.timestamp);
+        .sort((a, b) => b.submittedAt - a.submittedAt);
       setRecords(loaded);
     } catch (error) {
       console.error("Error loading practice session IDs:", error);
@@ -58,67 +166,23 @@ function PracticeSessionIdsContent() {
     }
   }
 
-  async function repairRocketCitySessions() {
-    if (!userData?.isTeamAdmin || repairingRocketCity) return;
-    if (!confirm("Fix app-testing practice sessions that belong to Rocket City?")) return;
-
-    setRepairingRocketCity(true);
-    try {
-      const sessionsSnap = await getDocs(query(collection(db, "practiceSessions"), where("eventKey", "==", "app-testing")));
-      const targets = sessionsSnap.docs
-        .map((sessionDoc) => ({
-          id: sessionDoc.id,
-          ...(sessionDoc.data() as Record<string, unknown>),
-        }) as { id: string } & Record<string, unknown>)
-        .filter((session) => {
-          const name = String(session.eventName || "").toLowerCase();
-          const matchKey = String(session.matchKey || "").toLowerCase();
-          return name.includes("rocket city") || matchKey.startsWith("2025alhu_");
-        });
-
-      let sessionsUpdated = 0;
-      let scoutingUpdated = 0;
-      for (const session of targets) {
-        await updateDoc(doc(db, "practiceSessions", session.id), {
-          eventKey: "2025alhu",
-          eventName: "Rocket City Regional",
-          repairedAt: Date.now(),
-        });
-        sessionsUpdated += 1;
-
-        const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("practiceSessionId", "==", session.id)));
-        for (const scoutingDoc of scoutingSnap.docs) {
-          await updateDoc(doc(db, "scouting", scoutingDoc.id), {
-            eventKey: "2025alhu",
-            eventName: "Rocket City Regional",
-            repairedAt: Date.now(),
-          });
-          scoutingUpdated += 1;
-        }
-      }
-
-      await loadRecords();
-      alert(`Repaired ${sessionsUpdated} practice sessions and ${scoutingUpdated} linked scouting entries.`);
-    } catch (error) {
-      console.error("Error repairing Rocket City sessions:", error);
-      alert("Failed to repair Rocket City sessions.");
-    } finally {
-      setRepairingRocketCity(false);
-    }
-  }
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return records;
     return records.filter((record) =>
       [
         record.id,
-        record.scoutName,
+        record.scoutNameSummary,
         record.scoutId,
-        record.matchKey,
+        record.matchSummary,
+        record.matchType,
+        record.game,
+        record.teamSummary,
         record.eventKey,
         record.eventName,
-        record.mode,
+        String(record.totalScoutedScore),
+        String(record.averageAccuracy || ""),
+        record.submittedAt ? new Date(record.submittedAt).toLocaleString() : "",
       ]
         .join(" ")
         .toLowerCase()
@@ -151,7 +215,7 @@ function PracticeSessionIdsContent() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by ID, scout, mode, match key, or event"
+            placeholder="Search by session ID, scout, match, team, event, or score"
             className="flex-1 border rounded p-2"
           />
           <button
@@ -161,13 +225,6 @@ function PracticeSessionIdsContent() {
             style={{ backgroundColor: "#c42221" }}
           >
             Refresh
-          </button>
-          <button
-            onClick={() => void repairRocketCitySessions()}
-            disabled={repairingRocketCity}
-            className="px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
-          >
-            {repairingRocketCity ? "Repairing..." : "Fix Rocket City"}
           </button>
         </div>
 
@@ -180,26 +237,40 @@ function PracticeSessionIdsContent() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Session ID</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Document ID</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Scout</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Mode</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Match Key</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Match</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Type/Game</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Team</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Event</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Score/Accuracy</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Submitted</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((record) => (
                   <tr key={record.id} className="border-t">
                     <td className="px-4 py-3 font-mono text-sm">{record.id}</td>
-                    <td className="px-4 py-3 text-sm">{record.scoutName || record.scoutId || "-"}</td>
-                    <td className="px-4 py-3 text-sm capitalize">{record.mode || "-"}</td>
-                    <td className="px-4 py-3 text-sm">{record.matchKey || "-"}</td>
+                    <td className="px-4 py-3 text-sm">{record.scoutNameSummary || record.scoutId || "-"}</td>
+                    <td className="px-4 py-3 text-sm">{record.matchSummary || "-"}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <div>{record.matchType || "-"}</div>
+                      <div className="text-xs text-gray-500">{record.game || "-"}</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">{record.teamSummary || "-"}</td>
                     <td className="px-4 py-3 text-sm">{record.eventName || record.eventKey || "-"}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <div>{Number.isFinite(record.totalScoutedScore) ? record.totalScoutedScore : "-"}</div>
+                      <div className="text-xs text-gray-500">
+                        {typeof record.averageAccuracy === "number" ? `${record.averageAccuracy}%` : "-"}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">{record.submittedAt ? new Date(record.submittedAt).toLocaleString() : "-"}</td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No records found.</td>
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No records found.</td>
                   </tr>
                 )}
               </tbody>

@@ -266,7 +266,7 @@ function CoachDashboardContent() {
                                 <MapPin size={16} />
                                 <span>{event.location}</span>
                               </p>
-                              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div>
                                   <p className="text-sm text-gray-600">Days Until Event</p>
                                   <p className="text-2xl font-bold">{event.daysUntil}</p>
@@ -274,10 +274,6 @@ function CoachDashboardContent() {
                                 <div>
                                   <p className="text-sm text-gray-600">Scouts Ready</p>
                                   <p className="text-2xl font-bold">{readyAttendees}/{expected}</p>
-                                </div>
-                                <div>
-                                  <p className="text-sm text-gray-600">Configured Scouts</p>
-                                  <p className="text-2xl font-bold">{expected}</p>
                                 </div>
                                 <div>
                                   <p className="text-sm text-gray-600">Matches Loaded</p>
@@ -296,7 +292,7 @@ function CoachDashboardContent() {
                         </div>
                         <div className="bg-white rounded-xl shadow-md overflow-hidden">
                           <div className="p-6 border-b border-gray-200">
-                            <h3 className="text-xl font-semibold">Match Schedule</h3>
+                            <h3 className="text-xl font-semibold">Upcoming Matches</h3>
                             <p className="text-sm text-gray-600">All matches for this selected event.</p>
                           </div>
                           <div className="overflow-x-auto">

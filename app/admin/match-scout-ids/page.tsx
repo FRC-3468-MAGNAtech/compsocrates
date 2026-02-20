@@ -24,6 +24,27 @@ type MatchScoutRecord = {
   submittedAt: number;
 };
 
+function formatMatchId(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  const fx = raw.match(/^f(\d+)$/i);
+  if (fx) return `F${fx[1]}`;
+  const qx = raw.match(/^q(\d+)$/i);
+  if (qx) return `Q${qx[1]}`;
+  const px = raw.match(/^p(\d+)$/i);
+  if (px) return `P${px[1]}`;
+  return raw;
+}
+
+function formatMatchType(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  if (raw.toLowerCase() === "finals") return "Finals";
+  if (raw.toLowerCase() === "qualification") return "Qualification";
+  if (raw.toLowerCase() === "practice") return "Practice";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function MatchScoutIdsContent() {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -158,9 +179,9 @@ function MatchScoutIdsContent() {
                   <tr key={record.id} className="border-t">
                     <td className="px-4 py-3 font-mono text-sm">{record.id}</td>
                     <td className="px-4 py-3 text-sm">{record.scoutName || record.scoutId || "-"}</td>
-                    <td className="px-4 py-3 text-sm">{record.matchId || "-"}</td>
+                    <td className="px-4 py-3 text-sm">{formatMatchId(record.matchId)}</td>
                     <td className="px-4 py-3 text-sm">
-                      <div>{record.matchType || "-"}</div>
+                      <div>{formatMatchType(record.matchType)}</div>
                       <div className="text-xs text-gray-500">{record.game || "-"}</div>
                     </td>
                     <td className="px-4 py-3 text-sm">{record.teamNumber || "-"}</td>

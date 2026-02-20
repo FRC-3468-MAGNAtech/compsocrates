@@ -40,12 +40,12 @@ async function waitForCurrentUid(timeoutMs = 5000): Promise<string | null> {
   });
 }
 
-async function hasPendingJoinRequest(email: string, teamId: string): Promise<boolean> {
-  const normalizedEmail = email.trim().toLowerCase();
+async function hasPendingJoinRequest(userId: string, teamId: string): Promise<boolean> {
+  const normalizedUserId = userId.trim();
   const normalizedTeamId = teamId.trim().toLowerCase();
-  if (!normalizedEmail || !normalizedTeamId) return false;
+  if (!normalizedUserId || !normalizedTeamId) return false;
 
-  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userEmailLower", "==", normalizedEmail));
+  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userId", "==", normalizedUserId));
   const requestsSnap = await getDocs(requestsQuery);
 
   return requestsSnap.docs.some((docSnap) => {
@@ -54,6 +54,82 @@ async function hasPendingJoinRequest(email: string, teamId: string): Promise<boo
     const requestTeamId = String(data.teamId || "").toLowerCase();
     return status === "pending" && requestTeamId === normalizedTeamId;
   });
+}
+
+async function createTeamJoinRequestWithFallback(input: {
+  userId: string;
+  userEmail: string;
+  userName: string;
+  requestedRole: "scout" | "coach";
+  teamId: string;
+}) {
+  const createdAt = Date.now();
+  const normalizedEmail = input.userEmail.trim().toLowerCase();
+  const fullPayload = {
+    userId: input.userId,
+    userEmail: input.userEmail,
+    userEmailLower: normalizedEmail,
+    userName: input.userName,
+    userRole: input.requestedRole,
+    requestedRole: input.requestedRole,
+    teamId: input.teamId,
+    status: "pending",
+    createdAt,
+  };
+  const fallbackPayloads: Array<Record<string, unknown>> = [
+    fullPayload,
+    {
+      userId: input.userId,
+      userEmail: input.userEmail,
+      userEmailLower: normalizedEmail,
+      userName: input.userName,
+      requestedRole: input.requestedRole,
+      teamId: input.teamId,
+      status: "pending",
+      createdAt,
+    },
+    {
+      userId: input.userId,
+      userName: input.userName,
+      requestedRole: input.requestedRole,
+      teamId: input.teamId,
+      status: "pending",
+      createdAt,
+    },
+    {
+      userId: input.userId,
+      role: input.requestedRole,
+      teamId: input.teamId,
+      status: "pending",
+      createdAt,
+    },
+    {
+      userId: input.userId,
+      teamId: input.teamId,
+      status: "pending",
+      createdAt,
+    },
+  ];
+
+  let lastError: unknown = null;
+  for (const payload of fallbackPayloads) {
+    try {
+      await addDoc(collection(db, "teamJoinRequests"), payload);
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = String((error as { message?: string })?.message || "").toLowerCase();
+      const isPermissionLike =
+        message.includes("permission") ||
+        message.includes("insufficient") ||
+        message.includes("missing or insufficient");
+      if (!isPermissionLike) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("Unable to create team join request.");
 }
 
 export default function SignupPage() {
@@ -107,7 +183,7 @@ export default function SignupPage() {
         if (!resolvedUid) {
           throw new Error("Could not verify account session. Please sign in and send the join request from Dashboard.");
         }
-        const hasPending = await hasPendingJoinRequest(email, resolvedTeamCode);
+        const hasPending = await hasPendingJoinRequest(resolvedUid, resolvedTeamCode);
         if (hasPending) {
           alert("You already have a pending request for this team.");
           router.push("/dashboard");
@@ -115,16 +191,12 @@ export default function SignupPage() {
         }
 
         // Create join request
-        await addDoc(collection(db, "teamJoinRequests"), {
+        await createTeamJoinRequestWithFallback({
           userId: resolvedUid,
           userEmail: email,
-          userEmailLower: email.trim().toLowerCase(),
           userName: displayName,
-          userRole: role,
           requestedRole: role,
           teamId: resolvedTeamCode,
-          status: "pending",
-          createdAt: Date.now()
         });
 
         alert("Account created! Please verify your email and wait for team admin approval.");

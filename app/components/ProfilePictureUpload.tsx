@@ -1,78 +1,76 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "@/app/firebase";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
-import { Camera, Upload, X } from "lucide-react";
+import { Link as LinkIcon, Trash2 } from "lucide-react";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
+
+function isValidImageUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
 
 export default function ProfilePictureUpload() {
   const { currentUser, userData, refreshUserData } = useAuth();
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const [photoUrlInput, setPhotoUrlInput] = useState("");
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  useEffect(() => {
+    setPhotoUrlInput(userData?.photoURL || "");
+  }, [userData?.photoURL]);
 
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
-      alert("Please select an image file");
+  const handleSaveUrl = async () => {
+    if (!currentUser) return;
+    const normalized = photoUrlInput.trim();
+    if (!normalized) {
+      alert("Enter an image URL first.");
+      return;
+    }
+    if (!isValidImageUrl(normalized)) {
+      alert("Please enter a valid http(s) image URL.");
       return;
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be smaller than 5MB");
-      return;
-    }
-
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleUpload = async () => {
-    if (!preview || !currentUser) return;
-
-    setUploading(true);
+    setSaving(true);
     try {
-      // Convert preview to blob
-      const response = await fetch(preview);
-      const blob = await response.blob();
-
-      // Upload to Firebase Storage
-      const storageRef = ref(storage, `profilePictures/${currentUser.uid}`);
-      await uploadBytes(storageRef, blob);
-
-      // Get download URL
-      const downloadURL = await getDownloadURL(storageRef);
-
-      // Update user document
       await updateSecureUserDoc(currentUser.uid, {
-        photoURL: downloadURL
+        photoURL: normalized,
       });
 
-      // Refresh user data
       if (refreshUserData) {
         await refreshUserData();
       }
 
-      alert("Profile picture updated!");
-      setPreview(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      alert("Profile picture URL updated.");
     } catch (error) {
-      console.error("Error uploading:", error);
-      alert("Error uploading profile picture");
+      console.error("Error updating profile picture URL:", error);
+      alert("Error updating profile picture URL");
     } finally {
-      setUploading(false);
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveUrl = async () => {
+    if (!currentUser) return;
+    setSaving(true);
+    try {
+      await updateSecureUserDoc(currentUser.uid, {
+        photoURL: "",
+      });
+      if (refreshUserData) {
+        await refreshUserData();
+      }
+      setPhotoUrlInput("");
+      alert("Profile picture removed.");
+    } catch (error) {
+      console.error("Error removing profile picture URL:", error);
+      alert("Error removing profile picture URL");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -90,15 +88,9 @@ export default function ProfilePictureUpload() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-6">
-        {/* Current/Preview Picture */}
+        {/* Current Picture */}
         <div className="relative">
-          {preview ? (
-            <img
-              src={preview}
-              alt="Preview"
-              className="w-32 h-32 rounded-full object-cover border-4 border-red-600"
-            />
-          ) : currentPhotoURL ? (
+          {currentPhotoURL ? (
             <img
               src={currentPhotoURL}
               alt="Profile"
@@ -109,73 +101,44 @@ export default function ProfilePictureUpload() {
               {getInitials()}
             </div>
           )}
-
-          {/* Camera icon button */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute bottom-0 right-0 bg-red-600 text-white p-2 rounded-full hover:bg-red-700 shadow-lg"
-            disabled={uploading}
-          >
-            <Camera size={20} />
-          </button>
         </div>
 
-        {/* Upload controls */}
+        {/* URL controls */}
         <div className="flex-1">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-
-          {preview ? (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600">Ready to upload new picture</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleUpload}
-                  disabled={uploading}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Upload size={16} />
-                  {uploading ? "Uploading..." : "Upload"}
-                </button>
-                <button
-                  onClick={() => {
-                    setPreview(null);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = "";
-                    }
-                  }}
-                  disabled={uploading}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 flex items-center gap-2"
-                >
-                  <X size={16} />
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Profile Picture</p>
-              <p className="text-sm text-gray-600">
-                JPG, PNG or GIF. Max size 5MB.
-              </p>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Profile Picture URL</p>
+            <input
+              type="url"
+              value={photoUrlInput}
+              onChange={(event) => setPhotoUrlInput(event.target.value)}
+              className="w-full border rounded-lg p-2"
+              placeholder="https://example.com/profile.jpg"
+              disabled={saving}
+            />
+            <div className="flex gap-2">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+                onClick={handleSaveUrl}
+                disabled={saving}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 text-sm"
               >
-                Choose Photo
+                <LinkIcon size={16} />
+                {saving ? "Saving..." : "Save URL"}
+              </button>
+              <button
+                onClick={handleRemoveUrl}
+                disabled={saving || !currentPhotoURL}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 flex items-center gap-2 text-sm"
+              >
+                <Trash2 size={16} />
+                Remove
               </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
       <p className="text-xs text-gray-500">
-        Your profile picture will be visible to all team members
+        Your profile picture URL will be visible to all team members
       </p>
     </div>
   );

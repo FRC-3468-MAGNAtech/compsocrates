@@ -77,10 +77,21 @@ function TeamManagementContent() {
         where("status", "==", "pending")
       );
       const requestsSnap = await getDocs(requestsQuery);
-      const requests = requestsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as JoinRequest[];
+      const requests = requestsSnap.docs.map((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        const fallbackUserId = String(data.userId || "");
+        return {
+          id: docSnap.id,
+          userId: fallbackUserId,
+          userEmail: String(data.userEmail || ""),
+          userName: String(data.userName || (fallbackUserId ? `User ${fallbackUserId.slice(0, 8)}` : "Unknown User")),
+          userRole: String(data.userRole || data.role || "scout"),
+          requestedRole: String(data.requestedRole || data.userRole || data.role || "scout"),
+          teamId: String(data.teamId || ""),
+          status: String(data.status || "pending"),
+          createdAt: typeof data.createdAt === "number" ? data.createdAt : Date.now(),
+        } as JoinRequest;
+      });
       
       setJoinRequests(requests);
       

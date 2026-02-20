@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -373,14 +373,33 @@ function AnalyticsPageContent() {
     });
   }
 
-  async function handleDeleteEntry(entryId: string) {
+  async function handleDeleteEntry(entry: Entry) {
     if (!canDeleteEntries) {
       alert("Only coaches or team admins can delete entries.");
       return;
     }
+    const sessionId = String(entry.practiceSessionId || "").trim();
+    const isPracticeEntry = isPracticeScoutingEntry(entry);
+
+    if (isPracticeEntry && sessionId) {
+      const ok = window.confirm(
+        "Delete this entire practice session? This will remove all scouting rows tied to this session."
+      );
+      if (!ok) return;
+
+      const relatedEntriesSnap = await getDocs(
+        query(collection(db, "scouting"), where("practiceSessionId", "==", sessionId))
+      );
+      const deleteOps = relatedEntriesSnap.docs.map((docSnap) => deleteDoc(doc(db, "scouting", docSnap.id)));
+      deleteOps.push(deleteDoc(doc(db, "practiceSessions", sessionId)));
+      await Promise.all(deleteOps);
+      await loadData();
+      return;
+    }
+
     const ok = window.confirm("Delete this scouting entry?");
     if (!ok) return;
-    await deleteDoc(doc(db, "scouting", entryId));
+    await deleteDoc(doc(db, "scouting", entry.id));
     await loadData();
   }
 
@@ -997,7 +1016,7 @@ function AnalyticsPageContent() {
                 <td className="text-center">
                   <button
                     type="button"
-                    onClick={() => void handleDeleteEntry(entry.id)}
+                    onClick={() => void handleDeleteEntry(entry)}
                     className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
                     style={{ backgroundColor: "#dc2626" }}
                     disabled={!canDeleteEntries}

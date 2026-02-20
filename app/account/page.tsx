@@ -8,6 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ThemePicker from "@/app/components/ThemePicker";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
+import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
 
 function AccountContent() {
   const router = useRouter();
@@ -212,6 +213,11 @@ function AccountContent() {
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Profile Picture</h2>
+            <ProfilePictureUpload />
           </div>
 
           <div className="bg-white rounded-xl shadow p-6 mb-6">
