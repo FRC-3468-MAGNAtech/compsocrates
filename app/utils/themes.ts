@@ -14,7 +14,15 @@ export interface Theme {
   dark?: boolean;
 }
 
+export interface FontPreset {
+  id: string;
+  name: string;
+  headingFont: string;
+  bodyFont: string;
+}
+
 export const DEFAULT_THEME_ID = "light-compsocrates";
+export const DEFAULT_FONT_ID = "compsocrates";
 
 function hexToRgbTuple(hex: string): [number, number, number] {
   const normalized = hex.replace("#", "");
@@ -52,8 +60,8 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#334155",
     subtleTextColor: "#64748b",
-    headingFont: "'Verdana', 'Segoe UI', sans-serif",
-    bodyFont: "'Tahoma', 'Segoe UI', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
     id: "light-emerald",
@@ -66,8 +74,8 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#334155",
     subtleTextColor: "#64748b",
-    headingFont: "'Gill Sans', 'Trebuchet MS', sans-serif",
-    bodyFont: "'Calibri', 'Segoe UI', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
     id: "light-amber",
@@ -80,8 +88,8 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#374151",
     subtleTextColor: "#6b7280",
-    headingFont: "'Georgia', 'Times New Roman', serif",
-    bodyFont: "'Cambria', 'Segoe UI', serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
 
   // Dark
@@ -111,8 +119,8 @@ export const themes: Theme[] = [
     textColor: "#e5e7eb",
     mutedTextColor: "#cbd5e1",
     subtleTextColor: "#94a3b8",
-    headingFont: "'Verdana', 'Segoe UI', sans-serif",
-    bodyFont: "'Tahoma', 'Segoe UI', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
     dark: true,
   },
   {
@@ -126,8 +134,8 @@ export const themes: Theme[] = [
     textColor: "#e5e7eb",
     mutedTextColor: "#cbd5e1",
     subtleTextColor: "#94a3b8",
-    headingFont: "'Gill Sans', 'Trebuchet MS', sans-serif",
-    bodyFont: "'Calibri', 'Segoe UI', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
     dark: true,
   },
   {
@@ -141,8 +149,8 @@ export const themes: Theme[] = [
     textColor: "#e5e7eb",
     mutedTextColor: "#d1d5db",
     subtleTextColor: "#9ca3af",
-    headingFont: "'Georgia', 'Times New Roman', serif",
-    bodyFont: "'Cambria', 'Segoe UI', serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
     dark: true,
   },
 
@@ -158,7 +166,7 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#374151",
     subtleTextColor: "#6b7280",
-    headingFont: "'Franklin Gothic Medium', 'Trebuchet MS', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
     bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
@@ -172,7 +180,7 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#374151",
     subtleTextColor: "#6b7280",
-    headingFont: "'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
     bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
@@ -186,7 +194,7 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#374151",
     subtleTextColor: "#6b7280",
-    headingFont: "'Century Gothic', 'Trebuchet MS', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
     bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
@@ -200,7 +208,7 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#374151",
     subtleTextColor: "#6b7280",
-    headingFont: "'Arial Black', 'Trebuchet MS', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
     bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
@@ -214,7 +222,7 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#374151",
     subtleTextColor: "#6b7280",
-    headingFont: "'Franklin Gothic Medium', 'Trebuchet MS', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
     bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
   },
   {
@@ -228,8 +236,35 @@ export const themes: Theme[] = [
     textColor: "#111827",
     mutedTextColor: "#374151",
     subtleTextColor: "#6b7280",
-    headingFont: "'Century Gothic', 'Trebuchet MS', sans-serif",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
     bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
+  },
+];
+
+export const fontPresets: FontPreset[] = [
+  {
+    id: "compsocrates",
+    name: "CompSocrates",
+    headingFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    bodyFont: "'Segoe UI', 'Tahoma', sans-serif",
+  },
+  {
+    id: "clean",
+    name: "Clean",
+    headingFont: "'Verdana', 'Tahoma', sans-serif",
+    bodyFont: "'Tahoma', 'Segoe UI', sans-serif",
+  },
+  {
+    id: "classic",
+    name: "Classic",
+    headingFont: "'Georgia', 'Times New Roman', serif",
+    bodyFont: "'Cambria', 'Times New Roman', serif",
+  },
+  {
+    id: "rounded",
+    name: "Rounded",
+    headingFont: "'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif",
+    bodyFont: "'Segoe UI', 'Verdana', sans-serif",
   },
 ];
 
@@ -294,6 +329,18 @@ export function applyTheme(theme: Theme) {
   document.documentElement.style.setProperty('--theme-font-body', theme.bodyFont);
   document.documentElement.style.setProperty('--theme-action-bg', actionButtonBg);
   document.documentElement.style.setProperty('--theme-is-dark', isDark ? "1" : "0");
+  document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme-category", theme.category);
+}
+
+export function getFontPreset(fontId: string): FontPreset {
+  return fontPresets.find((font) => font.id === fontId) || fontPresets.find((font) => font.id === DEFAULT_FONT_ID) || fontPresets[0];
+}
+
+export function applyFontPreset(fontPreset: FontPreset) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--theme-font-heading", fontPreset.headingFont);
+  document.documentElement.style.setProperty("--theme-font-body", fontPreset.bodyFont);
 }
 
 export function saveTheme(userId: string, themeId: string) {
@@ -305,4 +352,15 @@ export function loadTheme(userId: string): string {
   if (typeof localStorage === 'undefined') return DEFAULT_THEME_ID;
   return localStorage.getItem(`theme-${userId}`) || DEFAULT_THEME_ID;
 }
+
+export function saveFontPreset(userId: string, fontId: string) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(`font-${userId}`, fontId);
+}
+
+export function loadFontPreset(userId: string): string {
+  if (typeof localStorage === "undefined") return DEFAULT_FONT_ID;
+  return localStorage.getItem(`font-${userId}`) || DEFAULT_FONT_ID;
+}
+
 

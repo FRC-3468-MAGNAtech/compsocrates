@@ -914,7 +914,7 @@ function AnalyticsPageContent() {
         <table>
           <thead className="sticky-header">
             <tr>
-              <th className="sticky-left-0 bg-red-300 text-center" colSpan={2}>Information</th>
+              <th className="sticky-left-group bg-red-300 text-center" colSpan={2}>Information</th>
               <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
@@ -922,7 +922,7 @@ function AnalyticsPageContent() {
               <th className="bg-pink-300 text-center" colSpan={4}>General</th>
             </tr>
             <tr>
-              <th className="sticky-left-0 bg-red-200 text-center" colSpan={2}>Information</th>
+              <th className="sticky-left-group bg-red-200 text-center" colSpan={2}>Information</th>
               <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>

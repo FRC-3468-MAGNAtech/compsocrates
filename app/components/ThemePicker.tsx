@@ -3,7 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Palette, X } from "lucide-react";
 import { useAuth } from "@/app/AuthContext";
-import { applyTheme, getTheme, loadTheme, saveTheme, themes, type Theme } from "@/app/utils/themes";
+import {
+  applyFontPreset,
+  applyTheme,
+  fontPresets,
+  getFontPreset,
+  getTheme,
+  loadFontPreset,
+  loadTheme,
+  saveFontPreset,
+  saveTheme,
+  themes,
+  type Theme,
+} from "@/app/utils/themes";
 
 function ThemeCard({
   theme,
@@ -45,10 +57,12 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
   const { userData } = useAuth();
   const [open, setOpen] = useState(false);
   const [selectedThemeId, setSelectedThemeId] = useState<string>("light-compsocrates");
+  const [selectedFontId, setSelectedFontId] = useState<string>("compsocrates");
 
   useEffect(() => {
     if (!userData?.uid) return;
     setSelectedThemeId(loadTheme(userData.uid));
+    setSelectedFontId(loadFontPreset(userData.uid));
   }, [userData?.uid]);
 
   const groupedThemes = useMemo(
@@ -66,8 +80,17 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
     setSelectedThemeId(themeId);
     const chosenTheme = getTheme(themeId, userData?.uid);
     applyTheme(chosenTheme);
+    applyFontPreset(getFontPreset(selectedFontId));
     if (userData?.uid) {
       saveTheme(userData.uid, themeId);
+    }
+  }
+
+  function handleSelectFont(fontId: string) {
+    setSelectedFontId(fontId);
+    applyFontPreset(getFontPreset(fontId));
+    if (userData?.uid) {
+      saveFontPreset(userData.uid, fontId);
     }
   }
 
@@ -89,7 +112,7 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
             </p>
             {!compact && (
               <p className="text-xs" style={{ color: "var(--theme-subtle-text)" }}>
-                Light, dark, and pride themes with matching font packs
+                Colors and fonts can be changed separately
               </p>
             )}
           </div>
@@ -126,6 +149,35 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
             </div>
 
             <div className="max-h-[calc(85vh-74px)] space-y-6 overflow-y-auto p-5">
+              <section>
+                <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--theme-subtle-text)" }}>
+                  Font
+                </h4>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {fontPresets.map((font) => {
+                    const selected = selectedFontId === font.id;
+                    return (
+                      <button
+                        key={font.id}
+                        type="button"
+                        onClick={() => handleSelectFont(font.id)}
+                        className={`rounded-lg border p-3 text-left transition ${
+                          selected ? "border-gray-900 shadow-sm" : "border-gray-200 hover:border-gray-300"
+                        }`}
+                        style={{ backgroundColor: "var(--theme-surface)" }}
+                      >
+                        <p className="text-sm font-semibold" style={{ color: "var(--theme-body-text)", fontFamily: font.headingFont }}>
+                          {font.name}
+                        </p>
+                        <p className="mt-1 text-xs" style={{ color: "var(--theme-subtle-text)", fontFamily: font.bodyFont }}>
+                          The quick brown fox
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
               <section>
                 <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--theme-subtle-text)" }}>
                   Light

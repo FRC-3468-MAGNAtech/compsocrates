@@ -54,12 +54,12 @@ h1, h2, h3, h4, h5, h6 {
 
 .table-scroll th,
 .table-scroll td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--theme-border);
   padding: 8px 12px;
   text-align: center;
   font-size: 13px;
   white-space: nowrap;
-  background: #ffffff;
+  background: var(--theme-surface);
   vertical-align: middle;
 }
 
@@ -85,7 +85,7 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky !important;
   left: 0 !important;
   z-index: 25 !important;
-  background: #ffffff !important;
+  background: var(--theme-surface) !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
   min-width: 100px;
 }
@@ -94,7 +94,17 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky !important;
   left: 80px !important;
   z-index: 25 !important;
-  background: #ffffff !important;
+  background: var(--theme-surface) !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+}
+
+/* For grouped header cells spanning the two frozen info columns */
+.sticky-left-group {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 29 !important;
+  min-width: 160px;
+  background: var(--theme-surface) !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -125,5 +135,79 @@ h1, h2, h3, h4, h5, h6 {
 
 .theme-text {
   color: var(--primary-color);
+}
+
+/* Theme compatibility layer for existing Tailwind utility usage */
+.bg-white {
+  background-color: var(--theme-surface) !important;
+}
+
+.bg-gray-50,
+.bg-gray-100 {
+  background-color: var(--theme-bg) !important;
+}
+
+.text-gray-900,
+.text-gray-800,
+.text-gray-700 {
+  color: var(--theme-body-text) !important;
+}
+
+.text-gray-600,
+.text-gray-500,
+.text-gray-400 {
+  color: var(--theme-muted-text) !important;
+}
+
+.border-gray-100,
+.border-gray-200,
+.border-gray-300 {
+  border-color: var(--theme-border) !important;
+}
+
+/* Make old fixed red utility usage follow active theme color */
+.bg-red-500,
+.bg-red-600,
+.bg-red-700 {
+  background-color: var(--primary-color) !important;
+}
+
+.text-red-500,
+.text-red-600,
+.text-red-700,
+.text-red-800 {
+  color: var(--primary-color) !important;
+}
+
+.border-red-300,
+.border-red-400,
+.border-red-500 {
+  border-color: rgba(var(--primary-rgb), 0.45) !important;
+}
+
+.hover\:bg-red-50:hover,
+.hover\:bg-red-100:hover,
+.hover\:bg-red-200:hover {
+  background-color: rgba(var(--primary-rgb), 0.14) !important;
+}
+
+.hover\:bg-red-700:hover {
+  background-color: var(--accent-color) !important;
+}
+
+.hover\:text-red-800:hover {
+  color: var(--accent-color) !important;
+}
+
+.hover\:border-red-300:hover,
+.hover\:border-red-500:hover {
+  border-color: rgba(var(--primary-rgb), 0.5) !important;
+}
+
+[data-theme="dark"] .hover\:bg-gray-50:hover,
+[data-theme="dark"] .hover\:bg-gray-100:hover,
+[data-theme="dark"] .hover\:bg-gray-200:hover,
+[data-theme="dark"] .hover\:bg-gray-300:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
 }
 
