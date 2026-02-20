@@ -130,11 +130,9 @@ type ActivePresetField = {
 function MatchBox({
   match,
   setSelectedMatch,
-  setModalOpen,
 }: {
   match: Match;
   setSelectedMatch: (id: number, bracket?: "upper" | "lower") => void;
-  setModalOpen: (open: boolean) => void;
 }) {
   const borderColors: Record<MatchStatus, string> = {
     completed: "border-green-500",
@@ -158,7 +156,6 @@ function MatchBox({
     <button
       onClick={() => {
         setSelectedMatch(match.id, match.bracket);
-        setModalOpen(false);
       }}
       className={`
         relative w-[120px] min-h-[62px] text-xs rounded border text-left bg-white
@@ -201,10 +198,8 @@ function MatchBox({
 
 function FinalsBracket({
   setSelectedMatch,
-  setModalOpen,
 }: {
   setSelectedMatch: (id: number, bracket?: "upper" | "lower") => void;
-  setModalOpen: (open: boolean) => void;
 }) {
   const B = { w: 120, h: 62, colGap: 60, row: 90 };
   const col = (c: number) => (B.w + B.colGap) * c;
@@ -286,51 +281,51 @@ function FinalsBracket({
           </svg>
 
           <div className="absolute" style={{ left: c0, top: r1_1 }}>
-            <MatchBox match={{ id: 1, label: "Match 1", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 1, label: "Match 1", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c0, top: r1_2 }}>
-            <MatchBox match={{ id: 2, label: "Match 2", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 2, label: "Match 2", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c0, top: r1_3 }}>
-            <MatchBox match={{ id: 3, label: "Match 3", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 3, label: "Match 3", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c0, top: r1_4 }}>
-            <MatchBox match={{ id: 4, label: "Match 4", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 4, label: "Match 4", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c1, top: r2_7 }}>
-            <MatchBox match={{ id: 7, label: "Match 7", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 7, label: "Match 7", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c1, top: r2_8 }}>
-            <MatchBox match={{ id: 8, label: "Match 8", status: "next", bracket: "upper" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 8, label: "Match 8", status: "next", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c1, top: lower_5 }}>
-            <MatchBox match={{ id: 5, label: "Match 5", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 5, label: "Match 5", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c1, top: lower_6 }}>
-            <MatchBox match={{ id: 6, label: "Match 6", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 6, label: "Match 6", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c2, top: lower_9 }}>
-            <MatchBox match={{ id: 9, label: "Match 9", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 9, label: "Match 9", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c2, top: lower_10 }}>
-            <MatchBox match={{ id: 10, label: "Match 10", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 10, label: "Match 10", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c3, top: r3_11 }}>
-            <MatchBox match={{ id: 11, label: "Match 11", status: "upcoming", bracket: "upper" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 11, label: "Match 11", status: "upcoming", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c3, top: lower_12 }}>
-            <MatchBox match={{ id: 12, label: "Match 12", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 12, label: "Match 12", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c4, top: y13 }}>
-            <MatchBox match={{ id: 13, label: "Match 13", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 13, label: "Match 13", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c5, top: yFinals }}>
-            <MatchBox match={{ id: 14, label: "FINALS", status: "upcoming" }} setSelectedMatch={setSelectedMatch} setModalOpen={setModalOpen} />
+            <MatchBox match={{ id: 14, label: "FINALS", status: "upcoming" }} setSelectedMatch={setSelectedMatch} />
           </div>
         </div>
       </div>
@@ -345,7 +340,7 @@ function ScoutFormContent() {
   const { userData } = useAuth();
   const showEventWarning = !isEventActive();
 
-  const [notesOpen, setNotesOpen] = useState(false);
+  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
@@ -404,17 +399,43 @@ function ScoutFormContent() {
     loadActivePreset();
   }, [userData?.teamId]);
 
-function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
-  // When called from finals bracket, id is which position, bracket is upper/lower
-  setSelectedMatch({ id: 0, type: "finals", bracket });
-  setFinalsStep("number");
-}
+  function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
+    if (id === 14 && !bracket) {
+      setSelectedMatch({ id: 0, type: "finals" });
+      setFinalsStep("number");
+      setModalStep("finals");
+      return;
+    }
+    setSelectedMatch({ id, type: "finals", bracket });
+    setModalOpen(false);
+    setModalStep("type");
+    setFinalsStep("bracket");
+  }
+
+  function getFinalsDisplayLabel(matchNum: number) {
+    if (matchNum === 1) return "Upper Bracket Match 1";
+    if (matchNum === 2) return "Upper Bracket Match 2";
+    if (matchNum === 3) return "Upper Bracket Match 3";
+    if (matchNum === 4) return "Upper Bracket Match 4";
+    if (matchNum === 5) return "Lower Bracket Match 5";
+    if (matchNum === 6) return "Lower Bracket Match 6";
+    if (matchNum === 7) return "Upper Bracket Match 7";
+    if (matchNum === 8) return "Upper Bracket Match 8";
+    if (matchNum === 9) return "Lower Bracket Match 9";
+    if (matchNum === 10) return "Lower Bracket Match 10";
+    if (matchNum === 11) return "Upper Bracket Match 11";
+    if (matchNum === 12) return "Lower Bracket Match 12";
+    if (matchNum === 13) return "Lower Bracket Match 13";
+    if (matchNum === 14) return "Finals 1 (F14)";
+    if (matchNum === 15) return "Finals 2 (F15)";
+    if (matchNum === 16) return "Finals 3 (F16)";
+    return `Finals (F${matchNum})`;
+  }
 
   const getMatchDisplay = () => {
     if (!selectedMatch.type || selectedMatch.id <= 0) return "No match is set";
-    if (selectedMatch.type === "finals" && selectedMatch.bracket) {
-      const bracketName = selectedMatch.bracket === "upper" ? "Upper" : "Lower";
-      return `${bracketName} Bracket Match ${selectedMatch.id}`;
+    if (selectedMatch.type === "finals") {
+      return getFinalsDisplayLabel(selectedMatch.id);
     } else if (selectedMatch.type === "practice") {
       return `Practice Match ${selectedMatch.id}`;
     } else {
@@ -467,7 +488,6 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
     score += formData.teleopProcessorScored * 6;
     score += formData.teleopNetRobotScored * 4;
     score += formData.teleopNetHumanScored * 4;
-    if (formData.teleopAlgaeRemoved) score += 2;
     const stageStatus = formData.stageStatus.toLowerCase();
     if (stageStatus.includes("deep")) score += 12;
     else if (stageStatus.includes("shallow")) score += 6;
@@ -847,26 +867,26 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
       {/* MOBILE NOTES DRAWER */}
       <div className="md:hidden fixed right-0 top-1/2 transform -translate-y-1/2 z-50">
         <button
-          onClick={() => setNotesOpen(!notesOpen)}
+          onClick={() => setMobileNotesOpen((prev) => !prev)}
           className="px-2 py-4 rounded-l-xl text-white"
           style={{ backgroundColor: "#c42221" }}
         >
-          {notesOpen ? "→" : "←"}
+          {mobileNotesOpen ? ">" : "<"}
         </button>
-
-        {notesOpen && (
-          <>
+      </div>
+      {mobileNotesOpen && (
+        <>
           <div
             className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => setNotesOpen(false)}
+            onClick={() => setMobileNotesOpen(false)}
           />
           <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
             <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
-              Notes
-            </h2>
+              <h2 className="text-xl font-semibold mb-2" style={{ color: "#c42221" }}>
+                Notes
+              </h2>
               <button
-                onClick={() => setNotesOpen(false)}
+                onClick={() => setMobileNotesOpen(false)}
                 className="px-3 py-1 rounded bg-gray-100 text-gray-700"
               >
                 Close
@@ -879,9 +899,8 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
               placeholder="Write notes here..."
             />
           </div>
-          </>
-        )}
-      </div>
+        </>
+      )}
 
       {/* MODAL CONTENT — MATCH SELECTION FLOW */}
       <Modal
@@ -1064,7 +1083,6 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
         {modalStep === "finals" && finalsStep === "bracket" && (
           <FinalsBracket
             setSelectedMatch={handleMatchSelect}
-            setModalOpen={setModalOpen}
           />
         )}
         
@@ -1087,10 +1105,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
             </div>
 
             <p className="text-gray-600 mb-6 text-center">
-              Which finals match are you scouting?<br/>
-              <span className="text-sm">
-                ({selectedMatch.bracket === "upper" ? "Upper" : "Lower"} Bracket Finals)
-              </span>
+              Which finals match are you scouting?
             </p>
 
             <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
@@ -1100,6 +1115,7 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                   onClick={() => {
                     setSelectedMatch(prev => ({
                       ...prev,
+                      type: "finals",
                       id: matchNum
                     }));
                     setModalOpen(false);
@@ -1110,10 +1126,10 @@ function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
                 >
                   <div className="text-center">
                     <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "#c42221" }}>
-                      {matchNum}
+                      F{matchNum}
                     </div>
                     <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">
-                      Finals Match {matchNum}
+                      {getFinalsDisplayLabel(matchNum)}
                     </div>
                     <div className="text-xs text-gray-500 mt-2">
                       {matchNum === 14 && "First Finals"}

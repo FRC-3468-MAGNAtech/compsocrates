@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -32,6 +32,7 @@ interface JoinRequest {
   userEmail: string;
   userName: string;
   userRole: string;
+  requestedRole?: string;
   teamId: string;
   status: string;
   createdAt: number;
@@ -94,22 +95,37 @@ function TeamManagementContent() {
 
   async function handleApproveRequest(request: JoinRequest) {
     try {
+      const resolvedRole = (request.requestedRole || request.userRole || "scout") as "coach" | "scout";
       // Update request status
       await updateDoc(doc(db, "teamJoinRequests", request.id), {
-        status: "approved"
+        status: "approved",
+        processedAt: Date.now(),
+        processedBy: userData?.uid || "",
       });
 
-      // Find or create user document
-      const usersQuery = query(
-        collection(db, "users"),
-        where("email", "==", request.userEmail)
-      );
-      const usersSnap = await getDocs(usersQuery);
-      
-      if (!usersSnap.empty) {
-        const userDoc = usersSnap.docs[0];
-        await updateSecureUserDoc(userDoc.id, {
-          teamId: request.teamId
+      let targetUserId = "";
+      if (request.userId) {
+        const directUserDoc = await getDoc(doc(db, "users", request.userId));
+        if (directUserDoc.exists()) {
+          targetUserId = request.userId;
+        }
+      }
+
+      if (!targetUserId && request.userEmail) {
+        const usersQuery = query(
+          collection(db, "users"),
+          where("email", "==", request.userEmail)
+        );
+        const usersSnap = await getDocs(usersQuery);
+        if (!usersSnap.empty) {
+          targetUserId = usersSnap.docs[0].id;
+        }
+      }
+
+      if (targetUserId) {
+        await updateSecureUserDoc(targetUserId, {
+          teamId: request.teamId,
+          role: resolvedRole,
         });
       }
 
@@ -271,7 +287,7 @@ function TeamManagementContent() {
                       <p className="font-semibold text-lg">{request.userName}</p>
                       <p className="text-sm text-gray-600">{request.userEmail}</p>
                       <p className="text-xs text-gray-500 mt-1">
-                        Requested {new Date(request.createdAt).toLocaleDateString()} • Role: {request.userRole}
+                        Requested {new Date(request.createdAt).toLocaleDateString()} • Role: {request.requestedRole || request.userRole}
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -391,7 +407,7 @@ function TeamManagementContent() {
 
 export default function TeamManagementPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
       <TeamManagementContent />
     </ProtectedRoute>
   );

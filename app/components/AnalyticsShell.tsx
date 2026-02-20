@@ -127,7 +127,7 @@ export default function AnalyticsShell({
                     checked={practiceMatchesOnly}
                     onChange={(event) => onPracticeMatchesOnlyChange(event.target.checked)}
                   />
-                  Practice Matches
+                  Practice Scouted Matches
                 </label>
               )}
               <label className="text-sm text-gray-600">Game:</label>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -11,6 +11,7 @@ import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 type TeamJoinRequest = {
   id: string;
   teamId: string;
+  requestedRole?: "scout" | "coach";
   status: string;
   createdAt?: number;
 };
@@ -24,6 +25,7 @@ async function fetchPendingRequestsByEmail(email: string): Promise<TeamJoinReque
     return {
       id: docSnap.id,
       teamId: String(data.teamId || ""),
+      requestedRole: (data.requestedRole || data.userRole || "scout") as "scout" | "coach",
       status: String(data.status || ""),
       createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
     };
@@ -51,6 +53,7 @@ function NoTeamDashboardContent() {
   const [requestedRole, setRequestedRole] = useState<"scout" | "coach">("scout");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
+  const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -92,9 +95,17 @@ function NoTeamDashboardContent() {
 
     setSubmittingRequest(true);
     try {
+      const email = userData.email || user.email || "";
+      const refreshedPending = await fetchPendingRequestsByEmail(email);
+      setPendingRequests(refreshedPending);
+
       const resolvedTeamCode = await resolveTeamCode(normalizedTeamCode);
       if (!resolvedTeamCode) {
         setRequestError("Team not found. Please check the team code.");
+        return;
+      }
+      if (refreshedPending.some((request) => request.teamId.toLowerCase() === resolvedTeamCode.toLowerCase())) {
+        setRequestError("You already have a pending request for that team.");
         return;
       }
 
@@ -103,19 +114,39 @@ function NoTeamDashboardContent() {
         userEmail: userData.email || user.email || "",
         userName: userData.displayName || user.displayName || "",
         userRole: requestedRole,
+        requestedRole,
         teamId: resolvedTeamCode,
         status: "pending",
         createdAt: Date.now(),
       });
 
-      setPendingRequests(await fetchPendingRequestsByEmail(userData.email || user.email || ""));
+      setPendingRequests(await fetchPendingRequestsByEmail(email));
       setTeamCode("");
       setRequestError("");
     } catch (error) {
       console.error("Error creating team request:", error);
-      setRequestError("Unable to create request right now.");
+      const message = error instanceof Error ? error.message : "";
+      setRequestError(message ? `Unable to create request: ${message}` : "Unable to create request right now.");
     } finally {
       setSubmittingRequest(false);
+    }
+  }
+
+  async function handleCancelRequest(requestId: string) {
+    if (!user || !userData || cancelingRequestId) return;
+    if (!window.confirm("Cancel this join request?")) return;
+
+    setCancelingRequestId(requestId);
+    setRequestError("");
+    try {
+      await deleteDoc(doc(db, "teamJoinRequests", requestId));
+      const email = userData.email || user.email || "";
+      setPendingRequests(await fetchPendingRequestsByEmail(email));
+    } catch (error) {
+      console.error("Error canceling request:", error);
+      setRequestError("Unable to cancel this request right now.");
+    } finally {
+      setCancelingRequestId(null);
     }
   }
 
@@ -171,9 +202,21 @@ function NoTeamDashboardContent() {
             <h2 className="text-lg font-semibold mb-3">Pending Requests</h2>
             <div className="space-y-2">
               {pendingRequests.map((request) => (
-                <div key={request.id} className="border rounded p-3">
-                  <p className="font-medium">Team {request.teamId}</p>
-                  <p className="text-sm text-gray-600">Status: Pending</p>
+                <div key={request.id} className="border rounded p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Team {request.teamId}</p>
+                    <p className="text-sm text-gray-600">
+                      Status: Pending ({request.requestedRole || "scout"})
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleCancelRequest(request.id)}
+                    disabled={cancelingRequestId === request.id}
+                    className="px-3 py-1.5 rounded border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {cancelingRequestId === request.id ? "Canceling..." : "Cancel"}
+                  </button>
                 </div>
               ))}
             </div>

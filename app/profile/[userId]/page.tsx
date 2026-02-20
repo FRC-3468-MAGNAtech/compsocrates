@@ -186,7 +186,7 @@ function ProfileContent() {
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
         {!profile ? (
           <div className="bg-white rounded-xl shadow-md p-8 text-center">Profile not found.</div>
         ) : !canView ? (
@@ -194,7 +194,7 @@ function ProfileContent() {
             This profile is private or restricted to team members.
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto space-y-6">
+          <div className="max-w-5xl mx-auto space-y-6">
             <div className="bg-white rounded-xl shadow-md p-6">
               <div className="flex items-center gap-4">
                 {profile.photoURL ? (
@@ -225,7 +225,27 @@ function ProfileContent() {
             </div>
             <div className="bg-white rounded-xl shadow-md p-6">
               <h2 className="text-xl font-semibold mb-3">Stats</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+              <div className="md:hidden -mx-2 px-2 overflow-x-auto snap-x snap-mandatory">
+                <div className="flex gap-3 w-max pb-1">
+                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">Entries</p>
+                    <p className="text-2xl font-bold">{stats.totalEntries}</p>
+                  </div>
+                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">Practice</p>
+                    <p className="text-2xl font-bold">{stats.practiceSessions}</p>
+                  </div>
+                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">Avg Accuracy</p>
+                    <p className="text-2xl font-bold">{stats.avgAccuracy}%</p>
+                  </div>
+                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">Events</p>
+                    <p className="text-2xl font-bold">{stats.eventsScouted}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="hidden md:grid grid-cols-4 gap-3 text-center">
                 <div className="p-3 border border-gray-200 rounded-lg">
                   <p className="text-xs text-gray-500">Entries</p>
                   <p className="text-2xl font-bold">{stats.totalEntries}</p>

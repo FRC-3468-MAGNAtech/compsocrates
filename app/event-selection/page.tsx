@@ -78,8 +78,12 @@ function EventSelectionContent() {
   }, [userData?.teamId]);
 
   const filteredEvents = useMemo(() => {
-    if (!searchTerm.trim()) return events;
-    return filterEventsByLocation(events, searchTerm);
+    const scoped = searchTerm.trim() ? filterEventsByLocation(events, searchTerm) : events;
+    return [...scoped].sort((a, b) => {
+      const aTime = new Date(`${a.start_date}T12:00:00`).getTime();
+      const bTime = new Date(`${b.start_date}T12:00:00`).getTime();
+      return aTime - bTime;
+    });
   }, [events, searchTerm]);
 
   function toggleEvent(eventKey: string) {

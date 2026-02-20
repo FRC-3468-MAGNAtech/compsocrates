@@ -4,12 +4,15 @@ export const dynamic = "force-dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import {
   entryMatchesAnalyticsFilters,
+  getExplicitMatchTypeFromLabel,
   getEventOptionsForEntries,
   getEventsForGame,
+  isPracticeScoutedEntry,
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
@@ -106,7 +109,6 @@ function scoreEntry(e: Entry) {
   s += e.teleopProcessorScored * PTS.TELE_ALGAE_PROC;
   s += e.teleopNetRobotScored * PTS.TELE_ALGAE_NET_R;
   s += e.teleopNetHumanScored * PTS.TELE_ALGAE_NET_H;
-  if (e.teleopAlgaeRemoved) s += 2;
   s += Number(e.penaltyPoints || 0);
   const end = e.stageStatus.toLowerCase();
   if (end.includes("deep")) s += PTS.CLIMB_DEEP;
@@ -129,7 +131,6 @@ function matchNumberValue(value?: string) {
 
 function matchLabel(entry: Entry) {
   const num = entry.matchNumber || "-";
-  if (isPracticeScoutingEntry(entry)) return `Q${num}`;
   if (entry.matchType === "practice") return `P${num}`;
   if (entry.matchType === "qualification") return `Q${num}`;
   if (entry.matchType === "finals") return `F${num}`;
@@ -137,7 +138,45 @@ function matchLabel(entry: Entry) {
 }
 
 function isPracticeScoutingEntry(entry: Entry) {
-  return entry.isPracticeScouting || entry.matchType === "practice" || Boolean(entry.practiceMode);
+  return isPracticeScoutedEntry(entry);
+}
+
+function isEntryBlank(entry: Entry) {
+  const numbers = [
+    entry.autoCoralMissed,
+    entry.autoCoralL1,
+    entry.autoCoralL2,
+    entry.autoCoralL3,
+    entry.autoCoralL4,
+    entry.autoAlgaeProcessorMissed,
+    entry.autoAlgaeProcessorScored,
+    entry.autoAlgaeNetMissed,
+    entry.autoAlgaeNetScored,
+    entry.teleopCoralMissed,
+    entry.teleopCoralL1,
+    entry.teleopCoralL2,
+    entry.teleopCoralL3,
+    entry.teleopCoralL4,
+    entry.teleopProcessorMissed,
+    entry.teleopProcessorScored,
+    entry.teleopNetRobotMissed,
+    entry.teleopNetRobotScored,
+    entry.teleopNetHumanMissed,
+    entry.teleopNetHumanScored,
+    entry.failedClimb,
+  ];
+  const hasAnyNumbers = numbers.some((value) => Number(value || 0) > 0);
+  return (
+    !String(entry.teamNumber || "").trim() &&
+    !String(entry.scoutName || "").trim() &&
+    !String(entry.startingPosition || "").trim() &&
+    !String(entry.stageStatus || "").trim() &&
+    !String(entry.notes || "").trim() &&
+    (!entry.incidents || entry.incidents.length === 0) &&
+    !entry.leftStartingZone &&
+    !entry.teleopAlgaeRemoved &&
+    !hasAnyNumbers
+  );
 }
 
 function parseCsvLine(line: string): string[] {
@@ -167,14 +206,64 @@ function parseCsvLine(line: string): string[] {
   return values.map((value) => value.trim());
 }
 
+function splitCsvRecords(text: string): string[] {
+  const records: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        current += '""';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+        current += ch;
+      }
+      continue;
+    }
+    if ((ch === "\n" || ch === "\r") && !inQuotes) {
+      if (current.trim()) records.push(current);
+      current = "";
+      if (ch === "\r" && text[i + 1] === "\n") i += 1;
+      continue;
+    }
+    current += ch;
+  }
+
+  if (current.trim()) records.push(current);
+  return records;
+}
+
 function normalizeHeader(header: string) {
   return header.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function parseAccuracyPercent(value: string): number | undefined {
+  const raw = String(value || "").trim();
+  if (!raw) return undefined;
+  const direct = Number(raw);
+  if (Number.isFinite(direct)) return Math.round(direct);
+  const percentMatch = raw.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (percentMatch) return Math.round(Number(percentMatch[1]));
+  const fallback = raw.match(/(\d+(?:\.\d+)?)/);
+  if (fallback) return Math.round(Number(fallback[1]));
+  return undefined;
 }
 
 type SortKey = keyof Entry | "score";
 type SortDir = "asc" | "desc";
 
 function AnalyticsPageContent() {
+  const { userData } = useAuth();
+  const isCoach = userData?.role === "coach";
+  const isTeamAdmin = Boolean(userData?.isTeamAdmin);
+  const isTeamMember = Boolean(userData?.teamId);
+  const canImportCsv = isCoach || isTeamAdmin;
+  const canExportCsv = isTeamMember;
+  const canCleanBlankRows = isCoach || isTeamAdmin;
+  const canDeleteEntries = isCoach || isTeamAdmin;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -190,6 +279,9 @@ function AnalyticsPageContent() {
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importMatchMode, setImportMatchMode] = useState<"official" | "practice-scouted">("official");
+  const [importing, setImporting] = useState(false);
+  const [cleaningBlankRows, setCleaningBlankRows] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
@@ -282,10 +374,36 @@ function AnalyticsPageContent() {
   }
 
   async function handleDeleteEntry(entryId: string) {
+    if (!canDeleteEntries) {
+      alert("Only coaches or team admins can delete entries.");
+      return;
+    }
     const ok = window.confirm("Delete this scouting entry?");
     if (!ok) return;
     await deleteDoc(doc(db, "scouting", entryId));
     await loadData();
+  }
+
+  async function handleCleanBlankEntries() {
+    if (!canCleanBlankRows) {
+      alert("Only coaches or team admins can clean blank rows.");
+      return;
+    }
+    const blankRows = rawData.filter((entry) => isEntryBlank(entry));
+    if (blankRows.length === 0) {
+      alert("No blank rows found.");
+      return;
+    }
+    const ok = window.confirm(`Delete ${blankRows.length} blank rows?`);
+    if (!ok) return;
+    setCleaningBlankRows(true);
+    try {
+      await Promise.all(blankRows.map((entry) => deleteDoc(doc(db, "scouting", entry.id))));
+      await loadData();
+      alert(`Deleted ${blankRows.length} blank rows.`);
+    } finally {
+      setCleaningBlankRows(false);
+    }
   }
 
   function sortLabel(key: SortKey, label: string) {
@@ -382,6 +500,11 @@ function AnalyticsPageContent() {
   }
 
   function handleImportFilePick(event: React.ChangeEvent<HTMLInputElement>) {
+    if (!canImportCsv) {
+      alert("Only coaches or team admins can import CSV files.");
+      event.target.value = "";
+      return;
+    }
     const file = event.target.files?.[0];
     if (!file) return;
     setPendingImportFile(file);
@@ -390,13 +513,18 @@ function AnalyticsPageContent() {
   }
 
   async function runCSVImport() {
-    if (!pendingImportFile) return;
+    if (!canImportCsv) {
+      alert("Only coaches or team admins can import CSV files.");
+      return;
+    }
+    if (!pendingImportFile || importing) return;
+    setImporting(true);
 
     const reader = new FileReader();
     reader.onload = async (loadEvent) => {
       try {
         const text = loadEvent.target?.result as string;
-        const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+        const lines = splitCsvRecords(text);
         if (lines.length < 2) {
           throw new Error("CSV has no data rows.");
         }
@@ -454,9 +582,18 @@ function AnalyticsPageContent() {
         const idxComments = column(["comments", "notes"], 29);
         const idxAccuracy = column(["allianceaccuracy", "accuracy"], 30);
 
+        const startDataRow = Math.max(headerRowIndex + 1, 3);
         let imported = 0;
         let skipped = 0;
-        for (let i = headerRowIndex + 1; i < lines.length; i++) {
+        type CandidateRow = {
+          values: string[];
+          matchRaw: string;
+          parsedMatch: ReturnType<typeof normalizeMatchLabel>;
+          explicitType: ReturnType<typeof getExplicitMatchTypeFromLabel>;
+          numericOnly: boolean;
+        };
+        const candidates: CandidateRow[] = [];
+        for (let i = startDataRow; i < lines.length; i++) {
           if (!lines[i].trim()) continue;
           const values = parseCsvLine(lines[i]);
           const matchRaw = (values[idxMatch] || "").trim();
@@ -476,26 +613,121 @@ function AnalyticsPageContent() {
             rowSignals.includes("endgame") ||
             rowSignals.includes("general") ||
             rowSignals.includes("actions");
-          const hasLikelyData =
-            /\d/.test(matchRaw) ||
-            /\d/.test(teamRaw) ||
-            values.some((value, idx) => idx !== idxScout && /\d/.test(String(value || "")));
-          if (looksLikeHeaderRow || !hasLikelyData) {
+          const numericCells = [
+            idxAutoCoralMissed,
+            idxAutoCoralL1,
+            idxAutoCoralL2,
+            idxAutoCoralL3,
+            idxAutoCoralL4,
+            idxAutoAlgaeProcMissed,
+            idxAutoAlgaeProcScored,
+            idxAutoAlgaeNetMissed,
+            idxAutoAlgaeNetScored,
+            idxTeleCoralMissed,
+            idxTeleCoralL1,
+            idxTeleCoralL2,
+            idxTeleCoralL3,
+            idxTeleCoralL4,
+            idxTeleProcMissed,
+            idxTeleProcScored,
+            idxTeleNetRobotMissed,
+            idxTeleNetRobotScored,
+            idxTeleNetHumanMissed,
+            idxTeleNetHumanScored,
+            idxFailedClimb,
+          ];
+          const hasNumericData = numericCells.some((idx) => Number(values[idx] || 0) > 0);
+          const hasTextData =
+            Boolean(scoutRaw) ||
+            Boolean(startRaw) ||
+            Boolean((values[idxComments] || "").trim()) ||
+            Boolean((values[idxIncidents] || "").trim()) ||
+            Boolean((values[idxEndPlace] || "").trim());
+          const hasMatchSignal = /\d/.test(matchRaw) || /(practice|final|upper|lower|ub|lb|qual|qm|round)/i.test(matchRaw);
+          const hasCoreIds = hasMatchSignal && /\d/.test(teamRaw);
+          if (looksLikeHeaderRow || !hasCoreIds || (!hasNumericData && !hasTextData)) {
             skipped += 1;
             continue;
           }
 
-          const match = normalizeMatchLabel(matchRaw);
+          const parsedMatch = normalizeMatchLabel(matchRaw);
+          candidates.push({
+            values,
+            matchRaw,
+            parsedMatch,
+            explicitType: getExplicitMatchTypeFromLabel(matchRaw),
+            numericOnly: /^\d+$/.test(matchRaw.replace(/\s+/g, "")),
+          });
+        }
+
+        const explicitByMatchNumber = new Map<string, Record<"practice" | "qualification" | "finals", number>>();
+        for (const candidate of candidates) {
+          if (!candidate.explicitType) continue;
+          const key = candidate.parsedMatch.matchNumber || "1";
+          const counts = explicitByMatchNumber.get(key) || { practice: 0, qualification: 0, finals: 0 };
+          counts[candidate.explicitType] += 1;
+          explicitByMatchNumber.set(key, counts);
+        }
+
+        const inferContextType = (index: number): "practice" | "qualification" | "finals" => {
+          const row = candidates[index];
+          if (row.explicitType) return row.explicitType;
+
+          const sameNumberCounts = explicitByMatchNumber.get(row.parsedMatch.matchNumber || "1");
+          if (sameNumberCounts) {
+            const ranked = (Object.entries(sameNumberCounts) as Array<["practice" | "qualification" | "finals", number]>)
+              .sort((a, b) => b[1] - a[1]);
+            if (ranked[0]?.[1] > 0 && ranked[0]?.[1] > (ranked[1]?.[1] || 0)) {
+              return ranked[0][0];
+            }
+          }
+
+          let prev: { type: "practice" | "qualification" | "finals"; dist: number } | null = null;
+          for (let p = index - 1; p >= 0; p -= 1) {
+            const type = candidates[p].explicitType;
+            if (type) {
+              prev = { type, dist: index - p };
+              break;
+            }
+          }
+
+          let next: { type: "practice" | "qualification" | "finals"; dist: number } | null = null;
+          for (let n = index + 1; n < candidates.length; n += 1) {
+            const type = candidates[n].explicitType;
+            if (type) {
+              next = { type, dist: n - index };
+              break;
+            }
+          }
+
+          if (prev && next) {
+            if (prev.type === next.type) return prev.type;
+            if (prev.dist < next.dist) return prev.type;
+            if (next.dist < prev.dist) return next.type;
+            return row.parsedMatch.matchType;
+          }
+          if (prev) return prev.type;
+          if (next) return next.type;
+          return row.parsedMatch.matchType;
+        };
+
+        for (let i = 0; i < candidates.length; i += 1) {
+          const candidate = candidates[i];
+          const values = candidate.values;
+          const parsedMatch = candidate.parsedMatch;
+          const importedMatchType = inferContextType(i);
+          const matchId = `${importedMatchType === "practice" ? "p" : importedMatchType === "finals" ? "f" : "q"}${parsedMatch.matchNumber}`;
           const now = Date.now();
           const parseNum = (value: string, fallback = 0) => {
             const parsed = Number(value);
             return Number.isFinite(parsed) ? parsed : fallback;
           };
           const parseBool = (value: string) => value === "1" || /^y(es)?$/i.test(value) || /^true$/i.test(value);
+          const parsedAccuracy = parseAccuracyPercent(values[idxAccuracy] || "");
           await addDoc(collection(db, "scouting"), {
-            matchId: match.matchId,
-            matchNumber: match.matchNumber,
-            matchType: match.matchType,
+            matchId,
+            matchNumber: parsedMatch.matchNumber,
+            matchType: importedMatchType,
             teamNumber: values[idxTeam] || "",
             scoutName: values[idxScout] || "",
             startingPosition: values[idxStartingPos] || "",
@@ -525,7 +757,8 @@ function AnalyticsPageContent() {
             stageStatus: values[idxEndPlace] || "",
             incidents: (values[idxIncidents] || "").split(";").map((item) => item.trim()).filter(Boolean),
             notes: values[idxComments] || "",
-            ...(values[idxAccuracy] ? { accuracy: parseNum(values[idxAccuracy]) } : {}),
+            ...(typeof parsedAccuracy === "number" ? { accuracy: parsedAccuracy } : {}),
+            ...(importMatchMode === "practice-scouted" ? { isPracticeScouting: true, practiceMode: "trial" } : {}),
             eventKey: importEvent,
             eventName: importEventOptions.find((option) => option.id === importEvent)?.name || "App Testing",
             game: importGame,
@@ -542,6 +775,8 @@ function AnalyticsPageContent() {
         console.error("Import failed:", error);
         const message = error instanceof Error ? error.message : "Unknown error";
         alert(`Error importing CSV: ${message}`);
+      } finally {
+        setImporting(false);
       }
     };
     reader.readAsText(pendingImportFile);
@@ -559,13 +794,29 @@ function AnalyticsPageContent() {
       onSelectedEventChange={setSelectedEvent}
     >
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button className="px-3 py-1.5 text-sm rounded bg-green-600 text-white" onClick={exportToCSV}>
+        <button
+          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
+          onClick={exportToCSV}
+          disabled={!canExportCsv}
+          title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
+        >
           Export CSV
         </button>
-        <label className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white cursor-pointer">
+        <label
+          className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
+          title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
+        >
           Import CSV
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" />
+          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
         </label>
+        <button
+          className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-60"
+          onClick={() => void handleCleanBlankEntries()}
+          disabled={cleaningBlankRows || !canCleanBlankRows}
+          title={canCleanBlankRows ? undefined : "Only coaches or team admins can clean blank rows."}
+        >
+          {cleaningBlankRows ? "Cleaning..." : "Clean Blank Rows"}
+        </button>
       </div>
 
       {showImportDialog && (
@@ -592,6 +843,17 @@ function AnalyticsPageContent() {
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Import As</label>
+                <select
+                  value={importMatchMode}
+                  onChange={(event) => setImportMatchMode(event.target.value as "official" | "practice-scouted")}
+                  className="w-full border rounded p-2"
+                >
+                  <option value="official">Official (Practice/Qualification/Finals)</option>
+                  <option value="practice-scouted">Practice Scouted Matches</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Event</label>
                 <select
                   value={importEvent}
@@ -609,16 +871,18 @@ function AnalyticsPageContent() {
             <div className="mt-6 flex gap-2">
               <button
                 onClick={runCSVImport}
-                className="flex-1 py-2 rounded bg-blue-600 text-white font-semibold"
+                disabled={importing}
+                className="flex-1 py-2 rounded bg-blue-600 text-white font-semibold disabled:opacity-60"
               >
-                Import
+                {importing ? "Importing..." : "Import"}
               </button>
               <button
                 onClick={() => {
                   setShowImportDialog(false);
                   setPendingImportFile(null);
                 }}
-                className="flex-1 py-2 rounded border border-gray-300"
+                disabled={importing}
+                className="flex-1 py-2 rounded border border-gray-300 disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -627,7 +891,7 @@ function AnalyticsPageContent() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll">
+      <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
         <table>
           <thead className="sticky-header">
             <tr>
@@ -732,9 +996,12 @@ function AnalyticsPageContent() {
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                 <td className="text-center">
                   <button
+                    type="button"
                     onClick={() => void handleDeleteEntry(entry.id)}
-                    className="px-3 py-1 rounded text-white text-sm"
+                    className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
                     style={{ backgroundColor: "#dc2626" }}
+                    disabled={!canDeleteEntries}
+                    title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
                   >
                     Delete
                   </button>

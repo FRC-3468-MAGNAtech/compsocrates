@@ -87,19 +87,80 @@ export function classifyRebuiltEventByTimestamp(timestamp: number): string {
 
 export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" | "qualification" | "finals"; matchNumber: string; matchId: string } {
   const value = (rawMatch || "").trim().toLowerCase();
-  const number = (value.match(/\d+/)?.[0] || "1").replace(/^0+/, "") || "1";
+  const compact = value.replace(/[^a-z0-9]/g, "");
+  const explicitMatchNumber =
+    value.match(/\b(?:match|mtch|matc?h|march|marltch)\s*#?\s*(\d+)\b/)?.[1] ||
+    value.match(/\bm\s*#?\s*(\d+)\b/)?.[1];
+  const roundThenMatchNumber = value.match(/\bround\s*\d+\D+(\d+)\b/)?.[1];
+  const allNumbers = value.match(/\d+/g) || [];
+  const matchNumberFromLabel =
+    explicitMatchNumber ||
+    roundThenMatchNumber ||
+    (allNumbers.length > 1 && value.includes("round") ? allNumbers[allNumbers.length - 1] : undefined) ||
+    value.match(/\d+/)?.[0] ||
+    "1";
+  const number = matchNumberFromLabel.replace(/^0+/, "") || "1";
 
-  if (value.startsWith("p") || value.includes("practice")) {
-    return { matchType: "practice", matchNumber: number, matchId: `p${number}` };
-  }
-  if (value.startsWith("f") || value.includes("final")) {
-    return { matchType: "finals", matchNumber: number, matchId: `f${number}` };
-  }
-  if (value.startsWith("q") || value.includes("qual")) {
-    return { matchType: "qualification", matchNumber: number, matchId: `q${number}` };
-  }
-
+  const isPracticeLabel =
+    value.includes("practice") ||
+    /pract|prct|pratc|prac|warmup|test/i.test(compact) ||
+    /^p[\s#-]*\d+/i.test(value) ||
+    /^p\d+/i.test(compact);
+  const isFinalsLabel =
+    value.startsWith("f") ||
+    value.includes("final") ||
+    value.includes("playoff") ||
+    value.includes("elim") ||
+    value.includes("bracket") ||
+    /\bupper\b/.test(value) ||
+    /\blower\b/.test(value) ||
+    /\bub\b/.test(value) ||
+    /\blb\b/.test(value) ||
+    /fnl|fnls|playof|braket|bracke|upper|uppr|lower|lowr|elim/i.test(compact);
+  const isQualificationLabel =
+    value.startsWith("q") ||
+    value.includes("qual") ||
+    /\bqm\b/.test(value) ||
+    /qual|qm|quali|qul|qulification/i.test(compact);
+  if (isPracticeLabel) return { matchType: "practice", matchNumber: number, matchId: `p${number}` };
+  if (isFinalsLabel) return { matchType: "finals", matchNumber: number, matchId: `f${number}` };
+  if (isQualificationLabel) return { matchType: "qualification", matchNumber: number, matchId: `q${number}` };
   return { matchType: "qualification", matchNumber: number, matchId: `q${number}` };
+}
+
+export function getExplicitMatchTypeFromLabel(rawMatch: string): "practice" | "qualification" | "finals" | null {
+  const value = (rawMatch || "").trim().toLowerCase();
+  if (!value) return null;
+  const compact = value.replace(/[^a-z0-9]/g, "");
+
+  const isPracticeLabel =
+    value.includes("practice") ||
+    /pract|prct|pratc|prac|warmup|test/i.test(compact) ||
+    /^p[\s#-]*\d+/i.test(value) ||
+    /^p\d+/i.test(compact);
+  if (isPracticeLabel) return "practice";
+
+  const isFinalsLabel =
+    value.startsWith("f") ||
+    value.includes("final") ||
+    value.includes("playoff") ||
+    value.includes("elim") ||
+    value.includes("bracket") ||
+    /\bupper\b/.test(value) ||
+    /\blower\b/.test(value) ||
+    /\bub\b/.test(value) ||
+    /\blb\b/.test(value) ||
+    /fnl|fnls|playof|braket|bracke|upper|uppr|lower|lowr|elim/i.test(compact);
+  if (isFinalsLabel) return "finals";
+
+  const isQualificationLabel =
+    value.startsWith("q") ||
+    value.includes("qual") ||
+    /\bqm\b/.test(value) ||
+    /qual|qm|quali|qul|qulification/i.test(compact);
+  if (isQualificationLabel) return "qualification";
+
+  return null;
 }
 
 type EventLikeEntry = {
@@ -108,6 +169,16 @@ type EventLikeEntry = {
   timestamp?: number;
   game?: string;
 };
+
+type PracticeScoutedLike = {
+  isPracticeScouting?: boolean;
+  practiceMode?: string;
+  practiceSessionId?: string;
+};
+
+export function isPracticeScoutedEntry(entry: PracticeScoutedLike): boolean {
+  return Boolean(entry.isPracticeScouting) || Boolean(entry.practiceMode) || Boolean(entry.practiceSessionId);
+}
 
 export function entryMatchesAnalyticsFilters(
   entry: EventLikeEntry,

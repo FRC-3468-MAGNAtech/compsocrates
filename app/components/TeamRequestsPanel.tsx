@@ -10,9 +10,11 @@ import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 interface TeamRequest {
   id: string;
   teamId: string;
+  userId?: string;
   userEmail: string;
   userName: string;
-  requestedRole: "scout" | "coach";
+  requestedRole?: "scout" | "coach";
+  userRole?: "scout" | "coach";
   status: "pending" | "approved" | "denied";
   createdAt: number;
 }
@@ -31,7 +33,7 @@ export default function TeamRequestsPanel() {
 
     try {
       const q = query(
-        collection(db, "teamRequests"),
+        collection(db, "teamJoinRequests"),
         where("teamId", "==", userData.teamId),
         where("status", "==", "pending")
       );
@@ -51,11 +53,12 @@ export default function TeamRequestsPanel() {
   }
 
   async function handleApprove(request: TeamRequest) {
-    if (!confirm(`Approve ${request.userName} to join as ${request.requestedRole}?`)) return;
+    const resolvedRole = (request.requestedRole || request.userRole || "scout") as "scout" | "coach";
+    if (!confirm(`Approve ${request.userName} to join as ${resolvedRole}?`)) return;
 
     try {
       // 1. Update request status
-      await updateDoc(doc(db, "teamRequests", request.id), {
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
         processedAt: Date.now(),
         processedBy: userData?.uid
@@ -72,7 +75,7 @@ export default function TeamRequestsPanel() {
         const userDoc = usersSnapshot.docs[0];
         await updateSecureUserDoc(userDoc.id, {
           teamId: userData?.teamId,
-          role: request.requestedRole
+          role: resolvedRole
         });
       }
 
@@ -88,7 +91,7 @@ export default function TeamRequestsPanel() {
     if (!confirm(`Deny ${request.userName}'s request?`)) return;
 
     try {
-      await updateDoc(doc(db, "teamRequests", request.id), {
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "denied",
         processedAt: Date.now(),
         processedBy: userData?.uid
@@ -138,7 +141,7 @@ export default function TeamRequestsPanel() {
                 </div>
                 <p className="text-sm text-gray-600 mb-1">{request.userEmail}</p>
                 <p className="text-sm text-gray-500">
-                  Requesting to join as <span className="font-medium">{request.requestedRole}</span>
+                  Requesting to join as <span className="font-medium">{request.requestedRole || request.userRole || "scout"}</span>
                 </p>
                 <p className="text-xs text-gray-400 mt-2">
                   {new Date(request.createdAt).toLocaleDateString()}

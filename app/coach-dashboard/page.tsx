@@ -367,6 +367,15 @@ function CoachDashboardContent() {
                   </button>
 
                   <button
+                    onClick={() => router.push("/event-details")}
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
+                  >
+                    <div className="text-2xl mb-2">📅</div>
+                    <h3 className="font-semibold mb-1">Event Info</h3>
+                    <p className="text-sm text-gray-600">Open event details and schedules</p>
+                  </button>
+
+                  <button
                     onClick={() => router.push("/scout-accuracy")}
                     className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >

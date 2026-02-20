@@ -9,7 +9,7 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { APP_EVENT_BY_KEY } from "@/app/utils/events";
+import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -25,6 +25,61 @@ const Counter = ({ label, value, onChange }: { label: string; value: number; onC
 
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
+type PracticeStep = 'select' | 'practice' | 'break' | 'results';
+
+type PracticeSessionDraft = {
+  version: 1;
+  savedAt: number;
+  scoutId: string;
+  selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
+  selectedMode: PracticeMode | null;
+  currentStep: Extract<PracticeStep, "practice" | "break">;
+  currentMatch: PracticeMatch;
+  currentRobotIndex: number;
+  breakCompletedRobotIndex: number | null;
+  robotSessions: ScoutedData[];
+  humanPlayerRobot: number | null;
+  formData: ScoutedData;
+};
+
+const PRACTICE_DRAFT_KEY_PREFIX = "practice-session-draft";
+
+function getPracticeDraftKey(scoutId: string) {
+  return `${PRACTICE_DRAFT_KEY_PREFIX}:${scoutId}`;
+}
+
+function createEmptyScoutedData(teamNumber = "", notes = ""): ScoutedData {
+  return {
+    teamNumber,
+    startingPosition: "",
+    leftStartingZone: false,
+    autoCoralMissed: 0,
+    autoCoralL1: 0,
+    autoCoralL2: 0,
+    autoCoralL3: 0,
+    autoCoralL4: 0,
+    autoAlgaeProcessorMissed: 0,
+    autoAlgaeProcessorScored: 0,
+    autoAlgaeNetMissed: 0,
+    autoAlgaeNetScored: 0,
+    teleopCoralMissed: 0,
+    teleopCoralL1: 0,
+    teleopCoralL2: 0,
+    teleopCoralL3: 0,
+    teleopCoralL4: 0,
+    teleopAlgaeRemoved: false,
+    teleopProcessorMissed: 0,
+    teleopProcessorScored: 0,
+    teleopNetRobotMissed: 0,
+    teleopNetRobotScored: 0,
+    teleopNetHumanMissed: 0,
+    teleopNetHumanScored: 0,
+    failedClimb: 0,
+    stageStatus: "",
+    incidents: [] as string[],
+    notes,
+  };
+}
 
 function sanitizeAllianceTeams(candidate: unknown): number[] {
   const parseValues = (values: unknown[]): number[] =>
@@ -182,54 +237,60 @@ function getPracticeEventKey(match: PracticeMatch): string {
   return "app-testing";
 }
 
+function normalizeEventValue(value: string): string {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function resolvePracticeEvent(match: PracticeMatch, game: AnalyticsGame): { eventKey: string; eventName: string } {
+  const catalog = getEventsForGame(game).filter((event) => event.id !== "app-testing");
+  const byKey = new Map(catalog.map((event) => [event.id.toLowerCase(), event]));
+  const byName = new Map(catalog.map((event) => [normalizeEventValue(event.name), event]));
+
+  const keyCandidate = getPracticeEventKey(match).toLowerCase();
+  const keyMatch = byKey.get(keyCandidate);
+  if (keyMatch) {
+    return { eventKey: keyMatch.id, eventName: keyMatch.name };
+  }
+
+  const nameCandidate = String((match as unknown as Record<string, unknown>).eventName || "").trim();
+  const normalizedName = normalizeEventValue(nameCandidate);
+  const nameMatch = byName.get(normalizedName);
+  if (nameMatch) {
+    return { eventKey: nameMatch.id, eventName: nameMatch.name };
+  }
+
+  if (keyCandidate && keyCandidate !== "app-testing") {
+    return { eventKey: keyCandidate, eventName: nameCandidate || keyCandidate };
+  }
+
+  if (nameCandidate) {
+    return { eventKey: "app-testing", eventName: nameCandidate };
+  }
+
+  return { eventKey: "app-testing", eventName: "App Testing" };
+}
+
 function PracticeScoutingContent() {
   const router = useRouter();
   const { userData } = useAuth();
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
-  const [currentStep, setCurrentStep] = useState<'select' | 'practice' | 'results'>('select');
+  const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | null>(null);
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
   const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
+  const [breakCompletedRobotIndex, setBreakCompletedRobotIndex] = useState<number | null>(null);
   const [robotSessions, setRobotSessions] = useState<ScoutedData[]>([]);
   const [humanPlayerRobot, setHumanPlayerRobot] = useState<number | null>(null); // 0, 1, 2, or null
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<PracticeSessionDraft | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const formPaneRef = useRef<HTMLDivElement | null>(null);
 
-  const [formData, setFormData] = useState<ScoutedData>({
-    teamNumber: "",
-    startingPosition: "",
-    leftStartingZone: false,
-    autoCoralMissed: 0,
-    autoCoralL1: 0,
-    autoCoralL2: 0,
-    autoCoralL3: 0,
-    autoCoralL4: 0,
-    autoAlgaeProcessorMissed: 0,
-    autoAlgaeProcessorScored: 0,
-    autoAlgaeNetMissed: 0,
-    autoAlgaeNetScored: 0,
-    teleopCoralMissed: 0,
-    teleopCoralL1: 0,
-    teleopCoralL2: 0,
-    teleopCoralL3: 0,
-    teleopCoralL4: 0,
-    teleopAlgaeRemoved: false,
-    teleopProcessorMissed: 0,
-    teleopProcessorScored: 0,
-    teleopNetRobotMissed: 0,
-    teleopNetRobotScored: 0,
-    teleopNetHumanMissed: 0,
-    teleopNetHumanScored: 0,
-    failedClimb: 0,
-    stageStatus: "",
-    incidents: [] as string[],
-    notes: "",
-  });
+  const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
 
   function getYouTubeEmbedUrl(url: string): string {
     if (!url) return "";
@@ -278,7 +339,82 @@ function PracticeScoutingContent() {
     void loadActiveMatchGame();
   }, [userData?.teamId]);
 
+  function clearPracticeDraft() {
+    if (typeof window === "undefined" || !userData?.uid) return;
+    localStorage.removeItem(getPracticeDraftKey(userData.uid));
+  }
+
+  function savePracticeDraft(overrides: Partial<PracticeSessionDraft> = {}) {
+    if (typeof window === "undefined" || !userData?.uid || !currentMatch) return;
+
+    const nextStep = (overrides.currentStep || currentStep) as PracticeStep;
+    if (nextStep !== "practice" && nextStep !== "break") return;
+
+    const draft: PracticeSessionDraft = {
+      version: 1,
+      savedAt: Date.now(),
+      scoutId: userData.uid,
+      selectedDifficulty: overrides.selectedDifficulty ?? selectedDifficulty,
+      selectedMode: overrides.selectedMode ?? selectedMode,
+      currentStep: nextStep,
+      currentMatch: (overrides.currentMatch ?? currentMatch) as PracticeMatch,
+      currentRobotIndex: overrides.currentRobotIndex ?? currentRobotIndex,
+      breakCompletedRobotIndex: overrides.breakCompletedRobotIndex ?? breakCompletedRobotIndex,
+      robotSessions: overrides.robotSessions ?? robotSessions,
+      humanPlayerRobot: overrides.humanPlayerRobot ?? humanPlayerRobot,
+      formData: overrides.formData ?? formData,
+    };
+    localStorage.setItem(getPracticeDraftKey(userData.uid), JSON.stringify(draft));
+  }
+
+  function restorePracticeDraft(draft: PracticeSessionDraft) {
+    const safeStep: PracticeStep = draft.currentStep === "break" ? "break" : "practice";
+    setSelectedDifficulty(draft.selectedDifficulty || null);
+    setSelectedMode(draft.selectedMode || null);
+    setCurrentMatch(draft.currentMatch);
+    setCurrentRobotIndex(Math.max(0, Math.min(2, Number(draft.currentRobotIndex) || 0)));
+    setBreakCompletedRobotIndex(
+      typeof draft.breakCompletedRobotIndex === "number" ? Math.max(0, Math.min(2, draft.breakCompletedRobotIndex)) : null
+    );
+    setRobotSessions(Array.isArray(draft.robotSessions) ? draft.robotSessions.slice(0, 3) : []);
+    setHumanPlayerRobot(
+      typeof draft.humanPlayerRobot === "number" ? Math.max(0, Math.min(2, draft.humanPlayerRobot)) : null
+    );
+    setFormData(draft.formData || createEmptyScoutedData());
+    setCurrentStep(safeStep);
+    setPendingDraft(null);
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !userData?.uid) return;
+    const raw = localStorage.getItem(getPracticeDraftKey(userData.uid));
+    if (!raw) {
+      setPendingDraft(null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<PracticeSessionDraft>;
+      if (
+        parsed &&
+        parsed.version === 1 &&
+        parsed.currentMatch &&
+        (parsed.currentStep === "practice" || parsed.currentStep === "break")
+      ) {
+        setPendingDraft(parsed as PracticeSessionDraft);
+      } else {
+        localStorage.removeItem(getPracticeDraftKey(userData.uid));
+        setPendingDraft(null);
+      }
+    } catch {
+      localStorage.removeItem(getPracticeDraftKey(userData.uid));
+      setPendingDraft(null);
+    }
+  }, [userData?.uid]);
+
   async function selectPracticeMatch(difficulty: 'easy' | 'medium' | 'hard', mode: PracticeMode) {
+    clearPracticeDraft();
+    setPendingDraft(null);
     setLoading(true);
     setSelectedDifficulty(difficulty);
     setSelectedMode(mode);
@@ -350,9 +486,10 @@ function PracticeScoutingContent() {
 
       setCurrentMatch(safeMatch);
       setCurrentRobotIndex(0);
+      setBreakCompletedRobotIndex(null);
       setRobotSessions([]);
 
-      setFormData(prev => ({ ...prev, teamNumber: safeMatch.allianceTeams[0].toString() }));
+      setFormData(createEmptyScoutedData(safeMatch.allianceTeams[0].toString()));
 
       setHumanPlayerRobot(Math.floor(Math.random() * 3));
 
@@ -374,46 +511,32 @@ function PracticeScoutingContent() {
     if (!currentMatch || !userData) return;
 
     const robotData = { ...formData };
-    setRobotSessions(prev => [...prev, robotData]);
+    const nextRobotSessions = [...robotSessions, robotData];
+    setRobotSessions(nextRobotSessions);
 
     if (currentRobotIndex === 2) {
-      await submitPracticeSession([...robotSessions, robotData]);
+      await submitPracticeSession(nextRobotSessions);
       return;
     }
 
-    setCurrentRobotIndex(prev => prev + 1);
-    
-    const notes = formData.notes;
-    setFormData({
-      teamNumber: currentMatch.allianceTeams[currentRobotIndex + 1].toString(),
-      startingPosition: "",
-      leftStartingZone: false,
-      autoCoralMissed: 0,
-      autoCoralL1: 0,
-      autoCoralL2: 0,
-      autoCoralL3: 0,
-      autoCoralL4: 0,
-      autoAlgaeProcessorMissed: 0,
-      autoAlgaeProcessorScored: 0,
-      autoAlgaeNetMissed: 0,
-      autoAlgaeNetScored: 0,
-      teleopCoralMissed: 0,
-      teleopCoralL1: 0,
-      teleopCoralL2: 0,
-      teleopCoralL3: 0,
-      teleopCoralL4: 0,
-      teleopAlgaeRemoved: false,
-      teleopProcessorMissed: 0,
-      teleopProcessorScored: 0,
-      teleopNetRobotMissed: 0,
-      teleopNetRobotScored: 0,
-      teleopNetHumanMissed: 0,
-      teleopNetHumanScored: 0,
-      failedClimb: 0,
-      stageStatus: "",
-      incidents: [],
-      notes,
+    setBreakCompletedRobotIndex(currentRobotIndex);
+    setCurrentStep('break');
+    savePracticeDraft({
+      currentStep: "break",
+      breakCompletedRobotIndex: currentRobotIndex,
+      robotSessions: nextRobotSessions,
     });
+  }
+
+  function continueToNextRobot() {
+    if (!currentMatch) return;
+    const nextRobotIndex = currentRobotIndex + 1;
+    if (nextRobotIndex > 2) return;
+
+    setCurrentRobotIndex(nextRobotIndex);
+    setFormData(createEmptyScoutedData(currentMatch.allianceTeams[nextRobotIndex].toString()));
+    setCurrentStep('practice');
+    setMobileNotesOpen(false);
     formPaneRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -437,9 +560,7 @@ function PracticeScoutingContent() {
 
       const now = Date.now();
       const device = getScoutDevice();
-      const resolvedEventKey = getPracticeEventKey(currentMatch);
-      const eventKey = APP_EVENT_BY_KEY[resolvedEventKey] ? resolvedEventKey : "app-testing";
-      const eventName = APP_EVENT_BY_KEY[eventKey]?.name || currentMatch.eventName || "App Testing";
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame);
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
         scoutName: userData.displayName,
@@ -497,6 +618,8 @@ function PracticeScoutingContent() {
 
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
+      clearPracticeDraft();
+      setPendingDraft(null);
     } catch (error) {
       console.error('Error submitting practice session:', error);
       alert('Error submitting practice session: ' + (error as Error).message);
@@ -511,40 +634,14 @@ function PracticeScoutingContent() {
     setSelectedMode(null);
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
+    setBreakCompletedRobotIndex(null);
     setRobotSessions([]);
     setHumanPlayerRobot(null);
     setSessionResults(null);
     setMobileNotesOpen(false);
-    setFormData({
-      teamNumber: "",
-      startingPosition: "",
-      leftStartingZone: false,
-      autoCoralMissed: 0,
-      autoCoralL1: 0,
-      autoCoralL2: 0,
-      autoCoralL3: 0,
-      autoCoralL4: 0,
-      autoAlgaeProcessorMissed: 0,
-      autoAlgaeProcessorScored: 0,
-      autoAlgaeNetMissed: 0,
-      autoAlgaeNetScored: 0,
-      teleopCoralMissed: 0,
-      teleopCoralL1: 0,
-      teleopCoralL2: 0,
-      teleopCoralL3: 0,
-      teleopCoralL4: 0,
-      teleopAlgaeRemoved: false,
-      teleopProcessorMissed: 0,
-      teleopProcessorScored: 0,
-      teleopNetRobotMissed: 0,
-      teleopNetRobotScored: 0,
-      teleopNetHumanMissed: 0,
-      teleopNetHumanScored: 0,
-      failedClimb: 0,
-      stageStatus: "",
-      incidents: [],
-      notes: "",
-    });
+    setFormData(createEmptyScoutedData());
+    clearPracticeDraft();
+    setPendingDraft(null);
   }
 
   return (
@@ -558,6 +655,33 @@ function PracticeScoutingContent() {
               Practice Scouting
             </h1>
             <p className="text-gray-600 mb-8">Improve your accuracy by practicing with real match footage.</p>
+            {pendingDraft && (
+              <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <h2 className="font-semibold text-amber-900 mb-1">Resume Saved Session?</h2>
+                <p className="text-sm text-amber-800 mb-3">
+                  You have an unfinished practice session with {pendingDraft.robotSessions.length} completed robot
+                  {pendingDraft.robotSessions.length === 1 ? "" : "s"}.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => restorePracticeDraft(pendingDraft)}
+                    className="px-4 py-2 rounded text-white font-semibold"
+                    style={{ backgroundColor: "#c42221" }}
+                  >
+                    Resume Session
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearPracticeDraft();
+                      setPendingDraft(null);
+                    }}
+                    className="px-4 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50"
+                  >
+                    Discard Saved Session
+                  </button>
+                </div>
+              </div>
+            )}
 
             {!selectedMode ? (
               <>
@@ -639,6 +763,37 @@ function PracticeScoutingContent() {
           </div>
         )}
 
+        {currentStep === 'break' && currentMatch && breakCompletedRobotIndex !== null && (
+          <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
+            <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8">
+              <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "#c42221" }}>
+                Robot {breakCompletedRobotIndex + 1} Complete
+              </h1>
+              <p className="text-gray-700 text-lg mb-3">
+                Team {currentMatch.allianceTeams[breakCompletedRobotIndex]} scouting is complete.
+              </p>
+              <p className="text-gray-600 mb-8">
+                Take a short break before the next robot, just like normal scouting rotations between matches.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={continueToNextRobot}
+                  className="flex-1 py-3 rounded-lg text-white font-semibold"
+                  style={{ backgroundColor: "#c42221" }}
+                >
+                  Continue To Robot {currentRobotIndex + 2} (Team {currentMatch.allianceTeams[currentRobotIndex + 1]})
+                </button>
+                <button
+                  onClick={resetPractice}
+                  className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
+                >
+                  End Session
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* STEP 2: PRACTICE SCOUTING */}
         {currentStep === 'practice' && currentMatch && (
           <div className="h-screen flex flex-col md:flex-row">
@@ -674,7 +829,7 @@ function PracticeScoutingContent() {
             </div>
 
             {/* SCOUTING FORM */}
-            <div ref={formPaneRef} className="w-full md:w-96 flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4">
+            <div ref={formPaneRef} className="w-full md:w-[22rem] md:flex-none flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4">
               {/* Progress indicator */}
               <div className="bg-white rounded-lg p-4">
                 <div className="flex justify-between items-center mb-2">

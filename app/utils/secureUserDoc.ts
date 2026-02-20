@@ -19,6 +19,15 @@ async function encryptPayload(data: Record<string, unknown>) {
   return encryptedUserData;
 }
 
+async function tryEncryptPayload(data: Record<string, unknown>): Promise<string | null> {
+  try {
+    return await encryptPayload(data);
+  } catch (error) {
+    console.warn("Falling back to plain user doc write (encryption unavailable):", error);
+    return null;
+  }
+}
+
 export async function setSecureUserDoc(
   uid: string,
   data: Record<string, unknown>,
@@ -31,14 +40,17 @@ export async function setSecureUserDoc(
     fullData = { ...(existing.exists() ? existing.data() : {}), ...data };
   }
 
-  const encryptedUserData = await encryptPayload(fullData);
+  const encryptedUserData = await tryEncryptPayload(fullData);
+  const payload = encryptedUserData
+    ? {
+        ...data,
+        encryptedUserData,
+        userDataEncryptedAt: Date.now(),
+      }
+    : { ...data };
   await setDoc(
     ref,
-    {
-      ...data,
-      encryptedUserData,
-      userDataEncryptedAt: Date.now(),
-    },
+    payload,
     { merge }
   );
 }
@@ -47,10 +59,13 @@ export async function updateSecureUserDoc(uid: string, updates: Record<string, u
   const ref = doc(db, "users", uid);
   const existing = await getDoc(ref);
   const fullData = { ...(existing.exists() ? existing.data() : {}), ...updates };
-  const encryptedUserData = await encryptPayload(fullData);
-  await updateDoc(ref, {
-    ...updates,
-    encryptedUserData,
-    userDataEncryptedAt: Date.now(),
-  });
+  const encryptedUserData = await tryEncryptPayload(fullData);
+  const payload = encryptedUserData
+    ? {
+        ...updates,
+        encryptedUserData,
+        userDataEncryptedAt: Date.now(),
+      }
+    : { ...updates };
+  await updateDoc(ref, payload);
 }

@@ -7,7 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 type TeamPick = {
   teamNumber: string;
@@ -39,7 +39,7 @@ type ScoutingEntry = {
 };
 
 function isPracticeEntry(entry: ScoutingEntry) {
-  return entry.matchType === "practice" || Boolean(entry.practiceMode) || Boolean(entry.isPracticeScouting);
+  return isPracticeScoutedEntry(entry);
 }
 
 function PickListContent() {

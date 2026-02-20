@@ -6,7 +6,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { collection, addDoc, doc, getDoc } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
@@ -20,6 +21,39 @@ async function resolveTeamCode(code: string): Promise<string | null> {
     if (teamDoc.exists()) return attempt;
   }
   return null;
+}
+
+async function waitForCurrentUid(timeoutMs = 1500): Promise<string | null> {
+  if (auth.currentUser?.uid) return auth.currentUser.uid;
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      resolve(auth.currentUser?.uid || null);
+    }, timeoutMs);
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      if (nextUser?.uid) {
+        clearTimeout(timeout);
+        unsubscribe();
+        resolve(nextUser.uid);
+      }
+    });
+  });
+}
+
+async function hasPendingJoinRequest(email: string, teamId: string): Promise<boolean> {
+  const normalizedEmail = email.trim();
+  const normalizedTeamId = teamId.trim().toLowerCase();
+  if (!normalizedEmail || !normalizedTeamId) return false;
+
+  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userEmail", "==", normalizedEmail));
+  const requestsSnap = await getDocs(requestsQuery);
+
+  return requestsSnap.docs.some((docSnap) => {
+    const data = docSnap.data() as Record<string, unknown>;
+    const status = String(data.status || "");
+    const requestTeamId = String(data.teamId || "").toLowerCase();
+    return status === "pending" && requestTeamId === normalizedTeamId;
+  });
 }
 
 export default function SignupPage() {
@@ -69,13 +103,21 @@ export default function SignupPage() {
 
         // Create user account (without team yet)
         await signUp(email, password, displayName, role, "", false);
+        const resolvedUid = await waitForCurrentUid();
+        const hasPending = await hasPendingJoinRequest(email, resolvedTeamCode);
+        if (hasPending) {
+          alert("You already have a pending request for this team.");
+          router.push("/dashboard");
+          return;
+        }
 
         // Create join request
         await addDoc(collection(db, "teamJoinRequests"), {
-          userId: auth.currentUser?.uid || email,
+          userId: resolvedUid || email,
           userEmail: email,
           userName: displayName,
           userRole: role,
+          requestedRole: role,
           teamId: resolvedTeamCode,
           status: "pending",
           createdAt: Date.now()

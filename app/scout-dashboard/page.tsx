@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -84,24 +84,6 @@ function ScoutDashboardContent() {
     }
   }
 
-  async function resetMyPracticeSessions() {
-    if (!userData) return;
-    if (!confirm("Reset your practice session counter by deleting your practice sessions?")) return;
-    try {
-      const practiceQuery = query(
-        collection(db, "practiceSessions"),
-        where("scoutName", "==", userData.displayName)
-      );
-      const practiceSnapshot = await getDocs(practiceQuery);
-      await Promise.all(practiceSnapshot.docs.map((d) => deleteDoc(doc(db, "practiceSessions", d.id))));
-      await loadDashboardData();
-      alert("Practice sessions reset.");
-    } catch (error) {
-      console.error("Error resetting practice sessions:", error);
-      alert("Failed to reset practice sessions.");
-    }
-  }
-
   const needsPractice = stats && stats.practiceSessionsCount < 3;
 
   return (
@@ -174,6 +156,13 @@ function ScoutDashboardContent() {
                           📅 {new Date(event.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
                         </p>
                         <p className="text-sm text-gray-600 mt-2">{event.daysUntil} days away</p>
+                        <button
+                          onClick={() => router.push(`/event-details/${event.key}`)}
+                          className="mt-3 px-4 py-2 rounded-lg text-white font-medium"
+                          style={{ backgroundColor: "#c42221" }}
+                        >
+                          View Event Info
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -215,12 +204,6 @@ function ScoutDashboardContent() {
                     {stats?.practiceSessionsCount || 0}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">Completed</p>
-                  <button
-                    onClick={resetMyPracticeSessions}
-                    className="mt-3 text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
-                  >
-                    Reset Sessions
-                  </button>
                 </div>
               </div>
 
@@ -253,6 +236,15 @@ function ScoutDashboardContent() {
                     <div className="text-2xl mb-2">📈</div>
                     <h3 className="font-semibold mb-1">View Analytics</h3>
                     <p className="text-sm text-gray-600">Check team performance</p>
+                  </button>
+
+                  <button
+                    onClick={() => router.push("/event-details")}
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
+                  >
+                    <div className="text-2xl mb-2">📅</div>
+                    <h3 className="font-semibold mb-1">Event Info</h3>
+                    <p className="text-sm text-gray-600">Browse selected event pages</p>
                   </button>
                 </div>
               </div>

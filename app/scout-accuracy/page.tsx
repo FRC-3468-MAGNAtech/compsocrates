@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
+import { collection, getDocs, query, where, deleteDoc, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -9,6 +9,7 @@ import { useAuth } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { Users, Target, ClipboardList } from "lucide-react";
 import { getEventsForGame } from "@/app/utils/analyticsEvents";
+import { calculateAccuracy } from "@/app/utils/practiceTypes";
 
 interface ScoutStats {
   scoutName: string;
@@ -89,7 +90,6 @@ function scoreScoutingEntry(entry: ScoutingEntry): number {
   score += (entry.teleopProcessorScored || 0) * 6;
   score += (entry.teleopNetRobotScored || 0) * 4;
   score += (entry.teleopNetHumanScored || 0) * 4;
-  if (entry.teleopAlgaeRemoved) score += 2;
   score += Number(entry.penaltyPoints || 0);
   const end = (entry.stageStatus || "").toLowerCase();
   if (end.includes("deep")) score += 12;
@@ -106,6 +106,8 @@ function ScoutAccuracyContent() {
   const [accuracyView, setAccuracyView] = useState<"practice" | "competition">("practice");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
   const [selectedCompetitionEvent, setSelectedCompetitionEvent] = useState("all");
+  const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
+  const [rerunSessionId, setRerunSessionId] = useState("");
 
   useEffect(() => {
     loadScoutStats();
@@ -401,6 +403,78 @@ function ScoutAccuracyContent() {
     }
   }
 
+  async function rerunSessionAccuracyScript(sessionIdRaw: string) {
+    if (!canResetScoutData || !userData?.teamId) {
+      alert("Only team admins can rerun session accuracy scripts.");
+      return;
+    }
+    const sessionId = sessionIdRaw.trim();
+    if (!sessionId) {
+      alert("Enter a practice session ID first.");
+      return;
+    }
+    if (!confirm(`Recalculate stored accuracy for practice session ${sessionId}?`)) return;
+
+    setRerunningAccuracy(true);
+    try {
+      const sessionRef = doc(db, "practiceSessions", sessionId);
+      const sessionSnap = await getDoc(sessionRef);
+      if (!sessionSnap.exists()) {
+        alert("Session not found.");
+        return;
+      }
+      const sessionData = sessionSnap.data() as Record<string, unknown>;
+
+      const teamUsersSnap = await getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId)));
+      const memberIds = new Set(teamUsersSnap.docs.map((memberDoc) => memberDoc.id));
+      const sessionScoutId = String(sessionData.scoutId || "");
+      if (sessionScoutId && !memberIds.has(sessionScoutId)) {
+        alert("This session does not belong to your team.");
+        return;
+      }
+
+      const officialScore =
+        typeof sessionData.officialScore === "number"
+          ? sessionData.officialScore
+          : typeof sessionData.actualScore === "number"
+          ? sessionData.actualScore
+          : 0;
+      const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("practiceSessionId", "==", sessionId)));
+      const entries = scoutingSnap.docs.map((entryDoc) => ({
+        id: entryDoc.id,
+        ...(entryDoc.data() as ScoutingEntry),
+      }));
+      if (entries.length === 0) {
+        alert("No scouting entries found for that practice session.");
+        return;
+      }
+
+      const totalScoutedScore = entries.reduce((sum, entry) => sum + scoreScoutingEntry(entry), 0);
+      const recalculatedAccuracy = calculateAccuracy(totalScoutedScore, officialScore);
+
+      await updateDoc(sessionRef, {
+        scoutedScore: totalScoutedScore,
+        accuracy: recalculatedAccuracy,
+        recalculatedAt: Date.now(),
+      });
+
+      for (const entry of entries) {
+        await updateDoc(doc(db, "scouting", entry.id), {
+          accuracy: recalculatedAccuracy,
+          recalculatedAt: Date.now(),
+        });
+      }
+
+      await loadScoutStats();
+      alert(`Recalculated session ${sessionId} (${entries.length} entries).`);
+    } catch (error) {
+      console.error("Error rerunning session accuracy script:", error);
+      alert("Failed to rerun session accuracy.");
+    } finally {
+      setRerunningAccuracy(false);
+    }
+  }
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
@@ -486,6 +560,32 @@ function ScoutAccuracyContent() {
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+          {canResetScoutData && (
+            <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="font-semibold">Maintenance</p>
+                  <p className="text-sm text-gray-600">Recalculate accuracy for one practice session ID.</p>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <input
+                    value={rerunSessionId}
+                    onChange={(event) => setRerunSessionId(event.target.value)}
+                    placeholder="Practice Session ID"
+                    className="border rounded px-3 py-2 text-sm w-64"
+                    disabled={rerunningAccuracy}
+                  />
+                  <button
+                    onClick={() => void rerunSessionAccuracyScript(rerunSessionId)}
+                    disabled={rerunningAccuracy}
+                    className="px-3 py-2 rounded bg-red-600 text-white text-sm font-medium disabled:opacity-50"
+                  >
+                    {rerunningAccuracy ? "Recalculating..." : "Rerun Session"}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
               {/* OVERVIEW STATS */}

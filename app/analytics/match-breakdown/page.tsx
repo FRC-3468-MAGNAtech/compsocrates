@@ -7,14 +7,13 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { sortMatches } from "@/app/utils/matchSorting";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, type AnalyticsGame } from "@/app/utils/analyticsEvents";
-
-type MatchEntry = {
-  matchId: string;
-  teamNumber: string;
-  scoutName: string;
-  totalScore: number;
-};
+import {
+  entryMatchesAnalyticsFilters,
+  getEventOptionsForEntries,
+  isPracticeScoutedEntry,
+  normalizeMatchLabel,
+  type AnalyticsGame,
+} from "@/app/utils/analyticsEvents";
 
 type ScoutingEntry = {
   eventKey?: string;
@@ -38,10 +37,19 @@ type ScoutingEntry = {
   teleopCoralL3?: number;
   teleopCoralL4?: number;
   penaltyPoints?: number;
+  alliance?: string;
+  allianceColor?: string;
+  assignedAlliance?: string;
+  startingPosition?: string;
+};
+
+type AllianceRow = {
+  teamNumber: string;
+  totalScore: number;
 };
 
 function isPracticeEntry(entry: ScoutingEntry) {
-  return entry.matchType === "practice" || Boolean(entry.practiceMode) || Boolean(entry.isPracticeScouting);
+  return isPracticeScoutedEntry(entry);
 }
 
 function formatMatchLabel(matchId: string): string {
@@ -63,9 +71,37 @@ function normalizeMatchId(entry: ScoutingEntry): string {
     const short = direct.match(/^([pqf])\D*(\d+)/);
     if (short) return `${short[1]}${short[2]}`;
   }
+
+  const byLabel = normalizeMatchLabel(String(entry.matchNumber || ""));
+  if (String(entry.matchNumber || "").trim()) return byLabel.matchId;
+
   const num = String(entry.matchNumber || "").replace(/\D/g, "");
   const prefix = entry.matchType === "practice" ? "p" : entry.matchType === "finals" ? "f" : "q";
   return num ? `${prefix}${num}` : "";
+}
+
+function scoreEntry(entry: ScoutingEntry) {
+  return (
+    (entry.leftStartingZone ? 3 : 0) +
+    (entry.autoCoralL1 || 0) * 3 +
+    (entry.autoCoralL2 || 0) * 4 +
+    (entry.autoCoralL3 || 0) * 6 +
+    (entry.autoCoralL4 || 0) * 7 +
+    (entry.teleopCoralL1 || 0) * 2 +
+    (entry.teleopCoralL2 || 0) * 3 +
+    (entry.teleopCoralL3 || 0) * 4 +
+    (entry.teleopCoralL4 || 0) * 5 +
+    Number(entry.penaltyPoints || 0)
+  );
+}
+
+function inferAlliance(entry: ScoutingEntry): "red" | "blue" | null {
+  const direct = String(entry.alliance || entry.allianceColor || entry.assignedAlliance || "").toLowerCase();
+  if (direct === "red" || direct === "blue") return direct;
+  const pos = String(entry.startingPosition || "").toLowerCase();
+  if (pos.includes("red")) return "red";
+  if (pos.includes("blue")) return "blue";
+  return null;
 }
 
 function MatchBreakdownContent() {
@@ -96,13 +132,12 @@ function MatchBreakdownContent() {
       setLoading(true);
       try {
         const snap = await getDocs(collection(db, "scouting"));
-        const rows = snap.docs.map((d) => d.data());
-        setEntries(rows);
+        setEntries(snap.docs.map((d) => d.data()));
       } finally {
         setLoading(false);
       }
     }
-    loadEntries();
+    void loadEntries();
   }, []);
 
   const filteredEntries = useMemo(() => {
@@ -111,8 +146,8 @@ function MatchBreakdownContent() {
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const matches = useMemo(() => {
-    const ids = filteredEntries.map((e) => normalizeMatchId(e)).filter(Boolean);
-    return sortMatches([...new Set(ids)].map((matchId) => ({ matchId }))).map((m) => m.matchId);
+    const ids = filteredEntries.map((entry) => normalizeMatchId(entry)).filter(Boolean);
+    return sortMatches([...new Set(ids)].map((matchId) => ({ matchId }))).map((row) => row.matchId);
   }, [filteredEntries]);
 
   useEffect(() => {
@@ -125,26 +160,44 @@ function MatchBreakdownContent() {
     }
   }, [matches, selectedMatch]);
 
-  const matchRows = useMemo<MatchEntry[]>(() => {
-    if (!selectedMatch) return [];
-    return filteredEntries
-      .filter((e) => normalizeMatchId(e) === selectedMatch)
-      .map((e) => ({
-        matchId: selectedMatch,
-        teamNumber: e.teamNumber || "-",
-        scoutName: e.scoutName || "-",
-        totalScore:
-          (e.leftStartingZone ? 3 : 0) +
-          (e.autoCoralL1 || 0) * 3 +
-          (e.autoCoralL2 || 0) * 4 +
-          (e.autoCoralL3 || 0) * 6 +
-          (e.autoCoralL4 || 0) * 7 +
-          (e.teleopCoralL1 || 0) * 2 +
-          (e.teleopCoralL2 || 0) * 3 +
-          (e.teleopCoralL3 || 0) * 4 +
-          (e.teleopCoralL4 || 0) * 5 +
-          Number(e.penaltyPoints || 0),
-      }));
+  const allianceBreakdown = useMemo(() => {
+    const selectedRows = filteredEntries.filter((entry) => normalizeMatchId(entry) === selectedMatch);
+    const teamScores = new Map<string, { score: number; alliance: "red" | "blue" | null }>();
+
+    selectedRows.forEach((entry) => {
+      const team = String(entry.teamNumber || "").trim();
+      if (!team) return;
+      const score = scoreEntry(entry);
+      const alliance = inferAlliance(entry);
+      const existing = teamScores.get(team);
+      if (!existing || score > existing.score) {
+        teamScores.set(team, { score, alliance: alliance || existing?.alliance || null });
+      }
+    });
+
+    const red: AllianceRow[] = [];
+    const blue: AllianceRow[] = [];
+    const unknown: AllianceRow[] = [];
+
+    Array.from(teamScores.entries())
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .forEach(([teamNumber, value]) => {
+        const row = { teamNumber, totalScore: value.score };
+        if (value.alliance === "red") red.push(row);
+        else if (value.alliance === "blue") blue.push(row);
+        else unknown.push(row);
+      });
+
+    // Fill missing alliances when source does not include explicit alliance tags.
+    unknown.forEach((row) => {
+      if (red.length < 3) red.push(row);
+      else blue.push(row);
+    });
+
+    const redTotal = red.reduce((sum, row) => sum + row.totalScore, 0);
+    const blueTotal = blue.reduce((sum, row) => sum + row.totalScore, 0);
+
+    return { red, blue, redTotal, blueTotal };
   }, [filteredEntries, selectedMatch]);
 
   return (
@@ -159,18 +212,18 @@ function MatchBreakdownContent() {
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Match Breakdown</h1>
-      <p className="text-gray-600 mb-6">Detailed view by selected match.</p>
+      <p className="text-gray-600 mb-6">Teams and scores grouped by alliance.</p>
 
       <div className="bg-white rounded-xl shadow-md p-4 mb-4">
         <label className="text-sm text-gray-600 mr-2">Select Match:</label>
         <select
           value={selectedMatch}
-          onChange={(e) => setSelectedMatch(e.target.value)}
+          onChange={(event) => setSelectedMatch(event.target.value)}
           className="border rounded px-3 py-2"
         >
-          {matches.map((m) => (
-            <option key={m} value={m}>
-              {formatMatchLabel(m)}
+          {matches.map((matchId) => (
+            <option key={matchId} value={matchId}>
+              {formatMatchLabel(matchId)}
             </option>
           ))}
         </select>
@@ -179,25 +232,50 @@ function MatchBreakdownContent() {
       {loading ? (
         <LoadingSpinner message="Loading match data..." />
       ) : (
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scout</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {matchRows.map((row, idx) => (
-                <tr key={`${row.teamNumber}-${idx}`}>
-                  <td className="px-6 py-4 font-semibold">{row.teamNumber}</td>
-                  <td className="px-6 py-4">{row.scoutName}</td>
-                  <td className="px-6 py-4 text-xl font-bold theme-text">{row.totalScore}</td>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="px-4 py-3 bg-red-50 border-b border-red-100">
+              <p className="font-semibold text-red-700">Red Alliance Total: {allianceBreakdown.redTotal}</p>
+            </div>
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {allianceBreakdown.red.map((row) => (
+                  <tr key={`red-${row.teamNumber}`}>
+                    <td className="px-4 py-3 font-semibold">{row.teamNumber}</td>
+                    <td className="px-4 py-3 text-xl font-bold theme-text">{row.totalScore}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
+              <p className="font-semibold text-blue-700">Blue Alliance Total: {allianceBreakdown.blueTotal}</p>
+            </div>
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {allianceBreakdown.blue.map((row) => (
+                  <tr key={`blue-${row.teamNumber}`}>
+                    <td className="px-4 py-3 font-semibold">{row.teamNumber}</td>
+                    <td className="px-4 py-3 text-xl font-bold theme-text">{row.totalScore}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </AnalyticsShell>

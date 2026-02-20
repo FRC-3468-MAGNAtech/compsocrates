@@ -124,7 +124,6 @@ export const SCORING_POINTS = {
   CLIMB_PARK: 2,
   CLIMB_SHALLOW: 6,
   CLIMB_DEEP: 12,
-  ALGAE_REMOVED: 2,
 };
 
 // Calculate score from scouted data
@@ -147,8 +146,6 @@ export function calculateScoutedScore(data: PracticeSession['scoutedData']): num
   score += data.teleopProcessorScored * SCORING_POINTS.TELE_ALGAE_PROC;
   score += data.teleopNetRobotScored * SCORING_POINTS.TELE_ALGAE_NET_R;
   score += data.teleopNetHumanScored * SCORING_POINTS.TELE_ALGAE_NET_H;
-  
-  if (data.teleopAlgaeRemoved) score += SCORING_POINTS.ALGAE_REMOVED;
   
   const endStatus = data.stageStatus.toLowerCase();
   if (endStatus.includes('deep')) score += SCORING_POINTS.CLIMB_DEEP;

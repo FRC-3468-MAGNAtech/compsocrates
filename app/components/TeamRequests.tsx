@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, deleteDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { CheckCircle, XCircle, Clock, Mail } from "lucide-react";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
@@ -7,9 +7,11 @@ import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 interface TeamRequest {
   id: string;
   teamId: string;
+  userId?: string;
   userEmail: string;
   userName: string;
-  requestedRole: "scout" | "coach";
+  requestedRole?: "scout" | "coach";
+  userRole?: "scout" | "coach";
   status: "pending" | "approved" | "rejected";
   createdAt: number;
 }
@@ -26,7 +28,7 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
     setLoading(true);
     try {
       const q = query(
-        collection(db, "teamRequests"),
+        collection(db, "teamJoinRequests"),
         where("teamId", "==", teamId),
         where("status", "==", "pending")
       );
@@ -45,32 +47,42 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
   }
 
   async function handleApprove(request: TeamRequest) {
-    if (!confirm(`Approve ${request.userName} to join the team as ${request.requestedRole}?`)) {
+    const resolvedRole = (request.requestedRole || request.userRole || "scout") as "scout" | "coach";
+    if (!confirm(`Approve ${request.userName} to join the team as ${resolvedRole}?`)) {
       return;
     }
 
     try {
-      // Find user by email and update their teamId
-      const usersQuery = query(
-        collection(db, "users"),
-        where("email", "==", request.userEmail)
-      );
-      const usersSnapshot = await getDocs(usersQuery);
-      
-      if (usersSnapshot.empty) {
+      let targetUserId = "";
+      if (request.userId) {
+        const directUserDoc = await getDoc(doc(db, "users", request.userId));
+        if (directUserDoc.exists()) {
+          targetUserId = request.userId;
+        }
+      }
+      if (!targetUserId) {
+        const usersQuery = query(
+          collection(db, "users"),
+          where("email", "==", request.userEmail)
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        if (!usersSnapshot.empty) {
+          targetUserId = usersSnapshot.docs[0].id;
+        }
+      }
+      if (!targetUserId) {
         alert("User not found");
         return;
       }
-
-      const userDoc = usersSnapshot.docs[0];
-      await updateSecureUserDoc(userDoc.id, {
-        teamId: teamId,
-        role: request.requestedRole,
+      await updateSecureUserDoc(targetUserId, {
+        teamId,
+        role: resolvedRole,
       });
 
       // Update request status
-      await updateDoc(doc(db, "teamRequests", request.id), {
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
+        processedAt: Date.now(),
       });
 
       alert(`${request.userName} has been added to the team!`);
@@ -88,8 +100,9 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
 
     try {
       // Update request status to rejected
-      await updateDoc(doc(db, "teamRequests", request.id), {
-        status: "rejected",
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
+        status: "denied",
+        processedAt: Date.now(),
       });
 
       alert(`Request from ${request.userName} has been rejected.`);
@@ -144,7 +157,7 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
                 <p className="font-semibold">{request.userName}</p>
                 <p className="text-sm text-gray-600">{request.userEmail}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Wants to join as <span className="font-semibold capitalize">{request.requestedRole}</span>
+                  Wants to join as <span className="font-semibold capitalize">{request.requestedRole || request.userRole || "scout"}</span>
                 </p>
               </div>
             </div>
