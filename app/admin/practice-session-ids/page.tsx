@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDocs, updateDoc, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -24,6 +24,7 @@ function PracticeSessionIdsContent() {
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<PracticeSessionRecord[]>([]);
   const [search, setSearch] = useState("");
+  const [repairingRocketCity, setRepairingRocketCity] = useState(false);
 
   useEffect(() => {
     void loadRecords();
@@ -54,6 +55,55 @@ function PracticeSessionIdsContent() {
       alert("Failed to load practice session IDs.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function repairRocketCitySessions() {
+    if (!userData?.isTeamAdmin || repairingRocketCity) return;
+    if (!confirm("Fix app-testing practice sessions that belong to Rocket City?")) return;
+
+    setRepairingRocketCity(true);
+    try {
+      const sessionsSnap = await getDocs(query(collection(db, "practiceSessions"), where("eventKey", "==", "app-testing")));
+      const targets = sessionsSnap.docs
+        .map((sessionDoc) => ({
+          id: sessionDoc.id,
+          ...(sessionDoc.data() as Record<string, unknown>),
+        }) as { id: string } & Record<string, unknown>)
+        .filter((session) => {
+          const name = String(session.eventName || "").toLowerCase();
+          const matchKey = String(session.matchKey || "").toLowerCase();
+          return name.includes("rocket city") || matchKey.startsWith("2025alhu_");
+        });
+
+      let sessionsUpdated = 0;
+      let scoutingUpdated = 0;
+      for (const session of targets) {
+        await updateDoc(doc(db, "practiceSessions", session.id), {
+          eventKey: "2025alhu",
+          eventName: "Rocket City Regional",
+          repairedAt: Date.now(),
+        });
+        sessionsUpdated += 1;
+
+        const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("practiceSessionId", "==", session.id)));
+        for (const scoutingDoc of scoutingSnap.docs) {
+          await updateDoc(doc(db, "scouting", scoutingDoc.id), {
+            eventKey: "2025alhu",
+            eventName: "Rocket City Regional",
+            repairedAt: Date.now(),
+          });
+          scoutingUpdated += 1;
+        }
+      }
+
+      await loadRecords();
+      alert(`Repaired ${sessionsUpdated} practice sessions and ${scoutingUpdated} linked scouting entries.`);
+    } catch (error) {
+      console.error("Error repairing Rocket City sessions:", error);
+      alert("Failed to repair Rocket City sessions.");
+    } finally {
+      setRepairingRocketCity(false);
     }
   }
 
@@ -111,6 +161,13 @@ function PracticeSessionIdsContent() {
             style={{ backgroundColor: "#c42221" }}
           >
             Refresh
+          </button>
+          <button
+            onClick={() => void repairRocketCitySessions()}
+            disabled={repairingRocketCity}
+            className="px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
+          >
+            {repairingRocketCity ? "Repairing..." : "Fix Rocket City"}
           </button>
         </div>
 

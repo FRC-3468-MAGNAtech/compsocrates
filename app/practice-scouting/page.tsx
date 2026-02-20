@@ -242,7 +242,19 @@ function normalizeEventValue(value: string): string {
 }
 
 function resolvePracticeEvent(match: PracticeMatch, game: AnalyticsGame): { eventKey: string; eventName: string } {
-  const catalog = getEventsForGame(game).filter((event) => event.id !== "app-testing");
+  const nameCandidate = String((match as unknown as Record<string, unknown>).eventName || "").trim();
+  const explicitKey = String((match as unknown as Record<string, unknown>).eventKey || "").trim().toLowerCase();
+
+  // Always trust explicit event key from practice match records first.
+  if (explicitKey && explicitKey !== "app-testing") {
+    return { eventKey: explicitKey, eventName: nameCandidate || explicitKey };
+  }
+
+  // Build a wider catalog across both games for robust name/key mapping.
+  const catalog = [
+    ...getEventsForGame("REEFSCAPE").filter((event) => event.id !== "app-testing"),
+    ...getEventsForGame("REBUILT").filter((event) => event.id !== "app-testing"),
+  ];
   const byKey = new Map(catalog.map((event) => [event.id.toLowerCase(), event]));
   const byName = new Map(catalog.map((event) => [normalizeEventValue(event.name), event]));
 
@@ -252,11 +264,15 @@ function resolvePracticeEvent(match: PracticeMatch, game: AnalyticsGame): { even
     return { eventKey: keyMatch.id, eventName: keyMatch.name };
   }
 
-  const nameCandidate = String((match as unknown as Record<string, unknown>).eventName || "").trim();
   const normalizedName = normalizeEventValue(nameCandidate);
   const nameMatch = byName.get(normalizedName);
   if (nameMatch) {
     return { eventKey: nameMatch.id, eventName: nameMatch.name };
+  }
+
+  // Heuristic for known legacy event labels in practice data.
+  if (normalizedName.includes("rocketcity")) {
+    return { eventKey: "2025alhu", eventName: "Rocket City Regional" };
   }
 
   if (keyCandidate && keyCandidate !== "app-testing") {

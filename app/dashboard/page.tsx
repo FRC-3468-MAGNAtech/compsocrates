@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -132,7 +132,7 @@ function NoTeamDashboardContent() {
         return;
       }
 
-      await setDoc(doc(db, "teamJoinRequests", `${user.uid}_${resolvedTeamCode}`), {
+      await addDoc(collection(db, "teamJoinRequests"), {
         userId: user.uid,
         userEmail: userData.email || user.email || "",
         userEmailLower: (userData.email || user.email || "").trim().toLowerCase(),
@@ -142,14 +142,14 @@ function NoTeamDashboardContent() {
         teamId: resolvedTeamCode,
         status: "pending",
         createdAt: Date.now(),
-      }, { merge: true });
+      });
 
       setPendingRequests(await fetchPendingRequestsForUser(user.uid, email));
       setTeamCode("");
       setRequestError("");
     } catch (error) {
       console.error("Error creating team request:", error);
-      const message = error instanceof Error ? error.message : "";
+      const message = error instanceof Error ? error.message : String(error || "");
       setRequestError(message ? `Unable to create request: ${message}` : "Unable to create request right now.");
     } finally {
       setSubmittingRequest(false);

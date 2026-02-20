@@ -7,9 +7,11 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
-import { getUpcomingEvents } from "@/app/utils/stats-calculator";
+import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
+import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { BarChart3, CalendarDays, ClipboardList, Dumbbell, MapPin, Target, TriangleAlert } from "lucide-react";
 
 type ScoutStats = {
   matchesScoutedCount: number;
@@ -17,11 +19,60 @@ type ScoutStats = {
   practiceSessionsCount: number;
 };
 
+type DashboardMatch = {
+  key: string;
+  label: string;
+  scheduleTime: number;
+  redTeams: number[];
+  blueTeams: number[];
+};
+
+function compLevelPriority(compLevel: TBAMatch["comp_level"]) {
+  if (compLevel === "qm") return 0;
+  if (compLevel === "ef") return 1;
+  if (compLevel === "qf") return 2;
+  if (compLevel === "sf") return 3;
+  if (compLevel === "f") return 4;
+  return 999;
+}
+
+function matchLabel(match: TBAMatch) {
+  if (match.comp_level === "qm") return `Qualification ${match.match_number}`;
+  if (match.comp_level === "f") return `Finals ${match.match_number}`;
+  if (match.comp_level === "sf") return `Semifinal ${match.set_number}-${match.match_number}`;
+  if (match.comp_level === "qf") return `Quarterfinal ${match.set_number}-${match.match_number}`;
+  if (match.comp_level === "ef") return `Octofinal ${match.set_number}-${match.match_number}`;
+  return match.key;
+}
+
+function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
+  return [...matches]
+    .sort((a, b) => {
+      const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
+      if (priorityDiff !== 0) return priorityDiff;
+      if (a.set_number !== b.set_number) return a.set_number - b.set_number;
+      return a.match_number - b.match_number;
+    })
+    .map((match) => ({
+      key: match.key,
+      label: matchLabel(match),
+      scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
+      redTeams: match.alliances.red.team_keys
+        .map((key) => parseInt(key.replace("frc", ""), 10))
+        .filter((value) => Number.isFinite(value)),
+      blueTeams: match.alliances.blue.team_keys
+        .map((key) => parseInt(key.replace("frc", ""), 10))
+        .filter((value) => Number.isFinite(value)),
+    }));
+}
+
 function ScoutDashboardContent() {
   const router = useRouter();
   const { userData } = useAuth();
   const [stats, setStats] = useState<ScoutStats | null>(null);
-  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
+  const [activeEventKey, setActiveEventKey] = useState("");
+  const [eventMatchesByKey, setEventMatchesByKey] = useState<Record<string, DashboardMatch[]>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -73,9 +124,25 @@ function ScoutDashboardContent() {
         practiceSessionsCount: practiceSnapshot.size,
       });
 
-      // Get upcoming event
-      const events = await getUpcomingEvents();
+      // Get selected/upcoming events for this scout's team
+      const events = await getUpcomingEvents(userData.teamId);
       setUpcomingEvents(events);
+      setActiveEventKey((current) => {
+        if (current && events.some((event) => event.key === current)) return current;
+        return events[0]?.key || "";
+      });
+      const eventMatches = await Promise.all(
+        events.map(async (event) => {
+          try {
+            const matches = await getEventMatches(event.key);
+            return [event.key, normalizeMatches(matches)] as const;
+          } catch (error) {
+            console.error(`Unable to fetch matches for ${event.key}:`, error);
+            return [event.key, []] as const;
+          }
+        })
+      );
+      setEventMatchesByKey(Object.fromEntries(eventMatches));
 
     } catch (error) {
       console.error("Error loading dashboard data:", error);
@@ -105,7 +172,9 @@ function ScoutDashboardContent() {
             <>
               {/* NO ASSIGNMENT PLACEHOLDER */}
               <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center border-2 border-dashed border-gray-300">
-                <div className="text-4xl mb-3">📋</div>
+                <div className="flex justify-center mb-3 text-gray-700">
+                  <ClipboardList size={36} />
+                </div>
                 <h2 className="text-xl font-semibold mb-2">No Active Assignment</h2>
                 <p className="text-gray-600 mb-4">
                   Your coach hasn't assigned you a match yet. Check back later or start practicing!
@@ -123,7 +192,9 @@ function ScoutDashboardContent() {
               {needsPractice && (
                 <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6">
                   <div className="flex items-start gap-4">
-                    <span className="text-3xl">⚠️</span>
+                    <span className="text-yellow-700 mt-0.5">
+                      <TriangleAlert size={28} />
+                    </span>
                     <div className="flex-1">
                       <h3 className="font-semibold mb-1">Practice Scouting Required</h3>
                       <p className="text-sm text-gray-700 mb-3">
@@ -142,37 +213,110 @@ function ScoutDashboardContent() {
               )}
 
 
-              {/* UPCOMING EVENTS */}
+              {/* EVENT TABS + MATCHES */}
               {upcomingEvents.length > 0 && (
-                <div className="mb-6 space-y-4">
-                  {upcomingEvents.map((event) => (
-                    <div key={event.key} className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "#c42221" }}>
-                      <div>
-                        <h2 className="text-xl font-semibold mb-1">Upcoming Event</h2>
-                        <p className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
-                          {event.name}
-                        </p>
-                        <p className="text-gray-600">
-                          📅 {new Date(event.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • 📍 {event.location}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-2">{event.daysUntil} days away</p>
-                        <button
-                          onClick={() => router.push(`/event-details/${event.key}`)}
-                          className="mt-3 px-4 py-2 rounded-lg text-white font-medium"
-                          style={{ backgroundColor: "#c42221" }}
-                        >
-                          View Event Info
-                        </button>
+                <div className="mb-6">
+                  <div className="bg-white rounded-xl shadow-md p-4 mb-4">
+                    <div className="overflow-x-auto">
+                      <div className="inline-flex gap-2 min-w-full">
+                        {upcomingEvents.map((event) => (
+                          <button
+                            key={event.key}
+                            onClick={() => setActiveEventKey(event.key)}
+                            className={`px-4 py-2 rounded-lg whitespace-nowrap font-medium transition-colors ${
+                              activeEventKey === event.key ? "text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            }`}
+                            style={activeEventKey === event.key ? { backgroundColor: "#c42221" } : {}}
+                          >
+                            {event.name}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  {(() => {
+                    const event = upcomingEvents.find((item) => item.key === activeEventKey) || upcomingEvents[0];
+                    if (!event) return null;
+                    const eventMatches = eventMatchesByKey[event.key] || [];
+                    return (
+                      <div className="space-y-4">
+                        <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "#c42221" }}>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <h2 className="text-xl font-semibold mb-1">Upcoming Event</h2>
+                              <p className="text-2xl font-bold mb-2" style={{ color: "#c42221" }}>
+                                {event.name}
+                              </p>
+                              <p className="text-gray-600 flex flex-wrap items-center gap-2">
+                                <CalendarDays size={16} />
+                                <span>
+                                  {new Date(event.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(event.endDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                </span>
+                                <span aria-hidden="true">•</span>
+                                <MapPin size={16} />
+                                <span>{event.location}</span>
+                              </p>
+                              <p className="text-sm text-gray-600 mt-2">{event.daysUntil} days away</p>
+                            </div>
+                            <button
+                              onClick={() => router.push(`/event-details/${event.key}`)}
+                              className="px-4 py-2 rounded-lg text-white font-medium"
+                              style={{ backgroundColor: "#c42221" }}
+                            >
+                              View Details
+                            </button>
+                          </div>
+                        </div>
+                        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                          <div className="p-6 border-b border-gray-200">
+                            <h3 className="text-xl font-semibold">Match Schedule</h3>
+                            <p className="text-sm text-gray-600">All matches for this selected event.</p>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[840px]">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Red Alliance</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Blue Alliance</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {eventMatches.length > 0 ? (
+                                  eventMatches.map((match) => (
+                                    <tr key={match.key}>
+                                      <td className="px-4 py-3 font-medium">{match.label}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-600">
+                                        {match.scheduleTime > 0
+                                          ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                                          : "TBD"}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm text-gray-700">{match.redTeams.join(", ") || "-"}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-700">{match.blueTeams.join(", ") || "-"}</td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr>
+                                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">
+                                      No matches available yet for this event.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
               <div className="grid md:grid-cols-3 gap-6 mb-6">
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-700">Matches Scouted</h3>
-                    <span className="text-2xl">📝</span>
+                    <ClipboardList size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {stats?.matchesScoutedCount || 0}
@@ -183,7 +327,7 @@ function ScoutDashboardContent() {
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-700">Accuracy Score</h3>
-                    <span className="text-2xl">🎯</span>
+                    <Target size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {stats?.accuracyScore || 0}%
@@ -198,7 +342,7 @@ function ScoutDashboardContent() {
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
-                    <span className="text-2xl">💪</span>
+                    <Dumbbell size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "#c42221" }}>
                     {stats?.practiceSessionsCount || 0}
@@ -215,7 +359,7 @@ function ScoutDashboardContent() {
                     onClick={() => router.push("/scout-form")}
                     className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
-                    <div className="text-2xl mb-2">📝</div>
+                    <ClipboardList size={22} className="mb-2" />
                     <h3 className="font-semibold mb-1">Start Scouting</h3>
                     <p className="text-sm text-gray-600">Begin a new scouting session</p>
                   </button>
@@ -224,7 +368,7 @@ function ScoutDashboardContent() {
                     onClick={() => router.push("/practice-scouting")}
                     className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
-                    <div className="text-2xl mb-2">🎯</div>
+                    <Target size={22} className="mb-2" />
                     <h3 className="font-semibold mb-1">Practice Scouting</h3>
                     <p className="text-sm text-gray-600">Improve your accuracy</p>
                   </button>
@@ -233,7 +377,7 @@ function ScoutDashboardContent() {
                     onClick={() => router.push("/analytics")}
                     className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
-                    <div className="text-2xl mb-2">📈</div>
+                    <BarChart3 size={22} className="mb-2" />
                     <h3 className="font-semibold mb-1">View Analytics</h3>
                     <p className="text-sm text-gray-600">Check team performance</p>
                   </button>
@@ -242,8 +386,8 @@ function ScoutDashboardContent() {
                     onClick={() => router.push("/event-details")}
                     className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
-                    <div className="text-2xl mb-2">📅</div>
-                    <h3 className="font-semibold mb-1">Event Info</h3>
+                    <CalendarDays size={22} className="mb-2" />
+                    <h3 className="font-semibold mb-1">Event Details</h3>
                     <p className="text-sm text-gray-600">Browse selected event pages</p>
                   </button>
                 </div>
