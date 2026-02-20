@@ -16,9 +16,9 @@ const Counter = ({ label, value, onChange }: { label: string; value: number; onC
   <div className="flex items-center justify-between py-2">
     <span className="text-sm font-medium text-gray-700">{label}</span>
     <div className="flex items-center gap-2">
-      <button onClick={() => onChange(Math.max(0, value - 1))} className="w-8 h-8 rounded bg-gray-200 hover:bg-gray-300 font-semibold">−</button>
+      <button onClick={() => onChange(Math.max(0, value - 1))} className="theme-stepper-btn">−</button>
       <span className="w-8 text-center font-semibold">{value}</span>
-      <button onClick={() => onChange(value + 1)} className="w-8 h-8 rounded bg-gray-200 hover:bg-gray-300 font-semibold">+</button>
+      <button onClick={() => onChange(value + 1)} className="theme-stepper-btn">+</button>
     </div>
   </div>
 );
@@ -705,7 +705,7 @@ function PracticeScoutingContent() {
                 <div className="grid md:grid-cols-2 gap-4 mb-8">
                   <button
                     onClick={() => setSelectedMode('trial')}
-                    className="p-6 border-2 border-blue-300 rounded-lg hover:bg-blue-50 text-left transition-colors"
+                    className="p-6 border-2 border-blue-300 rounded-lg hover:bg-black/5 text-left transition-colors"
                   >
                     <div className="text-sm font-semibold mb-2 text-blue-700">TRIAL</div>
                     <h3 className="font-semibold text-lg mb-1">Trial Mode</h3>
@@ -719,9 +719,16 @@ function PracticeScoutingContent() {
 
                   <button
                     onClick={() => setSelectedMode('competitive')}
-                    className="p-6 border-2 border-red-300 rounded-lg hover:bg-red-50 text-left transition-colors"
+                    className="p-6 border-2 rounded-lg text-left transition-colors"
+                    style={{ borderColor: "#c42221", backgroundColor: "transparent" }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = "rgba(196, 34, 33, 0.12)";
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = "transparent";
+                    }}
                   >
-                    <div className="text-sm font-semibold mb-2 text-red-700">COMP</div>
+                    <div className="text-sm font-semibold mb-2" style={{ color: "#c42221" }}>COMP</div>
                     <h3 className="font-semibold text-lg mb-1">Competitive Mode</h3>
                     <p className="text-sm text-gray-600 mb-2">Test Your Skills</p>
                     <ul className="text-xs text-gray-500 space-y-1">
@@ -747,7 +754,7 @@ function PracticeScoutingContent() {
                   <button
                     onClick={() => selectPracticeMatch('easy', selectedMode)}
                     disabled={loading}
-                    className="p-6 border-2 border-green-300 rounded-lg hover:bg-green-50 text-left transition-colors disabled:opacity-50"
+                    className="p-6 border-2 border-green-300 rounded-lg hover:bg-black/5 text-left transition-colors disabled:opacity-50"
                   >
                     <div className="text-sm font-semibold mb-2 text-green-700">EASY</div>
                     <h3 className="font-semibold text-lg mb-1">Easy</h3>
@@ -757,7 +764,7 @@ function PracticeScoutingContent() {
                   <button
                     onClick={() => selectPracticeMatch('medium', selectedMode)}
                     disabled={loading}
-                    className="p-6 border-2 border-yellow-300 rounded-lg hover:bg-yellow-50 text-left transition-colors disabled:opacity-50"
+                    className="p-6 border-2 border-yellow-300 rounded-lg hover:bg-black/5 text-left transition-colors disabled:opacity-50"
                   >
                     <div className="text-sm font-semibold mb-2 text-yellow-700">MEDIUM</div>
                     <h3 className="font-semibold text-lg mb-1">Medium</h3>
@@ -767,9 +774,16 @@ function PracticeScoutingContent() {
                   <button
                     onClick={() => selectPracticeMatch('hard', selectedMode)}
                     disabled={loading}
-                    className="p-6 border-2 border-red-300 rounded-lg hover:bg-red-50 text-left transition-colors disabled:opacity-50"
+                    className="p-6 border-2 rounded-lg text-left transition-colors disabled:opacity-50"
+                    style={{ borderColor: "#c42221", backgroundColor: "transparent" }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = "rgba(196, 34, 33, 0.12)";
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = "transparent";
+                    }}
                   >
-                    <div className="text-sm font-semibold mb-2 text-red-700">HARD</div>
+                    <div className="text-sm font-semibold mb-2" style={{ color: "#c42221" }}>HARD</div>
                     <h3 className="font-semibold text-lg mb-1">Hard</h3>
                     <p className="text-sm text-gray-600">High-scoring matches</p>
                   </button>

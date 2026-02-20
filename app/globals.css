@@ -16,6 +16,8 @@
   --theme-surface: #ffffff;
   --theme-surface-raised: #ffffff;
   --theme-border: rgba(196, 34, 33, 0.24);
+  --theme-input-bg: rgba(139, 24, 24, 0.14);
+  --theme-input-bg-disabled: rgba(139, 24, 24, 0.2);
   --theme-body-text: #111827;
   --theme-muted-text: #4b5563;
   --theme-subtle-text: #6b7280;
@@ -126,11 +128,14 @@ h1, h2, h3, h4, h5, h6 {
 .theme-primary {
   background: var(--theme-action-bg);
   color: var(--theme-text);
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
 }
 
 .theme-primary-solid {
   background: var(--theme-action-bg);
   color: var(--theme-text);
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  box-shadow: inset 3px 0 0 var(--accent-color);
 }
 
 .theme-text {
@@ -145,6 +150,14 @@ h1, h2, h3, h4, h5, h6 {
 .bg-gray-50,
 .bg-gray-100 {
   background-color: var(--theme-bg) !important;
+}
+
+.bg-gray-200 {
+  background-color: rgba(var(--primary-rgb), 0.16) !important;
+}
+
+.bg-gray-300 {
+  background-color: rgba(var(--primary-rgb), 0.24) !important;
 }
 
 .text-gray-900,
@@ -223,9 +236,18 @@ input[type="date"],
 input[type="time"],
 select,
 textarea {
-  background-color: var(--theme-surface) !important;
+  background-color: var(--theme-input-bg) !important;
   color: var(--theme-body-text) !important;
   border-color: var(--theme-border) !important;
+}
+
+input:disabled,
+input[readonly],
+select:disabled,
+textarea:disabled {
+  background-color: var(--theme-input-bg-disabled) !important;
+  color: var(--theme-body-text) !important;
+  opacity: 1;
 }
 
 input[type="text"]::placeholder,
@@ -251,12 +273,28 @@ input[type="date"]:focus,
 input[type="time"]:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid rgba(var(--primary-rgb), 0.35);
+  outline: 2px solid rgba(var(--accent-rgb), 0.42);
   outline-offset: 0;
 }
 
 select option {
   background-color: var(--theme-surface);
   color: var(--theme-body-text);
+}
+
+/* Reusable stepper buttons used by +/- counters in forms */
+.theme-stepper-btn {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  background-color: var(--theme-input-bg-disabled);
+  color: var(--theme-body-text);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.theme-stepper-btn:hover {
+  background-color: rgba(var(--accent-rgb), 0.32);
 }
 

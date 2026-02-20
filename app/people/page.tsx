@@ -52,9 +52,21 @@ function PeopleContent() {
             >
               <div className="flex items-center gap-3">
                 {member.photoURL ? (
-                  <img src={member.photoURL} alt={member.displayName} className="w-12 h-12 rounded-full object-cover" />
+                  <img
+                    src={member.photoURL}
+                    alt={member.displayName}
+                    className="w-12 h-12 rounded-full object-cover"
+                    style={{ border: "2px solid rgba(var(--accent-rgb), 0.45)" }}
+                  />
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center font-semibold">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center font-semibold"
+                    style={{
+                      backgroundColor: "rgba(var(--accent-rgb), 0.2)",
+                      color: "var(--theme-body-text)",
+                      border: "2px solid rgba(var(--accent-rgb), 0.5)",
+                    }}
+                  >
                     {member.displayName?.slice(0, 2).toUpperCase()}
                   </div>
                 )}

@@ -103,12 +103,16 @@ export default function Sidebar() {
 
       <div
         className={`
-          bg-white border-r border-gray-200 flex flex-col transition-all duration-300
+          border-r border-gray-200 flex flex-col transition-all duration-300
           ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}
           ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
           md:translate-x-0
           fixed md:sticky top-0 h-screen z-40
         `}
+        style={{
+          backgroundColor: "var(--theme-bg)",
+          borderRightColor: "var(--theme-border)",
+        }}
       >
         {/* HEADER */}
         <div className="p-4 border-b border-gray-200">

@@ -871,7 +871,12 @@ function ScoutAccuracyContent() {
                         <button
                           onClick={() => resetScoutSessions(selectedScoutData.scoutName)}
                           disabled={!canResetScoutData}
-                          className="mt-4 px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="mt-4 px-3 py-2 rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{
+                            backgroundColor: "rgba(var(--primary-rgb), 0.16)",
+                            color: "var(--theme-body-text)",
+                            border: "1px solid rgba(var(--primary-rgb), 0.5)",
+                          }}
                         >
                           Hard Reset Scout Data
                         </button>
@@ -888,7 +893,7 @@ function ScoutAccuracyContent() {
                         );
                         
                         return (
-                          <div className={`p-4 rounded-lg ${badge.bg} border ${
+                          <div className={`p-4 rounded-lg ${badge.bg} ${badge.text} border ${
                             badge.label === "Excellent" ? "border-green-200" :
                             badge.label === "Good" ? "border-green-700" :
                             badge.label === "Student Intervention" ? "border-orange-200" :

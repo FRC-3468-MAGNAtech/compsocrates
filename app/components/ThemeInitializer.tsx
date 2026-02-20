@@ -9,6 +9,8 @@ import {
   DEFAULT_THEME_ID,
   getFontPreset,
   getTheme,
+  loadLastFontPreset,
+  loadLastTheme,
   loadFontPreset,
   loadTheme,
   saveFontPreset,
@@ -16,12 +18,16 @@ import {
 } from "@/app/utils/themes";
 
 export default function ThemeInitializer() {
-  const { userData } = useAuth();
+  const { userData, loading } = useAuth();
 
   useEffect(() => {
+    if (loading) return;
+
     if (!userData?.uid) {
-      applyTheme(getTheme(DEFAULT_THEME_ID));
-      applyFontPreset(getFontPreset(DEFAULT_FONT_ID));
+      const lastThemeId = loadLastTheme();
+      const lastFontId = loadLastFontPreset();
+      applyTheme(getTheme(lastThemeId || DEFAULT_THEME_ID));
+      applyFontPreset(getFontPreset(lastFontId || DEFAULT_FONT_ID));
       return;
     }
     const selectedThemeId = loadTheme(userData.uid);
@@ -30,7 +36,7 @@ export default function ThemeInitializer() {
     applyFontPreset(getFontPreset(selectedFontId));
     saveTheme(userData.uid, selectedThemeId || DEFAULT_THEME_ID);
     saveFontPreset(userData.uid, selectedFontId || DEFAULT_FONT_ID);
-  }, [userData?.uid]);
+  }, [userData?.uid, loading]);
 
   return null;
 }

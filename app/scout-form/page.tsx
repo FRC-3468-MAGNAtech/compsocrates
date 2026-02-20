@@ -141,9 +141,9 @@ function MatchBox({
   };
 
   const badgeColors: Record<MatchStatus, string> = {
-    completed: "bg-green-500",
-    next: "bg-yellow-500",
-    upcoming: "bg-red-500",
+    completed: "bg-[#c42221]",
+    next: "bg-[#c42221]",
+    upcoming: "bg-[#c42221]",
   };
 
   const badgeText: Record<MatchStatus, string> = {
@@ -457,14 +457,14 @@ function ScoutFormContent() {
       <div className="flex items-center gap-2">
         <button
           onClick={() => onChange(Math.max(0, value - 1))}
-          className="w-8 h-8 rounded bg-gray-200 hover:bg-gray-300 font-semibold"
+          className="theme-stepper-btn"
         >
           −
         </button>
         <span className="w-8 text-center font-semibold">{value}</span>
         <button
           onClick={() => onChange(value + 1)}
-          className="w-8 h-8 rounded bg-gray-200 hover:bg-gray-300 font-semibold"
+          className="theme-stepper-btn"
         >
           +
         </button>
@@ -1020,9 +1020,9 @@ function ScoutFormContent() {
               };
 
               const badgeColors: Record<MatchStatus, string> = {
-                completed: "bg-green-500",
-                next: "bg-yellow-500",
-                upcoming: "bg-red-500",
+                completed: "bg-[#c42221]",
+                next: "bg-[#c42221]",
+                upcoming: "bg-[#c42221]",
               };
 
               const badgeText: Record<MatchStatus, string> = {

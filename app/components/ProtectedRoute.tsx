@@ -55,7 +55,10 @@ export default function ProtectedRoute({
   // Show loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: "var(--theme-page-canvas)", color: "var(--theme-body-text)" }}
+      >
         <LoadingSpinner message="Loading..." />
       </div>
     );
