@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -16,21 +16,44 @@ type TeamJoinRequest = {
   createdAt?: number;
 };
 
-async function fetchPendingRequestsByEmail(email: string): Promise<TeamJoinRequest[]> {
-  if (!email) return [];
-  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userEmail", "==", email));
-  const requestsSnap = await getDocs(requestsQuery);
-  const allRequests: TeamJoinRequest[] = requestsSnap.docs.map((docSnap) => {
-    const data = docSnap.data() as Record<string, unknown>;
-    return {
-      id: docSnap.id,
-      teamId: String(data.teamId || ""),
-      requestedRole: (data.requestedRole || data.userRole || "scout") as "scout" | "coach",
-      status: String(data.status || ""),
-      createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
-    };
-  });
-  return allRequests.filter((request) => request.status === "pending");
+async function fetchPendingRequestsForUser(userId: string, email: string): Promise<TeamJoinRequest[]> {
+  if (!userId && !email) return [];
+  const byId = new Map<string, TeamJoinRequest>();
+
+  if (userId) {
+    const byUserIdQuery = query(collection(db, "teamJoinRequests"), where("userId", "==", userId));
+    const byUserIdSnap = await getDocs(byUserIdQuery);
+    byUserIdSnap.docs.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, unknown>;
+      const request: TeamJoinRequest = {
+        id: docSnap.id,
+        teamId: String(data.teamId || ""),
+        requestedRole: (data.requestedRole || data.userRole || "scout") as "scout" | "coach",
+        status: String(data.status || ""),
+        createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
+      };
+      if (request.status === "pending") byId.set(request.id, request);
+    });
+  }
+
+  if (email) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const byEmailQuery = query(collection(db, "teamJoinRequests"), where("userEmailLower", "==", normalizedEmail));
+    const byEmailSnap = await getDocs(byEmailQuery);
+    byEmailSnap.docs.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, unknown>;
+      const request: TeamJoinRequest = {
+        id: docSnap.id,
+        teamId: String(data.teamId || ""),
+        requestedRole: (data.requestedRole || data.userRole || "scout") as "scout" | "coach",
+        status: String(data.status || ""),
+        createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
+      };
+      if (request.status === "pending") byId.set(request.id, request);
+    });
+  }
+
+  return Array.from(byId.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 async function resolveTeamCode(code: string): Promise<string | null> {
@@ -66,7 +89,7 @@ function NoTeamDashboardContent() {
       setLoading(true);
       try {
         const email = userData.email || user.email || "";
-        setPendingRequests(await fetchPendingRequestsByEmail(email));
+        setPendingRequests(await fetchPendingRequestsForUser(user.uid, email));
       } catch (error) {
         console.error("Error loading pending requests:", error);
       } finally {
@@ -96,7 +119,7 @@ function NoTeamDashboardContent() {
     setSubmittingRequest(true);
     try {
       const email = userData.email || user.email || "";
-      const refreshedPending = await fetchPendingRequestsByEmail(email);
+      const refreshedPending = await fetchPendingRequestsForUser(user.uid, email);
       setPendingRequests(refreshedPending);
 
       const resolvedTeamCode = await resolveTeamCode(normalizedTeamCode);
@@ -109,18 +132,19 @@ function NoTeamDashboardContent() {
         return;
       }
 
-      await addDoc(collection(db, "teamJoinRequests"), {
+      await setDoc(doc(db, "teamJoinRequests", `${user.uid}_${resolvedTeamCode}`), {
         userId: user.uid,
         userEmail: userData.email || user.email || "",
+        userEmailLower: (userData.email || user.email || "").trim().toLowerCase(),
         userName: userData.displayName || user.displayName || "",
         userRole: requestedRole,
         requestedRole,
         teamId: resolvedTeamCode,
         status: "pending",
         createdAt: Date.now(),
-      });
+      }, { merge: true });
 
-      setPendingRequests(await fetchPendingRequestsByEmail(email));
+      setPendingRequests(await fetchPendingRequestsForUser(user.uid, email));
       setTeamCode("");
       setRequestError("");
     } catch (error) {
@@ -141,7 +165,7 @@ function NoTeamDashboardContent() {
     try {
       await deleteDoc(doc(db, "teamJoinRequests", requestId));
       const email = userData.email || user.email || "";
-      setPendingRequests(await fetchPendingRequestsByEmail(email));
+      setPendingRequests(await fetchPendingRequestsForUser(user.uid, email));
     } catch (error) {
       console.error("Error canceling request:", error);
       setRequestError("Unable to cancel this request right now.");

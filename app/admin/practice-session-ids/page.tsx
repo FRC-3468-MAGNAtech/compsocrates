@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 
-type TeamMember = { uid: string; displayName: string };
 type PracticeSessionRecord = {
   id: string;
   scoutName: string;
@@ -19,12 +18,6 @@ type PracticeSessionRecord = {
   mode: string;
   timestamp: number;
 };
-
-function chunk<T>(values: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
-  return out;
-}
 
 function PracticeSessionIdsContent() {
   const { userData } = useAuth();
@@ -37,24 +30,13 @@ function PracticeSessionIdsContent() {
   }, [userData?.teamId]);
 
   async function loadRecords() {
-    if (!userData?.teamId) return;
     setLoading(true);
     try {
-      const membersSnap = await getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId)));
-      const members: TeamMember[] = membersSnap.docs.map((memberDoc) => ({
-        uid: memberDoc.id,
-        displayName: String(memberDoc.data().displayName || ""),
-      }));
-      const memberIds = members.map((member) => member.uid).filter(Boolean);
-      const memberNames = members.map((member) => member.displayName).filter(Boolean);
-
-      const byId = new Map<string, PracticeSessionRecord>();
-
-      for (const ids of chunk(memberIds, 30)) {
-        const snap = await getDocs(query(collection(db, "practiceSessions"), where("scoutId", "in", ids)));
-        snap.docs.forEach((sessionDoc) => {
+      const sessionsSnap = await getDocs(collection(db, "practiceSessions"));
+      const loaded = sessionsSnap.docs
+        .map((sessionDoc) => {
           const data = sessionDoc.data() as Record<string, unknown>;
-          byId.set(sessionDoc.id, {
+          return {
             id: sessionDoc.id,
             scoutName: String(data.scoutName || ""),
             scoutId: String(data.scoutId || ""),
@@ -63,29 +45,9 @@ function PracticeSessionIdsContent() {
             eventName: String(data.eventName || ""),
             mode: String(data.mode || ""),
             timestamp: Number(data.timestamp || 0),
-          });
-        });
-      }
-
-      for (const name of memberNames) {
-        const snap = await getDocs(query(collection(db, "practiceSessions"), where("scoutName", "==", name)));
-        snap.docs.forEach((sessionDoc) => {
-          if (byId.has(sessionDoc.id)) return;
-          const data = sessionDoc.data() as Record<string, unknown>;
-          byId.set(sessionDoc.id, {
-            id: sessionDoc.id,
-            scoutName: String(data.scoutName || ""),
-            scoutId: String(data.scoutId || ""),
-            matchKey: String(data.matchKey || ""),
-            eventKey: String(data.eventKey || ""),
-            eventName: String(data.eventName || ""),
-            mode: String(data.mode || ""),
-            timestamp: Number(data.timestamp || 0),
-          });
-        });
-      }
-
-      const loaded = Array.from(byId.values()).sort((a, b) => b.timestamp - a.timestamp);
+          } as PracticeSessionRecord;
+        })
+        .sort((a, b) => b.timestamp - a.timestamp);
       setRecords(loaded);
     } catch (error) {
       console.error("Error loading practice session IDs:", error);
@@ -199,4 +161,3 @@ export default function PracticeSessionIdsPage() {
     </ProtectedRoute>
   );
 }
-

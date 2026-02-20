@@ -43,9 +43,12 @@ function ProfileContent() {
       season: number;
       game: string;
       event: string;
+      match: string;
       scoutingType: "Trial" | "Competitive" | "Real Competition";
       difficulty: string;
       count: number;
+      accuracyTotal: number;
+      accuracyCount: number;
     }>
   >([]);
   const [loading, setLoading] = useState(true);
@@ -102,9 +105,12 @@ function ProfileContent() {
             season: number;
             game: string;
             event: string;
+            match: string;
             scoutingType: "Trial" | "Competitive" | "Real Competition";
             difficulty: string;
             count: number;
+            accuracyTotal: number;
+            accuracyCount: number;
           }
         >();
         scoutingSnap.docs.forEach((entryDoc) => {
@@ -118,6 +124,16 @@ function ProfileContent() {
           const season = Number.isFinite(eventSeason) ? eventSeason : fallbackSeason;
           const game = String(entry.game || "REEFSCAPE");
           const event = String(entry.eventName || entry.eventKey || "Unknown");
+          const matchType = String(entry.matchType || "").toLowerCase();
+          const matchNumber = String(entry.matchNumber || "").trim();
+          const matchId = String(entry.matchId || "").trim();
+          const match = matchId
+            ? matchId.toUpperCase()
+            : matchType && matchNumber
+            ? `${matchType[0].toUpperCase()}${matchNumber}`
+            : matchNumber
+            ? `M${matchNumber}`
+            : "Unknown";
           const practiceMode = String(entry.practiceMode || "").toLowerCase();
           const isPractice = Boolean(entry.isPracticeScouting) || Boolean(practiceMode);
           const scoutingType: "Trial" | "Competitive" | "Real Competition" = isPractice
@@ -126,9 +142,24 @@ function ProfileContent() {
               : "Trial"
             : "Real Competition";
           const difficulty = String(entry.difficulty || (isPractice ? "Unknown" : "N/A"));
-          const key = `${season}|${game}|${event}|${scoutingType}|${difficulty}`;
-          const existing = breakdownMap.get(key) || { season, game, event, scoutingType, difficulty, count: 0 };
+          const accuracy = typeof entry.accuracy === "number" ? Number(entry.accuracy) : null;
+          const key = `${season}|${game}|${event}|${match}|${scoutingType}|${difficulty}`;
+          const existing = breakdownMap.get(key) || {
+            season,
+            game,
+            event,
+            match,
+            scoutingType,
+            difficulty,
+            count: 0,
+            accuracyTotal: 0,
+            accuracyCount: 0,
+          };
           existing.count += 1;
+          if (accuracy !== null && Number.isFinite(accuracy)) {
+            existing.accuracyTotal += accuracy;
+            existing.accuracyCount += 1;
+          }
           breakdownMap.set(key, existing);
         });
         const scoutingTypeOrder: Record<string, number> = {
@@ -143,6 +174,8 @@ function ProfileContent() {
             if (gameCompare !== 0) return gameCompare;
             const eventCompare = a.event.localeCompare(b.event);
             if (eventCompare !== 0) return eventCompare;
+            const matchCompare = a.match.localeCompare(b.match);
+            if (matchCompare !== 0) return matchCompare;
             const typeCompare = (scoutingTypeOrder[a.scoutingType] ?? 99) - (scoutingTypeOrder[b.scoutingType] ?? 99);
             if (typeCompare !== 0) return typeCompare;
             return a.difficulty.localeCompare(b.difficulty);
@@ -225,21 +258,21 @@ function ProfileContent() {
             </div>
             <div className="bg-white rounded-xl shadow-md p-6">
               <h2 className="text-xl font-semibold mb-3">Stats</h2>
-              <div className="md:hidden -mx-2 px-2 overflow-x-auto snap-x snap-mandatory">
-                <div className="flex gap-3 w-max pb-1">
-                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+              <div className="md:hidden -mx-2 px-2 overflow-x-auto touch-pan-x snap-x snap-mandatory">
+                <div className="flex gap-4 w-max pb-2">
+                  <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
                     <p className="text-xs text-gray-500">Entries</p>
                     <p className="text-2xl font-bold">{stats.totalEntries}</p>
                   </div>
-                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+                  <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
                     <p className="text-xs text-gray-500">Practice</p>
                     <p className="text-2xl font-bold">{stats.practiceSessions}</p>
                   </div>
-                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+                  <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
                     <p className="text-xs text-gray-500">Avg Accuracy</p>
                     <p className="text-2xl font-bold">{stats.avgAccuracy}%</p>
                   </div>
-                  <div className="snap-start min-w-[170px] p-4 border border-gray-200 rounded-lg text-center">
+                  <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
                     <p className="text-xs text-gray-500">Events</p>
                     <p className="text-2xl font-bold">{stats.eventsScouted}</p>
                   </div>
@@ -264,30 +297,43 @@ function ProfileContent() {
                 </div>
               </div>
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">By Season / Game / Event / Type / Difficulty</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">By Season / Game / Event / Match / Type / Difficulty / Accuracy</h3>
                 {scoutingBreakdown.length === 0 ? (
                   <p className="text-sm text-gray-500">No scouting entries yet.</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto touch-pan-x">
+                    <table className="w-full min-w-[980px] text-sm">
                       <thead>
                         <tr className="text-left text-gray-500">
                           <th className="py-1">Season</th>
                           <th className="py-1">Game</th>
                           <th className="py-1">Event</th>
+                          <th className="py-1">Match</th>
                           <th className="py-1">Type</th>
                           <th className="py-1">Difficulty</th>
+                          <th className="py-1 text-right">Accuracy</th>
                           <th className="py-1 text-right">Entries</th>
                         </tr>
                       </thead>
                       <tbody>
                         {scoutingBreakdown.map((row) => (
-                          <tr key={`${row.season}-${row.game}-${row.event}-${row.scoutingType}-${row.difficulty}`} className="border-t border-gray-100">
+                          <tr key={`${row.season}-${row.game}-${row.event}-${row.match}-${row.scoutingType}-${row.difficulty}`} className="border-t border-gray-100">
                             <td className="py-1">{row.season}</td>
                             <td className="py-1">{row.game}</td>
                             <td className="py-1">{row.event}</td>
+                            <td className="py-1 font-medium">{row.match}</td>
                             <td className="py-1">{row.scoutingType}</td>
-                            <td className="py-1">{row.difficulty}</td>
+                            <td className="py-1">
+                              {row.difficulty === "N/A"
+                                ? "N/A"
+                                : row.difficulty
+                                    .split("-")
+                                    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+                                    .join(" ")}
+                            </td>
+                            <td className="py-1 text-right font-semibold">
+                              {row.accuracyCount > 0 ? `${Math.round(row.accuracyTotal / row.accuracyCount)}%` : "-"}
+                            </td>
                             <td className="py-1 text-right font-semibold">{row.count}</td>
                           </tr>
                         ))}

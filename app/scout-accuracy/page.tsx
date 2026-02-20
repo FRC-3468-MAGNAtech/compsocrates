@@ -98,6 +98,29 @@ function scoreScoutingEntry(entry: ScoutingEntry): number {
   return score;
 }
 
+function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry): number {
+  let score = 0;
+  if (entry.leftStartingZone) score += 3;
+  score += (entry.autoCoralL1 || 0) * 3;
+  score += (entry.autoCoralL2 || 0) * 4;
+  score += (entry.autoCoralL3 || 0) * 6;
+  score += (entry.autoCoralL4 || 0) * 7;
+  score += (entry.autoAlgaeProcessorScored || 0) * 6;
+  score += (entry.autoAlgaeNetScored || 0) * 4;
+  score += (entry.teleopCoralL1 || 0) * 2;
+  score += (entry.teleopCoralL2 || 0) * 3;
+  score += (entry.teleopCoralL3 || 0) * 4;
+  score += (entry.teleopCoralL4 || 0) * 5;
+  score += (entry.teleopProcessorScored || 0) * 6;
+  score += (entry.teleopNetRobotScored || 0) * 4;
+  score += (entry.teleopNetHumanScored || 0) * 4;
+  const end = (entry.stageStatus || "").toLowerCase();
+  if (end.includes("deep")) score += 12;
+  else if (end.includes("shallow")) score += 6;
+  else if (end.includes("park") || end.includes("barge")) score += 2;
+  return score;
+}
+
 function ScoutAccuracyContent() {
   const { userData } = useAuth();
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
@@ -108,6 +131,13 @@ function ScoutAccuracyContent() {
   const [selectedCompetitionEvent, setSelectedCompetitionEvent] = useState("all");
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
   const [rerunSessionId, setRerunSessionId] = useState("");
+  const [rerunResultModal, setRerunResultModal] = useState<{
+    sessionId: string;
+    entries: number;
+    accuracy: number;
+    scoutedScore: number;
+    officialScore: number;
+  } | null>(null);
 
   useEffect(() => {
     loadScoutStats();
@@ -449,7 +479,14 @@ function ScoutAccuracyContent() {
         return;
       }
 
-      const totalScoutedScore = entries.reduce((sum, entry) => sum + scoreScoutingEntry(entry), 0);
+      const baseScoutedScore = entries.reduce((sum, entry) => sum + scorePracticeEntryWithoutPenalty(entry), 0);
+      const sessionPenaltyPoints =
+        typeof sessionData.penaltyPoints === "number"
+          ? Number(sessionData.penaltyPoints)
+          : typeof entries[0]?.penaltyPoints === "number"
+          ? Number(entries[0].penaltyPoints)
+          : 0;
+      const totalScoutedScore = baseScoutedScore + sessionPenaltyPoints;
       const recalculatedAccuracy = calculateAccuracy(totalScoutedScore, officialScore);
 
       await updateDoc(sessionRef, {
@@ -466,7 +503,13 @@ function ScoutAccuracyContent() {
       }
 
       await loadScoutStats();
-      alert(`Recalculated session ${sessionId} (${entries.length} entries).`);
+      setRerunResultModal({
+        sessionId,
+        entries: entries.length,
+        accuracy: recalculatedAccuracy,
+        scoutedScore: totalScoutedScore,
+        officialScore,
+      });
     } catch (error) {
       console.error("Error rerunning session accuracy script:", error);
       alert("Failed to rerun session accuracy.");
@@ -873,6 +916,43 @@ function ScoutAccuracyContent() {
                           </div>
                         );
                       })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {rerunResultModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+                    <div className="p-6 border-b border-gray-200">
+                      <h2 className="text-xl font-bold" style={{ color: "#c42221" }}>Session Recalculated</h2>
+                      <p className="text-sm text-gray-600 mt-1">Practice session {rerunResultModal.sessionId}</p>
+                    </div>
+                    <div className="p-6 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Updated Entries</span>
+                        <span className="font-semibold">{rerunResultModal.entries}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">New Accuracy</span>
+                        <span className="font-semibold">{rerunResultModal.accuracy}%</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Scouted Score</span>
+                        <span className="font-semibold">{rerunResultModal.scoutedScore}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Official Score</span>
+                        <span className="font-semibold">{rerunResultModal.officialScore}</span>
+                      </div>
+                    </div>
+                    <div className="p-6 pt-0">
+                      <button
+                        onClick={() => setRerunResultModal(null)}
+                        className="w-full py-2 rounded text-white font-medium"
+                        style={{ backgroundColor: "#c42221" }}
+                      >
+                        Close
+                      </button>
                     </div>
                   </div>
                 </div>

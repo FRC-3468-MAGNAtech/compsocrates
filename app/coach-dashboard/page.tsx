@@ -9,7 +9,6 @@ import { calculateTeamStats, getUpcomingEvents, formatActivity, type TeamStats, 
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { doc, setDoc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
-import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 interface TeamData {
@@ -28,7 +27,7 @@ function CoachDashboardContent() {
   const [scoutCountInput, setScoutCountInput] = useState("");
   const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
   const [teamData, setTeamData] = useState<TeamData | null>(null);
-  const [readyScoutNamesByEvent, setReadyScoutNamesByEvent] = useState<Record<string, string[]>>({});
+  const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -68,27 +67,23 @@ function CoachDashboardContent() {
       });
       const scoutNames = scouts.map((docSnap) => docSnap.data().displayName);
 
-      const accuracyMapByEvent: Record<string, Record<string, { total: number; count: number }>> = {};
+      const accuracyMapByScout: Record<string, { total: number; count: number }> = {};
       practiceSnap.forEach((practiceDoc) => {
         const data = practiceDoc.data();
         if (!scoutNames.includes(data.scoutName) || typeof data.accuracy !== "number") return;
-        const eventKey = (data.eventKey as string) || classifyRebuiltEventByTimestamp(Number(data.timestamp || 0));
-        if (!accuracyMapByEvent[eventKey]) accuracyMapByEvent[eventKey] = {};
-        if (!accuracyMapByEvent[eventKey][data.scoutName]) {
-          accuracyMapByEvent[eventKey][data.scoutName] = { total: 0, count: 0 };
+        const scoutName = String(data.scoutName || "");
+        if (!accuracyMapByScout[scoutName]) {
+          accuracyMapByScout[scoutName] = { total: 0, count: 0 };
         }
-        accuracyMapByEvent[eventKey][data.scoutName].total += data.accuracy;
-        accuracyMapByEvent[eventKey][data.scoutName].count += 1;
+        accuracyMapByScout[scoutName].total += Number(data.accuracy || 0);
+        accuracyMapByScout[scoutName].count += 1;
       });
 
-      const computedReadyByEvent: Record<string, string[]> = {};
-      Object.entries(accuracyMapByEvent).forEach(([eventKey, eventAccuracies]) => {
-        computedReadyByEvent[eventKey] = scoutNames.filter((name) => {
-          const entry = eventAccuracies[name];
-          return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
-        });
+      const computedReadyScouts = scoutNames.filter((name) => {
+        const entry = accuracyMapByScout[name];
+        return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
       });
-      setReadyScoutNamesByEvent(computedReadyByEvent);
+      setReadyScoutNames(computedReadyScouts);
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -180,9 +175,10 @@ function CoachDashboardContent() {
                                   const attendees = Array.isArray(teamData?.eventAttendees?.[event.key])
                                     ? teamData.eventAttendees[event.key]
                                     : [];
-                                  const readyNames = readyScoutNamesByEvent[event.key] || [];
+                                  const readyNames = readyScoutNames;
+                                  const readyLookup = new Set(readyNames.map((name) => name.trim().toLowerCase()));
                                   const readyAttendees = attendees.length > 0
-                                    ? attendees.filter((name: string) => readyNames.includes(name)).length
+                                    ? attendees.filter((name: string) => readyLookup.has(String(name || "").trim().toLowerCase())).length
                                     : readyNames.length;
                                   return `${readyAttendees}/${expected}`;
                                 })()}

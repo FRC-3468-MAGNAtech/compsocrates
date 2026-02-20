@@ -23,7 +23,7 @@ async function resolveTeamCode(code: string): Promise<string | null> {
   return null;
 }
 
-async function waitForCurrentUid(timeoutMs = 1500): Promise<string | null> {
+async function waitForCurrentUid(timeoutMs = 5000): Promise<string | null> {
   if (auth.currentUser?.uid) return auth.currentUser.uid;
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
@@ -41,11 +41,11 @@ async function waitForCurrentUid(timeoutMs = 1500): Promise<string | null> {
 }
 
 async function hasPendingJoinRequest(email: string, teamId: string): Promise<boolean> {
-  const normalizedEmail = email.trim();
+  const normalizedEmail = email.trim().toLowerCase();
   const normalizedTeamId = teamId.trim().toLowerCase();
   if (!normalizedEmail || !normalizedTeamId) return false;
 
-  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userEmail", "==", normalizedEmail));
+  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userEmailLower", "==", normalizedEmail));
   const requestsSnap = await getDocs(requestsQuery);
 
   return requestsSnap.docs.some((docSnap) => {
@@ -104,6 +104,9 @@ export default function SignupPage() {
         // Create user account (without team yet)
         await signUp(email, password, displayName, role, "", false);
         const resolvedUid = await waitForCurrentUid();
+        if (!resolvedUid) {
+          throw new Error("Could not verify account session. Please sign in and send the join request from Dashboard.");
+        }
         const hasPending = await hasPendingJoinRequest(email, resolvedTeamCode);
         if (hasPending) {
           alert("You already have a pending request for this team.");
@@ -113,8 +116,9 @@ export default function SignupPage() {
 
         // Create join request
         await addDoc(collection(db, "teamJoinRequests"), {
-          userId: resolvedUid || email,
+          userId: resolvedUid,
           userEmail: email,
+          userEmailLower: email.trim().toLowerCase(),
           userName: displayName,
           userRole: role,
           requestedRole: role,
