@@ -74,12 +74,13 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
         alert("User not found");
         return;
       }
+
+      // Add user first; only then mark request approved.
       await updateSecureUserDoc(targetUserId, {
         teamId,
         role: resolvedRole,
       });
 
-      // Update request status
       await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
         processedAt: Date.now(),

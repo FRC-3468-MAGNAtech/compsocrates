@@ -57,14 +57,7 @@ export default function TeamRequestsPanel() {
     if (!confirm(`Approve ${request.userName} to join as ${resolvedRole}?`)) return;
 
     try {
-      // 1. Update request status
-      await updateDoc(doc(db, "teamJoinRequests", request.id), {
-        status: "approved",
-        processedAt: Date.now(),
-        processedBy: userData?.uid
-      });
-
-      // 2. Find and update user document
+      // 1. Find and update user document
       const usersQuery = query(
         collection(db, "users"),
         where("email", "==", request.userEmail)
@@ -77,7 +70,17 @@ export default function TeamRequestsPanel() {
           teamId: userData?.teamId,
           role: resolvedRole
         });
+      } else {
+        alert("User not found");
+        return;
       }
+
+      // 2. Mark request approved after user update succeeds.
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
+        status: "approved",
+        processedAt: Date.now(),
+        processedBy: userData?.uid
+      });
 
       alert(`${request.userName} has been approved!`);
       loadRequests(); // Refresh list

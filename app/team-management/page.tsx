@@ -107,12 +107,6 @@ function TeamManagementContent() {
   async function handleApproveRequest(request: JoinRequest) {
     try {
       const resolvedRole = (request.requestedRole || request.userRole || "scout") as "coach" | "scout";
-      // Update request status
-      await updateDoc(doc(db, "teamJoinRequests", request.id), {
-        status: "approved",
-        processedAt: Date.now(),
-        processedBy: userData?.uid || "",
-      });
 
       let targetUserId = "";
       if (request.userId) {
@@ -133,18 +127,31 @@ function TeamManagementContent() {
         }
       }
 
-      if (targetUserId) {
-        await updateSecureUserDoc(targetUserId, {
-          teamId: request.teamId,
-          role: resolvedRole,
-        });
+      if (!targetUserId) {
+        alert("Unable to find the user account for this request.");
+        return;
       }
+
+      // 1) First add the user to the team.
+      // If this fails, keep the request pending so admins can retry.
+      await updateSecureUserDoc(targetUserId, {
+        teamId: request.teamId,
+        role: resolvedRole,
+      });
+
+      // 2) Only mark approved after user update succeeds.
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
+        status: "approved",
+        processedAt: Date.now(),
+        processedBy: userData?.uid || "",
+      });
 
       alert(`${request.userName} has been added to the team!`);
       loadTeamData();
     } catch (error) {
       console.error("Error approving request:", error);
-      alert("Error approving request");
+      const message = error instanceof Error ? error.message : String(error || "");
+      alert(message ? `Error approving request: ${message}` : "Error approving request");
     }
   }
 

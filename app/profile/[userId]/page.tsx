@@ -265,7 +265,7 @@ function ProfileContent() {
                     <p className="text-2xl font-bold">{stats.totalEntries}</p>
                   </div>
                   <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
-                    <p className="text-xs text-gray-500">Practice</p>
+                    <p className="text-xs text-gray-500">Sessions</p>
                     <p className="text-2xl font-bold">{stats.practiceSessions}</p>
                   </div>
                   <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
@@ -284,7 +284,7 @@ function ProfileContent() {
                   <p className="text-2xl font-bold">{stats.totalEntries}</p>
                 </div>
                 <div className="p-3 border border-gray-200 rounded-lg">
-                  <p className="text-xs text-gray-500">Practice</p>
+                  <p className="text-xs text-gray-500">Sessions</p>
                   <p className="text-2xl font-bold">{stats.practiceSessions}</p>
                 </div>
                 <div className="p-3 border border-gray-200 rounded-lg">
