@@ -67,6 +67,7 @@ export default function Sidebar() {
     { href: "/assignments", label: "Assignments", icon: Calendar },
     { href: "/people", label: "People", icon: UserCircle2 },
     { href: "/team-management", label: "Team Management", icon: Users },
+    ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),
   ];
 
   const scoutNavItems = [
@@ -79,6 +80,7 @@ export default function Sidebar() {
     { href: "/event-details", label: "Event Info", icon: Calendar },
     { href: "/people", label: "People", icon: UserCircle2 },
     ...(userData.isTeamAdmin ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
+    ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),
   ];
 
   // Set navigation based on role
