@@ -10,20 +10,18 @@ interface RoleSelectorProps {
 }
 
 export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClose }: RoleSelectorProps) {
-  const initialPrimary = currentRoles.find((role) => role !== "drive-team" && role !== "pit-team") || currentRoles[0] || "match-scout";
+  const initialPrimary = currentRoles.includes("drive-team")
+    ? "drive-team"
+    : currentRoles.includes("pit-team")
+    ? "pit-team"
+    : currentRoles[0] || "match-scout";
   const [primaryRole, setPrimaryRole] = useState<TeamRole>(initialPrimary);
-  const [includePitTeam, setIncludePitTeam] = useState(currentRoles.includes("pit-team"));
-  const [includeDriveTeam, setIncludeDriveTeam] = useState(currentRoles.includes("drive-team"));
   const [teamAdmin, setTeamAdmin] = useState(isTeamAdmin);
 
-  const canToggleCombo = primaryRole === "pit-team" || primaryRole === "drive-team";
-
   const resolvedRoles = useMemo(() => {
-    const next = new Set<TeamRole>([primaryRole]);
-    if (canToggleCombo && includePitTeam) next.add("pit-team");
-    if (canToggleCombo && includeDriveTeam) next.add("drive-team");
-    return Array.from(next);
-  }, [primaryRole, canToggleCombo, includePitTeam, includeDriveTeam]);
+    if (primaryRole === "drive-team") return ["drive-team", "pit-team"] as TeamRole[];
+    return [primaryRole] as TeamRole[];
+  }, [primaryRole]);
 
   function handleSave() {
     onSave(resolvedRoles, teamAdmin);
@@ -57,43 +55,19 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClos
                 <div className="font-semibold">{getRoleLabel(role)}</div>
               </label>
             ))}
+            <label
+              className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+              style={{ borderColor: teamAdmin ? "var(--primary-color)" : "#e5e7eb" }}
+            >
+              <input
+                type="checkbox"
+                checked={teamAdmin}
+                onChange={(event) => setTeamAdmin(event.target.checked)}
+                className="w-4 h-4"
+              />
+              <div className="font-semibold">Team Admin</div>
+            </label>
           </div>
-        </div>
-
-        {canToggleCombo && (
-          <div className="mb-6 border rounded-lg p-4 bg-gray-50">
-            <p className="text-sm font-semibold text-gray-700 mb-2">Pit/Drive Team Combination</p>
-            <p className="text-xs text-gray-600 mb-3">Only Pit Team and Drive Team can be combined.</p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={includePitTeam}
-                  onChange={(event) => setIncludePitTeam(event.target.checked)}
-                />
-                <span className="text-sm">Include Pit Team</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={includeDriveTeam}
-                  onChange={(event) => setIncludeDriveTeam(event.target.checked)}
-                />
-                <span className="text-sm">Include Drive Team</span>
-              </label>
-            </div>
-          </div>
-        )}
-
-        <div className="mb-6 border rounded-lg p-4">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={teamAdmin}
-              onChange={(event) => setTeamAdmin(event.target.checked)}
-            />
-            <span className="text-sm font-medium">Team Admin</span>
-          </label>
         </div>
 
         <div className="flex gap-3">
@@ -115,4 +89,3 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClos
     </div>
   );
 }
-

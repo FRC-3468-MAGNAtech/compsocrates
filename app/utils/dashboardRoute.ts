@@ -12,6 +12,7 @@ function getRoleDashboard(role: TeamRole): string {
   if (role === "pit-scout") return "/pit-scout-dashboard";
   if (role === "lead-scout") return "/lead-scout-dashboard";
   if (role === "lead-strategist") return "/lead-strategist-dashboard";
+  if (role === "team-coach") return "/team-coach-dashboard";
   return "/match-scout-dashboard";
 }
 

@@ -503,6 +503,7 @@ export default function TeamManagementPage() {
       allowedRoles={[
         "lead-scout",
         "lead-strategist",
+        "team-coach",
         "pit-team",
         "drive-team",
         "pit-scout",
@@ -515,4 +516,3 @@ export default function TeamManagementPage() {
     </ProtectedRoute>
   );
 }
-

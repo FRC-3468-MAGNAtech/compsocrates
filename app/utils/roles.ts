@@ -1,10 +1,11 @@
 export const TEAM_ROLES = [
+  "match-scout",
+  "pit-scout",
   "pit-team",
   "drive-team",
-  "pit-scout",
-  "match-scout",
   "lead-scout",
   "lead-strategist",
+  "team-coach",
 ] as const;
 
 export type TeamRole = (typeof TEAM_ROLES)[number];
@@ -13,6 +14,7 @@ export type RoleAwareUser = {
   role?: string;
   roles?: string[];
   uid?: string;
+  isTeamAdmin?: boolean;
 };
 
 export type FormKey =
@@ -43,7 +45,7 @@ export const FORM_ROLE_REQUIREMENT: Record<FormKey, TeamRole | null> = {
 export function normalizeLegacyRole(role: string | null | undefined): TeamRole {
   const safe = (role || "").trim().toLowerCase();
   if (TEAM_ROLES.includes(safe as TeamRole)) return safe as TeamRole;
-  if (safe === "coach") return "lead-strategist";
+  if (safe === "coach") return "team-coach";
   if (safe === "scout") return "match-scout";
   if (safe === "lead_scout") return "lead-scout";
   if (safe === "lead_strategist") return "lead-strategist";
@@ -66,11 +68,12 @@ export function getPrimaryRole(roles: TeamRole[]): TeamRole {
 }
 
 export function getRoleLabel(role: TeamRole): string {
+  if (role === "match-scout") return "Match Scout";
+  if (role === "pit-scout") return "Pit Scout";
   if (role === "pit-team") return "Pit Team";
   if (role === "drive-team") return "Drive Team";
-  if (role === "pit-scout") return "Pit Scout";
-  if (role === "match-scout") return "Match Scout";
   if (role === "lead-scout") return "Lead Scout";
+  if (role === "team-coach") return "Team Coach";
   return "Lead Strategist";
 }
 
@@ -101,6 +104,9 @@ export function getRoleBadge(roleInput: string | null | undefined, rolesInput?: 
   if (primaryRole === "lead-strategist") {
     return { bg: "bg-pink-100", text: "text-pink-800", label: "Lead Strategist" };
   }
+  if (primaryRole === "team-coach") {
+    return { bg: "bg-amber-100", text: "text-amber-800", label: "Team Coach" };
+  }
   return { bg: "bg-emerald-100", text: "text-emerald-800", label: "Match Scout" };
 }
 
@@ -124,6 +130,8 @@ export function canAccessForm(params: {
 }): boolean {
   const { formKey, user, formAccessOverrides } = params;
   if (!user?.uid) return false;
+  if (user.isTeamAdmin) return true;
+  if (getUserRoles(user).includes("team-coach")) return true;
   if (formKey === "match-scout-form") return true;
   const roles = getUserRoles(user);
   const requiredRole = FORM_ROLE_REQUIREMENT[formKey];
@@ -131,4 +139,3 @@ export function canAccessForm(params: {
   const extraAllowed = formAccessOverrides?.[formKey] || [];
   return extraAllowed.includes(user.uid);
 }
-

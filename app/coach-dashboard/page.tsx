@@ -207,7 +207,7 @@ function CoachDashboardContent() {
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-            Dashboard
+            Team Coach Dashboard
           </h1>
           <p className="text-gray-600 mb-8">Welcome back! Here&apos;s what&apos;s happening with your team.</p>
 
@@ -550,7 +550,7 @@ function CoachDashboardContent() {
 
 export default function CoachDashboard() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["lead-strategist", "lead-scout", "coach"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["team-coach", "lead-strategist", "lead-scout", "coach"]}>
       <CoachDashboardContent />
     </ProtectedRoute>
   );

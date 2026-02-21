@@ -60,7 +60,11 @@ export default function Sidebar() {
 
   const userRoles = getUserRoles(userData);
   const roleBadge = getRoleBadge(userData.role, userData.roles);
-  const isLeadRole = userRoles.includes("lead-scout") || userRoles.includes("lead-strategist") || userData.isTeamAdmin;
+  const isLeadRole =
+    userRoles.includes("lead-scout") ||
+    userRoles.includes("lead-strategist") ||
+    userRoles.includes("team-coach") ||
+    userData.isTeamAdmin;
   const showText = !collapsed || isMobileMenuOpen;
 
   const navItems = [

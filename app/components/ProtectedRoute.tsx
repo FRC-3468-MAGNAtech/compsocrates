@@ -24,6 +24,7 @@ export default function ProtectedRoute({
 
   function hasAllowedRole(): boolean {
     if (!allowedRoles || !userData) return true;
+    if (userData.isTeamAdmin) return true;
     const userRoles = getUserRoles(userData);
     const allowed = new Set<string>(allowedRoles);
     if (allowed.has(userData.role)) return true;
@@ -31,7 +32,7 @@ export default function ProtectedRoute({
       if (allowed.has(role)) return true;
     }
     if (allowed.has("scout") && userRoles.some((role) => role !== "lead-strategist")) return true;
-    if (allowed.has("coach") && (userRoles.includes("lead-strategist") || userData.isTeamAdmin)) return true;
+    if (allowed.has("coach") && (userRoles.includes("lead-strategist") || userRoles.includes("team-coach") || userData.isTeamAdmin)) return true;
     return false;
   }
 
