@@ -1,12 +1,14 @@
 ﻿"use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
+import { isEventActive } from "@/app/utils/eventDates";
 
 type MatchScoutPlaceholder = {
   scoutName: string;
@@ -72,7 +74,9 @@ function buildReefscapeCompatibilityPayload(input: MatchScoutPlaceholder) {
 }
 
 function MatchScoutFormContent() {
+  const router = useRouter();
   const { userData } = useAuth();
+  const showEventWarning = !isEventActive();
   if (!userData?.isTeamAdmin) {
     return (
       <div className="flex h-screen bg-gray-100">
@@ -133,12 +137,32 @@ function MatchScoutFormContent() {
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-4">
           <div className="bg-white rounded-xl shadow p-4">
             <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Match Scout Form (Placeholder Rebuild)
+              Match Scout Form
             </h1>
-            <p className="text-sm text-gray-600">
-              This is the rebuilt placeholder form. It still writes Reefscape-compatible fields for assignments and analytics.
-            </p>
+            <p className="text-sm text-gray-600">REBUILT form view.</p>
+            <div className="mt-3 max-w-sm">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Form Select (Admin)</label>
+              <select
+                className="w-full border rounded p-2"
+                value="placeholder"
+                onChange={(event) => {
+                  if (event.target.value === "reefscape") {
+                    router.push("/scout-form");
+                  }
+                }}
+              >
+                <option value="reefscape">REEFSCAPE Form</option>
+                <option value="placeholder">REBUILT Form</option>
+              </select>
+            </div>
           </div>
+          {showEventWarning && (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+              <p className="text-sm text-yellow-700">
+                Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
+              </p>
+            </div>
+          )}
 
           <div className="bg-white rounded-xl shadow p-4 space-y-3">
             <h2 className="text-lg font-semibold">Core Inputs</h2>
@@ -180,7 +204,7 @@ function MatchScoutFormContent() {
             className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
             style={{ backgroundColor: "var(--primary-color)" }}
           >
-            {saving ? "Submitting..." : "Submit Placeholder Match Scout Form"}
+            {saving ? "Submitting..." : "Submit Match Scout Form"}
           </button>
         </form>
       </div>

@@ -171,8 +171,8 @@ function PitScoutFormContent() {
                       }
                     }}
                   >
-                    <option value="reefscape">Reefscape Form</option>
-                    <option value="placeholder">Placeholder Rebuild</option>
+                    <option value="reefscape">REEFSCAPE Form</option>
+                    <option value="placeholder">REBUILT Form</option>
                   </select>
                 </div>
               )}
