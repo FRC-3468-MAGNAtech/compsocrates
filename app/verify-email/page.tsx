@@ -19,7 +19,7 @@ export default function VerifyEmailPage() {
       if (!user?.emailVerified) return;
       const userDoc = await getDoc(doc(db, "users", user.uid));
       const userData = userDoc.exists() ? userDoc.data() : null;
-      router.push(getDashboardRoute(userData as { role?: "coach" | "scout"; teamId?: string } | null));
+      router.push(getDashboardRoute(userData as { role?: string; roles?: string[]; teamId?: string } | null));
     }
     routeVerifiedUser();
   }, [user?.emailVerified, user?.uid, router]);
@@ -53,7 +53,7 @@ export default function VerifyEmailPage() {
     if (user.emailVerified) {
       const userDoc = await getDoc(doc(db, "users", user.uid));
       const userData = userDoc.exists() ? userDoc.data() : null;
-      router.push(getDashboardRoute(userData as { role?: "coach" | "scout"; teamId?: string } | null));
+      router.push(getDashboardRoute(userData as { role?: string; roles?: string[]; teamId?: string } | null));
     } else {
       alert("Email not verified yet. Please check your inbox.");
     }

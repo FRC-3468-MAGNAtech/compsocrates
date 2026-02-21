@@ -10,12 +10,12 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { Users, Target, ClipboardList } from "lucide-react";
 import { getEventsForGame } from "@/app/utils/analyticsEvents";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
+import { getRoleBadge as getTeamRoleBadge, getUserRoles } from "@/app/utils/roles";
 
 interface ScoutStats {
   scoutName: string;
   role: string;
-  specialRole?: string;
-  specialRoles?: string[];
+  roles?: string[];
   totalEntries: number;
   practiceSessionsCompleted: number;
   averageAccuracy: number;
@@ -143,13 +143,6 @@ function ScoutAccuracyContent() {
     loadScoutStats();
   }, [selectedMode, accuracyView, selectedCompetitionEvent, userData?.teamId]);
 
-  const normalize = (value: string | null | undefined) =>
-    (value || "").toLowerCase().replace(/\s+/g, "-");
-
-  const hasSpecialRole = (scout: ScoutStats, role: string) =>
-    normalize(scout.specialRole) === role ||
-    (Array.isArray(scout.specialRoles) && scout.specialRoles.map(normalize).includes(role));
-
   async function loadScoutStats() {
     setLoading(true);
     try {
@@ -162,8 +155,7 @@ function ScoutAccuracyContent() {
         return {
           scoutName: data.displayName as string,
           role: data.role as string,
-          specialRole: data.specialRole as string | undefined,
-          specialRoles: (data.specialRoles || []) as string[],
+          roles: (data.roles || []) as string[],
         };
       });
       const scoutNames = memberData.map((member) => member.scoutName);
@@ -229,8 +221,7 @@ function ScoutAccuracyContent() {
           return {
             scoutName: member.scoutName,
             role: member.role,
-            specialRole: member.specialRole,
-            specialRoles: member.specialRoles,
+            roles: member.roles,
             totalEntries: entries.length,
             practiceSessionsCompleted: scoutCompetitionEntries.length,
             averageAccuracy,
@@ -273,8 +264,7 @@ function ScoutAccuracyContent() {
         return {
           scoutName: member.scoutName,
           role: member.role,
-          specialRole: member.specialRole,
-          specialRoles: member.specialRoles,
+          roles: member.roles,
           totalEntries: entries.length,
           practiceSessionsCompleted: practiceSnapshot.size,
           averageAccuracy,
@@ -294,10 +284,14 @@ function ScoutAccuracyContent() {
   }
 
   // Count active scouts only: base scouts + lead scouts (all roles still shown in leaderboard)
-  const actualScoutCount = scoutStats.filter(s => 
-    s.role === "scout" || hasSpecialRole(s, "lead-scout")
-  ).length;
-  const scoutOnlyStats = scoutStats.filter((s) => s.role === "scout" || hasSpecialRole(s, "lead-scout"));
+  const actualScoutCount = scoutStats.filter((s) => {
+    const roles = getUserRoles({ role: s.role, roles: s.roles });
+    return roles.includes("match-scout") || roles.includes("lead-scout");
+  }).length;
+  const scoutOnlyStats = scoutStats.filter((s) => {
+    const roles = getUserRoles({ role: s.role, roles: s.roles });
+    return roles.includes("match-scout") || roles.includes("lead-scout");
+  });
   const scoutOnlyStatsWithAccuracy = scoutOnlyStats.filter((s) => s.averageAccuracy > 0);
 
   function getAccuracyColor(accuracy: number): string {
@@ -359,29 +353,6 @@ function ScoutAccuracyContent() {
       label: "Mentor Intervention",
       showWarning: true
     };
-  }
-
-  function getRoleBadge(role: string, specialRole?: string) {
-    // Special roles ALWAYS take priority
-    const normalized = normalize(specialRole);
-    if (normalized === "lead-scout") {
-      return { bg: "bg-purple-100", text: "text-purple-800", label: "Lead Scout" };
-    }
-    if (normalized === "pit-scout") {
-      return { bg: "bg-indigo-100", text: "text-indigo-800", label: "Pit Scout" };
-    }
-    if (normalized === "lead-strategist") {
-      return { bg: "bg-pink-100", text: "text-pink-800", label: "Lead Strategist" };
-    }
-    
-    // Then check base role
-    if (role === "scout") {
-      return { bg: "bg-blue-100", text: "text-blue-800", label: "Scout" };
-    }
-    if (role === "coach") {
-      return { bg: "bg-yellow-100", text: "text-yellow-800", label: "Coach" };
-    }
-    return { bg: "bg-gray-100", text: "text-gray-800", label: role };
   }
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
@@ -718,7 +689,7 @@ function ScoutAccuracyContent() {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {scoutStats.map((scout, index) => {
                         const badge = getAccuracyBadge(scout.averageAccuracy, scout.practiceSessionsCompleted);
-                        const roleBadge = getRoleBadge(scout.role, scout.specialRole);
+                        const roleBadge = getTeamRoleBadge(scout.role, scout.roles);
                         return (
                           <tr key={scout.scoutName} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -775,8 +746,8 @@ function ScoutAccuracyContent() {
                       <div className="flex items-center justify-between">
                         <div>
                           <h2 className="text-2xl font-bold">{selectedScoutData.scoutName}</h2>
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium mt-2 ${getRoleBadge(selectedScoutData.role, selectedScoutData.specialRole).bg} ${getRoleBadge(selectedScoutData.role, selectedScoutData.specialRole).text}`}>
-                            {getRoleBadge(selectedScoutData.role, selectedScoutData.specialRole).label}
+                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium mt-2 ${getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).bg} ${getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).text}`}>
+                            {getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).label}
                           </span>
                         </div>
                         <button
@@ -972,7 +943,10 @@ function ScoutAccuracyContent() {
 
 export default function ScoutAccuracyPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
+    <ProtectedRoute
+      requireAuth={true}
+      allowedRoles={["lead-scout", "lead-strategist", "pit-team", "drive-team", "pit-scout", "match-scout", "coach", "scout"]}
+    >
       <ScoutAccuracyContent />
     </ProtectedRoute>
   );

@@ -11,6 +11,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
+import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
 
 async function waitForCurrentUid(timeoutMs = 5000): Promise<string | null> {
   if (auth.currentUser?.uid) return auth.currentUser.uid;
@@ -49,7 +50,7 @@ async function createTeamJoinRequestWithFallback(input: {
   userId: string;
   userEmail: string;
   userName: string;
-  requestedRole: "scout" | "coach";
+  requestedRole: TeamRole;
   teamId: string;
 }) {
   const createdAt = Date.now();
@@ -129,7 +130,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState<"scout" | "coach">("scout");
+  const [role, setRole] = useState<TeamRole>("match-scout");
   const [joinCode, setJoinCode] = useState("");
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -275,11 +276,14 @@ export default function SignupPage() {
             </label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as "scout" | "coach")}
+              onChange={(e) => setRole(e.target.value as TeamRole)}
               className="w-full border rounded-lg p-3"
             >
-              <option value="scout">Scout</option>
-              <option value="coach">Coach</option>
+              {TEAM_ROLES.map((teamRole) => (
+                <option key={teamRole} value={teamRole}>
+                  {getRoleLabel(teamRole)}
+                </option>
+              ))}
             </select>
           </div>
 

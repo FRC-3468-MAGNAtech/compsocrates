@@ -14,17 +14,18 @@ import {
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
 import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { TeamRole, normalizeLegacyRole } from "@/app/utils/roles";
 
 // User data structure
-export type UserRole = "scout" | "coach";
-export type SpecialRole = "lead-scout" | "lead-strategist" | "pit-scout" | null;
+export type UserRole = TeamRole | "scout" | "coach";
 
 export type UserData = {
   uid: string;
   email: string;
   displayName: string;
   role: UserRole;
-  specialRole?: SpecialRole;
+  roles?: TeamRole[];
+  specialRole?: string | null;
   specialRoles?: string[];
   teamId: string;
   isTeamAdmin: boolean;
@@ -115,11 +116,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await updateProfile(userCredential.user, { displayName: name });
     
     // Store user data in Firestore
+    const normalizedRole = normalizeLegacyRole(role);
     const userData: UserData = {
       uid: userCredential.user.uid,
       email: email,
       displayName: name,
-      role: role,
+      role: normalizedRole,
+      roles: [normalizedRole],
       specialRole: null,
       specialRoles: [],
       teamId: teamId,

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
 import { useEffect } from "react";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function LandingPage() {
           <div className="flex gap-3">
             {user && userData ? (
               <button
-                onClick={() => router.push(userData.role === "coach" ? "/coach-dashboard" : "/scout-dashboard")}
+                onClick={() => router.push(getDashboardRoute(userData))}
                 className="px-4 py-2 rounded-lg text-white font-medium"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >

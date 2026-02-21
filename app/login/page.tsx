@@ -36,7 +36,7 @@ export default function LoginPage() {
       }
       const userDoc = await getDoc(doc(db, "users", currentUser.uid));
       const data = userDoc.exists() ? userDoc.data() : null;
-      router.push(getDashboardRoute(data as { role?: "coach" | "scout"; teamId?: string } | null));
+      router.push(getDashboardRoute(data as { role?: string; roles?: string[]; teamId?: string } | null));
     } catch (error: any) {
       console.error("Login error:", error);
       setError(error.message || "Invalid email or password");
@@ -64,7 +64,8 @@ export default function LoginPage() {
           email: user.email,
           displayName: user.displayName || user.email?.split('@')[0] || "User",
           photoURL: user.photoURL || "",
-          role: "scout",
+          role: "match-scout",
+          roles: ["match-scout"],
           teamId: "",
           isTeamAdmin: false,
           createdAt: Date.now()

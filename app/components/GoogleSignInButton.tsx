@@ -4,6 +4,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
+import { normalizeLegacyRole } from "@/app/utils/roles";
 
 export default function GoogleSignInButton() {
   const router = useRouter();
@@ -24,7 +25,8 @@ export default function GoogleSignInButton() {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || user.email?.split("@")[0] || "User",
-          role: "scout", // Default
+          role: "match-scout",
+          roles: ["match-scout"],
           teamId: "", // Empty - they need to join a team
           isTeamAdmin: false,
           createdAt: Date.now(),
@@ -32,8 +34,8 @@ export default function GoogleSignInButton() {
 
         router.push("/dashboard");
       } else {
-        const userData = userDoc.data() as { role?: "coach" | "scout"; teamId?: string };
-        router.push(getDashboardRoute(userData));
+        const userData = userDoc.data() as { role?: string; roles?: string[]; teamId?: string };
+        router.push(getDashboardRoute({ ...userData, role: normalizeLegacyRole(userData.role) }));
       }
     } catch (error: any) {
       console.error("Google sign-in error:", error);

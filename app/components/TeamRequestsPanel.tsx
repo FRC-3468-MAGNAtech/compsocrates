@@ -5,6 +5,7 @@ import { collection, query, where, getDocs, updateDoc, doc } from "firebase/fire
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { UserCheck, UserX, Clock, Mail } from "lucide-react";
+import { getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
 
 interface TeamRequest {
   id: string;
@@ -12,8 +13,8 @@ interface TeamRequest {
   userId?: string;
   userEmail: string;
   userName: string;
-  requestedRole?: "scout" | "coach";
-  userRole?: "scout" | "coach";
+  requestedRole?: string;
+  userRole?: string;
   status: "pending" | "approved" | "denied";
   createdAt: number;
 }
@@ -52,8 +53,8 @@ export default function TeamRequestsPanel() {
   }
 
   async function handleApprove(request: TeamRequest) {
-    const resolvedRole = (request.requestedRole || request.userRole || "scout") as "scout" | "coach";
-    if (!confirm(`Approve ${request.userName} to join as ${resolvedRole}?`)) return;
+    const resolvedRole = normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout");
+    if (!confirm(`Approve ${request.userName} to join as ${getRoleLabel(resolvedRole)}?`)) return;
 
     try {
       const targetUserId = String(request.userId || "").trim();
@@ -64,7 +65,10 @@ export default function TeamRequestsPanel() {
       // 1. Add user to team
       await updateDoc(doc(db, "users", targetUserId), {
         teamId: userData?.teamId,
-        role: resolvedRole
+        role: resolvedRole,
+        roles: [resolvedRole],
+        specialRole: null,
+        specialRoles: [],
       });
 
       // 2. Mark request approved after user update succeeds.
@@ -136,7 +140,7 @@ export default function TeamRequestsPanel() {
                 </div>
                 <p className="text-sm text-gray-600 mb-1">{request.userEmail}</p>
                 <p className="text-sm text-gray-500">
-                  Requesting to join as <span className="font-medium">{request.requestedRole || request.userRole || "scout"}</span>
+                  Requesting to join as <span className="font-medium">{getRoleLabel(normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout"))}</span>
                 </p>
                 <p className="text-xs text-gray-400 mt-2">
                   {new Date(request.createdAt).toLocaleDateString()}

@@ -7,11 +7,12 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
+import { TEAM_ROLES, TeamRole, getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
 
 type TeamJoinRequest = {
   id: string;
   teamId: string;
-  requestedRole?: "scout" | "coach";
+  requestedRole?: TeamRole;
   status: string;
   createdAt?: number;
 };
@@ -27,7 +28,7 @@ async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequ
     const request: TeamJoinRequest = {
       id: docSnap.id,
       teamId: String(data.teamId || ""),
-      requestedRole: (data.requestedRole || data.userRole || data.role || "scout") as "scout" | "coach",
+      requestedRole: normalizeLegacyRole(String(data.requestedRole || data.userRole || data.role || "match-scout")),
       status: String(data.status || ""),
       createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
     };
@@ -41,7 +42,7 @@ async function createTeamJoinRequestWithFallback(input: {
   userId: string;
   userEmail: string;
   userName: string;
-  requestedRole: "scout" | "coach";
+  requestedRole: TeamRole;
   teamId: string;
 }) {
   const createdAt = Date.now();
@@ -119,7 +120,7 @@ function NoTeamDashboardContent() {
   const [loading, setLoading] = useState(true);
   const [pendingRequests, setPendingRequests] = useState<TeamJoinRequest[]>([]);
   const [teamCode, setTeamCode] = useState("");
-  const [requestedRole, setRequestedRole] = useState<"scout" | "coach">("scout");
+  const [requestedRole, setRequestedRole] = useState<TeamRole>("match-scout");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
@@ -234,12 +235,15 @@ function NoTeamDashboardContent() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
             <select
               value={requestedRole}
-              onChange={(event) => setRequestedRole(event.target.value as "scout" | "coach")}
+              onChange={(event) => setRequestedRole(event.target.value as TeamRole)}
               className="w-full border rounded p-2"
               disabled={submittingRequest}
             >
-              <option value="scout">Scout</option>
-              <option value="coach">Coach</option>
+              {TEAM_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {getRoleLabel(role)}
+                </option>
+              ))}
             </select>
           </div>
           {requestError && <p className="text-sm text-red-600">{requestError}</p>}
@@ -264,7 +268,7 @@ function NoTeamDashboardContent() {
                   <div>
                     <p className="font-medium">Team {request.teamId}</p>
                     <p className="text-sm text-gray-600">
-                      Status: Pending ({request.requestedRole || "scout"})
+                      Status: Pending ({getRoleLabel(request.requestedRole || "match-scout")})
                     </p>
                   </div>
                   <button

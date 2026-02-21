@@ -2,6 +2,7 @@
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { APP_EVENTS } from "@/app/utils/events";
+import { getUserRoles } from "@/app/utils/roles";
 
 export interface TeamStats {
   totalEntries: number;
@@ -77,19 +78,14 @@ export async function getTeamEntries(teamId: string): Promise<ScoutingEntry[]> {
 export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   const entries = await getTeamEntries(teamId);
   const competitionEntries = entries.filter(isRealCompetitionEntry);
-  const normalize = (value: string | null | undefined) =>
-    (value || "").toLowerCase().replace(/\s+/g, "-");
-  
-  // Get team members - FIXED: Include coaches with special roles as scouts
+  // Get team members with new roles model (while accepting legacy role values).
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
   const usersSnapshot = await getDocs(usersQuery);
   const teamMemberNames = new Set(usersSnapshot.docs.map((d) => d.data().displayName));
   const scouts = usersSnapshot.docs.filter(doc => {
     const data = doc.data();
-    const specialRole = normalize(data.specialRole);
-    const specialRoles = Array.isArray(data.specialRoles) ? data.specialRoles.map(normalize) : [];
-    // Scout-readiness should reflect members who can be assigned match scouting.
-    return data.role === "scout" || specialRole === "lead-scout" || specialRoles.includes("lead-scout");
+    const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
+    return roles.includes("match-scout") || roles.includes("lead-scout");
   });
   const scoutNames = scouts.map((doc) => doc.data().displayName);
 

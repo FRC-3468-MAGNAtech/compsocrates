@@ -8,13 +8,14 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
+import { getRoleBadge } from "@/app/utils/roles";
 
 type UserProfile = {
   uid: string;
   displayName: string;
   email: string;
   role: string;
-  specialRole?: string;
+  roles?: string[];
   profileVisibility?: "team" | "public" | "private";
   bio?: string;
   teamId?: string;
@@ -226,6 +227,7 @@ function ProfileContent() {
     stats.totalEntries > 0 && stats.practiceEntries === stats.totalEntries
       ? "Practice Entries"
       : "Scouting Entries";
+  const roleBadge = profile ? getRoleBadge(profile.role, profile.roles) : null;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -251,9 +253,11 @@ function ProfileContent() {
                 <div>
                   <h1 className="text-3xl font-bold theme-text mb-1">{profile.displayName}</h1>
                   <p className="text-gray-600">{profile.email}</p>
-                  <p className="text-sm text-gray-500 capitalize mt-1">
-                    {profile.specialRole ? profile.specialRole.replace(/-/g, " ") : profile.role}
-                  </p>
+                  {roleBadge && (
+                    <p className={`inline-block mt-1 px-2 py-0.5 rounded text-xs ${roleBadge.bg} ${roleBadge.text}`}>
+                      {roleBadge.label}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">Visibility: {profile.profileVisibility || "team"}</p>
                 </div>
               </div>

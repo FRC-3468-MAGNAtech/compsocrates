@@ -7,13 +7,14 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
+import { getRoleBadge } from "@/app/utils/roles";
 
 type TeamMember = {
   uid: string;
   displayName: string;
   email: string;
   role: string;
-  specialRole?: string | null;
+  roles?: string[];
   photoURL?: string;
 };
 
@@ -44,7 +45,9 @@ function PeopleContent() {
         <h1 className="text-3xl font-bold mb-2 theme-text">People</h1>
         <p className="text-gray-600 mb-6">View team member profiles.</p>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {members.map((member) => (
+          {members.map((member) => {
+            const badge = getRoleBadge(member.role, member.roles);
+            return (
             <Link
               key={member.uid}
               href={`/profile/${member.uid}`}
@@ -73,13 +76,14 @@ function PeopleContent() {
                 <div>
                   <p className="font-semibold">{member.displayName}</p>
                   <p className="text-sm text-gray-600">{member.email}</p>
-                  <p className="text-xs text-gray-500 capitalize">
-                    {member.specialRole ? member.specialRole.replace(/-/g, " ") : member.role}
+                  <p className={`inline-block mt-1 px-2 py-0.5 rounded text-xs ${badge.bg} ${badge.text}`}>
+                    {badge.label}
                   </p>
                 </div>
               </div>
             </Link>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

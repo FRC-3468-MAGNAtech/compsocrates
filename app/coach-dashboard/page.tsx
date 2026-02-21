@@ -11,6 +11,7 @@ import { doc, setDoc, getDoc, collection, getDocs, query, where } from "firebase
 import { db } from "@/app/firebase";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { getUserRoles } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, Target, Users, Wrench, MapPin } from "lucide-react";
 
 interface TeamData {
@@ -126,13 +127,10 @@ function CoachDashboardContent() {
       );
       setEventMatchesByKey(Object.fromEntries(eventMatches));
 
-      const normalize = (value: string | null | undefined) =>
-        (value || "").toLowerCase().replace(/\s+/g, "-");
       const scouts = usersSnap.docs.filter((userDoc) => {
         const data = userDoc.data();
-        const specialRole = normalize(data.specialRole);
-        const specialRoles = Array.isArray(data.specialRoles) ? data.specialRoles.map(normalize) : [];
-        return data.role === "scout" || specialRole === "lead-scout" || specialRoles.includes("lead-scout");
+        const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
+        return roles.includes("match-scout") || roles.includes("lead-scout");
       });
       const scoutNames = scouts.map((docSnap) => docSnap.data().displayName);
 
@@ -552,7 +550,7 @@ function CoachDashboardContent() {
 
 export default function CoachDashboard() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["lead-strategist", "lead-scout", "coach"]}>
       <CoachDashboardContent />
     </ProtectedRoute>
   );

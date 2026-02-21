@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/app/firebase';
+import { getUserRoles } from '@/app/utils/roles';
 
 interface ScoutAccuracyData {
   totalScouts: number;
@@ -32,14 +33,12 @@ export function useScoutAccuracy(teamId?: string) {
         const usersSnapshot = await getDocs(usersQuery);
         const users = usersSnapshot.docs.map(doc => doc.data());
         
-        const normalize = (value: string | null | undefined) =>
-          (value || "").toLowerCase().replace(/\s+/g, "-");
-
-        // Count scouts + lead scouts (legacy and normalized values)
+        // Count match scouts + lead scouts from the new role model.
         const totalScouts = users.filter((u: any) => 
-          u.role === 'scout' || 
-          normalize(u.specialRole) === 'lead-scout' ||
-          Array.isArray(u.specialRoles) && u.specialRoles.map(normalize).includes('lead-scout')
+          (() => {
+            const roles = getUserRoles({ role: String(u.role || ''), roles: u.roles as string[] | undefined });
+            return roles.includes('match-scout') || roles.includes('lead-scout');
+          })()
         ).length;
         
         // Get all practice sessions

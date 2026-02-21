@@ -156,7 +156,8 @@ function AccountContent() {
     try {
       await updateSecureUserDoc(user.uid, {
         teamId: "",
-        role: "scout",
+        role: "match-scout",
+        roles: ["match-scout"],
         specialRoles: [],
         specialRole: null,
         isTeamAdmin: false,
@@ -229,7 +230,7 @@ function AccountContent() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Role
                 </label>
-                <p className="text-gray-900 capitalize">{userData.role}</p>
+                <p className="text-gray-900 capitalize">{(userData.roles && userData.roles.length ? userData.roles.join(", ") : userData.role).replace(/-/g, " ")}</p>
               </div>
 
               <div>

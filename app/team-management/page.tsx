@@ -1,10 +1,7 @@
-// FILE: app/team-management/page.tsx
-// ADDITION: Team join request approvals
-
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -14,14 +11,25 @@ import { X, Check, Clock } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getTeamName } from "@/app/utils/stats-calculator";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
+import {
+  FormAccessOverrides,
+  FormKey,
+  FORM_LABELS,
+  FORM_ROLE_REQUIREMENT,
+  TeamRole,
+  getRoleBadge,
+  getRoleLabel,
+  normalizeFormAccessOverrides,
+  normalizeLegacyRole,
+  sanitizeRoles,
+} from "@/app/utils/roles";
 
 interface TeamMember {
   uid: string;
   displayName: string;
   email: string;
-  role: "coach" | "scout";
-  specialRole?: "lead-scout" | "lead-strategist" | "pit-scout" | null;
-  specialRoles?: string[];
+  role: string;
+  roles?: string[];
   isTeamAdmin: boolean;
   teamId: string;
 }
@@ -47,30 +55,28 @@ function TeamManagementContent() {
   const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [showInviteCode, setShowInviteCode] = useState(false);
+  const [showFormAccessModal, setShowFormAccessModal] = useState(false);
+  const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
+  const [draftFormAccessOverrides, setDraftFormAccessOverrides] = useState<FormAccessOverrides>({});
+
+  const isUserAdmin = userData?.isTeamAdmin || false;
 
   useEffect(() => {
-    loadTeamData();
+    void loadTeamData();
   }, [userData?.teamId]);
 
   async function loadTeamData() {
     if (!userData?.teamId) return;
-    
     setLoading(true);
     try {
-      // Load team members
-      const membersQuery = query(
-        collection(db, "users"),
-        where("teamId", "==", userData.teamId)
-      );
+      const membersQuery = query(collection(db, "users"), where("teamId", "==", userData.teamId));
       const membersSnap = await getDocs(membersQuery);
-      const teamMembers = membersSnap.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data()
+      const teamMembers = membersSnap.docs.map((docSnap) => ({
+        uid: docSnap.id,
+        ...docSnap.data(),
       })) as TeamMember[];
-      
       setMembers(teamMembers);
-      
-      // Load join requests
+
       const requestsQuery = query(
         collection(db, "teamJoinRequests"),
         where("teamId", "==", userData.teamId),
@@ -85,16 +91,20 @@ function TeamManagementContent() {
           userId: fallbackUserId,
           userEmail: String(data.userEmail || ""),
           userName: String(data.userName || (fallbackUserId ? `User ${fallbackUserId.slice(0, 8)}` : "Unknown User")),
-          userRole: String(data.userRole || data.role || "scout"),
-          requestedRole: String(data.requestedRole || data.userRole || data.role || "scout"),
+          userRole: String(data.userRole || data.role || "match-scout"),
+          requestedRole: String(data.requestedRole || data.userRole || data.role || "match-scout"),
           teamId: String(data.teamId || ""),
           status: String(data.status || "pending"),
           createdAt: typeof data.createdAt === "number" ? data.createdAt : Date.now(),
         } as JoinRequest;
       });
-      
       setJoinRequests(requests);
-      
+
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      const overrides = normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null);
+      setFormAccessOverrides(overrides);
+      setDraftFormAccessOverrides(overrides);
+
       const name = await getTeamName(userData.teamId);
       setTeamName(name);
     } catch (error) {
@@ -106,64 +116,59 @@ function TeamManagementContent() {
 
   async function handleApproveRequest(request: JoinRequest) {
     try {
-      const resolvedRole = (request.requestedRole || request.userRole || "scout") as "coach" | "scout";
+      const resolvedRole = normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout");
       const targetUserId = String(request.userId || "").trim();
 
       if (!targetUserId) {
-        alert("This request is missing a user ID. Ask the scout to submit a new request.");
+        alert("This request is missing a user ID. Ask the user to submit a new request.");
         return;
       }
 
-      // 1) First add the user to the team.
-      // If this fails, keep the request pending so admins can retry.
       await updateDoc(doc(db, "users", targetUserId), {
         teamId: request.teamId,
         role: resolvedRole,
+        roles: [resolvedRole],
+        specialRole: null,
+        specialRoles: [],
       });
 
-      // 2) Only mark approved after user update succeeds.
       await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
         processedAt: Date.now(),
         processedBy: userData?.uid || "",
       });
 
-      alert(`${request.userName} has been added to the team!`);
-      loadTeamData();
+      alert(`${request.userName} has been added to the team.`);
+      await loadTeamData();
     } catch (error) {
       console.error("Error approving request:", error);
-      const message = error instanceof Error ? error.message : String(error || "");
-      alert(message ? `Error approving request: ${message}` : "Error approving request");
+      alert("Error approving request");
     }
   }
 
   async function handleDenyRequest(requestId: string) {
     try {
-      await updateDoc(doc(db, "teamJoinRequests", requestId), {
-        status: "denied"
-      });
+      await updateDoc(doc(db, "teamJoinRequests", requestId), { status: "denied" });
       alert("Request denied");
-      loadTeamData();
+      await loadTeamData();
     } catch (error) {
       console.error("Error denying request:", error);
       alert("Error denying request");
     }
   }
 
-  async function handleUpdateRole(uid: string, role: string, specialRoles: string[]) {
+  async function handleUpdateRole(uid: string, roles: TeamRole[], isTeamAdmin: boolean) {
     if (!isUserAdmin) {
       alert("Only team admins can change roles.");
       return;
     }
     try {
-      const isTeamAdmin = specialRoles.includes("team-admin");
-      const filteredSpecialRoles = specialRoles.filter((r) => r !== "team-admin");
+      const primaryRole = roles.includes("drive-team") ? "drive-team" : roles[0] || "match-scout";
       await updateSecureUserDoc(uid, {
-        role,
-        specialRole: filteredSpecialRoles.includes("lead-scout") ? "lead-scout" : 
-                    filteredSpecialRoles.includes("lead-strategist") ? "lead-strategist" :
-                    filteredSpecialRoles.includes("pit-scout") ? "pit-scout" : null,
-        specialRoles: filteredSpecialRoles,
+        role: primaryRole,
+        roles,
+        specialRole: null,
+        specialRoles: [],
         isTeamAdmin,
       });
       setShowRoleSelector(false);
@@ -177,11 +182,11 @@ function TeamManagementContent() {
 
   async function handleKickMember(uid: string) {
     if (!confirm("Are you sure you want to remove this member from the team?")) return;
-    
     try {
       await updateSecureUserDoc(uid, {
         teamId: "",
-        role: "scout",
+        role: "match-scout",
+        roles: ["match-scout"],
         specialRoles: [],
         specialRole: null,
         isTeamAdmin: false,
@@ -195,11 +200,8 @@ function TeamManagementContent() {
 
   async function handleMakeAdmin(uid: string) {
     if (!confirm("Are you sure you want to make this person a team admin?")) return;
-    
     try {
-      await updateSecureUserDoc(uid, {
-        isTeamAdmin: true,
-      });
+      await updateSecureUserDoc(uid, { isTeamAdmin: true });
       await loadTeamData();
     } catch (error) {
       console.error("Error making admin:", error);
@@ -207,12 +209,35 @@ function TeamManagementContent() {
     }
   }
 
-  function formatRole(member: TeamMember): string {
-    if (member.specialRole) return member.specialRole.replace(/-/g, " ");
-    return member.role;
+  function getMemberRoles(member: TeamMember): TeamRole[] {
+    return sanitizeRoles(member.roles, member.role);
   }
 
-  const isUserAdmin = userData?.isTeamAdmin || false;
+  async function saveFormAccessOverrides() {
+    if (!userData?.teamId || !isUserAdmin) return;
+    try {
+      await updateDoc(doc(db, "teams", userData.teamId), {
+        formAccessOverrides: draftFormAccessOverrides,
+      });
+      setFormAccessOverrides(draftFormAccessOverrides);
+      setShowFormAccessModal(false);
+      alert("Form access updated.");
+    } catch (error) {
+      console.error("Error saving form access:", error);
+      alert("Could not save form access settings.");
+    }
+  }
+
+  function toggleUserFormAccess(formKey: FormKey, uid: string, checked: boolean) {
+    setDraftFormAccessOverrides((prev) => {
+      const existing = prev[formKey] || [];
+      const nextValues = checked
+        ? Array.from(new Set([...existing, uid]))
+        : existing.filter((value) => value !== uid);
+      return { ...prev, [formKey]: nextValues };
+    });
+  }
+
   const normalizedTeamLabel = teamName?.trim() || "Your Team";
   const displayTeamLabel = /^team\b/i.test(normalizedTeamLabel) ? normalizedTeamLabel : `Team ${normalizedTeamLabel}`;
 
@@ -235,22 +260,34 @@ function TeamManagementContent() {
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Team Management
           </h1>
-          <p className="text-gray-600 mb-8">Manage your team members and their roles</p>
+          <p className="text-gray-600 mb-8">Manage your team members, roles, and form access.</p>
 
-          {/* Team Info */}
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold mb-1">{displayTeamLabel}</h2>
-                <p className="text-gray-600">Manage members, requests, and roles.</p>
+                <p className="text-gray-600">Manage members, requests, and role-based access.</p>
               </div>
-              <button
-                onClick={() => setShowInviteCode(!showInviteCode)}
-                className="px-4 py-2 rounded text-white font-semibold"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                {showInviteCode ? "Hide" : "Show"} Join Code
-              </button>
+              <div className="flex gap-2">
+                {isUserAdmin && (
+                  <button
+                    onClick={() => {
+                      setDraftFormAccessOverrides(formAccessOverrides);
+                      setShowFormAccessModal(true);
+                    }}
+                    className="px-4 py-2 rounded border font-semibold hover:bg-gray-50"
+                  >
+                    Form Access
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowInviteCode(!showInviteCode)}
+                  className="px-4 py-2 rounded text-white font-semibold"
+                  style={{ backgroundColor: "var(--primary-color)" }}
+                >
+                  {showInviteCode ? "Hide" : "Show"} Join Code
+                </button>
+              </div>
             </div>
             {showInviteCode && (
               <div className="mt-4 p-4 bg-gray-50 rounded">
@@ -262,7 +299,6 @@ function TeamManagementContent() {
             )}
           </div>
 
-          {/* Join Requests */}
           {isUserAdmin && joinRequests.length > 0 && (
             <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
               <div className="p-6 border-b bg-yellow-50">
@@ -281,19 +317,19 @@ function TeamManagementContent() {
                       <p className="font-semibold text-lg">{request.userName}</p>
                       <p className="text-sm text-gray-600">{request.userEmail}</p>
                       <p className="text-xs text-gray-500 mt-1">
-                        Requested {new Date(request.createdAt).toLocaleDateString()} • Role: {request.requestedRole || request.userRole}
+                        Requested {new Date(request.createdAt).toLocaleDateString()} | Role: {getRoleLabel(normalizeLegacyRole(request.requestedRole))}
                       </p>
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleApproveRequest(request)}
+                        onClick={() => void handleApproveRequest(request)}
                         className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-2"
                       >
                         <Check size={16} />
                         Approve
                       </button>
                       <button
-                        onClick={() => handleDenyRequest(request.id)}
+                        onClick={() => void handleDenyRequest(request.id)}
                         className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 flex items-center gap-2"
                       >
                         <X size={16} />
@@ -306,7 +342,6 @@ function TeamManagementContent() {
             </div>
           )}
 
-          {/* Team Members */}
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-xl font-semibold">Team Members</h2>
@@ -322,51 +357,54 @@ function TeamManagementContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {members.map((member) => (
-                    <tr key={member.uid}>
-                      <td className="px-6 py-4">
-                        <p className="font-semibold">{member.displayName}</p>
-                        <p className="text-sm text-gray-600">{member.email}</p>
-                      </td>
-                      <td className="px-6 py-4 capitalize">
-                        {formatRole(member)}
-                      </td>
-                      <td className="px-6 py-4">
-                        {member.isTeamAdmin ? "Yes" : "No"}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => {
-                              if (!isUserAdmin) return;
-                              setSelectedMember(member);
-                              setShowRoleSelector(true);
-                            }}
-                            disabled={!isUserAdmin}
-                            className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Change Roles
-                          </button>
-                          {isUserAdmin && !member.isTeamAdmin && (
+                  {members.map((member) => {
+                    const badge = getRoleBadge(member.role, member.roles);
+                    return (
+                      <tr key={member.uid}>
+                        <td className="px-6 py-4">
+                          <p className="font-semibold">{member.displayName}</p>
+                          <p className="text-sm text-gray-600">{member.email}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${badge.bg} ${badge.text}`}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">{member.isTeamAdmin ? "Yes" : "No"}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-2">
                             <button
-                              onClick={() => handleMakeAdmin(member.uid)}
-                              className="px-3 py-1.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-800 text-sm"
+                              onClick={() => {
+                                if (!isUserAdmin) return;
+                                setSelectedMember(member);
+                                setShowRoleSelector(true);
+                              }}
+                              disabled={!isUserAdmin}
+                              className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              Make Admin
+                              Change Roles
                             </button>
-                          )}
-                          {isUserAdmin && member.uid !== userData?.uid && (
-                            <button
-                              onClick={() => handleKickMember(member.uid)}
-                              className="px-3 py-1.5 rounded bg-red-100 hover:bg-red-200 text-red-800 text-sm"
-                            >
-                              Kick
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {isUserAdmin && !member.isTeamAdmin && (
+                              <button
+                                onClick={() => void handleMakeAdmin(member.uid)}
+                                className="px-3 py-1.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-800 text-sm"
+                              >
+                                Make Admin
+                              </button>
+                            )}
+                            {isUserAdmin && member.uid !== userData?.uid && (
+                              <button
+                                onClick={() => void handleKickMember(member.uid)}
+                                className="px-3 py-1.5 rounded bg-red-100 hover:bg-red-200 text-red-800 text-sm"
+                              >
+                                Kick
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -374,12 +412,9 @@ function TeamManagementContent() {
 
           {showRoleSelector && selectedMember && (
             <RoleSelector
-              currentRole={selectedMember.role}
-              currentSpecialRoles={[
-                ...(selectedMember.specialRoles || []),
-                ...(selectedMember.isTeamAdmin ? ["team-admin"] : []),
-              ]}
-              onSave={(role, specialRoles) => handleUpdateRole(selectedMember.uid, role, specialRoles)}
+              currentRoles={getMemberRoles(selectedMember)}
+              isTeamAdmin={selectedMember.isTeamAdmin}
+              onSave={(roles, memberIsAdmin) => void handleUpdateRole(selectedMember.uid, roles, memberIsAdmin)}
               onClose={() => {
                 setShowRoleSelector(false);
                 setSelectedMember(null);
@@ -387,6 +422,74 @@ function TeamManagementContent() {
             />
           )}
 
+          {showFormAccessModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">Form Access Overrides</h2>
+                    <p className="text-sm text-gray-600">Grant extra form access to users who do not have the required role.</p>
+                  </div>
+                  <button onClick={() => setShowFormAccessModal(false)} className="px-3 py-1 rounded border hover:bg-gray-50">
+                    Close
+                  </button>
+                </div>
+                <div className="p-6 space-y-6">
+                  {(Object.keys(FORM_LABELS) as FormKey[])
+                    .filter((formKey) => formKey !== "match-scout-form")
+                    .map((formKey) => {
+                      const requiredRole = FORM_ROLE_REQUIREMENT[formKey];
+                      return (
+                        <div key={formKey} className="border rounded-lg p-4">
+                          <h3 className="font-semibold text-lg">{FORM_LABELS[formKey]}</h3>
+                          <p className="text-sm text-gray-600 mb-3">
+                            Default role access: {requiredRole ? getRoleLabel(requiredRole) : "All Team Members"}
+                          </p>
+                          <div className="grid md:grid-cols-2 gap-2">
+                            {members.map((member) => {
+                              const memberRoles = getMemberRoles(member);
+                              const hasDefaultRole = requiredRole ? memberRoles.includes(requiredRole) : true;
+                              const checked = (draftFormAccessOverrides[formKey] || []).includes(member.uid);
+                              return (
+                                <label key={`${formKey}-${member.uid}`} className="flex items-center gap-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    disabled={hasDefaultRole}
+                                    checked={hasDefaultRole || checked}
+                                    onChange={(event) => toggleUserFormAccess(formKey, member.uid, event.target.checked)}
+                                  />
+                                  <span className={hasDefaultRole ? "text-gray-400" : "text-gray-700"}>
+                                    {member.displayName} {hasDefaultRole ? "(role-based access)" : ""}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+                <div className="p-6 border-t flex gap-3">
+                  <button
+                    onClick={() => void saveFormAccessOverrides()}
+                    className="px-4 py-2 rounded text-white font-semibold"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Save Overrides
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDraftFormAccessOverrides(formAccessOverrides);
+                      setShowFormAccessModal(false);
+                    }}
+                    className="px-4 py-2 rounded border"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -395,7 +498,19 @@ function TeamManagementContent() {
 
 export default function TeamManagementPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
+    <ProtectedRoute
+      requireAuth={true}
+      allowedRoles={[
+        "lead-scout",
+        "lead-strategist",
+        "pit-team",
+        "drive-team",
+        "pit-scout",
+        "match-scout",
+        "coach",
+        "scout",
+      ]}
+    >
       <TeamManagementContent />
     </ProtectedRoute>
   );

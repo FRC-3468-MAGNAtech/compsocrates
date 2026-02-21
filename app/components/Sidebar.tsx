@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
+import { canAccessForm, FormAccessOverrides, getRoleBadge, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
   Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings
@@ -20,6 +22,7 @@ export default function Sidebar() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [teamName, setTeamName] = useState<string>("");
+  const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const { userData, logOut } = useAuth();
@@ -36,13 +39,17 @@ export default function Sidebar() {
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         if (teamDoc.exists()) {
-          setTeamName(teamDoc.data().teamName || userData.teamId);
+          const data = teamDoc.data();
+          setTeamName(data.teamName || userData.teamId);
+          setFormAccessOverrides(normalizeFormAccessOverrides(data.formAccessOverrides));
         } else {
           setTeamName(userData.teamId);
+          setFormAccessOverrides({});
         }
       } catch (error) {
         console.error("Error loading team name:", error);
         setTeamName(userData.teamId);
+        setFormAccessOverrides({});
       }
     }
     
@@ -51,37 +58,41 @@ export default function Sidebar() {
 
   if (!userData?.teamId) return null;
 
-  const isCoach = userData.role === "coach";
+  const userRoles = getUserRoles(userData);
+  const roleBadge = getRoleBadge(userData.role, userData.roles);
+  const isLeadRole = userRoles.includes("lead-scout") || userRoles.includes("lead-strategist") || userData.isTeamAdmin;
   const showText = !collapsed || isMobileMenuOpen;
 
-  // Navigation items based on role
-  const coachNavItems = [
-    { href: "/coach-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
-    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
-    { href: "/analytics", label: "Analytics", icon: TrendingUp },
+  const navItems = [
+    { href: getDashboardRoute(userData), label: "Dashboard", icon: BarChart3 },
+    ...(canAccessForm({ formKey: "match-scout-form", user: userData, formAccessOverrides })
+      ? [{ href: "/scout-form", label: "Match Scout Form", icon: ClipboardList }]
+      : []),
+    ...(canAccessForm({ formKey: "pit-scout-form", user: userData, formAccessOverrides })
+      ? [{ href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList }]
+      : []),
+    ...(canAccessForm({ formKey: "strategy-scout-form", user: userData, formAccessOverrides })
+      ? [{ href: "/strategy-scout-form", label: "Strategy Scout Form", icon: ClipboardList }]
+      : []),
+    ...(canAccessForm({ formKey: "drive-scout-form", user: userData, formAccessOverrides })
+      ? [{ href: "/drive-scout-form", label: "Drive Scout Form", icon: ClipboardList }]
+      : []),
+    ...(canAccessForm({ formKey: "helper-form", user: userData, formAccessOverrides })
+      ? [{ href: "/helper-form", label: "Helper Form", icon: ClipboardList }]
+      : []),
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
-    { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
-    { href: "/event-selection", label: "Event Selection", icon: Calendar },
-    { href: "/assignments", label: "Assignments", icon: Calendar },
+    ...(isLeadRole
+      ? [
+          { href: "/analytics", label: "Analytics", icon: TrendingUp },
+          { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
+          { href: "/event-selection", label: "Event Selection", icon: Calendar },
+          { href: "/assignments", label: "Assignments", icon: Calendar },
+        ]
+      : []),
     { href: "/people", label: "People", icon: UserCircle2 },
-    { href: "/team-management", label: "Team Management", icon: Users },
+    ...(isLeadRole ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
     ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),
   ];
-
-  const scoutNavItems = [
-    { href: "/scout-dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/scout-form", label: "Match Scout Form", icon: ClipboardList },
-    { href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList },
-    { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
-    { href: "/people", label: "People", icon: UserCircle2 },
-    ...(userData.isTeamAdmin ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
-    ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),
-  ];
-
-  // Set navigation based on role
-  const navItems = isCoach ? coachNavItems : scoutNavItems;
 
   return (
     <>
@@ -195,9 +206,7 @@ export default function Sidebar() {
             {showText && (
               <div className="flex-1 text-left">
                 <p className="text-sm font-semibold text-gray-900">{userData.displayName}</p>
-                <p className="text-xs text-gray-600 capitalize">
-                  {userData.specialRole ? userData.specialRole.replace(/-/g, ' ') : userData.role}
-                </p>
+                <p className="text-xs text-gray-600">{roleBadge.label}</p>
               </div>
             )}
           </button>
@@ -223,7 +232,7 @@ export default function Sidebar() {
                 >
                   Account Settings
                 </Link>
-                {(isCoach || userData.isTeamAdmin) && (
+                {isLeadRole && (
                   <Link
                     href="/settings/api-keys"
                     className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"

@@ -1,45 +1,37 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { TeamRole, TEAM_ROLES, getRoleLabel } from "@/app/utils/roles";
 
 interface RoleSelectorProps {
-  currentRole: "scout" | "coach";
-  currentSpecialRoles: string[];
-  onSave: (role: "scout" | "coach", specialRoles: string[]) => void;
+  currentRoles: TeamRole[];
+  isTeamAdmin: boolean;
+  onSave: (roles: TeamRole[], isTeamAdmin: boolean) => void;
   onClose: () => void;
 }
 
-export default function RoleSelector({ currentRole, currentSpecialRoles, onSave, onClose }: RoleSelectorProps) {
-  const [baseRole, setBaseRole] = useState<"scout" | "coach">(currentRole);
-  const [specialRoles, setSpecialRoles] = useState<string[]>(currentSpecialRoles || []);
+export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClose }: RoleSelectorProps) {
+  const initialPrimary = currentRoles.find((role) => role !== "drive-team" && role !== "pit-team") || currentRoles[0] || "match-scout";
+  const [primaryRole, setPrimaryRole] = useState<TeamRole>(initialPrimary);
+  const [includePitTeam, setIncludePitTeam] = useState(currentRoles.includes("pit-team"));
+  const [includeDriveTeam, setIncludeDriveTeam] = useState(currentRoles.includes("drive-team"));
+  const [teamAdmin, setTeamAdmin] = useState(isTeamAdmin);
 
-  const specialRoleOptions = [
-    { value: "lead-scout", label: "Lead Scout" },
-    { value: "lead-strategist", label: "Lead Strategist" },
-    { value: "pit-scout", label: "Pit Scout" },
-    { value: "team-admin", label: "Team Admin" },
-  ];
+  const canToggleCombo = primaryRole === "pit-team" || primaryRole === "drive-team";
 
-  function toggleSpecialRole(role: string) {
-    if (specialRoles.includes(role)) {
-      setSpecialRoles(specialRoles.filter(r => r !== role));
-    } else {
-      const exclusiveSpecialRoles = ["lead-scout", "lead-strategist", "pit-scout"];
-      if (exclusiveSpecialRoles.includes(role)) {
-        const withoutExclusive = specialRoles.filter((r) => !exclusiveSpecialRoles.includes(r));
-        setSpecialRoles([...withoutExclusive, role]);
-        return;
-      }
-      setSpecialRoles([...specialRoles, role]);
-    }
-  }
+  const resolvedRoles = useMemo(() => {
+    const next = new Set<TeamRole>([primaryRole]);
+    if (canToggleCombo && includePitTeam) next.add("pit-team");
+    if (canToggleCombo && includeDriveTeam) next.add("drive-team");
+    return Array.from(next);
+  }, [primaryRole, canToggleCombo, includePitTeam, includeDriveTeam]);
 
   function handleSave() {
-    onSave(baseRole, specialRoles);
+    onSave(resolvedRoles, teamAdmin);
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+      <div className="bg-white rounded-xl shadow-xl max-w-xl w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">Change Roles</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
@@ -47,68 +39,63 @@ export default function RoleSelector({ currentRole, currentSpecialRoles, onSave,
           </button>
         </div>
 
-        {/* Base Role */}
         <div className="mb-6">
-          <label className="block text-sm font-semibold text-gray-700 mb-3">Base Role (choose one)</label>
-          <div className="space-y-2">
-            <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                   style={{ borderColor: baseRole === "scout" ? "var(--primary-color)" : "#e5e7eb" }}>
-              <input
-                type="radio"
-                checked={baseRole === "scout"}
-                onChange={() => setBaseRole("scout")}
-                className="w-4 h-4"
-              />
-              <div>
-                <div className="font-semibold">Scout</div>
-                <div className="text-xs text-gray-600">Collect match data</div>
-              </div>
-            </label>
-
-            <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                   style={{ borderColor: baseRole === "coach" ? "var(--primary-color)" : "#e5e7eb" }}>
-              <input
-                type="radio"
-                checked={baseRole === "coach"}
-                onChange={() => setBaseRole("coach")}
-                className="w-4 h-4"
-              />
-              <div>
-                <div className="font-semibold">Coach</div>
-                <div className="text-xs text-gray-600">Manage team and scouts</div>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        {/* Special Roles */}
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-gray-700 mb-3">
-            Special Roles (select all that apply)
-          </label>
-          <p className="text-xs text-gray-500 mb-3">
-            Lead Scout, Lead Strategist, and Pit Scout are mutually exclusive.
-          </p>
-          <div className="space-y-2">
-            {specialRoleOptions.map(option => (
+          <label className="block text-sm font-semibold text-gray-700 mb-3">Primary Role</label>
+          <div className="grid gap-2">
+            {TEAM_ROLES.map((role) => (
               <label
-                key={option.value}
+                key={role}
                 className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                style={{ borderColor: specialRoles.includes(option.value) ? "var(--primary-color)" : "#e5e7eb" }}
+                style={{ borderColor: primaryRole === role ? "var(--primary-color)" : "#e5e7eb" }}
               >
                 <input
-                  type="checkbox"
-                  checked={specialRoles.includes(option.value)}
-                  onChange={() => toggleSpecialRole(option.value)}
+                  type="radio"
+                  checked={primaryRole === role}
+                  onChange={() => setPrimaryRole(role)}
                   className="w-4 h-4"
                 />
-                <div className="font-medium">{option.label}</div>
+                <div className="font-semibold">{getRoleLabel(role)}</div>
               </label>
             ))}
           </div>
         </div>
 
-        {/* Actions */}
+        {canToggleCombo && (
+          <div className="mb-6 border rounded-lg p-4 bg-gray-50">
+            <p className="text-sm font-semibold text-gray-700 mb-2">Pit/Drive Team Combination</p>
+            <p className="text-xs text-gray-600 mb-3">Only Pit Team and Drive Team can be combined.</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={includePitTeam}
+                  onChange={(event) => setIncludePitTeam(event.target.checked)}
+                />
+                <span className="text-sm">Include Pit Team</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={includeDriveTeam}
+                  onChange={(event) => setIncludeDriveTeam(event.target.checked)}
+                />
+                <span className="text-sm">Include Drive Team</span>
+              </label>
+            </div>
+          </div>
+        )}
+
+        <div className="mb-6 border rounded-lg p-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={teamAdmin}
+              onChange={(event) => setTeamAdmin(event.target.checked)}
+            />
+            <span className="text-sm font-medium">Team Admin</span>
+          </label>
+        </div>
+
         <div className="flex gap-3">
           <button
             onClick={handleSave}
