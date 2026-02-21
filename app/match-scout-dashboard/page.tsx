@@ -1,12 +1,5 @@
-import RoleDashboard from "@/app/components/RoleDashboard";
+import { redirect } from "next/navigation";
 
 export default function MatchScoutDashboardPage() {
-  return (
-    <RoleDashboard
-      role="match-scout"
-      title="Match Scout Dashboard"
-      description="Track assignments and submit post-match scouting data."
-    />
-  );
+  redirect("/scout-dashboard");
 }
-

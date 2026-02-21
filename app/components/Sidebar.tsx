@@ -84,7 +84,6 @@ export default function Sidebar() {
     ...(canAccessForm({ formKey: "helper-form", user: userData, formAccessOverrides })
       ? [{ href: "/helper-form", label: "Helper Form", icon: ClipboardList }]
       : []),
-    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     ...(isLeadRole
       ? [
           { href: "/analytics", label: "Analytics", icon: TrendingUp },
@@ -93,6 +92,7 @@ export default function Sidebar() {
           { href: "/assignments", label: "Assignments", icon: Calendar },
         ]
       : []),
+    { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/people", label: "People", icon: UserCircle2 },
     ...(isLeadRole ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
     ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),

@@ -128,14 +128,9 @@ export function canAccessForm(params: {
   user: RoleAwareUser | null | undefined;
   formAccessOverrides?: FormAccessOverrides;
 }): boolean {
-  const { formKey, user, formAccessOverrides } = params;
+  const { formKey, user } = params;
   if (!user?.uid) return false;
   if (user.isTeamAdmin) return true;
-  if (getUserRoles(user).includes("team-coach")) return true;
-  if (formKey === "match-scout-form") return true;
-  const roles = getUserRoles(user);
-  const requiredRole = FORM_ROLE_REQUIREMENT[formKey];
-  if (requiredRole && roles.includes(requiredRole)) return true;
-  const extraAllowed = formAccessOverrides?.[formKey] || [];
-  return extraAllowed.includes(user.uid);
+  if (formKey === "match-scout-form" || formKey === "pit-scout-form") return true;
+  return false;
 }

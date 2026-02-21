@@ -198,17 +198,6 @@ function TeamManagementContent() {
     }
   }
 
-  async function handleMakeAdmin(uid: string) {
-    if (!confirm("Are you sure you want to make this person a team admin?")) return;
-    try {
-      await updateSecureUserDoc(uid, { isTeamAdmin: true });
-      await loadTeamData();
-    } catch (error) {
-      console.error("Error making admin:", error);
-      alert("Error updating admin status");
-    }
-  }
-
   function getMemberRoles(member: TeamMember): TeamRole[] {
     return sanitizeRoles(member.roles, member.role);
   }
@@ -359,6 +348,8 @@ function TeamManagementContent() {
                 <tbody className="divide-y divide-gray-200">
                   {members.map((member) => {
                     const badge = getRoleBadge(member.role, member.roles);
+                    const memberRoles = getMemberRoles(member);
+                    const isDriveWithPit = memberRoles.includes("drive-team") && memberRoles.includes("pit-team");
                     return (
                       <tr key={member.uid}>
                         <td className="px-6 py-4">
@@ -366,9 +357,16 @@ function TeamManagementContent() {
                           <p className="text-sm text-gray-600">{member.email}</p>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${badge.bg} ${badge.text}`}>
-                            {badge.label}
-                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${badge.bg} ${badge.text}`}>
+                              {badge.label}
+                            </span>
+                            {isDriveWithPit && (
+                              <span className="px-2 py-1 rounded text-xs font-medium bg-cyan-100 text-cyan-800">
+                                Pit Team (auto)
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4">{member.isTeamAdmin ? "Yes" : "No"}</td>
                         <td className="px-6 py-4">
@@ -384,14 +382,6 @@ function TeamManagementContent() {
                             >
                               Change Roles
                             </button>
-                            {isUserAdmin && !member.isTeamAdmin && (
-                              <button
-                                onClick={() => void handleMakeAdmin(member.uid)}
-                                className="px-3 py-1.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-800 text-sm"
-                              >
-                                Make Admin
-                              </button>
-                            )}
                             {isUserAdmin && member.uid !== userData?.uid && (
                               <button
                                 onClick={() => void handleKickMember(member.uid)}
@@ -449,17 +439,19 @@ function TeamManagementContent() {
                             {members.map((member) => {
                               const memberRoles = getMemberRoles(member);
                               const hasDefaultRole = requiredRole ? memberRoles.includes(requiredRole) : true;
+                              const hasAdminAccess = member.isTeamAdmin;
+                              const hasSystemAccess = hasDefaultRole || hasAdminAccess;
                               const checked = (draftFormAccessOverrides[formKey] || []).includes(member.uid);
                               return (
                                 <label key={`${formKey}-${member.uid}`} className="flex items-center gap-2 text-sm">
                                   <input
                                     type="checkbox"
-                                    disabled={hasDefaultRole}
-                                    checked={hasDefaultRole || checked}
+                                    disabled={hasSystemAccess}
+                                    checked={hasSystemAccess || checked}
                                     onChange={(event) => toggleUserFormAccess(formKey, member.uid, event.target.checked)}
                                   />
-                                  <span className={hasDefaultRole ? "text-gray-400" : "text-gray-700"}>
-                                    {member.displayName} {hasDefaultRole ? "(role-based access)" : ""}
+                                  <span className={hasSystemAccess ? "text-gray-400" : "text-gray-700"}>
+                                    {member.displayName} {hasAdminAccess ? "(team admin)" : hasDefaultRole ? "(role-based access)" : ""}
                                   </span>
                                 </label>
                               );

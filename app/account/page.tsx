@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { useRouter } from "next/navigation";
 import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ThemePicker from "@/app/components/ThemePicker";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
+import { db } from "@/app/firebase";
 
 function AccountContent() {
   const router = useRouter();
@@ -27,11 +29,35 @@ function AccountContent() {
   const [emailPassword, setEmailPassword] = useState("");
   const [profileBio, setProfileBio] = useState(userData?.bio || "");
   const [profileVisibility, setProfileVisibility] = useState<"team" | "public" | "private">(userData?.profileVisibility || "team");
+  const [teamDisplayLabel, setTeamDisplayLabel] = useState("");
 
   useEffect(() => {
     setProfileBio(userData?.bio || "");
     setProfileVisibility(userData?.profileVisibility || "team");
   }, [userData?.bio, userData?.profileVisibility]);
+
+  useEffect(() => {
+    async function loadTeamDisplayLabel() {
+      if (!userData?.teamId) {
+        setTeamDisplayLabel("");
+        return;
+      }
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (teamDoc.exists()) {
+          const data = teamDoc.data() as { teamNumber?: string; teamName?: string };
+          const preferred = String(data.teamNumber || data.teamName || userData.teamId).trim();
+          setTeamDisplayLabel(preferred || userData.teamId);
+        } else {
+          setTeamDisplayLabel(userData.teamId);
+        }
+      } catch (error) {
+        console.error("Error loading team label:", error);
+        setTeamDisplayLabel(userData.teamId);
+      }
+    }
+    void loadTeamDisplayLabel();
+  }, [userData?.teamId]);
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -250,7 +276,7 @@ function AccountContent() {
             <div className="bg-white rounded-xl shadow p-6 mb-6">
               <h2 className="text-xl font-semibold mb-2">Team Membership</h2>
               <p className="text-sm text-gray-600 mb-4">
-                You are currently on team <span className="font-semibold">{userData.teamId}</span>.
+                You are currently on Team <span className="font-semibold">{teamDisplayLabel || userData.teamId}</span>.
               </p>
               <button
                 type="button"

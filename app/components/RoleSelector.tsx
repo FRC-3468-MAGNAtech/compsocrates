@@ -68,6 +68,21 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClos
               <div className="font-semibold">Team Admin</div>
             </label>
           </div>
+          {primaryRole === "drive-team" && (
+            <p className="mt-3 text-sm text-gray-600">
+              `Drive Team` automatically includes `Pit Team`.
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {resolvedRoles.map((role) => (
+              <span
+                key={role}
+                className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 border"
+              >
+                {getRoleLabel(role)}
+              </span>
+            ))}
+          </div>
         </div>
 
         <div className="flex gap-3">
