@@ -151,12 +151,14 @@ function FinalsMatchBox({
   col,
   status,
   onPick,
+  label,
 }: {
   number: number;
   row: number;
   col: number;
   status: MatchStatus;
   onPick: (matchNumber: number) => void;
+  label?: string;
 }) {
   const borderStyles: Record<MatchStatus, React.CSSProperties> = {
     completed: { borderColor: "#16a34a" },
@@ -189,7 +191,7 @@ function FinalsMatchBox({
         {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
       </div>
       <div className="pt-1.5 pb-1 px-1.5">
-        <div className="font-semibold text-[11px] leading-tight">{number === 13 ? "FINALS" : `Match ${number}`}</div>
+        <div className="font-semibold text-[11px] leading-tight">{label || `Match ${number}`}</div>
       </div>
     </button>
   );
@@ -230,7 +232,7 @@ function FinalsBracket({
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
-  const firstOpen = Array.from({ length: 13 }, (_, i) => i + 1).find((n) => !completed.has(`f${n}`)) || -1;
+  const firstOpen = Array.from({ length: 14 }, (_, i) => i + 1).find((n) => !completed.has(`f${n}`)) || -1;
   const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
 
   return (
@@ -276,6 +278,14 @@ function FinalsBracket({
           <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} />
           <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} />
           <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} />
+          <FinalsMatchBox
+            number={14}
+            row={yFinals}
+            col={c5}
+            label="FINALS"
+            status={completed.has("f1") && completed.has("f2") && completed.has("f3") ? "completed" : "upcoming"}
+            onPick={onPick}
+          />
         </div>
       </div>
     </div>
@@ -296,9 +306,13 @@ function MatchModal({
   onPick: (m: MatchOption) => void;
 }) {
   const [step, setStep] = useState<"type" | MatchType>("type");
+  const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
 
   useEffect(() => {
-    if (!open) setStep("type");
+    if (!open) {
+      setStep("type");
+      setFinalsStep("bracket");
+    }
   }, [open]);
 
   const current = options.filter((m) => m.type === step);
@@ -369,22 +383,76 @@ function MatchModal({
             )}
 
             {step === "finals" && (
-              <FinalsBracket
-                completed={new Set(Array.from(completed).filter((id) => id.startsWith("f")))}
-                onPick={(matchNumber) => {
-                  const key = `f${matchNumber}`;
-                  const picked = finalsById.get(key) || {
-                    id: key,
-                    label: matchNumber === 13 ? "Finals" : `Finals ${matchNumber}`,
-                    type: "finals" as const,
-                    matchNumber,
-                    scheduleTime: 0,
-                    teams: [],
-                  };
-                  onPick(picked);
-                  onClose();
-                }}
-              />
+              <>
+                {finalsStep === "bracket" && (
+                  <FinalsBracket
+                    completed={new Set(Array.from(completed).filter((id) => id.startsWith("f")))}
+                    onPick={(matchNumber) => {
+                      if (matchNumber === 14) {
+                        setFinalsStep("number");
+                        return;
+                      }
+                      const key = `f${matchNumber}`;
+                      const picked = finalsById.get(key) || {
+                        id: key,
+                        label: `Finals ${matchNumber}`,
+                        type: "finals" as const,
+                        matchNumber,
+                        scheduleTime: 0,
+                        teams: [],
+                      };
+                      onPick(picked);
+                      onClose();
+                    }}
+                  />
+                )}
+                {finalsStep === "number" && (
+                  <>
+                    <div className="flex items-center justify-between mb-6">
+                      <button
+                        type="button"
+                        onClick={() => setFinalsStep("bracket")}
+                        className="text-gray-600 hover:text-gray-900 flex items-center gap-2"
+                      >
+                        ← Back to Bracket
+                      </button>
+                      <h2 className="text-xl font-semibold">Select Finals Match Number</h2>
+                      <div className="w-32" />
+                    </div>
+                    <p className="text-gray-600 mb-6 text-center">Which finals match are you scouting?</p>
+                    <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
+                      {[1, 2, 3].map((matchNum) => (
+                        <button
+                          key={matchNum}
+                          type="button"
+                          onClick={() => {
+                            const key = `f${matchNum}`;
+                            const picked = finalsById.get(key) || {
+                              id: key,
+                              label: `Finals ${matchNum}`,
+                              type: "finals" as const,
+                              matchNumber: matchNum,
+                              scheduleTime: 0,
+                              teams: [],
+                            };
+                            onPick(picked);
+                            onClose();
+                          }}
+                          disabled={completed.has(`f${matchNum}`)}
+                          className={`group relative p-8 border-2 border-gray-300 rounded-2xl transition-all ${completed.has(`f${matchNum}`) ? "opacity-45 cursor-not-allowed bg-gray-100" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
+                        >
+                          <div className="text-center">
+                            <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
+                              F{matchNum}
+                            </div>
+                            <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">{`Finals ${matchNum}`}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </>
         )}
