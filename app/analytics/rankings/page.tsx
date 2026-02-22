@@ -59,13 +59,13 @@ function isPracticeEntry(entry: ScoutingEntry) {
 function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
   if (game === "REBUILT") {
     const explicit = Number(entry.estimatedScore || 0);
-    if (explicit > 0) return explicit + Number(entry.penaltyPoints || 0);
+    if (explicit > 0) return explicit;
     const autoFuel = Number(entry.auto?.estimatedFuel || 0);
     const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
     const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
     const end = String(entry.endgame?.status || "").toLowerCase();
     const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
-    return autoFuel + teleFuel + autoClimb + endgameClimb + Number(entry.penaltyPoints || 0);
+    return autoFuel + teleFuel + autoClimb + endgameClimb;
   }
   return (
     (entry.leftStartingZone ? 3 : 0) +
