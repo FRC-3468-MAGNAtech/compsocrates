@@ -89,6 +89,7 @@ type Entry = {
     estimatedFuel?: number;
   };
   endgame?: {
+    cycleTimes?: number[];
     failedClimb?: number;
     status?: string;
   };
@@ -203,6 +204,8 @@ type TbaMatchRow = {
 const REBUILT_PRELOAD_RANGES = ["0", "1-2", "3-4", "5-6", "7-8"];
 const REBUILT_BPS_RANGES = ["0", "1-3", "4-6", "7-9", "10+"];
 const REBUILT_CARRY_RANGES = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
+const REBUILT_BPS_VALUES = [0, 2, 5, 8, 10];
+const REBUILT_CARRY_VALUES = [0, 12, 23, 32, 42, 53, 54];
 
 function rebuiltPreloadRange(scale?: number) {
   const idx = Math.max(0, Math.min(4, Number(scale ?? 0)));
@@ -217,6 +220,21 @@ function rebuiltBpsRange(scale?: number) {
 function rebuiltCarryRange(scale?: number) {
   const idx = Math.max(0, Math.min(6, Number(scale ?? 0)));
   return REBUILT_CARRY_RANGES[idx];
+}
+
+function rebuiltFuelFromCycles(cycles: number[] | undefined, bpsScale: number, carryScale: number) {
+  if (!Array.isArray(cycles) || cycles.length === 0) return 0;
+  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(4, Number(bpsScale || 0)))] || 0;
+  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(6, Number(carryScale || 0)))] || 0;
+  return cycles.reduce((sum, seconds) => {
+    const sec = Number(seconds || 0);
+    if (!Number.isFinite(sec) || sec <= 0) return sum;
+    return sum + Math.max(0, Math.round(Math.min(carryCap, bps * sec)));
+  }, 0);
+}
+
+function formatCyclesCell(cycles: number[] | undefined) {
+  return Array.isArray(cycles) && cycles.length > 0 ? cycles.map((v) => Number(v).toFixed(2)).join(", ") : "-";
 }
 
 function inferAllianceColor(entry: Entry): "red" | "blue" | null {
@@ -1346,10 +1364,10 @@ function AnalyticsPageContent() {
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
                 <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
-                <th className="bg-green-300 text-center" colSpan={5}>Autonomous</th>
-                <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
+                <th className="bg-green-300 text-center" colSpan={6}>Autonomous</th>
+                <th className="bg-blue-300 text-center" colSpan={9}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={3}>Endgame</th>
-                <th className="bg-pink-300 text-center" colSpan={5}>General</th>
+                <th className="bg-pink-300 text-center" colSpan={6}>General</th>
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -1357,15 +1375,17 @@ function AnalyticsPageContent() {
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
+                <th className="bg-green-200 text-center" colSpan={1}>Cycles</th>
                 <th className="bg-blue-200 text-center" colSpan={8}>Fuel</th>
-                <th className="bg-blue-200 text-center" colSpan={5}>Cycles (s)</th>
+                <th className="bg-blue-200 text-center" colSpan={1}>Cycles</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
-                <th className="bg-purple-200 text-center" colSpan={1}>Incidents</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Cycles</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Incidents</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Score</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
                 <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>
-                <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
                 <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
@@ -1377,6 +1397,7 @@ function AnalyticsPageContent() {
                 <th className="text-center">Carry</th>
                 <th className="text-center">Fuel</th>
                 <th className="text-center">Climb Pts</th>
+                <th className="text-center">Cycles</th>
                 <th className="text-center">BPS</th>
                 <th className="text-center">Carry</th>
                 <th className="text-center">Transition</th>
@@ -1385,13 +1406,10 @@ function AnalyticsPageContent() {
                 <th className="text-center">Shift 3</th>
                 <th className="text-center">Shift 4</th>
                 <th className="text-center">Fuel Used</th>
-                <th className="text-center">Transition Cycles</th>
-                <th className="text-center">Shift 1 Cycles</th>
-                <th className="text-center">Shift 2 Cycles</th>
-                <th className="text-center">Shift 3 Cycles</th>
-                <th className="text-center">Shift 4 Cycles</th>
+                <th className="text-center">Cycles</th>
                 <th className="text-center">End Place</th>
                 <th className="text-center">Climb Pts</th>
+                <th className="text-center">Cycles</th>
                 <th className="text-center">Incidents</th>
                 <th className="text-center">Total Used</th>
                 <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
@@ -1408,8 +1426,20 @@ function AnalyticsPageContent() {
                 const end = String(entry.endgame?.status || "").toLowerCase();
                 const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
                 const totalUsed = autoFuel + teleFuel + autoClimb + endgameClimb;
-                const formatCycles = (cycles?: number[]) =>
-                  Array.isArray(cycles) && cycles.length > 0 ? cycles.map((v) => v.toFixed(2)).join(", ") : "-";
+                const teleBpsScale = Number(entry.teleop?.bpsScale || 0);
+                const teleCarryScale = Number(entry.teleop?.carryingScale || 0);
+                const transitionFuel = rebuiltFuelFromCycles(entry.teleop?.transitionCycles, teleBpsScale, teleCarryScale);
+                const shift1Fuel = rebuiltFuelFromCycles(entry.teleop?.shift1Cycles, teleBpsScale, teleCarryScale);
+                const shift2Fuel = rebuiltFuelFromCycles(entry.teleop?.shift2Cycles, teleBpsScale, teleCarryScale);
+                const shift3Fuel = rebuiltFuelFromCycles(entry.teleop?.shift3Cycles, teleBpsScale, teleCarryScale);
+                const shift4Fuel = rebuiltFuelFromCycles(entry.teleop?.shift4Cycles, teleBpsScale, teleCarryScale);
+                const teleCyclesCell = [
+                  `T: ${formatCyclesCell(entry.teleop?.transitionCycles)}`,
+                  `S1: ${formatCyclesCell(entry.teleop?.shift1Cycles)}`,
+                  `S2: ${formatCyclesCell(entry.teleop?.shift2Cycles)}`,
+                  `S3: ${formatCyclesCell(entry.teleop?.shift3Cycles)}`,
+                  `S4: ${formatCyclesCell(entry.teleop?.shift4Cycles)}`,
+                ].join(" | ");
                 return (
                 <tr key={entry.id}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
@@ -1421,21 +1451,19 @@ function AnalyticsPageContent() {
                   <td className="text-center">{formatApprox(rebuiltCarryRange(entry.auto?.carryingScale))}</td>
                   <td className="text-center">{autoFuel}</td>
                   <td className="text-center">{autoClimb}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.auto?.cycleTimes)}</td>
                   <td className="text-center">{formatApprox(rebuiltBpsRange(entry.teleop?.bpsScale))}</td>
                   <td className="text-center">{formatApprox(rebuiltCarryRange(entry.teleop?.carryingScale))}</td>
-                  <td className="text-center">{formatApprox(Array.isArray(entry.teleop?.transitionCycles) ? entry.teleop.transitionCycles.length : 0)}</td>
-                  <td className="text-center">{formatApprox(Array.isArray(entry.teleop?.shift1Cycles) ? entry.teleop.shift1Cycles.length : 0)}</td>
-                  <td className="text-center">{formatApprox(Array.isArray(entry.teleop?.shift2Cycles) ? entry.teleop.shift2Cycles.length : 0)}</td>
-                  <td className="text-center">{formatApprox(Array.isArray(entry.teleop?.shift3Cycles) ? entry.teleop.shift3Cycles.length : 0)}</td>
-                  <td className="text-center">{formatApprox(Array.isArray(entry.teleop?.shift4Cycles) ? entry.teleop.shift4Cycles.length : 0)}</td>
+                  <td className="text-center">{transitionFuel}</td>
+                  <td className="text-center">{shift1Fuel}</td>
+                  <td className="text-center">{shift2Fuel}</td>
+                  <td className="text-center">{shift3Fuel}</td>
+                  <td className="text-center">{shift4Fuel}</td>
                   <td className="text-center">{teleFuel}</td>
-                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCycles(entry.teleop?.transitionCycles)}</td>
-                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCycles(entry.teleop?.shift1Cycles)}</td>
-                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCycles(entry.teleop?.shift2Cycles)}</td>
-                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCycles(entry.teleop?.shift3Cycles)}</td>
-                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCycles(entry.teleop?.shift4Cycles)}</td>
+                  <td className="text-left align-top" style={{ minWidth: "360px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{teleCyclesCell}</td>
                   <td className="text-center">{entry.endgame?.status || entry.stageStatus || "-"}</td>
                   <td className="text-center">{endgameClimb}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.endgame?.cycleTimes)}</td>
                   <td className="text-center">
                     {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                   </td>
