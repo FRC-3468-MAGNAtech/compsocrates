@@ -1,3 +1,5 @@
+"use client";
+
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth, db } from "@/app/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -12,6 +14,7 @@ export default function GoogleSignInButton() {
   async function handleGoogleSignIn() {
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
@@ -37,9 +40,10 @@ export default function GoogleSignInButton() {
         const userData = userDoc.data() as { role?: string; roles?: string[]; teamId?: string };
         router.push(getDashboardRoute({ ...userData, role: normalizeLegacyRole(userData.role) }));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Google sign-in error:", error);
-      alert(error.message || "Failed to sign in with Google");
+      const message = error instanceof Error ? error.message : "Failed to sign in with Google";
+      alert(message);
     }
   }
 

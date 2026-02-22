@@ -32,14 +32,19 @@ type DashboardMatch = {
 function filterEventsByAttendance(
   events: UpcomingEvent[],
   attendanceByEvent: Record<string, string[]>,
+  uid: string,
   displayName: string,
   isTeamAdmin: boolean
 ) {
   if (isTeamAdmin) return events;
+  const normalizedUid = uid.trim();
   const normalizedName = displayName.trim().toLowerCase();
   return events.filter((event) => {
     const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
-    return attendees.some((name) => String(name || "").trim().toLowerCase() === normalizedName);
+    return attendees.some((value) => {
+      const safe = String(value || "").trim();
+      return safe === normalizedUid || safe.toLowerCase() === normalizedName;
+    });
   });
 }
 
@@ -126,6 +131,7 @@ function CoachDashboardContent() {
       const visibleEvents = filterEventsByAttendance(
         events,
         attendanceByEvent,
+        userData.uid || "",
         userData.displayName || "",
         Boolean(userData.isTeamAdmin)
       );

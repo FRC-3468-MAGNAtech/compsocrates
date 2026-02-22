@@ -25,14 +25,19 @@ type DashboardMatch = {
 function filterEventsByAttendance(
   events: UpcomingEvent[],
   attendanceByEvent: Record<string, string[]>,
+  uid: string,
   displayName: string,
   isTeamAdmin: boolean
 ) {
   if (isTeamAdmin) return events;
+  const normalizedUid = uid.trim();
   const normalizedName = displayName.trim().toLowerCase();
   return events.filter((event) => {
     const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
-    return attendees.some((name) => String(name || "").trim().toLowerCase() === normalizedName);
+    return attendees.some((value) => {
+      const safe = String(value || "").trim();
+      return safe === normalizedUid || safe.toLowerCase() === normalizedName;
+    });
   });
 }
 
@@ -152,6 +157,7 @@ function TeamRoleDashboardContent({
       const visibleEvents = filterEventsByAttendance(
         events,
         attendanceByEvent,
+        userData.uid || "",
         userData.displayName || "",
         Boolean(userData.isTeamAdmin)
       );
@@ -294,7 +300,7 @@ function TeamRoleDashboardContent({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm text-gray-700">No active competition detected yet.</p>
                       <button
-                        onClick={() => router.push("/event-selection")}
+                        onClick={() => router.push("/event-details")}
                         className="px-4 py-2 rounded-lg text-white font-medium"
                         style={{ backgroundColor: "var(--primary-color)" }}
                       >
@@ -320,7 +326,7 @@ function TeamRoleDashboardContent({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm text-gray-700">No team matches are assigned yet.</p>
                       <button
-                        onClick={() => router.push("/event-details")}
+                        onClick={() => router.push("/match-list")}
                         className="px-4 py-2 rounded-lg text-white font-medium"
                         style={{ backgroundColor: "var(--primary-color)" }}
                       >

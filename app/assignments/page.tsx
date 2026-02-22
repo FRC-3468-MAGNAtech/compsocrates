@@ -19,6 +19,7 @@ import { useAuth } from "@/app/AuthContext";
 import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { getUserRoles } from "@/app/utils/roles";
 
 interface Assignment {
   id: string;
@@ -93,6 +94,7 @@ function AssignmentsContent() {
   const [selectedPitScoutId, setSelectedPitScoutId] = useState("");
   const [selectedPitTeamNumber, setSelectedPitTeamNumber] = useState("");
   const [selectedMatchType, setSelectedMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
+  const [assignmentModalMode, setAssignmentModalMode] = useState<"match" | "pit">("match");
 
   const events = [
     { key: "2026arli", name: "Arkansas Regional" },
@@ -244,6 +246,7 @@ function AssignmentsContent() {
       });
       setSelectedPitScoutId("");
       setSelectedPitTeamNumber("");
+      setShowAssignModal(false);
       await loadData();
     } catch (error) {
       console.error("Error creating pit assignment:", error);
@@ -281,13 +284,18 @@ function AssignmentsContent() {
       return;
     }
 
-    const attendeeNames = eventAttendees[selectedEvent] || [];
-    const attendeeMembers = members.filter((member) => attendeeNames.includes(member.displayName));
-    const eligibleMembers = (attendeeMembers.length > 0 ? attendeeMembers : members).filter(
-      (member) => member.displayName.trim().length > 0
+    const attendeeKeys = eventAttendees[selectedEvent] || [];
+    const attendeeMembers = members.filter(
+      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
     );
+    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
+    const eligibleMembers = sourceMembers.filter((member) => {
+      if (!member.displayName.trim()) return false;
+      const roles = getUserRoles({ role: member.role });
+      return roles.includes("match-scout") || roles.includes("lead-scout");
+    });
     if (eligibleMembers.length === 0) {
-      alert("No available members to assign.");
+      alert("No eligible scout-role members available to assign.");
       return;
     }
 
@@ -325,11 +333,11 @@ function AssignmentsContent() {
     }
   }
 
-  function toggleAttendee(displayName: string) {
+  function toggleAttendee(member: TeamMember) {
     const current = eventAttendees[selectedEvent] || [];
-    const updated = current.includes(displayName)
-      ? current.filter((name) => name !== displayName)
-      : [...current, displayName];
+    const hasMember = current.includes(member.uid) || current.includes(member.displayName);
+    const cleaned = current.filter((value) => value !== member.displayName);
+    const updated = hasMember ? cleaned.filter((value) => value !== member.uid) : [...cleaned, member.uid];
     setEventAttendees((prev) => ({ ...prev, [selectedEvent]: updated }));
   }
 
@@ -395,8 +403,11 @@ function AssignmentsContent() {
                 <label key={member.uid} className="flex items-center gap-2 p-3 border rounded-lg">
                   <input
                     type="checkbox"
-                    checked={(eventAttendees[selectedEvent] || []).includes(member.displayName)}
-                    onChange={() => toggleAttendee(member.displayName)}
+                    checked={
+                      (eventAttendees[selectedEvent] || []).includes(member.uid) ||
+                      (eventAttendees[selectedEvent] || []).includes(member.displayName)
+                    }
+                    onChange={() => toggleAttendee(member)}
                   />
                   <span className="font-medium">{member.displayName}</span>
                   <span className="text-xs text-gray-500 capitalize">{member.role}</span>
@@ -472,41 +483,7 @@ function AssignmentsContent() {
 
           <div className="bg-white rounded-xl shadow-md p-6 mt-6">
             <h2 className="text-xl font-semibold mb-1">Pit Scouting Assignments</h2>
-            <p className="text-sm text-gray-600 mb-4">Assign one pit scout per team for this event.</p>
-            <div className="grid md:grid-cols-3 gap-3 mb-4">
-              <select
-                className="w-full border rounded p-2"
-                value={selectedPitScoutId}
-                onChange={(e) => setSelectedPitScoutId(e.target.value)}
-              >
-                <option value="">Select Member</option>
-                {members.map((member) => (
-                  <option key={member.uid} value={member.uid}>
-                    {member.displayName}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="w-full border rounded p-2"
-                value={selectedPitTeamNumber}
-                onChange={(e) => setSelectedPitTeamNumber(e.target.value)}
-              >
-                <option value="">Select Team</option>
-                {pitTeamOptions.map((teamNumber) => (
-                  <option key={teamNumber} value={teamNumber}>
-                    Team {teamNumber}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => void createPitAssignment()}
-                className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
-                style={{ backgroundColor: "var(--primary-color)" }}
-                disabled={!selectedPitScoutId || !selectedPitTeamNumber}
-              >
-                Add Pit Assignment
-              </button>
-            </div>
+            <p className="text-sm text-gray-600 mb-4">Use New Assignment modal to add pit assignments.</p>
 
             <div className="overflow-x-auto border rounded-lg">
               <table className="w-full">
@@ -601,8 +578,23 @@ function AssignmentsContent() {
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
                 <h2 className="text-2xl font-bold mb-4 theme-text">New Assignment</h2>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <button
+                    onClick={() => setAssignmentModalMode("match")}
+                    className={`py-2 rounded text-sm font-medium ${assignmentModalMode === "match" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                  >
+                    Match Scout
+                  </button>
+                  <button
+                    onClick={() => setAssignmentModalMode("pit")}
+                    className={`py-2 rounded text-sm font-medium ${assignmentModalMode === "pit" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                  >
+                    Pit Scout
+                  </button>
+                </div>
                 <div className="space-y-4">
-                  <div>
+                  {assignmentModalMode === "match" ? (
+                    <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Match</label>
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       <button
@@ -655,13 +647,33 @@ function AssignmentsContent() {
                         <p className="text-sm text-gray-500 text-center py-4">No matches found for this type.</p>
                       )}
                     </div>
-                  </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                      <select
+                        className="w-full border rounded p-2"
+                        value={selectedPitTeamNumber}
+                        onChange={(e) => setSelectedPitTeamNumber(e.target.value)}
+                      >
+                        <option value="">Select Team</option>
+                        {pitTeamOptions.map((teamNumber) => (
+                          <option key={teamNumber} value={teamNumber}>
+                            Team {teamNumber}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Member</label>
                     <select
                       className="w-full border rounded p-2"
-                      value={selectedScoutId}
-                      onChange={(e) => setSelectedScoutId(e.target.value)}
+                      value={assignmentModalMode === "match" ? selectedScoutId : selectedPitScoutId}
+                      onChange={(e) => {
+                        if (assignmentModalMode === "match") setSelectedScoutId(e.target.value);
+                        else setSelectedPitScoutId(e.target.value);
+                      }}
                     >
                       <option value="">Select Member</option>
                       {members.map((member) => (
@@ -671,6 +683,7 @@ function AssignmentsContent() {
                       ))}
                     </select>
                   </div>
+                  {assignmentModalMode === "match" && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
                     <select
@@ -687,13 +700,18 @@ function AssignmentsContent() {
                       ))}
                     </select>
                   </div>
+                  )}
                 </div>
                 <div className="flex gap-3 mt-6">
                   <button
-                    onClick={createAssignment}
+                    onClick={assignmentModalMode === "match" ? createAssignment : () => void createPitAssignment()}
                     className="flex-1 py-2 rounded text-white font-semibold disabled:opacity-50"
                     style={{ backgroundColor: "var(--primary-color)" }}
-                    disabled={!selectedMatchKey || !selectedScoutId || !selectedTeamNumber}
+                    disabled={
+                      assignmentModalMode === "match"
+                        ? (!selectedMatchKey || !selectedScoutId || !selectedTeamNumber)
+                        : (!selectedPitScoutId || !selectedPitTeamNumber)
+                    }
                   >
                     Create
                   </button>

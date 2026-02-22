@@ -99,9 +99,11 @@ export default function Sidebar() {
           { href: "/event-selection", label: "Event Selection", icon: Calendar },
         ]
       : []),
+    { href: "/match-list", label: "Match List", icon: Calendar },
     ...(canManageAssignments ? [{ href: "/assignments", label: "Assignments", icon: Calendar }] : []),
     { href: "/people", label: "People", icon: UserCircle2 },
     ...(isLeadRole ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
+    ...(userData.isTeamAdmin ? [{ href: "/dashboard-selector", label: "Dashboard Selector", icon: Settings }] : []),
     ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),
   ];
 

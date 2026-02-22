@@ -16,6 +16,7 @@ import {
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
+import { getEventMatches } from "@/app/utils/tba-api";
 
 type Entry = {
   id: string;
@@ -140,12 +141,6 @@ function matchLabel(entry: Entry) {
   if (entry.matchType === "qualification") return `Q${num}`;
   if (entry.matchType === "finals") return `F${num}`;
   return num;
-}
-
-function inferAlliance(entry: Entry): "red" | "blue" | null {
-  const direct = String(entry.alliance || entry.allianceColor || entry.assignedAlliance || "").toLowerCase();
-  if (direct === "red" || direct === "blue") return direct;
-  return null;
 }
 
 function isPracticeScoutingEntry(entry: Entry) {
@@ -300,6 +295,8 @@ function AnalyticsPageContent() {
   });
   const [importEvent, setImportEvent] = useState("app-testing");
   const [selectedAccuracyEntry, setSelectedAccuracyEntry] = useState<Entry | null>(null);
+  const [accuracyModalLoading, setAccuracyModalLoading] = useState(false);
+  const [allRobotsScoutedByApi, setAllRobotsScoutedByApi] = useState<"yes" | "no" | "unknown">("unknown");
 
   const eventOptions = useMemo(
     () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(rawData, selectedGame)],
@@ -413,6 +410,44 @@ function AnalyticsPageContent() {
     if (!ok) return;
     await deleteDoc(doc(db, "scouting", entry.id));
     await loadData();
+  }
+
+  async function loadAccuracyDetails(entry: Entry) {
+    setAccuracyModalLoading(true);
+    setAllRobotsScoutedByApi("unknown");
+    try {
+      const eventKey = String(entry.eventKey || "").trim();
+      const matchType = String(entry.matchType || "").toLowerCase();
+      const matchNumber = Number(String(entry.matchNumber || "").replace(/\D/g, ""));
+      if (!eventKey || !matchNumber || !["practice", "qualification", "finals"].includes(matchType)) {
+        setAllRobotsScoutedByApi("unknown");
+        return;
+      }
+      const compLevel = matchType === "qualification" || matchType === "practice" ? "qm" : "f";
+      const matches = await getEventMatches(eventKey);
+      const match = matches.find((row) => row.comp_level === compLevel && row.match_number === matchNumber);
+      if (!match) {
+        setAllRobotsScoutedByApi("unknown");
+        return;
+      }
+      const officialTeams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+        .map((key) => key.replace("frc", "").trim())
+        .filter(Boolean);
+      const scoutedTeams = new Set(
+        rawData
+          .filter((row) => String(row.eventKey || "") === eventKey)
+          .filter((row) => String(row.matchType || "").toLowerCase() === matchType)
+          .filter((row) => Number(String(row.matchNumber || "").replace(/\D/g, "")) === matchNumber)
+          .map((row) => String(row.teamNumber || "").trim())
+          .filter(Boolean)
+      );
+      setAllRobotsScoutedByApi(officialTeams.every((team) => scoutedTeams.has(team)) ? "yes" : "no");
+    } catch (error) {
+      console.error("Failed to load alliance robot details:", error);
+      setAllRobotsScoutedByApi("unknown");
+    } finally {
+      setAccuracyModalLoading(false);
+    }
   }
 
   async function handleCleanBlankEntries() {
@@ -1029,7 +1064,10 @@ function AnalyticsPageContent() {
                   {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
                     <button
                       type="button"
-                      onClick={() => setSelectedAccuracyEntry(entry)}
+                      onClick={() => {
+                        setSelectedAccuracyEntry(entry);
+                        void loadAccuracyDetails(entry);
+                      }}
                       className="underline decoration-dotted underline-offset-2"
                       style={{ color: "var(--primary-color)" }}
                     >
@@ -1077,24 +1115,13 @@ function AnalyticsPageContent() {
                   : accuracy > 0
                   ? Math.round(scoutedPoints / (accuracy / 100))
                   : null;
-              const alliance = inferAlliance(selectedAccuracyEntry);
-              const allianceTeamCount =
-                alliance && selectedAccuracyEntry.matchId
-                  ? new Set(
-                      data
-                        .filter((row) => row.matchId === selectedAccuracyEntry.matchId)
-                        .filter((row) => inferAlliance(row) === alliance)
-                        .map((row) => String(row.teamNumber || "").trim())
-                        .filter(Boolean)
-                    ).size
-                  : 0;
               return (
                 <div className="space-y-2 text-sm">
                   <p><span className="font-semibold">Scouted Points:</span> {scoutedPoints}</p>
                   <p><span className="font-semibold">Actual Points:</span> {inferredActual ?? "Unavailable"}</p>
                   <p>
                     <span className="font-semibold">All Robots Scouted:</span>{" "}
-                    {alliance ? (allianceTeamCount >= 3 ? "Yes" : "No") : "Unknown"}
+                    {accuracyModalLoading ? "Checking..." : allRobotsScoutedByApi === "yes" ? "Yes" : allRobotsScoutedByApi === "no" ? "No" : "Unknown"}
                   </p>
                   <p><span className="font-semibold">Penalty Points:</span> {Number(selectedAccuracyEntry.penaltyPoints || 0)}</p>
                 </div>

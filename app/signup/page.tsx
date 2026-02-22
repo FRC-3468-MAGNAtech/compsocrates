@@ -137,6 +137,16 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function toFriendlyAuthError(message: string) {
+    const lower = message.toLowerCase();
+    if (lower.includes("email-already-in-use")) return "That email is already in use. Try logging in instead.";
+    if (lower.includes("invalid-email")) return "That email address is invalid.";
+    if (lower.includes("weak-password")) return "Password is too weak. Use 8+ chars with a capital letter, number, and symbol.";
+    if (lower.includes("network-request-failed")) return "Network error. Check connection and try again.";
+    if (lower.includes("popup")) return "Google popup was blocked or closed. Enable popups and try again.";
+    return message || "Unable to create account right now.";
+  }
+
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -216,7 +226,7 @@ export default function SignupPage() {
     } catch (error: unknown) {
       console.error("Signup error:", error);
       const message = error instanceof Error ? error.message : "An error occurred during signup";
-      setError(message);
+      setError(toFriendlyAuthError(message));
     } finally {
       setLoading(false);
     }

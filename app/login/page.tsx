@@ -22,6 +22,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function toFriendlyAuthError(message: string) {
+    const lower = message.toLowerCase();
+    if (lower.includes("invalid-credential") || lower.includes("wrong-password") || lower.includes("user-not-found")) {
+      return "Email or password is incorrect.";
+    }
+    if (lower.includes("too-many-requests")) return "Too many attempts. Try again in a few minutes.";
+    if (lower.includes("network-request-failed")) return "Network error. Check connection and try again.";
+    if (lower.includes("popup")) return "Google popup was blocked or closed. Enable popups and try again.";
+    return message || "Login failed.";
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -37,9 +48,10 @@ export default function LoginPage() {
       const userDoc = await getDoc(doc(db, "users", currentUser.uid));
       const data = userDoc.exists() ? userDoc.data() : null;
       router.push(getDashboardRoute(data as { role?: string; roles?: string[]; teamId?: string } | null));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Login error:", error);
-      setError(error.message || "Invalid email or password");
+      const message = error instanceof Error ? error.message : "Invalid email or password";
+      setError(toFriendlyAuthError(message));
     } finally {
       setLoading(false);
     }
@@ -51,6 +63,7 @@ export default function LoginPage() {
 
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
@@ -77,9 +90,10 @@ export default function LoginPage() {
         const userData = userDoc.data();
         router.push(getDashboardRoute(userData));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Google sign-in error:", error);
-      setError(error.message || "Failed to sign in with Google");
+      const message = error instanceof Error ? error.message : "Failed to sign in with Google";
+      setError(toFriendlyAuthError(message));
     } finally {
       setLoading(false);
     }
@@ -159,7 +173,7 @@ export default function LoginPage() {
         </button>
 
         <p className="text-center text-sm text-gray-600 mt-6">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link href="/signup" className="font-semibold hover:underline" style={{ color: "var(--primary-color)" }}>
             Sign Up
           </Link>
