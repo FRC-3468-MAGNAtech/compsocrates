@@ -191,6 +191,25 @@ type MatchIdentity = {
   matchNumber: number;
 };
 
+const REBUILT_PRELOAD_RANGES = ["0", "1-2", "3-4", "5-6", "7-8"];
+const REBUILT_BPS_RANGES = ["0", "1-3", "4-6", "7-9", "10+"];
+const REBUILT_CARRY_RANGES = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
+
+function rebuiltPreloadRange(scale?: number) {
+  const idx = Math.max(0, Math.min(4, Number(scale ?? 0)));
+  return REBUILT_PRELOAD_RANGES[idx];
+}
+
+function rebuiltBpsRange(scale?: number) {
+  const idx = Math.max(0, Math.min(4, Number(scale ?? 0)));
+  return REBUILT_BPS_RANGES[idx];
+}
+
+function rebuiltCarryRange(scale?: number) {
+  const idx = Math.max(0, Math.min(6, Number(scale ?? 0)));
+  return REBUILT_CARRY_RANGES[idx];
+}
+
 function inferAllianceColor(entry: Entry): "red" | "blue" | null {
   const raw = String(entry.allianceColor || entry.assignedAlliance || entry.alliance || "")
     .trim()
@@ -1103,21 +1122,21 @@ function AnalyticsPageContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
+                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
                 <th className="bg-green-300 text-center" colSpan={5}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={7}>Teleoperated</th>
-                <th className="bg-purple-300 text-center" colSpan={1}>Endgame</th>
-                <th className="bg-pink-300 text-center" colSpan={5}>General</th>
+                <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
+                <th className="bg-pink-300 text-center" colSpan={4}>General</th>
               </tr>
               <tr>
-                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
-                <th className="bg-yellow-200 text-center" colSpan={1}>Pre-Match</th>
+                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
+                <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-blue-200 text-center" colSpan={7}>Fuel</th>
-                <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Incidents</th>
+                <th className="bg-purple-200 text-center" colSpan={2}>End Place</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
                 <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>
                 <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
@@ -1154,13 +1173,13 @@ function AnalyticsPageContent() {
                   <td className="sticky-left-1 bg-white font-semibold text-center">{entry.teamNumber || "-"}</td>
                   <td className="text-center">{entry.scoutName || "-"}</td>
                   <td className="text-center">{entry.startingPosition || "-"}</td>
-                  <td className="text-center">{Number(entry.auto?.preloadScale ?? 0)}</td>
-                  <td className="text-center">{Number(entry.auto?.bpsScale ?? 0)}</td>
-                  <td className="text-center">{Number(entry.auto?.carryingScale ?? 0)}</td>
-                  <td className="text-center">{Number(entry.auto?.estimatedFuel || 0)}</td>
+                  <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
+                  <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
+                  <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
+                  <td className="text-center">{`~${Number(entry.auto?.estimatedFuel || 0)}`}</td>
                   <td className="text-center">{entry.auto?.successfulClimb ? "Y" : "N"}</td>
-                  <td className="text-center">{Number(entry.teleop?.bpsScale ?? 0)}</td>
-                  <td className="text-center">{Number(entry.teleop?.carryingScale ?? 0)}</td>
+                  <td className="text-center">{rebuiltBpsRange(entry.teleop?.bpsScale)}</td>
+                  <td className="text-center">{rebuiltCarryRange(entry.teleop?.carryingScale)}</td>
                   <td className="text-center">{Array.isArray(entry.teleop?.transitionCycles) ? entry.teleop.transitionCycles.length : 0}</td>
                   <td className="text-center">{Array.isArray(entry.teleop?.shift1Cycles) ? entry.teleop.shift1Cycles.length : 0}</td>
                   <td className="text-center">{Array.isArray(entry.teleop?.shift2Cycles) ? entry.teleop.shift2Cycles.length : 0}</td>

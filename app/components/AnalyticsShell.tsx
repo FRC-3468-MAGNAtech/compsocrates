@@ -17,17 +17,18 @@ type AnalyticsShellProps = {
   onSelectedEventChange?: (eventId: string) => void;
 };
 
-const analyticsLinks = [
+const analyticsLinks: Array<{ href: string; label: string } | { divider: true }> = [
   { href: "/analytics", label: "Match Analytics" },
-  { href: "/analytics/team-averages", label: "Team Averages" },
-  { href: "/analytics/match-breakdown", label: "Match Breakdown" },
-  { href: "/analytics/rankings", label: "Rankings" },
-  { href: "/analytics/pick-list", label: "Pick List" },
   { href: "/analytics/pit", label: "Pit Analytics" },
   { href: "/analytics/team-strategy", label: "Team Strategy" },
   { href: "/analytics/match-strategy", label: "Match Strategy" },
   { href: "/analytics/drive-reflection", label: "Drive Reflection" },
   { href: "/analytics/helper", label: "Helper Reports" },
+  { divider: true },
+  { href: "/analytics/team-averages", label: "Team Averages" },
+  { href: "/analytics/match-breakdown", label: "Match Breakdown" },
+  { href: "/analytics/rankings", label: "Rankings" },
+  { href: "/analytics/pick-list", label: "Pick List" },
 ];
 
 export default function AnalyticsShell({
@@ -129,7 +130,10 @@ export default function AnalyticsShell({
             )}
           </div>
           <nav className="p-3 space-y-1">
-            {analyticsLinks.map((item) => {
+            {analyticsLinks.map((item, index) => {
+              if ("divider" in item) {
+                return <hr key={`divider-${index}`} className="my-2 border-gray-300" />;
+              }
               const active = pathname === item.href;
               return (
                 <Link
