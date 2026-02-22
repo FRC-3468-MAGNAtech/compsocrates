@@ -8,6 +8,7 @@ import Sidebar from "@/app/components/Sidebar";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { getEventMatches } from "@/app/utils/tba-api";
+import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 type TeamPickerProps = {
   open: boolean;
@@ -83,9 +84,8 @@ function TeamStrategyFormContent() {
     async function loadContext() {
       if (!userData?.teamId) return;
       try {
-        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        const selectedEvents = (teamDoc.exists() ? teamDoc.data().selectedEvents : []) as string[] | undefined;
-        const resolvedEvent = Array.isArray(selectedEvents) && selectedEvents.length > 0 ? String(selectedEvents[0]) : "app-testing";
+        await getDoc(doc(db, "teams", userData.teamId));
+        const resolvedEvent = classifyRebuiltEventByTimestamp(Date.now());
         setEventKey(resolvedEvent);
 
         if (resolvedEvent !== "app-testing") {

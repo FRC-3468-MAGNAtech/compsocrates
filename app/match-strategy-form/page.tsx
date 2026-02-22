@@ -8,6 +8,7 @@ import Sidebar from "@/app/components/Sidebar";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
 
 type RobotPlan = {
   teamNumber: string;
@@ -53,6 +54,19 @@ function labelForMatch(match: TBAMatch) {
   if (match.comp_level === "qf") return `QF${match.set_number}-${match.match_number}`;
   if (match.comp_level === "f") return `F${match.match_number}`;
   return match.key;
+}
+
+function displayMatchLabel(option: MatchOption | null): string {
+  if (!option) return "No match selected";
+  const rawKey = String(option.key || "").toLowerCase();
+  const number = Number(rawKey.replace(/\D/g, "")) || Number(String(option.label || "").replace(/\D/g, "")) || 0;
+  if (rawKey.startsWith("p")) return `Practice Match ${number || 1}`;
+  if (rawKey.startsWith("q")) return `Qualification Match ${number || 1}`;
+  if (rawKey.startsWith("f")) return `Finals ${number || 1}`;
+  if (/^q/i.test(option.label)) return `Qualification Match ${number || 1}`;
+  if (/^f/i.test(option.label)) return `Finals ${number || 1}`;
+  if (/practice/i.test(option.label)) return `Practice Match ${number || 1}`;
+  return option.label || "No match selected";
 }
 
 function MatchPickerModal({
@@ -101,8 +115,7 @@ function MatchStrategyFormContent() {
       }
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        const selectedEvents = (teamDoc.exists() ? teamDoc.data().selectedEvents : []) as string[] | undefined;
-        const resolvedEvent = Array.isArray(selectedEvents) && selectedEvents.length > 0 ? String(selectedEvents[0]) : "app-testing";
+        const resolvedEvent = classifyRebuiltEventByTimestamp(Date.now());
         setEventKey(resolvedEvent);
         if (resolvedEvent === "app-testing") {
           const fallback = buildFallbackMatchStrategyMatches();
@@ -228,7 +241,7 @@ function MatchStrategyFormContent() {
       await addDoc(collection(db, "matchStrategyPlans"), {
         eventKey,
         matchKey: selectedMatch.key,
-        matchLabel: selectedMatch.label,
+        matchLabel: displayMatchLabel(selectedMatch),
         scoutId: userData.uid,
         scoutName: userData.displayName || "",
         teamId: userData.teamId || "",
@@ -299,7 +312,7 @@ function MatchStrategyFormContent() {
             <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-sm text-gray-700">Match</span>
-              <span className="font-semibold">{selectedMatch?.label || "No match selected"}</span>
+              <span className="font-semibold">{displayMatchLabel(selectedMatch)}</span>
               <button type="button" onClick={() => setShowMatchPicker(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
             </div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
@@ -362,7 +375,20 @@ function MatchStrategyFormContent() {
         matches={modalMatchOptions}
         onSelect={(key) => {
           setSelectedMatchKey(key);
-          const target = matchOptions.find((match) => match.key === key) || matchOptions.find((match) => match.key === `q${String(key).replace(/\D/g, "")}`);
+          let target = matchOptions.find((match) => match.key === key);
+          if (!target) {
+            const n = Number(String(key).replace(/\D/g, "")) || 1;
+            if (String(key).toLowerCase().startsWith("q")) {
+              target = { key: `q${n}`, label: `Q${n}`, scheduleTime: 0, teams: [] };
+            } else if (String(key).toLowerCase().startsWith("p")) {
+              target = { key: `p${n}`, label: `Practice ${n}`, scheduleTime: 0, teams: [] };
+            } else if (String(key).toLowerCase().startsWith("f")) {
+              target = { key: `f${n}`, label: `F${n}`, scheduleTime: 0, teams: [] };
+            }
+            if (target) {
+              setMatchOptions((prev) => (prev.some((row) => row.key === target!.key) ? prev : [...prev, target!]));
+            }
+          }
           if (target) setRobotTeamDefaults(target, ourTeamNumber);
         }}
       />
