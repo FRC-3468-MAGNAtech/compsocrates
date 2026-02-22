@@ -40,6 +40,17 @@ type ScoutingEntry = {
   teleopNetHumanScored?: number;
   teleopAlgaeRemoved?: boolean;
   penaltyPoints?: number;
+  estimatedScore?: number;
+  auto?: {
+    estimatedFuel?: number;
+    successfulClimb?: boolean;
+  };
+  teleop?: {
+    estimatedFuel?: number;
+  };
+  endgame?: {
+    status?: string;
+  };
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
@@ -47,6 +58,40 @@ type ScoutingEntry = {
 
 function isPracticeEntry(entry: ScoutingEntry) {
   return isPracticeScoutedEntry(entry);
+}
+
+function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
+  if (game === "REBUILT") {
+    const explicit = Number(entry.estimatedScore || 0);
+    if (explicit > 0) return explicit + Number(entry.penaltyPoints || 0);
+    const autoFuel = Number(entry.auto?.estimatedFuel || 0);
+    const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+    const end = String(entry.endgame?.status || "").toLowerCase();
+    const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+    return autoFuel + teleFuel + autoClimb + endgameClimb + Number(entry.penaltyPoints || 0);
+  }
+
+  const auto =
+    (entry.autoCoralL1 || 0) * 3 +
+    (entry.autoCoralL2 || 0) * 4 +
+    (entry.autoCoralL3 || 0) * 6 +
+    (entry.autoCoralL4 || 0) * 7 +
+    (entry.autoAlgaeProcessorScored || 0) * 6 +
+    (entry.autoAlgaeNetScored || 0) * 4 +
+    (entry.leftStartingZone ? 3 : 0);
+  const tele =
+    (entry.teleopCoralL1 || 0) * 2 +
+    (entry.teleopCoralL2 || 0) * 3 +
+    (entry.teleopCoralL3 || 0) * 4 +
+    (entry.teleopCoralL4 || 0) * 5 +
+    (entry.teleopProcessorScored || 0) * 6 +
+    (entry.teleopNetRobotScored || 0) * 4 +
+    (entry.teleopNetHumanScored || 0) * 4 +
+    (entry.teleopAlgaeRemoved ? 2 : 0);
+  const stage = String(entry.stageStatus || "").toLowerCase();
+  const end = stage.includes("deep") ? 12 : stage.includes("shallow") ? 6 : stage.includes("park") ? 2 : 0;
+  return auto + tele + end + Number(entry.penaltyPoints || 0);
 }
 
 function TeamAveragesContent() {
@@ -94,11 +139,7 @@ function TeamAveragesContent() {
     filteredEntries.forEach((e) => {
       const team = e.teamNumber;
       if (!team) return;
-      const auto = (e.autoCoralL1 || 0) * 3 + (e.autoCoralL2 || 0) * 4 + (e.autoCoralL3 || 0) * 6 + (e.autoCoralL4 || 0) * 7 + (e.autoAlgaeProcessorScored || 0) * 6 + (e.autoAlgaeNetScored || 0) * 4 + (e.leftStartingZone ? 3 : 0);
-      const tele = (e.teleopCoralL1 || 0) * 2 + (e.teleopCoralL2 || 0) * 3 + (e.teleopCoralL3 || 0) * 4 + (e.teleopCoralL4 || 0) * 5 + (e.teleopProcessorScored || 0) * 6 + (e.teleopNetRobotScored || 0) * 4 + (e.teleopNetHumanScored || 0) * 4 + (e.teleopAlgaeRemoved ? 2 : 0);
-      const stage = String(e.stageStatus || "").toLowerCase();
-      const end = stage.includes("deep") ? 12 : stage.includes("shallow") ? 6 : stage.includes("park") ? 2 : 0;
-      const total = auto + tele + end + Number(e.penaltyPoints || 0);
+      const total = scoreEntry(e, selectedGame);
       if (!teamData[team]) teamData[team] = [];
       teamData[team].push(total);
     });
@@ -115,7 +156,7 @@ function TeamAveragesContent() {
       };
     });
     return rows.sort((a, b) => b.avgTotal - a.avgTotal);
-  }, [filteredEntries]);
+  }, [filteredEntries, selectedGame]);
 
   return (
     <AnalyticsShell

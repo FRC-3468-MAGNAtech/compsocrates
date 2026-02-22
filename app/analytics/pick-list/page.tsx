@@ -34,12 +34,48 @@ type ScoutingEntry = {
   teleopCoralL3?: number;
   teleopCoralL4?: number;
   penaltyPoints?: number;
+  estimatedScore?: number;
+  auto?: {
+    estimatedFuel?: number;
+    successfulClimb?: boolean;
+  };
+  teleop?: {
+    estimatedFuel?: number;
+  };
+  endgame?: {
+    status?: string;
+  };
   practiceMode?: string;
   isPracticeScouting?: boolean;
 };
 
 function isPracticeEntry(entry: ScoutingEntry) {
   return isPracticeScoutedEntry(entry);
+}
+
+function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
+  if (game === "REBUILT") {
+    const explicit = Number(entry.estimatedScore || 0);
+    if (explicit > 0) return explicit + Number(entry.penaltyPoints || 0);
+    const autoFuel = Number(entry.auto?.estimatedFuel || 0);
+    const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+    const end = String(entry.endgame?.status || "").toLowerCase();
+    const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+    return autoFuel + teleFuel + autoClimb + endgameClimb + Number(entry.penaltyPoints || 0);
+  }
+  return (
+    (entry.leftStartingZone ? 3 : 0) +
+    (entry.autoCoralL1 || 0) * 3 +
+    (entry.autoCoralL2 || 0) * 4 +
+    (entry.autoCoralL3 || 0) * 6 +
+    (entry.autoCoralL4 || 0) * 7 +
+    (entry.teleopCoralL1 || 0) * 2 +
+    (entry.teleopCoralL2 || 0) * 3 +
+    (entry.teleopCoralL3 || 0) * 4 +
+    (entry.teleopCoralL4 || 0) * 5 +
+    Number(entry.penaltyPoints || 0)
+  );
 }
 
 function PickListContent() {
@@ -105,17 +141,7 @@ function PickListContent() {
     const grouped: Record<string, number[]> = {};
     filteredEntries.forEach((e) => {
       if (!e.teamNumber) return;
-      const score =
-        (e.leftStartingZone ? 3 : 0) +
-        (e.autoCoralL1 || 0) * 3 +
-        (e.autoCoralL2 || 0) * 4 +
-        (e.autoCoralL3 || 0) * 6 +
-        (e.autoCoralL4 || 0) * 7 +
-        (e.teleopCoralL1 || 0) * 2 +
-        (e.teleopCoralL2 || 0) * 3 +
-        (e.teleopCoralL3 || 0) * 4 +
-        (e.teleopCoralL4 || 0) * 5 +
-        Number(e.penaltyPoints || 0);
+      const score = scoreEntry(e, selectedGame);
       if (!grouped[e.teamNumber]) grouped[e.teamNumber] = [];
       grouped[e.teamNumber].push(score);
     });
@@ -129,7 +155,7 @@ function PickListContent() {
         pickOrder: pickedTeams.find((p) => p.teamNumber === teamNumber)?.pickOrder,
       }))
       .sort((a, b) => b.avgScore - a.avgScore);
-  }, [filteredEntries, pickedTeams]);
+  }, [filteredEntries, pickedTeams, selectedGame]);
 
   function pickTeam(team: TeamPick) {
     if (!isCoach) return;
