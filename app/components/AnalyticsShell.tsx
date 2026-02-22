@@ -54,19 +54,41 @@ export default function AnalyticsShell({
   }, [collapsed]);
 
   const effectiveEventOptions = (() => {
-    if (selectedGame !== "REEFSCAPE" || !practiceMatchesOnly) return eventOptions;
-    const base = eventOptions.filter((option) => option.id !== "app-testing");
-    const einstein = { id: "2025cmptx", name: "Einstein Field" };
-    const withoutEinstein = base.filter((option) => option.id !== "2025cmptx");
-    const bayouIndex = withoutEinstein.findIndex((option) => option.id === "2025lake");
-    if (bayouIndex >= 0) {
-      return [
-        ...withoutEinstein.slice(0, bayouIndex + 1),
-        einstein,
-        ...withoutEinstein.slice(bayouIndex + 1),
-      ];
+    if (selectedGame === "REEFSCAPE") {
+      if (!practiceMatchesOnly) return eventOptions;
+      const base = eventOptions.filter((option) => option.id !== "app-testing");
+      const einstein = { id: "2025cmptx", name: "Einstein Field" };
+      const withoutEinstein = base.filter((option) => option.id !== "2025cmptx");
+      const bayouIndex = withoutEinstein.findIndex((option) => option.id === "2025lake");
+      if (bayouIndex >= 0) {
+        return [
+          ...withoutEinstein.slice(0, bayouIndex + 1),
+          einstein,
+          ...withoutEinstein.slice(bayouIndex + 1),
+        ];
+      }
+      return [...withoutEinstein, einstein];
     }
-    return [...withoutEinstein, einstein];
+
+    if (selectedGame === "REBUILT") {
+      const withoutWeek0 = eventOptions.filter((option) => option.id !== "2026week0");
+      if (!practiceMatchesOnly) {
+        return withoutWeek0;
+      }
+
+      const week0 = eventOptions.find((option) => option.id === "2026week0") || { id: "2026week0", name: "Week 0" };
+      const arkansasIndex = withoutWeek0.findIndex((option) => option.id === "2026arli");
+      if (arkansasIndex >= 0) {
+        return [
+          ...withoutWeek0.slice(0, arkansasIndex),
+          week0,
+          ...withoutWeek0.slice(arkansasIndex),
+        ];
+      }
+      return [week0, ...withoutWeek0];
+    }
+
+    return eventOptions;
   })();
 
   useEffect(() => {
