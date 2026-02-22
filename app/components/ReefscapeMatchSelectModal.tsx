@@ -187,7 +187,20 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   const current = useMemo(() => options.filter((m) => m.type === step), [options, step]);
   const firstOpen = current.find((m) => !completed.has(m.id))?.id || "";
   const finalsById = useMemo(() => new Map(options.filter((m) => m.type === "finals").map((m) => [m.id, m] as const)), [options]);
-
+  const finalsByNumber = useMemo(() => {
+    const map = new Map<number, T>();
+    options
+      .filter((m) => m.type === "finals")
+      .forEach((m) => {
+        if (!map.has(m.matchNumber)) map.set(m.matchNumber, m);
+      });
+    return map;
+  }, [options]);
+  function isFinalDone(matchNumber: number) {
+    if (completed.has(`f${matchNumber}`)) return true;
+    const opt = finalsByNumber.get(matchNumber);
+    return !!opt && completed.has(opt.id);
+  }
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
       {step === "type" ? (
@@ -250,17 +263,31 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
             <>
               {finalsStep === "bracket" && (
                 <FinalsBracket
-                  completed={new Set(Array.from(completed).filter((id) => id.startsWith("f")))}
+                  completed={new Set(
+                    Array.from({ length: 14 }, (_, i) => i + 1)
+                      .filter((n) => isFinalDone(n))
+                      .map((n) => `f${n}`)
+                  )}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
                       setFinalsStep("number");
                       return;
                     }
-                    const picked = finalsById.get(`f${matchNumber}`);
+                    const picked = finalsByNumber.get(matchNumber) || finalsById.get(`f${matchNumber}`);
                     if (picked) {
                       onPick(picked);
                       onClose();
+                      return;
                     }
+                    const fallback = {
+                      id: `f${matchNumber}`,
+                      label: `Finals ${matchNumber}`,
+                      type: "finals",
+                      matchNumber,
+                      scheduleTime: 0,
+                    } as T;
+                    onPick(fallback);
+                    onClose();
                   }}
                 />
               )}
@@ -280,14 +307,24 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         key={matchNum}
                         type="button"
                         onClick={() => {
-                          const picked = finalsById.get(`f${matchNum}`);
+                          const picked = finalsByNumber.get(matchNum) || finalsById.get(`f${matchNum}`);
                           if (picked) {
                             onPick(picked);
                             onClose();
+                            return;
                           }
+                          const fallback = {
+                            id: `f${matchNum}`,
+                            label: `Finals ${matchNum}`,
+                            type: "finals",
+                            matchNumber: matchNum,
+                            scheduleTime: 0,
+                          } as T;
+                          onPick(fallback);
+                          onClose();
                         }}
-                        disabled={completed.has(`f${matchNum}`)}
-                        className={`group relative p-8 border-2 border-gray-300 rounded-2xl transition-all ${completed.has(`f${matchNum}`) ? "opacity-45 cursor-not-allowed bg-gray-100" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
+                        disabled={isFinalDone(matchNum)}
+                        className={`group relative p-8 border-2 border-gray-300 rounded-2xl transition-all ${isFinalDone(matchNum) ? "opacity-45 cursor-not-allowed bg-gray-100" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
                       >
                         <div className="text-center">
                           <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
@@ -307,4 +344,3 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
     </ReefscapeStyleModal>
   );
 }
-
