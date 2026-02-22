@@ -26,6 +26,17 @@ const Counter = ({ label, value, onChange }: { label: string; value: number; onC
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
 type PracticeStep = 'select' | 'practice' | 'break' | 'results';
+type RebuiltScoutedData = {
+  teamNumber: string;
+  startingPosition: string;
+  autoFuel: number;
+  autoSuccessfulClimb: boolean;
+  wonAuto: boolean;
+  teleopFuel: number;
+  endgameStatus: string;
+  incidents: string[];
+  notes: string;
+};
 
 type PracticeSessionDraft = {
   version: 1;
@@ -237,6 +248,29 @@ function getPracticeEventKey(match: PracticeMatch): string {
   return "app-testing";
 }
 
+function createEmptyRebuiltScoutedData(teamNumber = "", notes = ""): RebuiltScoutedData {
+  return {
+    teamNumber,
+    startingPosition: "",
+    autoFuel: 0,
+    autoSuccessfulClimb: false,
+    wonAuto: false,
+    teleopFuel: 0,
+    endgameStatus: "",
+    incidents: [],
+    notes,
+  };
+}
+
+function calculateRebuiltScoutedScore(data: RebuiltScoutedData): number {
+  const autoClimb = data.autoSuccessfulClimb ? 15 : 0;
+  const teleopClimb =
+    data.endgameStatus === "level-1" ? 10 :
+    data.endgameStatus === "level-2" ? 20 :
+    data.endgameStatus === "level-3" ? 30 : 0;
+  return Math.max(0, Number(data.autoFuel || 0)) + Math.max(0, Number(data.teleopFuel || 0)) + autoClimb + teleopClimb;
+}
+
 function normalizePracticeMatchType(
   rawType: unknown,
   rawMatchKey: unknown,
@@ -318,6 +352,7 @@ function PracticeScoutingContent() {
   const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
   const [breakCompletedRobotIndex, setBreakCompletedRobotIndex] = useState<number | null>(null);
   const [robotSessions, setRobotSessions] = useState<ScoutedData[]>([]);
+  const [rebuiltRobotSessions, setRebuiltRobotSessions] = useState<RebuiltScoutedData[]>([]);
   const [humanPlayerRobot, setHumanPlayerRobot] = useState<number | null>(null); // 0, 1, 2, or null
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [loading, setLoading] = useState(false);
@@ -328,6 +363,7 @@ function PracticeScoutingContent() {
   const formPaneRef = useRef<HTMLDivElement | null>(null);
 
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
+  const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
 
   function getYouTubeEmbedUrl(url: string): string {
     if (!url) return "";
@@ -537,8 +573,10 @@ function PracticeScoutingContent() {
       setCurrentRobotIndex(0);
       setBreakCompletedRobotIndex(null);
       setRobotSessions([]);
+      setRebuiltRobotSessions([]);
 
       setFormData(createEmptyScoutedData(safeMatch.allianceTeams[0].toString()));
+      setRebuiltFormData(createEmptyRebuiltScoutedData(safeMatch.allianceTeams[0].toString()));
 
       setHumanPlayerRobot(Math.floor(Math.random() * 3));
 
@@ -558,6 +596,21 @@ function PracticeScoutingContent() {
 
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
+
+    if (activeMatchGame === "REBUILT") {
+      const robotData = { ...rebuiltFormData };
+      const nextRobotSessions = [...rebuiltRobotSessions, robotData];
+      setRebuiltRobotSessions(nextRobotSessions);
+
+      if (currentRobotIndex === 2) {
+        await submitRebuiltPracticeSession(nextRobotSessions);
+        return;
+      }
+
+      setBreakCompletedRobotIndex(currentRobotIndex);
+      setCurrentStep('break');
+      return;
+    }
 
     const robotData = { ...formData };
     const nextRobotSessions = [...robotSessions, robotData];
@@ -584,9 +637,125 @@ function PracticeScoutingContent() {
 
     setCurrentRobotIndex(nextRobotIndex);
     setFormData(createEmptyScoutedData(currentMatch.allianceTeams[nextRobotIndex].toString()));
+    setRebuiltFormData(createEmptyRebuiltScoutedData(currentMatch.allianceTeams[nextRobotIndex].toString()));
     setCurrentStep('practice');
     setMobileNotesOpen(false);
     formPaneRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function submitRebuiltPracticeSession(allRobotData: RebuiltScoutedData[]) {
+    if (!currentMatch || !userData) return;
+    if (allRobotData.length === 0) return;
+
+    setLoading(true);
+    try {
+      const scores = allRobotData.map((data) => calculateRebuiltScoutedScore(data));
+      const baseScoutedScore = scores.reduce((a, b) => a + b, 0);
+      const penaltyPoints = Number(currentMatch.officialData?.penaltyPoints || 0);
+      const totalScoutedScore = baseScoutedScore + penaltyPoints;
+      const officialAllianceScore =
+        typeof currentMatch.officialData?.score === "number"
+          ? currentMatch.officialData.score
+          : typeof currentMatch.actualScore === "number"
+          ? currentMatch.actualScore
+          : 0;
+      const sessionAccuracy = calculateAccuracy(totalScoutedScore, officialAllianceScore);
+
+      const now = Date.now();
+      const device = getScoutDevice();
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, "REBUILT");
+
+      const session: Partial<PracticeSession> & Record<string, unknown> = {
+        scoutName: userData.displayName,
+        scoutId: userData.uid,
+        matchId: currentMatch.id || '',
+        matchKey: currentMatch.matchKey || "",
+        matchNumber: currentMatch.matchNumber,
+        matchType: normalizePracticeMatchType(
+          currentMatch.matchType,
+          currentMatch.matchKey,
+          (currentMatch as unknown as Record<string, unknown>).compLevel
+        ),
+        difficulty: selectedDifficulty || 'easy',
+        mode: selectedMode || 'trial',
+        scoutedData: allRobotData[0] as unknown as ScoutedData,
+        allScoutedData: allRobotData,
+        eventKey,
+        eventName,
+        game: "REBUILT",
+        officialScore: officialAllianceScore,
+        actualScore: officialAllianceScore,
+        scoutedScore: totalScoutedScore,
+        penaltyPoints,
+        accuracy: sessionAccuracy,
+        scoringWeights: {
+          autoFuel: 1,
+          autoClimbLevel1: 15,
+          teleopFuel: 1,
+          teleopClimbLevel1: 10,
+          teleopClimbLevel2: 20,
+          teleopClimbLevel3: 30,
+        },
+        deviceType: device.deviceType,
+        deviceDetails: device.details,
+        timestamp: now,
+        startedAt: now,
+        completedAt: now,
+      };
+
+      const docRef = await addDoc(collection(db, 'practiceSessions'), session);
+
+      await Promise.all(
+        allRobotData.map((robotData) =>
+          addDoc(collection(db, "scouting"), {
+            scoutName: userData.displayName,
+            scoutId: userData.uid,
+            teamNumber: robotData.teamNumber,
+            startingPosition: robotData.startingPosition,
+            incidents: robotData.incidents,
+            notes: robotData.notes,
+            auto: {
+              estimatedFuel: Number(robotData.autoFuel || 0),
+              successfulClimb: robotData.autoSuccessfulClimb,
+              wonAuto: robotData.wonAuto,
+            },
+            teleop: {
+              estimatedFuel: Number(robotData.teleopFuel || 0),
+            },
+            endgame: {
+              status: robotData.endgameStatus,
+            },
+            estimatedScore: calculateRebuiltScoutedScore(robotData),
+            matchId: `q${currentMatch.matchNumber}`,
+            matchNumber: String(currentMatch.matchNumber),
+            matchType: "qualification",
+            eventKey,
+            eventName,
+            game: "REBUILT",
+            accuracy: sessionAccuracy,
+            timestamp: now,
+            submittedAt: now,
+            practiceMode: selectedMode || "trial",
+            difficulty: selectedDifficulty || "easy",
+            isPracticeScouting: true,
+            practiceSessionId: docRef.id,
+            penaltyPoints,
+            deviceType: device.deviceType,
+            deviceDetails: device.details,
+          })
+        )
+      );
+
+      setSessionResults({ ...(session as PracticeSession), id: docRef.id });
+      setCurrentStep('results');
+      clearPracticeDraft();
+      setPendingDraft(null);
+    } catch (error) {
+      console.error('Error submitting REBUILT practice session:', error);
+      alert('Error submitting practice session: ' + (error as Error).message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function submitPracticeSession(allRobotData: ScoutedData[]) {
@@ -689,10 +858,12 @@ function PracticeScoutingContent() {
     setCurrentRobotIndex(0);
     setBreakCompletedRobotIndex(null);
     setRobotSessions([]);
+    setRebuiltRobotSessions([]);
     setHumanPlayerRobot(null);
     setSessionResults(null);
     setMobileNotesOpen(false);
     setFormData(createEmptyScoutedData());
+    setRebuiltFormData(createEmptyRebuiltScoutedData());
     clearPracticeDraft();
     setPendingDraft(null);
   }
@@ -980,7 +1151,7 @@ function PracticeScoutingContent() {
                 </div>
               </div>
 
-              {humanPlayerRobot === currentRobotIndex && (
+              {activeMatchGame === "REEFSCAPE" && humanPlayerRobot === currentRobotIndex && (
                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
                   <div className="flex items-center">
                     <div className="flex-shrink-0">
@@ -997,6 +1168,8 @@ function PracticeScoutingContent() {
                 </div>
               )}
 
+              {activeMatchGame === "REEFSCAPE" ? (
+                <>
               {/* PRE-MATCH INFO */}
               <div className="bg-white rounded-xl shadow p-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
@@ -1116,6 +1289,125 @@ function PracticeScoutingContent() {
                   ))}
                 </div>
               </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
+                        <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Starting Position</label>
+                        <select
+                          value={rebuiltFormData.startingPosition}
+                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, startingPosition: e.target.value })}
+                          className="w-full border rounded p-2"
+                        >
+                          <option value="">Select Position</option>
+                          <option value="outpost-side">Outpost Side</option>
+                          <option value="middle">Middle</option>
+                          <option value="depot-side">Depot Side</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Auto Fuel</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={rebuiltFormData.autoFuel}
+                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoFuel: Math.max(0, Number(e.target.value || 0)) })}
+                          className="w-full border rounded p-2"
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={rebuiltFormData.autoSuccessfulClimb}
+                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoSuccessfulClimb: e.target.checked })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Successful Auto Climb</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={rebuiltFormData.wonAuto}
+                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, wonAuto: e.target.checked })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Won Auto</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Teleop Fuel</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={rebuiltFormData.teleopFuel}
+                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teleopFuel: Math.max(0, Number(e.target.value || 0)) })}
+                          className="w-full border rounded p-2"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Endgame</h2>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status At End of Match</label>
+                    <select
+                      value={rebuiltFormData.endgameStatus}
+                      onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, endgameStatus: e.target.value })}
+                      className="w-full border rounded p-2"
+                    >
+                      <option value="">Select Status</option>
+                      <option value="parked">Parked</option>
+                      <option value="level-1">Level 1</option>
+                      <option value="level-2">Level 2</option>
+                      <option value="level-3">Level 3</option>
+                    </select>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>General</h2>
+                    <div className="space-y-2">
+                      {['Died During Match', 'Never Started Match', 'Disabled by FRC', 'Recovered from Freeze', 'Tipped Over', 'Yellow Card', 'Red Card'].map((incident) => (
+                        <label key={incident} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rebuiltFormData.incidents.includes(incident)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setRebuiltFormData({ ...rebuiltFormData, incidents: [...rebuiltFormData.incidents, incident] });
+                              } else {
+                                setRebuiltFormData({ ...rebuiltFormData, incidents: rebuiltFormData.incidents.filter(i => i !== incident) });
+                              }
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm">{incident}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-3">
+                      REBUILT practice score uses: Auto Fuel 1, Auto Climb 15, Teleop Fuel 1, Endgame L1/L2/L3 = 10/20/30.
+                    </p>
+                  </div>
+                </>
+              )}
 
               {/* SUBMIT BUTTON */}
               <div className="sticky bottom-0 bg-gray-100 pt-4 pb-2 space-y-2">
@@ -1152,8 +1444,15 @@ function PracticeScoutingContent() {
                 <div className="p-4">
                   <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Notes</h2>
                   <textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    value={activeMatchGame === "REBUILT" ? rebuiltFormData.notes : formData.notes}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (activeMatchGame === "REBUILT") {
+                        setRebuiltFormData({ ...rebuiltFormData, notes: value });
+                      } else {
+                        setFormData({ ...formData, notes: value });
+                      }
+                    }}
                     className="w-full border rounded p-2 h-96"
                     placeholder="Optional notes..."
                   />
@@ -1189,8 +1488,15 @@ function PracticeScoutingContent() {
                   </div>
                   <div className="p-3">
                     <textarea
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      value={activeMatchGame === "REBUILT" ? rebuiltFormData.notes : formData.notes}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (activeMatchGame === "REBUILT") {
+                          setRebuiltFormData({ ...rebuiltFormData, notes: value });
+                        } else {
+                          setFormData({ ...formData, notes: value });
+                        }
+                      }}
                       className="w-full border rounded p-2 h-[26vh] min-h-[140px]"
                       placeholder="Optional notes..."
                     />
