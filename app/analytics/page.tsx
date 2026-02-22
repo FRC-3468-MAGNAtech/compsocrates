@@ -743,7 +743,7 @@ function AnalyticsPageContent() {
               const redOverlap = redTeams.filter((team) => scoutedTeamsReference.has(team)).length;
               const blueOverlap = blueTeams.filter((team) => scoutedTeamsReference.has(team)).length;
               const bestOverlap = Math.max(redOverlap, blueOverlap);
-              const overlapAlliance = redOverlap >= blueOverlap ? "red" : "blue";
+              const overlapAlliance: "red" | "blue" = redOverlap >= blueOverlap ? "red" : "blue";
               const rowIdentity: MatchIdentity = {
                 compLevel: String(row.comp_level || "").toLowerCase() as MatchIdentity["compLevel"],
                 setNumber: Number(row.set_number || 0) > 0 ? Number(row.set_number || 0) : null,
