@@ -67,6 +67,12 @@ export default function Sidebar() {
     userData.isTeamAdmin;
   const canManageAssignments = userRoles.includes("lead-scout") || userData.isTeamAdmin;
   const showText = !collapsed || isMobileMenuOpen;
+  const initials = userData.displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "U";
 
   const navItems = [
     { href: getDashboardRoute(userData), label: "Dashboard", icon: BarChart3 },
@@ -205,7 +211,7 @@ export default function Sidebar() {
                   border: "1px solid rgba(var(--primary-rgb), 0.28)",
                 }}
               >
-                {userData.displayName.substring(0, 2).toUpperCase()}
+                {initials}
               </div>
             )}
             {showText && (

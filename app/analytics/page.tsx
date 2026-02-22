@@ -30,6 +30,11 @@ type Entry = {
   eventName?: string;
   game?: string;
   penaltyPoints?: number;
+  alliance?: string;
+  allianceColor?: string;
+  assignedAlliance?: string;
+  officialScore?: number;
+  actualScore?: number;
   teamNumber: string;
   scoutName: string;
   startingPosition: string;
@@ -135,6 +140,12 @@ function matchLabel(entry: Entry) {
   if (entry.matchType === "qualification") return `Q${num}`;
   if (entry.matchType === "finals") return `F${num}`;
   return num;
+}
+
+function inferAlliance(entry: Entry): "red" | "blue" | null {
+  const direct = String(entry.alliance || entry.allianceColor || entry.assignedAlliance || "").toLowerCase();
+  if (direct === "red" || direct === "blue") return direct;
+  return null;
 }
 
 function isPracticeScoutingEntry(entry: Entry) {
@@ -288,6 +299,7 @@ function AnalyticsPageContent() {
     return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
   });
   const [importEvent, setImportEvent] = useState("app-testing");
+  const [selectedAccuracyEntry, setSelectedAccuracyEntry] = useState<Entry | null>(null);
 
   const eventOptions = useMemo(
     () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(rawData, selectedGame)],
@@ -1013,7 +1025,20 @@ function AnalyticsPageContent() {
                 <td className="text-left align-top" style={{ minWidth: "260px", whiteSpace: "normal", overflowWrap: "anywhere" }}>
                   {entry.notes || "-"}
                 </td>
-                <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? `${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%` : "-"}</td>
+                <td className="text-center">
+                  {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAccuracyEntry(entry)}
+                      className="underline decoration-dotted underline-offset-2"
+                      style={{ color: "var(--primary-color)" }}
+                    >
+                      {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
+                    </button>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                 <td className="text-center">
                   <button
@@ -1032,6 +1057,61 @@ function AnalyticsPageContent() {
           </tbody>
         </table>
       </div>
+
+      {selectedAccuracyEntry && (
+        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-semibold mb-3">Alliance Accuracy Details</h2>
+            {(() => {
+              const scoutedPoints = scoreEntry(selectedAccuracyEntry);
+              const accuracy = Number((selectedAccuracyEntry as Entry & { accuracy?: number }).accuracy || 0);
+              const explicitActual =
+                typeof selectedAccuracyEntry.officialScore === "number"
+                  ? selectedAccuracyEntry.officialScore
+                  : typeof selectedAccuracyEntry.actualScore === "number"
+                  ? selectedAccuracyEntry.actualScore
+                  : null;
+              const inferredActual =
+                explicitActual !== null
+                  ? explicitActual
+                  : accuracy > 0
+                  ? Math.round(scoutedPoints / (accuracy / 100))
+                  : null;
+              const alliance = inferAlliance(selectedAccuracyEntry);
+              const allianceTeamCount =
+                alliance && selectedAccuracyEntry.matchId
+                  ? new Set(
+                      data
+                        .filter((row) => row.matchId === selectedAccuracyEntry.matchId)
+                        .filter((row) => inferAlliance(row) === alliance)
+                        .map((row) => String(row.teamNumber || "").trim())
+                        .filter(Boolean)
+                    ).size
+                  : 0;
+              return (
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-semibold">Scouted Points:</span> {scoutedPoints}</p>
+                  <p><span className="font-semibold">Actual Points:</span> {inferredActual ?? "Unavailable"}</p>
+                  <p>
+                    <span className="font-semibold">All Robots Scouted:</span>{" "}
+                    {alliance ? (allianceTeamCount >= 3 ? "Yes" : "No") : "Unknown"}
+                  </p>
+                  <p><span className="font-semibold">Penalty Points:</span> {Number(selectedAccuracyEntry.penaltyPoints || 0)}</p>
+                </div>
+              );
+            })()}
+            <div className="mt-5">
+              <button
+                onClick={() => setSelectedAccuracyEntry(null)}
+                className="w-full py-2 rounded text-white font-semibold"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AnalyticsShell>
   );
 }

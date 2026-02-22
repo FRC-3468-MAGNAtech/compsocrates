@@ -47,6 +47,12 @@ function PeopleContent() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {members.map((member) => {
             const badge = getRoleBadge(member.role, member.roles);
+            const initials = member.displayName
+              ?.split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part) => part.charAt(0).toUpperCase())
+              .join("") || "U";
             return (
             <Link
               key={member.uid}
@@ -70,7 +76,7 @@ function PeopleContent() {
                       border: "2px solid rgba(var(--accent-rgb), 0.5)",
                     }}
                   >
-                    {member.displayName?.slice(0, 2).toUpperCase()}
+                    {initials}
                   </div>
                 )}
                 <div>

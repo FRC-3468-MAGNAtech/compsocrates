@@ -568,7 +568,9 @@ function ScoutAccuracyContent() {
                 className="w-full md:w-96 border rounded p-2"
               >
                 <option value="all">All Competitions</option>
-                {getEventsForGame("REEFSCAPE").map((event) => (
+                {getEventsForGame("REEFSCAPE")
+                  .filter((event) => event.id !== "app-testing")
+                  .map((event) => (
                   <option key={event.id} value={event.id}>
                     {event.name}
                   </option>

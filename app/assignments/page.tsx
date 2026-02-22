@@ -32,6 +32,16 @@ interface Assignment {
   assignedAt: number;
 }
 
+interface PitAssignment {
+  id: string;
+  eventKey: string;
+  teamNumber: number;
+  scoutId: string;
+  scoutName: string;
+  assignedBy: string;
+  assignedAt: number;
+}
+
 interface TeamMember {
   uid: string;
   displayName: string;
@@ -69,6 +79,7 @@ function matchLabel(match: TBAMatch) {
 function AssignmentsContent() {
   const { userData } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [pitAssignments, setPitAssignments] = useState<PitAssignment[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [selectedEvent, setSelectedEvent] = useState("2026arli");
   const [loading, setLoading] = useState(true);
@@ -79,6 +90,8 @@ function AssignmentsContent() {
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [selectedScoutId, setSelectedScoutId] = useState("");
   const [selectedTeamNumber, setSelectedTeamNumber] = useState("");
+  const [selectedPitScoutId, setSelectedPitScoutId] = useState("");
+  const [selectedPitTeamNumber, setSelectedPitTeamNumber] = useState("");
   const [selectedMatchType, setSelectedMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
 
   const events = [
@@ -94,9 +107,10 @@ function AssignmentsContent() {
     if (!userData?.teamId) return;
     setLoading(true);
     try {
-      const [membersSnap, assignmentsSnap, teamDoc] = await Promise.all([
+      const [membersSnap, assignmentsSnap, pitAssignmentsSnap, teamDoc] = await Promise.all([
         getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
         getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", selectedEvent))),
+        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", selectedEvent))),
         getDoc(doc(db, "teams", userData.teamId)),
       ]);
 
@@ -106,6 +120,12 @@ function AssignmentsContent() {
           id: assignmentDoc.id,
           ...assignmentDoc.data(),
         })) as Assignment[]
+      );
+      setPitAssignments(
+        pitAssignmentsSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...assignmentDoc.data(),
+        })) as PitAssignment[]
       );
 
       const teamData = teamDoc.exists() ? teamDoc.data() : {};
@@ -168,6 +188,11 @@ function AssignmentsContent() {
     }
     return matchOptions.filter((match) => match.compLevel !== "qm");
   }, [matchOptions, selectedMatchType]);
+  const pitTeamOptions = useMemo(() => {
+    const teams = Array.from(new Set(matchOptions.flatMap((match) => match.teams))).sort((a, b) => a - b);
+    const assigned = new Set(pitAssignments.map((assignment) => assignment.teamNumber));
+    return teams.filter((teamNumber) => !assigned.has(teamNumber));
+  }, [matchOptions, pitAssignments]);
 
   async function createAssignment() {
     if (!userData || !selectedMatch || !selectedScoutId || !selectedTeamNumber) return;
@@ -197,6 +222,35 @@ function AssignmentsContent() {
     }
   }
 
+  async function createPitAssignment() {
+    if (!userData || !selectedPitScoutId || !selectedPitTeamNumber) return;
+    const scout = members.find((member) => member.uid === selectedPitScoutId);
+    if (!scout) return;
+    const teamNumber = parseInt(selectedPitTeamNumber, 10);
+    if (!Number.isFinite(teamNumber)) return;
+    if (pitAssignments.some((assignment) => assignment.teamNumber === teamNumber)) {
+      alert("That team already has a pit scout assignment.");
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "pitAssignments"), {
+        eventKey: selectedEvent,
+        teamNumber,
+        scoutId: selectedPitScoutId,
+        scoutName: scout.displayName,
+        assignedBy: userData.uid,
+        assignedAt: Date.now(),
+      });
+      setSelectedPitScoutId("");
+      setSelectedPitTeamNumber("");
+      await loadData();
+    } catch (error) {
+      console.error("Error creating pit assignment:", error);
+      alert("Error creating pit assignment");
+    }
+  }
+
   async function deleteAssignment(id: string) {
     if (!confirm("Are you sure you want to delete this assignment?")) return;
     try {
@@ -205,6 +259,17 @@ function AssignmentsContent() {
     } catch (error) {
       console.error("Error deleting assignment:", error);
       alert("Error deleting assignment");
+    }
+  }
+
+  async function deletePitAssignment(id: string) {
+    if (!confirm("Delete this pit assignment?")) return;
+    try {
+      await deleteDoc(doc(db, "pitAssignments", id));
+      await loadData();
+    } catch (error) {
+      console.error("Error deleting pit assignment:", error);
+      alert("Error deleting pit assignment");
     }
   }
 
@@ -404,6 +469,80 @@ function AssignmentsContent() {
               </table>
             </div>
           )}
+
+          <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+            <h2 className="text-xl font-semibold mb-1">Pit Scouting Assignments</h2>
+            <p className="text-sm text-gray-600 mb-4">Assign one pit scout per team for this event.</p>
+            <div className="grid md:grid-cols-3 gap-3 mb-4">
+              <select
+                className="w-full border rounded p-2"
+                value={selectedPitScoutId}
+                onChange={(e) => setSelectedPitScoutId(e.target.value)}
+              >
+                <option value="">Select Member</option>
+                {members.map((member) => (
+                  <option key={member.uid} value={member.uid}>
+                    {member.displayName}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="w-full border rounded p-2"
+                value={selectedPitTeamNumber}
+                onChange={(e) => setSelectedPitTeamNumber(e.target.value)}
+              >
+                <option value="">Select Team</option>
+                {pitTeamOptions.map((teamNumber) => (
+                  <option key={teamNumber} value={teamNumber}>
+                    Team {teamNumber}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => void createPitAssignment()}
+                className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
+                style={{ backgroundColor: "var(--primary-color)" }}
+                disabled={!selectedPitScoutId || !selectedPitTeamNumber}
+              >
+                Add Pit Assignment
+              </button>
+            </div>
+
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {pitAssignments
+                    .slice()
+                    .sort((a, b) => a.teamNumber - b.teamNumber)
+                    .map((assignment) => (
+                      <tr key={assignment.id}>
+                        <td className="px-4 py-2 font-medium">Team {assignment.teamNumber}</td>
+                        <td className="px-4 py-2">{assignment.scoutName}</td>
+                        <td className="px-4 py-2">
+                          <button onClick={() => void deletePitAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {pitAssignments.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-500">
+                        No pit assignments yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
           <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">

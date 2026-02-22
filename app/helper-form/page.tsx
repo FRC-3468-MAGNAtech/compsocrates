@@ -9,23 +9,6 @@ import { useAuth } from "@/app/AuthContext";
 
 function HelperFormContent() {
   const { userData } = useAuth();
-  if (!userData?.isTeamAdmin) {
-    return (
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-2xl mx-auto bg-white rounded-xl shadow p-6">
-            <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Helper Form
-            </h1>
-            <p className="text-gray-600">
-              This form is temporarily limited to team admins while form rollout is in progress.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
   const [saving, setSaving] = useState(false);
   const [assistedTeamNumber, setAssistedTeamNumber] = useState("");
   const [workPerformed, setWorkPerformed] = useState("");
@@ -86,7 +69,7 @@ function HelperFormContent() {
 
 export default function HelperFormPage() {
   return (
-    <ProtectedRoute requireAuth={true}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["pit-team"]}>
       <HelperFormContent />
     </ProtectedRoute>
   );

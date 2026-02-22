@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -151,9 +151,14 @@ function NoTeamDashboardContent() {
     if (!user || !userData) return;
 
     setRequestError("");
-    const normalizedTeamCode = teamCode.trim();
+    const normalizedTeamCode = teamCode.trim().toUpperCase();
     if (!normalizedTeamCode) {
       setRequestError("Please enter a team code.");
+      return;
+    }
+    const teamDoc = await getDoc(doc(db, "teams", normalizedTeamCode));
+    if (!teamDoc.exists()) {
+      setRequestError("That team join code is not valid.");
       return;
     }
 
@@ -225,9 +230,10 @@ function NoTeamDashboardContent() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Team Code</label>
             <input
               value={teamCode}
-              onChange={(event) => setTeamCode(event.target.value)}
+              onChange={(event) => setTeamCode(event.target.value.toUpperCase())}
               className="w-full border rounded p-2"
               placeholder="Enter team code"
+              autoCapitalize="characters"
               disabled={submittingRequest}
             />
           </div>

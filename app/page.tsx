@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
-import { useEffect } from "react";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 export default function LandingPage() {
@@ -135,7 +134,7 @@ export default function LandingPage() {
             </div>
             <h4 className="text-xl font-semibold mb-3">Custom Form Builder</h4>
             <p className="text-gray-600">
-              Adapt to each season's unique game with customizable scouting forms. Track exactly what matters for your team's strategy.
+              Adapt to each season&apos;s unique game with customizable scouting forms. Track exactly what matters for your team&apos;s strategy.
             </p>
           </div>
 
@@ -153,7 +152,14 @@ export default function LandingPage() {
       </div>
 
       {/* HOW IT WORKS */}
-      <div className="bg-white py-16 mt-16">
+      <div
+        className="py-16 mt-16"
+        style={{
+          background: "linear-gradient(180deg, rgba(var(--primary-rgb), 0.05), rgba(var(--primary-rgb), 0.02))",
+          borderTop: "1px solid rgba(var(--primary-rgb), 0.14)",
+          borderBottom: "1px solid rgba(var(--primary-rgb), 0.14)",
+        }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h3 className="text-3xl font-bold text-center mb-12">How It Works</h3>
           
@@ -171,7 +177,7 @@ export default function LandingPage() {
                 2
               </div>
               <h4 className="font-semibold mb-2">Configure Your Form</h4>
-              <p className="text-gray-600 text-sm">Customize scouting fields to match this season's game</p>
+              <p className="text-gray-600 text-sm">Customize scouting fields to match this season&apos;s game</p>
             </div>
 
             <div className="text-center">
@@ -187,7 +193,7 @@ export default function LandingPage() {
                 4
               </div>
               <h4 className="font-semibold mb-2">Analyze & Win</h4>
-              <p className="text-gray-600 text-sm">Review analytics and make strategic decisions to dominate</p>
+              <p className="text-gray-600 text-sm">Review analytics and make strategic decisions to dominate.</p>
             </div>
           </div>
         </div>
@@ -215,28 +221,12 @@ export default function LandingPage() {
       {/* FOOTER */}
       <footer className="bg-gray-900 text-white py-12 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-2 gap-8">
             <div>
               <h5 className="font-bold mb-4">CompSocrates</h5>
               <p className="text-gray-400 text-sm">
                 Strategic scouting software for FIRST Robotics Competition teams.
               </p>
-            </div>
-            <div>
-              <h5 className="font-semibold mb-4">Product</h5>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li>Features</li>
-                <li>Pricing</li>
-                <li>Documentation</li>
-              </ul>
-            </div>
-            <div>
-              <h5 className="font-semibold mb-4">Company</h5>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li>About</li>
-                <li>Contact</li>
-                <li>Support</li>
-              </ul>
             </div>
             <div>
               <h5 className="font-semibold mb-4">Legal</h5>

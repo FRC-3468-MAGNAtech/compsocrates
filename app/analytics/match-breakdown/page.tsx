@@ -248,7 +248,7 @@ function MatchBreakdownContent() {
                 {allianceBreakdown.red.map((row) => (
                   <tr key={`red-${row.teamNumber}`}>
                     <td className="px-4 py-3 font-semibold">{row.teamNumber}</td>
-                    <td className="px-4 py-3 text-xl font-bold theme-text">{row.totalScore}</td>
+                    <td className="px-4 py-3 text-xl font-bold text-red-700">{row.totalScore}</td>
                   </tr>
                 ))}
               </tbody>

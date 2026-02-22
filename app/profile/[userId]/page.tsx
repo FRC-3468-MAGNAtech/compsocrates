@@ -228,6 +228,12 @@ function ProfileContent() {
       ? "Practice Entries"
       : "Scouting Entries";
   const roleBadge = profile ? getRoleBadge(profile.role, profile.roles) : null;
+  const initials = profile?.displayName
+    ?.split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "U";
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -247,7 +253,7 @@ function ProfileContent() {
                   <img src={profile.photoURL} alt={profile.displayName} className="w-20 h-20 rounded-full object-cover border border-gray-200" />
                 ) : (
                   <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold">
-                    {profile.displayName.slice(0, 2).toUpperCase()}
+                    {initials}
                   </div>
                 )}
                 <div>

@@ -46,6 +46,7 @@ type TeamRoleDashboardProps = {
   pitScoutFocus?: boolean;
   pitTeamFocus?: boolean;
   driveTeamFocus?: boolean;
+  showManualScoutFallback?: boolean;
 };
 
 function compLevelPriority(compLevel: TBAMatch["comp_level"]) {
@@ -111,6 +112,7 @@ function TeamRoleDashboardContent({
   pitScoutFocus,
   pitTeamFocus,
   driveTeamFocus,
+  showManualScoutFallback,
 }: Omit<TeamRoleDashboardProps, "role">) {
   const { userData } = useAuth();
   const router = useRouter();
@@ -260,7 +262,16 @@ function TeamRoleDashboardContent({
                       )}
                     </>
                   ) : (
-                    <p className="text-sm text-gray-700">No competition detected yet.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No teams have been picked for pit scouting yet.</p>
+                      <button
+                        onClick={() => router.push("/event-details")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        View Team List
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -280,7 +291,16 @@ function TeamRoleDashboardContent({
                       </button>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-700">No active competition right now, so helper logging is not needed.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No active competition detected yet.</p>
+                      <button
+                        onClick={() => router.push("/event-selection")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        View Events
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -297,7 +317,16 @@ function TeamRoleDashboardContent({
                       <p className="text-sm text-gray-700">Reminder: complete the Drive Scout Form immediately after this match.</p>
                     </>
                   ) : (
-                    <p className="text-sm text-gray-700">No upcoming team match detected right now, so no Drive Scout Form is needed yet.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No team matches are assigned yet.</p>
+                      <button
+                        onClick={() => router.push("/event-details")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        View Match List
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -308,8 +337,33 @@ function TeamRoleDashboardContent({
                   {activeEvent ? (
                     <p className="text-sm text-gray-700">Use Analytics to shape match plans for {activeEvent.name} and adjust strategy between matches.</p>
                   ) : (
-                    <p className="text-sm text-gray-700">No active competition is detected. You can still use Analytics to prepare and compare teams.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No active competition is detected yet.</p>
+                      <button
+                        onClick={() => router.push("/analytics")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        Open Analytics
+                      </button>
+                    </div>
                   )}
+                </div>
+              )}
+
+              {showManualScoutFallback && upcomingEvents.length > 0 && activeMatches.length === 0 && (
+                <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                  <h2 className="text-xl font-semibold mb-2">No Matches Assigned Yet</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-gray-700">You can still open the match form and scout manually.</p>
+                    <button
+                      onClick={() => router.push("/scout-form")}
+                      className="px-4 py-2 rounded-lg text-white font-medium"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      Scout Manually
+                    </button>
+                  </div>
                 </div>
               )}
 

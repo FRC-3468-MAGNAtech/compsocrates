@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
@@ -129,7 +129,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<TeamRole>("match-scout");
   const [joinCode, setJoinCode] = useState("");
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
@@ -139,6 +140,21 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    if (!displayName) {
+      setError("Please enter your first and last name.");
+      return;
+    }
+
+    const passwordStrong =
+      password.length >= 8 &&
+      /[A-Z]/.test(password) &&
+      /[0-9]/.test(password) &&
+      /[^A-Za-z0-9]/.test(password);
+    if (!passwordStrong) {
+      setError("Password must be 8+ chars and include a capital letter, number, and symbol.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords don't match");
@@ -155,13 +171,19 @@ export default function SignupPage() {
     try {
       if (isCreatingTeam) {
         // Create new team
-        await signUp(email, password, displayName, role, joinCode, true);
+        await signUp(email, password, displayName, role, joinCode.trim().toUpperCase(), true);
         alert("Account created! Please verify your email to continue.");
         router.push("/dashboard");
       } else {
-        const requestedTeamCode = joinCode.trim();
+        const requestedTeamCode = joinCode.trim().toUpperCase();
         if (!requestedTeamCode) {
           setError("Please enter a team join code.");
+          setLoading(false);
+          return;
+        }
+        const teamSnap = await getDoc(doc(db, "teams", requestedTeamCode));
+        if (!teamSnap.exists()) {
+          setError("That team join code is not valid.");
           setLoading(false);
           return;
         }
@@ -191,9 +213,10 @@ export default function SignupPage() {
         alert("Account created! Please verify your email and wait for team admin approval.");
         router.push("/dashboard");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Signup error:", error);
-      setError(error.message || "An error occurred during signup");
+      const message = error instanceof Error ? error.message : "An error occurred during signup";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -218,12 +241,25 @@ export default function SignupPage() {
         <form onSubmit={handleSignup} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name
+              First Name
             </label>
             <input
               type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              className="w-full border rounded-lg p-3"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Last Name
+            </label>
+            <input
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
               className="w-full border rounded-lg p-3"
               required
             />
@@ -251,9 +287,10 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full border rounded-lg p-3"
-              minLength={6}
+              minLength={8}
               required
             />
+            <p className="text-xs text-gray-500 mt-1">Must be 8+ chars with a capital letter, number, and symbol.</p>
           </div>
 
           <div>
@@ -265,7 +302,7 @@ export default function SignupPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full border rounded-lg p-3"
-              minLength={6}
+              minLength={8}
               required
             />
           </div>
@@ -306,14 +343,15 @@ export default function SignupPage() {
             <input
               type="text"
               value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               className="w-full border rounded-lg p-3"
               placeholder={isCreatingTeam ? "e.g., team3468" : "Ask your team admin"}
+              autoCapitalize="characters"
               required
             />
             {!isCreatingTeam && (
               <p className="text-xs text-gray-500 mt-1">
-                You'll need admin approval to join the team
+                You&apos;ll need admin approval to join the team
               </p>
             )}
           </div>

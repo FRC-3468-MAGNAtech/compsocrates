@@ -109,7 +109,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isTeamAdmin: boolean
   ) {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await sendEmailVerification(userCredential.user);
+    const continueUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/verify-email?email=${encodeURIComponent(email)}`
+        : "https://compsocrates.app/verify-email";
+    await sendEmailVerification(userCredential.user, {
+      url: continueUrl,
+      handleCodeInApp: false,
+    });
     alert("Verification email sent! Please check your inbox.");
     
     // Update display name

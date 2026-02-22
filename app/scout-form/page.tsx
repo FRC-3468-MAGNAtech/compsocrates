@@ -7,8 +7,9 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { isEventActive } from "@/app/utils/eventDates";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { Check, Hourglass, X as XIcon } from "lucide-react";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -120,6 +121,7 @@ interface Match {
   label: string;
   status: MatchStatus;
   bracket?: "upper" | "lower";
+  disabled?: boolean;
 }
 
 type ActivePresetField = {
@@ -135,43 +137,43 @@ function MatchBox({
   match: Match;
   setSelectedMatch: (id: number, bracket?: "upper" | "lower") => void;
 }) {
-  const borderColors: Record<MatchStatus, string> = {
-    completed: "border-green-500",
-    next: "border-yellow-500",
-    upcoming: "border-red-500",
+  const borderStyles: Record<MatchStatus, React.CSSProperties> = {
+    completed: { borderColor: "rgba(var(--primary-rgb), 0.55)" },
+    next: { borderColor: "rgba(var(--primary-rgb), 0.55)" },
+    upcoming: { borderColor: "#ef4444" },
   };
-
-  const badgeColors: Record<MatchStatus, string> = {
-    completed: "bg-[#c42221]",
-    next: "bg-[#c42221]",
-    upcoming: "bg-[#c42221]",
+  const badgeBg: Record<MatchStatus, string> = {
+    completed: "var(--primary-color)",
+    next: "var(--primary-color)",
+    upcoming: "#ef4444",
   };
-
-  const badgeText: Record<MatchStatus, string> = {
-    completed: "Done",
-    next: "Next",
-    upcoming: "Up",
+  const badgeIcon: Record<MatchStatus, React.ReactNode> = {
+    completed: <Check size={10} />,
+    next: <Hourglass size={10} />,
+    upcoming: <XIcon size={10} />,
   };
 
   return (
     <button
       onClick={() => {
+        if (match.disabled) return;
         setSelectedMatch(match.id, match.bracket);
       }}
+      disabled={match.disabled}
       className={`
         relative w-[120px] min-h-[62px] text-xs rounded border text-left bg-white
         border-t border-b border-l border-r
-        ${borderColors[match.status]}
-        hover:bg-gray-50
+        ${match.disabled ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}
       `}
+      style={match.disabled ? undefined : borderStyles[match.status]}
     >
       <div
         className={`
-          absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white
-          ${badgeColors[match.status]}
+          absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center
         `}
+        style={{ backgroundColor: badgeBg[match.status] }}
       >
-        {badgeText[match.status]}
+        {badgeIcon[match.status]}
       </div>
       <div className="pt-1.5 pb-1 px-1.5">
         <div className="font-semibold text-[11px] leading-tight">{match.label}</div>
@@ -199,8 +201,10 @@ function MatchBox({
 
 function FinalsBracket({
   setSelectedMatch,
+  completedMatches,
 }: {
   setSelectedMatch: (id: number, bracket?: "upper" | "lower") => void;
+  completedMatches: Set<string>;
 }) {
   const B = { w: 120, h: 62, colGap: 60, row: 90 };
   const col = (c: number) => (B.w + B.colGap) * c;
@@ -282,51 +286,51 @@ function FinalsBracket({
           </svg>
 
           <div className="absolute" style={{ left: c0, top: r1_1 }}>
-            <MatchBox match={{ id: 1, label: "Match 1", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 1, label: "SF1", status: completedMatches.has("sf1") ? "completed" : "upcoming", bracket: "upper", disabled: completedMatches.has("sf1") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c0, top: r1_2 }}>
-            <MatchBox match={{ id: 2, label: "Match 2", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 2, label: "SF2", status: completedMatches.has("sf2") ? "completed" : "upcoming", bracket: "upper", disabled: completedMatches.has("sf2") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c0, top: r1_3 }}>
-            <MatchBox match={{ id: 3, label: "Match 3", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 3, label: "SF3", status: completedMatches.has("sf3") ? "completed" : "upcoming", bracket: "upper", disabled: completedMatches.has("sf3") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c0, top: r1_4 }}>
-            <MatchBox match={{ id: 4, label: "Match 4", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 4, label: "SF4", status: completedMatches.has("sf4") ? "completed" : "upcoming", bracket: "upper", disabled: completedMatches.has("sf4") }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c1, top: r2_7 }}>
-            <MatchBox match={{ id: 7, label: "Match 7", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 7, label: "SF7", status: completedMatches.has("sf7") ? "completed" : "upcoming", bracket: "upper", disabled: completedMatches.has("sf7") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c1, top: r2_8 }}>
-            <MatchBox match={{ id: 8, label: "Match 8", status: "next", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 8, label: "SF8", status: completedMatches.has("sf8") ? "completed" : "next", bracket: "upper", disabled: completedMatches.has("sf8") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c1, top: lower_5 }}>
-            <MatchBox match={{ id: 5, label: "Match 5", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 5, label: "SF5", status: completedMatches.has("sf5") ? "completed" : "upcoming", bracket: "lower", disabled: completedMatches.has("sf5") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c1, top: lower_6 }}>
-            <MatchBox match={{ id: 6, label: "Match 6", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 6, label: "SF6", status: completedMatches.has("sf6") ? "completed" : "upcoming", bracket: "lower", disabled: completedMatches.has("sf6") }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c2, top: lower_9 }}>
-            <MatchBox match={{ id: 9, label: "Match 9", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 10, label: "SF10", status: completedMatches.has("sf10") ? "completed" : "upcoming", bracket: "lower", disabled: completedMatches.has("sf10") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c2, top: lower_10 }}>
-            <MatchBox match={{ id: 10, label: "Match 10", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 9, label: "SF9", status: completedMatches.has("sf9") ? "completed" : "upcoming", bracket: "lower", disabled: completedMatches.has("sf9") }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c3, top: r3_11 }}>
-            <MatchBox match={{ id: 11, label: "Match 11", status: "upcoming", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 11, label: "SF11", status: completedMatches.has("sf11") ? "completed" : "upcoming", bracket: "upper", disabled: completedMatches.has("sf11") }} setSelectedMatch={setSelectedMatch} />
           </div>
           <div className="absolute" style={{ left: c3, top: lower_12 }}>
-            <MatchBox match={{ id: 12, label: "Match 12", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 12, label: "SF12", status: completedMatches.has("sf12") ? "completed" : "upcoming", bracket: "lower", disabled: completedMatches.has("sf12") }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c4, top: y13 }}>
-            <MatchBox match={{ id: 13, label: "Match 13", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 13, label: "SF13", status: completedMatches.has("sf13") ? "completed" : "upcoming", bracket: "lower", disabled: completedMatches.has("sf13") }} setSelectedMatch={setSelectedMatch} />
           </div>
 
           <div className="absolute" style={{ left: c5, top: yFinals }}>
-            <MatchBox match={{ id: 14, label: "FINALS", status: "upcoming" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox match={{ id: 14, label: "FINALS", status: completedMatches.has("f1") && completedMatches.has("f2") && completedMatches.has("f3") ? "completed" : "upcoming" }} setSelectedMatch={setSelectedMatch} />
           </div>
         </div>
       </div>
@@ -341,6 +345,7 @@ function ScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
   const showEventWarning = !isEventActive();
+  const eventKey = "app-testing";
 
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -352,6 +357,8 @@ function ScoutFormContent() {
     id: 0,
     type: undefined,
   });
+  const [scoutedMatchCounts, setScoutedMatchCounts] = useState<Record<string, number>>({});
+  const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
 
   const [formData, setFormData] = useState({
     scoutName: userData?.displayName || "",
@@ -401,6 +408,46 @@ function ScoutFormContent() {
     loadActivePreset();
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    async function loadScoutedProgress() {
+      const counts: Record<string, number> = {};
+      const teamsByMatch = new Map<string, Set<string>>();
+      try {
+        const scoutingQuery = query(collection(db, "scouting"), where("eventKey", "==", eventKey));
+        const scoutingSnap = await getDocs(scoutingQuery);
+        scoutingSnap.docs.forEach((docSnap) => {
+          const row = docSnap.data() as Record<string, unknown>;
+          const matchId = String(row.matchId || "").trim().toLowerCase();
+          const teamNumber = String(row.teamNumber || "").trim();
+          if (!matchId) return;
+          counts[matchId] = (counts[matchId] || 0) + 1;
+          if (!teamsByMatch.has(matchId)) teamsByMatch.set(matchId, new Set<string>());
+          if (teamNumber) teamsByMatch.get(matchId)?.add(teamNumber);
+        });
+      } catch (error) {
+        console.error("Unable to load scout completion state:", error);
+      }
+      setScoutedMatchCounts(counts);
+      setScoutedTeamsByMatch(
+        Object.fromEntries(
+          Array.from(teamsByMatch.entries()).map(([key, value]) => [key, Array.from(value)])
+        )
+      );
+    }
+    void loadScoutedProgress();
+  }, [eventKey]);
+
+  function getSelectedMatchId(match: { id: number; type?: "qualification" | "practice" | "finals"; bracket?: "upper" | "lower" }) {
+    if (!match.type || match.id <= 0) return "";
+    if (match.type === "practice") return `p${match.id}`;
+    if (match.type === "qualification") return `q${match.id}`;
+    return match.bracket ? `sf${match.id}` : `f${match.id}`;
+  }
+
+  function isMatchCompleted(matchId: string, target = 6) {
+    return (scoutedMatchCounts[matchId] || 0) >= target;
+  }
+
   function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
     if (id === 14 && !bracket) {
       setSelectedMatch({ id: 0, type: "finals" });
@@ -415,29 +462,16 @@ function ScoutFormContent() {
   }
 
   function getFinalsDisplayLabel(matchNum: number) {
-    if (matchNum === 1) return "Upper Bracket Match 1";
-    if (matchNum === 2) return "Upper Bracket Match 2";
-    if (matchNum === 3) return "Upper Bracket Match 3";
-    if (matchNum === 4) return "Upper Bracket Match 4";
-    if (matchNum === 5) return "Lower Bracket Match 5";
-    if (matchNum === 6) return "Lower Bracket Match 6";
-    if (matchNum === 7) return "Upper Bracket Match 7";
-    if (matchNum === 8) return "Upper Bracket Match 8";
-    if (matchNum === 9) return "Lower Bracket Match 9";
-    if (matchNum === 10) return "Lower Bracket Match 10";
-    if (matchNum === 11) return "Upper Bracket Match 11";
-    if (matchNum === 12) return "Lower Bracket Match 12";
-    if (matchNum === 13) return "Lower Bracket Match 13";
-    if (matchNum === 14) return "Finals 1 (F14)";
-    if (matchNum === 15) return "Finals 2 (F15)";
-    if (matchNum === 16) return "Finals 3 (F16)";
-    return `Finals (F${matchNum})`;
+    return `Finals ${matchNum}`;
   }
 
   const getMatchDisplay = () => {
     if (!selectedMatch.type || selectedMatch.id <= 0) return "No match is set";
+    if (selectedMatch.type === "finals" && selectedMatch.bracket) {
+      return `Semifinal ${selectedMatch.id} (SF${selectedMatch.id})`;
+    }
     if (selectedMatch.type === "finals") {
-      return getFinalsDisplayLabel(selectedMatch.id);
+      return `Finals ${selectedMatch.id} (F${selectedMatch.id})`;
     } else if (selectedMatch.type === "practice") {
       return `Practice Match ${selectedMatch.id}`;
     } else {
@@ -452,6 +486,18 @@ function ScoutFormContent() {
     ? activeTeamField.options.filter((option) => option.trim().length > 0)
     : [];
   const allowManualTeamEntry = showEventWarning || activeTeamField?.type === "number" || activeTeamField?.type === "text";
+  const selectedMatchId = getSelectedMatchId(selectedMatch);
+  const selectedMatchScoutedTeams = useMemo(
+    () => new Set(selectedMatchId ? scoutedTeamsByMatch[selectedMatchId] || [] : []),
+    [selectedMatchId, scoutedTeamsByMatch]
+  );
+
+  useEffect(() => {
+    if (!formData.teamNumber || !selectedMatchId) return;
+    if (selectedMatchScoutedTeams.has(formData.teamNumber)) {
+      setFormData((prev) => ({ ...prev, teamNumber: "" }));
+    }
+  }, [formData.teamNumber, selectedMatchId, selectedMatchScoutedTeams]);
 
   const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
     <div className="flex items-center justify-between py-2">
@@ -596,8 +642,12 @@ function ScoutFormContent() {
                   <option value="">Select Team</option>
                   {presetTeamOptions.length > 0 ? (
                     presetTeamOptions.map((teamOption) => (
-                      <option key={teamOption} value={teamOption}>
-                        {teamOption}
+                      <option
+                        key={teamOption}
+                        value={teamOption}
+                        disabled={selectedMatchScoutedTeams.has(teamOption)}
+                      >
+                        {selectedMatchScoutedTeams.has(teamOption) ? `${teamOption} (Scouted)` : teamOption}
                       </option>
                     ))
                   ) : (
@@ -611,6 +661,11 @@ function ScoutFormContent() {
                     </>
                   )}
                 </select>
+              )}
+              {selectedMatchId && selectedMatchScoutedTeams.size > 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Grayed teams were already scouted for this match.
+                </p>
               )}
             </div>
 
@@ -790,21 +845,17 @@ function ScoutFormContent() {
             style={{ backgroundColor: "var(--primary-color)" }}
             onClick={async () => {
               try {
+                if (selectedMatchId && formData.teamNumber && selectedMatchScoutedTeams.has(formData.teamNumber)) {
+                  alert("That robot has already been scouted for this match.");
+                  return;
+                }
                 // Add to Firebase with proper labels
                 const { addDoc, collection } = await import("firebase/firestore");
                 const { db } = await import("@/app/firebase");
                 
-                const matchPrefix = selectedMatch.type === "practice"
-                  ? "p"
-                  : selectedMatch.type === "finals"
-                  ? "f"
-                  : selectedMatch.type === "qualification"
-                  ? "q"
-                  : "u";
                 const safeMatchNumber = selectedMatch.id > 0 ? selectedMatch.id : 0;
-                const matchId = `${matchPrefix}${safeMatchNumber}`;
+                const matchId = getSelectedMatchId(selectedMatch) || "u0";
                 const now = Date.now();
-                const eventKey = "app-testing";
                 const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
                 const penaltyPoints = 0;
                 const submission = {
@@ -816,6 +867,7 @@ function ScoutFormContent() {
                   eventKey,
                   eventName,
                   game: activeFormGame,
+                  teamId: userData?.teamId || "",
                   penaltyPoints,
                   scoutedScore: calculateSubmissionScore(penaltyPoints),
                   timestamp: now,
@@ -966,34 +1018,58 @@ function ScoutFormContent() {
         {modalStep === "practice" && (
           <>
             <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-              Practice Match
+              Practice Matches
             </h2>
-
-            <p className="text-gray-600 mb-4">
-              Practice matches are unscheduled. Enter match number manually.
-            </p>
-
-            <input
-              type="number"
-              placeholder="Practice Match #"
-              className="w-full border rounded p-2 mb-4"
-              id="practiceMatchInput"
-            />
-
-            <button
-              className="w-full py-2 rounded text-white"
-              style={{ backgroundColor: "var(--primary-color)" }}
-              onClick={() => {
-                const input = document.getElementById("practiceMatchInput") as HTMLInputElement;
-                const matchNum = parseInt(input.value);
-                if (matchNum && matchNum > 0) {
-                  setSelectedMatch({ id: matchNum, type: "practice" });
-                  setModalOpen(false);
-                }
-              }}
-            >
-              Confirm
-            </button>
+            {(() => {
+              const totalMatches = 20;
+              const baseTime = new Date();
+              baseTime.setHours(8, 0, 0, 0);
+              const statuses = Array.from({ length: totalMatches }, (_, i) => {
+                const matchNum = i + 1;
+                const matchId = `p${matchNum}`;
+                const done = isMatchCompleted(matchId, 3);
+                return { matchNum, done };
+              });
+              const firstOpen = statuses.find((row) => !row.done)?.matchNum ?? -1;
+              return (
+                <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
+                  {statuses.map(({ matchNum, done }) => {
+                    const matchTime = new Date(baseTime.getTime() + (matchNum - 1) * 7 * 60000);
+                    const timeString = matchTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                    const status: MatchStatus = done ? "completed" : matchNum === firstOpen ? "next" : "upcoming";
+                    const disabled = done;
+                    return (
+                      <button
+                        key={matchNum}
+                        onClick={() => {
+                          if (disabled) return;
+                          setSelectedMatch({ id: matchNum, type: "practice" });
+                          setModalOpen(false);
+                        }}
+                        disabled={disabled}
+                        className={`relative p-2 rounded-lg border text-left ${disabled ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
+                        style={
+                          disabled
+                            ? undefined
+                            : { borderColor: status === "upcoming" ? "#ef4444" : "rgba(var(--primary-rgb), 0.55)" }
+                        }
+                      >
+                        <div
+                          className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center"
+                          style={{ backgroundColor: status === "upcoming" ? "#ef4444" : "var(--primary-color)" }}
+                        >
+                          {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
+                        </div>
+                        <div className="mt-3">
+                          <div className="font-semibold text-sm">Practice {matchNum}</div>
+                          <div className="text-xs text-gray-600">{timeString}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </>
         )}
 
@@ -1008,70 +1084,45 @@ function ScoutFormContent() {
             </h2>
 
             {(() => {
-              const currentMatch = 67;
               const totalMatches = 80;
-
               const baseTime = new Date();
               baseTime.setHours(9, 0, 0, 0);
-
-              const schedule = Array.from({ length: totalMatches }, (_, i) => {
+              const statuses = Array.from({ length: totalMatches }, (_, i) => {
                 const matchNum = i + 1;
-                const matchTime = new Date(
-                  baseTime.getTime() + i * 7 * 60000
-                );
-
-                const timeString = matchTime.toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                });
-
-                let status: MatchStatus = "upcoming";
-                if (matchNum < currentMatch) status = "completed";
-                else if (matchNum === currentMatch) status = "next";
-
-                return { matchNum, timeString, status };
+                const matchId = `q${matchNum}`;
+                const done = isMatchCompleted(matchId, 6);
+                return { matchNum, done };
               });
-
-              const borderColors: Record<MatchStatus, string> = {
-                completed: "border-green-500",
-                next: "border-yellow-500",
-                upcoming: "border-red-500",
-              };
-
-              const badgeColors: Record<MatchStatus, string> = {
-                completed: "bg-[#c42221]",
-                next: "bg-[#c42221]",
-                upcoming: "bg-[#c42221]",
-              };
-
-              const badgeText: Record<MatchStatus, string> = {
-                completed: "Done",
-                next: "Next",
-                upcoming: "Up",
-              };
+              const firstOpen = statuses.find((row) => !row.done)?.matchNum ?? -1;
 
               return (
                 <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {schedule.map(({ matchNum, timeString, status }) => (
+                  {statuses.map(({ matchNum, done }) => {
+                    const matchTime = new Date(baseTime.getTime() + (matchNum - 1) * 7 * 60000);
+                    const timeString = matchTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                    const status: MatchStatus = done ? "completed" : matchNum === firstOpen ? "next" : "upcoming";
+                    const disabled = done;
+                    return (
                     <button
                       key={matchNum}
                       onClick={() => {
+                        if (disabled) return;
                         setSelectedMatch({ id: matchNum, type: "qualification" });
                         setModalOpen(false);
                       }}
-                      className={`
-                        relative p-2 rounded-lg border text-left
-                        ${borderColors[status]}
-                        hover:bg-gray-50
-                      `}
+                      disabled={disabled}
+                      className={`relative p-2 rounded-lg border text-left ${disabled ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
+                      style={
+                        disabled
+                          ? undefined
+                          : { borderColor: status === "upcoming" ? "#ef4444" : "rgba(var(--primary-rgb), 0.55)" }
+                      }
                     >
                       <div
-                        className={`
-                          absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white
-                          ${badgeColors[status]}
-                        `}
+                        className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center"
+                        style={{ backgroundColor: status === "upcoming" ? "#ef4444" : "var(--primary-color)" }}
                       >
-                        {badgeText[status]}
+                        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
                       </div>
 
                       <div className="mt-3">
@@ -1083,7 +1134,8 @@ function ScoutFormContent() {
                         </div>
                       </div>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
@@ -1102,6 +1154,11 @@ function ScoutFormContent() {
         {modalStep === "finals" && finalsStep === "bracket" && (
           <FinalsBracket
             setSelectedMatch={handleMatchSelect}
+            completedMatches={new Set(Object.keys(scoutedMatchCounts).filter((key) => {
+              if (key.startsWith("sf")) return isMatchCompleted(key, 6);
+              if (key.startsWith("f")) return isMatchCompleted(key, 6);
+              return false;
+            }))}
           />
         )}
         
@@ -1128,20 +1185,22 @@ function ScoutFormContent() {
             </p>
 
             <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
-              {[14, 15, 16].map(matchNum => (
+              {[1, 2, 3].map(matchNum => (
                 <button
                   key={matchNum}
                   onClick={() => {
                     setSelectedMatch(prev => ({
                       ...prev,
                       type: "finals",
-                      id: matchNum
+                      id: matchNum,
+                      bracket: undefined,
                     }));
                     setModalOpen(false);
                     setModalStep("type");
                     setFinalsStep("bracket");
                   }}
-                  className="group relative p-8 border-2 border-gray-300 rounded-2xl hover:border-red-500 hover:bg-red-50 transition-all hover:shadow-lg"
+                  disabled={isMatchCompleted(`f${matchNum}`, 6)}
+                  className={`group relative p-8 border-2 border-gray-300 rounded-2xl transition-all ${isMatchCompleted(`f${matchNum}`, 6) ? "opacity-45 cursor-not-allowed bg-gray-100" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
                 >
                   <div className="text-center">
                     <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
@@ -1151,9 +1210,9 @@ function ScoutFormContent() {
                       {getFinalsDisplayLabel(matchNum)}
                     </div>
                     <div className="text-xs text-gray-500 mt-2">
-                      {matchNum === 14 && "First Finals"}
-                      {matchNum === 15 && "Second Finals"}
-                      {matchNum === 16 && "Third Finals (if needed)"}
+                      {matchNum === 1 && "First Finals"}
+                      {matchNum === 2 && "Second Finals"}
+                      {matchNum === 3 && "Third Finals (if needed)"}
                     </div>
                   </div>
                 </button>
