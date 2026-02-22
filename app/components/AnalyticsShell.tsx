@@ -51,8 +51,18 @@ export default function AnalyticsShell({
 
   const effectiveEventOptions = (() => {
     if (selectedGame !== "REEFSCAPE" || !practiceMatchesOnly) return eventOptions;
-    if (eventOptions.some((option) => option.id === "2025cmptx")) return eventOptions;
-    return [{ id: "2025cmptx", name: "Einstein Field" }, ...eventOptions];
+    const base = eventOptions.filter((option) => option.id !== "app-testing");
+    const einstein = { id: "2025cmptx", name: "Einstein Field" };
+    const withoutEinstein = base.filter((option) => option.id !== "2025cmptx");
+    const bayouIndex = withoutEinstein.findIndex((option) => option.id === "2025lake");
+    if (bayouIndex >= 0) {
+      return [
+        ...withoutEinstein.slice(0, bayouIndex + 1),
+        einstein,
+        ...withoutEinstein.slice(bayouIndex + 1),
+      ];
+    }
+    return [...withoutEinstein, einstein];
   })();
 
   useEffect(() => {

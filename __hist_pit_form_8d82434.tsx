@@ -122,8 +122,33 @@ function PitScoutFormContent() {
 
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
-    alert("REEFSCAPE pit form submissions are disabled.");
-    return;
+    if (!userData?.uid) return;
+
+    setSaving(true);
+    try {
+      const now = Date.now();
+      const eventKey = "app-testing";
+      const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
+      await addDoc(collection(db, "pitScouting"), {
+        ...form,
+        eventKey,
+        eventName,
+        game: activeFormGame,
+        teamId: userData.teamId || "",
+        submittedBy: userData.uid,
+        createdAt: now,
+      });
+      alert("Pit scout form submitted.");
+      setForm((prev) => ({
+        ...prev,
+        teamNumber: "",
+        robotPictureUrl: "",
+        notes: "",
+      }));
+      setRobotPictureUrlInput("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -134,21 +159,28 @@ function PitScoutFormContent() {
           <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
             <div className="bg-white rounded-xl shadow p-4">
               <h1 className="text-3xl font-bold mb-2 theme-text">Pit Scout Form</h1>
-              <div className="mt-3 max-w-sm">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
-                <select
-                  className="w-full border rounded p-2"
-                  value="reefscape"
-                  onChange={(event) => {
-                    if (event.target.value === "placeholder") {
-                      router.push("/pit-scout-form");
-                    }
-                  }}
-                >
-                  <option value="reefscape">REEFSCAPE Form</option>
-                  <option value="placeholder">REBUILT Form</option>
-                </select>
-              </div>
+              {userData?.isTeamAdmin && (
+                <div className="mt-3 max-w-sm">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Form Select (Admin)</label>
+                  <select
+                    className="w-full border rounded p-2"
+                    value="reefscape"
+                    onChange={(event) => {
+                      if (event.target.value === "placeholder") {
+                        router.push("/pit-scout-form-placeholder");
+                      }
+                    }}
+                  >
+                    <option value="reefscape">REEFSCAPE Form</option>
+                    <option value="placeholder">REBUILT Form</option>
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+              <p className="text-sm text-yellow-700">
+                Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
+              </p>
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
@@ -329,11 +361,11 @@ function PitScoutFormContent() {
             <div className="sticky bottom-0 bg-gray-100 pt-4 pb-2">
               <button
                 type="submit"
-                disabled
+                disabled={saving}
                 className="w-full py-3 rounded text-white font-semibold disabled:opacity-50"
                 style={{ background: "var(--primary-gradient)" }}
               >
-                Submission Disabled for REEFSCAPE
+                {saving ? "Submitting..." : "Submit Pit Scout Form"}
               </button>
             </div>
           </form>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
+import { isEventActive } from "@/app/utils/eventDates";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -344,7 +345,7 @@ function FinalsBracket({
 function ScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  const showEventWarning = false;
+  const showEventWarning = !isEventActive();
   const [eventKey, setEventKey] = useState("app-testing");
 
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
@@ -629,22 +630,31 @@ function ScoutFormContent() {
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Match Scouting Form
           </h1>
-          <div className="mt-3 max-w-sm">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
-            <select
-              className="w-full border rounded p-2"
-              value="reefscape"
-              onChange={(event) => {
-                if (event.target.value === "placeholder") {
-                  router.push("/scout-form");
-                }
-              }}
-            >
-              <option value="reefscape">REEFSCAPE Form</option>
-              <option value="placeholder">REBUILT Form</option>
-            </select>
-          </div>
+          {userData?.isTeamAdmin && (
+            <div className="mt-3 max-w-sm">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Form Select (Admin)</label>
+              <select
+                className="w-full border rounded p-2"
+                value="reefscape"
+                onChange={(event) => {
+                  if (event.target.value === "placeholder") {
+                    router.push("/scout-form-placeholder");
+                  }
+                }}
+              >
+                <option value="reefscape">REEFSCAPE Form</option>
+                <option value="placeholder">REBUILT Form</option>
+              </select>
+            </div>
+          )}
         </div>
+        {showEventWarning && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+            <p className="text-sm text-yellow-700">
+              Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
+            </p>
+          </div>
+        )}
         {/* MATCH SELECTOR HEADER */}
         <div
           className="bg-white rounded-xl shadow p-4 border-l-4"
@@ -917,12 +927,81 @@ function ScoutFormContent() {
         {/* SUBMIT */}
         <div className="bg-white rounded-xl shadow p-4">
           <button
-            disabled
             className="w-full py-3 rounded text-white font-semibold"
             style={{ backgroundColor: "var(--primary-color)" }}
-            onClick={() => alert("REEFSCAPE match form submissions are disabled.")}
+            onClick={async () => {
+              try {
+                if (selectedMatchId && formData.teamNumber && selectedMatchScoutedTeams.has(formData.teamNumber)) {
+                  alert("That robot has already been scouted for this match.");
+                  return;
+                }
+                // Add to Firebase with proper labels
+                const { addDoc, collection } = await import("firebase/firestore");
+                const { db } = await import("@/app/firebase");
+                
+                const safeMatchNumber = selectedMatch.id > 0 ? selectedMatch.id : 0;
+                const matchId = getSelectedMatchId(selectedMatch) || "u0";
+                const now = Date.now();
+                const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
+                const penaltyPoints = 0;
+                const submission = {
+                  ...formData,
+                  matchId,
+                  matchNumber: safeMatchNumber.toString(),
+                  matchType: selectedMatch.type || "practice",
+                  bracket: selectedMatch.bracket || null,
+                  eventKey,
+                  eventName,
+                  game: activeFormGame,
+                  teamId: userData?.teamId || "",
+                  penaltyPoints,
+                  scoutedScore: calculateSubmissionScore(penaltyPoints),
+                  timestamp: now,
+                  submittedAt: now,
+                };
+                
+                await addDoc(collection(db, "scouting"), submission);
+                alert("Scouting report submitted successfully!");
+                
+                // Reset form
+                setFormData({
+                  scoutName: userData?.displayName || "",
+                  teamNumber: "",
+                  startingPosition: "",
+                  leftStartingZone: false,
+                  autoCoralMissed: 0,
+                  autoCoralL1: 0,
+                  autoCoralL2: 0,
+                  autoCoralL3: 0,
+                  autoCoralL4: 0,
+                  autoAlgaeProcessorMissed: 0,
+                  autoAlgaeProcessorScored: 0,
+                  autoAlgaeNetMissed: 0,
+                  autoAlgaeNetScored: 0,
+                  teleopCoralMissed: 0,
+                  teleopCoralL1: 0,
+                  teleopCoralL2: 0,
+                  teleopCoralL3: 0,
+                  teleopCoralL4: 0,
+                  teleopAlgaeRemoved: false,
+                  teleopProcessorMissed: 0,
+                  teleopProcessorScored: 0,
+                  teleopNetRobotMissed: 0,
+                  teleopNetRobotScored: 0,
+                  teleopNetHumanMissed: 0,
+                  teleopNetHumanScored: 0,
+                  failedClimb: 0,
+                  stageStatus: "",
+                  incidents: [],
+                  notes: "",
+                });
+              } catch (error) {
+                console.error("Error submitting:", error);
+                alert("Error submitting report. Check console.");
+              }
+            }}
           >
-            Submission Disabled for REEFSCAPE
+            Submit Scouting Report
           </button>
         </div>
       </div>
@@ -1255,3 +1334,4 @@ export default function Page() {
     </ProtectedRoute>
   );
 }
+

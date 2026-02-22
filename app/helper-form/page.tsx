@@ -10,9 +10,11 @@ import { useAuth } from "@/app/AuthContext";
 function HelperFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [teamNumber, setTeamNumber] = useState("");
   const [successful, setSuccessful] = useState(false);
   const [issueSolved, setIssueSolved] = useState("");
+  const [notes, setNotes] = useState("");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -26,6 +28,7 @@ function HelperFormContent() {
         assistedTeamNumber: teamNumber.trim(),
         wasSuccessful: successful,
         issueSolved: issueSolved.trim(),
+        notes: notes.trim(),
         game: "REBUILT",
         createdAt: Date.now(),
       });
@@ -33,6 +36,7 @@ function HelperFormContent() {
       setTeamNumber("");
       setSuccessful(false);
       setIssueSolved("");
+      setNotes("");
     } catch (error) {
       console.error("Error submitting helper form:", error);
       alert("Could not submit form.");
@@ -44,8 +48,9 @@ function HelperFormContent() {
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-6">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
+        <form onSubmit={handleSubmit} className="flex-1 p-4 space-y-4 max-w-3xl">
           <div className="bg-white rounded-xl shadow p-4">
             <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Helper Form
@@ -91,6 +96,46 @@ function HelperFormContent() {
             {saving ? "Submitting..." : "Submit Helper Form"}
           </button>
         </form>
+
+        <div className="hidden md:block w-80 p-4">
+          <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="flex-1 border rounded p-2 resize-none"
+              placeholder="Optional notes..."
+            />
+          </div>
+        </div>
+
+        <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
+          <button
+            onClick={() => setMobileNotesOpen((prev) => !prev)}
+            className="px-2 py-4 rounded-l-xl text-white"
+            style={{ backgroundColor: "var(--primary-color)" }}
+          >
+            {mobileNotesOpen ? ">" : "<"}
+          </button>
+        </div>
+        {mobileNotesOpen && (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNotesOpen(false)} />
+            <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
+                <button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              </div>
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
+                placeholder="Helper notes..."
+              />
+            </div>
+          </>
+        )}
+        </div>
       </div>
     </div>
   );

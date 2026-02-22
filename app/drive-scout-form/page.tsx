@@ -80,6 +80,8 @@ function MatchPickerModal({
 function DriveReflectionFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [notes, setNotes] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
   const [ourTeamNumber, setOurTeamNumber] = useState("");
   const [showMatchPicker, setShowMatchPicker] = useState(false);
@@ -185,6 +187,7 @@ function DriveReflectionFormContent() {
         teamId: userData.teamId,
         game: "REBUILT",
         robots: [robot1, robot2, robot3],
+        notes: notes.trim(),
         createdAt: Date.now(),
       });
       alert("Drive Reflection Form submitted.");
@@ -251,8 +254,9 @@ function DriveReflectionFormContent() {
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-6">
-        <form onSubmit={submit} className="max-w-4xl mx-auto space-y-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
+        <form onSubmit={submit} className="flex-1 p-4 space-y-4 max-w-4xl">
           <div className="bg-white rounded-xl shadow p-4">
             <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Drive Reflection Form
@@ -292,6 +296,46 @@ function DriveReflectionFormContent() {
             {saving ? "Submitting..." : "Submit Drive Reflection Form"}
           </button>
         </form>
+
+        <div className="hidden md:block w-80 p-4">
+          <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="flex-1 border rounded p-2 resize-none"
+              placeholder="Optional notes..."
+            />
+          </div>
+        </div>
+
+        <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
+          <button
+            onClick={() => setMobileNotesOpen((prev) => !prev)}
+            className="px-2 py-4 rounded-l-xl text-white"
+            style={{ backgroundColor: "var(--primary-color)" }}
+          >
+            {mobileNotesOpen ? ">" : "<"}
+          </button>
+        </div>
+        {mobileNotesOpen && (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNotesOpen(false)} />
+            <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
+                <button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              </div>
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
+                placeholder="Drive reflection notes..."
+              />
+            </div>
+          </>
+        )}
+        </div>
       </div>
 
       <MatchPickerModal
