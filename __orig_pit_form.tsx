@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -72,12 +71,12 @@ function TeamPickerModal({
 }
 
 function PitScoutFormContent() {
-  const router = useRouter();
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
+  const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<PitFormState>({
@@ -102,6 +101,21 @@ function PitScoutFormContent() {
     if (!userData?.displayName) return;
     setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
   }, [userData?.displayName]);
+
+  useEffect(() => {
+    async function loadDefaultGame() {
+      if (!userData?.teamId) return;
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      if (!teamDoc.exists()) return;
+      const presetId = teamDoc.data().activePitFormPresetId as string | undefined;
+      if (!presetId) return;
+      const presetDoc = await getDoc(doc(db, "formPresets", presetId));
+      if (!presetDoc.exists()) return;
+      const preset = presetDoc.data() as { game?: "REEFSCAPE" | "REBUILT" };
+      setActiveFormGame(preset.game === "REBUILT" ? "REBUILT" : "REEFSCAPE");
+    }
+    void loadDefaultGame();
+  }, [userData?.teamId]);
 
   useEffect(() => {
     async function loadEventTeams() {
@@ -142,13 +156,19 @@ function PitScoutFormContent() {
     void loadEventTeams();
   }, [userData?.teamId]);
 
+  const isReefscape = activeFormGame === "REEFSCAPE";
   const canSubmit = useMemo(() => {
+    if (isReefscape) return false;
     return form.teamNumber.trim().length > 0;
-  }, [form.teamNumber]);
+  }, [form.teamNumber, isReefscape]);
 
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid || !userData.teamId) return;
+    if (isReefscape) {
+      alert("REEFSCAPE pit form submissions are disabled.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -194,17 +214,16 @@ function PitScoutFormContent() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
                 <select
                   className="w-full border rounded p-2"
-                  value="REBUILT"
-                  onChange={(event) => {
-                    if (event.target.value === "REEFSCAPE") {
-                      router.push("/pit-scout-form-reefscape");
-                    }
-                  }}
+                  value={activeFormGame}
+                  onChange={(event) => setActiveFormGame(event.target.value === "REBUILT" ? "REBUILT" : "REEFSCAPE")}
                 >
                   <option value="REEFSCAPE">REEFSCAPE Form</option>
                   <option value="REBUILT">REBUILT Form</option>
                 </select>
               </div>
+              {isReefscape && (
+                <p className="text-sm text-red-600 mt-2">REEFSCAPE submissions are disabled.</p>
+              )}
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
@@ -294,7 +313,7 @@ function PitScoutFormContent() {
                 className="w-full py-3 rounded text-white font-semibold disabled:opacity-50"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >
-                {saving ? "Submitting..." : "Submit Pit Scout Form"}
+                {saving ? "Submitting..." : isReefscape ? "Submission Disabled for REEFSCAPE" : "Submit Pit Scout Form"}
               </button>
             </div>
           </form>

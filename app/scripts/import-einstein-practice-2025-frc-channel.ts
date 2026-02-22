@@ -7,6 +7,8 @@
 //
 // Optional:
 //   --event=2025cmptx
+//   --strict-frc-channel
+//   --manual=path/to/video-overrides.json
 //
 // Difficulty rules:
 //   easy: <= 100
@@ -14,12 +16,14 @@
 //   hard: >= 201
 
 import { config } from "dotenv";
+import { readFileSync } from "fs";
 import { resolve } from "path";
 
 config({ path: resolve(process.cwd(), ".env.local") });
 
 const TBA_BASE_URL = "https://www.thebluealliance.com/api/v3";
 const FRC_CHANNEL_NAME = "FIRST Robotics Competition";
+const ACCEPTED_CHANNEL_MARKERS = ["first robotics competition", "firstinspires", "first"];
 
 type TbaVideo = { type: string; key: string };
 type TbaMatch = {
@@ -55,12 +59,17 @@ type OEmbedResponse = {
   author_url?: string;
 };
 
+type ChannelCheckResult = "frc" | "non-frc" | "unknown";
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
+  const strictFrcChannel = args.includes("--strict-frc-channel");
   const eventArg = args.find((arg) => arg.startsWith("--event="));
+  const manualArg = args.find((arg) => arg.startsWith("--manual="));
   const eventKey = eventArg ? eventArg.slice("--event=".length).trim() : "2025cmptx";
-  return { apply, eventKey: eventKey || "2025cmptx" };
+  const manualPath = manualArg ? manualArg.slice("--manual=".length).trim() : "";
+  return { apply, eventKey: eventKey || "2025cmptx", strictFrcChannel, manualPath };
 }
 
 function classifyDifficulty(score: number): "easy" | "medium" | "hard" {
@@ -156,29 +165,46 @@ async function fetchTbaMatches(eventKey: string, apiKey: string): Promise<TbaMat
   return response.json() as Promise<TbaMatch[]>;
 }
 
-const channelCheckCache = new Map<string, boolean>();
-async function isFrcChannelVideo(youtubeKey: string): Promise<boolean> {
-  if (channelCheckCache.has(youtubeKey)) return channelCheckCache.get(youtubeKey) || false;
+const channelCheckCache = new Map<string, ChannelCheckResult>();
+async function getChannelCheck(youtubeKey: string): Promise<ChannelCheckResult> {
+  if (channelCheckCache.has(youtubeKey)) return channelCheckCache.get(youtubeKey) || "unknown";
   const url = encodeURIComponent(videoUrl(youtubeKey));
   const oembed = `https://www.youtube.com/oembed?url=${url}&format=json`;
-  const response = await fetch(oembed);
+  let response: Response;
+  try {
+    response = await fetch(oembed);
+  } catch {
+    channelCheckCache.set(youtubeKey, "unknown");
+    return "unknown";
+  }
   if (!response.ok) {
-    channelCheckCache.set(youtubeKey, false);
-    return false;
+    channelCheckCache.set(youtubeKey, "unknown");
+    return "unknown";
   }
   const payload = (await response.json()) as OEmbedResponse;
   const author = String(payload.author_name || "").trim().toLowerCase();
-  const isMatch = author === FRC_CHANNEL_NAME.toLowerCase();
-  channelCheckCache.set(youtubeKey, isMatch);
-  return isMatch;
+  const authorUrl = String(payload.author_url || "").trim().toLowerCase();
+  const combined = `${author} ${authorUrl}`;
+  const isMatch =
+    author === FRC_CHANNEL_NAME.toLowerCase() ||
+    ACCEPTED_CHANNEL_MARKERS.some((marker) => combined.includes(marker));
+  const result: ChannelCheckResult = isMatch ? "frc" : "non-frc";
+  channelCheckCache.set(youtubeKey, result);
+  return result;
 }
 
-async function pickFrcYoutubeVideo(match: TbaMatch): Promise<string | null> {
+async function pickFrcYoutubeVideo(
+  match: TbaMatch,
+  strictFrcChannel: boolean
+): Promise<{ url: string | null; source: "frc-verified" | "fallback-youtube" | "none" }> {
   const videos = (match.videos || []).filter((entry) => entry.type === "youtube" && entry.key);
+  if (videos.length === 0) return { url: null, source: "none" };
   for (const entry of videos) {
-    if (await isFrcChannelVideo(entry.key)) return videoUrl(entry.key);
+    const result = await getChannelCheck(entry.key);
+    if (result === "frc") return { url: videoUrl(entry.key), source: "frc-verified" };
   }
-  return null;
+  if (strictFrcChannel) return { url: null, source: "none" };
+  return { url: videoUrl(videos[0].key), source: "fallback-youtube" };
 }
 
 async function listPracticeDocs(projectId: string, authHeaders: Record<string, string>): Promise<FirestoreDoc[]> {
@@ -232,8 +258,28 @@ function readPenaltyPoints(breakdown: Record<string, unknown> | undefined): numb
   return 0;
 }
 
+function loadManualOverrides(path: string): Record<string, string> {
+  if (!path) return {};
+  try {
+    const rawText = readFileSync(resolve(process.cwd(), path), "utf8");
+    const raw = JSON.parse(rawText) as Record<string, unknown>;
+    const mapped: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw || {})) {
+      if (typeof key !== "string" || typeof value !== "string") continue;
+      const matchKey = key.trim().toLowerCase();
+      const url = value.trim();
+      if (!matchKey || !url) continue;
+      mapped[matchKey] = url;
+    }
+    return mapped;
+  } catch (error) {
+    console.warn(`Warning: could not read manual overrides from ${path}:`, error);
+    return {};
+  }
+}
+
 async function run() {
-  const { apply, eventKey } = parseArgs();
+  const { apply, eventKey, strictFrcChannel, manualPath } = parseArgs();
   const projectId = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
   const tbaKey = String(process.env.TBA_API_KEY || process.env.NEXT_PUBLIC_TBA_API_KEY || "").trim();
   if (!projectId) throw new Error("Missing NEXT_PUBLIC_FIREBASE_PROJECT_ID in .env.local");
@@ -244,10 +290,15 @@ async function run() {
 
   console.log(`Mode: ${apply ? "APPLY" : "DRY RUN"}`);
   console.log(`Event key: ${eventKey}`);
+  console.log(`Video mode: ${strictFrcChannel ? "strict FRC channel only" : "FRC preferred with fallback"}`);
+  if (manualPath) console.log(`Manual override file: ${manualPath}`);
 
   const matches = await fetchTbaMatches(eventKey, tbaKey);
   const playoffAndQual = matches.filter((match) => ["qm", "qf", "sf", "f"].includes(match.comp_level));
+  const manualOverrides = loadManualOverrides(manualPath);
   let frcVideoMatches = 0;
+  let fallbackVideoMatches = 0;
+  let manualVideoMatches = 0;
 
   const existingDocs = await listPracticeDocs(projectId, authHeaders);
   const existingKeys = new Set<string>();
@@ -263,14 +314,25 @@ async function run() {
   let skippedNoFrcVideo = 0;
   let skippedDuplicates = 0;
   let created = 0;
+  const missingVideoMatchKeys: string[] = [];
 
   for (const match of playoffAndQual) {
-    const selectedVideo = await pickFrcYoutubeVideo(match);
+    const manualVideo = manualOverrides[match.key.toLowerCase()] || "";
+    let selectedVideo = manualVideo;
+    let source: "manual" | "frc-verified" | "fallback-youtube" | "none" = manualVideo ? "manual" : "none";
+    if (!selectedVideo) {
+      const picked = await pickFrcYoutubeVideo(match, strictFrcChannel);
+      selectedVideo = picked.url || "";
+      source = picked.source;
+    }
     if (!selectedVideo) {
       skippedNoFrcVideo += 1;
+      missingVideoMatchKeys.push(match.key);
       continue;
     }
-    frcVideoMatches += 1;
+    if (source === "manual") manualVideoMatches += 1;
+    else if (source === "frc-verified") frcVideoMatches += 1;
+    else if (source === "fallback-youtube") fallbackVideoMatches += 1;
 
     for (const allianceColor of ["red", "blue"] as const) {
       attempted += 1;
@@ -324,8 +386,14 @@ async function run() {
   }
 
   console.log(`Total qual/playoff matches scanned: ${playoffAndQual.length}`);
+  console.log(`Matches with manual video override: ${manualVideoMatches}`);
   console.log(`Matches with FRC-channel video: ${frcVideoMatches}`);
-  console.log(`Matches skipped (no FRC-channel video): ${skippedNoFrcVideo}`);
+  console.log(`Matches with fallback YouTube video: ${fallbackVideoMatches}`);
+  console.log(`Matches skipped (no usable video): ${skippedNoFrcVideo}`);
+  if (missingVideoMatchKeys.length > 0) {
+    console.log("Missing video match keys:");
+    for (const key of missingVideoMatchKeys) console.log(`  - ${key}`);
+  }
   console.log(`Attempted alliance docs: ${attempted}`);
   console.log(`Skipped duplicates: ${skippedDuplicates}`);
   console.log(`${apply ? "Created" : "Would create"}: ${apply ? created : attempted - skippedDuplicates}`);
@@ -335,4 +403,3 @@ run().catch((error) => {
   console.error("Import failed:", error);
   process.exit(1);
 });
-

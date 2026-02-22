@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -364,17 +364,6 @@ function PracticeScoutingContent() {
       clearInterval(interval);
     };
   }, [selectedMode, currentMatch?.id]);
-
-  useEffect(() => {
-    async function loadActiveMatchGame() {
-      if (!userData?.teamId) return;
-      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-      if (!teamDoc.exists()) return;
-      const value = teamDoc.data().activeMatchGame;
-      setActiveMatchGame(value === "REBUILT" ? "REBUILT" : "REEFSCAPE");
-    }
-    void loadActiveMatchGame();
-  }, [userData?.teamId]);
 
   function clearPracticeDraft() {
     if (typeof window === "undefined" || !userData?.uid) return;
@@ -786,7 +775,7 @@ function PracticeScoutingContent() {
                       REBUILT can be practiced directly in the new Match Scout Form flow.
                     </p>
                     <button
-                      onClick={() => router.push("/scout-form?game=REBUILT&practice=1")}
+                      onClick={() => router.push("/scout-form?practice=1")}
                       className="px-4 py-2 rounded text-white font-semibold"
                       style={{ backgroundColor: "var(--primary-color)" }}
                     >

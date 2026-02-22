@@ -336,7 +336,7 @@ function TeamRoleDashboardContent({
                       <p className="text-sm text-gray-600 mb-2">
                         {new Date(nextTeamMatch.scheduleTime * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                       </p>
-                      <p className="text-sm text-gray-700">Reminder: complete the Drive Scout Form immediately after this match.</p>
+                      <p className="text-sm text-gray-700">Reminder: complete the Drive Reflection Form immediately after this match.</p>
                     </>
                   ) : (
                     <div className="flex flex-wrap items-center justify-between gap-3">

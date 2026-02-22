@@ -143,43 +143,12 @@ function PitScoutFormContent() {
   }, [userData?.teamId]);
 
   const canSubmit = useMemo(() => {
-    return form.teamNumber.trim().length > 0;
-  }, [form.teamNumber]);
+    return false;
+  }, []);
 
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
-    if (!userData?.uid || !userData.teamId) return;
-
-    setSaving(true);
-    try {
-      const payload = {
-        ...form,
-        scoutName: userData.displayName || "",
-        teamNumber: form.teamNumber.trim(),
-        game: "REBUILT",
-        eventKey,
-        teamId: userData.teamId,
-        submittedBy: userData.uid,
-        createdAt: Date.now(),
-      };
-      await addDoc(collection(db, "pitScouting"), payload);
-      alert("Pit Scout Form submitted.");
-      setScoutedTeams((prev) => new Set(prev).add(form.teamNumber.trim()));
-      setForm((prev) => ({
-        ...prev,
-        teamNumber: "",
-        robotPictureUrl: "",
-        notes: "",
-        typicalFuelCycleTime: "",
-        typicalClimbTime: "",
-        autoCycleDescription: "",
-      }));
-    } catch (error) {
-      console.error("Error submitting pit form:", error);
-      alert("Could not submit pit form.");
-    } finally {
-      setSaving(false);
-    }
+    alert("REEFSCAPE pit form submissions are disabled.");
   }
 
   return (
@@ -194,10 +163,10 @@ function PitScoutFormContent() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
                 <select
                   className="w-full border rounded p-2"
-                  value="REBUILT"
+                  value="REEFSCAPE"
                   onChange={(event) => {
-                    if (event.target.value === "REEFSCAPE") {
-                      router.push("/pit-scout-form-reefscape");
+                    if (event.target.value === "REBUILT") {
+                      router.push("/pit-scout-form");
                     }
                   }}
                 >
@@ -205,6 +174,7 @@ function PitScoutFormContent() {
                   <option value="REBUILT">REBUILT Form</option>
                 </select>
               </div>
+              <p className="text-sm text-red-600 mt-2">REEFSCAPE submissions are disabled.</p>
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
@@ -294,7 +264,7 @@ function PitScoutFormContent() {
                 className="w-full py-3 rounded text-white font-semibold disabled:opacity-50"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >
-                {saving ? "Submitting..." : "Submit Pit Scout Form"}
+                Submission Disabled for REEFSCAPE
               </button>
             </div>
           </form>

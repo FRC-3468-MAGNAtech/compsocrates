@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
@@ -210,10 +210,10 @@ function mapAssignmentToMatchId(labelOrKey: string) {
   return "";
 }
 function ScoutFormContent() {
-  const router = useRouter();
   const { userData } = useAuth();
   const searchParams = useSearchParams();
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [eventKey, setEventKey] = useState("app-testing");
   const [modalOpen, setModalOpen] = useState(false);
   const [options, setOptions] = useState<MatchOption[]>([]);
@@ -255,6 +255,30 @@ function ScoutFormContent() {
     if (!userData?.displayName) return;
     setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
   }, [userData?.displayName]);
+
+  useEffect(() => {
+    async function loadPresetGame() {
+      if (!userData?.teamId) return;
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      if (!teamDoc.exists()) return;
+      const presetId = teamDoc.data().activeMatchFormPresetId as string | undefined;
+      if (!presetId) return;
+      const presetDoc = await getDoc(doc(db, "formPresets", presetId));
+      if (!presetDoc.exists()) return;
+      const game = (presetDoc.data().game as string) || "REEFSCAPE";
+      setActiveFormGame(game === "REBUILT" ? "REBUILT" : "REEFSCAPE");
+    }
+    void loadPresetGame();
+  }, [userData?.teamId]);
+
+  useEffect(() => {
+    const gameParam = String(searchParams.get("game") || "").toUpperCase();
+    if (gameParam === "REBUILT") {
+      setActiveFormGame("REBUILT");
+    } else if (gameParam === "REEFSCAPE") {
+      setActiveFormGame("REEFSCAPE");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     async function loadEventContext() {
@@ -394,6 +418,7 @@ function ScoutFormContent() {
 
   async function submit() {
     if (!userData?.uid || !userData.teamId) return;
+    if (activeFormGame === "REEFSCAPE") return alert("REEFSCAPE match form submissions are disabled.");
     if (!selectedMatch) return alert("Select a match first.");
     if (!form.teamNumber.trim()) return alert("Team number required.");
     if (selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
@@ -437,6 +462,7 @@ function ScoutFormContent() {
       setSaving(false);
     }
   }
+  const reefscapeMode = activeFormGame === "REEFSCAPE";
   const fromPractice = searchParams.get("practice") === "1";
 
   return (
@@ -452,19 +478,12 @@ function ScoutFormContent() {
               )}
               <div className="mt-3 max-w-sm">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
-                <select
-                  className="w-full border rounded p-2"
-                  value="REBUILT"
-                  onChange={(e) => {
-                    if (e.target.value === "REEFSCAPE") {
-                      router.push("/scout-form-reefscape");
-                    }
-                  }}
-                >
+                <select className="w-full border rounded p-2" value={activeFormGame} onChange={(e) => setActiveFormGame(e.target.value === "REBUILT" ? "REBUILT" : "REEFSCAPE")}>
                   <option value="REEFSCAPE">REEFSCAPE Form</option>
                   <option value="REBUILT">REBUILT Form</option>
                 </select>
               </div>
+              {reefscapeMode && <p className="text-sm text-red-600 mt-2">REEFSCAPE submissions are disabled.</p>}
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
@@ -475,7 +494,10 @@ function ScoutFormContent() {
               </div>
             </div>
 
-            <>
+            {reefscapeMode ? (
+              <div className="bg-white rounded-xl shadow p-6"><p className="text-gray-700">REEFSCAPE form is view-only. Switch to REBUILT to submit scouting data.</p></div>
+            ) : (
+              <>
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match</h2>
                   <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.scoutName} disabled />
@@ -552,14 +574,15 @@ function ScoutFormContent() {
                 </div>
 
                 <button type="button" disabled={saving} onClick={() => void submit()} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>{saving ? "Submitting..." : "Submit Match Scout Form"}</button>
-            </>
+              </>
+            )}
           </div>
 
           <div className="hidden md:block w-80 p-4">
             <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
               <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
               <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Write notes here..." />
-              <p className="text-xs text-gray-600 mt-2">Estimated score (hidden from scouts): {estimatedScore()}</p>
+              {!reefscapeMode && <p className="text-xs text-gray-600 mt-2">Estimated score (hidden from scouts): {estimatedScore()}</p>}
             </div>
           </div>
 

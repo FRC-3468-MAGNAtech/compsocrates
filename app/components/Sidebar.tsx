@@ -89,7 +89,7 @@ export default function Sidebar() {
       ? [{ href: "/match-strategy-form", label: "Match Strategy Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "drive-scout-form", user: userData, formAccessOverrides })
-      ? [{ href: "/drive-scout-form", label: "Drive Scout Form", icon: ClipboardList }]
+      ? [{ href: "/drive-scout-form", label: "Drive Reflection Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "helper-form", user: userData, formAccessOverrides })
       ? [{ href: "/helper-form", label: "Helper Form", icon: ClipboardList }]

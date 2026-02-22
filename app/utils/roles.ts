@@ -32,7 +32,7 @@ export const FORM_LABELS: Record<FormKey, string> = {
   "pit-scout-form": "Pit Scout Form",
   "strategy-scout-form": "Team Strategy Form",
   "match-strategy-form": "Match Strategy Form",
-  "drive-scout-form": "Drive Scout Form",
+  "drive-scout-form": "Drive Reflection Form",
   "helper-form": "Helper Form",
 };
 

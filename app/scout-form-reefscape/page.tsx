@@ -393,49 +393,7 @@ function ScoutFormContent() {
   }
 
   async function submit() {
-    if (!userData?.uid || !userData.teamId) return;
-    if (!selectedMatch) return alert("Select a match first.");
-    if (!form.teamNumber.trim()) return alert("Team number required.");
-    if (selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
-
-    setSaving(true);
-    try {
-      await addDoc(collection(db, "scouting"), {
-        scoutName: userData.displayName || "",
-        scoutId: userData.uid,
-        teamId: userData.teamId,
-        eventKey,
-        game: "REBUILT",
-        matchId: selectedMatch.id,
-        matchType: selectedMatch.type,
-        matchNumber: String(selectedMatch.matchNumber),
-        teamNumber: form.teamNumber.trim(),
-        startingPosition: form.startingPosition,
-        auto: { preloadScale: form.autoPreloadScale, bpsScale: form.autoBpsScale, carryingScale: form.autoCarryScale, cycleTimes: autoCycles, estimatedFuel: estimateAutoTotal(), failedClimb: form.autoFailedClimb, successfulClimb: form.autoSuccessfulClimb, wonAuto: form.wonAuto },
-        teleop: { wonTeleop: form.wonTeleop, bpsScale: form.teleBpsScale, carryingScale: form.teleCarryScale, transitionCycles, shift1Cycles, shift2Cycles, shift3Cycles, shift4Cycles, estimatedFuel: estimateTeleTotal() },
-        endgame: { cycleTimes: endgameCycles, failedClimb: form.endgameFailedClimb, status: form.endgameStatus },
-        incidents: form.incidents,
-        notes: form.notes,
-        estimatedScore: estimatedScore(),
-        scoringWeights: { autoFuel: 1, autoClimbLevel1: 15, teleopFuel: 1, teleopClimbLevel1: 10, teleopClimbLevel2: 20, teleopClimbLevel3: 30 },
-        submittedAt: Date.now(),
-        timestamp: Date.now(),
-      });
-      alert("Match scout form submitted.");
-      setScoutedCounts((prev) => ({ ...prev, [selectedMatch.id]: (prev[selectedMatch.id] || 0) + 1 }));
-      setScoutedTeamsByMatch((prev) => {
-        const now = new Set(prev[selectedMatch.id] || []);
-        now.add(form.teamNumber.trim());
-        return { ...prev, [selectedMatch.id]: Array.from(now) };
-      });
-      setForm((prev) => ({ ...prev, teamNumber: assignedTeam || "", startingPosition: "", autoFailedClimb: 0, autoSuccessfulClimb: false, wonAuto: false, wonTeleop: false, endgameFailedClimb: 0, endgameStatus: "", incidents: [], notes: "" }));
-      setAutoCycles([]); setTransitionCycles([]); setShift1Cycles([]); setShift2Cycles([]); setShift3Cycles([]); setShift4Cycles([]); setEndgameCycles([]);
-    } catch (error) {
-      console.error(error);
-      alert("Could not submit match scout form.");
-    } finally {
-      setSaving(false);
-    }
+    alert("REEFSCAPE match form submissions are disabled.");
   }
   const fromPractice = searchParams.get("practice") === "1";
 
@@ -454,10 +412,10 @@ function ScoutFormContent() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
                 <select
                   className="w-full border rounded p-2"
-                  value="REBUILT"
+                  value="REEFSCAPE"
                   onChange={(e) => {
-                    if (e.target.value === "REEFSCAPE") {
-                      router.push("/scout-form-reefscape");
+                    if (e.target.value === "REBUILT") {
+                      router.push("/scout-form");
                     }
                   }}
                 >
@@ -465,6 +423,7 @@ function ScoutFormContent() {
                   <option value="REBUILT">REBUILT Form</option>
                 </select>
               </div>
+              <p className="text-sm text-red-600 mt-2">REEFSCAPE submissions are disabled.</p>
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
@@ -551,7 +510,9 @@ function ScoutFormContent() {
                   ))}
                 </div>
 
-                <button type="button" disabled={saving} onClick={() => void submit()} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>{saving ? "Submitting..." : "Submit Match Scout Form"}</button>
+                <button type="button" disabled={true} onClick={() => void submit()} className="w-full py-3 rounded text-white font-semibold disabled:opacity-60" style={{ backgroundColor: "var(--primary-color)" }}>
+                  Submission Disabled for REEFSCAPE
+                </button>
             </>
           </div>
 
