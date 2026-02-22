@@ -688,14 +688,22 @@ function ScoutFormContent() {
         setPitLock({ preload: false, bps: false, carry: false });
         return;
       }
-      const pitSnap = await getDocs(
-        query(collection(db, "pitScouting"), where("teamId", "==", userData.teamId), where("teamNumber", "==", form.teamNumber.trim()), where("game", "==", "REBUILT"))
+      const baseQuery = query(
+        collection(db, "pitScouting"),
+        where("teamId", "==", userData.teamId),
+        where("teamNumber", "==", form.teamNumber.trim()),
+        where("game", "==", "REBUILT")
       );
-      if (pitSnap.empty) {
+      const pitSnap = await getDocs(baseQuery);
+      const eventScopedRows = pitSnap.docs
+        .map((r) => r.data() as Record<string, unknown>)
+        .filter((row) => String(row.eventKey || "").trim() === String(eventKey || "").trim());
+      const rows = eventScopedRows.length > 0 ? eventScopedRows : pitSnap.docs.map((r) => r.data() as Record<string, unknown>);
+      if (rows.length === 0) {
         setPitLock({ preload: false, bps: false, carry: false });
         return;
       }
-      const latest = pitSnap.docs.map((r) => r.data() as Record<string, unknown>).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
+      const latest = rows.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
       const preloadRaw = Number(latest.fuelPreloadCapacity || 0);
       const bpsRaw = Number(latest.fuelBallsPerSecond || 0);
       const carryRaw = Number(latest.fuelCarryingCapacity || 0);
@@ -713,7 +721,7 @@ function ScoutFormContent() {
       }));
     }
     void loadPitDefaults();
-  }, [userData?.teamId, form.teamNumber]);
+  }, [userData?.teamId, form.teamNumber, eventKey]);
 
   const completedMatches = useMemo(() => {
     return new Set(

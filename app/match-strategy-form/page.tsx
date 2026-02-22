@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -27,6 +27,17 @@ type MatchOption = {
 
 type ModalMatchOption = ReefscapeMatchOption & {
   sourceKey: string;
+};
+
+type PitCapabilityDoc = {
+  teamNumber?: string;
+  teamId?: string;
+  game?: string;
+  eventKey?: string;
+  createdAt?: number;
+  climbLevel1?: boolean;
+  climbLevel2?: boolean;
+  climbLevel3?: boolean;
 };
 
 function buildFallbackMatchStrategyMatches(): MatchOption[] {
@@ -67,6 +78,16 @@ function displayMatchLabel(option: MatchOption | null): string {
   if (/^f/i.test(option.label)) return `Finals ${number || 1}`;
   if (/practice/i.test(option.label)) return `Practice Match ${number || 1}`;
   return option.label || "No match selected";
+}
+
+function canTeamPerformEndgame(level: string, pit?: PitCapabilityDoc): boolean {
+  const status = String(level || "").trim().toLowerCase();
+  if (!status) return true;
+  if (!pit) return true;
+  if (status === "level-1") return Boolean(pit.climbLevel1);
+  if (status === "level-2") return Boolean(pit.climbLevel2);
+  if (status === "level-3") return Boolean(pit.climbLevel3);
+  return true;
 }
 
 function MatchPickerModal({
@@ -234,6 +255,48 @@ function MatchStrategyFormContent() {
     if (!selectedMatch) {
       alert("Select a match first.");
       return;
+    }
+
+    if (userData.teamId) {
+      const selectedTeams = [robot1, robot2, robot3]
+        .map((robot) => String(robot.teamNumber || "").trim())
+        .filter(Boolean);
+      const uniqueTeams = Array.from(new Set(selectedTeams));
+      if (uniqueTeams.length > 0) {
+        const pitSnap = await getDocs(query(collection(db, "pitScouting"), where("teamId", "==", userData.teamId)));
+        const relevantPitRows = pitSnap.docs
+          .map((row) => row.data() as PitCapabilityDoc)
+          .filter(
+            (row) =>
+              String(row.game || "REBUILT").toUpperCase() === "REBUILT" &&
+              String(row.eventKey || "").trim() === String(eventKey || "").trim() &&
+              uniqueTeams.includes(String(row.teamNumber || "").trim())
+          );
+        const latestByTeam = new Map<string, PitCapabilityDoc>();
+        relevantPitRows.forEach((row) => {
+          const key = String(row.teamNumber || "").trim();
+          if (!key) return;
+          const prev = latestByTeam.get(key);
+          if (!prev || Number(row.createdAt || 0) >= Number(prev.createdAt || 0)) {
+            latestByTeam.set(key, row);
+          }
+        });
+
+        const impossible: string[] = [];
+        [robot1, robot2, robot3].forEach((robot) => {
+          const team = String(robot.teamNumber || "").trim();
+          if (!team) return;
+          const pit = latestByTeam.get(team);
+          if (!pit) return;
+          if (!canTeamPerformEndgame(robot.endgameClimb, pit)) {
+            impossible.push(`${team} cannot do ${robot.endgameClimb || "that climb"} based on pit scouting`);
+          }
+        });
+        if (impossible.length > 0) {
+          alert(`Selected plan includes capability conflicts:\n${impossible.join("\n")}`);
+          return;
+        }
+      }
     }
 
     setSaving(true);

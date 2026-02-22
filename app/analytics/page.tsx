@@ -306,10 +306,6 @@ function tbaMatchLabel(row: TbaMatchRow): string {
   return `M${matchNumber || "-"}`;
 }
 
-function formatApprox(value: string | number) {
-  return `~${value}`;
-}
-
 function chooseLatestEntryPerTeam(entries: Entry[]): Entry[] {
   const byTeam = new Map<string, Entry>();
   entries.forEach((entry) => {
@@ -1448,14 +1444,14 @@ function AnalyticsPageContent() {
                   <td className="sticky-left-1 bg-white font-semibold text-center">{entry.teamNumber || "-"}</td>
                   <td className="text-center">{entry.scoutName || "-"}</td>
                   <td className="text-center">{entry.startingPosition || "-"}</td>
-                  <td className="text-center">{formatApprox(rebuiltPreloadRange(entry.auto?.preloadScale))}</td>
-                  <td className="text-center">{formatApprox(rebuiltBpsRange(entry.auto?.bpsScale))}</td>
-                  <td className="text-center">{formatApprox(rebuiltCarryRange(entry.auto?.carryingScale))}</td>
+                  <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
+                  <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
+                  <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
                   <td className="text-center">{autoFuel}</td>
                   <td className="text-center">{autoClimb}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.auto?.cycleTimes)}</td>
-                  <td className="text-center">{formatApprox(rebuiltBpsRange(entry.teleop?.bpsScale))}</td>
-                  <td className="text-center">{formatApprox(rebuiltCarryRange(entry.teleop?.carryingScale))}</td>
+                  <td className="text-center">{rebuiltBpsRange(entry.teleop?.bpsScale)}</td>
+                  <td className="text-center">{rebuiltCarryRange(entry.teleop?.carryingScale)}</td>
                   <td className="text-center">{transitionFuel}</td>
                   <td className="text-center">{shift1Fuel}</td>
                   <td className="text-center">{shift2Fuel}</td>

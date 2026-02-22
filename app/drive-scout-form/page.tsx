@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -27,6 +27,24 @@ type MatchOption = {
 
 type ModalMatchOption = ReefscapeMatchOption & {
   sourceKey: string;
+};
+
+type StrategyRobot = {
+  teamNumber?: string;
+  startingPosition?: string;
+  role?: string;
+  autoClimb?: boolean;
+  endgameClimb?: string;
+};
+
+type StrategyPlanDoc = {
+  id: string;
+  eventKey?: string;
+  matchKey?: string;
+  teamId?: string;
+  game?: string;
+  createdAt?: number;
+  robots?: StrategyRobot[];
 };
 
 function buildFallbackDriveMatches(): MatchOption[] {
@@ -67,6 +85,27 @@ function displayMatchLabel(option: MatchOption | null): string {
   if (/^f/i.test(option.label)) return `Finals ${number || 1}`;
   if (/practice/i.test(option.label)) return `Practice Match ${number || 1}`;
   return option.label || "No match selected";
+}
+
+function normalizeText(value: string | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function compareRobotToPlan(actual: RobotReflection, planned: StrategyRobot) {
+  const mismatches: string[] = [];
+  if (normalizeText(actual.startingPosition) !== normalizeText(planned.startingPosition)) {
+    mismatches.push("Starting Position");
+  }
+  if (normalizeText(actual.role) !== normalizeText(planned.role)) {
+    mismatches.push("Role");
+  }
+  if (Boolean(actual.autoClimb) !== Boolean(planned.autoClimb)) {
+    mismatches.push("Auto Climb");
+  }
+  if (normalizeText(actual.endgameClimb) !== normalizeText(planned.endgameClimb)) {
+    mismatches.push("Endgame Climb");
+  }
+  return mismatches;
 }
 
 function MatchPickerModal({
@@ -257,6 +296,43 @@ function DriveReflectionFormContent() {
     }
     setSaving(true);
     try {
+      if (userData.teamId) {
+        const plansSnap = await getDocs(query(collection(db, "matchStrategyPlans"), where("teamId", "==", userData.teamId)));
+        const plans = plansSnap.docs
+          .map((row) => ({ id: row.id, ...row.data() }) as StrategyPlanDoc)
+          .filter(
+            (row) =>
+              String(row.game || "REBUILT").toUpperCase() === "REBUILT" &&
+              String(row.eventKey || "").trim() === String(eventKey || "").trim() &&
+              String(row.matchKey || "").trim() === String(selectedMatch.key || "").trim()
+          )
+          .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+
+        const latestPlan = plans[0];
+        if (latestPlan && Array.isArray(latestPlan.robots) && latestPlan.robots.length > 0) {
+          const plannedByTeam = new Map<string, StrategyRobot>();
+          latestPlan.robots.forEach((robot) => {
+            const key = String(robot.teamNumber || "").trim();
+            if (key) plannedByTeam.set(key, robot);
+          });
+          const actualRobots: RobotReflection[] = [robot1, robot2, robot3];
+          const mismatchedTeams: string[] = [];
+          actualRobots.forEach((robot) => {
+            const key = String(robot.teamNumber || "").trim();
+            if (!key) return;
+            const planned = plannedByTeam.get(key);
+            if (!planned) return;
+            const fields = compareRobotToPlan(robot, planned);
+            if (fields.length > 0) {
+              mismatchedTeams.push(`${key} (${fields.join(", ")})`);
+            }
+          });
+          if (mismatchedTeams.length > 0) {
+            alert(`Team didn't stay true to their word:\n${mismatchedTeams.join("\n")}`);
+          }
+        }
+      }
+
       await addDoc(collection(db, "driveScouting"), {
         eventKey,
         matchKey: selectedMatch.key,
