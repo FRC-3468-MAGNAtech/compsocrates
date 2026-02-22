@@ -28,6 +28,20 @@ type ModalMatchOption = ReefscapeMatchOption & {
   sourceKey: string;
 };
 
+function buildFallbackDriveMatches(): MatchOption[] {
+  const rows: MatchOption[] = [];
+  for (let n = 1; n <= 20; n += 1) {
+    rows.push({ key: `p${n}`, label: `Practice ${n}`, scheduleTime: 0, teams: [] });
+  }
+  for (let n = 1; n <= 80; n += 1) {
+    rows.push({ key: `q${n}`, label: `Q${n}`, scheduleTime: 0, teams: [] });
+  }
+  for (let n = 1; n <= 3; n += 1) {
+    rows.push({ key: `f${n}`, label: `F${n}`, scheduleTime: 0, teams: [] });
+  }
+  return rows;
+}
+
 function parseTeamNumber(raw: string) {
   const digits = String(raw || "").replace(/\D/g, "");
   return digits ? Number(digits) : 0;
@@ -57,7 +71,7 @@ function MatchPickerModal({
       open={open}
       onClose={onClose}
       options={matches}
-      onPick={(match) => onSelect(match.sourceKey)}
+      onPick={(match) => onSelect(match.sourceKey || match.id)}
     />
   );
 }
@@ -104,7 +118,9 @@ function DriveReflectionFormContent() {
           Array.isArray(selectedEvents) && selectedEvents.length > 0 ? String(selectedEvents[0]) : "app-testing";
         setEventKey(resolvedEvent);
         if (resolvedEvent === "app-testing") {
-          setMatchOptions([]);
+          const fallback = buildFallbackDriveMatches();
+          setMatchOptions(fallback);
+          setSelectedMatchKey(fallback[0]?.key || "");
           return;
         }
 
@@ -145,15 +161,19 @@ function DriveReflectionFormContent() {
             .sort((a, b) => a.scheduleTime - b.scheduleTime);
         }
 
-        setMatchOptions(options);
+        const resolvedOptions = options.length > 0 ? options : buildFallbackDriveMatches();
+        setMatchOptions(resolvedOptions);
         const now = Date.now() / 1000;
-        const next = options.find((match) => match.scheduleTime >= now) || options[0];
+        const next = resolvedOptions.find((match) => match.scheduleTime >= now) || resolvedOptions[0];
         if (next) {
           setSelectedMatchKey(next.key);
           setRobotTeamDefaults(next, ourTeamStr);
         }
       } catch (error) {
         console.error("Failed to load drive reflection context:", error);
+        const fallback = buildFallbackDriveMatches();
+        setMatchOptions(fallback);
+        setSelectedMatchKey(fallback[0]?.key || "");
       }
     }
 
@@ -176,11 +196,29 @@ function DriveReflectionFormContent() {
     const mapped: ModalMatchOption[] = [];
     let finalsIndex = 1;
     for (const match of matchOptions) {
+      const rawKey = String(match.key || "").toLowerCase();
+      const keyNumber = Number(rawKey.replace(/\D/g, "")) || 0;
+      if (rawKey.startsWith("p")) {
+        const number = keyNumber || Number(match.label.replace(/\D/g, "")) || 1;
+        mapped.push({ id: `p${number}`, label: `Practice ${number}`, type: "practice", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
+        continue;
+      }
+      if (rawKey.startsWith("q")) {
+        const number = keyNumber || Number(match.label.replace(/\D/g, "")) || 1;
+        mapped.push({ id: `q${number}`, label: `Qualification ${number}`, type: "qualification", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
+        continue;
+      }
+      if (rawKey.startsWith("f")) {
+        const number = keyNumber || finalsIndex;
+        mapped.push({ id: `f${number}`, label: `Finals ${number}`, type: "finals", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
+        finalsIndex = Math.max(finalsIndex, number + 1);
+        continue;
+      }
+
       const q = match.label.match(/^Q(\d+)$/i);
       if (q) {
         const number = Number(q[1]);
         mapped.push({ id: `q${number}`, label: `Qualification ${number}`, type: "qualification", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
-        mapped.push({ id: `p${number}`, label: `Practice ${number}`, type: "practice", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
       } else {
         mapped.push({ id: `f${finalsIndex}`, label: match.label, type: "finals", matchNumber: finalsIndex, scheduleTime: match.scheduleTime, sourceKey: match.key });
         finalsIndex += 1;
@@ -191,7 +229,14 @@ function DriveReflectionFormContent() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!userData?.uid || !userData.teamId || !selectedMatch) return;
+    if (!userData?.uid) {
+      alert("You must be logged in to submit.");
+      return;
+    }
+    if (!selectedMatch) {
+      alert("Select a match first.");
+      return;
+    }
     setSaving(true);
     try {
       await addDoc(collection(db, "driveScouting"), {
@@ -200,7 +245,7 @@ function DriveReflectionFormContent() {
         matchLabel: selectedMatch.label,
         scoutId: userData.uid,
         scoutName: userData.displayName || "",
-        teamId: userData.teamId,
+        teamId: userData.teamId || "",
         game: "REBUILT",
         robots: [robot1, robot2, robot3],
         notes: notes.trim(),
@@ -360,7 +405,7 @@ function DriveReflectionFormContent() {
         matches={modalMatchOptions}
         onSelect={(key) => {
           setSelectedMatchKey(key);
-          const target = matchOptions.find((match) => match.key === key);
+          const target = matchOptions.find((match) => match.key === key) || matchOptions.find((match) => match.key === `q${String(key).replace(/\D/g, "")}`);
           if (target) setRobotTeamDefaults(target, ourTeamNumber);
         }}
       />

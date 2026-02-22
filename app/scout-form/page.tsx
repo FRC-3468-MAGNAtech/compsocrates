@@ -30,6 +30,41 @@ type AssignmentRow = {
   teamNumber?: number;
 };
 
+function buildFallbackScoutOptions(): MatchOption[] {
+  const rows: MatchOption[] = [];
+  for (let n = 1; n <= 20; n += 1) {
+    rows.push({
+      id: `p${n}`,
+      label: `Practice ${n}`,
+      type: "practice",
+      matchNumber: n,
+      scheduleTime: 0,
+      teams: [],
+    });
+  }
+  for (let n = 1; n <= 80; n += 1) {
+    rows.push({
+      id: `q${n}`,
+      label: `Qualification ${n}`,
+      type: "qualification",
+      matchNumber: n,
+      scheduleTime: 0,
+      teams: [],
+    });
+  }
+  for (let n = 1; n <= 3; n += 1) {
+    rows.push({
+      id: `f${n}`,
+      label: `Finals ${n}`,
+      type: "finals",
+      matchNumber: n,
+      scheduleTime: 0,
+      teams: [],
+    });
+  }
+  return rows;
+}
+
 type FormState = {
   scoutName: string;
   teamNumber: string;
@@ -524,46 +559,62 @@ function ScoutFormContent() {
   useEffect(() => {
     async function loadEventContext() {
       if (!userData?.teamId) return;
-      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-      const selectedEvents = (teamDoc.exists() ? teamDoc.data().selectedEvents : []) as string[] | undefined;
-      const currentEvent = Array.isArray(selectedEvents) && selectedEvents.length > 0 ? String(selectedEvents[0]) : "app-testing";
-      setEventKey(currentEvent);
-      if (currentEvent === "app-testing") {
-        setOptions([]);
-        return;
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const selectedEvents = (teamDoc.exists() ? teamDoc.data().selectedEvents : []) as string[] | undefined;
+        const currentEvent = Array.isArray(selectedEvents) && selectedEvents.length > 0 ? String(selectedEvents[0]) : "app-testing";
+        setEventKey(currentEvent);
+        if (currentEvent === "app-testing") {
+          const fallback = buildFallbackScoutOptions();
+          setOptions(fallback);
+          setTargets({});
+          if (!selectedMatch && fallback.length > 0) {
+            setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
+          }
+          return;
+        }
+
+        const matches = await getEventMatches(currentEvent);
+        const next: MatchOption[] = [];
+        const nextTargets: Record<string, number> = {};
+        matches.filter((m) => m.comp_level === "qm").sort((a, b) => a.match_number - b.match_number).forEach((m) => {
+          const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
+          const time = m.actual_time || m.predicted_time || m.time || 0;
+          next.push({ id: `p${m.match_number}`, label: `Practice ${m.match_number}`, type: "practice", matchNumber: m.match_number, scheduleTime: time, teams });
+          next.push({ id: `q${m.match_number}`, label: `Qualification ${m.match_number}`, type: "qualification", matchNumber: m.match_number, scheduleTime: time, teams });
+          nextTargets[`p${m.match_number}`] = teams.length || 6;
+          nextTargets[`q${m.match_number}`] = teams.length || 6;
+        });
+        matches.filter((m) => ["qf", "sf", "f"].includes(m.comp_level)).forEach((m) => {
+          const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
+          const time = m.actual_time || m.predicted_time || m.time || 0;
+          const id = m.comp_level === "f" ? `f${m.match_number}` : m.comp_level === "sf" ? `sf${m.match_number}` : `qf${m.match_number}`;
+          next.push({ id, label: m.comp_level === "f" ? `Finals ${m.match_number}` : m.comp_level === "sf" ? `Semifinal ${m.set_number}-${m.match_number}` : `Quarterfinal ${m.set_number}-${m.match_number}`, type: "finals", matchNumber: m.match_number, scheduleTime: time, teams });
+          nextTargets[id] = teams.length || 6;
+        });
+        const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
+        setOptions(resolved);
+        setTargets(next.length > 0 ? nextTargets : {});
+        if (!selectedMatch && resolved.length > 0) setSelectedMatch(resolved.find((m) => m.type === "qualification") || resolved[0]);
+
+        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
+        const assigned: Record<string, string> = {};
+        assignmentSnap.docs.forEach((row) => {
+          const data = row.data() as AssignmentRow;
+          const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
+          const team = String(data.teamNumber || "").trim();
+          if (matchId && team) assigned[matchId] = team;
+        });
+        setAssignedTeams(assigned);
+      } catch (error) {
+        console.error("Failed to load match context:", error);
+        const fallback = buildFallbackScoutOptions();
+        setOptions(fallback);
+        setTargets({});
+        if (!selectedMatch && fallback.length > 0) {
+          setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
+        }
       }
-
-      const matches = await getEventMatches(currentEvent);
-      const next: MatchOption[] = [];
-      const nextTargets: Record<string, number> = {};
-      matches.filter((m) => m.comp_level === "qm").sort((a, b) => a.match_number - b.match_number).forEach((m) => {
-        const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
-        const time = m.actual_time || m.predicted_time || m.time || 0;
-        next.push({ id: `p${m.match_number}`, label: `Practice ${m.match_number}`, type: "practice", matchNumber: m.match_number, scheduleTime: time, teams });
-        next.push({ id: `q${m.match_number}`, label: `Qualification ${m.match_number}`, type: "qualification", matchNumber: m.match_number, scheduleTime: time, teams });
-        nextTargets[`p${m.match_number}`] = teams.length || 6;
-        nextTargets[`q${m.match_number}`] = teams.length || 6;
-      });
-      matches.filter((m) => ["qf", "sf", "f"].includes(m.comp_level)).forEach((m) => {
-        const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
-        const time = m.actual_time || m.predicted_time || m.time || 0;
-        const id = m.comp_level === "f" ? `f${m.match_number}` : m.comp_level === "sf" ? `sf${m.match_number}` : `qf${m.match_number}`;
-        next.push({ id, label: m.comp_level === "f" ? `Finals ${m.match_number}` : m.comp_level === "sf" ? `Semifinal ${m.set_number}-${m.match_number}` : `Quarterfinal ${m.set_number}-${m.match_number}`, type: "finals", matchNumber: m.match_number, scheduleTime: time, teams });
-        nextTargets[id] = teams.length || 6;
-      });
-      setOptions(next);
-      setTargets(nextTargets);
-      if (!selectedMatch && next.length > 0) setSelectedMatch(next.find((m) => m.type === "qualification") || next[0]);
-
-      const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
-      const assigned: Record<string, string> = {};
-      assignmentSnap.docs.forEach((row) => {
-        const data = row.data() as AssignmentRow;
-        const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
-        const team = String(data.teamNumber || "").trim();
-        if (matchId && team) assigned[matchId] = team;
-      });
-      setAssignedTeams(assigned);
     }
     void loadEventContext();
   }, [userData?.teamId, userData?.uid, selectedMatch]);
@@ -656,7 +707,13 @@ function ScoutFormContent() {
   }, [userData?.teamId, form.teamNumber]);
 
   const completedMatches = useMemo(() => {
-    return new Set(Object.keys(scoutedCounts).filter((id) => (scoutedCounts[id] || 0) >= (targets[id] || 6)));
+    return new Set(
+      Object.keys(scoutedCounts).filter((id) => {
+        const target = targets[id];
+        if (typeof target !== "number" || target <= 0) return false;
+        return (scoutedCounts[id] || 0) >= target;
+      })
+    );
   }, [scoutedCounts, targets]);
 
   function estimateAutoTotal() {
@@ -679,7 +736,10 @@ function ScoutFormContent() {
   }
 
   async function submit() {
-    if (!userData?.uid || !userData.teamId) return;
+    if (!userData?.uid) {
+      alert("You must be logged in to submit.");
+      return;
+    }
     if (!selectedMatch) return alert("Select a match first.");
     if (!form.teamNumber.trim()) return alert("Team number required.");
     if (selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
@@ -689,7 +749,7 @@ function ScoutFormContent() {
       await addDoc(collection(db, "scouting"), {
         scoutName: userData.displayName || "",
         scoutId: userData.uid,
-        teamId: userData.teamId,
+        teamId: userData.teamId || "",
         eventKey,
         game: "REBUILT",
         matchId: selectedMatch.id,
