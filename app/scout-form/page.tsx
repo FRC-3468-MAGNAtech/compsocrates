@@ -7,6 +7,7 @@ import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
+import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { getEventMatches } from "@/app/utils/tba-api";
@@ -844,7 +845,7 @@ function ScoutFormContent() {
             </div>
           )}
 
-          <MatchModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
+          <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
         </div>
       </div>
     </div>

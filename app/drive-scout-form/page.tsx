@@ -5,7 +5,7 @@ import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
+import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 
@@ -22,6 +22,10 @@ type MatchOption = {
   label: string;
   scheduleTime: number;
   teams: string[];
+};
+
+type ModalMatchOption = ReefscapeMatchOption & {
+  sourceKey: string;
 };
 
 function parseTeamNumber(raw: string) {
@@ -45,47 +49,16 @@ function MatchPickerModal({
 }: {
   open: boolean;
   onClose: () => void;
-  matches: MatchOption[];
+  matches: ModalMatchOption[];
   onSelect: (key: string) => void;
 }) {
   return (
-    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
-        <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Match</h2>
-        <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
-          {matches.length === 0 && (
-            <div className="rounded border p-3 text-sm text-gray-600">No matches available.</div>
-          )}
-          {matches.map((match) => (
-            <button
-              type="button"
-              key={match.key}
-              onClick={() => {
-                onSelect(match.key);
-                onClose();
-              }}
-              className="relative h-[86px] p-2 rounded-lg border text-left hover:bg-gray-50"
-              style={{ borderColor: "#ef4444" }}
-            >
-              <div className="mt-3">
-                <div className="font-semibold text-sm">{match.label}</div>
-                <div className="text-xs text-gray-600">
-                  {match.scheduleTime > 0
-                    ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-                    : "TBD"}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="w-full mt-4 py-2 rounded text-white"
-          style={{ backgroundColor: "var(--primary-color)" }}
-          onClick={onClose}
-        >
-          Close
-        </button>
-    </ReefscapeStyleModal>
+    <ReefscapeMatchSelectModal
+      open={open}
+      onClose={onClose}
+      options={matches}
+      onPick={(match) => onSelect(match.sourceKey)}
+    />
   );
 }
 
@@ -199,6 +172,22 @@ function DriveReflectionFormContent() {
     () => matchOptions.find((match) => match.key === selectedMatchKey) || null,
     [matchOptions, selectedMatchKey]
   );
+  const modalMatchOptions = useMemo<ModalMatchOption[]>(() => {
+    const mapped: ModalMatchOption[] = [];
+    let finalsIndex = 1;
+    for (const match of matchOptions) {
+      const q = match.label.match(/^Q(\d+)$/i);
+      if (q) {
+        const number = Number(q[1]);
+        mapped.push({ id: `q${number}`, label: `Qualification ${number}`, type: "qualification", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
+        mapped.push({ id: `p${number}`, label: `Practice ${number}`, type: "practice", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
+      } else {
+        mapped.push({ id: `f${finalsIndex}`, label: match.label, type: "finals", matchNumber: finalsIndex, scheduleTime: match.scheduleTime, sourceKey: match.key });
+        finalsIndex += 1;
+      }
+    }
+    return mapped;
+  }, [matchOptions]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -368,7 +357,7 @@ function DriveReflectionFormContent() {
       <MatchPickerModal
         open={showMatchPicker}
         onClose={() => setShowMatchPicker(false)}
-        matches={matchOptions}
+        matches={modalMatchOptions}
         onSelect={(key) => {
           setSelectedMatchKey(key);
           const target = matchOptions.find((match) => match.key === key);
