@@ -23,6 +23,7 @@ function FinalsMatchBox({
   status,
   onPick,
   label,
+  timeLabel,
 }: {
   number: number;
   row: number;
@@ -30,6 +31,7 @@ function FinalsMatchBox({
   status: MatchStatus;
   onPick: (matchNumber: number) => void;
   label?: string;
+  timeLabel?: string;
 }) {
   const borderStyles: Record<MatchStatus, React.CSSProperties> = {
     completed: { borderColor: "#16a34a" },
@@ -63,6 +65,9 @@ function FinalsMatchBox({
       </div>
       <div className="pt-1.5 pb-1 px-1.5">
         <div className="font-semibold text-[11px] leading-tight">{label || `Match ${number}`}</div>
+        <div className="mt-1.5 border-t border-gray-200 pt-1">
+          <div className="text-[10px] text-gray-600 text-center">{timeLabel || "TBD"}</div>
+        </div>
       </div>
     </button>
   );
@@ -105,6 +110,12 @@ function FinalsBracket({
   const totalWidth = c5 + B.w;
   const firstOpen = Array.from({ length: 14 }, (_, i) => i + 1).find((n) => !completed.has(`f${n}`)) || -1;
   const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
+  const timeFor = (matchId: number) => {
+    const baseTime = new Date();
+    baseTime.setHours(13, 0, 0, 0);
+    const matchTime = new Date(baseTime.getTime() + (matchId - 1) * 6 * 60000);
+    return matchTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  };
 
   return (
     <div className="relative w-full flex justify-center py-6 overflow-x-auto">
@@ -134,24 +145,25 @@ function FinalsBracket({
               <path d={`M ${c4 + B.w} ${y13 + B.h / 2} H ${join5} V ${yFinals + B.h / 2}`} />
             </g>
           </svg>
-          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} />
-          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} />
-          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} />
-          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} />
-          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} />
-          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} />
-          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} />
-          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} />
-          <FinalsMatchBox number={9} row={lower_9} col={c2} status={statusOf(9)} onPick={onPick} />
-          <FinalsMatchBox number={10} row={lower_10} col={c2} status={statusOf(10)} onPick={onPick} />
-          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} />
-          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} />
-          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} />
+          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} timeLabel={timeFor(1)} />
+          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} timeLabel={timeFor(2)} />
+          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} timeLabel={timeFor(3)} />
+          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} timeLabel={timeFor(4)} />
+          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} timeLabel={timeFor(5)} />
+          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} timeLabel={timeFor(6)} />
+          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} timeLabel={timeFor(7)} />
+          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} timeLabel={timeFor(8)} />
+          <FinalsMatchBox number={9} row={lower_9} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} />
+          <FinalsMatchBox number={10} row={lower_10} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} />
+          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} timeLabel={timeFor(11)} />
+          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} timeLabel={timeFor(12)} />
+          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} timeLabel={timeFor(13)} />
           <FinalsMatchBox
             number={14}
             row={yFinals}
             col={c5}
             label="FINALS"
+            timeLabel={timeFor(14)}
             status={completed.has("f1") && completed.has("f2") && completed.has("f3") ? "completed" : "upcoming"}
             onPick={onPick}
           />
@@ -201,6 +213,28 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
     const opt = finalsByNumber.get(matchNumber);
     return !!opt && completed.has(opt.id);
   }
+  function timeStringFromEpoch(epoch: number) {
+    if (epoch > 0) {
+      return new Date(epoch * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+    return "TBD";
+  }
+
+  const rowsByType = useMemo(() => {
+    const byType = {
+      practice: new Map<number, T>(),
+      qualification: new Map<number, T>(),
+    };
+    options.forEach((opt) => {
+      if (opt.type === "practice" || opt.type === "qualification") {
+        if (!byType[opt.type].has(opt.matchNumber)) {
+          byType[opt.type].set(opt.matchNumber, opt);
+        }
+      }
+    });
+    return byType;
+  }, [options]);
+
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
       {step === "type" ? (
@@ -220,24 +254,59 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                 {step === "practice" ? "Practice Matches" : "Qualification Matches"}
               </h2>
               <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
-                {current.length === 0 && (
-                  <div className="col-span-full border rounded p-3 text-sm text-gray-600">
-                    No matches available for this type yet.
-                  </div>
-                )}
-                {current.map((m) => {
-                  const done = completed.has(m.id);
-                  const status: MatchStatus = done ? "completed" : m.id === firstOpen ? "next" : "upcoming";
+                {(() => {
+                  const map = rowsByType[step];
+                  const rows =
+                    map.size > 0
+                      ? Array.from(map.values())
+                          .sort((a, b) => a.matchNumber - b.matchNumber)
+                          .map((m) => ({
+                            option: m,
+                            matchNum: m.matchNumber,
+                            timeString: timeStringFromEpoch(m.scheduleTime),
+                            matchId: m.id,
+                          }))
+                      : Array.from({ length: step === "practice" ? 20 : 80 }, (_, i) => {
+                          const matchNum = i + 1;
+                          const base = new Date();
+                          base.setHours(step === "practice" ? 8 : 9, 0, 0, 0);
+                          const timeString = new Date(base.getTime() + i * 7 * 60000).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          });
+                          return {
+                            option: null,
+                            matchNum,
+                            timeString,
+                            matchId: `${step === "practice" ? "p" : "q"}${matchNum}`,
+                          };
+                        });
+
+                  const firstOpenNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
+                  return rows.map(({ option, matchNum, timeString, matchId }) => {
+                    const done = completed.has(matchId);
+                    const status: MatchStatus = done ? "completed" : matchNum === firstOpenNum ? "next" : "upcoming";
                   const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
-                  const displayLabel = step === "practice" ? `Practice ${m.matchNumber}` : `Qualification ${m.matchNumber}`;
+                  const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
                   return (
                     <button
-                      key={m.id}
+                      key={`${step}-${matchNum}`}
                       type="button"
                       disabled={done}
                       onClick={() => {
                         if (done) return;
-                        onPick(m);
+                        if (option) {
+                          onPick(option);
+                        } else {
+                          const fallback = {
+                            id: matchId,
+                            label: displayLabel,
+                            type: step,
+                            matchNumber: matchNum,
+                            scheduleTime: 0,
+                          } as T;
+                          onPick(fallback);
+                        }
                         onClose();
                       }}
                       className={`relative h-[86px] p-2 rounded-lg border text-left ${done ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
@@ -248,11 +317,12 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                       </div>
                       <div className="mt-3">
                         <div className="font-semibold text-sm">{displayLabel}</div>
-                        <div className="text-xs text-gray-600">{m.scheduleTime > 0 ? new Date(m.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}</div>
+                        <div className="text-xs text-gray-600">{timeString}</div>
                       </div>
                     </button>
                   );
-                })}
+                });
+                })()}
               </div>
               <button type="button" className="w-full mt-4 py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={onClose}>
                 Close
