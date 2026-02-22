@@ -4,6 +4,7 @@ type DashboardUser = {
   role?: string;
   roles?: string[];
   teamId?: string;
+  preferredDashboard?: string;
 };
 
 function getRoleDashboard(role: TeamRole): string {
@@ -19,6 +20,18 @@ function getRoleDashboard(role: TeamRole): string {
 
 export function getDashboardRoute(user: DashboardUser | null | undefined): string {
   if (!user?.teamId) return "/dashboard";
+  const preferred = String(user.preferredDashboard || "").trim();
+  const allowed = new Set([
+    "/match-scout-dashboard",
+    "/pit-scout-dashboard",
+    "/pit-team-dashboard",
+    "/drive-team-dashboard",
+    "/lead-scout-dashboard",
+    "/lead-strategist-dashboard",
+    "/team-coach-dashboard",
+    "/coach-dashboard",
+  ]);
+  if (allowed.has(preferred)) return preferred;
   const roles = sanitizeRoles(user.roles, user.role);
   return getRoleDashboard(getPrimaryRole(roles));
 }

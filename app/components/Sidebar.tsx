@@ -103,7 +103,6 @@ export default function Sidebar() {
     ...(canManageAssignments ? [{ href: "/assignments", label: "Assignments", icon: Calendar }] : []),
     { href: "/people", label: "People", icon: UserCircle2 },
     ...(isLeadRole ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
-    ...(userData.isTeamAdmin ? [{ href: "/dashboard-selector", label: "Dashboard Selector", icon: Settings }] : []),
     ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),
   ];
 
@@ -245,7 +244,7 @@ export default function Sidebar() {
                 >
                   Account Settings
                 </Link>
-                {isLeadRole && (
+                {(userData.isTeamAdmin || userRoles.includes("team-coach")) && (
                   <Link
                     href="/settings/api-keys"
                     className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"

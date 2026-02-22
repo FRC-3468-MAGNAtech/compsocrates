@@ -32,6 +32,7 @@ export type UserData = {
   photoURL?: string;
   bio?: string;
   profileVisibility?: "team" | "public" | "private";
+  preferredDashboard?: string;
 };
 
 type AuthContextType = {

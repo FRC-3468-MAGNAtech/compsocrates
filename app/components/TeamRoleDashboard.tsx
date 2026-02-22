@@ -251,6 +251,22 @@ function TeamRoleDashboardContent({
             </div>
           ) : (
             <>
+              {showAssignmentsAction && (
+                <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                  <h2 className="text-xl font-semibold mb-2">Match Assignments</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-gray-700">Review assignment coverage and manage scout workload before scouting starts.</p>
+                    <button
+                      onClick={() => router.push("/assignments")}
+                      className="px-4 py-2 rounded-lg text-white font-medium"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      Open Assignments
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {pitScoutFocus && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6">
                   <h2 className="text-xl font-semibold mb-2">Teams Left To Scout</h2>
@@ -357,7 +373,7 @@ function TeamRoleDashboardContent({
                 </div>
               )}
 
-              {showManualScoutFallback && upcomingEvents.length > 0 && activeMatches.length === 0 && (
+              {showManualScoutFallback && activeMatches.length === 0 && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                   <h2 className="text-xl font-semibold mb-2">No Matches Assigned Yet</h2>
                   <div className="flex flex-wrap items-center justify-between gap-3">

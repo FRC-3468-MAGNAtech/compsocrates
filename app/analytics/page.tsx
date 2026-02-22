@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -16,7 +16,6 @@ import {
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
-import { getEventMatches } from "@/app/utils/tba-api";
 
 type Entry = {
   id: string;
@@ -145,6 +144,62 @@ function matchLabel(entry: Entry) {
 
 function isPracticeScoutingEntry(entry: Entry) {
   return isPracticeScoutedEntry(entry);
+}
+
+type MatchIdentity = {
+  compLevel: "qm" | "qf" | "sf" | "f";
+  setNumber: number | null;
+  matchNumber: number;
+};
+
+function inferAllianceColor(entry: Entry): "red" | "blue" | null {
+  const raw = String(entry.allianceColor || entry.assignedAlliance || entry.alliance || "")
+    .trim()
+    .toLowerCase();
+  if (raw.includes("red")) return "red";
+  if (raw.includes("blue")) return "blue";
+  return null;
+}
+
+function parseMatchIdentity(entry: Pick<Entry, "matchId" | "matchType" | "matchNumber">): MatchIdentity | null {
+  const matchId = String(entry.matchId || "").trim().toLowerCase();
+  const rawType = String(entry.matchType || "").trim().toLowerCase();
+  const matchNumberFallback = Number(String(entry.matchNumber || "").replace(/\D/g, ""));
+
+  const qmLike = matchId.match(/^(?:q|qm|p)(\d+)$/);
+  if (qmLike) {
+    return { compLevel: "qm", setNumber: null, matchNumber: Number(qmLike[1]) };
+  }
+
+  const playoff = matchId.match(/^(qf|sf|f)(\d+)(?:m(\d+))?$/);
+  if (playoff) {
+    const compLevel = playoff[1] as "qf" | "sf" | "f";
+    const first = Number(playoff[2]);
+    const second = playoff[3] ? Number(playoff[3]) : null;
+    return {
+      compLevel,
+      setNumber: second === null ? null : first,
+      matchNumber: second === null ? first : second,
+    };
+  }
+
+  if (matchNumberFallback > 0) {
+    if (rawType === "qualification" || rawType === "practice") {
+      return { compLevel: "qm", setNumber: null, matchNumber: matchNumberFallback };
+    }
+    if (rawType === "finals") {
+      return { compLevel: "f", setNumber: null, matchNumber: matchNumberFallback };
+    }
+  }
+
+  return null;
+}
+
+function matchIdentityEquals(a: MatchIdentity, b: MatchIdentity): boolean {
+  if (a.compLevel !== b.compLevel) return false;
+  if (a.matchNumber !== b.matchNumber) return false;
+  if (a.setNumber === null || b.setNumber === null) return true;
+  return a.setNumber === b.setNumber;
 }
 
 function isEntryBlank(entry: Entry) {
@@ -416,28 +471,75 @@ function AnalyticsPageContent() {
     setAccuracyModalLoading(true);
     setAllRobotsScoutedByApi("unknown");
     try {
-      const eventKey = String(entry.eventKey || "").trim();
-      const matchType = String(entry.matchType || "").toLowerCase();
-      const matchNumber = Number(String(entry.matchNumber || "").replace(/\D/g, ""));
-      if (!eventKey || !matchNumber || !["practice", "qualification", "finals"].includes(matchType)) {
+      const eventKey = String(entry.eventKey || "").trim() || (selectedEvent !== "all" ? selectedEvent : "");
+      const identity = parseMatchIdentity(entry);
+      if (!eventKey || !identity) {
         setAllRobotsScoutedByApi("unknown");
         return;
       }
-      const compLevel = matchType === "qualification" || matchType === "practice" ? "qm" : "f";
-      const matches = await getEventMatches(eventKey);
-      const match = matches.find((row) => row.comp_level === compLevel && row.match_number === matchNumber);
+
+      if (!userData?.teamId) {
+        setAllRobotsScoutedByApi("unknown");
+        return;
+      }
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
+      const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+      if (!encryptedKey && !plainKey) {
+        setAllRobotsScoutedByApi("unknown");
+        return;
+      }
+      const response = await fetch("/api/tba/matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventKey, encryptedKey, plainKey }),
+      });
+      if (!response.ok) {
+        setAllRobotsScoutedByApi("unknown");
+        return;
+      }
+      const payload = await response.json();
+      const matches = Array.isArray(payload.matches) ? payload.matches : [];
+      const match = matches.find((row: Record<string, unknown>) => {
+        const rowLevel = String(row.comp_level || "").toLowerCase();
+        if (!["qm", "qf", "sf", "f"].includes(rowLevel)) return false;
+        const rowIdentity: MatchIdentity = {
+          compLevel: rowLevel as MatchIdentity["compLevel"],
+          setNumber: Number(row.set_number || 0) > 0 ? Number(row.set_number || 0) : null,
+          matchNumber: Number(row.match_number || 0),
+        };
+        return matchIdentityEquals(identity, rowIdentity);
+      });
       if (!match) {
         setAllRobotsScoutedByApi("unknown");
         return;
       }
-      const officialTeams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
-        .map((key) => key.replace("frc", "").trim())
+      const alliances = (match as { alliances?: { red?: { team_keys?: string[] }; blue?: { team_keys?: string[] } } }).alliances || {};
+      const allianceColor = inferAllianceColor(entry);
+      const officialTeamKeys =
+        allianceColor === "red"
+          ? alliances.red?.team_keys || []
+          : allianceColor === "blue"
+          ? alliances.blue?.team_keys || []
+          : [...(alliances.red?.team_keys || []), ...(alliances.blue?.team_keys || [])];
+      const officialTeams = officialTeamKeys
+        .map((key) => String(key).replace("frc", "").trim())
         .filter(Boolean);
+      if (officialTeams.length === 0) {
+        setAllRobotsScoutedByApi("unknown");
+        return;
+      }
       const scoutedTeams = new Set(
         rawData
-          .filter((row) => String(row.eventKey || "") === eventKey)
-          .filter((row) => String(row.matchType || "").toLowerCase() === matchType)
-          .filter((row) => Number(String(row.matchNumber || "").replace(/\D/g, "")) === matchNumber)
+          .filter((row) => String(row.eventKey || "").trim() === eventKey)
+          .filter((row) => {
+            const rowIdentity = parseMatchIdentity(row);
+            return Boolean(rowIdentity && matchIdentityEquals(identity, rowIdentity));
+          })
+          .filter((row) => {
+            if (!allianceColor) return true;
+            return inferAllianceColor(row) === allianceColor;
+          })
           .map((row) => String(row.teamNumber || "").trim())
           .filter(Boolean)
       );
