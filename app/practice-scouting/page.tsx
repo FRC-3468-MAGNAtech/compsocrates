@@ -237,6 +237,27 @@ function getPracticeEventKey(match: PracticeMatch): string {
   return "app-testing";
 }
 
+function normalizePracticeMatchType(
+  rawType: unknown,
+  rawMatchKey: unknown,
+  rawCompLevel: unknown
+): "qualification" | "playoff" | "practice" {
+  const typeValue = String(rawType || "").trim().toLowerCase();
+  if (typeValue === "qualification" || typeValue === "playoff" || typeValue === "practice") {
+    return typeValue;
+  }
+
+  const compLevel = String(rawCompLevel || "").trim().toLowerCase();
+  if (compLevel === "qm") return "qualification";
+  if (compLevel === "qf" || compLevel === "sf" || compLevel === "f") return "playoff";
+
+  const matchKey = String(rawMatchKey || "").trim().toLowerCase();
+  if (/_qm\d+/.test(matchKey)) return "qualification";
+  if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "playoff";
+
+  return "practice";
+}
+
 function normalizeEventValue(value: string): string {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -289,7 +310,7 @@ function resolvePracticeEvent(match: PracticeMatch, game: AnalyticsGame): { even
 function PracticeScoutingContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
+  const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | null>(null);
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
@@ -452,12 +473,23 @@ function PracticeScoutingContent() {
       }
 
       if (matches.length === 0) {
-        alert('No practice matches available for this difficulty.');
+        alert('No matches exist to scout yet for this game/difficulty.');
         setLoading(false);
         return;
       }
 
-      const normalizedMatches = matches
+      const gameFilteredMatches = matches.filter((match) => {
+        const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
+        if (!matchGame) return activeMatchGame === "REEFSCAPE";
+        return matchGame === activeMatchGame;
+      });
+      if (gameFilteredMatches.length === 0) {
+        alert("No matches exist to scout yet for the selected game.");
+        setLoading(false);
+        return;
+      }
+
+      const normalizedMatches = gameFilteredMatches
         .map((match) => {
           const parsedTeams = getMatchTeams(match as unknown as PracticeMatch & Record<string, unknown>);
           return { ...match, allianceTeams: parsedTeams };
@@ -490,8 +522,15 @@ function PracticeScoutingContent() {
           ? randomMatch.actualScore
           : 0;
 
+      const normalizedMatchType = normalizePracticeMatchType(
+        randomMatch.matchType,
+        (randomMatch as unknown as Record<string, unknown>).matchKey,
+        (randomMatch as unknown as Record<string, unknown>).compLevel
+      );
+
       const safeMatch: PracticeMatch = {
         ...randomMatch,
+        matchType: normalizedMatchType,
         allianceTeams: fallbackTeams,
         officialData: {
           score: safeOfficialScore,
@@ -576,7 +615,7 @@ function PracticeScoutingContent() {
 
       const now = Date.now();
       const device = getScoutDevice();
-      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame);
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame || "REEFSCAPE");
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
         scoutName: userData.displayName,
@@ -584,7 +623,11 @@ function PracticeScoutingContent() {
         matchId: currentMatch.id || '',
         matchKey: currentMatch.matchKey || "",
         matchNumber: currentMatch.matchNumber,
-        matchType: currentMatch.matchType || 'practice',
+        matchType: normalizePracticeMatchType(
+          currentMatch.matchType,
+          currentMatch.matchKey,
+          (currentMatch as unknown as Record<string, unknown>).compLevel
+        ),
         difficulty: selectedDifficulty || 'easy',
         mode: selectedMode || 'trial',
         scoutedData: allRobotData[0],
@@ -699,9 +742,58 @@ function PracticeScoutingContent() {
               </div>
             )}
 
-            {!selectedMode ? (
+            {!activeMatchGame ? (
               <>
-                <h2 className="text-xl font-semibold mb-4">Select Mode</h2>
+                <h2 className="text-xl font-semibold mb-4">Select Game</h2>
+                <div className="grid md:grid-cols-2 gap-4 mb-8">
+                  <button
+                    onClick={() => setActiveMatchGame("REEFSCAPE")}
+                    className="p-6 border-2 border-sky-300 rounded-lg text-left transition-colors hover:bg-sky-50"
+                  >
+                    <div className="text-sm font-semibold mb-2 text-sky-700">REEFSCAPE</div>
+                    <h3 className="font-semibold text-lg mb-1">Scout REEFSCAPE</h3>
+                    <p className="text-sm text-gray-600">Use REEFSCAPE practice videos and scoring.</p>
+                  </button>
+                  <button
+                    onClick={() => setActiveMatchGame("REBUILT")}
+                    className="p-6 border-2 rounded-lg text-left transition-colors hover:bg-emerald-50"
+                    style={{ borderColor: "#059669" }}
+                  >
+                    <div className="text-sm font-semibold mb-2" style={{ color: "#047857" }}>REBUILT</div>
+                    <h3 className="font-semibold text-lg mb-1">Scout REBUILT</h3>
+                    <p className="text-sm text-gray-600">Use REBUILT practice videos and scoring.</p>
+                  </button>
+                </div>
+              </>
+            ) : !selectedMode ? (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold">Select Mode</h2>
+                  <button
+                    onClick={() => {
+                      setActiveMatchGame(null);
+                      setSelectedMode(null);
+                    }}
+                    className="text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    ← Change Game
+                  </button>
+                </div>
+                {activeMatchGame === "REBUILT" && (
+                  <div className="mb-6 bg-white rounded-xl shadow-md p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                    <h3 className="font-semibold mb-1">Use New Match Scout Form</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      REBUILT can be practiced directly in the new Match Scout Form flow.
+                    </p>
+                    <button
+                      onClick={() => router.push("/scout-form?game=REBUILT&practice=1")}
+                      className="px-4 py-2 rounded text-white font-semibold"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      Open REBUILT Match Form
+                    </button>
+                  </div>
+                )}
                 <div className="grid md:grid-cols-2 gap-4 mb-8">
                   <button
                     onClick={() => setSelectedMode('trial')}
@@ -868,8 +960,16 @@ function PracticeScoutingContent() {
               {/* Match Info */}
               <div className="hidden md:block bg-black bg-opacity-90 text-white p-4">
                 <h3 className="font-semibold text-lg">
-                  {currentMatch.matchType === 'qualification' ? 'Qualification' : 
-                   currentMatch.matchType === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
+                  {normalizePracticeMatchType(
+                    currentMatch.matchType,
+                    currentMatch.matchKey,
+                    (currentMatch as unknown as Record<string, unknown>).compLevel
+                  ) === 'qualification' ? 'Qualification' :
+                   normalizePracticeMatchType(
+                    currentMatch.matchType,
+                    currentMatch.matchKey,
+                    (currentMatch as unknown as Record<string, unknown>).compLevel
+                  ) === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
                 </h3>
                 <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>

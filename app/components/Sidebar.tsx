@@ -83,7 +83,10 @@ export default function Sidebar() {
       ? [{ href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "strategy-scout-form", user: userData, formAccessOverrides })
-      ? [{ href: "/strategy-scout-form", label: "Strategy Scout Form", icon: ClipboardList }]
+      ? [{ href: "/strategy-scout-form", label: "Team Strategy Form", icon: ClipboardList }]
+      : []),
+    ...(canAccessForm({ formKey: "match-strategy-form", user: userData, formAccessOverrides })
+      ? [{ href: "/match-strategy-form", label: "Match Strategy Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "drive-scout-form", user: userData, formAccessOverrides })
       ? [{ href: "/drive-scout-form", label: "Drive Scout Form", icon: ClipboardList }]

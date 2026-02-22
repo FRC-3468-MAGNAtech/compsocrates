@@ -10,30 +10,29 @@ import { useAuth } from "@/app/AuthContext";
 function HelperFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
-  const [assistedTeamNumber, setAssistedTeamNumber] = useState("");
-  const [workPerformed, setWorkPerformed] = useState("");
-  const [outcome, setOutcome] = useState("");
+  const [teamNumber, setTeamNumber] = useState("");
+  const [successful, setSuccessful] = useState(false);
+  const [issueSolved, setIssueSolved] = useState("");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!userData?.uid || !assistedTeamNumber.trim()) return;
+    if (!userData?.uid || !userData.teamId || !teamNumber.trim()) return;
     setSaving(true);
     try {
       await addDoc(collection(db, "helperReports"), {
         helperName: userData.displayName || "",
         helperId: userData.uid,
-        teamId: userData.teamId || "",
-        assistedTeamNumber: assistedTeamNumber.trim(),
-        workPerformed: workPerformed.trim(),
-        outcome: outcome.trim(),
-        game: "REEFSCAPE",
+        teamId: userData.teamId,
+        assistedTeamNumber: teamNumber.trim(),
+        wasSuccessful: successful,
+        issueSolved: issueSolved.trim(),
+        game: "REBUILT",
         createdAt: Date.now(),
-        isPlaceholderForm: true,
       });
       alert("Helper Form submitted.");
-      setAssistedTeamNumber("");
-      setWorkPerformed("");
-      setOutcome("");
+      setTeamNumber("");
+      setSuccessful(false);
+      setIssueSolved("");
     } catch (error) {
       console.error("Error submitting helper form:", error);
       alert("Could not submit form.");
@@ -51,14 +50,44 @@ function HelperFormContent() {
             <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Helper Form
             </h1>
-            <p className="text-sm text-gray-600">Placeholder form for documenting pit-team assistance given to other teams.</p>
           </div>
+
           <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <input className="w-full border rounded p-3" placeholder="Assisted Team Number" value={assistedTeamNumber} onChange={(e) => setAssistedTeamNumber(e.target.value)} required />
-            <textarea className="w-full border rounded p-3 h-28" placeholder="What work was performed?" value={workPerformed} onChange={(e) => setWorkPerformed(e.target.value)} />
-            <textarea className="w-full border rounded p-3 h-28" placeholder="Outcome / result" value={outcome} onChange={(e) => setOutcome(e.target.value)} />
+            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
+            <label className="block text-sm font-medium text-gray-700">Scout Name</label>
+            <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
+
+            <label className="block text-sm font-medium text-gray-700">Team Number</label>
+            <input
+              className="w-full border rounded p-3"
+              value={teamNumber}
+              onChange={(e) => setTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Team Number"
+              required
+            />
           </div>
-          <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold disabled:opacity-60" style={{ backgroundColor: "var(--primary-color)" }}>
+
+          <div className="bg-white rounded-xl shadow p-4 space-y-3">
+            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Issue</h2>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={successful} onChange={(e) => setSuccessful(e.target.checked)} />
+              Were you successful?
+            </label>
+            <label className="block text-sm font-medium text-gray-700">Describe the issue(s) you solved</label>
+            <textarea
+              className="w-full border rounded p-3 h-32"
+              value={issueSolved}
+              onChange={(e) => setIssueSolved(e.target.value)}
+              placeholder="What did you fix?"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
+            style={{ backgroundColor: "var(--primary-color)" }}
+          >
             {saving ? "Submitting..." : "Submit Helper Form"}
           </button>
         </form>

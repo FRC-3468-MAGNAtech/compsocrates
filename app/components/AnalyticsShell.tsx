@@ -49,6 +49,19 @@ export default function AnalyticsShell({
     localStorage.setItem("analytics-sidebar-collapsed", String(collapsed));
   }, [collapsed]);
 
+  const effectiveEventOptions = (() => {
+    if (selectedGame !== "REEFSCAPE" || !practiceMatchesOnly) return eventOptions;
+    if (eventOptions.some((option) => option.id === "2025cmptx")) return eventOptions;
+    return [{ id: "2025cmptx", name: "Einstein Field" }, ...eventOptions];
+  })();
+
+  useEffect(() => {
+    if (!onSelectedEventChange || !selectedEvent) return;
+    if (effectiveEventOptions.length === 0) return;
+    const exists = effectiveEventOptions.some((option) => option.id === selectedEvent);
+    if (!exists) onSelectedEventChange(effectiveEventOptions[0].id);
+  }, [effectiveEventOptions, onSelectedEventChange, selectedEvent]);
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
@@ -62,7 +75,7 @@ export default function AnalyticsShell({
             <h2 className="text-lg font-bold" style={{ color: "var(--primary-color)" }}>
               Analytics
             </h2>
-            {eventOptions.length > 0 && onSelectedEventChange && (
+            {effectiveEventOptions.length > 0 && onSelectedEventChange && (
               <div className="mt-3">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Event</label>
                 <select
@@ -70,7 +83,7 @@ export default function AnalyticsShell({
                   onChange={(event) => onSelectedEventChange(event.target.value)}
                   className="w-full border rounded px-2 py-1.5 text-sm"
                 >
-                  {eventOptions.map((option) => (
+                  {effectiveEventOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.name}
                     </option>

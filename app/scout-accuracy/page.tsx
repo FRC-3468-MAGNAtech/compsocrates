@@ -127,6 +127,7 @@ function ScoutAccuracyContent() {
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
   const [accuracyView, setAccuracyView] = useState<"practice" | "competition">("practice");
+  const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
   const [selectedCompetitionEvent, setSelectedCompetitionEvent] = useState("all");
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
@@ -141,7 +142,7 @@ function ScoutAccuracyContent() {
 
   useEffect(() => {
     loadScoutStats();
-  }, [selectedMode, accuracyView, selectedCompetitionEvent, userData?.teamId]);
+  }, [selectedMode, accuracyView, selectedCompetitionEvent, selectedGame, userData?.teamId]);
 
   async function loadScoutStats() {
     setLoading(true);
@@ -176,7 +177,7 @@ function ScoutAccuracyContent() {
             .flat()
             .filter(
               (entry) =>
-                entry.game === "REEFSCAPE" &&
+                entry.game === selectedGame &&
                 entry.matchType !== "practice" &&
                 !entry.isPracticeScouting &&
                 !entry.practiceMode
@@ -193,7 +194,7 @@ function ScoutAccuracyContent() {
           const scoutCompetitionEntries = entries
             .filter(
               (entry) =>
-                entry.game === "REEFSCAPE" &&
+                entry.game === selectedGame &&
                 entry.matchType !== "practice" &&
                 !entry.isPracticeScouting &&
                 !entry.practiceMode
@@ -237,12 +238,14 @@ function ScoutAccuracyContent() {
           where("mode", "==", selectedMode)
         );
         const practiceSnapshot = await getDocs(practiceQuery);
+        const practiceRows = practiceSnapshot.docs
+          .map((docSnap) => docSnap.data() as Record<string, unknown>)
+          .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame);
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];
         let lastPracticeDate = 0;
         const practiceDevicePoints: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }> = [];
-        practiceSnapshot.forEach((doc) => {
-          const data = doc.data();
+        practiceRows.forEach((data) => {
           if (typeof data.accuracy === "number") {
             totalAccuracy += data.accuracy;
             recentAccuracies.push(data.accuracy);
@@ -251,8 +254,9 @@ function ScoutAccuracyContent() {
               accuracy: Number(data.accuracy || 0),
             });
           }
-          if (data.timestamp > lastPracticeDate) {
-            lastPracticeDate = data.timestamp;
+          const rowTimestamp = Number(data.timestamp || 0);
+          if (rowTimestamp > lastPracticeDate) {
+            lastPracticeDate = rowTimestamp;
           }
         });
         const nonZeroRecentAccuracies = recentAccuracies.filter((value) => value > 0);
@@ -266,7 +270,7 @@ function ScoutAccuracyContent() {
           role: member.role,
           roles: member.roles,
           totalEntries: entries.length,
-          practiceSessionsCompleted: practiceSnapshot.size,
+          practiceSessionsCompleted: practiceRows.length,
           averageAccuracy,
           lastPracticeDate: lastPracticeDate || Date.now(),
           recentAccuracies,
@@ -504,6 +508,18 @@ function ScoutAccuracyContent() {
             </span>
           </p>
 
+          <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Game</label>
+            <select
+              value={selectedGame}
+              onChange={(event) => setSelectedGame(event.target.value === "REBUILT" ? "REBUILT" : "REEFSCAPE")}
+              className="w-full md:w-96 border rounded p-2"
+            >
+              <option value="REEFSCAPE">REEFSCAPE</option>
+              <option value="REBUILT">REBUILT</option>
+            </select>
+          </div>
+
           {loading ? (
             <div className="text-center py-12">
               <LoadingSpinner />
@@ -568,7 +584,7 @@ function ScoutAccuracyContent() {
                 className="w-full md:w-96 border rounded p-2"
               >
                 <option value="all">All Competitions</option>
-                {getEventsForGame("REEFSCAPE")
+                {getEventsForGame(selectedGame)
                   .filter((event) => event.id !== "app-testing")
                   .map((event) => (
                   <option key={event.id} value={event.id}>

@@ -1,41 +1,156 @@
 "use client";
 
-import { useState } from "react";
-import { addDoc, collection } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { addDoc, collection, doc, getDocs, getDoc, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
+import { getEventMatches } from "@/app/utils/tba-api";
 
-function StrategyScoutFormContent() {
+type TeamPickerProps = {
+  open: boolean;
+  onClose: () => void;
+  teams: string[];
+  scoutedTeams: Set<string>;
+  onSelect: (team: string) => void;
+};
+
+function TeamPickerModal({ open, onClose, teams, scoutedTeams, onSelect }: TeamPickerProps) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-4">
+        <h2 className="text-lg font-semibold mb-3">Select Team</h2>
+        <div className="max-h-80 overflow-y-auto border rounded">
+          {teams.length === 0 ? (
+            <p className="p-3 text-sm text-gray-600">No teams available.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-1 p-2">
+              {teams.map((team) => {
+                const done = scoutedTeams.has(team);
+                return (
+                  <button
+                    key={team}
+                    type="button"
+                    disabled={done}
+                    onClick={() => {
+                      onSelect(team);
+                      onClose();
+                    }}
+                    className={`rounded border p-2 text-sm ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                  >
+                    {done ? `${team} (Scouted)` : team}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={onClose} className="mt-3 w-full py-2 rounded border">Close</button>
+      </div>
+    </div>
+  );
+}
+
+function TeamStrategyFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [eventKey, setEventKey] = useState("app-testing");
+  const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [teamNumber, setTeamNumber] = useState("");
-  const [summary, setSummary] = useState("");
+  const [startingPosition, setStartingPosition] = useState("");
+  const [bestAt, setBestAt] = useState("");
+  const [clearsBump, setClearsBump] = useState(false);
+  const [clearsTrench, setClearsTrench] = useState(false);
+  const [shootWhileIntaking, setShootWhileIntaking] = useState(false);
+  const [moveAndShoot, setMoveAndShoot] = useState(false);
   const [notes, setNotes] = useState("");
+  const [availableTeams, setAvailableTeams] = useState<string[]>([]);
+  const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!userData?.displayName) return;
+  }, [userData?.displayName]);
+
+  useEffect(() => {
+    async function loadContext() {
+      if (!userData?.teamId) return;
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const selectedEvents = (teamDoc.exists() ? teamDoc.data().selectedEvents : []) as string[] | undefined;
+        const resolvedEvent = Array.isArray(selectedEvents) && selectedEvents.length > 0 ? String(selectedEvents[0]) : "app-testing";
+        setEventKey(resolvedEvent);
+
+        if (resolvedEvent !== "app-testing") {
+          const matches = await getEventMatches(resolvedEvent);
+          const teamSet = new Set<string>();
+          matches.forEach((match) => {
+            [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys].forEach((key) => {
+              const team = key.replace("frc", "").trim();
+              if (team) teamSet.add(team);
+            });
+          });
+          setAvailableTeams(Array.from(teamSet).sort((a, b) => Number(a) - Number(b)));
+        } else {
+          setAvailableTeams([]);
+        }
+
+        const strategySnap = await getDocs(
+          query(collection(db, "strategyScouting"), where("teamId", "==", userData.teamId), where("eventKey", "==", resolvedEvent))
+        );
+        const done = new Set<string>();
+        strategySnap.docs.forEach((snap) => {
+          const value = String(snap.data().teamNumber || "").trim();
+          if (value) done.add(value);
+        });
+        setScoutedTeams(done);
+      } catch (error) {
+        console.error("Failed loading strategy form context:", error);
+      }
+    }
+
+    void loadContext();
+  }, [userData?.teamId]);
+
+  const canSubmit = useMemo(() => {
+    return teamNumber.trim().length > 0 && startingPosition && bestAt;
+  }, [teamNumber, startingPosition, bestAt]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!userData?.uid || !teamNumber.trim()) return;
+    if (!userData?.uid || !userData.teamId || !canSubmit) return;
     setSaving(true);
     try {
       await addDoc(collection(db, "strategyScouting"), {
         scoutName: userData.displayName || "",
         scoutId: userData.uid,
-        teamId: userData.teamId || "",
+        teamId: userData.teamId,
         teamNumber: teamNumber.trim(),
-        strategySummary: summary.trim(),
+        eventKey,
+        game: "REBUILT",
+        preferredStartingPosition: startingPosition,
+        bestAt,
+        clearsBump,
+        clearsTrench,
+        canShootWhileIntaking: shootWhileIntaking,
+        canMoveAndShootSimultaneously: moveAndShoot,
         notes: notes.trim(),
-        game: "REEFSCAPE",
         createdAt: Date.now(),
-        isPlaceholderForm: true,
       });
-      alert("Strategy Scout placeholder submitted.");
+      alert("Team Strategy Form submitted.");
       setTeamNumber("");
-      setSummary("");
+      setStartingPosition("");
+      setBestAt("");
+      setClearsBump(false);
+      setClearsTrench(false);
+      setShootWhileIntaking(false);
+      setMoveAndShoot(false);
       setNotes("");
+      setScoutedTeams((prev) => new Set(prev).add(teamNumber.trim()));
     } catch (error) {
-      console.error("Error submitting strategy scout form:", error);
+      console.error("Error submitting team strategy form:", error);
       alert("Could not submit form.");
     } finally {
       setSaving(false);
@@ -49,28 +164,82 @@ function StrategyScoutFormContent() {
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-4">
           <div className="bg-white rounded-xl shadow p-4">
             <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Strategy Scout Form
+              Team Strategy Form
             </h1>
-            <p className="text-sm text-gray-600">Placeholder form for pit strategy scouting.</p>
           </div>
+
           <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <input className="w-full border rounded p-3" placeholder="Team Number" value={teamNumber} onChange={(e) => setTeamNumber(e.target.value)} required />
-            <input className="w-full border rounded p-3" placeholder="Strategy Summary" value={summary} onChange={(e) => setSummary(e.target.value)} />
-            <textarea className="w-full border rounded p-3 h-36" placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
+            <label className="block text-sm font-medium text-gray-700">Scout Name</label>
+            <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
+
+            <label className="block text-sm font-medium text-gray-700">Team Number</label>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 border rounded p-3"
+                value={teamNumber}
+                onChange={(e) => setTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Team Number"
+                required
+              />
+              <button type="button" onClick={() => setShowTeamPicker(true)} className="px-4 rounded border">Pick</button>
+            </div>
           </div>
-          <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold disabled:opacity-60" style={{ backgroundColor: "var(--primary-color)" }}>
-            {saving ? "Submitting..." : "Submit Strategy Scout Form"}
-          </button>
+
+          <div className="bg-white rounded-xl shadow p-4 space-y-3">
+            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Strategy</h2>
+
+            <label className="block text-sm font-medium text-gray-700">Preferred Starting Position</label>
+            <select className="w-full border rounded p-3" value={startingPosition} onChange={(e) => setStartingPosition(e.target.value)} required>
+              <option value="">Select Position</option>
+              <option value="outpost-side">Outpost Side</option>
+              <option value="middle">Middle</option>
+              <option value="depot-side">Depot Side</option>
+            </select>
+
+            <label className="block text-sm font-medium text-gray-700">Best At</label>
+            <select className="w-full border rounded p-3" value={bestAt} onChange={(e) => setBestAt(e.target.value)} required>
+              <option value="">Select Best Role</option>
+              <option value="cycling">Cycling</option>
+              <option value="passing">Passing</option>
+              <option value="shooting">Shooting</option>
+              <option value="stealing">Stealing</option>
+            </select>
+
+            <label className="flex items-center gap-2"><input type="checkbox" checked={clearsBump} onChange={(e) => setClearsBump(e.target.checked)} />Clears Bump</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={clearsTrench} onChange={(e) => setClearsTrench(e.target.checked)} />Clears Trench</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={shootWhileIntaking} onChange={(e) => setShootWhileIntaking(e.target.checked)} />Can Shoot while Intaking</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={moveAndShoot} onChange={(e) => setMoveAndShoot(e.target.checked)} />Can Move and Shoot Simultaneously</label>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-4">
+            <button
+              type="submit"
+              disabled={saving || !canSubmit}
+              className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
+              style={{ backgroundColor: "var(--primary-color)" }}
+            >
+              {saving ? "Submitting..." : "Submit Team Strategy Form"}
+            </button>
+          </div>
         </form>
       </div>
+
+      <TeamPickerModal
+        open={showTeamPicker}
+        onClose={() => setShowTeamPicker(false)}
+        teams={availableTeams}
+        scoutedTeams={scoutedTeams}
+        onSelect={setTeamNumber}
+      />
     </div>
   );
 }
 
-export default function StrategyScoutFormPage() {
+export default function TeamStrategyFormPage() {
   return (
     <ProtectedRoute requireAuth={true} allowedRoles={["lead-strategist"]}>
-      <StrategyScoutFormContent />
+      <TeamStrategyFormContent />
     </ProtectedRoute>
   );
 }
