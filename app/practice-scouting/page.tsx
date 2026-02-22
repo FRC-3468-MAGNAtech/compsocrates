@@ -121,6 +121,7 @@ type PracticeSessionDraft = {
   version: 1;
   savedAt: number;
   scoutId: string;
+  selectedGame: "REEFSCAPE" | "REBUILT" | null;
   selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
   selectedMode: PracticeMode | null;
   currentStep: Extract<PracticeStep, "practice" | "break">;
@@ -128,8 +129,10 @@ type PracticeSessionDraft = {
   currentRobotIndex: number;
   breakCompletedRobotIndex: number | null;
   robotSessions: ScoutedData[];
+  rebuiltRobotSessions: RebuiltScoutedData[];
   humanPlayerRobot: number | null;
   formData: ScoutedData;
+  rebuiltFormData: RebuiltScoutedData;
 };
 
 const PRACTICE_DRAFT_KEY_PREFIX = "practice-session-draft";
@@ -539,6 +542,7 @@ function PracticeScoutingContent() {
       version: 1,
       savedAt: Date.now(),
       scoutId: userData.uid,
+      selectedGame: overrides.selectedGame ?? activeMatchGame,
       selectedDifficulty: overrides.selectedDifficulty ?? selectedDifficulty,
       selectedMode: overrides.selectedMode ?? selectedMode,
       currentStep: nextStep,
@@ -546,14 +550,22 @@ function PracticeScoutingContent() {
       currentRobotIndex: overrides.currentRobotIndex ?? currentRobotIndex,
       breakCompletedRobotIndex: overrides.breakCompletedRobotIndex ?? breakCompletedRobotIndex,
       robotSessions: overrides.robotSessions ?? robotSessions,
+      rebuiltRobotSessions: overrides.rebuiltRobotSessions ?? rebuiltRobotSessions,
       humanPlayerRobot: overrides.humanPlayerRobot ?? humanPlayerRobot,
       formData: overrides.formData ?? formData,
+      rebuiltFormData: overrides.rebuiltFormData ?? rebuiltFormData,
     };
     localStorage.setItem(getPracticeDraftKey(userData.uid), JSON.stringify(draft));
   }
 
   function restorePracticeDraft(draft: PracticeSessionDraft) {
     const safeStep: PracticeStep = draft.currentStep === "break" ? "break" : "practice";
+    const inferredGame =
+      draft.selectedGame
+      || (String((draft.currentMatch as unknown as Record<string, unknown>)?.eventKey || "").toLowerCase() === REBUILT_WEEK0_EVENT_KEY
+          ? "REBUILT"
+          : "REEFSCAPE");
+    setActiveMatchGame(inferredGame);
     setSelectedDifficulty(draft.selectedDifficulty || null);
     setSelectedMode(draft.selectedMode || null);
     setCurrentMatch(draft.currentMatch);
@@ -562,10 +574,12 @@ function PracticeScoutingContent() {
       typeof draft.breakCompletedRobotIndex === "number" ? Math.max(0, Math.min(2, draft.breakCompletedRobotIndex)) : null
     );
     setRobotSessions(Array.isArray(draft.robotSessions) ? draft.robotSessions.slice(0, 3) : []);
+    setRebuiltRobotSessions(Array.isArray(draft.rebuiltRobotSessions) ? draft.rebuiltRobotSessions.slice(0, 3) : []);
     setHumanPlayerRobot(
       typeof draft.humanPlayerRobot === "number" ? Math.max(0, Math.min(2, draft.humanPlayerRobot)) : null
     );
     setFormData(draft.formData || createEmptyScoutedData());
+    setRebuiltFormData(draft.rebuiltFormData || createEmptyRebuiltScoutedData());
     setCurrentStep(safeStep);
     setPendingDraft(null);
   }
@@ -724,6 +738,13 @@ function PracticeScoutingContent() {
 
       setBreakCompletedRobotIndex(currentRobotIndex);
       setCurrentStep('break');
+      savePracticeDraft({
+        selectedGame: "REBUILT",
+        currentStep: "break",
+        breakCompletedRobotIndex: currentRobotIndex,
+        rebuiltRobotSessions: nextRobotSessions,
+        rebuiltFormData: robotData,
+      });
       return;
     }
 
@@ -739,6 +760,7 @@ function PracticeScoutingContent() {
     setBreakCompletedRobotIndex(currentRobotIndex);
     setCurrentStep('break');
     savePracticeDraft({
+      selectedGame: "REEFSCAPE",
       currentStep: "break",
       breakCompletedRobotIndex: currentRobotIndex,
       robotSessions: nextRobotSessions,
@@ -1028,10 +1050,23 @@ function PracticeScoutingContent() {
             {pendingDraft && (
               <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <h2 className="font-semibold text-amber-900 mb-1">Resume Saved Session?</h2>
+                {(() => {
+                  const inferredGame =
+                    pendingDraft.selectedGame
+                    || (String((pendingDraft.currentMatch as unknown as Record<string, unknown>)?.eventKey || "").toLowerCase() === REBUILT_WEEK0_EVENT_KEY
+                        ? "REBUILT"
+                        : "REEFSCAPE");
+                  const completedCount =
+                    inferredGame === "REBUILT"
+                      ? pendingDraft.rebuiltRobotSessions?.length || 0
+                      : pendingDraft.robotSessions?.length || 0;
+                  return (
                 <p className="text-sm text-amber-800 mb-3">
-                  You have an unfinished practice session with {pendingDraft.robotSessions.length} completed robot
-                  {pendingDraft.robotSessions.length === 1 ? "" : "s"}.
+                  You have an unfinished practice session with {completedCount} completed robot
+                  {completedCount === 1 ? "" : "s"}.
                 </p>
+                  );
+                })()}
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => restorePracticeDraft(pendingDraft)}
