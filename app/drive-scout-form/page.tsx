@@ -51,7 +51,13 @@ function MatchPickerModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-4">
+      <div className="relative bg-white rounded-2xl shadow-xl w-[90%] max-w-md p-6">
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50"
+        >
+          Cancel
+        </button>
         <h2 className="text-lg font-semibold mb-3">Select Match</h2>
         <div className="max-h-80 overflow-y-auto space-y-2">
           {matches.length === 0 && (
@@ -72,9 +78,6 @@ function MatchPickerModal({
             </button>
           ))}
         </div>
-        <button type="button" onClick={onClose} className="mt-3 w-full border rounded py-2">
-          Close
-        </button>
       </div>
     </div>
   );

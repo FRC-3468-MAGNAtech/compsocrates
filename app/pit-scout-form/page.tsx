@@ -311,15 +311,15 @@ function PitScoutFormContent() {
               <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
 
               <h3 className="font-semibold text-gray-800">Fuel</h3>
-              <label className="block text-sm font-medium text-gray-700">Preload Capacity (Scale 1-8)</label>
+              <label className="block text-sm font-medium text-gray-700">Preload Capacity ({form.fuelPreloadCapacity})</label>
               <input type="range" min={1} max={8} value={form.fuelPreloadCapacity} onChange={(event) => setForm({ ...form, fuelPreloadCapacity: Math.min(8, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
               <div className="text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-4 gap-1">{PRELOAD_SCALE_LABELS.map((label) => <div key={label}>{label}</div>)}</div>
 
-              <label className="block text-sm font-medium text-gray-700">Balls Per Second (Scale 1-10)</label>
+              <label className="block text-sm font-medium text-gray-700">Balls Per Second ({form.fuelBallsPerSecond})</label>
               <input type="range" min={1} max={10} value={form.fuelBallsPerSecond} onChange={(event) => setForm({ ...form, fuelBallsPerSecond: Math.min(10, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
               <div className="text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-5 gap-1">{BPS_SCALE_LABELS.map((label) => <div key={label}>{label}</div>)}</div>
 
-              <label className="block text-sm font-medium text-gray-700">Carrying Capacity (Scale 1-50)</label>
+              <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({form.fuelCarryingCapacity})</label>
               <input type="range" min={1} max={50} value={form.fuelCarryingCapacity} onChange={(event) => setForm({ ...form, fuelCarryingCapacity: Math.min(50, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
               <div className="text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-3 gap-1">{CARRY_SCALE_LABELS.map((label) => <div key={label}>{label}</div>)}</div>
 
