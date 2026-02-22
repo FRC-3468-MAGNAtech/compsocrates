@@ -6,6 +6,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
+import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { getEventMatches } from "@/app/utils/tba-api";
@@ -70,8 +71,8 @@ function convertPitScale(value: number, kind: "preload" | "bps" | "carry") {
   return n <= 0 ? 0 : n <= 12 ? 1 : n <= 23 ? 2 : n <= 32 ? 3 : n <= 42 ? 4 : n <= 53 ? 5 : 6;
 }
 
-function estimateBalls(seconds: number, bpsScale: number, capScale: number) {
-  return Math.max(0, Math.round(Math.min(CARRY[capScale] || 0, (BPS[bpsScale] || 0) * seconds)));
+function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number) {
+  return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (BPS[bpsScale] || 0) * seconds)));
 }
 
 function CycleTimer({ title, values, onAdd }: { title: string; values: number[]; onAdd: (value: number) => void }) {
@@ -299,26 +300,13 @@ function MatchModal({
   useEffect(() => {
     if (!open) setStep("type");
   }, [open]);
-  if (!open) return null;
 
   const current = options.filter((m) => m.type === step);
   const firstOpen = current.find((m) => !completed.has(m.id))?.id || "";
   const finalsById = new Map(options.filter((m) => m.type === "finals").map((m) => [m.id, m] as const));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div
-        className={`relative bg-white rounded-2xl shadow-xl p-6 ${
-          step === "qualification" ? "w-[85%] max-w-[900px]" : step === "finals" ? "w-[90%] max-w-[1400px]" : "w-[90%] max-w-md"
-        }`}
-      >
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50 z-10"
-        >
-          Cancel
-        </button>
+    <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
         {step === "type" ? (
           <>
             <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Match Type</h2>
@@ -400,8 +388,7 @@ function MatchModal({
             )}
           </>
         )}
-      </div>
-    </div>
+    </ReefscapeStyleModal>
   );
 }
 
@@ -579,19 +566,21 @@ function ScoutFormContent() {
   }, [scoutedCounts, targets]);
 
   function estimateAutoTotal() {
+    const preloadCap = PRELOAD[Math.max(0, Math.min(4, form.autoPreloadScale))] || 0;
+    const carryCap = CARRY[Math.max(0, Math.min(6, form.autoCarryScale))] || 0;
     return autoCycles.reduce((sum, seconds, i) => {
-      const preloadCap = PRELOAD[Math.max(0, Math.min(4, form.autoPreloadScale))] || 0;
-      const cap = i === 0 && preloadCap > 0 ? convertPitScale(preloadCap, "carry") : form.autoCarryScale;
-      return sum + estimateBalls(seconds, form.autoBpsScale, cap);
+      const capacity = i === 0 && preloadCap > 0 ? preloadCap : carryCap;
+      return sum + estimateBalls(seconds, form.autoBpsScale, capacity);
     }, 0);
   }
 
   function estimateTeleTotal() {
-    const transition = transitionCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
-    const s1 = shift1Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
-    const s2 = shift2Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
-    const s3 = shift3Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
-    const s4 = shift4Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
+    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const transition = transitionCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s1 = shift1Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s2 = shift2Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s3 = shift3Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s4 = shift4Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
     return transition + (form.wonAuto ? s2 + s4 : s1 + s3);
   }
 
@@ -731,7 +720,7 @@ function ScoutFormContent() {
                   <input type="range" min={0} max={6} value={form.teleCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
                   <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} />
                   <p className="text-xs text-gray-600">
-                    Counted shifts right now: {form.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
+                    Counted shifts right now: Transition + {form.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
                     Toggle <span className="font-medium">Won Auto</span> to flip counted shifts.
                   </p>
                   <CycleTimer title={`Shift 1 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} />

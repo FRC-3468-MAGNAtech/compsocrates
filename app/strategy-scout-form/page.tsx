@@ -5,6 +5,7 @@ import { addDoc, collection, doc, getDocs, getDoc, query, where } from "firebase
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { getEventMatches } from "@/app/utils/tba-api";
 
@@ -17,18 +18,8 @@ type TeamPickerProps = {
 };
 
 function TeamPickerModal({ open, onClose, teams, scoutedTeams, onSelect }: TeamPickerProps) {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-[85%] max-w-[900px] p-6">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50"
-        >
-          Cancel
-        </button>
+    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
         <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
         <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
           {teams.length === 0 ? (
@@ -63,8 +54,7 @@ function TeamPickerModal({ open, onClose, teams, scoutedTeams, onSelect }: TeamP
         >
           Close
         </button>
-      </div>
-    </div>
+    </ReefscapeStyleModal>
   );
 }
 

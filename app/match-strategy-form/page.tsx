@@ -5,6 +5,7 @@ import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 
@@ -47,17 +48,8 @@ function MatchPickerModal({
   matches: MatchOption[];
   onSelect: (key: string) => void;
 }) {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-[85%] max-w-[900px] p-6">
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50"
-        >
-          Cancel
-        </button>
+    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
         <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Match</h2>
         <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
           {matches.length === 0 && (
@@ -93,8 +85,7 @@ function MatchPickerModal({
         >
           Close
         </button>
-      </div>
-    </div>
+    </ReefscapeStyleModal>
   );
 }
 
