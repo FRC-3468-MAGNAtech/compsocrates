@@ -68,14 +68,28 @@ type Entry = {
   timestamp: number;
   estimatedScore?: number;
   auto?: {
+    preloadScale?: number;
+    bpsScale?: number;
+    carryingScale?: number;
+    failedClimb?: number;
+    cycleTimes?: number[];
     estimatedFuel?: number;
     successfulClimb?: boolean;
     wonAuto?: boolean;
   };
   teleop?: {
+    bpsScale?: number;
+    carryingScale?: number;
+    transitionCycles?: number[];
+    shift1Cycles?: number[];
+    shift2Cycles?: number[];
+    shift3Cycles?: number[];
+    shift4Cycles?: number[];
+    shiftParityFromWonAuto?: boolean;
     estimatedFuel?: number;
   };
   endgame?: {
+    failedClimb?: number;
     status?: string;
   };
 };
@@ -1089,28 +1103,43 @@ function AnalyticsPageContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
-                <th className="bg-green-300 text-center" colSpan={4}>Autonomous</th>
-                <th className="bg-blue-300 text-center" colSpan={4}>Teleoperated</th>
-                <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
+                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
+                <th className="bg-green-300 text-center" colSpan={5}>Autonomous</th>
+                <th className="bg-blue-300 text-center" colSpan={7}>Teleoperated</th>
+                <th className="bg-purple-300 text-center" colSpan={1}>Endgame</th>
                 <th className="bg-pink-300 text-center" colSpan={5}>General</th>
+              </tr>
+              <tr>
+                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
+                <th className="bg-yellow-200 text-center" colSpan={1}>Pre-Match</th>
+                <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
+                <th className="bg-green-200 text-center" colSpan={1}>Fuel</th>
+                <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
+                <th className="bg-blue-200 text-center" colSpan={7}>Fuel</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Incidents</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
+                <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>
+                <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
                 <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
                 <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
                 <th className="text-center">Starting Position</th>
-                <th className="text-center">Auto Fuel</th>
-                <th className="text-center">Auto Climb</th>
-                <th className="text-center">Won Auto</th>
-                <th className="text-center">Auto Fail Climb</th>
-                <th className="text-center">Teleop Fuel</th>
-                <th className="text-center">BPS Scale</th>
-                <th className="text-center">Carry Scale</th>
-                <th className="text-center">Won-Auto Shift Mode</th>
-                <th className="text-center">End Status</th>
-                <th className="text-center">End Fail Climb</th>
+                <th className="text-center">Preload</th>
+                <th className="text-center">BPS</th>
+                <th className="text-center">Carry</th>
+                <th className="text-center">Fuel</th>
+                <th className="text-center">Level 1</th>
+                <th className="text-center">BPS</th>
+                <th className="text-center">Carry</th>
+                <th className="text-center">Transition</th>
+                <th className="text-center">Shift 1</th>
+                <th className="text-center">Shift 2</th>
+                <th className="text-center">Shift 3</th>
+                <th className="text-center">Shift 4</th>
+                <th className="text-center">End Place</th>
                 <th className="text-center">Incidents</th>
                 <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
                 <th className="text-center">Alliance Accuracy</th>
@@ -1125,16 +1154,19 @@ function AnalyticsPageContent() {
                   <td className="sticky-left-1 bg-white font-semibold text-center">{entry.teamNumber || "-"}</td>
                   <td className="text-center">{entry.scoutName || "-"}</td>
                   <td className="text-center">{entry.startingPosition || "-"}</td>
+                  <td className="text-center">{Number(entry.auto?.preloadScale ?? 0)}</td>
+                  <td className="text-center">{Number(entry.auto?.bpsScale ?? 0)}</td>
+                  <td className="text-center">{Number(entry.auto?.carryingScale ?? 0)}</td>
                   <td className="text-center">{Number(entry.auto?.estimatedFuel || 0)}</td>
                   <td className="text-center">{entry.auto?.successfulClimb ? "Y" : "N"}</td>
-                  <td className="text-center">{entry.auto?.wonAuto ? "Y" : "N"}</td>
-                  <td className="text-center">{Number((entry.auto as { failedClimb?: number } | undefined)?.failedClimb || 0)}</td>
-                  <td className="text-center">{Number(entry.teleop?.estimatedFuel || 0)}</td>
-                  <td className="text-center">{Number((entry.teleop as { bpsScale?: number } | undefined)?.bpsScale ?? 0)}</td>
-                  <td className="text-center">{Number((entry.teleop as { carryingScale?: number } | undefined)?.carryingScale ?? 0)}</td>
-                  <td className="text-center">{(entry.teleop as { shiftParityFromWonAuto?: boolean } | undefined)?.shiftParityFromWonAuto ? "Y" : "N"}</td>
-                  <td className="text-center">{entry.endgame?.status || "-"}</td>
-                  <td className="text-center">{Number((entry.endgame as { failedClimb?: number } | undefined)?.failedClimb || 0)}</td>
+                  <td className="text-center">{Number(entry.teleop?.bpsScale ?? 0)}</td>
+                  <td className="text-center">{Number(entry.teleop?.carryingScale ?? 0)}</td>
+                  <td className="text-center">{Array.isArray(entry.teleop?.transitionCycles) ? entry.teleop.transitionCycles.length : 0}</td>
+                  <td className="text-center">{Array.isArray(entry.teleop?.shift1Cycles) ? entry.teleop.shift1Cycles.length : 0}</td>
+                  <td className="text-center">{Array.isArray(entry.teleop?.shift2Cycles) ? entry.teleop.shift2Cycles.length : 0}</td>
+                  <td className="text-center">{Array.isArray(entry.teleop?.shift3Cycles) ? entry.teleop.shift3Cycles.length : 0}</td>
+                  <td className="text-center">{Array.isArray(entry.teleop?.shift4Cycles) ? entry.teleop.shift4Cycles.length : 0}</td>
+                  <td className="text-center">{entry.endgame?.status || entry.stageStatus || "-"}</td>
                   <td className="text-center">
                     {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                   </td>
