@@ -627,7 +627,7 @@ function ScoutFormContent() {
       <div className="flex-1 p-4 space-y-6 max-w-3xl">
         <div className="bg-white rounded-xl shadow p-4">
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-            Match Scouting Form
+            Match Scout Form
           </h1>
           <div className="mt-3 max-w-sm">
             <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>

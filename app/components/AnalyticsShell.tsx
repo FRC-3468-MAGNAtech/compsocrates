@@ -24,6 +24,10 @@ const analyticsLinks = [
   { href: "/analytics/rankings", label: "Rankings" },
   { href: "/analytics/pick-list", label: "Pick List" },
   { href: "/analytics/pit", label: "Pit Analytics" },
+  { href: "/analytics/team-strategy", label: "Team Strategy" },
+  { href: "/analytics/match-strategy", label: "Match Strategy" },
+  { href: "/analytics/drive-reflection", label: "Drive Reflection" },
+  { href: "/analytics/helper", label: "Helper Reports" },
 ];
 
 export default function AnalyticsShell({
@@ -164,20 +168,7 @@ export default function AnalyticsShell({
               </select>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-6">
-            {selectedGame === "REBUILT" ? (
-              <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-md border border-red-200 p-8 text-center">
-                <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-                  REBUILT Analytics Is Not Ready
-                </h2>
-                <p className="text-gray-700">
-                  This section is intentionally blocked for now. Switch back to REEFSCAPE to view analytics data.
-                </p>
-              </div>
-            ) : (
-              children
-            )}
-          </div>
+          <div className="flex-1 overflow-y-auto p-6">{children}</div>
         </div>
       </div>
     </div>

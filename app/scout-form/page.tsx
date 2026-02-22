@@ -593,6 +593,31 @@ function ScoutFormContent() {
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
   const assignedTeam = assignedTeams[selectedMatchId] || "";
 
+  function getFinalsDisplayLabel(matchNum: number) {
+    if (matchNum === 1) return "Upper Bracket Match 1";
+    if (matchNum === 2) return "Upper Bracket Match 2";
+    if (matchNum === 3) return "Upper Bracket Match 3";
+    if (matchNum === 4) return "Upper Bracket Match 4";
+    if (matchNum === 5) return "Lower Bracket Match 5";
+    if (matchNum === 6) return "Lower Bracket Match 6";
+    if (matchNum === 7) return "Upper Bracket Match 7";
+    if (matchNum === 8) return "Upper Bracket Match 8";
+    if (matchNum === 9) return "Lower Bracket Match 9";
+    if (matchNum === 10) return "Lower Bracket Match 10";
+    if (matchNum === 11) return "Upper Bracket Match 11";
+    if (matchNum === 12) return "Lower Bracket Match 12";
+    if (matchNum === 13) return "Lower Bracket Match 13";
+    return `Finals ${matchNum}`;
+  }
+
+  function getSelectedMatchDisplay() {
+    if (!selectedMatch) return "No match is set";
+    if (selectedMatch.type === "practice") return `Practice Match ${selectedMatch.matchNumber}`;
+    if (selectedMatch.type === "qualification") return `Qualification Match ${selectedMatch.matchNumber}`;
+    if (selectedMatch.type === "finals") return getFinalsDisplayLabel(selectedMatch.matchNumber);
+    return selectedMatch.label || "No match is set";
+  }
+
   useEffect(() => {
     if (assignedTeam) setForm((prev) => ({ ...prev, teamNumber: assignedTeam }));
   }, [assignedTeam]);
@@ -737,7 +762,7 @@ function ScoutFormContent() {
             <div className="bg-white rounded-xl shadow p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-lg font-semibold">Assigned Match:</span>
-                <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{selectedMatch?.label || "No match is set"}</span>
+                <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
                 <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
               </div>
             </div>
@@ -828,7 +853,7 @@ function ScoutFormContent() {
           <div className="hidden md:block w-80 p-4">
             <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
               <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
-              <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Write notes here..." />
+              <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Optional notes..." />
               {userData?.isTeamAdmin && (
                 <p className="text-xs text-gray-600 mt-2">Estimated score (hidden from scouts): {estimatedScore()}</p>
               )}
@@ -859,4 +884,3 @@ export default function Page() {
     </ProtectedRoute>
   );
 }
-

@@ -153,8 +153,8 @@ function FinalsBracket({
           <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} timeLabel={timeFor(6)} />
           <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} timeLabel={timeFor(7)} />
           <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} timeLabel={timeFor(8)} />
-          <FinalsMatchBox number={9} row={lower_9} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} />
-          <FinalsMatchBox number={10} row={lower_10} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} />
+          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} />
+          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} />
           <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} timeLabel={timeFor(11)} />
           <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} timeLabel={timeFor(12)} />
           <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} timeLabel={timeFor(13)} />

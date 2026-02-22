@@ -1063,7 +1063,7 @@ function AnalyticsPageContent() {
         <table>
           <thead className="sticky-header">
             <tr>
-              <th className="sticky-left-group bg-red-300 text-center" colSpan={2}>Information</th>
+              <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
               <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
@@ -1071,7 +1071,7 @@ function AnalyticsPageContent() {
               <th className="bg-pink-300 text-center" colSpan={4}>General</th>
             </tr>
             <tr>
-              <th className="sticky-left-group bg-red-200 text-center" colSpan={2}>Information</th>
+              <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
               <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
@@ -1090,8 +1090,8 @@ function AnalyticsPageContent() {
               <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
             </tr>
             <tr>
-              <th className="sticky-left-0 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
-              <th className="sticky-left-1 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
+              <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
+              <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
               <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
               <th className="text-center">Starting Position</th>
               <th className="text-center">Leave</th>

@@ -469,7 +469,7 @@ function PracticeScoutingContent() {
 
       const gameFilteredMatches = matches.filter((match) => {
         const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
-        if (!matchGame) return activeMatchGame === "REEFSCAPE";
+        if (!matchGame) return true;
         return matchGame === activeMatchGame;
       });
       if (gameFilteredMatches.length === 0) {
@@ -487,12 +487,17 @@ function PracticeScoutingContent() {
 
       let candidateMatches = normalizedMatches;
       if (candidateMatches.length === 0) {
-        candidateMatches = buildLegacyGroupedMatches(matches);
+        candidateMatches = buildLegacyGroupedMatches(gameFilteredMatches);
       }
       if (candidateMatches.length === 0) {
         const allSnapshot = await getDocs(collection(db, "practiceMatches"));
         const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        candidateMatches = buildLegacyGroupedMatches(allMatches);
+        const allGameFilteredMatches = allMatches.filter((match) => {
+          const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
+          if (!matchGame) return true;
+          return matchGame === activeMatchGame;
+        });
+        candidateMatches = buildLegacyGroupedMatches(allGameFilteredMatches);
       }
       if (candidateMatches.length === 0) {
         alert("No practice matches have valid alliance team data. Please add team numbers to practice match docs.");
@@ -768,21 +773,6 @@ function PracticeScoutingContent() {
                     ← Change Game
                   </button>
                 </div>
-                {activeMatchGame === "REBUILT" && (
-                  <div className="mb-6 bg-white rounded-xl shadow-md p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
-                    <h3 className="font-semibold mb-1">Use New Match Scout Form</h3>
-                    <p className="text-sm text-gray-600 mb-3">
-                      REBUILT can be practiced directly in the new Match Scout Form flow.
-                    </p>
-                    <button
-                      onClick={() => router.push("/scout-form?practice=1")}
-                      className="px-4 py-2 rounded text-white font-semibold"
-                      style={{ backgroundColor: "var(--primary-color)" }}
-                    >
-                      Open REBUILT Match Form
-                    </button>
-                  </div>
-                )}
                 <div className="grid md:grid-cols-2 gap-4 mb-8">
                   <button
                     onClick={() => setSelectedMode('trial')}

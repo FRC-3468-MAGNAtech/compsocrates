@@ -58,7 +58,38 @@ type ScoutingEntry = {
   teleopNetHumanScored?: number;
   stageStatus?: string;
   penaltyPoints?: number;
+  estimatedScore?: number;
+  auto?: {
+    estimatedFuel?: number;
+    successfulClimb?: boolean;
+  };
+  teleop?: {
+    estimatedFuel?: number;
+  };
+  endgame?: {
+    status?: string;
+  };
 };
+
+function toNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function scoreRebuiltEntry(entry: ScoutingEntry): number {
+  const explicitEstimated = toNumber(entry.estimatedScore);
+  if (explicitEstimated > 0) return explicitEstimated;
+
+  const autoFuel = toNumber(entry.auto?.estimatedFuel);
+  const teleopFuel = toNumber(entry.teleop?.estimatedFuel);
+  const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+  const endStatus = String(entry.endgame?.status || "").toLowerCase();
+  const teleopClimb =
+    endStatus === "level-1" ? 10 :
+    endStatus === "level-2" ? 20 :
+    endStatus === "level-3" ? 30 : 0;
+
+  return autoFuel + teleopFuel + autoClimb + teleopClimb;
+}
 
 function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }>) {
   const mobile = points.filter((p) => p.deviceType === "mobile");
@@ -74,7 +105,9 @@ function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accura
   return { mobileCount: mobile.length, pcCount: pc.length, mobileAvg, pcAvg, betterDevice };
 }
 
-function scoreScoutingEntry(entry: ScoutingEntry): number {
+function scoreScoutingEntry(entry: ScoutingEntry, game: "REEFSCAPE" | "REBUILT"): number {
+  if (game === "REBUILT") return scoreRebuiltEntry(entry);
+
   let score = 0;
   if (entry.leftStartingZone) score += 3;
   score += (entry.autoCoralL1 || 0) * 3;
@@ -98,7 +131,9 @@ function scoreScoutingEntry(entry: ScoutingEntry): number {
   return score;
 }
 
-function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry): number {
+function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE" | "REBUILT"): number {
+  if (game === "REBUILT") return scoreRebuiltEntry(entry);
+
   let score = 0;
   if (entry.leftStartingZone) score += 3;
   score += (entry.autoCoralL1 || 0) * 3;
@@ -187,7 +222,7 @@ function ScoutAccuracyContent() {
           const baselineByMatch = allCompetitionEntries.reduce<Record<string, number[]>>((acc, entry) => {
             const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
             if (!acc[key]) acc[key] = [];
-            acc[key].push(scoreScoutingEntry(entry));
+            acc[key].push(scoreScoutingEntry(entry, selectedGame));
             return acc;
           }, {});
 
@@ -206,7 +241,7 @@ function ScoutAccuracyContent() {
             const baseline = baselineScores.length
               ? baselineScores.reduce((sum, value) => sum + value, 0) / baselineScores.length
               : 0;
-            const score = scoreScoutingEntry(entry);
+            const score = scoreScoutingEntry(entry, selectedGame);
             if (baseline <= 0) return 0;
             return Math.max(0, Math.round((1 - Math.abs(score - baseline) / baseline) * 100));
           });
@@ -454,7 +489,11 @@ function ScoutAccuracyContent() {
         return;
       }
 
-      const baseScoutedScore = entries.reduce((sum, entry) => sum + scorePracticeEntryWithoutPenalty(entry), 0);
+      const sessionGame = String(sessionData.game || "REEFSCAPE").toUpperCase() === "REBUILT" ? "REBUILT" : "REEFSCAPE";
+      const baseScoutedScore = entries.reduce(
+        (sum, entry) => sum + scorePracticeEntryWithoutPenalty(entry, sessionGame),
+        0
+      );
       const sessionPenaltyPoints =
         typeof sessionData.penaltyPoints === "number"
           ? Number(sessionData.penaltyPoints)
