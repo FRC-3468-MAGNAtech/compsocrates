@@ -93,8 +93,6 @@ function normalizeMatchId(entry: ScoutingEntry): string {
 
 function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame) {
   if (game === "REBUILT") {
-    const explicit = Number(entry.estimatedScore || 0);
-    if (explicit > 0) return explicit;
     const autoFuel = Number(entry.auto?.estimatedFuel || 0);
     const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
     const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
