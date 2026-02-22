@@ -50,16 +50,16 @@ function MatchPickerModal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-[90%] max-w-md p-6">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-[85%] max-w-[900px] p-6">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50"
         >
           Cancel
         </button>
-        <h2 className="text-lg font-semibold mb-3">Select Match</h2>
-        <div className="max-h-80 overflow-y-auto space-y-2">
+        <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Match</h2>
+        <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
           {matches.length === 0 && (
             <div className="rounded border p-3 text-sm text-gray-600">No matches available.</div>
           )}
@@ -71,13 +71,28 @@ function MatchPickerModal({
                 onSelect(match.key);
                 onClose();
               }}
-              className="w-full text-left rounded border p-3 hover:bg-gray-50"
+              className="relative h-[86px] p-2 rounded-lg border text-left hover:bg-gray-50"
+              style={{ borderColor: "#ef4444" }}
             >
-              <div className="font-semibold">{match.label}</div>
-              <div className="text-xs text-gray-600">{match.teams.join(" vs ")}</div>
+              <div className="mt-3">
+                <div className="font-semibold text-sm">{match.label}</div>
+                <div className="text-xs text-gray-600">
+                  {match.scheduleTime > 0
+                    ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                    : "TBD"}
+                </div>
+              </div>
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="w-full mt-4 py-2 rounded text-white"
+          style={{ backgroundColor: "var(--primary-color)" }}
+          onClick={onClose}
+        >
+          Close
+        </button>
       </div>
     </div>
   );

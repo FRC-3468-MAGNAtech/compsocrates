@@ -44,14 +44,21 @@ function TeamPickerModal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-4">
-        <h2 className="text-lg font-semibold mb-3">Select Team</h2>
-        <div className="max-h-80 overflow-y-auto border rounded">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-[85%] max-w-[900px] p-6">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
+        <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
           {teams.length === 0 ? (
             <p className="p-3 text-sm text-gray-600">No teams available.</p>
           ) : (
-            <div className="grid grid-cols-3 gap-1 p-2">
+            <div className="grid grid-cols-3 gap-2">
               {teams.map((team) => {
                 const done = scoutedTeams.has(team);
                 return (
@@ -63,7 +70,7 @@ function TeamPickerModal({
                       onSelect(team);
                       onClose();
                     }}
-                    className={`rounded border p-2 text-sm ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                    className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
                   >
                     {done ? `${team} (Scouted)` : team}
                   </button>
@@ -72,7 +79,14 @@ function TeamPickerModal({
             </div>
           )}
         </div>
-        <button type="button" onClick={onClose} className="mt-3 w-full py-2 rounded border">Close</button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-4 w-full py-2 rounded text-white"
+          style={{ backgroundColor: "var(--primary-color)" }}
+        >
+          Close
+        </button>
       </div>
     </div>
   );
