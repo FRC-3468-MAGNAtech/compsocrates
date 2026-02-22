@@ -119,9 +119,9 @@ function TeamStrategyAnalyticsContent() {
                 <th className="bg-pink-300 text-center" colSpan={2}>General</th>
               </tr>
               <tr>
-                <th className="bg-red-200 text-center" colSpan={2}>Identity</th>
-                <th className="bg-yellow-200 text-center" colSpan={2}>Strategy</th>
-                <th className="bg-blue-200 text-center" colSpan={4}>Checks</th>
+                <th className="bg-red-200 text-center" colSpan={2}>Information</th>
+                <th className="bg-yellow-200 text-center" colSpan={2}>Approach</th>
+                <th className="bg-blue-200 text-center" colSpan={4}>Capabilities</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
               </tr>

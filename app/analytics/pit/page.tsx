@@ -145,7 +145,8 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={5}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                  <th className="bg-red-300 text-center" colSpan={3}>Readiness</th>
                   <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
                   <th className="bg-yellow-300 text-center" colSpan={3}>Cycles</th>
@@ -154,9 +155,9 @@ function PitAnalyticsContent() {
                 <tr>
                   <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Identity</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Readiness</th>
-                  <th className="bg-blue-200 text-center" colSpan={3}>Stats</th>
-                  <th className="bg-purple-200 text-center" colSpan={3}>Tower</th>
-                  <th className="bg-yellow-200 text-center" colSpan={3}>Timing</th>
+                  <th className="bg-blue-200 text-center" colSpan={3}>Fuel</th>
+                  <th className="bg-purple-200 text-center" colSpan={3}>Climb</th>
+                  <th className="bg-yellow-200 text-center" colSpan={3}>Cycles</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
                 </tr>
@@ -217,7 +218,8 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={5}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                  <th className="bg-red-300 text-center" colSpan={3}>Readiness</th>
                   <th className="bg-yellow-300 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
                   <th className="bg-green-300 text-center" colSpan={2}>Algae</th>
@@ -227,10 +229,10 @@ function PitAnalyticsContent() {
                 <tr>
                   <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Identity</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Readiness</th>
-                  <th className="bg-yellow-200 text-center" colSpan={2}>Chassis</th>
-                  <th className="bg-orange-200 text-center" colSpan={2}>Gameplay</th>
-                  <th className="bg-green-200 text-center" colSpan={2}>Gameplay</th>
-                  <th className="bg-blue-200 text-center" colSpan={4}>Auto & Endgame</th>
+                  <th className="bg-yellow-200 text-center" colSpan={2}>Drive</th>
+                  <th className="bg-orange-200 text-center" colSpan={2}>Coral</th>
+                  <th className="bg-green-200 text-center" colSpan={2}>Algae</th>
+                  <th className="bg-blue-200 text-center" colSpan={4}>Field Plan</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Rating</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>

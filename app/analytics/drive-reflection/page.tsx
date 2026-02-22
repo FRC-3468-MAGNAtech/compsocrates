@@ -109,21 +109,35 @@ function DriveReflectionAnalyticsContent() {
             <thead className="sticky-header">
               <tr>
                 <th className="bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="bg-blue-300 text-center" colSpan={3}>Robots</th>
+                <th className="bg-blue-300 text-center" colSpan={15}>Robots</th>
                 <th className="bg-pink-300 text-center" colSpan={2}>General</th>
               </tr>
               <tr>
                 <th className="bg-red-200 text-center" colSpan={2}>Match Details</th>
-                <th className="bg-blue-200 text-center" colSpan={3}>Plan</th>
+                <th className="bg-blue-200 text-center" colSpan={5}>Robot 1</th>
+                <th className="bg-blue-200 text-center" colSpan={5}>Robot 2</th>
+                <th className="bg-blue-200 text-center" colSpan={5}>Robot 3</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
                 <th className="text-center">Match</th>
                 <th className="text-center">Scout</th>
-                <th className="text-center">Robot 1</th>
-                <th className="text-center">Robot 2</th>
-                <th className="text-center">Robot 3</th>
+                <th className="text-center">Team Number</th>
+                <th className="text-center">Starting Position</th>
+                <th className="text-center">Role</th>
+                <th className="text-center">Auto Climb</th>
+                <th className="text-center">Endgame Climb</th>
+                <th className="text-center">Team Number</th>
+                <th className="text-center">Starting Position</th>
+                <th className="text-center">Role</th>
+                <th className="text-center">Auto Climb</th>
+                <th className="text-center">Endgame Climb</th>
+                <th className="text-center">Team Number</th>
+                <th className="text-center">Starting Position</th>
+                <th className="text-center">Role</th>
+                <th className="text-center">Auto Climb</th>
+                <th className="text-center">Endgame Climb</th>
                 <th className="text-center">Notes</th>
                 <th className="text-center">Actions</th>
               </tr>
@@ -133,15 +147,25 @@ function DriveReflectionAnalyticsContent() {
                 const r1 = entry.robots?.[0];
                 const r2 = entry.robots?.[1];
                 const r3 = entry.robots?.[2];
-                const fmt = (robot?: { teamNumber?: string; role?: string; endgameClimb?: string }) =>
-                  robot ? `${robot.teamNumber || "-"} | ${robot.role || "-"} | ${robot.endgameClimb || "-"}` : "-";
                 return (
                   <tr key={entry.id}>
                     <td className="font-semibold">{entry.matchLabel || "-"}</td>
                     <td>{entry.scoutName || "-"}</td>
-                    <td>{fmt(r1)}</td>
-                    <td>{fmt(r2)}</td>
-                    <td>{fmt(r3)}</td>
+                    <td>{r1?.teamNumber || "-"}</td>
+                    <td>{r1?.startingPosition || "-"}</td>
+                    <td>{r1?.role || "-"}</td>
+                    <td>{r1?.autoClimb ? "Y" : "N"}</td>
+                    <td>{r1?.endgameClimb || "-"}</td>
+                    <td>{r2?.teamNumber || "-"}</td>
+                    <td>{r2?.startingPosition || "-"}</td>
+                    <td>{r2?.role || "-"}</td>
+                    <td>{r2?.autoClimb ? "Y" : "N"}</td>
+                    <td>{r2?.endgameClimb || "-"}</td>
+                    <td>{r3?.teamNumber || "-"}</td>
+                    <td>{r3?.startingPosition || "-"}</td>
+                    <td>{r3?.role || "-"}</td>
+                    <td>{r3?.autoClimb ? "Y" : "N"}</td>
+                    <td>{r3?.endgameClimb || "-"}</td>
                     <td>{entry.notes || "-"}</td>
                     <td className="text-center">
                       <button
