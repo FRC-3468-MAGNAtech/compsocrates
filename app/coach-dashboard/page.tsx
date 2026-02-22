@@ -33,10 +33,8 @@ function filterEventsByAttendance(
   events: UpcomingEvent[],
   attendanceByEvent: Record<string, string[]>,
   uid: string,
-  displayName: string,
-  isTeamAdmin: boolean
+  displayName: string
 ) {
-  if (isTeamAdmin) return events;
   const normalizedUid = uid.trim();
   const normalizedName = displayName.trim().toLowerCase();
   return events.filter((event) => {
@@ -101,6 +99,7 @@ function CoachDashboardContent() {
   const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
   const [teamData, setTeamData] = useState<TeamData | null>(null);
   const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
+  const [readyScoutIds, setReadyScoutIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -116,12 +115,12 @@ function CoachDashboardContent() {
     
     setLoading(true);
     try {
-      const [teamStats, events, teamDoc, usersSnap, practiceSnap] = await Promise.all([
+      const [teamStats, events, teamDoc, usersSnap, scoutingSnap] = await Promise.all([
         calculateTeamStats(userData.teamId),
         getUpcomingEvents(userData.teamId),
         getDoc(doc(db, "teams", userData.teamId)),
         getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
-        getDocs(collection(db, "practiceSessions")),
+        getDocs(collection(db, "scouting")),
       ]);
       
       setStats(teamStats);
@@ -132,8 +131,7 @@ function CoachDashboardContent() {
         events,
         attendanceByEvent,
         userData.uid || "",
-        userData.displayName || "",
-        Boolean(userData.isTeamAdmin)
+        userData.displayName || ""
       );
       setUpcomingEvents(visibleEvents);
       setActiveEventKey((current) => {
@@ -161,12 +159,16 @@ function CoachDashboardContent() {
         const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
         return roles.includes("match-scout") || roles.includes("lead-scout");
       });
-      const scoutNames = scouts.map((docSnap) => docSnap.data().displayName);
+      const scoutDocs = scouts.map((docSnap) => ({ uid: docSnap.id, displayName: String(docSnap.data().displayName || "") }));
+      const scoutNames = scoutDocs.map((row) => row.displayName);
 
       const accuracyMapByScout: Record<string, { total: number; count: number }> = {};
-      practiceSnap.forEach((practiceDoc) => {
-        const data = practiceDoc.data();
-        if (!scoutNames.includes(data.scoutName) || typeof data.accuracy !== "number") return;
+      scoutingSnap.forEach((scoutingDoc) => {
+        const data = scoutingDoc.data() as Record<string, unknown>;
+        const isRebuilt = String(data.game || "").toUpperCase() === "REBUILT";
+        const isPracticeScouted = Boolean(data.isPracticeScouting) || Boolean(data.practiceMode) || Boolean(data.practiceSessionId);
+        if (!isRebuilt || !isPracticeScouted || typeof data.accuracy !== "number") return;
+        if (!scoutNames.includes(String(data.scoutName || ""))) return;
         const scoutName = String(data.scoutName || "");
         if (!accuracyMapByScout[scoutName]) {
           accuracyMapByScout[scoutName] = { total: 0, count: 0 };
@@ -180,6 +182,11 @@ function CoachDashboardContent() {
         return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
       });
       setReadyScoutNames(computedReadyScouts);
+      setReadyScoutIds(
+        scoutDocs
+          .filter((docSnap) => computedReadyScouts.includes(docSnap.displayName))
+          .map((docSnap) => docSnap.uid)
+      );
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -270,9 +277,13 @@ function CoachDashboardContent() {
                     if (!event) return null;
                     const expected = teamData?.eventScoutCounts?.[event.key] || teamData?.scoutCount || 6;
                     const attendees = Array.isArray(teamData?.eventAttendees?.[event.key]) ? teamData.eventAttendees[event.key] : [];
-                    const readyLookup = new Set(readyScoutNames.map((name) => name.trim().toLowerCase()));
+                    const readyNameLookup = new Set(readyScoutNames.map((name) => name.trim().toLowerCase()));
+                    const readyIdLookup = new Set(readyScoutIds.map((id) => id.trim()));
                     const readyAttendees = attendees.length > 0
-                      ? attendees.filter((name: string) => readyLookup.has(String(name || "").trim().toLowerCase())).length
+                      ? attendees.filter((value: string) => {
+                          const safe = String(value || "").trim();
+                          return readyIdLookup.has(safe) || readyNameLookup.has(safe.toLowerCase());
+                        }).length
                       : readyScoutNames.length;
                     const eventMatches = eventMatchesByKey[event.key] || [];
                     return (
@@ -397,7 +408,7 @@ function CoachDashboardContent() {
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {stats?.averageAccuracy || 0}%
                   </p>
-                  <p className="text-sm text-gray-600 mt-1">Scout reliability</p>
+                  <p className="text-sm text-gray-600 mt-1">REBUILT scouted-match reliability</p>
                 </div>
               </div>
 

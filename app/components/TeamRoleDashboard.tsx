@@ -26,10 +26,8 @@ function filterEventsByAttendance(
   events: UpcomingEvent[],
   attendanceByEvent: Record<string, string[]>,
   uid: string,
-  displayName: string,
-  isTeamAdmin: boolean
+  displayName: string
 ) {
-  if (isTeamAdmin) return events;
   const normalizedUid = uid.trim();
   const normalizedName = displayName.trim().toLowerCase();
   return events.filter((event) => {
@@ -158,8 +156,7 @@ function TeamRoleDashboardContent({
         events,
         attendanceByEvent,
         userData.uid || "",
-        userData.displayName || "",
-        Boolean(userData.isTeamAdmin)
+        userData.displayName || ""
       );
 
       setStats(teamStats);
@@ -523,7 +520,7 @@ function TeamRoleDashboardContent({
                     <BarChart3 size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>{stats?.averageAccuracy || 0}%</p>
-                  <p className="text-sm text-gray-600 mt-1">Practice-derived average</p>
+                  <p className="text-sm text-gray-600 mt-1">REBUILT scouted-match average</p>
                 </div>
               </div>
 

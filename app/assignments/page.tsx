@@ -20,6 +20,7 @@ import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getUserRoles } from "@/app/utils/roles";
+import { APP_EVENTS } from "@/app/utils/events";
 
 interface Assignment {
   id: string;
@@ -59,6 +60,12 @@ type MatchOption = {
   scheduleTime: number;
 };
 
+type EventOption = {
+  key: string;
+  name: string;
+  startDate: string;
+};
+
 function compLevelPriority(compLevel: string) {
   if (compLevel === "qm") return 0;
   if (compLevel === "ef") return 1;
@@ -82,7 +89,8 @@ function AssignmentsContent() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [pitAssignments, setPitAssignments] = useState<PitAssignment[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [selectedEvent, setSelectedEvent] = useState("2026arli");
+  const [selectedEvent, setSelectedEvent] = useState("");
+  const [events, setEvents] = useState<EventOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
@@ -96,27 +104,96 @@ function AssignmentsContent() {
   const [selectedMatchType, setSelectedMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
   const [assignmentModalMode, setAssignmentModalMode] = useState<"match" | "pit">("match");
 
-  const events = [
-    { key: "2026arli", name: "Arkansas Regional" },
-    { key: "2026labr", name: "Bayou Regional" },
-  ];
-
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [selectedEvent, userData?.teamId]);
+
+  async function resolveEventOptions(teamData: Record<string, unknown>): Promise<EventOption[]> {
+    const selected = Array.isArray(teamData.selectedEvents)
+      ? teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean)
+      : [];
+    const fallbackFromApp = APP_EVENTS.map((event) => ({
+      key: event.key,
+      name: event.name,
+      startDate: event.startDate,
+    }));
+    if (selected.length === 0) return fallbackFromApp;
+
+    const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
+    const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
+    const fromTba = new Map<string, EventOption>();
+    if (encryptedKey || plainKey) {
+      const years = new Set<number>();
+      selected.forEach((eventKey) => {
+        const year = Number(eventKey.slice(0, 4));
+        if (Number.isFinite(year)) years.add(year);
+      });
+      if (years.size === 0) years.add(new Date().getFullYear());
+
+      const responses = await Promise.all(
+        Array.from(years).map(async (year) => {
+          const response = await fetch("/api/tba/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ year, encryptedKey, plainKey }),
+          });
+          if (!response.ok) return [] as Array<Record<string, unknown>>;
+          const payload = await response.json();
+          return Array.isArray(payload.events) ? (payload.events as Array<Record<string, unknown>>) : [];
+        })
+      );
+
+      responses.flat().forEach((event) => {
+        const key = String(event.key || "").trim();
+        if (!key || !selected.includes(key)) return;
+        fromTba.set(key, {
+          key,
+          name: String(event.name || key),
+          startDate: String(event.start_date || `${new Date().getFullYear()}-01-01`),
+        });
+      });
+    }
+
+    const staticByKey = new Map(fallbackFromApp.map((event) => [event.key, event]));
+    return selected
+      .map((key) => fromTba.get(key) || staticByKey.get(key) || { key, name: key, startDate: `${new Date().getFullYear()}-01-01` })
+      .sort((a, b) => {
+        const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+        const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+        return aTime - bTime;
+      });
+  }
 
   async function loadData() {
     if (!userData?.teamId) return;
     setLoading(true);
     try {
-      const [membersSnap, assignmentsSnap, pitAssignmentsSnap, teamDoc] = await Promise.all([
+      const [membersSnap, teamDoc] = await Promise.all([
         getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
-        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", selectedEvent))),
-        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", selectedEvent))),
         getDoc(doc(db, "teams", userData.teamId)),
       ]);
-
       setMembers(membersSnap.docs.map((memberDoc) => ({ uid: memberDoc.id, ...memberDoc.data() } as TeamMember)));
+      const teamData = teamDoc.exists() ? teamDoc.data() : {};
+      setEventAttendees(teamData.eventAttendees || {});
+      const resolvedEvents = await resolveEventOptions(teamData);
+      setEvents(resolvedEvents);
+      const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
+        ? selectedEvent
+        : (resolvedEvents[0]?.key || "");
+      if (!selectedEvent || effectiveEvent !== selectedEvent) {
+        setSelectedEvent(effectiveEvent);
+      }
+      if (!effectiveEvent) {
+        setAssignments([]);
+        setPitAssignments([]);
+        setMatchOptions([]);
+        return;
+      }
+
+      const [assignmentsSnap, pitAssignmentsSnap] = await Promise.all([
+        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", effectiveEvent))),
+        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", effectiveEvent))),
+      ]);
       setAssignments(
         assignmentsSnap.docs.map((assignmentDoc) => ({
           id: assignmentDoc.id,
@@ -130,11 +207,8 @@ function AssignmentsContent() {
         })) as PitAssignment[]
       );
 
-      const teamData = teamDoc.exists() ? teamDoc.data() : {};
-      setEventAttendees(teamData.eventAttendees || {});
-
       try {
-        const matches = await getEventMatches(selectedEvent);
+        const matches = await getEventMatches(effectiveEvent);
         const sorted = [...matches].sort((a, b) => {
           const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
           if (priorityDiff !== 0) return priorityDiff;
@@ -384,6 +458,7 @@ function AssignmentsContent() {
                   {event.name}
                 </option>
               ))}
+              {events.length === 0 && <option value="">No events selected</option>}
             </select>
           </div>
 

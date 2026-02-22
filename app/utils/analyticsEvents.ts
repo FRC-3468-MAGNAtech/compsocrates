@@ -64,6 +64,13 @@ export function getEventOptionsForEntries(
   return Array.from(byId.values()).sort((a, b) => {
     if (a.id === "app-testing") return 1;
     if (b.id === "app-testing") return -1;
+    if (a.startDate && b.startDate) {
+      const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+      const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+      if (aTime !== bTime) return aTime - bTime;
+    }
+    if (a.startDate && !b.startDate) return -1;
+    if (!a.startDate && b.startDate) return 1;
     return a.name.localeCompare(b.name);
   });
 }

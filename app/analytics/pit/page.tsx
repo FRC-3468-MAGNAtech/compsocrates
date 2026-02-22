@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { useAuth } from "@/app/AuthContext";
 
 type PitEntry = {
   id: string;
@@ -59,6 +60,8 @@ function isPracticeEntry(entry: PitEntry) {
 }
 
 function PitAnalyticsContent() {
+  const { userData } = useAuth();
+  const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const [entries, setEntries] = useState<PitEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -109,6 +112,17 @@ function PitAnalyticsContent() {
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
   }, [normalized, selectedEvent, selectedGame, practiceMatchesOnly]);
 
+  async function handleDeleteEntry(entry: PitEntry) {
+    if (!canDeleteEntries) {
+      alert("Only coaches or team admins can delete entries.");
+      return;
+    }
+    const ok = window.confirm("Delete this pit scouting entry?");
+    if (!ok) return;
+    await deleteDoc(doc(db, "pitScouting", entry.id));
+    setEntries((prev) => prev.filter((row) => row.id !== entry.id));
+  }
+
   return (
     <AnalyticsShell
       entriesCount={filtered.length}
@@ -146,6 +160,7 @@ function PitAnalyticsContent() {
                   <th>Climb Time</th>
                   <th>Auto Cycle</th>
                   <th>Comments</th>
+                  <th>Delete</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,6 +181,18 @@ function PitAnalyticsContent() {
                     <td>{entry.typicalClimbTime || "-"}</td>
                     <td>{entry.autoCycleDescription || "-"}</td>
                     <td>{entry.notes || "-"}</td>
+                    <td className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteEntry(entry)}
+                        className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
+                        style={{ backgroundColor: "#dc2626" }}
+                        disabled={!canDeleteEntries}
+                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -191,6 +218,7 @@ function PitAnalyticsContent() {
                   <th>Better At</th>
                   <th>Rating</th>
                   <th>Comments</th>
+                  <th>Delete</th>
                 </tr>
               </thead>
               <tbody>
@@ -213,6 +241,18 @@ function PitAnalyticsContent() {
                     <td>{entry.betterAt || "-"}</td>
                     <td>{entry.rating || "-"}</td>
                     <td>{entry.notes || "-"}</td>
+                    <td className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteEntry(entry)}
+                        className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
+                        style={{ backgroundColor: "#dc2626" }}
+                        disabled={!canDeleteEntries}
+                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -43,6 +43,13 @@ type ScoutingEntry = Record<string, unknown> & {
   timestamp?: number;
 };
 
+function isRebuiltScoutedAccuracyEntry(entry: ScoutingEntry): boolean {
+  const game = String(entry.game || "").toUpperCase();
+  const hasAccuracy = typeof entry.accuracy === "number" && Number.isFinite(Number(entry.accuracy));
+  const isPracticeScouted = Boolean(entry.isPracticeScouting) || Boolean(entry.practiceMode) || Boolean(entry.practiceSessionId);
+  return game === "REBUILT" && hasAccuracy && isPracticeScouted;
+}
+
 function isRealCompetitionEntry(entry: ScoutingEntry): boolean {
   const game = String(entry.game || "REEFSCAPE").toUpperCase();
   const matchType = String(entry.matchType || "").toLowerCase();
@@ -89,19 +96,19 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   });
   const scoutNames = scouts.map((doc) => doc.data().displayName);
 
-  // Get practice sessions from Firebase to calculate REAL average accuracy
-  const practiceQuery = query(collection(db, "practiceSessions"));
-  const practiceSnapshot = await getDocs(practiceQuery);
+  // Use REBUILT scouted-match rows from scouting for dashboard accuracy.
+  const scoutingSnapshot = await getDocs(collection(db, "scouting"));
   
   const accuracyByScout: Record<string, { total: number; count: number }> = {};
-  practiceSnapshot.forEach((docSnap) => {
-    const data = docSnap.data();
-    if (data.accuracy !== undefined && teamMemberNames.has(data.scoutName)) {
-      if (!accuracyByScout[data.scoutName]) {
-        accuracyByScout[data.scoutName] = { total: 0, count: 0 };
+  scoutingSnapshot.forEach((docSnap) => {
+    const data = docSnap.data() as ScoutingEntry;
+    const scoutName = String(data.scoutName || "");
+    if (isRebuiltScoutedAccuracyEntry(data) && teamMemberNames.has(scoutName)) {
+      if (!accuracyByScout[scoutName]) {
+        accuracyByScout[scoutName] = { total: 0, count: 0 };
       }
-      accuracyByScout[data.scoutName].total += data.accuracy;
-      accuracyByScout[data.scoutName].count += 1;
+      accuracyByScout[scoutName].total += Number(data.accuracy || 0);
+      accuracyByScout[scoutName].count += 1;
     }
   });
 
@@ -174,10 +181,11 @@ export function formatActivity(activity: Activity): string {
   return "Unknown activity";
 }
 
-// Get upcoming events - hardcoded for Arkansas and Bayou
 export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[]> {
   const now = new Date();
   let selectedEventKeys: string[] = [];
+  let encryptedKey = "";
+  let plainKey = "";
 
   if (teamId) {
     const teamDoc = await getDoc(doc(db, "teams", teamId));
@@ -186,22 +194,86 @@ export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[
       if (Array.isArray(teamData.selectedEvents)) {
         selectedEventKeys = teamData.selectedEvents;
       }
+      encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
+      plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
     }
   }
 
-  const events = selectedEventKeys.length
-    ? APP_EVENTS.filter((event) => selectedEventKeys.includes(event.key))
-    : APP_EVENTS;
+  const staticByKey = new Map(APP_EVENTS.map((event) => [event.key, event]));
+  let events: UpcomingEvent[] = [];
 
-  return events.map(event => {
-    const startDate = new Date(`${event.startDate}T12:00:00`);
-    const daysUntil = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
-    return {
-      ...event,
-      daysUntil: Math.max(0, daysUntil)
-    };
-  }).filter(event => event.daysUntil >= 0); // Only show upcoming/current events
+  if (selectedEventKeys.length > 0) {
+    const selectedSet = new Set(selectedEventKeys);
+    const tbaByKey = new Map<string, { name: string; city: string; stateProv: string; startDate: string; endDate: string }>();
+
+    if (encryptedKey || plainKey) {
+      const years = new Set<number>();
+      selectedEventKeys.forEach((eventKey) => {
+        const year = Number(String(eventKey).slice(0, 4));
+        if (Number.isFinite(year)) years.add(year);
+      });
+      if (years.size === 0) years.add(new Date().getFullYear());
+
+      const responses = await Promise.all(
+        Array.from(years).map(async (year) => {
+          const response = await fetch("/api/tba/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ year, encryptedKey, plainKey }),
+          });
+          if (!response.ok) return [] as Array<Record<string, unknown>>;
+          const payload = await response.json();
+          return Array.isArray(payload.events) ? (payload.events as Array<Record<string, unknown>>) : [];
+        })
+      );
+
+      responses.flat().forEach((event) => {
+        const key = String(event.key || "");
+        if (!key || !selectedSet.has(key)) return;
+        tbaByKey.set(key, {
+          name: String(event.name || key),
+          city: String(event.city || ""),
+          stateProv: String(event.state_prov || ""),
+          startDate: String(event.start_date || ""),
+          endDate: String(event.end_date || ""),
+        });
+      });
+    }
+
+    events = selectedEventKeys.map((key) => {
+      const tba = tbaByKey.get(key);
+      const fallback = staticByKey.get(key);
+      const startDate = tba?.startDate || fallback?.startDate || `${new Date().getFullYear()}-01-01`;
+      const endDate = tba?.endDate || fallback?.endDate || startDate;
+      const location =
+        [tba?.city || fallback?.city || "", tba?.stateProv || fallback?.state_prov || ""].filter(Boolean).join(", ") ||
+        fallback?.location ||
+        "Location TBD";
+      const daysUntil = Math.ceil((new Date(`${startDate}T12:00:00`).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return {
+        key,
+        name: tba?.name || fallback?.name || key,
+        location,
+        startDate,
+        endDate,
+        daysUntil: Math.max(0, daysUntil),
+      };
+    });
+  } else {
+    events = APP_EVENTS.map((event) => {
+      const daysUntil = Math.ceil((new Date(`${event.startDate}T12:00:00`).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return {
+        ...event,
+        daysUntil: Math.max(0, daysUntil),
+      };
+    });
+  }
+
+  return events.sort((a, b) => {
+    const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+    const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+    return aTime - bTime;
+  });
 }
 
 // Get team name from teams collection
