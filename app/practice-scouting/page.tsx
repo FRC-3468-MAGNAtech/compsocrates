@@ -471,6 +471,22 @@ function PracticeScoutingContent() {
 
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
+  const REBUILT_WEEK0_EVENT_KEY = "2026week0";
+
+  function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
+    const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
+    const eventKey = String((match as unknown as Record<string, unknown>).eventKey || "").toLowerCase();
+
+    if (activeMatchGame === "REBUILT") {
+      return eventKey === REBUILT_WEEK0_EVENT_KEY;
+    }
+
+    if (eventKey === REBUILT_WEEK0_EVENT_KEY) {
+      return false;
+    }
+    if (!matchGame) return true;
+    return matchGame === "REEFSCAPE";
+  }
 
   function getYouTubeEmbedUrl(url: string): string {
     if (!url) return "";
@@ -610,11 +626,7 @@ function PracticeScoutingContent() {
         return;
       }
 
-      const gameFilteredMatches = matches.filter((match) => {
-        const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
-        if (!matchGame) return true;
-        return matchGame === activeMatchGame;
-      });
+      const gameFilteredMatches = matches.filter((match) => matchBelongsToSelectedGame(match));
       if (gameFilteredMatches.length === 0) {
         alert("No matches exist to scout yet for the selected game.");
         setLoading(false);
@@ -635,11 +647,7 @@ function PracticeScoutingContent() {
       if (candidateMatches.length === 0) {
         const allSnapshot = await getDocs(collection(db, "practiceMatches"));
         const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        const allGameFilteredMatches = allMatches.filter((match) => {
-          const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
-          if (!matchGame) return true;
-          return matchGame === activeMatchGame;
-        });
+        const allGameFilteredMatches = allMatches.filter((match) => matchBelongsToSelectedGame(match));
         candidateMatches = buildLegacyGroupedMatches(allGameFilteredMatches);
       }
       if (candidateMatches.length === 0) {
@@ -1623,9 +1631,6 @@ function PracticeScoutingContent() {
                         </label>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-500 mt-3">
-                      REBUILT practice score uses: Auto Fuel 1, Auto Climb 15, Teleop Fuel 1, Endgame L1/L2/L3 = 10/20/30.
-                    </p>
                   </div>
                 </>
               )}
