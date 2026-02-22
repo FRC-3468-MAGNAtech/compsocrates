@@ -125,8 +125,6 @@ const PTS = {
 };
 
 function scoreRebuiltEntry(e: Entry) {
-  const explicit = Number(e.estimatedScore || 0);
-  if (explicit > 0) return explicit;
   const autoFuel = Number(e.auto?.estimatedFuel || 0);
   const teleFuel = Number(e.teleop?.estimatedFuel || 0);
   const autoClimb = e.auto?.successfulClimb ? 15 : 0;
@@ -189,6 +187,17 @@ type MatchIdentity = {
   compLevel: "qm" | "qf" | "sf" | "f";
   setNumber: number | null;
   matchNumber: number;
+};
+
+type TbaMatchRow = {
+  key?: string;
+  comp_level?: string;
+  set_number?: number;
+  match_number?: number;
+  alliances?: {
+    red?: { team_keys?: string[]; score?: number };
+    blue?: { team_keys?: string[]; score?: number };
+  };
 };
 
 const REBUILT_PRELOAD_RANGES = ["0", "1-2", "3-4", "5-6", "7-8"];
@@ -269,6 +278,16 @@ function parseMatchIdentityFromLabel(label: string): MatchIdentity | null {
   });
 }
 
+function tbaMatchLabel(row: TbaMatchRow): string {
+  const level = String(row.comp_level || "").toLowerCase();
+  const matchNumber = Number(row.match_number || 0);
+  if (level === "f") return `F${matchNumber || "-"}`;
+  if (level === "qm") return `Q${matchNumber || "-"}`;
+  if (level === "sf") return `SF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
+  if (level === "qf") return `QF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
+  return `M${matchNumber || "-"}`;
+}
+
 function formatApprox(value: string | number) {
   return `~${value}`;
 }
@@ -300,8 +319,7 @@ type AccuracyDetails = {
 type AccuracyRobotBreakdown = {
   teamNumber: string;
   total: number;
-  source: "estimatedScore" | "computed" | "reefscape";
-  estimatedScore: number;
+  source: "computed" | "reefscape";
   autoFuel: number;
   teleFuel: number;
   autoClimb: number;
@@ -310,19 +328,6 @@ type AccuracyRobotBreakdown = {
 
 function getRebuiltBreakdown(entry: Entry): AccuracyRobotBreakdown {
   const teamNumber = String(entry.teamNumber || "-").trim() || "-";
-  const explicit = Number(entry.estimatedScore || 0);
-  if (explicit > 0) {
-    return {
-      teamNumber,
-      total: explicit,
-      source: "estimatedScore",
-      estimatedScore: explicit,
-      autoFuel: 0,
-      teleFuel: 0,
-      autoClimb: 0,
-      endgameClimb: 0,
-    };
-  }
   const autoFuel = Number(entry.auto?.estimatedFuel || 0);
   const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
   const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
@@ -332,7 +337,6 @@ function getRebuiltBreakdown(entry: Entry): AccuracyRobotBreakdown {
     teamNumber,
     total: autoFuel + teleFuel + autoClimb + endgameClimb,
     source: "computed",
-    estimatedScore: 0,
     autoFuel,
     teleFuel,
     autoClimb,
@@ -630,6 +634,9 @@ function AnalyticsPageContent() {
       const entryGame = String(entry.game || "REEFSCAPE").toUpperCase() as AnalyticsGame;
       const sameGameRows = rawData.filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === entryGame);
       const sameLabelRows = sameGameRows.filter((row) => matchLabel(row) === clickedLabel);
+      const sameScoutRows = sameLabelRows.filter(
+        (row) => String(row.scoutName || "").trim() === String(entry.scoutName || "").trim()
+      );
 
       const eventKeyFromEntry = String(entry.eventKey || "").trim();
       const eventKeyFromSelector = selectedEvent !== "all" ? selectedEvent : "";
@@ -661,9 +668,14 @@ function AnalyticsPageContent() {
         const rowIdentity = parseMatchIdentity(row) || parseMatchIdentityFromLabel(matchLabel(row));
         return Boolean(rowIdentity && matchIdentityEquals(identity, rowIdentity));
       });
+      const latestReferenceRows = chooseLatestEntryPerTeam(sameScoutRows.length > 0 ? sameScoutRows : matchRows);
+      const scoutedTeamsReference = new Set(
+        latestReferenceRows.map((row) => String(row.teamNumber || "").trim()).filter(Boolean)
+      );
 
       let allianceColor = inferAllianceColor(entry);
       let officialTeamsForAlliance: string[] = [];
+      let matchLabelUsed = clickedLabel;
       let actualPoints: number | null =
         typeof entry.officialScore === "number"
           ? Number(entry.officialScore)
@@ -674,7 +686,7 @@ function AnalyticsPageContent() {
       if (!userData?.teamId) {
         const allianceRows =
           allianceColor === null
-            ? matchRows
+            ? latestReferenceRows
             : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
         const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
         const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
@@ -686,7 +698,6 @@ function AnalyticsPageContent() {
                   teamNumber: String(row.teamNumber || "-"),
                   total: scoreEntry(row, entryGame),
                   source: "reefscape",
-                  estimatedScore: 0,
                   autoFuel: 0,
                   teleFuel: 0,
                   autoClimb: 0,
@@ -700,7 +711,7 @@ function AnalyticsPageContent() {
           penaltyPoints: Number(entry.penaltyPoints || 0),
           allRobotsScouted: "unknown",
           eventKeyUsed: eventKey,
-          matchLabelUsed: clickedLabel,
+          matchLabelUsed: matchLabelUsed,
         });
         return;
       }
@@ -716,48 +727,67 @@ function AnalyticsPageContent() {
         });
         if (response.ok) {
           const payload = await response.json();
-          const matches = Array.isArray(payload.matches) ? payload.matches : [];
-          const match = matches.find((row: Record<string, unknown>) => {
+          const matches = (Array.isArray(payload.matches) ? payload.matches : []) as TbaMatchRow[];
+          const candidates = matches.filter((row) => {
             const rowLevel = String(row.comp_level || "").toLowerCase();
-            if (!["qm", "qf", "sf", "f"].includes(rowLevel)) return false;
-            const rowIdentity: MatchIdentity = {
-              compLevel: rowLevel as MatchIdentity["compLevel"],
-              setNumber: Number(row.set_number || 0) > 0 ? Number(row.set_number || 0) : null,
-              matchNumber: Number(row.match_number || 0),
-            };
-            return matchIdentityEquals(identity, rowIdentity);
+            return ["qm", "qf", "sf", "f"].includes(rowLevel);
           });
-          if (match) {
-            const alliances = (match as { alliances?: { red?: { team_keys?: string[]; score?: number }; blue?: { team_keys?: string[]; score?: number } } }).alliances || {};
-            const redTeams = (alliances.red?.team_keys || []).map((key) => String(key).replace("frc", "").trim()).filter(Boolean);
-            const blueTeams = (alliances.blue?.team_keys || []).map((key) => String(key).replace("frc", "").trim()).filter(Boolean);
-            if (!allianceColor && selectedTeam) {
-              if (redTeams.includes(selectedTeam)) allianceColor = "red";
-              if (blueTeams.includes(selectedTeam)) allianceColor = "blue";
+          const scoredCandidates = candidates
+            .map((row) => {
+              const redTeams = (row.alliances?.red?.team_keys || [])
+                .map((key) => String(key).replace("frc", "").trim())
+                .filter(Boolean);
+              const blueTeams = (row.alliances?.blue?.team_keys || [])
+                .map((key) => String(key).replace("frc", "").trim())
+                .filter(Boolean);
+              const redOverlap = redTeams.filter((team) => scoutedTeamsReference.has(team)).length;
+              const blueOverlap = blueTeams.filter((team) => scoutedTeamsReference.has(team)).length;
+              const bestOverlap = Math.max(redOverlap, blueOverlap);
+              const overlapAlliance = redOverlap >= blueOverlap ? "red" : "blue";
+              const rowIdentity: MatchIdentity = {
+                compLevel: String(row.comp_level || "").toLowerCase() as MatchIdentity["compLevel"],
+                setNumber: Number(row.set_number || 0) > 0 ? Number(row.set_number || 0) : null,
+                matchNumber: Number(row.match_number || 0),
+              };
+              const identityBoost = identity && matchIdentityEquals(identity, rowIdentity) ? 1 : 0;
+              return { row, redTeams, blueTeams, redOverlap, blueOverlap, bestOverlap, overlapAlliance, identityBoost };
+            })
+            .sort((a, b) => {
+              if (b.bestOverlap !== a.bestOverlap) return b.bestOverlap - a.bestOverlap;
+              if (b.identityBoost !== a.identityBoost) return b.identityBoost - a.identityBoost;
+              return 0;
+            });
+          const best = scoredCandidates[0];
+          if (best && best.bestOverlap > 0) {
+            const alliances = best.row.alliances || {};
+            if (!allianceColor) {
+              if (selectedTeam && best.redTeams.includes(selectedTeam)) allianceColor = "red";
+              else if (selectedTeam && best.blueTeams.includes(selectedTeam)) allianceColor = "blue";
+              else allianceColor = best.overlapAlliance;
             }
             if (allianceColor === "red") {
-              officialTeamsForAlliance = redTeams;
+              officialTeamsForAlliance = best.redTeams;
               actualPoints = typeof alliances.red?.score === "number" ? alliances.red.score : actualPoints;
             } else if (allianceColor === "blue") {
-              officialTeamsForAlliance = blueTeams;
+              officialTeamsForAlliance = best.blueTeams;
               actualPoints = typeof alliances.blue?.score === "number" ? alliances.blue.score : actualPoints;
             }
+            matchLabelUsed = tbaMatchLabel(best.row);
           }
         }
       }
 
       const allianceRows =
         allianceColor === null
-          ? (() => {
-              const byScoutName = matchRows.filter(
-                (row) => String(row.scoutName || "").trim() === String(entry.scoutName || "").trim()
-              );
-              return byScoutName.length > 0 ? byScoutName : matchRows;
-            })()
+          ? latestReferenceRows
           : officialTeamsForAlliance.length > 0
           ? matchRows.filter((row) => officialTeamsForAlliance.includes(String(row.teamNumber || "").trim()))
           : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
-      const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
+      let latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
+      if (officialTeamsForAlliance.length > 0 && latestAllianceRows.length < 2 && latestReferenceRows.length >= 2) {
+        // If official-team matching collapses rows (bad/missing team keys), keep scouted alliance rows visible.
+        latestAllianceRows = latestReferenceRows;
+      }
       const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
       setAccuracyRobotBreakdown(
         latestAllianceRows.map((row) =>
@@ -767,7 +797,6 @@ function AnalyticsPageContent() {
                 teamNumber: String(row.teamNumber || "-"),
                 total: scoreEntry(row, entryGame),
                 source: "reefscape",
-                estimatedScore: 0,
                 autoFuel: 0,
                 teleFuel: 0,
                 autoClimb: 0,
@@ -793,7 +822,7 @@ function AnalyticsPageContent() {
           ) || 0,
         allRobotsScouted,
         eventKeyUsed: eventKey,
-        matchLabelUsed: clickedLabel,
+        matchLabelUsed: matchLabelUsed,
       });
     } catch (error) {
       console.error("Failed to load alliance robot details:", error);
@@ -1582,9 +1611,7 @@ function AnalyticsPageContent() {
                         {accuracyRobotBreakdown.map((row) => (
                           <p key={`${row.teamNumber}-${row.source}`}>
                             Team {row.teamNumber}: {row.total}{" "}
-                            {row.source === "estimatedScore"
-                              ? `(estimatedScore=${row.estimatedScore})`
-                              : row.source === "computed"
+                            {row.source === "computed"
                               ? `(autoFuel=${row.autoFuel} + teleFuel=${row.teleFuel} + autoClimb=${row.autoClimb} + endgameClimb=${row.endgameClimb})`
                               : "(REEFSCAPE scorer)"}
                           </p>

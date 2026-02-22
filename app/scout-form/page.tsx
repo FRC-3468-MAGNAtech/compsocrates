@@ -678,12 +678,6 @@ function ScoutFormContent() {
     return transition + (form.wonAuto ? s2 + s4 : s1 + s3);
   }
 
-  function estimatedScore() {
-    const autoClimb = form.autoSuccessfulClimb ? 15 : 0;
-    const teleClimb = form.endgameStatus === "level-1" ? 10 : form.endgameStatus === "level-2" ? 20 : form.endgameStatus === "level-3" ? 30 : 0;
-    return estimateAutoTotal() + estimateTeleTotal() + autoClimb + teleClimb;
-  }
-
   async function submit() {
     if (!userData?.uid || !userData.teamId) return;
     if (!selectedMatch) return alert("Select a match first.");
@@ -708,7 +702,6 @@ function ScoutFormContent() {
         endgame: { cycleTimes: endgameCycles, failedClimb: form.endgameFailedClimb, status: form.endgameStatus },
         incidents: form.incidents,
         notes: form.notes,
-        estimatedScore: estimatedScore(),
         scoringWeights: { autoFuel: 1, autoClimbLevel1: 15, teleopFuel: 1, teleopClimbLevel1: 10, teleopClimbLevel2: 20, teleopClimbLevel3: 30 },
         submittedAt: Date.now(),
         timestamp: Date.now(),
@@ -854,9 +847,6 @@ function ScoutFormContent() {
             <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
               <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
               <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Optional notes..." />
-              {userData?.isTeamAdmin && (
-                <p className="text-xs text-gray-600 mt-2">Estimated score (hidden from scouts): {estimatedScore()}</p>
-              )}
             </div>
           </div>
 

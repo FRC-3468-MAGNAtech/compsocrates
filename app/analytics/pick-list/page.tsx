@@ -57,7 +57,10 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
   if (game === "REBUILT") {
     const autoFuel = Number(entry.auto?.estimatedFuel || 0);
     const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
-    return autoFuel + teleFuel;
+    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+    const endStatus = String(entry.endgame?.status || "").toLowerCase();
+    const endgameClimb = endStatus === "level-1" ? 10 : endStatus === "level-2" ? 20 : endStatus === "level-3" ? 30 : 0;
+    return autoFuel + teleFuel + autoClimb + endgameClimb;
   }
   return (
     (entry.leftStartingZone ? 3 : 0) +

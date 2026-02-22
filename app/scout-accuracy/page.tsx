@@ -76,9 +76,6 @@ function toNumber(value: unknown): number {
 }
 
 function scoreRebuiltEntry(entry: ScoutingEntry): number {
-  const explicitEstimated = toNumber(entry.estimatedScore);
-  if (explicitEstimated > 0) return explicitEstimated;
-
   const autoFuel = toNumber(entry.auto?.estimatedFuel);
   const teleopFuel = toNumber(entry.teleop?.estimatedFuel);
   const autoClimb = entry.auto?.successfulClimb ? 15 : 0;

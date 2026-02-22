@@ -893,7 +893,6 @@ function PracticeScoutingContent() {
               failedClimb: robotData.endgameFailedClimb,
               cycleTimes: robotData.endgameCycles,
             },
-            estimatedScore: calculateRebuiltScoutedScore(robotData),
             matchId: `q${currentMatch.matchNumber}`,
             matchNumber: String(currentMatch.matchNumber),
             matchType: "qualification",
