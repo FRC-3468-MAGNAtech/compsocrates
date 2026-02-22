@@ -134,13 +134,13 @@ function TeamAveragesContent() {
       {loading ? (
         <LoadingSpinner message="Loading team averages..." />
       ) : (
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+        <div className="bg-white rounded-xl shadow-md h-[calc(100vh-270px)] overflow-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="sticky top-0 z-20 bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matches</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">Team</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">Matches</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">Avg Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">

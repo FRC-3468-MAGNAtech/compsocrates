@@ -83,6 +83,22 @@ h1, h2, h3, h4, h5, h6 {
   top: 0;
 }
 
+/* Multi-row analytics headers need cumulative sticky offsets. */
+.sticky-header tr:nth-child(1) th {
+  top: 0;
+  z-index: 22;
+}
+
+.sticky-header tr:nth-child(2) th {
+  top: 36px;
+  z-index: 21;
+}
+
+.sticky-header tr:nth-child(3) th {
+  top: 72px;
+  z-index: 20;
+}
+
 .sticky-left-0 {
   position: sticky !important;
   left: 0 !important;

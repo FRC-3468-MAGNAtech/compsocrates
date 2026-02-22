@@ -38,7 +38,6 @@ type FormState = {
   autoFailedClimb: number;
   autoSuccessfulClimb: boolean;
   wonAuto: boolean;
-  wonTeleop: boolean;
   teleBpsScale: number;
   teleCarryScale: number;
   endgameFailedClimb: number;
@@ -120,16 +119,6 @@ function CycleTimer({ title, values, onAdd }: { title: string; values: number[];
     </div>
   );
 }
-function ScaleGuide({ labels }: { labels: string[] }) {
-  return (
-    <div className="text-xs text-gray-700 flex flex-wrap gap-x-4 gap-y-1">
-      {labels.map((label, index) => (
-        <div key={`${index}-${label}`}>{`${index}: ${label}`}</div>
-      ))}
-    </div>
-  );
-}
-
 function ClimbCounter({
   label,
   value,
@@ -180,7 +169,13 @@ function MatchModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-4xl p-4">
+      <div className="relative bg-white rounded-2xl shadow-xl w-[90%] max-w-[1400px] p-6">
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50 z-10"
+        >
+          Cancel
+        </button>
         {step === "type" ? (
           <>
             <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--primary-color)" }}>Select Match Type</h2>
@@ -195,7 +190,7 @@ function MatchModal({
             <div className="flex items-center justify-between mb-3">
               <button type="button" className="text-sm underline" onClick={() => setStep("type")}>Back</button>
               <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>{step === "practice" ? "Practice Matches" : step === "qualification" ? "Qualification Matches" : "Finals"}</h2>
-              <button type="button" className="text-sm underline" onClick={onClose}>Close</button>
+              <div className="w-10" />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[60vh] overflow-y-auto">
               {current.length === 0 && (
@@ -277,7 +272,6 @@ function ScoutFormContent() {
     autoFailedClimb: 0,
     autoSuccessfulClimb: false,
     wonAuto: false,
-    wonTeleop: false,
     teleBpsScale: 0,
     teleCarryScale: 0,
     endgameFailedClimb: 0,
@@ -426,7 +420,7 @@ function ScoutFormContent() {
     const s2 = shift2Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
     const s3 = shift3Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
     const s4 = shift4Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, form.teleCarryScale), 0);
-    return transition + (form.wonTeleop ? s2 + s4 : s1 + s3);
+    return transition + (form.wonAuto ? s2 + s4 : s1 + s3);
   }
 
   function estimatedScore() {
@@ -455,7 +449,7 @@ function ScoutFormContent() {
         teamNumber: form.teamNumber.trim(),
         startingPosition: form.startingPosition,
         auto: { preloadScale: form.autoPreloadScale, bpsScale: form.autoBpsScale, carryingScale: form.autoCarryScale, cycleTimes: autoCycles, estimatedFuel: estimateAutoTotal(), failedClimb: form.autoFailedClimb, successfulClimb: form.autoSuccessfulClimb, wonAuto: form.wonAuto },
-        teleop: { wonTeleop: form.wonTeleop, bpsScale: form.teleBpsScale, carryingScale: form.teleCarryScale, transitionCycles, shift1Cycles, shift2Cycles, shift3Cycles, shift4Cycles, estimatedFuel: estimateTeleTotal() },
+        teleop: { shiftParityFromWonAuto: form.wonAuto, bpsScale: form.teleBpsScale, carryingScale: form.teleCarryScale, transitionCycles, shift1Cycles, shift2Cycles, shift3Cycles, shift4Cycles, estimatedFuel: estimateTeleTotal() },
         endgame: { cycleTimes: endgameCycles, failedClimb: form.endgameFailedClimb, status: form.endgameStatus },
         incidents: form.incidents,
         notes: form.notes,
@@ -471,7 +465,7 @@ function ScoutFormContent() {
         now.add(form.teamNumber.trim());
         return { ...prev, [selectedMatch.id]: Array.from(now) };
       });
-      setForm((prev) => ({ ...prev, teamNumber: assignedTeam || "", startingPosition: "", autoFailedClimb: 0, autoSuccessfulClimb: false, wonAuto: false, wonTeleop: false, endgameFailedClimb: 0, endgameStatus: "", incidents: [], notes: "" }));
+      setForm((prev) => ({ ...prev, teamNumber: assignedTeam || "", startingPosition: "", autoFailedClimb: 0, autoSuccessfulClimb: false, wonAuto: false, endgameFailedClimb: 0, endgameStatus: "", incidents: [], notes: "" }));
       setAutoCycles([]); setTransitionCycles([]); setShift1Cycles([]); setShift2Cycles([]); setShift3Cycles([]); setShift4Cycles([]); setEndgameCycles([]);
     } catch (error) {
       console.error(error);
@@ -547,13 +541,10 @@ function ScoutFormContent() {
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
                   <label className="block text-sm font-medium text-gray-700">Preload Capacity ({PRELOAD_LABELS[Math.max(0, Math.min(4, form.autoPreloadScale))]})</label>
                   <input type="range" min={0} max={4} value={form.autoPreloadScale} disabled={pitLock.preload} onChange={(e) => setForm((p) => ({ ...p, autoPreloadScale: Number(e.target.value) }))} className={`w-full ${pitLock.preload ? "opacity-60" : ""}`} />
-                  <ScaleGuide labels={PRELOAD_LABELS} />
                   <label className="block text-sm font-medium text-gray-700">Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.autoBpsScale))]})</label>
                   <input type="range" min={0} max={4} value={form.autoBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
-                  <ScaleGuide labels={BPS_LABELS} />
                   <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.autoCarryScale))]})</label>
                   <input type="range" min={0} max={6} value={form.autoCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
-                  <ScaleGuide labels={CARRY_LABELS} />
                   <CycleTimer title="Auto Cycle Timer" values={autoCycles} onAdd={(v) => setAutoCycles((p) => [...p, v])} />
                   <ClimbCounter label="Failed Climb" value={form.autoFailedClimb} onChange={(next) => setForm((p) => ({ ...p, autoFailedClimb: next }))} />
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />Successful Climb</label>
@@ -564,16 +555,17 @@ function ScoutFormContent() {
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
                   <label className="block text-sm font-medium text-gray-700">Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.teleBpsScale))]})</label>
                   <input type="range" min={0} max={4} value={form.teleBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
-                  <ScaleGuide labels={BPS_LABELS} />
                   <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.teleCarryScale))]})</label>
                   <input type="range" min={0} max={6} value={form.teleCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
-                  <ScaleGuide labels={CARRY_LABELS} />
                   <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} />
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonTeleop} onChange={(e) => setForm((p) => ({ ...p, wonTeleop: e.target.checked }))} />Won Teleop</label>
-                  <CycleTimer title="Shift 1" values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} />
-                  <CycleTimer title="Shift 2" values={shift2Cycles} onAdd={(v) => setShift2Cycles((p) => [...p, v])} />
-                  <CycleTimer title="Shift 3" values={shift3Cycles} onAdd={(v) => setShift3Cycles((p) => [...p, v])} />
-                  <CycleTimer title="Shift 4" values={shift4Cycles} onAdd={(v) => setShift4Cycles((p) => [...p, v])} />
+                  <p className="text-xs text-gray-600">
+                    Counted shifts right now: {form.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
+                    Toggle <span className="font-medium">Won Auto</span> to flip counted shifts.
+                  </p>
+                  <CycleTimer title={`Shift 1 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} />
+                  <CycleTimer title={`Shift 2 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift2Cycles} onAdd={(v) => setShift2Cycles((p) => [...p, v])} />
+                  <CycleTimer title={`Shift 3 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift3Cycles} onAdd={(v) => setShift3Cycles((p) => [...p, v])} />
+                  <CycleTimer title={`Shift 4 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift4Cycles} onAdd={(v) => setShift4Cycles((p) => [...p, v])} />
                 </div>
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
@@ -607,7 +599,9 @@ function ScoutFormContent() {
             <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
               <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
               <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Write notes here..." />
-              <p className="text-xs text-gray-600 mt-2">Estimated score (hidden from scouts): {estimatedScore()}</p>
+              {userData?.isTeamAdmin && (
+                <p className="text-xs text-gray-600 mt-2">Estimated score (hidden from scouts): {estimatedScore()}</p>
+              )}
             </div>
           </div>
 
