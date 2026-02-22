@@ -229,6 +229,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   const done = completed.has(m.id);
                   const status: MatchStatus = done ? "completed" : m.id === firstOpen ? "next" : "upcoming";
                   const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
+                  const displayLabel = step === "practice" ? `Practice ${m.matchNumber}` : `Qualification ${m.matchNumber}`;
                   return (
                     <button
                       key={m.id}
@@ -246,7 +247,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
                       </div>
                       <div className="mt-3">
-                        <div className="font-semibold text-sm">{m.label}</div>
+                        <div className="font-semibold text-sm">{displayLabel}</div>
                         <div className="text-xs text-gray-600">{m.scheduleTime > 0 ? new Date(m.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}</div>
                       </div>
                     </button>
@@ -331,10 +332,18 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                             F{matchNum}
                           </div>
                           <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">{`Finals ${matchNum}`}</div>
+                          <div className="text-xs text-gray-500 mt-2">
+                            {matchNum === 1 && "First Finals"}
+                            {matchNum === 2 && "Second Finals"}
+                            {matchNum === 3 && "Third Finals (if needed)"}
+                          </div>
                         </div>
                       </button>
                     ))}
                   </div>
+                  <p className="text-center text-sm text-gray-500 mt-6">
+                    Select the specific finals match you&apos;re scouting
+                  </p>
                 </>
               )}
             </>
