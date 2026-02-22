@@ -11,7 +11,7 @@ import { useAuth } from "@/app/AuthContext";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { calculateTeamStats, getUpcomingEvents, type TeamStats, type UpcomingEvent } from "@/app/utils/stats-calculator";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
-import { TeamRole } from "@/app/utils/roles";
+import { canAccessForm, normalizeFormAccessOverrides, type FormAccessOverrides, type TeamRole } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, MapPin, Target, TriangleAlert } from "lucide-react";
 
 type DashboardMatch = {
@@ -21,6 +21,20 @@ type DashboardMatch = {
   redTeams: number[];
   blueTeams: number[];
 };
+
+function filterEventsByAttendance(
+  events: UpcomingEvent[],
+  attendanceByEvent: Record<string, string[]>,
+  displayName: string,
+  isTeamAdmin: boolean
+) {
+  if (isTeamAdmin) return events;
+  const normalizedName = displayName.trim().toLowerCase();
+  return events.filter((event) => {
+    const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
+    return attendees.some((name) => String(name || "").trim().toLowerCase() === normalizedName);
+  });
+}
 
 type TeamRoleDashboardProps = {
   role: TeamRole;
@@ -108,6 +122,7 @@ function TeamRoleDashboardContent({
   const [practiceSessionsCount, setPracticeSessionsCount] = useState(0);
   const [unscoutedTeams, setUnscoutedTeams] = useState<number[]>([]);
   const [nextTeamMatch, setNextTeamMatch] = useState<DashboardMatch | null>(null);
+  const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -127,17 +142,28 @@ function TeamRoleDashboardContent({
       const practiceSnap = await getDocs(
         query(collection(db, "practiceSessions"), where("scoutName", "==", userData.displayName || ""))
       );
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
+      const attendanceByEvent = teamDoc.exists()
+        ? (teamDoc.data().eventAttendees as Record<string, string[]> | undefined) || {}
+        : {};
+      const visibleEvents = filterEventsByAttendance(
+        events,
+        attendanceByEvent,
+        userData.displayName || "",
+        Boolean(userData.isTeamAdmin)
+      );
 
       setStats(teamStats);
-      setUpcomingEvents(events);
+      setUpcomingEvents(visibleEvents);
       setActiveEventKey((current) => {
-        if (current && events.some((event) => event.key === current)) return current;
-        return events[0]?.key || "";
+        if (current && visibleEvents.some((event) => event.key === current)) return current;
+        return visibleEvents[0]?.key || "";
       });
       setPracticeSessionsCount(practiceSnap.size);
 
       const eventMatches = await Promise.all(
-        events.map(async (event: UpcomingEvent) => {
+        visibleEvents.map(async (event: UpcomingEvent) => {
           try {
             const matches = await getEventMatches(event.key);
             return [event.key, normalizeMatches(matches)] as const;
@@ -150,7 +176,8 @@ function TeamRoleDashboardContent({
       const matchMap: Record<string, DashboardMatch[]> = Object.fromEntries(eventMatches);
       setEventMatchesByKey(matchMap);
 
-      const activeEvent = events.find((event: UpcomingEvent) => event.key === (events[0]?.key || "")) || events[0];
+      const activeEvent =
+        visibleEvents.find((event: UpcomingEvent) => event.key === (visibleEvents[0]?.key || "")) || visibleEvents[0];
       if (pitScoutFocus && activeEvent) {
         const eventTeams: number[] = Array.from(
           new Set((matchMap[activeEvent.key] || []).flatMap((match: DashboardMatch) => [...match.redTeams, ...match.blueTeams]))
@@ -171,7 +198,6 @@ function TeamRoleDashboardContent({
       }
 
       if (driveTeamFocus) {
-        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const teamNumber = parseTeamNumber(String(teamDoc.data()?.teamNumber || teamDoc.data()?.teamName || userData.teamId));
         if (teamNumber) {
           const allMatches: DashboardMatch[] = Object.values(matchMap).flatMap((matches: DashboardMatch[]) => matches);
@@ -193,6 +219,8 @@ function TeamRoleDashboardContent({
   }
 
   const needsPractice = practiceSessionsCount < 3;
+  const canOpenMatchForm = canAccessForm({ formKey: "match-scout-form", user: userData, formAccessOverrides });
+  const canOpenPitForm = canAccessForm({ formKey: "pit-scout-form", user: userData, formAccessOverrides });
   const activeEvent = useMemo(
     () => upcomingEvents.find((event) => event.key === activeEventKey) || upcomingEvents[0],
     [activeEventKey, upcomingEvents]
@@ -444,23 +472,27 @@ function TeamRoleDashboardContent({
                     <p className="text-sm text-gray-600">Run calibration sessions</p>
                   </button>
 
-                  <button
-                    onClick={() => router.push("/scout-form")}
-                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
-                  >
-                    <ClipboardList size={22} className="mb-2" />
-                    <h3 className="font-semibold mb-1">Open Match Scout Form</h3>
-                    <p className="text-sm text-gray-600">Submit match observations</p>
-                  </button>
+                  {canOpenMatchForm && (
+                    <button
+                      onClick={() => router.push("/scout-form")}
+                      className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
+                    >
+                      <ClipboardList size={22} className="mb-2" />
+                      <h3 className="font-semibold mb-1">Open Match Scout Form</h3>
+                      <p className="text-sm text-gray-600">Submit match observations</p>
+                    </button>
+                  )}
 
-                  <button
-                    onClick={() => router.push("/pit-scout-form")}
-                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
-                  >
-                    <ClipboardList size={22} className="mb-2" />
-                    <h3 className="font-semibold mb-1">Open Pit Scout Form</h3>
-                    <p className="text-sm text-gray-600">Capture pit capabilities</p>
-                  </button>
+                  {canOpenPitForm && (
+                    <button
+                      onClick={() => router.push("/pit-scout-form")}
+                      className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
+                    >
+                      <ClipboardList size={22} className="mb-2" />
+                      <h3 className="font-semibold mb-1">Open Pit Scout Form</h3>
+                      <p className="text-sm text-gray-600">Capture pit capabilities</p>
+                    </button>
+                  )}
 
                   {showAssignmentsAction && (
                     <button

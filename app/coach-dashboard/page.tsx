@@ -29,6 +29,20 @@ type DashboardMatch = {
   blueTeams: number[];
 };
 
+function filterEventsByAttendance(
+  events: UpcomingEvent[],
+  attendanceByEvent: Record<string, string[]>,
+  displayName: string,
+  isTeamAdmin: boolean
+) {
+  if (isTeamAdmin) return events;
+  const normalizedName = displayName.trim().toLowerCase();
+  return events.filter((event) => {
+    const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
+    return attendees.some((name) => String(name || "").trim().toLowerCase() === normalizedName);
+  });
+}
+
 function compLevelPriority(compLevel: TBAMatch["comp_level"]) {
   if (compLevel === "qm") return 0;
   if (compLevel === "ef") return 1;
@@ -106,16 +120,25 @@ function CoachDashboardContent() {
       ]);
       
       setStats(teamStats);
-      setUpcomingEvents(events);
+      const attendanceByEvent = teamDoc.exists()
+        ? (teamDoc.data().eventAttendees as Record<string, string[]> | undefined) || {}
+        : {};
+      const visibleEvents = filterEventsByAttendance(
+        events,
+        attendanceByEvent,
+        userData.displayName || "",
+        Boolean(userData.isTeamAdmin)
+      );
+      setUpcomingEvents(visibleEvents);
       setActiveEventKey((current) => {
-        if (current && events.some((event) => event.key === current)) return current;
-        return events[0]?.key || "";
+        if (current && visibleEvents.some((event) => event.key === current)) return current;
+        return visibleEvents[0]?.key || "";
       });
       if (teamDoc.exists()) {
         setTeamData(teamDoc.data());
       }
       const eventMatches = await Promise.all(
-        events.map(async (event) => {
+        visibleEvents.map(async (event) => {
           try {
             const matches = await getEventMatches(event.key);
             return [event.key, normalizeMatches(matches)] as const;
