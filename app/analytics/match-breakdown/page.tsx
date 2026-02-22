@@ -258,10 +258,18 @@ function MatchBreakdownContent() {
               <p className="font-semibold text-red-700">Red Alliance Total: {allianceBreakdown.redTotal}</p>
             </div>
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="sticky-header">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                  <th className="bg-red-300 text-center" colSpan={1}>Alliance</th>
+                  <th className="bg-pink-300 text-center" colSpan={1}>Score</th>
+                </tr>
+                <tr>
+                  <th className="bg-red-200 text-center" colSpan={1}>Robot</th>
+                  <th className="bg-pink-200 text-center" colSpan={1}>Points</th>
+                </tr>
+                <tr>
+                  <th className="text-center">Team</th>
+                  <th className="text-center">Score</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -280,10 +288,18 @@ function MatchBreakdownContent() {
               <p className="font-semibold text-blue-700">Blue Alliance Total: {allianceBreakdown.blueTotal}</p>
             </div>
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="sticky-header">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                  <th className="bg-blue-300 text-center" colSpan={1}>Alliance</th>
+                  <th className="bg-pink-300 text-center" colSpan={1}>Score</th>
+                </tr>
+                <tr>
+                  <th className="bg-blue-200 text-center" colSpan={1}>Robot</th>
+                  <th className="bg-pink-200 text-center" colSpan={1}>Points</th>
+                </tr>
+                <tr>
+                  <th className="text-center">Team</th>
+                  <th className="text-center">Score</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">

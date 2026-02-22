@@ -113,16 +113,29 @@ function TeamStrategyAnalyticsContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th>Team</th>
-                <th>Scout</th>
-                <th>Start</th>
-                <th>Best At</th>
-                <th>Clears Bump</th>
-                <th>Clears Trench</th>
-                <th>Shoot+Intake</th>
-                <th>Move+Shoot</th>
-                <th>Notes</th>
-                <th>Delete</th>
+                <th className="bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="bg-yellow-300 text-center" colSpan={2}>Approach</th>
+                <th className="bg-blue-300 text-center" colSpan={4}>Capabilities</th>
+                <th className="bg-pink-300 text-center" colSpan={2}>General</th>
+              </tr>
+              <tr>
+                <th className="bg-red-200 text-center" colSpan={2}>Identity</th>
+                <th className="bg-yellow-200 text-center" colSpan={2}>Strategy</th>
+                <th className="bg-blue-200 text-center" colSpan={4}>Checks</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+              </tr>
+              <tr>
+                <th className="text-center">Team</th>
+                <th className="text-center">Scout</th>
+                <th className="text-center">Start</th>
+                <th className="text-center">Best At</th>
+                <th className="text-center">Clears Bump</th>
+                <th className="text-center">Clears Trench</th>
+                <th className="text-center">Shoot+Intake</th>
+                <th className="text-center">Move+Shoot</th>
+                <th className="text-center">Notes</th>
+                <th className="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>

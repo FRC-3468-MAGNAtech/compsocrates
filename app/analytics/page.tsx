@@ -670,7 +670,8 @@ function AnalyticsPageContent() {
         Object.entries(eventKeyFrequency).sort((a, b) => b[1] - a[1])[0]?.[0] ||
         sameLabelRows.map((row) => String(row.eventKey || "").trim()).filter(Boolean)[0] ||
         "";
-      const eventKey = eventKeyFromEntry || eventKeyFromSelector || mostCommonEventKey;
+      // If user filtered by an event, trust that selection before row-level event keys.
+      const eventKey = eventKeyFromSelector || eventKeyFromEntry || mostCommonEventKey;
 
       const poolByEvent = eventKey
         ? sameGameRows.filter((row) => String(row.eventKey || "").trim() === eventKey)
@@ -768,14 +769,18 @@ function AnalyticsPageContent() {
                 matchNumber: Number(row.match_number || 0),
               };
               const identityBoost = identity && matchIdentityEquals(identity, rowIdentity) ? 1 : 0;
-              return { row, redTeams, blueTeams, redOverlap, blueOverlap, bestOverlap, overlapAlliance, identityBoost };
+              return { row, rowIdentity, redTeams, blueTeams, redOverlap, blueOverlap, bestOverlap, overlapAlliance, identityBoost };
             })
             .sort((a, b) => {
               if (b.bestOverlap !== a.bestOverlap) return b.bestOverlap - a.bestOverlap;
               if (b.identityBoost !== a.identityBoost) return b.identityBoost - a.identityBoost;
               return 0;
             });
-          const best = scoredCandidates[0];
+          const exactIdentityCandidates =
+            identity
+              ? scoredCandidates.filter((candidate) => matchIdentityEquals(identity, candidate.rowIdentity))
+              : [];
+          const best = (exactIdentityCandidates.length > 0 ? exactIdentityCandidates : scoredCandidates)[0];
           if (best && best.bestOverlap > 0) {
             const alliances = best.row.alliances || {};
             if (!allianceColor) {
@@ -1365,7 +1370,7 @@ function AnalyticsPageContent() {
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
                 <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
                 <th className="bg-green-300 text-center" colSpan={6}>Autonomous</th>
-                <th className="bg-blue-300 text-center" colSpan={9}>Teleoperated</th>
+                <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={3}>Endgame</th>
                 <th className="bg-pink-300 text-center" colSpan={6}>General</th>
               </tr>
@@ -1377,7 +1382,7 @@ function AnalyticsPageContent() {
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Cycles</th>
                 <th className="bg-blue-200 text-center" colSpan={8}>Fuel</th>
-                <th className="bg-blue-200 text-center" colSpan={1}>Cycles</th>
+                <th className="bg-blue-200 text-center" colSpan={5}>Cycles</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Cycles</th>
@@ -1406,16 +1411,20 @@ function AnalyticsPageContent() {
                 <th className="text-center">Shift 3</th>
                 <th className="text-center">Shift 4</th>
                 <th className="text-center">Fuel Used</th>
-                <th className="text-center">Cycles</th>
+                <th className="text-center">Transition</th>
+                <th className="text-center">Shift 1</th>
+                <th className="text-center">Shift 2</th>
+                <th className="text-center">Shift 3</th>
+                <th className="text-center">Shift 4</th>
                 <th className="text-center">End Place</th>
                 <th className="text-center">Climb Pts</th>
                 <th className="text-center">Cycles</th>
                 <th className="text-center">Incidents</th>
-                <th className="text-center">Total Used</th>
+                <th className="text-center">Total</th>
                 <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
                 <th className="text-center">Alliance Accuracy</th>
                 <th className="text-center">Script Status</th>
-                <th className="text-center">Delete</th>
+                <th className="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1433,13 +1442,6 @@ function AnalyticsPageContent() {
                 const shift2Fuel = rebuiltFuelFromCycles(entry.teleop?.shift2Cycles, teleBpsScale, teleCarryScale);
                 const shift3Fuel = rebuiltFuelFromCycles(entry.teleop?.shift3Cycles, teleBpsScale, teleCarryScale);
                 const shift4Fuel = rebuiltFuelFromCycles(entry.teleop?.shift4Cycles, teleBpsScale, teleCarryScale);
-                const teleCyclesCell = [
-                  `T: ${formatCyclesCell(entry.teleop?.transitionCycles)}`,
-                  `S1: ${formatCyclesCell(entry.teleop?.shift1Cycles)}`,
-                  `S2: ${formatCyclesCell(entry.teleop?.shift2Cycles)}`,
-                  `S3: ${formatCyclesCell(entry.teleop?.shift3Cycles)}`,
-                  `S4: ${formatCyclesCell(entry.teleop?.shift4Cycles)}`,
-                ].join(" | ");
                 return (
                 <tr key={entry.id}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
@@ -1460,7 +1462,11 @@ function AnalyticsPageContent() {
                   <td className="text-center">{shift3Fuel}</td>
                   <td className="text-center">{shift4Fuel}</td>
                   <td className="text-center">{teleFuel}</td>
-                  <td className="text-left align-top" style={{ minWidth: "360px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{teleCyclesCell}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.transitionCycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift1Cycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift2Cycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift3Cycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift4Cycles)}</td>
                   <td className="text-center">{entry.endgame?.status || entry.stageStatus || "-"}</td>
                   <td className="text-center">{endgameClimb}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.endgame?.cycleTimes)}</td>
@@ -1569,7 +1575,7 @@ function AnalyticsPageContent() {
               <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
               <th className="text-center">Alliance Accuracy</th>
               <th className="text-center">Script Status</th>
-              <th className="text-center">Delete</th>
+              <th className="text-center">Actions</th>
             </tr>
           </thead>
           <tbody>

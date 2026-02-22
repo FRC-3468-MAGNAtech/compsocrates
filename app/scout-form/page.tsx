@@ -760,7 +760,13 @@ function ScoutFormContent() {
               </div>
             </div>
 
-            <>
+            <form
+              className="space-y-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submit();
+              }}
+            >
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
                   <label className="block text-sm font-medium text-gray-700">Scout Name</label>
@@ -839,8 +845,8 @@ function ScoutFormContent() {
                   ))}
                 </div>
 
-                <button type="button" disabled={saving} onClick={() => void submit()} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>{saving ? "Submitting..." : "Submit Match Scout Form"}</button>
-            </>
+                <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>{saving ? "Submitting..." : "Submit Match Scout Form"}</button>
+            </form>
           </div>
 
           <div className="hidden md:block w-80 p-4">

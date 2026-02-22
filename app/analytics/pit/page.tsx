@@ -145,22 +145,38 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-0 text-center">Team</th>
-                  <th className="sticky-left-1 text-center">Scout</th>
-                  <th>Robot Picture</th>
-                  <th>Pit Disposition</th>
-                  <th>Drive Disposition</th>
-                  <th>Preload</th>
-                  <th>Balls/Sec</th>
-                  <th>Carrying</th>
-                  <th>Climb L1</th>
-                  <th>Climb L2</th>
-                  <th>Climb L3</th>
-                  <th>Fuel Cycle Time</th>
-                  <th>Climb Time</th>
-                  <th>Auto Cycle</th>
-                  <th>Comments</th>
-                  <th>Delete</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={5}>Information</th>
+                  <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
+                  <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
+                  <th className="bg-yellow-300 text-center" colSpan={3}>Cycles</th>
+                  <th className="bg-pink-300 text-center" colSpan={2}>General</th>
+                </tr>
+                <tr>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Identity</th>
+                  <th className="bg-red-200 text-center" colSpan={3}>Readiness</th>
+                  <th className="bg-blue-200 text-center" colSpan={3}>Stats</th>
+                  <th className="bg-purple-200 text-center" colSpan={3}>Tower</th>
+                  <th className="bg-yellow-200 text-center" colSpan={3}>Timing</th>
+                  <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
+                  <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+                </tr>
+                <tr>
+                  <th className="sticky-left-0 sticky-row-3 text-center">Team</th>
+                  <th className="sticky-left-1 sticky-row-3 text-center">Scout</th>
+                  <th className="text-center">Robot Picture</th>
+                  <th className="text-center">Pit Disposition</th>
+                  <th className="text-center">Drive Disposition</th>
+                  <th className="text-center">Preload</th>
+                  <th className="text-center">Balls/Sec</th>
+                  <th className="text-center">Carrying</th>
+                  <th className="text-center">Climb L1</th>
+                  <th className="text-center">Climb L2</th>
+                  <th className="text-center">Climb L3</th>
+                  <th className="text-center">Fuel Cycle Time</th>
+                  <th className="text-center">Climb Time</th>
+                  <th className="text-center">Auto Cycle</th>
+                  <th className="text-center">Comments</th>
+                  <th className="text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,24 +217,43 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-0 text-center">Team</th>
-                  <th className="sticky-left-1 text-center">Scout</th>
-                  <th>Robot Picture</th>
-                  <th>Pit Disposition</th>
-                  <th>Drive Disposition</th>
-                  <th>Drive Base</th>
-                  <th>Center of Gravity</th>
-                  <th>Coral Collecting</th>
-                  <th>Coral Scoring</th>
-                  <th>Algae Collecting</th>
-                  <th>Algae Scoring</th>
-                  <th>Barge</th>
-                  <th>Auto</th>
-                  <th>Starting Positions</th>
-                  <th>Better At</th>
-                  <th>Rating</th>
-                  <th>Comments</th>
-                  <th>Delete</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={5}>Information</th>
+                  <th className="bg-yellow-300 text-center" colSpan={2}>Drive</th>
+                  <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
+                  <th className="bg-green-300 text-center" colSpan={2}>Algae</th>
+                  <th className="bg-blue-300 text-center" colSpan={4}>Field Plan</th>
+                  <th className="bg-pink-300 text-center" colSpan={3}>General</th>
+                </tr>
+                <tr>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Identity</th>
+                  <th className="bg-red-200 text-center" colSpan={3}>Readiness</th>
+                  <th className="bg-yellow-200 text-center" colSpan={2}>Chassis</th>
+                  <th className="bg-orange-200 text-center" colSpan={2}>Gameplay</th>
+                  <th className="bg-green-200 text-center" colSpan={2}>Gameplay</th>
+                  <th className="bg-blue-200 text-center" colSpan={4}>Auto & Endgame</th>
+                  <th className="bg-pink-200 text-center" colSpan={1}>Rating</th>
+                  <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
+                  <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+                </tr>
+                <tr>
+                  <th className="sticky-left-0 sticky-row-3 text-center">Team</th>
+                  <th className="sticky-left-1 sticky-row-3 text-center">Scout</th>
+                  <th className="text-center">Robot Picture</th>
+                  <th className="text-center">Pit Disposition</th>
+                  <th className="text-center">Drive Disposition</th>
+                  <th className="text-center">Drive Base</th>
+                  <th className="text-center">Center of Gravity</th>
+                  <th className="text-center">Coral Collecting</th>
+                  <th className="text-center">Coral Scoring</th>
+                  <th className="text-center">Algae Collecting</th>
+                  <th className="text-center">Algae Scoring</th>
+                  <th className="text-center">Barge</th>
+                  <th className="text-center">Auto</th>
+                  <th className="text-center">Starting Positions</th>
+                  <th className="text-center">Better At</th>
+                  <th className="text-center">Rating</th>
+                  <th className="text-center">Comments</th>
+                  <th className="text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>

@@ -109,12 +109,23 @@ function HelperAnalyticsContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th>Helper</th>
-                <th>Team Helped</th>
-                <th>Successful</th>
-                <th>Issue Solved</th>
-                <th>Notes</th>
-                <th>Delete</th>
+                <th className="bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="bg-green-300 text-center" colSpan={2}>Outcome</th>
+                <th className="bg-pink-300 text-center" colSpan={2}>General</th>
+              </tr>
+              <tr>
+                <th className="bg-red-200 text-center" colSpan={2}>Assistance</th>
+                <th className="bg-green-200 text-center" colSpan={2}>Result</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+              </tr>
+              <tr>
+                <th className="text-center">Helper</th>
+                <th className="text-center">Team Helped</th>
+                <th className="text-center">Successful</th>
+                <th className="text-center">Issue Solved</th>
+                <th className="text-center">Notes</th>
+                <th className="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>

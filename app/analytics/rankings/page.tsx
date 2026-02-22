@@ -162,13 +162,24 @@ function RankingsContent() {
       ) : (
         <div className="bg-white rounded-xl shadow-md h-[calc(100vh-270px)] overflow-auto">
           <table className="w-full">
-            <thead className="sticky top-0 z-20 bg-gray-50">
+            <thead className="sticky-header">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">Rank</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">Team</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">Avg</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">High</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">Matches</th>
+                <th className="bg-red-300 text-center" colSpan={2}>Ranking</th>
+                <th className="bg-blue-300 text-center" colSpan={2}>Scoring</th>
+                <th className="bg-pink-300 text-center" colSpan={1}>Volume</th>
+              </tr>
+              <tr>
+                <th className="bg-red-200 text-center" colSpan={1}>Order</th>
+                <th className="bg-red-200 text-center" colSpan={1}>Team</th>
+                <th className="bg-blue-200 text-center" colSpan={2}>Points</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Matches</th>
+              </tr>
+              <tr>
+                <th className="text-center">Rank</th>
+                <th className="text-center">Team</th>
+                <th className="text-center">Avg</th>
+                <th className="text-center">High</th>
+                <th className="text-center">Matches</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">

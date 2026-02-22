@@ -108,13 +108,24 @@ function DriveReflectionAnalyticsContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th>Match</th>
-                <th>Scout</th>
-                <th>Robot 1</th>
-                <th>Robot 2</th>
-                <th>Robot 3</th>
-                <th>Notes</th>
-                <th>Delete</th>
+                <th className="bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="bg-blue-300 text-center" colSpan={3}>Robots</th>
+                <th className="bg-pink-300 text-center" colSpan={2}>General</th>
+              </tr>
+              <tr>
+                <th className="bg-red-200 text-center" colSpan={2}>Match Details</th>
+                <th className="bg-blue-200 text-center" colSpan={3}>Plan</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+              </tr>
+              <tr>
+                <th className="text-center">Match</th>
+                <th className="text-center">Scout</th>
+                <th className="text-center">Robot 1</th>
+                <th className="text-center">Robot 2</th>
+                <th className="text-center">Robot 3</th>
+                <th className="text-center">Notes</th>
+                <th className="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
