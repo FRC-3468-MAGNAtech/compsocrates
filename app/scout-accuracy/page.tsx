@@ -127,7 +127,7 @@ function ScoutAccuracyContent() {
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
   const [accuracyView, setAccuracyView] = useState<"practice" | "competition">("practice");
-  const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REBUILT");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
   const [selectedCompetitionEvent, setSelectedCompetitionEvent] = useState("all");
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);

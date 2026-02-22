@@ -19,7 +19,6 @@ function AdminPanelContent() {
     { label: "Lead Scout", value: "/lead-scout-dashboard" },
     { label: "Lead Strategist", value: "/lead-strategist-dashboard" },
     { label: "Team Coach", value: "/team-coach-dashboard" },
-    { label: "Coach", value: "/coach-dashboard" },
   ];
 
   async function savePreferredDashboard(nextValue: string) {
@@ -67,7 +66,7 @@ function AdminPanelContent() {
               onChange={(event) => void savePreferredDashboard(event.target.value)}
               disabled={savingDashboard}
             >
-              <option value="">Role-based default</option>
+              <option value="">Role-Based Default</option>
               {dashboardOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}

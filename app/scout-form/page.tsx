@@ -60,6 +60,9 @@ const INCIDENTS = [
 const BPS = [0, 2, 5, 8, 10];
 const CARRY = [0, 12, 23, 32, 42, 53, 54];
 const PRELOAD = [0, 2, 4, 6, 8];
+const PRELOAD_LABELS = ["0: 0", "1: 1-2", "2: 3-4", "3: 5-6", "4: 7-8"];
+const BPS_LABELS = ["0: 0", "1: 1-3", "2: 4-6", "3: 7-9", "4: 10+"];
+const CARRY_LABELS = ["0: 0", "1: 1-12", "2: 13-23", "3: 23-32", "4: 33-42", "5: 43-53", "6: 54+"];
 
 function convertPitScale(value: number, kind: "preload" | "bps" | "carry") {
   const n = Number(value || 0);
@@ -117,6 +120,36 @@ function CycleTimer({ title, values, onAdd }: { title: string; values: number[];
     </div>
   );
 }
+function ScaleGuide({ labels }: { labels: string[] }) {
+  return (
+    <div className="text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
+      {labels.map((label) => (
+        <div key={label}>{label}</div>
+      ))}
+    </div>
+  );
+}
+
+function ClimbCounter({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={() => onChange(value - 1)} className="theme-stepper-btn">
+        -
+      </button>
+      <span className="font-semibold">Failed Climb: {value}</span>
+      <button type="button" onClick={() => onChange(value + 1)} className="theme-stepper-btn">
+        +
+      </button>
+    </div>
+  );
+}
+
 function MatchModal({
   open,
   onClose,
@@ -160,6 +193,11 @@ function MatchModal({
               <button type="button" className="text-sm underline" onClick={onClose}>Close</button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[60vh] overflow-y-auto">
+              {current.length === 0 && (
+                <div className="col-span-full border rounded p-3 text-sm text-gray-600">
+                  No matches available for this type yet.
+                </div>
+              )}
               {current.map((m) => {
                 const done = completed.has(m.id);
                 const status: MatchStatus = done ? "completed" : m.id === firstOpen ? "next" : "upcoming";
@@ -499,23 +537,29 @@ function ScoutFormContent() {
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
+                  <label className="block text-sm font-medium text-gray-700">Preload Capacity (Scale 0-4)</label>
                   <input type="range" min={0} max={4} value={form.autoPreloadScale} disabled={pitLock.preload} onChange={(e) => setForm((p) => ({ ...p, autoPreloadScale: Number(e.target.value) }))} className={`w-full ${pitLock.preload ? "opacity-60" : ""}`} />
+                  <ScaleGuide labels={PRELOAD_LABELS} />
+                  <label className="block text-sm font-medium text-gray-700">Balls Per Second (Scale 0-4)</label>
                   <input type="range" min={0} max={4} value={form.autoBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
+                  <ScaleGuide labels={BPS_LABELS} />
+                  <label className="block text-sm font-medium text-gray-700">Carrying Capacity (Scale 0-6)</label>
                   <input type="range" min={0} max={6} value={form.autoCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
+                  <ScaleGuide labels={CARRY_LABELS} />
                   <CycleTimer title="Auto Cycle Timer" values={autoCycles} onAdd={(v) => setAutoCycles((p) => [...p, v])} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setForm((p) => ({ ...p, autoFailedClimb: p.autoFailedClimb - 1 }))} className="px-3 py-1 border rounded">-</button>
-                    <span className="font-semibold">Failed Climb: {form.autoFailedClimb}</span>
-                    <button type="button" onClick={() => setForm((p) => ({ ...p, autoFailedClimb: p.autoFailedClimb + 1 }))} className="px-3 py-1 border rounded">+</button>
-                  </div>
+                  <ClimbCounter value={form.autoFailedClimb} onChange={(next) => setForm((p) => ({ ...p, autoFailedClimb: next }))} />
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />Successful Climb</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonAuto} onChange={(e) => setForm((p) => ({ ...p, wonAuto: e.target.checked }))} />Won Auto</label>
                 </div>
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
+                  <label className="block text-sm font-medium text-gray-700">Balls Per Second (Scale 0-4)</label>
                   <input type="range" min={0} max={4} value={form.teleBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
+                  <ScaleGuide labels={BPS_LABELS} />
+                  <label className="block text-sm font-medium text-gray-700">Carrying Capacity (Scale 0-6)</label>
                   <input type="range" min={0} max={6} value={form.teleCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
+                  <ScaleGuide labels={CARRY_LABELS} />
                   <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} />
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonTeleop} onChange={(e) => setForm((p) => ({ ...p, wonTeleop: e.target.checked }))} />Won Teleop</label>
                   <CycleTimer title="Shift 1" values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} />
@@ -527,11 +571,7 @@ function ScoutFormContent() {
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Endgame</h2>
                   <CycleTimer title="Endgame Cycle Timer" values={endgameCycles} onAdd={(v) => setEndgameCycles((p) => [...p, v])} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setForm((p) => ({ ...p, endgameFailedClimb: p.endgameFailedClimb - 1 }))} className="px-3 py-1 border rounded">-</button>
-                    <span className="font-semibold">Failed Climb: {form.endgameFailedClimb}</span>
-                    <button type="button" onClick={() => setForm((p) => ({ ...p, endgameFailedClimb: p.endgameFailedClimb + 1 }))} className="px-3 py-1 border rounded">+</button>
-                  </div>
+                  <ClimbCounter value={form.endgameFailedClimb} onChange={(next) => setForm((p) => ({ ...p, endgameFailedClimb: next }))} />
                   <select className="w-full border rounded p-2" value={form.endgameStatus} onChange={(e) => setForm((p) => ({ ...p, endgameStatus: e.target.value }))}>
                     <option value="">Status At End of Match</option>
                     <option value="parked">Parked</option>

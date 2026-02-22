@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { Image as ImageIcon, Link as LinkIcon, Trash2 } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -45,25 +46,31 @@ function TeamPickerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-4">
-        <h2 className="text-lg font-semibold mb-3">Select Team Number</h2>
-        <div className="max-h-80 overflow-y-auto border rounded p-2 grid grid-cols-3 gap-1">
-          {teams.map((team) => {
-            const done = scoutedTeams.has(team);
-            return (
-              <button
-                key={team}
-                type="button"
-                disabled={done}
-                onClick={() => {
-                  onSelect(team);
-                  onClose();
-                }}
-                className={`rounded border p-2 text-sm ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "hover:bg-gray-50"}`}
-              >
-                {done ? `${team} (Scouted)` : team}
-              </button>
-            );
-          })}
+        <h2 className="text-lg font-semibold mb-3">Select Team</h2>
+        <div className="max-h-80 overflow-y-auto border rounded">
+          {teams.length === 0 ? (
+            <p className="p-3 text-sm text-gray-600">No teams available.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-1 p-2">
+              {teams.map((team) => {
+                const done = scoutedTeams.has(team);
+                return (
+                  <button
+                    key={team}
+                    type="button"
+                    disabled={done}
+                    onClick={() => {
+                      onSelect(team);
+                      onClose();
+                    }}
+                    className={`rounded border p-2 text-sm ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                  >
+                    {done ? `${team} (Scouted)` : team}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         <button type="button" onClick={onClose} className="mt-3 w-full py-2 rounded border">Close</button>
       </div>
@@ -77,6 +84,7 @@ function PitScoutFormContent() {
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
+  const [robotPictureUrlInput, setRobotPictureUrlInput] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
@@ -97,6 +105,36 @@ function PitScoutFormContent() {
     autoCycleDescription: "",
     notes: "",
   });
+  const PRELOAD_SCALE_LABELS = ["1: 1", "2: 2", "3: 3", "4: 4", "5: 5", "6: 6", "7: 7", "8: 8"];
+  const BPS_SCALE_LABELS = ["1: 1", "2: 2", "3: 3", "4: 4", "5: 5", "6: 6", "7: 7", "8: 8", "9: 9", "10: 10"];
+  const CARRY_SCALE_LABELS = ["1: 1-10", "2: 11-20", "3: 21-30", "4: 31-40", "5: 41-50"];
+
+  function isValidImageUrl(value: string): boolean {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch {
+      return false;
+    }
+  }
+
+  function applyRobotPictureUrl() {
+    const normalized = robotPictureUrlInput.trim();
+    if (!normalized) {
+      setForm((prev) => ({ ...prev, robotPictureUrl: "" }));
+      return;
+    }
+    if (!isValidImageUrl(normalized)) {
+      alert("Please enter a valid http(s) image URL.");
+      return;
+    }
+    setForm((prev) => ({ ...prev, robotPictureUrl: normalized }));
+  }
+
+  function clearRobotPictureUrl() {
+    setRobotPictureUrlInput("");
+    setForm((prev) => ({ ...prev, robotPictureUrl: "" }));
+  }
 
   useEffect(() => {
     if (!userData?.displayName) return;
@@ -174,6 +212,7 @@ function PitScoutFormContent() {
         typicalClimbTime: "",
         autoCycleDescription: "",
       }));
+      setRobotPictureUrlInput("");
     } catch (error) {
       console.error("Error submitting pit form:", error);
       alert("Could not submit pit form.");
@@ -225,13 +264,41 @@ function PitScoutFormContent() {
               </div>
 
               <label className="block text-sm font-medium text-gray-700">Picture of Robot</label>
-              <input
-                type="url"
-                value={form.robotPictureUrl}
-                onChange={(event) => setForm({ ...form, robotPictureUrl: event.target.value.trim() })}
-                placeholder="https://..."
-                className="w-full border rounded p-3"
-              />
+              <div className="rounded-lg border p-3 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-lg border flex items-center justify-center overflow-hidden bg-gray-100">
+                    {form.robotPictureUrl ? (
+                      <img src={form.robotPictureUrl} alt="Robot preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon size={20} className="text-gray-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="url"
+                      value={robotPictureUrlInput}
+                      onChange={(event) => setRobotPictureUrlInput(event.target.value)}
+                      placeholder="https://example.com/robot.jpg"
+                      className="w-full border rounded p-2"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={applyRobotPictureUrl}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded text-white"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        <LinkIcon size={14} />
+                        Apply URL
+                      </button>
+                      <button type="button" onClick={clearRobotPictureUrl} className="inline-flex items-center gap-2 px-3 py-2 rounded border">
+                        <Trash2 size={14} />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 space-y-3">
@@ -245,13 +312,16 @@ function PitScoutFormContent() {
 
               <h3 className="font-semibold text-gray-800">Fuel</h3>
               <label className="block text-sm font-medium text-gray-700">Preload Capacity (Scale 1-8)</label>
-              <input type="number" min={1} max={8} value={form.fuelPreloadCapacity} onChange={(event) => setForm({ ...form, fuelPreloadCapacity: Math.min(8, Math.max(1, Number(event.target.value) || 1)) })} className="w-full border rounded p-3" />
+              <input type="range" min={1} max={8} value={form.fuelPreloadCapacity} onChange={(event) => setForm({ ...form, fuelPreloadCapacity: Math.min(8, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
+              <div className="text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-4 gap-1">{PRELOAD_SCALE_LABELS.map((label) => <div key={label}>{label}</div>)}</div>
 
               <label className="block text-sm font-medium text-gray-700">Balls Per Second (Scale 1-10)</label>
-              <input type="number" min={1} max={10} value={form.fuelBallsPerSecond} onChange={(event) => setForm({ ...form, fuelBallsPerSecond: Math.min(10, Math.max(1, Number(event.target.value) || 1)) })} className="w-full border rounded p-3" />
+              <input type="range" min={1} max={10} value={form.fuelBallsPerSecond} onChange={(event) => setForm({ ...form, fuelBallsPerSecond: Math.min(10, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
+              <div className="text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-5 gap-1">{BPS_SCALE_LABELS.map((label) => <div key={label}>{label}</div>)}</div>
 
               <label className="block text-sm font-medium text-gray-700">Carrying Capacity (Scale 1-50)</label>
-              <input type="number" min={1} max={50} value={form.fuelCarryingCapacity} onChange={(event) => setForm({ ...form, fuelCarryingCapacity: Math.min(50, Math.max(1, Number(event.target.value) || 1)) })} className="w-full border rounded p-3" />
+              <input type="range" min={1} max={50} value={form.fuelCarryingCapacity} onChange={(event) => setForm({ ...form, fuelCarryingCapacity: Math.min(50, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
+              <div className="text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-3 gap-1">{CARRY_SCALE_LABELS.map((label) => <div key={label}>{label}</div>)}</div>
 
               <h3 className="font-semibold text-gray-800">Tower</h3>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.climbLevel1} onChange={(event) => setForm({ ...form, climbLevel1: event.target.checked })} />Level 1 Climb</label>

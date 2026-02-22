@@ -54,6 +54,9 @@ function MatchPickerModal({
       <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-4">
         <h2 className="text-lg font-semibold mb-3">Select Match</h2>
         <div className="max-h-80 overflow-y-auto space-y-2">
+          {matches.length === 0 && (
+            <div className="rounded border p-3 text-sm text-gray-600">No matches available.</div>
+          )}
           {matches.map((match) => (
             <button
               type="button"
@@ -105,7 +108,7 @@ function MatchStrategyFormContent() {
         const ourTeamNumber = parseTeamNumber(String(teamDoc.data()?.teamNumber || teamDoc.data()?.teamName || userData.teamId));
         setOurTeamNumber(ourTeamNumber > 0 ? String(ourTeamNumber) : "");
         const matches = await getEventMatches(resolvedEvent);
-        const options: MatchOption[] = matches
+        let options: MatchOption[] = matches
           .map((match) => {
             const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
               .map((key) => key.replace("frc", "").trim())
@@ -119,6 +122,21 @@ function MatchStrategyFormContent() {
           })
           .filter((match) => (ourTeamNumber > 0 ? match.teams.includes(String(ourTeamNumber)) : true))
           .sort((a, b) => a.scheduleTime - b.scheduleTime);
+        if (options.length === 0) {
+          options = matches
+            .map((match) => {
+              const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+                .map((key) => key.replace("frc", "").trim())
+                .filter(Boolean);
+              return {
+                key: match.key,
+                label: labelForMatch(match),
+                scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
+                teams,
+              };
+            })
+            .sort((a, b) => a.scheduleTime - b.scheduleTime);
+        }
 
         setMatchOptions(options);
 
@@ -221,7 +239,7 @@ function MatchStrategyFormContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-        <form onSubmit={submit} className="flex-1 p-4 space-y-4 max-w-4xl">
+        <form onSubmit={submit} className="flex-1 p-4 space-y-4 max-w-3xl">
           <div className="bg-white rounded-xl shadow p-4">
             <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Match Strategy Form</h1>
           </div>
