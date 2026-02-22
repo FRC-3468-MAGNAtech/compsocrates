@@ -558,7 +558,16 @@ function ScoutFormContent() {
 
   useEffect(() => {
     async function loadEventContext() {
-      if (!userData?.teamId) return;
+      if (!userData?.teamId) {
+        setEventKey("app-testing");
+        const fallback = buildFallbackScoutOptions();
+        setOptions(fallback);
+        setTargets({});
+        if (!selectedMatch && fallback.length > 0) {
+          setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
+        }
+        return;
+      }
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const selectedEvents = (teamDoc.exists() ? teamDoc.data().selectedEvents : []) as string[] | undefined;

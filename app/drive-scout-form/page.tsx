@@ -110,7 +110,13 @@ function DriveReflectionFormContent() {
 
   useEffect(() => {
     async function loadMatches() {
-      if (!userData?.teamId) return;
+      if (!userData?.teamId) {
+        setEventKey("app-testing");
+        const fallback = buildFallbackDriveMatches();
+        setMatchOptions(fallback);
+        setSelectedMatchKey(fallback[0]?.key || "");
+        return;
+      }
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const selectedEvents = (teamDoc.exists() ? teamDoc.data().selectedEvents : []) as string[] | undefined;
