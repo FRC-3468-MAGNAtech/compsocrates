@@ -34,6 +34,15 @@ type PitEntry = {
   scoreNetRobot?: boolean;
   bargeCapability?: string;
   autoCapabilities?: string;
+  fuelPreloadCapacity?: number;
+  fuelBallsPerSecond?: number;
+  fuelCarryingCapacity?: number;
+  climbLevel1?: boolean;
+  climbLevel2?: boolean;
+  climbLevel3?: boolean;
+  typicalFuelCycleTime?: string;
+  typicalClimbTime?: string;
+  autoCycleDescription?: string;
   startingOpposite?: boolean;
   startingMiddle?: boolean;
   startingProcessor?: boolean;
@@ -118,52 +127,97 @@ function PitAnalyticsContent() {
         <LoadingSpinner message="Loading pit analytics..." />
       ) : (
         <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll">
-          <table>
-            <thead className="sticky-header">
-              <tr>
-                <th className="sticky-left-0 text-center">Team</th>
-                <th className="sticky-left-1 text-center">Scout</th>
-                <th>Robot Picture</th>
-                <th>Pit Disposition</th>
-                <th>Drive Disposition</th>
-                <th>Drive Base</th>
-                <th>Center of Gravity</th>
-                <th>Coral Collecting</th>
-                <th>Coral Scoring</th>
-                <th>Algae Collecting</th>
-                <th>Algae Scoring</th>
-                <th>Barge</th>
-                <th>Auto</th>
-                <th>Starting Positions</th>
-                <th>Better At</th>
-                <th>Rating</th>
-                <th>Comments</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((entry) => (
-                <tr key={entry.id}>
-                  <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
-                  <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
-                  <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
-                  <td>{entry.pitDisposition ? "Yes" : "No"}</td>
-                  <td>{entry.driveDisposition ? "Yes" : "No"}</td>
-                  <td>{entry.driveBaseType || "-"}</td>
-                  <td>{entry.centerOfGravity || "-"}</td>
-                  <td>{[entry.collectCoralStation && "Station", entry.collectCoralGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
-                  <td>{[entry.coralL4 && "L4", entry.coralL3 && "L3", entry.coralL2 && "L2", entry.coralL1 && "L1"].filter(Boolean).join(", ") || "-"}</td>
-                  <td>{[entry.collectAlgaeReef && "Reef", entry.collectAlgaeGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
-                  <td>{[entry.scoreProcessor && "Processor", entry.scoreNetRobot && "Net"].filter(Boolean).join(", ") || "-"}</td>
-                  <td>{entry.bargeCapability || "-"}</td>
-                  <td>{entry.autoCapabilities || "-"}</td>
-                  <td>{[entry.startingOpposite && "Opposite", entry.startingMiddle && "Middle", entry.startingProcessor && "Processor"].filter(Boolean).join(", ") || "-"}</td>
-                  <td>{entry.betterAt || "-"}</td>
-                  <td>{entry.rating || "-"}</td>
-                  <td>{entry.notes || "-"}</td>
+          {selectedGame === "REBUILT" ? (
+            <table>
+              <thead className="sticky-header">
+                <tr>
+                  <th className="sticky-left-0 text-center">Team</th>
+                  <th className="sticky-left-1 text-center">Scout</th>
+                  <th>Robot Picture</th>
+                  <th>Pit Disposition</th>
+                  <th>Drive Disposition</th>
+                  <th>Preload</th>
+                  <th>Balls/Sec</th>
+                  <th>Carrying</th>
+                  <th>Climb L1</th>
+                  <th>Climb L2</th>
+                  <th>Climb L3</th>
+                  <th>Fuel Cycle Time</th>
+                  <th>Climb Time</th>
+                  <th>Auto Cycle</th>
+                  <th>Comments</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((entry) => (
+                  <tr key={entry.id}>
+                    <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
+                    <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
+                    <td>{entry.pitDisposition ? "Yes" : "No"}</td>
+                    <td>{entry.driveDisposition ? "Yes" : "No"}</td>
+                    <td>{Number(entry.fuelPreloadCapacity || 0) || "-"}</td>
+                    <td>{Number(entry.fuelBallsPerSecond || 0) || "-"}</td>
+                    <td>{Number(entry.fuelCarryingCapacity || 0) || "-"}</td>
+                    <td>{entry.climbLevel1 ? "Y" : "N"}</td>
+                    <td>{entry.climbLevel2 ? "Y" : "N"}</td>
+                    <td>{entry.climbLevel3 ? "Y" : "N"}</td>
+                    <td>{entry.typicalFuelCycleTime || "-"}</td>
+                    <td>{entry.typicalClimbTime || "-"}</td>
+                    <td>{entry.autoCycleDescription || "-"}</td>
+                    <td>{entry.notes || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table>
+              <thead className="sticky-header">
+                <tr>
+                  <th className="sticky-left-0 text-center">Team</th>
+                  <th className="sticky-left-1 text-center">Scout</th>
+                  <th>Robot Picture</th>
+                  <th>Pit Disposition</th>
+                  <th>Drive Disposition</th>
+                  <th>Drive Base</th>
+                  <th>Center of Gravity</th>
+                  <th>Coral Collecting</th>
+                  <th>Coral Scoring</th>
+                  <th>Algae Collecting</th>
+                  <th>Algae Scoring</th>
+                  <th>Barge</th>
+                  <th>Auto</th>
+                  <th>Starting Positions</th>
+                  <th>Better At</th>
+                  <th>Rating</th>
+                  <th>Comments</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((entry) => (
+                  <tr key={entry.id}>
+                    <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
+                    <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
+                    <td>{entry.pitDisposition ? "Yes" : "No"}</td>
+                    <td>{entry.driveDisposition ? "Yes" : "No"}</td>
+                    <td>{entry.driveBaseType || "-"}</td>
+                    <td>{entry.centerOfGravity || "-"}</td>
+                    <td>{[entry.collectCoralStation && "Station", entry.collectCoralGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
+                    <td>{[entry.coralL4 && "L4", entry.coralL3 && "L3", entry.coralL2 && "L2", entry.coralL1 && "L1"].filter(Boolean).join(", ") || "-"}</td>
+                    <td>{[entry.collectAlgaeReef && "Reef", entry.collectAlgaeGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
+                    <td>{[entry.scoreProcessor && "Processor", entry.scoreNetRobot && "Net"].filter(Boolean).join(", ") || "-"}</td>
+                    <td>{entry.bargeCapability || "-"}</td>
+                    <td>{entry.autoCapabilities || "-"}</td>
+                    <td>{[entry.startingOpposite && "Opposite", entry.startingMiddle && "Middle", entry.startingProcessor && "Processor"].filter(Boolean).join(", ") || "-"}</td>
+                    <td>{entry.betterAt || "-"}</td>
+                    <td>{entry.rating || "-"}</td>
+                    <td>{entry.notes || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     </AnalyticsShell>

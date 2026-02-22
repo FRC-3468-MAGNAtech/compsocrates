@@ -66,6 +66,18 @@ type Entry = {
   incidents: string[];
   notes: string;
   timestamp: number;
+  estimatedScore?: number;
+  auto?: {
+    estimatedFuel?: number;
+    successfulClimb?: boolean;
+    wonAuto?: boolean;
+  };
+  teleop?: {
+    estimatedFuel?: number;
+  };
+  endgame?: {
+    status?: string;
+  };
 };
 
 const INCIDENT_LABELS: Record<string, string> = {
@@ -98,7 +110,20 @@ const PTS = {
   CLIMB_DEEP: 12,
 };
 
-function scoreEntry(e: Entry) {
+function scoreRebuiltEntry(e: Entry) {
+  const explicit = Number(e.estimatedScore || 0);
+  if (explicit > 0) return explicit;
+  const autoFuel = Number(e.auto?.estimatedFuel || 0);
+  const teleFuel = Number(e.teleop?.estimatedFuel || 0);
+  const autoClimb = e.auto?.successfulClimb ? 15 : 0;
+  const end = String(e.endgame?.status || "").toLowerCase();
+  const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+  return autoFuel + teleFuel + autoClimb + endgameClimb;
+}
+
+function scoreEntry(e: Entry, game: AnalyticsGame) {
+  if (game === "REBUILT") return scoreRebuiltEntry(e);
+
   let s = 0;
   if (e.leftStartingZone) s += PTS.LEAVE;
   s += e.autoCoralL1 * PTS.AUTO_CORAL_L1;
@@ -403,7 +428,7 @@ function AnalyticsPageContent() {
   }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const data = useMemo(() => {
-    const withScore = filtered.map((entry) => ({ ...entry, score: scoreEntry(entry) }));
+    const withScore = filtered.map((entry) => ({ ...entry, score: scoreEntry(entry, selectedGame) }));
     return withScore.sort((a, b) => {
       if (sortKey === "matchNumber") {
         const eventDiff = String(a.eventName || a.eventKey || "").localeCompare(String(b.eventName || b.eventKey || ""));
@@ -1060,6 +1085,97 @@ function AnalyticsPageContent() {
       )}
 
       <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
+        {selectedGame === "REBUILT" ? (
+          <table>
+            <thead className="sticky-header">
+              <tr>
+                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
+                <th className="bg-green-300 text-center" colSpan={4}>Autonomous</th>
+                <th className="bg-blue-300 text-center" colSpan={4}>Teleoperated</th>
+                <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
+                <th className="bg-pink-300 text-center" colSpan={5}>General</th>
+              </tr>
+              <tr>
+                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
+                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
+                <th className="text-center">Starting Position</th>
+                <th className="text-center">Auto Fuel</th>
+                <th className="text-center">Auto Climb</th>
+                <th className="text-center">Won Auto</th>
+                <th className="text-center">Auto Fail Climb</th>
+                <th className="text-center">Teleop Fuel</th>
+                <th className="text-center">BPS Scale</th>
+                <th className="text-center">Carry Scale</th>
+                <th className="text-center">Won-Auto Shift Mode</th>
+                <th className="text-center">End Status</th>
+                <th className="text-center">End Fail Climb</th>
+                <th className="text-center">Incidents</th>
+                <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
+                <th className="text-center">Alliance Accuracy</th>
+                <th className="text-center">Script Status</th>
+                <th className="text-center">Delete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
+                  <td className="sticky-left-1 bg-white font-semibold text-center">{entry.teamNumber || "-"}</td>
+                  <td className="text-center">{entry.scoutName || "-"}</td>
+                  <td className="text-center">{entry.startingPosition || "-"}</td>
+                  <td className="text-center">{Number(entry.auto?.estimatedFuel || 0)}</td>
+                  <td className="text-center">{entry.auto?.successfulClimb ? "Y" : "N"}</td>
+                  <td className="text-center">{entry.auto?.wonAuto ? "Y" : "N"}</td>
+                  <td className="text-center">{Number((entry.auto as { failedClimb?: number } | undefined)?.failedClimb || 0)}</td>
+                  <td className="text-center">{Number(entry.teleop?.estimatedFuel || 0)}</td>
+                  <td className="text-center">{Number((entry.teleop as { bpsScale?: number } | undefined)?.bpsScale ?? 0)}</td>
+                  <td className="text-center">{Number((entry.teleop as { carryingScale?: number } | undefined)?.carryingScale ?? 0)}</td>
+                  <td className="text-center">{(entry.teleop as { shiftParityFromWonAuto?: boolean } | undefined)?.shiftParityFromWonAuto ? "Y" : "N"}</td>
+                  <td className="text-center">{entry.endgame?.status || "-"}</td>
+                  <td className="text-center">{Number((entry.endgame as { failedClimb?: number } | undefined)?.failedClimb || 0)}</td>
+                  <td className="text-center">
+                    {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
+                  </td>
+                  <td className="text-left align-top" style={{ minWidth: "260px", whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                    {entry.notes || "-"}
+                  </td>
+                  <td className="text-center">
+                    {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAccuracyEntry(entry);
+                          void loadAccuracyDetails(entry);
+                        }}
+                        className="underline decoration-dotted underline-offset-2"
+                        style={{ color: "var(--primary-color)" }}
+                      >
+                        {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
+                      </button>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
+                  <td className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteEntry(entry)}
+                      className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                      style={{ backgroundColor: "#dc2626" }}
+                      disabled={!canDeleteEntries}
+                      title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
         <table>
           <thead className="sticky-header">
             <tr>
@@ -1196,6 +1312,7 @@ function AnalyticsPageContent() {
             ))}
           </tbody>
         </table>
+        )}
       </div>
 
       {selectedAccuracyEntry && (
@@ -1203,7 +1320,7 @@ function AnalyticsPageContent() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-semibold mb-3">Alliance Accuracy Details</h2>
             {(() => {
-              const scoutedPoints = scoreEntry(selectedAccuracyEntry);
+              const scoutedPoints = scoreEntry(selectedAccuracyEntry, selectedGame);
               const accuracy = Number((selectedAccuracyEntry as Entry & { accuracy?: number }).accuracy || 0);
               const explicitActual =
                 typeof selectedAccuracyEntry.officialScore === "number"
