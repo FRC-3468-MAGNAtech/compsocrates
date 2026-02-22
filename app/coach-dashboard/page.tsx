@@ -550,7 +550,7 @@ function CoachDashboardContent() {
 
 export default function CoachDashboard() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["team-coach", "lead-strategist", "lead-scout", "coach"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["team-coach"]}>
       <CoachDashboardContent />
     </ProtectedRoute>
   );

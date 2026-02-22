@@ -1,12 +1,13 @@
-import RoleDashboard from "@/app/components/RoleDashboard";
+import TeamRoleDashboard from "@/app/components/TeamRoleDashboard";
 
 export default function PitScoutDashboardPage() {
   return (
-    <RoleDashboard
+    <TeamRoleDashboard
       role="pit-scout"
       title="Pit Scout Dashboard"
-      description="Capture pit details and robot capability snapshots."
+      subtitle="Build technical intel on robots before and during events."
+      roleDescription="Collects technical and qualitative information about robots to support match strategy and alliance selection."
+      pitScoutFocus
     />
   );
 }
-

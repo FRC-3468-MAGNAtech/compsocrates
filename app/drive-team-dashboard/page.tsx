@@ -1,12 +1,13 @@
-import RoleDashboard from "@/app/components/RoleDashboard";
+import TeamRoleDashboard from "@/app/components/TeamRoleDashboard";
 
 export default function DriveTeamDashboardPage() {
   return (
-    <RoleDashboard
+    <TeamRoleDashboard
       role="drive-team"
       title="Drive Team Dashboard"
-      description="Capture immediate match reflections and in-match execution notes."
+      subtitle="Prepare for the next match and document immediate post-match reflections."
+      roleDescription="Operates the robot on the field and executes match strategy while communicating in real time with alliance partners and the strategist."
+      driveTeamFocus
     />
   );
 }
-

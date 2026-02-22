@@ -1,12 +1,13 @@
-import RoleDashboard from "@/app/components/RoleDashboard";
+import TeamRoleDashboard from "@/app/components/TeamRoleDashboard";
 
 export default function PitTeamDashboardPage() {
   return (
-    <RoleDashboard
+    <TeamRoleDashboard
       role="pit-team"
       title="Pit Team Dashboard"
-      description="Track pit support actions, helper tasks, and robot status."
+      subtitle="Manage robot readiness and support requests in the pit."
+      roleDescription="Works in the pit to repair, maintain, and improve the robot between matches while communicating robot status to the drive team and strategists."
+      pitTeamFocus
     />
   );
 }
-

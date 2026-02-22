@@ -576,7 +576,7 @@ function AssignmentsContent() {
 
 export default function AssignmentsPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["lead-scout", "lead-strategist", "team-coach"]}>
       <AssignmentsContent />
     </ProtectedRoute>
   );

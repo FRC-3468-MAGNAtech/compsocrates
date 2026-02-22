@@ -1159,7 +1159,7 @@ function PracticeScoutingContent() {
               <button onClick={resetPractice} className="flex-1 py-3 rounded-lg text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
                 Practice Again
               </button>
-              <button onClick={() => router.push("/scout-dashboard")} className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50">
+              <button onClick={() => router.push("/match-scout-dashboard")} className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50">
                 Dashboard
               </button>
             </div>
