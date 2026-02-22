@@ -23,20 +23,99 @@ const Counter = ({ label, value, onChange }: { label: string; value: number; onC
   </div>
 );
 
+const RebuiltCycleTimer = ({
+  title,
+  values,
+  onAdd,
+}: {
+  title: string;
+  values: number[];
+  onAdd: (value: number) => void;
+}) => {
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => {
+      if (startRef.current === null) return;
+      setElapsed((performance.now() - startRef.current) / 1000);
+    }, 20);
+    return () => window.clearInterval(id);
+  }, [running]);
+
+  return (
+    <div className="border rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-sm">{title}</span>
+        <span className="font-mono text-sm">{elapsed.toFixed(2)} s</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (!running) {
+            startRef.current = performance.now();
+            setElapsed(0);
+            setRunning(true);
+            return;
+          }
+          setRunning(false);
+          onAdd(Number(elapsed.toFixed(2)));
+          setElapsed(0);
+          startRef.current = null;
+        }}
+        className="px-3 py-2 rounded text-white text-sm"
+        style={{ backgroundColor: running ? "#dc2626" : "var(--primary-color)" }}
+      >
+        {running ? "Stop" : "Start"}
+      </button>
+      {values.map((v, i) => (
+        <div key={`${title}-${i}-${v}`} className="text-xs text-gray-700">
+          Cycle {i + 1}: {v.toFixed(2)}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
 type PracticeStep = 'select' | 'practice' | 'break' | 'results';
 type RebuiltScoutedData = {
   teamNumber: string;
   startingPosition: string;
-  autoFuel: number;
+  autoPreloadScale: number;
+  autoBpsScale: number;
+  autoCarryScale: number;
+  autoFailedClimb: number;
   autoSuccessfulClimb: boolean;
   wonAuto: boolean;
-  teleopFuel: number;
+  teleBpsScale: number;
+  teleCarryScale: number;
+  endgameFailedClimb: number;
   endgameStatus: string;
+  autoCycles: number[];
+  transitionCycles: number[];
+  shift1Cycles: number[];
+  shift2Cycles: number[];
+  shift3Cycles: number[];
+  shift4Cycles: number[];
+  endgameCycles: number[];
   incidents: string[];
   notes: string;
 };
+
+const REBUILT_BPS = [0, 2, 5, 8, 10];
+const REBUILT_CARRY = [0, 12, 23, 32, 42, 53, 54];
+const REBUILT_PRELOAD = [0, 2, 4, 6, 8];
+const PRELOAD_LABELS = ["0", "1-2", "3-4", "5-6", "7-8"];
+const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10+"];
+const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
+
+function estimateRebuiltBalls(seconds: number, bpsScale: number, capacityBalls: number) {
+  return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (REBUILT_BPS[bpsScale] || 0) * seconds)));
+}
 
 type PracticeSessionDraft = {
   version: 1;
@@ -252,23 +331,51 @@ function createEmptyRebuiltScoutedData(teamNumber = "", notes = ""): RebuiltScou
   return {
     teamNumber,
     startingPosition: "",
-    autoFuel: 0,
+    autoPreloadScale: 0,
+    autoBpsScale: 0,
+    autoCarryScale: 0,
+    autoFailedClimb: 0,
     autoSuccessfulClimb: false,
     wonAuto: false,
-    teleopFuel: 0,
+    teleBpsScale: 0,
+    teleCarryScale: 0,
+    endgameFailedClimb: 0,
     endgameStatus: "",
+    autoCycles: [],
+    transitionCycles: [],
+    shift1Cycles: [],
+    shift2Cycles: [],
+    shift3Cycles: [],
+    shift4Cycles: [],
+    endgameCycles: [],
     incidents: [],
     notes,
   };
 }
 
 function calculateRebuiltScoutedScore(data: RebuiltScoutedData): number {
+  const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, data.autoPreloadScale))] || 0;
+  const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, data.autoCarryScale))] || 0;
+  const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, data.teleCarryScale))] || 0;
+  const autoFuel = data.autoCycles.reduce((sum, seconds, index) => {
+    const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
+    return sum + estimateRebuiltBalls(seconds, data.autoBpsScale, capacity);
+  }, 0);
+  const transitionFuel = data.transitionCycles.reduce(
+    (sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap),
+    0
+  );
+  const shift1Fuel = data.shift1Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const shift2Fuel = data.shift2Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const shift3Fuel = data.shift3Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const shift4Fuel = data.shift4Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const teleopFuel = transitionFuel + (data.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel);
   const autoClimb = data.autoSuccessfulClimb ? 15 : 0;
   const teleopClimb =
     data.endgameStatus === "level-1" ? 10 :
     data.endgameStatus === "level-2" ? 20 :
     data.endgameStatus === "level-3" ? 30 : 0;
-  return Math.max(0, Number(data.autoFuel || 0)) + Math.max(0, Number(data.teleopFuel || 0)) + autoClimb + teleopClimb;
+  return autoFuel + teleopFuel + autoClimb + teleopClimb;
 }
 
 function normalizePracticeMatchType(
@@ -706,8 +813,25 @@ function PracticeScoutingContent() {
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
 
       await Promise.all(
-        allRobotData.map((robotData) =>
-          addDoc(collection(db, "scouting"), {
+        allRobotData.map((robotData) => {
+          const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, robotData.autoPreloadScale))] || 0;
+          const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.autoCarryScale))] || 0;
+          const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.teleCarryScale))] || 0;
+          const autoEstimatedFuel = robotData.autoCycles.reduce((sum, seconds, index) => {
+            const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
+            return sum + estimateRebuiltBalls(seconds, robotData.autoBpsScale, capacity);
+          }, 0);
+          const transitionFuel = robotData.transitionCycles.reduce(
+            (sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap),
+            0
+          );
+          const shift1Fuel = robotData.shift1Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const shift2Fuel = robotData.shift2Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const shift3Fuel = robotData.shift3Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const shift4Fuel = robotData.shift4Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel);
+
+          return addDoc(collection(db, "scouting"), {
             scoutName: userData.displayName,
             scoutId: userData.uid,
             teamNumber: robotData.teamNumber,
@@ -715,15 +839,29 @@ function PracticeScoutingContent() {
             incidents: robotData.incidents,
             notes: robotData.notes,
             auto: {
-              estimatedFuel: Number(robotData.autoFuel || 0),
+              preloadScale: robotData.autoPreloadScale,
+              bpsScale: robotData.autoBpsScale,
+              carryingScale: robotData.autoCarryScale,
+              cycleTimes: robotData.autoCycles,
+              failedClimb: robotData.autoFailedClimb,
+              estimatedFuel: autoEstimatedFuel,
               successfulClimb: robotData.autoSuccessfulClimb,
               wonAuto: robotData.wonAuto,
             },
             teleop: {
-              estimatedFuel: Number(robotData.teleopFuel || 0),
+              bpsScale: robotData.teleBpsScale,
+              carryingScale: robotData.teleCarryScale,
+              transitionCycles: robotData.transitionCycles,
+              shift1Cycles: robotData.shift1Cycles,
+              shift2Cycles: robotData.shift2Cycles,
+              shift3Cycles: robotData.shift3Cycles,
+              shift4Cycles: robotData.shift4Cycles,
+              estimatedFuel: teleEstimatedFuel,
             },
             endgame: {
               status: robotData.endgameStatus,
+              failedClimb: robotData.endgameFailedClimb,
+              cycleTimes: robotData.endgameCycles,
             },
             estimatedScore: calculateRebuiltScoutedScore(robotData),
             matchId: `q${currentMatch.matchNumber}`,
@@ -742,8 +880,8 @@ function PracticeScoutingContent() {
             penaltyPoints,
             deviceType: device.deviceType,
             deviceDetails: device.details,
-          })
-        )
+          });
+        })
       );
 
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
@@ -1318,16 +1456,49 @@ function PracticeScoutingContent() {
                   <div className="bg-white rounded-xl shadow p-4">
                     <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
                     <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Auto Fuel</label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={rebuiltFormData.autoFuel}
-                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoFuel: Math.max(0, Number(e.target.value || 0)) })}
-                          className="w-full border rounded p-2"
-                        />
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Preload Capacity ({PRELOAD_LABELS[Math.max(0, Math.min(4, rebuiltFormData.autoPreloadScale))]})
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={4}
+                        value={rebuiltFormData.autoPreloadScale}
+                        onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoPreloadScale: Number(e.target.value) })}
+                        className="w-full"
+                      />
+                      <label className="block text-sm font-medium text-gray-700">
+                        Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, rebuiltFormData.autoBpsScale))]})
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={4}
+                        value={rebuiltFormData.autoBpsScale}
+                        onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoBpsScale: Number(e.target.value) })}
+                        className="w-full"
+                      />
+                      <label className="block text-sm font-medium text-gray-700">
+                        Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, rebuiltFormData.autoCarryScale))]})
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={6}
+                        value={rebuiltFormData.autoCarryScale}
+                        onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoCarryScale: Number(e.target.value) })}
+                        className="w-full"
+                      />
+                      <RebuiltCycleTimer
+                        title="Auto Cycle Timer"
+                        values={rebuiltFormData.autoCycles}
+                        onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, autoCycles: [...rebuiltFormData.autoCycles, value] })}
+                      />
+                      <Counter
+                        label="Failed Climb"
+                        value={rebuiltFormData.autoFailedClimb}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, autoFailedClimb: value })}
+                      />
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
@@ -1352,21 +1523,71 @@ function PracticeScoutingContent() {
                   <div className="bg-white rounded-xl shadow p-4">
                     <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
                     <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Teleop Fuel</label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={rebuiltFormData.teleopFuel}
-                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teleopFuel: Math.max(0, Number(e.target.value || 0)) })}
-                          className="w-full border rounded p-2"
-                        />
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, rebuiltFormData.teleBpsScale))]})
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={4}
+                        value={rebuiltFormData.teleBpsScale}
+                        onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teleBpsScale: Number(e.target.value) })}
+                        className="w-full"
+                      />
+                      <label className="block text-sm font-medium text-gray-700">
+                        Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, rebuiltFormData.teleCarryScale))]})
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={6}
+                        value={rebuiltFormData.teleCarryScale}
+                        onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teleCarryScale: Number(e.target.value) })}
+                        className="w-full"
+                      />
+                      <RebuiltCycleTimer
+                        title="Transition Shift"
+                        values={rebuiltFormData.transitionCycles}
+                        onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, transitionCycles: [...rebuiltFormData.transitionCycles, value] })}
+                      />
+                      <p className="text-xs text-gray-600">
+                        Counted shifts right now: Transition + {rebuiltFormData.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
+                      </p>
+                      <RebuiltCycleTimer
+                        title={`Shift 1 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                        values={rebuiltFormData.shift1Cycles}
+                        onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1Cycles: [...rebuiltFormData.shift1Cycles, value] })}
+                      />
+                      <RebuiltCycleTimer
+                        title={`Shift 2 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                        values={rebuiltFormData.shift2Cycles}
+                        onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2Cycles: [...rebuiltFormData.shift2Cycles, value] })}
+                      />
+                      <RebuiltCycleTimer
+                        title={`Shift 3 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                        values={rebuiltFormData.shift3Cycles}
+                        onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3Cycles: [...rebuiltFormData.shift3Cycles, value] })}
+                      />
+                      <RebuiltCycleTimer
+                        title={`Shift 4 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                        values={rebuiltFormData.shift4Cycles}
+                        onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift4Cycles: [...rebuiltFormData.shift4Cycles, value] })}
+                      />
                     </div>
                   </div>
 
                   <div className="bg-white rounded-xl shadow p-4">
                     <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Endgame</h2>
+                    <RebuiltCycleTimer
+                      title="Endgame Cycle Timer"
+                      values={rebuiltFormData.endgameCycles}
+                      onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameCycles: [...rebuiltFormData.endgameCycles, value] })}
+                    />
+                    <Counter
+                      label="Failed Climb"
+                      value={rebuiltFormData.endgameFailedClimb}
+                      onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameFailedClimb: value })}
+                    />
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status At End of Match</label>
                     <select
                       value={rebuiltFormData.endgameStatus}
