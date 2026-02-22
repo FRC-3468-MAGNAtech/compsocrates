@@ -260,6 +260,15 @@ function matchIdentityEquals(a: MatchIdentity, b: MatchIdentity): boolean {
   return a.setNumber === b.setNumber;
 }
 
+function parseMatchIdentityFromLabel(label: string): MatchIdentity | null {
+  const normalized = normalizeMatchLabel(label);
+  return parseMatchIdentity({
+    matchId: normalized.matchId,
+    matchType: normalized.matchType,
+    matchNumber: normalized.matchNumber,
+  });
+}
+
 function formatApprox(value: string | number) {
   return `~${value}`;
 }
@@ -284,7 +293,52 @@ type AccuracyDetails = {
   actualPoints: number | null;
   penaltyPoints: number;
   allRobotsScouted: "yes" | "no" | "unknown";
+  eventKeyUsed: string;
+  matchLabelUsed: string;
 };
+
+type AccuracyRobotBreakdown = {
+  teamNumber: string;
+  total: number;
+  source: "estimatedScore" | "computed" | "reefscape";
+  estimatedScore: number;
+  autoFuel: number;
+  teleFuel: number;
+  autoClimb: number;
+  endgameClimb: number;
+};
+
+function getRebuiltBreakdown(entry: Entry): AccuracyRobotBreakdown {
+  const teamNumber = String(entry.teamNumber || "-").trim() || "-";
+  const explicit = Number(entry.estimatedScore || 0);
+  if (explicit > 0) {
+    return {
+      teamNumber,
+      total: explicit,
+      source: "estimatedScore",
+      estimatedScore: explicit,
+      autoFuel: 0,
+      teleFuel: 0,
+      autoClimb: 0,
+      endgameClimb: 0,
+    };
+  }
+  const autoFuel = Number(entry.auto?.estimatedFuel || 0);
+  const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+  const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+  const end = String(entry.endgame?.status || "").toLowerCase();
+  const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+  return {
+    teamNumber,
+    total: autoFuel + teleFuel + autoClimb + endgameClimb,
+    source: "computed",
+    estimatedScore: 0,
+    autoFuel,
+    teleFuel,
+    autoClimb,
+    endgameClimb,
+  };
+}
 
 function isEntryBlank(entry: Entry) {
   const numbers = [
@@ -440,7 +494,10 @@ function AnalyticsPageContent() {
     actualPoints: null,
     penaltyPoints: 0,
     allRobotsScouted: "unknown",
+    eventKeyUsed: "",
+    matchLabelUsed: "",
   });
+  const [accuracyRobotBreakdown, setAccuracyRobotBreakdown] = useState<AccuracyRobotBreakdown[]>([]);
 
   const eventOptions = useMemo(
     () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(rawData, selectedGame)],
@@ -558,26 +615,53 @@ function AnalyticsPageContent() {
 
   async function loadAccuracyDetails(entry: Entry) {
     setAccuracyModalLoading(true);
+    const clickedLabel = matchLabel(entry);
+    setAccuracyRobotBreakdown([]);
     setAccuracyDetails({
       scoutedPoints: 0,
       actualPoints: null,
       penaltyPoints: Number(entry.penaltyPoints || 0),
       allRobotsScouted: "unknown",
+      eventKeyUsed: "",
+      matchLabelUsed: clickedLabel,
     });
     try {
-      const eventKey = String(entry.eventKey || "").trim() || (selectedEvent !== "all" ? selectedEvent : "");
-      const identity = parseMatchIdentity(entry);
-      if (!eventKey || !identity) {
-        return;
-      }
-
-      const matchRows = rawData
-        .filter((row) => String(row.eventKey || "").trim() === eventKey)
-        .filter((row) => {
-          const rowIdentity = parseMatchIdentity(row);
-          return Boolean(rowIdentity && matchIdentityEquals(identity, rowIdentity));
-        });
       const selectedTeam = String(entry.teamNumber || "").trim();
+      const entryGame = String(entry.game || "REEFSCAPE").toUpperCase() as AnalyticsGame;
+      const sameGameRows = rawData.filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === entryGame);
+      const sameLabelRows = sameGameRows.filter((row) => matchLabel(row) === clickedLabel);
+
+      const eventKeyFromEntry = String(entry.eventKey || "").trim();
+      const eventKeyFromSelector = selectedEvent !== "all" ? selectedEvent : "";
+      const eventKeyPool = sameLabelRows
+        .filter((row) => !selectedTeam || String(row.teamNumber || "").trim() === selectedTeam)
+        .map((row) => String(row.eventKey || "").trim())
+        .filter(Boolean);
+      const eventKeyFrequency = eventKeyPool.reduce<Record<string, number>>((acc, key) => {
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const mostCommonEventKey =
+        Object.entries(eventKeyFrequency).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+        sameLabelRows.map((row) => String(row.eventKey || "").trim()).filter(Boolean)[0] ||
+        "";
+      const eventKey = eventKeyFromEntry || eventKeyFromSelector || mostCommonEventKey;
+
+      const poolByEvent = eventKey
+        ? sameGameRows.filter((row) => String(row.eventKey || "").trim() === eventKey)
+        : sameLabelRows;
+      const identity =
+        parseMatchIdentity(entry) ||
+        parseMatchIdentityFromLabel(clickedLabel) ||
+        sameLabelRows.map((row) => parseMatchIdentity(row)).find((value): value is MatchIdentity => Boolean(value)) ||
+        null;
+      const matchRows = poolByEvent.filter((row) => {
+        if (matchLabel(row) === clickedLabel) return true;
+        if (!identity) return false;
+        const rowIdentity = parseMatchIdentity(row) || parseMatchIdentityFromLabel(matchLabel(row));
+        return Boolean(rowIdentity && matchIdentityEquals(identity, rowIdentity));
+      });
+
       let allianceColor = inferAllianceColor(entry);
       let officialTeamsForAlliance: string[] = [];
       let actualPoints: number | null =
@@ -590,15 +674,33 @@ function AnalyticsPageContent() {
       if (!userData?.teamId) {
         const allianceRows =
           allianceColor === null
-            ? matchRows.filter((row) => String(row.teamNumber || "").trim() === selectedTeam)
+            ? matchRows
             : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
         const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
-        const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, selectedGame), 0);
+        const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+        setAccuracyRobotBreakdown(
+          latestAllianceRows.map((row) =>
+            entryGame === "REBUILT"
+              ? getRebuiltBreakdown(row)
+              : {
+                  teamNumber: String(row.teamNumber || "-"),
+                  total: scoreEntry(row, entryGame),
+                  source: "reefscape",
+                  estimatedScore: 0,
+                  autoFuel: 0,
+                  teleFuel: 0,
+                  autoClimb: 0,
+                  endgameClimb: 0,
+                }
+          )
+        );
         setAccuracyDetails({
           scoutedPoints,
           actualPoints,
           penaltyPoints: Number(entry.penaltyPoints || 0),
           allRobotsScouted: "unknown",
+          eventKeyUsed: eventKey,
+          matchLabelUsed: clickedLabel,
         });
         return;
       }
@@ -606,7 +708,7 @@ function AnalyticsPageContent() {
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
       const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
-      if (encryptedKey || plainKey) {
+      if (eventKey && identity && (encryptedKey || plainKey)) {
         const response = await fetch("/api/tba/matches", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -646,12 +748,33 @@ function AnalyticsPageContent() {
 
       const allianceRows =
         allianceColor === null
-          ? matchRows.filter((row) => String(row.teamNumber || "").trim() === selectedTeam)
+          ? (() => {
+              const byScoutName = matchRows.filter(
+                (row) => String(row.scoutName || "").trim() === String(entry.scoutName || "").trim()
+              );
+              return byScoutName.length > 0 ? byScoutName : matchRows;
+            })()
           : officialTeamsForAlliance.length > 0
           ? matchRows.filter((row) => officialTeamsForAlliance.includes(String(row.teamNumber || "").trim()))
           : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
       const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
-      const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, selectedGame), 0);
+      const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+      setAccuracyRobotBreakdown(
+        latestAllianceRows.map((row) =>
+          entryGame === "REBUILT"
+            ? getRebuiltBreakdown(row)
+            : {
+                teamNumber: String(row.teamNumber || "-"),
+                total: scoreEntry(row, entryGame),
+                source: "reefscape",
+                estimatedScore: 0,
+                autoFuel: 0,
+                teleFuel: 0,
+                autoClimb: 0,
+                endgameClimb: 0,
+              }
+        )
+      );
       const scoutedTeams = new Set(latestAllianceRows.map((row) => String(row.teamNumber || "").trim()).filter(Boolean));
       const allRobotsScouted =
         officialTeamsForAlliance.length > 0
@@ -669,10 +792,12 @@ function AnalyticsPageContent() {
               0
           ) || 0,
         allRobotsScouted,
+        eventKeyUsed: eventKey,
+        matchLabelUsed: clickedLabel,
       });
     } catch (error) {
       console.error("Failed to load alliance robot details:", error);
-      setAccuracyDetails((prev) => ({ ...prev, allRobotsScouted: "unknown" }));
+      setAccuracyDetails((prev) => ({ ...prev, allRobotsScouted: "unknown", matchLabelUsed: clickedLabel }));
     } finally {
       setAccuracyModalLoading(false);
     }
@@ -1441,6 +1566,8 @@ function AnalyticsPageContent() {
             {(() => {
               return (
                 <div className="space-y-2 text-sm">
+                  <p><span className="font-semibold">Match:</span> {accuracyDetails.matchLabelUsed || "-"}</p>
+                  <p><span className="font-semibold">Event:</span> {accuracyDetails.eventKeyUsed || "Unknown"}</p>
                   <p><span className="font-semibold">Scouted Points:</span> {accuracyDetails.scoutedPoints}</p>
                   <p><span className="font-semibold">Actual Points:</span> {accuracyDetails.actualPoints ?? "Unavailable"}</p>
                   <p>
@@ -1448,6 +1575,23 @@ function AnalyticsPageContent() {
                     {accuracyModalLoading ? "Checking..." : accuracyDetails.allRobotsScouted === "yes" ? "Yes" : accuracyDetails.allRobotsScouted === "no" ? "No" : "Unknown"}
                   </p>
                   <p><span className="font-semibold">Penalty Points:</span> {accuracyDetails.penaltyPoints}</p>
+                  {accuracyRobotBreakdown.length > 0 && (
+                    <div className="pt-2">
+                      <p className="font-semibold mb-1">Score Breakdown</p>
+                      <div className="space-y-1 text-xs">
+                        {accuracyRobotBreakdown.map((row) => (
+                          <p key={`${row.teamNumber}-${row.source}`}>
+                            Team {row.teamNumber}: {row.total}{" "}
+                            {row.source === "estimatedScore"
+                              ? `(estimatedScore=${row.estimatedScore})`
+                              : row.source === "computed"
+                              ? `(autoFuel=${row.autoFuel} + teleFuel=${row.teleFuel} + autoClimb=${row.autoClimb} + endgameClimb=${row.endgameClimb})`
+                              : "(REEFSCAPE scorer)"}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
