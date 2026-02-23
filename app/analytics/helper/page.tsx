@@ -10,6 +10,7 @@ import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScou
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
+import { compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 
 type HelperEntry = {
   id: string;
@@ -33,14 +34,16 @@ function HelperAnalyticsContent() {
   const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
-  const canCleanBlankRows = canDeleteEntries;
   const [entries, setEntries] = useState<HelperEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
-  const [cleaningBlankRows, setCleaningBlankRows] = useState(false);
+  const [sortKey, setSortKey] = useState<"helperName" | "assistedTeamNumber" | "wasSuccessful" | "issueSolved" | "notes" | "id">(
+    "assistedTeamNumber"
+  );
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -85,6 +88,32 @@ function HelperAnalyticsContent() {
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
   }, [normalized, selectedEvent, selectedGame, practiceMatchesOnly]);
 
+  const sorted = useMemo(() => {
+    const getValue = (entry: HelperEntry) => {
+      switch (sortKey) {
+        case "helperName":
+          return entry.helperName || "";
+        case "assistedTeamNumber":
+          return entry.assistedTeamNumber || "";
+        case "wasSuccessful":
+          return entry.wasSuccessful ? 1 : 0;
+        case "issueSolved":
+          return entry.issueSolved || "";
+        case "notes":
+          return entry.notes || "";
+        case "id":
+        default:
+          return entry.id;
+      }
+    };
+    return [...filtered].sort((a, b) => compareSortValues(getValue(a), getValue(b), sortDir));
+  }, [filtered, sortDir, sortKey]);
+
+  function handleSort(key: typeof sortKey) {
+    setSortDir((prev) => (key === sortKey ? (prev === "asc" ? "desc" : "asc") : "asc"));
+    setSortKey(key);
+  }
+
   async function handleDeleteEntry(entry: HelperEntry) {
     if (!canDeleteEntries) {
       alert("Only coaches or team admins can delete entries.");
@@ -94,35 +123,6 @@ function HelperAnalyticsContent() {
     if (!ok) return;
     await deleteDoc(doc(db, "helperReports", entry.id));
     setEntries((prev) => prev.filter((row) => row.id !== entry.id));
-  }
-
-  function isBlankEntry(entry: HelperEntry) {
-    const hasText = [entry.helperName, entry.assistedTeamNumber, entry.issueSolved, entry.notes]
-      .some((value) => String(value || "").trim().length > 0);
-    return !hasText && !entry.wasSuccessful;
-  }
-
-  async function handleCleanBlankEntries() {
-    if (!canCleanBlankRows) {
-      alert("Only coaches or team admins can clean blank rows.");
-      return;
-    }
-    const blankRows = entries.filter((entry) => isBlankEntry(entry));
-    if (blankRows.length === 0) {
-      alert("No blank rows found.");
-      return;
-    }
-    const ok = window.confirm(`Delete ${blankRows.length} blank rows?`);
-    if (!ok) return;
-    setCleaningBlankRows(true);
-    try {
-      await Promise.all(blankRows.map((entry) => deleteDoc(doc(db, "helperReports", entry.id))));
-      const snap = await getDocs(collection(db, "helperReports"));
-      setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as HelperEntry[]);
-      alert(`Deleted ${blankRows.length} blank rows.`);
-    } finally {
-      setCleaningBlankRows(false);
-    }
   }
 
   function exportToCSV() {
@@ -228,29 +228,25 @@ function HelperAnalyticsContent() {
       <h1 className="text-3xl font-bold mb-2 theme-text">Helper Report Analytics</h1>
       <p className="text-gray-600 mb-4">Support reports from helper form submissions.</p>
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
-          onClick={exportToCSV}
-          disabled={!canExportCsv}
-          title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
-        >
-          Export CSV
-        </button>
-        <label
-          className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
-          title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
-        >
-          {importing ? "Importing..." : "Import CSV"}
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv || importing} />
-        </label>
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-60"
-          onClick={() => void handleCleanBlankEntries()}
-          disabled={cleaningBlankRows || !canCleanBlankRows}
-          title={canCleanBlankRows ? undefined : "Only coaches or team admins can clean blank rows."}
-        >
-          {cleaningBlankRows ? "Cleaning..." : "Clean Blank Rows"}
-        </button>
+        {false && (
+          <>
+            <button
+              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
+              onClick={exportToCSV}
+              disabled={!canExportCsv}
+              title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
+            >
+              Export CSV
+            </button>
+            <label
+              className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
+              title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
+            >
+              {importing ? "Importing..." : "Import CSV"}
+              <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv || importing} />
+            </label>
+          </>
+        )}
       </div>
       {loading ? (
         <LoadingSpinner message="Loading helper report analytics..." />
@@ -270,16 +266,28 @@ function HelperAnalyticsContent() {
                 <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
-                <th className="text-center">Helper</th>
-                <th className="text-center">Team Helped</th>
-                <th className="text-center">Successful</th>
-                <th className="text-center">Issue Solved</th>
-                <th className="text-center">Notes</th>
-                <th className="text-center">Actions</th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("helperName")}>
+                  {sortLabel(sortKey, sortDir, "helperName", "Helper")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("assistedTeamNumber")}>
+                  {sortLabel(sortKey, sortDir, "assistedTeamNumber", "Team Helped")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("wasSuccessful")}>
+                  {sortLabel(sortKey, sortDir, "wasSuccessful", "Successful")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("issueSolved")}>
+                  {sortLabel(sortKey, sortDir, "issueSolved", "Issue Solved")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
+                  {sortLabel(sortKey, sortDir, "notes", "Notes")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                  {sortLabel(sortKey, sortDir, "id", "Actions")}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((entry) => (
+              {sorted.map((entry) => (
                 <tr key={entry.id}>
                   <td className="font-semibold">{entry.helperName || "-"}</td>
                   <td>{entry.assistedTeamNumber || "-"}</td>

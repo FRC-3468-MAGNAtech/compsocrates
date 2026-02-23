@@ -16,6 +16,7 @@ import {
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
+import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 
 type Entry = {
   id: string;
@@ -160,20 +161,21 @@ function scoreEntry(e: Entry, game: AnalyticsGame) {
   return s;
 }
 
-function matchPriority(type?: string) {
-  if (type === "practice") return 0;
-  if (type === "qualification") return 1;
-  if (type === "finals") return 2;
-  return 999;
-}
-
-function matchNumberValue(value?: string) {
-  if (!value) return 0;
-  return parseInt(String(value).replace(/\D/g, ""), 10) || 0;
-}
-
 function matchLabel(entry: Entry) {
   const num = entry.matchNumber || "-";
+  const matchId = String(entry.matchId || "").trim();
+  const matchIdMatch = matchId.match(/^(qf|sf|f)(\d+)(?:m(\d+))?$/i);
+  if (matchIdMatch) {
+    const prefix = matchIdMatch[1].toUpperCase();
+    const setNumber = Number(matchIdMatch[2] || 0);
+    const matchNumber = Number(matchIdMatch[3] || 0);
+    if (prefix === "QF" || prefix === "SF") {
+      return `${prefix}${setNumber || "-"}M${matchNumber || "-"}`;
+    }
+    if (prefix === "F") {
+      return `F${matchNumber || setNumber || "-"}`;
+    }
+  }
   if (entry.matchType === "practice") return `P${num}`;
   if (entry.matchType === "qualification") return `Q${num}`;
   if (entry.matchType === "finals") return `F${num}`;
@@ -358,48 +360,6 @@ function getRebuiltBreakdown(entry: Entry): AccuracyRobotBreakdown {
   };
 }
 
-function isEntryBlank(entry: Entry) {
-  const isEffectivelyEmptyText = (value: unknown) => {
-    const raw = String(value ?? "").trim().toLowerCase();
-    return raw === "" || raw === "0" || raw === "-" || raw === "n/a" || raw === "na" || raw === "unknown";
-  };
-  const numbers = [
-    entry.autoCoralMissed,
-    entry.autoCoralL1,
-    entry.autoCoralL2,
-    entry.autoCoralL3,
-    entry.autoCoralL4,
-    entry.autoAlgaeProcessorMissed,
-    entry.autoAlgaeProcessorScored,
-    entry.autoAlgaeNetMissed,
-    entry.autoAlgaeNetScored,
-    entry.teleopCoralMissed,
-    entry.teleopCoralL1,
-    entry.teleopCoralL2,
-    entry.teleopCoralL3,
-    entry.teleopCoralL4,
-    entry.teleopProcessorMissed,
-    entry.teleopProcessorScored,
-    entry.teleopNetRobotMissed,
-    entry.teleopNetRobotScored,
-    entry.teleopNetHumanMissed,
-    entry.teleopNetHumanScored,
-    entry.failedClimb,
-  ];
-  const hasAnyNumbers = numbers.some((value) => Number(value || 0) > 0);
-  return (
-    isEffectivelyEmptyText(entry.teamNumber) &&
-    isEffectivelyEmptyText(entry.scoutName) &&
-    isEffectivelyEmptyText(entry.startingPosition) &&
-    isEffectivelyEmptyText(entry.stageStatus) &&
-    isEffectivelyEmptyText(entry.notes) &&
-    (!entry.incidents || entry.incidents.length === 0) &&
-    !entry.leftStartingZone &&
-    !entry.teleopAlgaeRemoved &&
-    !hasAnyNumbers
-  );
-}
-
 function displayEntryText(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw || raw === "0" || raw.toLowerCase() === "n/a" || raw.toLowerCase() === "unknown") return "-";
@@ -479,8 +439,35 @@ function parseAccuracyPercent(value: string): number | undefined {
   return undefined;
 }
 
-type SortKey = keyof Entry | "score";
-type SortDir = "asc" | "desc";
+type SortKey =
+  | keyof Entry
+  | "score"
+  | "matchLabel"
+  | "accuracy"
+  | "scriptStatus"
+  | "autoPreloadScale"
+  | "autoBpsScale"
+  | "autoCarryScale"
+  | "autoFuel"
+  | "autoClimb"
+  | "autoCycles"
+  | "teleBpsScale"
+  | "teleCarryScale"
+  | "transitionFuel"
+  | "shift1Fuel"
+  | "shift2Fuel"
+  | "shift3Fuel"
+  | "shift4Fuel"
+  | "teleFuel"
+  | "transitionCycles"
+  | "shift1Cycles"
+  | "shift2Cycles"
+  | "shift3Cycles"
+  | "shift4Cycles"
+  | "endPlace"
+  | "endgameClimb"
+  | "endgameCycles"
+  | "totalUsed";
 
 function AnalyticsPageContent() {
   const { userData } = useAuth();
@@ -489,10 +476,9 @@ function AnalyticsPageContent() {
   const isTeamMember = Boolean(userData?.teamId);
   const canImportCsv = isCoach || isTeamAdmin;
   const canExportCsv = isTeamMember;
-  const canCleanBlankRows = isCoach || isTeamAdmin;
   const canDeleteEntries = isCoach || isTeamAdmin;
   const [rawData, setRawData] = useState<Entry[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
+  const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
@@ -508,7 +494,6 @@ function AnalyticsPageContent() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importMatchMode, setImportMatchMode] = useState<"official" | "practice-scouted">("official");
   const [importing, setImporting] = useState(false);
-  const [cleaningBlankRows, setCleaningBlankRows] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
@@ -577,28 +562,65 @@ function AnalyticsPageContent() {
   }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const data = useMemo(() => {
-    const withScore = filtered.map((entry) => ({ ...entry, score: scoreEntry(entry, selectedGame) }));
-    return withScore.sort((a, b) => {
-      if (sortKey === "matchNumber") {
-        const eventDiff = String(a.eventName || a.eventKey || "").localeCompare(String(b.eventName || b.eventKey || ""));
-        if (eventDiff !== 0) return sortDir === "asc" ? eventDiff : -eventDiff;
-        const typeDiff = matchPriority(a.matchType) - matchPriority(b.matchType);
-        if (typeDiff !== 0) return sortDir === "asc" ? typeDiff : -typeDiff;
-        const numDiff = matchNumberValue(a.matchNumber) - matchNumberValue(b.matchNumber);
-        return sortDir === "asc" ? numDiff : -numDiff;
-      }
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      if (typeof av === "number" && typeof bv === "number") {
-        return sortDir === "asc" ? av - bv : bv - av;
-      }
-      const as = String(av ?? "").toLowerCase();
-      const bs = String(bv ?? "").toLowerCase();
-      if (as < bs) return sortDir === "asc" ? -1 : 1;
-      if (as > bs) return sortDir === "asc" ? 1 : -1;
-      return 0;
+    const withScore = filtered.map((entry) => {
+      const autoFuel = Number(entry.auto?.estimatedFuel || 0);
+      const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+      const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+      const end = String(entry.endgame?.status || "").toLowerCase();
+      const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+      const teleBpsScale = Number(entry.teleop?.bpsScale || 0);
+      const teleCarryScale = Number(entry.teleop?.carryingScale || 0);
+      const transitionFuel = rebuiltFuelFromCycles(entry.teleop?.transitionCycles, teleBpsScale, teleCarryScale);
+      const shift1Fuel = rebuiltFuelFromCycles(entry.teleop?.shift1Cycles, teleBpsScale, teleCarryScale);
+      const shift2Fuel = rebuiltFuelFromCycles(entry.teleop?.shift2Cycles, teleBpsScale, teleCarryScale);
+      const shift3Fuel = rebuiltFuelFromCycles(entry.teleop?.shift3Cycles, teleBpsScale, teleCarryScale);
+      const shift4Fuel = rebuiltFuelFromCycles(entry.teleop?.shift4Cycles, teleBpsScale, teleCarryScale);
+      const totalUsed = autoFuel + teleFuel + autoClimb + endgameClimb;
+      const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
+        ? Number((entry as Entry & { accuracy?: number }).accuracy)
+        : null;
+
+      return {
+        ...entry,
+        score: scoreEntry(entry, selectedGame),
+        matchLabel: matchLabel(entry),
+        accuracy: accuracyValue ?? "",
+        scriptStatus: accuracyValue === null ? "" : "complete",
+        autoPreloadScale: entry.auto?.preloadScale ?? 0,
+        autoBpsScale: entry.auto?.bpsScale ?? 0,
+        autoCarryScale: entry.auto?.carryingScale ?? 0,
+        autoFuel,
+        autoClimb,
+        autoCycles: entry.auto?.cycleTimes || [],
+        teleBpsScale,
+        teleCarryScale,
+        transitionFuel,
+        shift1Fuel,
+        shift2Fuel,
+        shift3Fuel,
+        shift4Fuel,
+        teleFuel,
+        transitionCycles: entry.teleop?.transitionCycles || [],
+        shift1Cycles: entry.teleop?.shift1Cycles || [],
+        shift2Cycles: entry.teleop?.shift2Cycles || [],
+        shift3Cycles: entry.teleop?.shift3Cycles || [],
+        shift4Cycles: entry.teleop?.shift4Cycles || [],
+        endPlace: entry.endgame?.status || entry.stageStatus || "",
+        endgameClimb,
+        endgameCycles: entry.endgame?.cycleTimes || [],
+        totalUsed,
+      };
     });
-  }, [filtered, sortDir, sortKey]);
+
+    return withScore.sort((a, b) => {
+      if (sortKey === "matchLabel") {
+        const labelDiff = compareMatchLabels(String(a.matchLabel || ""), String(b.matchLabel || ""), sortDir);
+        if (labelDiff !== 0) return labelDiff;
+        return compareSortValues(String(a.eventName || a.eventKey || ""), String(b.eventName || b.eventKey || ""), sortDir);
+      }
+      return compareSortValues(a[sortKey], b[sortKey], sortDir);
+    });
+  }, [filtered, sortDir, sortKey, selectedGame]);
 
   function handleSort(key: SortKey) {
     setSortKey((prevKey) => {
@@ -859,33 +881,6 @@ function AnalyticsPageContent() {
     } finally {
       setAccuracyModalLoading(false);
     }
-  }
-
-  async function handleCleanBlankEntries() {
-    if (!canCleanBlankRows) {
-      alert("Only coaches or team admins can clean blank rows.");
-      return;
-    }
-    const blankRows = rawData.filter((entry) => isEntryBlank(entry));
-    if (blankRows.length === 0) {
-      alert("No blank rows found.");
-      return;
-    }
-    const ok = window.confirm(`Delete ${blankRows.length} blank rows?`);
-    if (!ok) return;
-    setCleaningBlankRows(true);
-    try {
-      await Promise.all(blankRows.map((entry) => deleteDoc(doc(db, "scouting", entry.id))));
-      await loadData();
-      alert(`Deleted ${blankRows.length} blank rows.`);
-    } finally {
-      setCleaningBlankRows(false);
-    }
-  }
-
-  function sortLabel(key: SortKey, label: string) {
-    if (sortKey !== key) return label;
-    return sortDir === "asc" ? `${label} ▲` : `${label} ▼`;
   }
 
   function exportToCSV() {
@@ -1272,32 +1267,28 @@ function AnalyticsPageContent() {
       onSelectedEventChange={setSelectedEvent}
     >
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
-          onClick={exportToCSV}
-          disabled={!canExportCsv}
-          title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
-        >
-          Export CSV
-        </button>
-        <label
-          className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
-          title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
-        >
-          Import CSV
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
-        </label>
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-60"
-          onClick={() => void handleCleanBlankEntries()}
-          disabled={cleaningBlankRows || !canCleanBlankRows}
-          title={canCleanBlankRows ? undefined : "Only coaches or team admins can clean blank rows."}
-        >
-          {cleaningBlankRows ? "Cleaning..." : "Clean Blank Rows"}
-        </button>
+        {false && (
+          <>
+            <button
+              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
+              onClick={exportToCSV}
+              disabled={!canExportCsv}
+              title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
+            >
+              Export CSV
+            </button>
+            <label
+              className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
+              title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
+            >
+              Import CSV
+              <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
+            </label>
+          </>
+        )}
       </div>
 
-      {showImportDialog && (
+      {false && showImportDialog && (
         <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-semibold mb-4">Import CSV</h2>
@@ -1400,38 +1391,102 @@ function AnalyticsPageContent() {
                 <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
-                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
-                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
-                <th className="text-center">Starting Position</th>
-                <th className="text-center">Preload</th>
-                <th className="text-center">BPS</th>
-                <th className="text-center">Carry</th>
-                <th className="text-center">Fuel</th>
-                <th className="text-center">Climb Pts</th>
-                <th className="text-center">Cycles</th>
-                <th className="text-center">BPS</th>
-                <th className="text-center">Carry</th>
-                <th className="text-center">Transition</th>
-                <th className="text-center">Shift 1</th>
-                <th className="text-center">Shift 2</th>
-                <th className="text-center">Shift 3</th>
-                <th className="text-center">Shift 4</th>
-                <th className="text-center">Fuel Used</th>
-                <th className="text-center">Transition</th>
-                <th className="text-center">Shift 1</th>
-                <th className="text-center">Shift 2</th>
-                <th className="text-center">Shift 3</th>
-                <th className="text-center">Shift 4</th>
-                <th className="text-center">End Place</th>
-                <th className="text-center">Climb Pts</th>
-                <th className="text-center">Cycles</th>
-                <th className="text-center">Incidents</th>
-                <th className="text-center">Total</th>
-                <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
-                <th className="text-center">Alliance Accuracy</th>
-                <th className="text-center">Script Status</th>
-                <th className="text-center">Actions</th>
+                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                  {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
+                </th>
+                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
+                  {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                  {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+                  {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoPreloadScale")}>
+                  {sortLabel(sortKey, sortDir, "autoPreloadScale", "Preload")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoBpsScale")}>
+                  {sortLabel(sortKey, sortDir, "autoBpsScale", "BPS")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoCarryScale")}>
+                  {sortLabel(sortKey, sortDir, "autoCarryScale", "Carry")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoFuel")}>
+                  {sortLabel(sortKey, sortDir, "autoFuel", "Fuel")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoClimb")}>
+                  {sortLabel(sortKey, sortDir, "autoClimb", "Climb Pts")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoCycles")}>
+                  {sortLabel(sortKey, sortDir, "autoCycles", "Cycles")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleBpsScale")}>
+                  {sortLabel(sortKey, sortDir, "teleBpsScale", "BPS")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleCarryScale")}>
+                  {sortLabel(sortKey, sortDir, "teleCarryScale", "Carry")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("transitionFuel")}>
+                  {sortLabel(sortKey, sortDir, "transitionFuel", "Transition")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift1Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift1Fuel", "Shift 1")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift2Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift2Fuel", "Shift 2")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift3Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift3Fuel", "Shift 3")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift4Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift4Fuel", "Shift 4")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleFuel")}>
+                  {sortLabel(sortKey, sortDir, "teleFuel", "Fuel Used")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("transitionCycles")}>
+                  {sortLabel(sortKey, sortDir, "transitionCycles", "Transition")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift1Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift1Cycles", "Shift 1")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift2Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift2Cycles", "Shift 2")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift3Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift3Cycles", "Shift 3")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift4Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift4Cycles", "Shift 4")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endPlace")}>
+                  {sortLabel(sortKey, sortDir, "endPlace", "End Place")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameClimb")}>
+                  {sortLabel(sortKey, sortDir, "endgameClimb", "Climb Pts")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameCycles")}>
+                  {sortLabel(sortKey, sortDir, "endgameCycles", "Cycles")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("incidents")}>
+                  {sortLabel(sortKey, sortDir, "incidents", "Incidents")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("totalUsed")}>
+                  {sortLabel(sortKey, sortDir, "totalUsed", "Total")}
+                </th>
+                <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
+                  {sortLabel(sortKey, sortDir, "notes", "Comments")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
+                  {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
+                  {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                  {sortLabel(sortKey, sortDir, "id", "Actions")}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1550,39 +1605,105 @@ function AnalyticsPageContent() {
               <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
             </tr>
             <tr>
-              <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
-              <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
-              <th className="text-center">Starting Position</th>
-              <th className="text-center">Leave</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">L1</th>
-              <th className="text-center">L2</th>
-              <th className="text-center">L3</th>
-              <th className="text-center">L4</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">L1</th>
-              <th className="text-center">L2</th>
-              <th className="text-center">L3</th>
-              <th className="text-center">L4</th>
-              <th className="text-center">Removed Reef</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Failed</th>
-              <th className="text-center">End Place</th>
-              <th className="text-center">Miscellaneous</th>
-              <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
-              <th className="text-center">Alliance Accuracy</th>
-              <th className="text-center">Script Status</th>
-              <th className="text-center">Actions</th>
+              <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
+              </th>
+              <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
+                {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+                {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("leftStartingZone")}>
+                {sortLabel(sortKey, sortDir, "leftStartingZone", "Leave")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralMissed")}>
+                {sortLabel(sortKey, sortDir, "autoCoralMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL1")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL1", "L1")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL2")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL2", "L2")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL3")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL3", "L3")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL4")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL4", "L4")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeProcessorMissed")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeProcessorMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeProcessorScored")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeProcessorScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeNetMissed")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeNetMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeNetScored")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeNetScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL1")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL1", "L1")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL2")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL2", "L2")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL3")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL3", "L3")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL4")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL4", "L4")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopAlgaeRemoved")}>
+                {sortLabel(sortKey, sortDir, "teleopAlgaeRemoved", "Removed Reef")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopProcessorMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopProcessorMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopProcessorScored")}>
+                {sortLabel(sortKey, sortDir, "teleopProcessorScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetRobotMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopNetRobotMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetRobotScored")}>
+                {sortLabel(sortKey, sortDir, "teleopNetRobotScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetHumanMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopNetHumanMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetHumanScored")}>
+                {sortLabel(sortKey, sortDir, "teleopNetHumanScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("failedClimb")}>
+                {sortLabel(sortKey, sortDir, "failedClimb", "Failed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("stageStatus")}>
+                {sortLabel(sortKey, sortDir, "stageStatus", "End Place")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("incidents")}>
+                {sortLabel(sortKey, sortDir, "incidents", "Miscellaneous")}
+              </th>
+              <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
+                {sortLabel(sortKey, sortDir, "notes", "Comments")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
+                {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
+                {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                {sortLabel(sortKey, sortDir, "id", "Actions")}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -1716,3 +1837,4 @@ export default function AnalyticsPage() {
     </ProtectedRoute>
   );
 }
+

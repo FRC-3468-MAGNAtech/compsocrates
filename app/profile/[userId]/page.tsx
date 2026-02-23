@@ -134,10 +134,9 @@ function ProfileContent() {
             ? `M${matchNumber}`
             : "Unknown";
           const practiceMode = String(entry.practiceMode || "").toLowerCase();
-          const isPractice =
-            Boolean(entry.isPracticeScouting) ||
-            Boolean(practiceMode) ||
-            String(entry.matchType || "").toLowerCase() === "practice";
+          const difficulty = String(entry.difficulty || "").trim();
+          const hasPracticeMeta = practiceMode.length > 0 && difficulty.length > 0;
+          const isPractice = Boolean(entry.isPracticeScouting) || hasPracticeMeta;
           if (!isPractice) return;
           practiceEntries += 1;
           if (eventKey) eventKeys.add(eventKey);
@@ -146,16 +145,16 @@ function ProfileContent() {
               ? "Competitive"
               : "Trial"
             : "Real Competition";
-          const difficulty = String(entry.difficulty || (isPractice ? "Unknown" : "N/A"));
+          const difficultyLabel = difficulty || (isPractice ? "Unknown" : "N/A");
           const accuracy = typeof entry.accuracy === "number" ? Number(entry.accuracy) : null;
-          const key = `${season}|${game}|${event}|${match}|${scoutingType}|${difficulty}`;
+          const key = `${season}|${game}|${event}|${match}|${scoutingType}|${difficultyLabel}`;
           const existing = breakdownMap.get(key) || {
             season,
             game,
             event,
             match,
             scoutingType,
-            difficulty,
+            difficulty: difficultyLabel,
             count: 0,
             accuracyTotal: 0,
             accuracyCount: 0,

@@ -247,18 +247,6 @@ export default function Sidebar() {
                 >
                   Account Settings
                 </Link>
-                {(userData.isTeamAdmin || userRoles.includes("team-coach")) && (
-                  <Link
-                    href="/settings/api-keys"
-                    className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
-                    onClick={() => setShowSettings(false)}
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <Settings size={14} />
-                      Team API Keys
-                    </span>
-                  </Link>
-                )}
                 <Link
                   href={`/profile/${userData.uid}`}
                   className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"

@@ -10,6 +10,7 @@ import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScou
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
+import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 
 type MatchStrategyEntry = {
   id: string;
@@ -32,14 +33,34 @@ function MatchStrategyAnalyticsContent() {
   const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
-  const canCleanBlankRows = canDeleteEntries;
   const [entries, setEntries] = useState<MatchStrategyEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
-  const [cleaningBlankRows, setCleaningBlankRows] = useState(false);
+  const [sortKey, setSortKey] = useState<
+    | "matchLabel"
+    | "scoutName"
+    | "r1Team"
+    | "r1Starting"
+    | "r1Role"
+    | "r1Auto"
+    | "r1End"
+    | "r2Team"
+    | "r2Starting"
+    | "r2Role"
+    | "r2Auto"
+    | "r2End"
+    | "r3Team"
+    | "r3Starting"
+    | "r3Role"
+    | "r3Auto"
+    | "r3End"
+    | "notes"
+    | "id"
+  >("matchLabel");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -84,6 +105,67 @@ function MatchStrategyAnalyticsContent() {
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
   }, [normalized, selectedEvent, selectedGame, practiceMatchesOnly]);
 
+  const sorted = useMemo(() => {
+    const getValue = (entry: MatchStrategyEntry) => {
+      const r1 = entry.robots?.[0];
+      const r2 = entry.robots?.[1];
+      const r3 = entry.robots?.[2];
+      switch (sortKey) {
+        case "matchLabel":
+          return entry.matchLabel || "";
+        case "scoutName":
+          return entry.scoutName || "";
+        case "r1Team":
+          return r1?.teamNumber || "";
+        case "r1Starting":
+          return r1?.startingPosition || "";
+        case "r1Role":
+          return r1?.role || "";
+        case "r1Auto":
+          return r1?.autoClimb ? 1 : 0;
+        case "r1End":
+          return r1?.endgameClimb || "";
+        case "r2Team":
+          return r2?.teamNumber || "";
+        case "r2Starting":
+          return r2?.startingPosition || "";
+        case "r2Role":
+          return r2?.role || "";
+        case "r2Auto":
+          return r2?.autoClimb ? 1 : 0;
+        case "r2End":
+          return r2?.endgameClimb || "";
+        case "r3Team":
+          return r3?.teamNumber || "";
+        case "r3Starting":
+          return r3?.startingPosition || "";
+        case "r3Role":
+          return r3?.role || "";
+        case "r3Auto":
+          return r3?.autoClimb ? 1 : 0;
+        case "r3End":
+          return r3?.endgameClimb || "";
+        case "notes":
+          return entry.notes || "";
+        case "id":
+        default:
+          return entry.id;
+      }
+    };
+
+    return [...filtered].sort((a, b) => {
+      if (sortKey === "matchLabel") {
+        return compareMatchLabels(a.matchLabel || "", b.matchLabel || "", sortDir);
+      }
+      return compareSortValues(getValue(a), getValue(b), sortDir);
+    });
+  }, [filtered, sortDir, sortKey]);
+
+  function handleSort(key: typeof sortKey) {
+    setSortDir((prev) => (key === sortKey ? (prev === "asc" ? "desc" : "asc") : "asc"));
+    setSortKey(key);
+  }
+
   async function handleDeleteEntry(entry: MatchStrategyEntry) {
     if (!canDeleteEntries) {
       alert("Only coaches or team admins can delete entries.");
@@ -93,42 +175,6 @@ function MatchStrategyAnalyticsContent() {
     if (!ok) return;
     await deleteDoc(doc(db, "matchStrategyPlans", entry.id));
     setEntries((prev) => prev.filter((row) => row.id !== entry.id));
-  }
-
-  function isBlankEntry(entry: MatchStrategyEntry) {
-    const hasText = [entry.matchLabel, entry.scoutName, entry.notes]
-      .some((value) => String(value || "").trim().length > 0);
-    const hasRobotData = Array.isArray(entry.robots) && entry.robots.some((robot) =>
-      String(robot?.teamNumber || "").trim().length > 0 ||
-      String(robot?.startingPosition || "").trim().length > 0 ||
-      String(robot?.role || "").trim().length > 0 ||
-      Boolean(robot?.autoClimb) ||
-      String(robot?.endgameClimb || "").trim().length > 0
-    );
-    return !hasText && !hasRobotData;
-  }
-
-  async function handleCleanBlankEntries() {
-    if (!canCleanBlankRows) {
-      alert("Only coaches or team admins can clean blank rows.");
-      return;
-    }
-    const blankRows = entries.filter((entry) => isBlankEntry(entry));
-    if (blankRows.length === 0) {
-      alert("No blank rows found.");
-      return;
-    }
-    const ok = window.confirm(`Delete ${blankRows.length} blank rows?`);
-    if (!ok) return;
-    setCleaningBlankRows(true);
-    try {
-      await Promise.all(blankRows.map((entry) => deleteDoc(doc(db, "matchStrategyPlans", entry.id))));
-      const snap = await getDocs(collection(db, "matchStrategyPlans"));
-      setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as MatchStrategyEntry[]);
-      alert(`Deleted ${blankRows.length} blank rows.`);
-    } finally {
-      setCleaningBlankRows(false);
-    }
   }
 
   function exportToCSV() {
@@ -305,29 +351,25 @@ function MatchStrategyAnalyticsContent() {
       <h1 className="text-3xl font-bold mb-2 theme-text">Match Strategy Analytics</h1>
       <p className="text-gray-600 mb-4">Per-match strategic plans.</p>
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
-          onClick={exportToCSV}
-          disabled={!canExportCsv}
-          title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
-        >
-          Export CSV
-        </button>
-        <label
-          className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
-          title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
-        >
-          {importing ? "Importing..." : "Import CSV"}
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv || importing} />
-        </label>
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-60"
-          onClick={() => void handleCleanBlankEntries()}
-          disabled={cleaningBlankRows || !canCleanBlankRows}
-          title={canCleanBlankRows ? undefined : "Only coaches or team admins can clean blank rows."}
-        >
-          {cleaningBlankRows ? "Cleaning..." : "Clean Blank Rows"}
-        </button>
+        {false && (
+          <>
+            <button
+              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
+              onClick={exportToCSV}
+              disabled={!canExportCsv}
+              title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
+            >
+              Export CSV
+            </button>
+            <label
+              className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
+              title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
+            >
+              {importing ? "Importing..." : "Import CSV"}
+              <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv || importing} />
+            </label>
+          </>
+        )}
       </div>
       {loading ? (
         <LoadingSpinner message="Loading match strategy analytics..." />
@@ -349,29 +391,67 @@ function MatchStrategyAnalyticsContent() {
                 <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
-                <th className="text-center">Match</th>
-                <th className="text-center">Scout</th>
-                <th className="text-center">Team Number</th>
-                <th className="text-center">Starting Position</th>
-                <th className="text-center">Role</th>
-                <th className="text-center">Auto Climb</th>
-                <th className="text-center">Endgame Climb</th>
-                <th className="text-center">Team Number</th>
-                <th className="text-center">Starting Position</th>
-                <th className="text-center">Role</th>
-                <th className="text-center">Auto Climb</th>
-                <th className="text-center">Endgame Climb</th>
-                <th className="text-center">Team Number</th>
-                <th className="text-center">Starting Position</th>
-                <th className="text-center">Role</th>
-                <th className="text-center">Auto Climb</th>
-                <th className="text-center">Endgame Climb</th>
-                <th className="text-center">Notes</th>
-                <th className="text-center">Actions</th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                  {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                  {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Team")}>
+                  {sortLabel(sortKey, sortDir, "r1Team", "Team Number")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Starting")}>
+                  {sortLabel(sortKey, sortDir, "r1Starting", "Starting Position")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Role")}>
+                  {sortLabel(sortKey, sortDir, "r1Role", "Role")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Auto")}>
+                  {sortLabel(sortKey, sortDir, "r1Auto", "Auto Climb")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r1End")}>
+                  {sortLabel(sortKey, sortDir, "r1End", "Endgame Climb")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Team")}>
+                  {sortLabel(sortKey, sortDir, "r2Team", "Team Number")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Starting")}>
+                  {sortLabel(sortKey, sortDir, "r2Starting", "Starting Position")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Role")}>
+                  {sortLabel(sortKey, sortDir, "r2Role", "Role")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Auto")}>
+                  {sortLabel(sortKey, sortDir, "r2Auto", "Auto Climb")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r2End")}>
+                  {sortLabel(sortKey, sortDir, "r2End", "Endgame Climb")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Team")}>
+                  {sortLabel(sortKey, sortDir, "r3Team", "Team Number")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Starting")}>
+                  {sortLabel(sortKey, sortDir, "r3Starting", "Starting Position")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Role")}>
+                  {sortLabel(sortKey, sortDir, "r3Role", "Role")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Auto")}>
+                  {sortLabel(sortKey, sortDir, "r3Auto", "Auto Climb")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("r3End")}>
+                  {sortLabel(sortKey, sortDir, "r3End", "Endgame Climb")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
+                  {sortLabel(sortKey, sortDir, "notes", "Notes")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                  {sortLabel(sortKey, sortDir, "id", "Actions")}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((entry) => {
+              {sorted.map((entry) => {
                 const r1 = entry.robots?.[0];
                 const r2 = entry.robots?.[1];
                 const r3 = entry.robots?.[2];

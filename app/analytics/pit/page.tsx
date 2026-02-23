@@ -10,6 +10,7 @@ import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, getEventsForGa
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean, toNumber } from "@/app/utils/csvHelpers";
+import { compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 
 type PitEntry = {
   id: string;
@@ -75,7 +76,6 @@ function PitAnalyticsContent() {
   const { userData } = useAuth();
   const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const canImportCsv = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
-  const canCleanBlankRows = canImportCsv;
   const canExportCsv = canImportCsv;
   const [entries, setEntries] = useState<PitEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
@@ -85,9 +85,38 @@ function PitAnalyticsContent() {
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [cleaningBlankRows, setCleaningBlankRows] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [importEvent, setImportEvent] = useState("app-testing");
+  const [sortKey, setSortKey] = useState<
+    | "teamNumber"
+    | "scoutName"
+    | "robotPictureUrl"
+    | "pitDisposition"
+    | "driveDisposition"
+    | "fuelPreloadCapacity"
+    | "fuelBallsPerSecond"
+    | "fuelCarryingCapacity"
+    | "climbLevel1"
+    | "climbLevel2"
+    | "climbLevel3"
+    | "typicalFuelCycleTime"
+    | "typicalClimbTime"
+    | "autoCycleDescription"
+    | "driveBaseType"
+    | "centerOfGravity"
+    | "coralCollecting"
+    | "coralScoring"
+    | "algaeCollecting"
+    | "algaeScoring"
+    | "bargeCapability"
+    | "autoCapabilities"
+    | "startingPositions"
+    | "betterAt"
+    | "rating"
+    | "notes"
+    | "id"
+  >("teamNumber");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -133,46 +162,90 @@ function PitAnalyticsContent() {
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
   }, [normalized, selectedEvent, selectedGame, practiceMatchesOnly]);
 
-  const importEventOptions = useMemo(() => getEventsForGame(importGame), [importGame]);
+  const sorted = useMemo(() => {
+    const getValue = (entry: PitEntry) => {
+      const coralCollecting = [entry.collectCoralStation && "Station", entry.collectCoralGround && "Ground"]
+        .filter(Boolean)
+        .join(", ");
+      const coralScoring = [entry.coralL4 && "L4", entry.coralL3 && "L3", entry.coralL2 && "L2", entry.coralL1 && "L1"]
+        .filter(Boolean)
+        .join(", ");
+      const algaeCollecting = [entry.collectAlgaeReef && "Reef", entry.collectAlgaeGround && "Ground"]
+        .filter(Boolean)
+        .join(", ");
+      const algaeScoring = [entry.scoreProcessor && "Processor", entry.scoreNetRobot && "Net"].filter(Boolean).join(", ");
+      const startingPositions = [entry.startingOpposite && "Opposite", entry.startingMiddle && "Middle", entry.startingProcessor && "Processor"]
+        .filter(Boolean)
+        .join(", ");
 
-  function isBlankPitEntry(entry: PitEntry): boolean {
-    const hasAnyText = [
-      entry.teamNumber,
-      entry.scoutName,
-      entry.robotPictureUrl,
-      entry.driveBaseType,
-      entry.centerOfGravity,
-      entry.bargeCapability,
-      entry.autoCapabilities,
-      entry.typicalFuelCycleTime,
-      entry.typicalClimbTime,
-      entry.autoCycleDescription,
-      entry.betterAt,
-      entry.notes,
-    ].some((value) => String(value || "").trim().length > 0);
-    const hasAnyBool = Boolean(
-      entry.pitDisposition ||
-      entry.driveDisposition ||
-      entry.collectCoralStation ||
-      entry.collectCoralGround ||
-      entry.coralL1 ||
-      entry.coralL2 ||
-      entry.coralL3 ||
-      entry.coralL4 ||
-      entry.collectAlgaeReef ||
-      entry.collectAlgaeGround ||
-      entry.scoreProcessor ||
-      entry.scoreNetRobot ||
-      entry.climbLevel1 ||
-      entry.climbLevel2 ||
-      entry.climbLevel3 ||
-      entry.startingOpposite ||
-      entry.startingMiddle ||
-      entry.startingProcessor
-    );
-    const hasAnyNumber = (entry.fuelPreloadCapacity || 0) > 0 || (entry.fuelBallsPerSecond || 0) > 0 || (entry.fuelCarryingCapacity || 0) > 0 || (entry.rating || 0) > 0;
-    return !hasAnyText && !hasAnyBool && !hasAnyNumber;
+      switch (sortKey) {
+        case "teamNumber":
+          return entry.teamNumber || "";
+        case "scoutName":
+          return entry.scoutName || "";
+        case "robotPictureUrl":
+          return entry.robotPictureUrl ? 1 : 0;
+        case "pitDisposition":
+          return entry.pitDisposition ?? "";
+        case "driveDisposition":
+          return entry.driveDisposition ?? "";
+        case "fuelPreloadCapacity":
+          return entry.fuelPreloadCapacity ?? 0;
+        case "fuelBallsPerSecond":
+          return entry.fuelBallsPerSecond ?? 0;
+        case "fuelCarryingCapacity":
+          return entry.fuelCarryingCapacity ?? 0;
+        case "climbLevel1":
+          return entry.climbLevel1 ? 1 : 0;
+        case "climbLevel2":
+          return entry.climbLevel2 ? 1 : 0;
+        case "climbLevel3":
+          return entry.climbLevel3 ? 1 : 0;
+        case "typicalFuelCycleTime":
+          return entry.typicalFuelCycleTime || "";
+        case "typicalClimbTime":
+          return entry.typicalClimbTime || "";
+        case "autoCycleDescription":
+          return entry.autoCycleDescription || "";
+        case "driveBaseType":
+          return entry.driveBaseType || "";
+        case "centerOfGravity":
+          return entry.centerOfGravity || "";
+        case "coralCollecting":
+          return coralCollecting || "";
+        case "coralScoring":
+          return coralScoring || "";
+        case "algaeCollecting":
+          return algaeCollecting || "";
+        case "algaeScoring":
+          return algaeScoring || "";
+        case "bargeCapability":
+          return entry.bargeCapability || "";
+        case "autoCapabilities":
+          return entry.autoCapabilities || "";
+        case "startingPositions":
+          return startingPositions || "";
+        case "betterAt":
+          return entry.betterAt || "";
+        case "rating":
+          return entry.rating ?? 0;
+        case "notes":
+          return entry.notes || "";
+        case "id":
+        default:
+          return entry.id;
+      }
+    };
+
+    return [...filtered].sort((a, b) => compareSortValues(getValue(a), getValue(b), sortDir));
+  }, [filtered, sortDir, sortKey]);
+
+  function handleSort(key: typeof sortKey) {
+    setSortDir((prev) => (key === sortKey ? (prev === "asc" ? "desc" : "asc") : "asc"));
+    setSortKey(key);
   }
+
+  const importEventOptions = useMemo(() => getEventsForGame(importGame), [importGame]);
 
   function exportToCSV() {
     if (!canExportCsv) {
@@ -251,30 +324,6 @@ function PitAnalyticsContent() {
     setImportEvent(selectedEvent === "all" ? (getEventsForGame(selectedGame)[0]?.id || "app-testing") : selectedEvent);
     setShowImportDialog(true);
     event.target.value = "";
-  }
-
-  async function handleCleanBlankEntries() {
-    if (!canCleanBlankRows) {
-      alert("Only coaches or team admins can clean blank rows.");
-      return;
-    }
-    const blankRows = entries.filter((entry) => isBlankPitEntry(entry));
-    if (blankRows.length === 0) {
-      alert("No blank rows found.");
-      return;
-    }
-    const ok = window.confirm(`Delete ${blankRows.length} blank rows?`);
-    if (!ok) return;
-    setCleaningBlankRows(true);
-    try {
-      await Promise.all(blankRows.map((entry) => deleteDoc(doc(db, "pitScouting", entry.id))));
-      const snapshot = await getDocs(collection(db, "pitScouting"));
-      const rows = snapshot.docs.map((entryDoc) => ({ id: entryDoc.id, ...entryDoc.data() })) as PitEntry[];
-      setEntries(rows);
-      alert(`Deleted ${blankRows.length} blank rows.`);
-    } finally {
-      setCleaningBlankRows(false);
-    }
   }
 
   async function runCSVImport() {
@@ -431,32 +480,28 @@ function PitAnalyticsContent() {
       <h1 className="text-3xl font-bold mb-2 theme-text">Pit Analytics</h1>
       <p className="text-gray-600 mb-4">Pit scouting breakdown with sticky team/scout columns.</p>
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
-          onClick={exportToCSV}
-          disabled={!canExportCsv}
-          title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
-        >
-          Export CSV
-        </button>
-        <label
-          className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
-          title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
-        >
-          Import CSV
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
-        </label>
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-60"
-          onClick={() => void handleCleanBlankEntries()}
-          disabled={cleaningBlankRows || !canCleanBlankRows}
-          title={canCleanBlankRows ? undefined : "Only coaches or team admins can clean blank rows."}
-        >
-          {cleaningBlankRows ? "Cleaning..." : "Clean Blank Rows"}
-        </button>
+        {false && (
+          <>
+            <button
+              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
+              onClick={exportToCSV}
+              disabled={!canExportCsv}
+              title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
+            >
+              Export CSV
+            </button>
+            <label
+              className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
+              title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
+            >
+              Import CSV
+              <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
+            </label>
+          </>
+        )}
       </div>
 
-      {showImportDialog && (
+      {false && showImportDialog && (
         <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-semibold mb-4">Import CSV</h2>
@@ -542,26 +587,58 @@ function PitAnalyticsContent() {
                   <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-0 sticky-row-3 text-center">Team</th>
-                  <th className="sticky-left-1 sticky-row-3 text-center">Scout</th>
-                  <th className="text-center">Robot Picture</th>
-                  <th className="text-center">Pit Disposition</th>
-                  <th className="text-center">Drive Disposition</th>
-                  <th className="text-center">Preload</th>
-                  <th className="text-center">Balls/Sec</th>
-                  <th className="text-center">Carrying</th>
-                  <th className="text-center">Climb L1</th>
-                  <th className="text-center">Climb L2</th>
-                  <th className="text-center">Climb L3</th>
-                  <th className="text-center">Fuel Cycle Time</th>
-                  <th className="text-center">Climb Time</th>
-                  <th className="text-center">Auto Cycle</th>
-                  <th className="text-center">Comments</th>
-                  <th className="text-center">Actions</th>
+                  <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
+                    {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
+                  </th>
+                  <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                    {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
+                    {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("pitDisposition")}>
+                    {sortLabel(sortKey, sortDir, "pitDisposition", "Pit Disposition")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("driveDisposition")}>
+                    {sortLabel(sortKey, sortDir, "driveDisposition", "Drive Disposition")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("fuelPreloadCapacity")}>
+                    {sortLabel(sortKey, sortDir, "fuelPreloadCapacity", "Preload")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("fuelBallsPerSecond")}>
+                    {sortLabel(sortKey, sortDir, "fuelBallsPerSecond", "Balls/Sec")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("fuelCarryingCapacity")}>
+                    {sortLabel(sortKey, sortDir, "fuelCarryingCapacity", "Carrying")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("climbLevel1")}>
+                    {sortLabel(sortKey, sortDir, "climbLevel1", "Climb L1")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("climbLevel2")}>
+                    {sortLabel(sortKey, sortDir, "climbLevel2", "Climb L2")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("climbLevel3")}>
+                    {sortLabel(sortKey, sortDir, "climbLevel3", "Climb L3")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("typicalFuelCycleTime")}>
+                    {sortLabel(sortKey, sortDir, "typicalFuelCycleTime", "Fuel Cycle Time")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("typicalClimbTime")}>
+                    {sortLabel(sortKey, sortDir, "typicalClimbTime", "Climb Time")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("autoCycleDescription")}>
+                    {sortLabel(sortKey, sortDir, "autoCycleDescription", "Auto Cycle")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
+                    {sortLabel(sortKey, sortDir, "notes", "Comments")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                    {sortLabel(sortKey, sortDir, "id", "Actions")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((entry) => (
+                {sorted.map((entry) => (
                   <tr key={entry.id}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
                     <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
@@ -618,28 +695,64 @@ function PitAnalyticsContent() {
                   <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-0 sticky-row-3 text-center">Team</th>
-                  <th className="sticky-left-1 sticky-row-3 text-center">Scout</th>
-                  <th className="text-center">Robot Picture</th>
-                  <th className="text-center">Pit Disposition</th>
-                  <th className="text-center">Drive Disposition</th>
-                  <th className="text-center">Drive Base</th>
-                  <th className="text-center">Center of Gravity</th>
-                  <th className="text-center">Coral Collecting</th>
-                  <th className="text-center">Coral Scoring</th>
-                  <th className="text-center">Algae Collecting</th>
-                  <th className="text-center">Algae Scoring</th>
-                  <th className="text-center">Barge</th>
-                  <th className="text-center">Auto</th>
-                  <th className="text-center">Starting Positions</th>
-                  <th className="text-center">Better At</th>
-                  <th className="text-center">Rating</th>
-                  <th className="text-center">Comments</th>
-                  <th className="text-center">Actions</th>
+                  <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
+                    {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
+                  </th>
+                  <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                    {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
+                    {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("pitDisposition")}>
+                    {sortLabel(sortKey, sortDir, "pitDisposition", "Pit Disposition")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("driveDisposition")}>
+                    {sortLabel(sortKey, sortDir, "driveDisposition", "Drive Disposition")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("driveBaseType")}>
+                    {sortLabel(sortKey, sortDir, "driveBaseType", "Drive Base")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("centerOfGravity")}>
+                    {sortLabel(sortKey, sortDir, "centerOfGravity", "Center of Gravity")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("coralCollecting")}>
+                    {sortLabel(sortKey, sortDir, "coralCollecting", "Coral Collecting")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("coralScoring")}>
+                    {sortLabel(sortKey, sortDir, "coralScoring", "Coral Scoring")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("algaeCollecting")}>
+                    {sortLabel(sortKey, sortDir, "algaeCollecting", "Algae Collecting")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("algaeScoring")}>
+                    {sortLabel(sortKey, sortDir, "algaeScoring", "Algae Scoring")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("bargeCapability")}>
+                    {sortLabel(sortKey, sortDir, "bargeCapability", "Barge")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("autoCapabilities")}>
+                    {sortLabel(sortKey, sortDir, "autoCapabilities", "Auto")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("startingPositions")}>
+                    {sortLabel(sortKey, sortDir, "startingPositions", "Starting Positions")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("betterAt")}>
+                    {sortLabel(sortKey, sortDir, "betterAt", "Better At")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("rating")}>
+                    {sortLabel(sortKey, sortDir, "rating", "Rating")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
+                    {sortLabel(sortKey, sortDir, "notes", "Comments")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                    {sortLabel(sortKey, sortDir, "id", "Actions")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((entry) => (
+                {sorted.map((entry) => (
                   <tr key={entry.id}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
                     <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
