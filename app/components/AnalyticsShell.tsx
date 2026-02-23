@@ -10,6 +10,7 @@ type AnalyticsShellProps = {
   entriesCount: number;
   selectedGame: string;
   onSelectedGameChange: (game: string) => void;
+  allowedGames?: string[];
   practiceMatchesOnly?: boolean;
   onPracticeMatchesOnlyChange?: (practiceOnly: boolean) => void;
   selectedEvent?: string;
@@ -36,6 +37,7 @@ export default function AnalyticsShell({
   entriesCount,
   selectedGame,
   onSelectedGameChange,
+  allowedGames = ["REEFSCAPE", "REBUILT"],
   practiceMatchesOnly = false,
   onPracticeMatchesOnlyChange,
   selectedEvent,
@@ -91,6 +93,13 @@ export default function AnalyticsShell({
 
     return eventOptions;
   })();
+
+  useEffect(() => {
+    if (allowedGames.length === 0) return;
+    if (!allowedGames.includes(selectedGame)) {
+      onSelectedGameChange(allowedGames[0]);
+    }
+  }, [allowedGames, onSelectedGameChange, selectedGame]);
 
   useEffect(() => {
     if (!onSelectedEventChange || !selectedEvent) return;
@@ -189,8 +198,8 @@ export default function AnalyticsShell({
                 onChange={(e) => onSelectedGameChange(e.target.value)}
                 className="border rounded px-3 py-1.5 text-sm"
               >
-                <option value="REEFSCAPE">REEFSCAPE</option>
-                <option value="REBUILT">REBUILT</option>
+                {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
+                {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
               </select>
             </div>
           </div>

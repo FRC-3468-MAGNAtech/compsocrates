@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
@@ -9,6 +9,7 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
+import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
 
 type DriveReflectionEntry = {
   id: string;
@@ -29,17 +30,20 @@ type DriveReflectionEntry = {
 function DriveReflectionAnalyticsContent() {
   const { userData } = useAuth();
   const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
+  const canImportCsv = canDeleteEntries;
+  const canExportCsv = canDeleteEntries;
   const [entries, setEntries] = useState<DriveReflectionEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
     const savedEvent = localStorage.getItem("analytics-selected-event");
     const savedPractice = localStorage.getItem("analytics-practice-matches-only");
-    if (savedGame === "REEFSCAPE" || savedGame === "REBUILT") setSelectedGame(savedGame);
+    if (savedGame === "REBUILT") setSelectedGame("REBUILT");
     if (savedEvent) setSelectedEvent(savedEvent);
     if (savedPractice !== null) setPracticeMatchesOnly(savedPractice === "true");
   }, []);
@@ -89,11 +93,171 @@ function DriveReflectionAnalyticsContent() {
     setEntries((prev) => prev.filter((row) => row.id !== entry.id));
   }
 
+  function exportToCSV() {
+    if (!canExportCsv) {
+      alert("Only coaches or team admins can export CSV files.");
+      return;
+    }
+    const header = [
+      "Match",
+      "Scout",
+      "R1 Team",
+      "R1 Starting Position",
+      "R1 Role",
+      "R1 Auto Climb",
+      "R1 Endgame Climb",
+      "R2 Team",
+      "R2 Starting Position",
+      "R2 Role",
+      "R2 Auto Climb",
+      "R2 Endgame Climb",
+      "R3 Team",
+      "R3 Starting Position",
+      "R3 Role",
+      "R3 Auto Climb",
+      "R3 Endgame Climb",
+      "Notes",
+      "Game",
+      "Event Key",
+    ];
+    const lines = filtered.map((entry) => {
+      const r1 = entry.robots?.[0];
+      const r2 = entry.robots?.[1];
+      const r3 = entry.robots?.[2];
+      return [
+        entry.matchLabel || "",
+        entry.scoutName || "",
+        r1?.teamNumber || "",
+        r1?.startingPosition || "",
+        r1?.role || "",
+        r1?.autoClimb ? "Y" : "N",
+        r1?.endgameClimb || "",
+        r2?.teamNumber || "",
+        r2?.startingPosition || "",
+        r2?.role || "",
+        r2?.autoClimb ? "Y" : "N",
+        r2?.endgameClimb || "",
+        r3?.teamNumber || "",
+        r3?.startingPosition || "",
+        r3?.role || "",
+        r3?.autoClimb ? "Y" : "N",
+        r3?.endgameClimb || "",
+        entry.notes || "",
+        entry.game || selectedGame,
+        entry.eventKey || selectedEvent,
+      ].map(csvEscape).join(",");
+    });
+    const csv = [header.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `drive-reflection-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportFilePick(event: React.ChangeEvent<HTMLInputElement>) {
+    if (!canImportCsv) {
+      alert("Only coaches or team admins can import CSV files.");
+      event.target.value = "";
+      return;
+    }
+    const file = event.target.files?.[0];
+    if (!file || importing) return;
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (loadEvent) => {
+      try {
+        const text = String(loadEvent.target?.result || "");
+        const lines = splitCsvRecords(text);
+        if (lines.length < 2) throw new Error("CSV has no data rows.");
+        const headers = parseCsvLine(lines[0]).map(normalizeHeader);
+        const idx = (name: string) => headers.findIndex((header) => header === name);
+        const get = (cells: string[], index: number) => (index >= 0 ? String(cells[index] || "").trim() : "");
+
+        const idxMatch = idx("match");
+        const idxScout = idx("scout");
+        const idxR1Team = idx("r1team");
+        const idxR1Starting = idx("r1startingposition");
+        const idxR1Role = idx("r1role");
+        const idxR1Auto = idx("r1autoclimb");
+        const idxR1End = idx("r1endgameclimb");
+        const idxR2Team = idx("r2team");
+        const idxR2Starting = idx("r2startingposition");
+        const idxR2Role = idx("r2role");
+        const idxR2Auto = idx("r2autoclimb");
+        const idxR2End = idx("r2endgameclimb");
+        const idxR3Team = idx("r3team");
+        const idxR3Starting = idx("r3startingposition");
+        const idxR3Role = idx("r3role");
+        const idxR3Auto = idx("r3autoclimb");
+        const idxR3End = idx("r3endgameclimb");
+        const idxNotes = idx("notes");
+        const idxGame = idx("game");
+        const idxEvent = idx("eventkey");
+
+        let imported = 0;
+        for (let i = 1; i < lines.length; i += 1) {
+          const cells = parseCsvLine(lines[i]);
+          const matchLabel = get(cells, idxMatch);
+          const scoutName = get(cells, idxScout);
+          if (!matchLabel && !scoutName) continue;
+          const now = Date.now();
+          await addDoc(collection(db, "driveScouting"), {
+            matchLabel,
+            scoutName,
+            robots: [
+              {
+                teamNumber: get(cells, idxR1Team),
+                startingPosition: get(cells, idxR1Starting),
+                role: get(cells, idxR1Role),
+                autoClimb: toBoolean(get(cells, idxR1Auto)),
+                endgameClimb: get(cells, idxR1End),
+              },
+              {
+                teamNumber: get(cells, idxR2Team),
+                startingPosition: get(cells, idxR2Starting),
+                role: get(cells, idxR2Role),
+                autoClimb: toBoolean(get(cells, idxR2Auto)),
+                endgameClimb: get(cells, idxR2End),
+              },
+              {
+                teamNumber: get(cells, idxR3Team),
+                startingPosition: get(cells, idxR3Starting),
+                role: get(cells, idxR3Role),
+                autoClimb: toBoolean(get(cells, idxR3Auto)),
+                endgameClimb: get(cells, idxR3End),
+              },
+            ],
+            notes: get(cells, idxNotes),
+            game: get(cells, idxGame) || selectedGame,
+            eventKey: get(cells, idxEvent) || selectedEvent,
+            submittedAt: now,
+            timestamp: now,
+          });
+          imported += 1;
+        }
+        const snap = await getDocs(collection(db, "driveScouting"));
+        setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as DriveReflectionEntry[]);
+        alert(`Imported ${imported} drive reflection rows.`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        alert(`Error importing CSV: ${message}`);
+      } finally {
+        setImporting(false);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  }
+
   return (
     <AnalyticsShell
       entriesCount={filtered.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+      allowedGames={["REBUILT"]}
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
@@ -102,6 +266,23 @@ function DriveReflectionAnalyticsContent() {
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Drive Reflection Analytics</h1>
       <p className="text-gray-600 mb-4">Drive team reflections by match.</p>
+      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
+        <button
+          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
+          onClick={exportToCSV}
+          disabled={!canExportCsv}
+          title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
+        >
+          Export CSV
+        </button>
+        <label
+          className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
+          title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
+        >
+          {importing ? "Importing..." : "Import CSV"}
+          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv || importing} />
+        </label>
+      </div>
       {loading ? (
         <LoadingSpinner message="Loading drive reflection analytics..." />
       ) : (
@@ -114,7 +295,7 @@ function DriveReflectionAnalyticsContent() {
                 <th className="bg-pink-300 text-center" colSpan={2}>General</th>
               </tr>
               <tr>
-                <th className="bg-red-200 text-center" colSpan={2}>Match Details</th>
+                <th className="bg-red-200 text-center" colSpan={2}>Information</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 1</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 2</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 3</th>
