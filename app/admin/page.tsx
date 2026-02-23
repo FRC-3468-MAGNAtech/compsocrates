@@ -133,7 +133,8 @@ function AdminPanelContent() {
 
     setDeletingMatchOnlyRows(true);
     try {
-      const snap = await getDocs(collection(db, "scouting"));
+      const targetQuery = query(collection(db, "scouting"), where("eventKey", "==", "2025lake"));
+      const snap = await getDocs(targetQuery);
       const matchOnlyDocs = snap.docs.filter((row) => isMatchOnlyRow(row.data() as Record<string, unknown>));
       if (matchOnlyDocs.length === 0) {
         alert("No match-only rows found.");
@@ -141,7 +142,7 @@ function AdminPanelContent() {
       }
 
       const ok = window.confirm(
-        `Delete ${matchOnlyDocs.length} match-only rows? This removes rows that only contain a match label.`
+        `Delete ${matchOnlyDocs.length} match-only rows for eventKey="2025lake"? This removes rows that only contain a match label.`
       );
       if (!ok) {
         alert("Delete cancelled.");
