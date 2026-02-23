@@ -12,6 +12,7 @@ function AdminPanelContent() {
   const { userData } = useAuth();
   const [savingDashboard, setSavingDashboard] = useState(false);
   const [deletingBayou, setDeletingBayou] = useState(false);
+  const [deletingMatchOnlyRows, setDeletingMatchOnlyRows] = useState(false);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
     { label: "Pit Scout", value: "/pit-scout-dashboard" },
@@ -82,6 +83,89 @@ function AdminPanelContent() {
     }
   }
 
+  function isMatchOnlyRow(entry: Record<string, unknown>) {
+    const isEffectivelyEmptyText = (value: unknown) => {
+      const raw = String(value ?? "").trim().toLowerCase();
+      return raw === "" || raw === "0" || raw === "-" || raw === "n/a" || raw === "na" || raw === "unknown";
+    };
+    const numbers = [
+      entry.autoCoralMissed,
+      entry.autoCoralL1,
+      entry.autoCoralL2,
+      entry.autoCoralL3,
+      entry.autoCoralL4,
+      entry.autoAlgaeProcessorMissed,
+      entry.autoAlgaeProcessorScored,
+      entry.autoAlgaeNetMissed,
+      entry.autoAlgaeNetScored,
+      entry.teleopCoralMissed,
+      entry.teleopCoralL1,
+      entry.teleopCoralL2,
+      entry.teleopCoralL3,
+      entry.teleopCoralL4,
+      entry.teleopProcessorMissed,
+      entry.teleopProcessorScored,
+      entry.teleopNetRobotMissed,
+      entry.teleopNetRobotScored,
+      entry.teleopNetHumanMissed,
+      entry.teleopNetHumanScored,
+      entry.failedClimb,
+    ];
+    const hasAnyNumbers = numbers.some((value) => Number(value || 0) > 0);
+    return (
+      isEffectivelyEmptyText(entry.teamNumber) &&
+      isEffectivelyEmptyText(entry.scoutName) &&
+      isEffectivelyEmptyText(entry.startingPosition) &&
+      isEffectivelyEmptyText(entry.stageStatus) &&
+      isEffectivelyEmptyText(entry.notes) &&
+      (!Array.isArray(entry.incidents) || entry.incidents.length === 0) &&
+      !Boolean(entry.leftStartingZone) &&
+      !Boolean(entry.teleopAlgaeRemoved) &&
+      !hasAnyNumbers
+    );
+  }
+
+  async function deleteMatchOnlyRows() {
+    if (!userData?.isTeamAdmin) {
+      alert("Only team admins can run this action.");
+      return;
+    }
+
+    setDeletingMatchOnlyRows(true);
+    try {
+      const snap = await getDocs(collection(db, "scouting"));
+      const matchOnlyDocs = snap.docs.filter((row) => isMatchOnlyRow(row.data() as Record<string, unknown>));
+      if (matchOnlyDocs.length === 0) {
+        alert("No match-only rows found.");
+        return;
+      }
+
+      const ok = window.confirm(
+        `Delete ${matchOnlyDocs.length} match-only rows? This removes rows that only contain a match label.`
+      );
+      if (!ok) {
+        alert("Delete cancelled.");
+        return;
+      }
+
+      let deleted = 0;
+      for (let i = 0; i < matchOnlyDocs.length; i += 450) {
+        const chunk = matchOnlyDocs.slice(i, i + 450);
+        const batch = writeBatch(db);
+        chunk.forEach((row) => batch.delete(row.ref));
+        await batch.commit();
+        deleted += chunk.length;
+      }
+
+      alert(`Deleted ${deleted} match-only rows.`);
+    } catch (error) {
+      console.error("Failed deleting match-only rows:", error);
+      alert("Delete failed. Check console for details.");
+    } finally {
+      setDeletingMatchOnlyRows(false);
+    }
+  }
+
   if (!userData?.isTeamAdmin) {
     return (
       <div className="flex h-screen bg-gray-50">
@@ -147,6 +231,21 @@ function AdminPanelContent() {
             >
               {deletingBayou ? "Deleting..." : "Delete Bayou 2025 REEFSCAPE Matches"}
             </button>
+
+            <div className="mt-5">
+              <p className="text-sm text-gray-600 mb-3">
+                Remove match-only rows with no scouting data (only a match label).
+              </p>
+              <button
+                type="button"
+                onClick={() => void deleteMatchOnlyRows()}
+                disabled={deletingMatchOnlyRows}
+                className="px-4 py-2 rounded text-white disabled:opacity-60"
+                style={{ backgroundColor: "#b91c1c" }}
+              >
+                {deletingMatchOnlyRows ? "Deleting..." : "Delete Match-Only Rows"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
