@@ -88,6 +88,9 @@ function AdminPanelContent() {
       const raw = String(value ?? "").trim().toLowerCase();
       return raw === "" || raw === "0" || raw === "-" || raw === "n/a" || raw === "na" || raw === "unknown";
     };
+    const incidents = Array.isArray(entry.incidents) ? entry.incidents : [];
+    const incidentsAreEmpty =
+      incidents.length === 0 || incidents.every((value) => isEffectivelyEmptyText(value));
     const numbers = [
       entry.autoCoralMissed,
       entry.autoCoralL1,
@@ -118,7 +121,7 @@ function AdminPanelContent() {
       isEffectivelyEmptyText(entry.startingPosition) &&
       isEffectivelyEmptyText(entry.stageStatus) &&
       isEffectivelyEmptyText(entry.notes) &&
-      (!Array.isArray(entry.incidents) || entry.incidents.length === 0) &&
+      incidentsAreEmpty &&
       !Boolean(entry.leftStartingZone) &&
       !Boolean(entry.teleopAlgaeRemoved) &&
       !hasAnyNumbers
