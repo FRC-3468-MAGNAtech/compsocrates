@@ -97,10 +97,6 @@ function ProfileContent() {
         ]);
 
         const eventKeys = new Set<string>();
-        scoutingSnap.docs.forEach((entryDoc) => {
-          const entry = entryDoc.data();
-          if (entry.eventKey) eventKeys.add(entry.eventKey);
-        });
         const breakdownMap = new Map<
           string,
           {
@@ -142,7 +138,9 @@ function ProfileContent() {
             Boolean(entry.isPracticeScouting) ||
             Boolean(practiceMode) ||
             String(entry.matchType || "").toLowerCase() === "practice";
-          if (isPractice) practiceEntries += 1;
+          if (!isPractice) return;
+          practiceEntries += 1;
+          if (eventKey) eventKeys.add(eventKey);
           const scoutingType: "Trial" | "Competitive" | "Real Competition" = isPractice
             ? practiceMode === "competitive"
               ? "Competitive"
@@ -200,7 +198,7 @@ function ProfileContent() {
         });
 
         setStats({
-          totalEntries: scoutingSnap.size,
+          totalEntries: practiceEntries,
           practiceEntries,
           practiceSessions: practiceSnap.size,
           avgAccuracy: accuracyCount > 0 ? Math.round(accuracyTotal / accuracyCount) : 0,

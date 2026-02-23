@@ -359,6 +359,10 @@ function getRebuiltBreakdown(entry: Entry): AccuracyRobotBreakdown {
 }
 
 function isEntryBlank(entry: Entry) {
+  const isEffectivelyEmptyText = (value: unknown) => {
+    const raw = String(value ?? "").trim().toLowerCase();
+    return raw === "" || raw === "0" || raw === "-" || raw === "n/a" || raw === "na" || raw === "unknown";
+  };
   const numbers = [
     entry.autoCoralMissed,
     entry.autoCoralL1,
@@ -384,16 +388,22 @@ function isEntryBlank(entry: Entry) {
   ];
   const hasAnyNumbers = numbers.some((value) => Number(value || 0) > 0);
   return (
-    !String(entry.teamNumber || "").trim() &&
-    !String(entry.scoutName || "").trim() &&
-    !String(entry.startingPosition || "").trim() &&
-    !String(entry.stageStatus || "").trim() &&
-    !String(entry.notes || "").trim() &&
+    isEffectivelyEmptyText(entry.teamNumber) &&
+    isEffectivelyEmptyText(entry.scoutName) &&
+    isEffectivelyEmptyText(entry.startingPosition) &&
+    isEffectivelyEmptyText(entry.stageStatus) &&
+    isEffectivelyEmptyText(entry.notes) &&
     (!entry.incidents || entry.incidents.length === 0) &&
     !entry.leftStartingZone &&
     !entry.teleopAlgaeRemoved &&
     !hasAnyNumbers
   );
+}
+
+function displayEntryText(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw === "0" || raw.toLowerCase() === "n/a" || raw.toLowerCase() === "unknown") return "-";
+  return raw;
 }
 
 function parseCsvLine(line: string): string[] {
@@ -1067,6 +1077,7 @@ function AnalyticsPageContent() {
           const teamRaw = (values[idxTeam] || "").trim();
           const scoutRaw = (values[idxScout] || "").trim();
           const startRaw = (values[idxStartingPos] || "").trim();
+          const parsedTeamNumber = Number(teamRaw.replace(/\D/g, ""));
           const rowSignals = [matchRaw, teamRaw, scoutRaw, startRaw].map(normalizeHeader);
           const looksLikeHeaderRow =
             rowSignals.includes("match") ||
@@ -1111,7 +1122,7 @@ function AnalyticsPageContent() {
             Boolean((values[idxIncidents] || "").trim()) ||
             Boolean((values[idxEndPlace] || "").trim());
           const hasMatchSignal = /\d/.test(matchRaw) || /(practice|final|upper|lower|ub|lb|qual|qm|round)/i.test(matchRaw);
-          const hasCoreIds = hasMatchSignal && /\d/.test(teamRaw);
+          const hasCoreIds = hasMatchSignal && Number.isFinite(parsedTeamNumber) && parsedTeamNumber > 0;
           if (looksLikeHeaderRow || !hasCoreIds || (!hasNumericData && !hasTextData)) {
             skipped += 1;
             continue;
@@ -1441,9 +1452,9 @@ function AnalyticsPageContent() {
                 return (
                 <tr key={entry.id}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
-                  <td className="sticky-left-1 bg-white font-semibold text-center">{entry.teamNumber || "-"}</td>
-                  <td className="text-center">{entry.scoutName || "-"}</td>
-                  <td className="text-center">{entry.startingPosition || "-"}</td>
+                  <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
+                  <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                  <td className="text-center">{displayEntryText(entry.startingPosition)}</td>
                   <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
                   <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
@@ -1578,9 +1589,9 @@ function AnalyticsPageContent() {
             {data.map((entry) => (
               <tr key={entry.id}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
-                <td className="sticky-left-1 bg-white font-semibold text-center">{entry.teamNumber || "-"}</td>
-                <td className="text-center">{entry.scoutName || "-"}</td>
-                <td className="text-center">{entry.startingPosition || "-"}</td>
+                <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
+                <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                <td className="text-center">{displayEntryText(entry.startingPosition)}</td>
                 <td className="text-center">{entry.leftStartingZone ? "Y" : "N"}</td>
                 <td className="text-center">{entry.autoCoralMissed || 0}</td>
                 <td className="text-center">{entry.autoCoralL1 || 0}</td>
