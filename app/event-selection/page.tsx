@@ -175,7 +175,7 @@ function EventSelectionContent() {
       <button
         onClick={saveSelection}
         disabled={saving}
-        className="fixed bottom-4 right-4 z-40 px-6 py-3 rounded text-white font-semibold disabled:opacity-50 shadow-lg"
+        className="fixed bottom-4 right-6 md:right-8 z-40 px-6 py-3 rounded text-white font-semibold disabled:opacity-50 shadow-lg"
         style={{ background: "var(--primary-gradient)" }}
       >
         {saving ? "Saving..." : "Save Event Selection"}
