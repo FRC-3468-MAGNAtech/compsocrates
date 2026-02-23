@@ -120,7 +120,7 @@ function EventSelectionContent() {
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-8 pb-32">
         <h1 className="text-3xl font-bold mb-2 theme-text">Event Selection</h1>
         <p className="text-gray-600 mb-6">Select which events your team is attending.</p>
 
@@ -171,14 +171,23 @@ function EventSelectionContent() {
           </div>
         )}
 
-        <button
-          onClick={saveSelection}
-          disabled={saving}
-          className="mt-6 px-6 py-3 rounded text-white font-semibold disabled:opacity-50"
-          style={{ background: "var(--primary-gradient)" }}
-        >
-          {saving ? "Saving..." : "Save Event Selection"}
-        </button>
+      </div>
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <div className="mx-auto w-full max-w-[1200px] px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-gray-600">
+              {selectedEvents.length} event{selectedEvents.length === 1 ? "" : "s"} selected
+            </p>
+            <button
+              onClick={saveSelection}
+              disabled={saving}
+              className="w-full sm:w-auto px-6 py-3 rounded text-white font-semibold disabled:opacity-50"
+              style={{ background: "var(--primary-gradient)" }}
+            >
+              {saving ? "Saving..." : "Save Event Selection"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

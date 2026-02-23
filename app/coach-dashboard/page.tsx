@@ -39,7 +39,6 @@ function filterEventsByAttendance(
   const normalizedName = displayName.trim().toLowerCase();
   return events.filter((event) => {
     const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
-    if (attendees.length === 0) return true;
     return attendees.some((value) => {
       const safe = String(value || "").trim();
       return safe === normalizedUid || safe.toLowerCase() === normalizedName;
