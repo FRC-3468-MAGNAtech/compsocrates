@@ -40,17 +40,6 @@ type ScoutingEntry = {
   teleopNetHumanScored?: number;
   teleopAlgaeRemoved?: boolean;
   penaltyPoints?: number;
-  estimatedScore?: number;
-  auto?: {
-    estimatedFuel?: number;
-    successfulClimb?: boolean;
-  };
-  teleop?: {
-    estimatedFuel?: number;
-  };
-  endgame?: {
-    status?: string;
-  };
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
@@ -58,38 +47,6 @@ type ScoutingEntry = {
 
 function isPracticeEntry(entry: ScoutingEntry) {
   return isPracticeScoutedEntry(entry);
-}
-
-function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
-  if (game === "REBUILT") {
-    const autoFuel = Number(entry.auto?.estimatedFuel || 0);
-    const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
-    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
-    const endStatus = String(entry.endgame?.status || "").toLowerCase();
-    const endgameClimb = endStatus === "level-1" ? 10 : endStatus === "level-2" ? 20 : endStatus === "level-3" ? 30 : 0;
-    return autoFuel + teleFuel + autoClimb + endgameClimb;
-  }
-
-  const auto =
-    (entry.autoCoralL1 || 0) * 3 +
-    (entry.autoCoralL2 || 0) * 4 +
-    (entry.autoCoralL3 || 0) * 6 +
-    (entry.autoCoralL4 || 0) * 7 +
-    (entry.autoAlgaeProcessorScored || 0) * 6 +
-    (entry.autoAlgaeNetScored || 0) * 4 +
-    (entry.leftStartingZone ? 3 : 0);
-  const tele =
-    (entry.teleopCoralL1 || 0) * 2 +
-    (entry.teleopCoralL2 || 0) * 3 +
-    (entry.teleopCoralL3 || 0) * 4 +
-    (entry.teleopCoralL4 || 0) * 5 +
-    (entry.teleopProcessorScored || 0) * 6 +
-    (entry.teleopNetRobotScored || 0) * 4 +
-    (entry.teleopNetHumanScored || 0) * 4 +
-    (entry.teleopAlgaeRemoved ? 2 : 0);
-  const stage = String(entry.stageStatus || "").toLowerCase();
-  const end = stage.includes("deep") ? 12 : stage.includes("shallow") ? 6 : stage.includes("park") ? 2 : 0;
-  return auto + tele + end + Number(entry.penaltyPoints || 0);
 }
 
 function TeamAveragesContent() {
@@ -137,7 +94,11 @@ function TeamAveragesContent() {
     filteredEntries.forEach((e) => {
       const team = e.teamNumber;
       if (!team) return;
-      const total = scoreEntry(e, selectedGame);
+      const auto = (e.autoCoralL1 || 0) * 3 + (e.autoCoralL2 || 0) * 4 + (e.autoCoralL3 || 0) * 6 + (e.autoCoralL4 || 0) * 7 + (e.autoAlgaeProcessorScored || 0) * 6 + (e.autoAlgaeNetScored || 0) * 4 + (e.leftStartingZone ? 3 : 0);
+      const tele = (e.teleopCoralL1 || 0) * 2 + (e.teleopCoralL2 || 0) * 3 + (e.teleopCoralL3 || 0) * 4 + (e.teleopCoralL4 || 0) * 5 + (e.teleopProcessorScored || 0) * 6 + (e.teleopNetRobotScored || 0) * 4 + (e.teleopNetHumanScored || 0) * 4 + (e.teleopAlgaeRemoved ? 2 : 0);
+      const stage = String(e.stageStatus || "").toLowerCase();
+      const end = stage.includes("deep") ? 12 : stage.includes("shallow") ? 6 : stage.includes("park") ? 2 : 0;
+      const total = auto + tele + end + Number(e.penaltyPoints || 0);
       if (!teamData[team]) teamData[team] = [];
       teamData[team].push(total);
     });
@@ -154,7 +115,7 @@ function TeamAveragesContent() {
       };
     });
     return rows.sort((a, b) => b.avgTotal - a.avgTotal);
-  }, [filteredEntries, selectedGame]);
+  }, [filteredEntries]);
 
   return (
     <AnalyticsShell
@@ -173,22 +134,13 @@ function TeamAveragesContent() {
       {loading ? (
         <LoadingSpinner message="Loading team averages..." />
       ) : (
-        <div className="bg-white rounded-xl shadow-md h-[calc(100vh-270px)] overflow-auto">
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
           <table className="w-full">
-            <thead className="sticky-header">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="bg-blue-300 text-center" colSpan={1}>Scoring</th>
-              </tr>
-              <tr>
-                <th className="bg-red-200 text-center" colSpan={1}>Team</th>
-                <th className="bg-red-200 text-center" colSpan={1}>Matches</th>
-                <th className="bg-blue-200 text-center" colSpan={1}>Average</th>
-              </tr>
-              <tr>
-                <th className="text-center">Team</th>
-                <th className="text-center">Matches</th>
-                <th className="text-center">Avg Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matches</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">

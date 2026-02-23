@@ -41,17 +41,6 @@ type ScoutingEntry = {
   allianceColor?: string;
   assignedAlliance?: string;
   startingPosition?: string;
-  estimatedScore?: number;
-  auto?: {
-    estimatedFuel?: number;
-    successfulClimb?: boolean;
-  };
-  teleop?: {
-    estimatedFuel?: number;
-  };
-  endgame?: {
-    status?: string;
-  };
 };
 
 type AllianceRow = {
@@ -91,16 +80,7 @@ function normalizeMatchId(entry: ScoutingEntry): string {
   return num ? `${prefix}${num}` : "";
 }
 
-function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame) {
-  if (game === "REBUILT") {
-    const autoFuel = Number(entry.auto?.estimatedFuel || 0);
-    const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
-    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
-    const endStatus = String(entry.endgame?.status || "").toLowerCase();
-    const endgameClimb = endStatus === "level-1" ? 10 : endStatus === "level-2" ? 20 : endStatus === "level-3" ? 30 : 0;
-    return autoFuel + teleFuel + autoClimb + endgameClimb;
-  }
-
+function scoreEntry(entry: ScoutingEntry) {
   return (
     (entry.leftStartingZone ? 3 : 0) +
     (entry.autoCoralL1 || 0) * 3 +
@@ -187,7 +167,7 @@ function MatchBreakdownContent() {
     selectedRows.forEach((entry) => {
       const team = String(entry.teamNumber || "").trim();
       if (!team) return;
-      const score = scoreEntry(entry, selectedGame);
+      const score = scoreEntry(entry);
       const alliance = inferAlliance(entry);
       const existing = teamScores.get(team);
       if (!existing || score > existing.score) {
@@ -258,25 +238,17 @@ function MatchBreakdownContent() {
               <p className="font-semibold text-red-700">Red Alliance Total: {allianceBreakdown.redTotal}</p>
             </div>
             <table className="w-full">
-              <thead className="sticky-header">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="bg-red-300 text-center" colSpan={1}>Alliance</th>
-                  <th className="bg-pink-300 text-center" colSpan={1}>Score</th>
-                </tr>
-                <tr>
-                  <th className="bg-red-200 text-center" colSpan={1}>Robot</th>
-                  <th className="bg-pink-200 text-center" colSpan={1}>Points</th>
-                </tr>
-                <tr>
-                  <th className="text-center">Team</th>
-                  <th className="text-center">Score</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {allianceBreakdown.red.map((row) => (
                   <tr key={`red-${row.teamNumber}`}>
                     <td className="px-4 py-3 font-semibold">{row.teamNumber}</td>
-                    <td className="px-4 py-3 text-xl font-bold text-red-700">{row.totalScore}</td>
+                    <td className="px-4 py-3 text-xl font-bold theme-text">{row.totalScore}</td>
                   </tr>
                 ))}
               </tbody>
@@ -288,18 +260,10 @@ function MatchBreakdownContent() {
               <p className="font-semibold text-blue-700">Blue Alliance Total: {allianceBreakdown.blueTotal}</p>
             </div>
             <table className="w-full">
-              <thead className="sticky-header">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="bg-blue-300 text-center" colSpan={1}>Alliance</th>
-                  <th className="bg-pink-300 text-center" colSpan={1}>Score</th>
-                </tr>
-                <tr>
-                  <th className="bg-blue-200 text-center" colSpan={1}>Robot</th>
-                  <th className="bg-pink-200 text-center" colSpan={1}>Points</th>
-                </tr>
-                <tr>
-                  <th className="text-center">Team</th>
-                  <th className="text-center">Score</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">

@@ -36,17 +36,6 @@ type ScoutingEntry = {
   teleopNetRobotScored?: number;
   teleopNetHumanScored?: number;
   penaltyPoints?: number;
-  estimatedScore?: number;
-  auto?: {
-    estimatedFuel?: number;
-    successfulClimb?: boolean;
-  };
-  teleop?: {
-    estimatedFuel?: number;
-  };
-  endgame?: {
-    status?: string;
-  };
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
@@ -54,34 +43,6 @@ type ScoutingEntry = {
 
 function isPracticeEntry(entry: ScoutingEntry) {
   return isPracticeScoutedEntry(entry);
-}
-
-function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
-  if (game === "REBUILT") {
-    const autoFuel = Number(entry.auto?.estimatedFuel || 0);
-    const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
-    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
-    const endStatus = String(entry.endgame?.status || "").toLowerCase();
-    const endgameClimb = endStatus === "level-1" ? 10 : endStatus === "level-2" ? 20 : endStatus === "level-3" ? 30 : 0;
-    return autoFuel + teleFuel + autoClimb + endgameClimb;
-  }
-  return (
-    (entry.leftStartingZone ? 3 : 0) +
-    (entry.autoCoralL1 || 0) * 3 +
-    (entry.autoCoralL2 || 0) * 4 +
-    (entry.autoCoralL3 || 0) * 6 +
-    (entry.autoCoralL4 || 0) * 7 +
-    (entry.autoAlgaeProcessorScored || 0) * 6 +
-    (entry.autoAlgaeNetScored || 0) * 4 +
-    (entry.teleopCoralL1 || 0) * 2 +
-    (entry.teleopCoralL2 || 0) * 3 +
-    (entry.teleopCoralL3 || 0) * 4 +
-    (entry.teleopCoralL4 || 0) * 5 +
-    (entry.teleopProcessorScored || 0) * 6 +
-    (entry.teleopNetRobotScored || 0) * 4 +
-    (entry.teleopNetHumanScored || 0) * 4 +
-    Number(entry.penaltyPoints || 0)
-  );
 }
 
 function RankingsContent() {
@@ -129,7 +90,22 @@ function RankingsContent() {
     filteredEntries.forEach((e) => {
       const team = e.teamNumber;
       if (!team) return;
-      const score = scoreEntry(e, selectedGame);
+      const score =
+        (e.leftStartingZone ? 3 : 0) +
+        (e.autoCoralL1 || 0) * 3 +
+        (e.autoCoralL2 || 0) * 4 +
+        (e.autoCoralL3 || 0) * 6 +
+        (e.autoCoralL4 || 0) * 7 +
+        (e.autoAlgaeProcessorScored || 0) * 6 +
+        (e.autoAlgaeNetScored || 0) * 4 +
+        (e.teleopCoralL1 || 0) * 2 +
+        (e.teleopCoralL2 || 0) * 3 +
+        (e.teleopCoralL3 || 0) * 4 +
+        (e.teleopCoralL4 || 0) * 5 +
+        (e.teleopProcessorScored || 0) * 6 +
+        (e.teleopNetRobotScored || 0) * 4 +
+        (e.teleopNetHumanScored || 0) * 4 +
+        Number(e.penaltyPoints || 0);
       if (!teamScores[team]) teamScores[team] = [];
       teamScores[team].push(score);
     });
@@ -141,7 +117,7 @@ function RankingsContent() {
       matches: scores.length,
     }));
     return rows.sort((a, b) => b.avgScore - a.avgScore);
-  }, [filteredEntries, selectedGame]);
+  }, [filteredEntries]);
 
   return (
     <AnalyticsShell
@@ -160,26 +136,15 @@ function RankingsContent() {
       {loading ? (
         <LoadingSpinner message="Loading rankings..." />
       ) : (
-        <div className="bg-white rounded-xl shadow-md h-[calc(100vh-270px)] overflow-auto">
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
           <table className="w-full">
-            <thead className="sticky-header">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="bg-red-300 text-center" colSpan={2}>Ranking</th>
-                <th className="bg-blue-300 text-center" colSpan={2}>Scoring</th>
-                <th className="bg-pink-300 text-center" colSpan={1}>Volume</th>
-              </tr>
-              <tr>
-                <th className="bg-red-200 text-center" colSpan={1}>Order</th>
-                <th className="bg-red-200 text-center" colSpan={1}>Team</th>
-                <th className="bg-blue-200 text-center" colSpan={2}>Points</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Matches</th>
-              </tr>
-              <tr>
-                <th className="text-center">Rank</th>
-                <th className="text-center">Team</th>
-                <th className="text-center">Avg</th>
-                <th className="text-center">High</th>
-                <th className="text-center">Matches</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">High</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matches</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
