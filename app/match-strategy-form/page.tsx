@@ -266,6 +266,20 @@ function MatchStrategyFormContent() {
     });
     return warnings;
   }, [pitByTeam, robot1, robot2, robot3]);
+  const pitSyncStatusByRobot = useMemo(
+    () =>
+      [robot1, robot2, robot3].map((robot) => {
+        const team = String(robot.teamNumber || "").trim();
+        const pit = team ? pitByTeam[team] : undefined;
+        const climbConflict = Boolean(team && pit && !canTeamPerformEndgame(robot.endgameClimb, pit));
+        return {
+          team,
+          hasPitSync: Boolean(pit),
+          climbConflict,
+        };
+      }),
+    [pitByTeam, robot1, robot2, robot3]
+  );
   const modalMatchOptions = useMemo<ModalMatchOption[]>(() => {
     const mapped: ModalMatchOption[] = [];
     let finalsIndex = 1;
@@ -343,12 +357,16 @@ function MatchStrategyFormContent() {
   const robotBlock = (
     title: string,
     robot: RobotPlan,
-    setRobot: (value: RobotPlan) => void
+    setRobot: (value: RobotPlan) => void,
+    syncStatus: { team: string; hasPitSync: boolean; climbConflict: boolean }
   ) => (
     <div className="bg-white rounded-xl shadow p-4 space-y-3">
       <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{title}</h2>
       <label className="block text-sm font-medium text-gray-700">Team Number</label>
       <input className="w-full border rounded p-3" value={robot.teamNumber} onChange={(e) => setRobot({ ...robot, teamNumber: e.target.value.replace(/[^\d]/g, "") })} />
+      {syncStatus.team && !syncStatus.hasPitSync && (
+        <p className="text-xs text-amber-700">No pit form synced for team {syncStatus.team} at this event yet.</p>
+      )}
 
       <label className="block text-sm font-medium text-gray-700">Starting Position</label>
       <select className="w-full border rounded p-3" value={robot.startingPosition} onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}>
@@ -376,6 +394,9 @@ function MatchStrategyFormContent() {
         <option value="level-2">Level 2</option>
         <option value="level-3">Level 3</option>
       </select>
+      {syncStatus.climbConflict && (
+        <p className="text-xs text-red-700">Does not match pit capability for this team: selected climb is unavailable.</p>
+      )}
     </div>
   );
 
@@ -396,27 +417,14 @@ function MatchStrategyFormContent() {
               <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{displayMatchLabel(selectedMatch)}</span>
               <button type="button" onClick={() => setShowMatchPicker(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
             </div>
-            {selectedTeamNumbers.length > 0 && (
-              <div className="text-sm">
-                {selectedTeamNumbers.map((team) => (
-                  <div key={team} className={pitByTeam[team] ? "text-green-700" : "text-amber-700"}>
-                    {pitByTeam[team] ? `Team ${team} synced with pit form.` : `Team ${team} has no pit form sync yet.`}
-                  </div>
-                ))}
-                {pitSyncWarnings.length > 0 && (
-                  <div className="mt-1 text-red-700">
-                    {pitSyncWarnings.join(" ")}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="text-sm text-gray-700">Pit sync checks are active. Field warnings appear under each robot.</div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
           </div>
 
-          {robotBlock("Robot 1", robot1, setRobot1)}
-          {robotBlock("Robot 2", robot2, setRobot2)}
-          {robotBlock("Robot 3", robot3, setRobot3)}
+          {robotBlock("Robot 1", robot1, setRobot1, pitSyncStatusByRobot[0])}
+          {robotBlock("Robot 2", robot2, setRobot2, pitSyncStatusByRobot[1])}
+          {robotBlock("Robot 3", robot3, setRobot3, pitSyncStatusByRobot[2])}
 
           <button type="submit" disabled={saving || !selectedMatch} className="w-full py-3 rounded text-white font-semibold disabled:opacity-60" style={{ backgroundColor: "var(--primary-color)" }}>
             {saving ? "Submitting..." : "Submit Match Strategy Form"}

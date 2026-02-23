@@ -254,14 +254,6 @@ function DriveReflectionFormContent() {
     () => matchOptions.find((match) => match.key === selectedMatchKey) || null,
     [matchOptions, selectedMatchKey]
   );
-  const selectedTeamNumbers = useMemo(
-    () =>
-      [robot1.teamNumber, robot2.teamNumber, robot3.teamNumber]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean),
-    [robot1.teamNumber, robot2.teamNumber, robot3.teamNumber]
-  );
-
   useEffect(() => {
     async function loadSyncedPlan() {
       if (!selectedMatch || !eventKey) {
@@ -305,6 +297,34 @@ function DriveReflectionFormContent() {
     });
     return mismatchedTeams;
   }, [robot1, robot2, robot3, syncedPlan]);
+  const plannedByTeam = useMemo(() => {
+    const map = new Map<string, StrategyRobot>();
+    if (!syncedPlan || !Array.isArray(syncedPlan.robots)) return map;
+    syncedPlan.robots.forEach((robot) => {
+      const key = String(robot.teamNumber || "").trim();
+      if (key) map.set(key, robot);
+    });
+    return map;
+  }, [syncedPlan]);
+
+  const robotMismatchByIndex = useMemo(
+    () =>
+      [robot1, robot2, robot3].map((robot) => {
+        const team = String(robot.teamNumber || "").trim();
+        const planned = team ? plannedByTeam.get(team) : undefined;
+        const mismatches = planned ? compareRobotToPlan(robot, planned) : [];
+        const mismatchSet = new Set(mismatches);
+        return {
+          team,
+          hasPlanForTeam: Boolean(planned),
+          startingPosition: mismatchSet.has("Starting Position"),
+          role: mismatchSet.has("Role"),
+          autoClimb: mismatchSet.has("Auto Climb"),
+          endgameClimb: mismatchSet.has("Endgame Climb"),
+        };
+      }),
+    [plannedByTeam, robot1, robot2, robot3]
+  );
   const modalMatchOptions = useMemo<ModalMatchOption[]>(() => {
     const mapped: ModalMatchOption[] = [];
     let finalsIndex = 1;
@@ -383,7 +403,12 @@ function DriveReflectionFormContent() {
     }
   }
 
-  const robotBlock = (title: string, robot: RobotReflection, setRobot: (value: RobotReflection) => void) => (
+  const robotBlock = (
+    title: string,
+    robot: RobotReflection,
+    setRobot: (value: RobotReflection) => void,
+    mismatch: { team: string; hasPlanForTeam: boolean; startingPosition: boolean; role: boolean; autoClimb: boolean; endgameClimb: boolean }
+  ) => (
     <div className="bg-white rounded-xl shadow p-4 space-y-3">
       <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>
         {title}
@@ -394,6 +419,9 @@ function DriveReflectionFormContent() {
         value={robot.teamNumber}
         onChange={(e) => setRobot({ ...robot, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
       />
+      {syncedPlan && mismatch.team && !mismatch.hasPlanForTeam && (
+        <p className="text-xs text-amber-700">No synced match strategy data found for team {mismatch.team} in this match.</p>
+      )}
 
       <label className="block text-sm font-medium text-gray-700">Starting Position</label>
       <select
@@ -406,6 +434,9 @@ function DriveReflectionFormContent() {
         <option value="middle">Middle</option>
         <option value="depot-side">Depot Side</option>
       </select>
+      {mismatch.startingPosition && (
+        <p className="text-xs text-red-700">Does not match synced match strategy starting position.</p>
+      )}
 
       <label className="block text-sm font-medium text-gray-700">Role</label>
       <select className="w-full border rounded p-3" value={robot.role} onChange={(e) => setRobot({ ...robot, role: e.target.value })}>
@@ -415,11 +446,17 @@ function DriveReflectionFormContent() {
         <option value="shooter">Shooter</option>
         <option value="stealer">Stealer</option>
       </select>
+      {mismatch.role && (
+        <p className="text-xs text-red-700">Does not match synced match strategy role.</p>
+      )}
 
       <label className="flex items-center gap-2">
         <input type="checkbox" checked={robot.autoClimb} onChange={(e) => setRobot({ ...robot, autoClimb: e.target.checked })} />
         Auto Climb
       </label>
+      {mismatch.autoClimb && (
+        <p className="text-xs text-red-700">Does not match synced match strategy auto climb value.</p>
+      )}
 
       <label className="block text-sm font-medium text-gray-700">Endgame Climb</label>
       <select
@@ -432,6 +469,9 @@ function DriveReflectionFormContent() {
         <option value="level-2">Level 2</option>
         <option value="level-3">Level 3</option>
       </select>
+      {mismatch.endgameClimb && (
+        <p className="text-xs text-red-700">Does not match synced match strategy endgame climb.</p>
+      )}
     </div>
   );
 
@@ -469,20 +509,15 @@ function DriveReflectionFormContent() {
               ) : (
                 <div className="text-amber-700">No synced match strategy form found for this match yet.</div>
               )}
-              {selectedTeamNumbers.length > 0 && syncedPlan && planMismatchMessages.length === 0 && (
-                <div className="text-green-700">Teams in this reflection currently match the synced strategy plan.</div>
-              )}
-              {planMismatchMessages.length > 0 && (
-                <div className="text-red-700">Mismatch: {planMismatchMessages.join("; ")}</div>
-              )}
+              <div className="text-gray-700">Mismatch warnings appear directly under each robot field.</div>
             </div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
           </div>
 
-          {robotBlock("Robot 1", robot1, setRobot1)}
-          {robotBlock("Robot 2", robot2, setRobot2)}
-          {robotBlock("Robot 3", robot3, setRobot3)}
+          {robotBlock("Robot 1", robot1, setRobot1, robotMismatchByIndex[0])}
+          {robotBlock("Robot 2", robot2, setRobot2, robotMismatchByIndex[1])}
+          {robotBlock("Robot 3", robot3, setRobot3, robotMismatchByIndex[2])}
 
           <button
             type="submit"
