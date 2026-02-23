@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -35,6 +35,8 @@ type PitCapabilityDoc = {
   game?: string;
   eventKey?: string;
   createdAt?: number;
+  submittedAt?: number;
+  timestamp?: number;
   climbLevel1?: boolean;
   climbLevel2?: boolean;
   climbLevel3?: boolean;
@@ -90,6 +92,10 @@ function canTeamPerformEndgame(level: string, pit?: PitCapabilityDoc): boolean {
   return true;
 }
 
+function pitDocTime(doc: PitCapabilityDoc) {
+  return Number(doc.createdAt || doc.submittedAt || doc.timestamp || 0);
+}
+
 function MatchPickerModal({
   open,
   onClose,
@@ -124,6 +130,7 @@ function MatchStrategyFormContent() {
   const [robot1, setRobot1] = useState<RobotPlan>({ teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" });
   const [robot2, setRobot2] = useState<RobotPlan>({ teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" });
   const [robot3, setRobot3] = useState<RobotPlan>({ teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" });
+  const [pitByTeam, setPitByTeam] = useState<Record<string, PitCapabilityDoc>>({});
 
   useEffect(() => {
     async function loadMatches() {
@@ -211,6 +218,54 @@ function MatchStrategyFormContent() {
   }
 
   const selectedMatch = useMemo(() => matchOptions.find((match) => match.key === selectedMatchKey) || null, [matchOptions, selectedMatchKey]);
+  const selectedTeamNumbers = useMemo(
+    () =>
+      [robot1.teamNumber, robot2.teamNumber, robot3.teamNumber]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    [robot1.teamNumber, robot2.teamNumber, robot3.teamNumber]
+  );
+
+  useEffect(() => {
+    async function loadPitSync() {
+      if (!eventKey || selectedTeamNumbers.length === 0) {
+        setPitByTeam({});
+        return;
+      }
+      const pitSnap = await getDocs(collection(db, "pitScouting"));
+      const relevant = pitSnap.docs
+        .map((row) => row.data() as PitCapabilityDoc)
+        .filter(
+          (row) =>
+            String(row.game || "REBUILT").toUpperCase() === "REBUILT" &&
+            String(row.eventKey || "").trim() === String(eventKey || "").trim() &&
+            selectedTeamNumbers.includes(String(row.teamNumber || "").trim())
+        );
+      const latestByTeam: Record<string, PitCapabilityDoc> = {};
+      relevant.forEach((row) => {
+        const team = String(row.teamNumber || "").trim();
+        if (!team) return;
+        const prev = latestByTeam[team];
+        if (!prev || pitDocTime(row) >= pitDocTime(prev)) latestByTeam[team] = row;
+      });
+      setPitByTeam(latestByTeam);
+    }
+    void loadPitSync();
+  }, [eventKey, selectedTeamNumbers]);
+
+  const pitSyncWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    [robot1, robot2, robot3].forEach((robot, index) => {
+      const team = String(robot.teamNumber || "").trim();
+      if (!team) return;
+      const pit = pitByTeam[team];
+      if (!pit) return;
+      if (!canTeamPerformEndgame(robot.endgameClimb, pit)) {
+        warnings.push(`Robot ${index + 1} (${team}) planned ${robot.endgameClimb || "climb"} but pit says unavailable.`);
+      }
+    });
+    return warnings;
+  }, [pitByTeam, robot1, robot2, robot3]);
   const modalMatchOptions = useMemo<ModalMatchOption[]>(() => {
     const mapped: ModalMatchOption[] = [];
     let finalsIndex = 1;
@@ -257,46 +312,9 @@ function MatchStrategyFormContent() {
       return;
     }
 
-    if (userData.teamId) {
-      const selectedTeams = [robot1, robot2, robot3]
-        .map((robot) => String(robot.teamNumber || "").trim())
-        .filter(Boolean);
-      const uniqueTeams = Array.from(new Set(selectedTeams));
-      if (uniqueTeams.length > 0) {
-        const pitSnap = await getDocs(query(collection(db, "pitScouting"), where("teamId", "==", userData.teamId)));
-        const relevantPitRows = pitSnap.docs
-          .map((row) => row.data() as PitCapabilityDoc)
-          .filter(
-            (row) =>
-              String(row.game || "REBUILT").toUpperCase() === "REBUILT" &&
-              String(row.eventKey || "").trim() === String(eventKey || "").trim() &&
-              uniqueTeams.includes(String(row.teamNumber || "").trim())
-          );
-        const latestByTeam = new Map<string, PitCapabilityDoc>();
-        relevantPitRows.forEach((row) => {
-          const key = String(row.teamNumber || "").trim();
-          if (!key) return;
-          const prev = latestByTeam.get(key);
-          if (!prev || Number(row.createdAt || 0) >= Number(prev.createdAt || 0)) {
-            latestByTeam.set(key, row);
-          }
-        });
-
-        const impossible: string[] = [];
-        [robot1, robot2, robot3].forEach((robot) => {
-          const team = String(robot.teamNumber || "").trim();
-          if (!team) return;
-          const pit = latestByTeam.get(team);
-          if (!pit) return;
-          if (!canTeamPerformEndgame(robot.endgameClimb, pit)) {
-            impossible.push(`${team} cannot do ${robot.endgameClimb || "that climb"} based on pit scouting`);
-          }
-        });
-        if (impossible.length > 0) {
-          alert(`Selected plan includes capability conflicts:\n${impossible.join("\n")}`);
-          return;
-        }
-      }
+    if (pitSyncWarnings.length > 0) {
+      const proceed = window.confirm(`Warning: plan conflicts with pit scouting:\n${pitSyncWarnings.join("\n")}\n\nSubmit anyway?`);
+      if (!proceed) return;
     }
 
     setSaving(true);
@@ -374,10 +392,24 @@ function MatchStrategyFormContent() {
           <div className="bg-white rounded-xl shadow p-4 space-y-3">
             <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-gray-700">Match</span>
-              <span className="font-semibold">{displayMatchLabel(selectedMatch)}</span>
+              <span className="text-lg font-semibold">Match:</span>
+              <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{displayMatchLabel(selectedMatch)}</span>
               <button type="button" onClick={() => setShowMatchPicker(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
             </div>
+            {selectedTeamNumbers.length > 0 && (
+              <div className="text-sm">
+                {selectedTeamNumbers.map((team) => (
+                  <div key={team} className={pitByTeam[team] ? "text-green-700" : "text-amber-700"}>
+                    {pitByTeam[team] ? `Team ${team} synced with pit form.` : `Team ${team} has no pit form sync yet.`}
+                  </div>
+                ))}
+                {pitSyncWarnings.length > 0 && (
+                  <div className="mt-1 text-red-700">
+                    {pitSyncWarnings.join(" ")}
+                  </div>
+                )}
+              </div>
+            )}
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
           </div>

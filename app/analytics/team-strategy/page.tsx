@@ -37,12 +37,14 @@ function TeamStrategyAnalyticsContent() {
   const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
+  const canCleanBlankRows = canDeleteEntries;
   const [entries, setEntries] = useState<TeamStrategyEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [cleaningBlankRows, setCleaningBlankRows] = useState(false);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -96,6 +98,41 @@ function TeamStrategyAnalyticsContent() {
     if (!ok) return;
     await deleteDoc(doc(db, "strategyScouting", entry.id));
     setEntries((prev) => prev.filter((row) => row.id !== entry.id));
+  }
+
+  function isBlankEntry(entry: TeamStrategyEntry) {
+    const hasText = [entry.teamNumber, entry.scoutName, entry.preferredStartingPosition, entry.bestAt, entry.notes]
+      .some((value) => String(value || "").trim().length > 0);
+    const hasFlags = Boolean(
+      entry.clearsBump ||
+      entry.clearsTrench ||
+      entry.canShootWhileIntaking ||
+      entry.canMoveAndShootSimultaneously
+    );
+    return !hasText && !hasFlags;
+  }
+
+  async function handleCleanBlankEntries() {
+    if (!canCleanBlankRows) {
+      alert("Only coaches or team admins can clean blank rows.");
+      return;
+    }
+    const blankRows = entries.filter((entry) => isBlankEntry(entry));
+    if (blankRows.length === 0) {
+      alert("No blank rows found.");
+      return;
+    }
+    const ok = window.confirm(`Delete ${blankRows.length} blank rows?`);
+    if (!ok) return;
+    setCleaningBlankRows(true);
+    try {
+      await Promise.all(blankRows.map((entry) => deleteDoc(doc(db, "strategyScouting", entry.id))));
+      const snap = await getDocs(collection(db, "strategyScouting"));
+      setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as TeamStrategyEntry[]);
+      alert(`Deleted ${blankRows.length} blank rows.`);
+    } finally {
+      setCleaningBlankRows(false);
+    }
   }
 
   function exportToCSV() {
@@ -229,6 +266,14 @@ function TeamStrategyAnalyticsContent() {
           {importing ? "Importing..." : "Import CSV"}
           <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv || importing} />
         </label>
+        <button
+          className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-60"
+          onClick={() => void handleCleanBlankEntries()}
+          disabled={cleaningBlankRows || !canCleanBlankRows}
+          title={canCleanBlankRows ? undefined : "Only coaches or team admins can clean blank rows."}
+        >
+          {cleaningBlankRows ? "Cleaning..." : "Clean Blank Rows"}
+        </button>
       </div>
       {loading ? (
         <LoadingSpinner message="Loading team strategy analytics..." />

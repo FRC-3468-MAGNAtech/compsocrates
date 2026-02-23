@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -46,6 +46,10 @@ type StrategyPlanDoc = {
   createdAt?: number;
   robots?: StrategyRobot[];
 };
+
+function strategyDocTime(doc: StrategyPlanDoc) {
+  return Number(doc.createdAt || 0);
+}
 
 function buildFallbackDriveMatches(): MatchOption[] {
   const rows: MatchOption[] = [];
@@ -160,6 +164,7 @@ function DriveReflectionFormContent() {
     autoClimb: false,
     endgameClimb: "",
   });
+  const [syncedPlan, setSyncedPlan] = useState<StrategyPlanDoc | null>(null);
 
   useEffect(() => {
     async function loadMatches() {
@@ -249,6 +254,57 @@ function DriveReflectionFormContent() {
     () => matchOptions.find((match) => match.key === selectedMatchKey) || null,
     [matchOptions, selectedMatchKey]
   );
+  const selectedTeamNumbers = useMemo(
+    () =>
+      [robot1.teamNumber, robot2.teamNumber, robot3.teamNumber]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    [robot1.teamNumber, robot2.teamNumber, robot3.teamNumber]
+  );
+
+  useEffect(() => {
+    async function loadSyncedPlan() {
+      if (!selectedMatch || !eventKey) {
+        setSyncedPlan(null);
+        return;
+      }
+      const plansSnap = await getDocs(collection(db, "matchStrategyPlans"));
+      const plans = plansSnap.docs
+        .map((row) => ({ id: row.id, ...row.data() }) as StrategyPlanDoc)
+        .filter(
+          (row) =>
+            String(row.game || "REBUILT").toUpperCase() === "REBUILT" &&
+            String(row.eventKey || "").trim() === String(eventKey || "").trim() &&
+            String(row.matchKey || "").trim() === String(selectedMatch.key || "").trim() &&
+            (!userData?.teamId || !row.teamId || String(row.teamId) === String(userData.teamId))
+        )
+        .sort((a, b) => strategyDocTime(b) - strategyDocTime(a));
+      setSyncedPlan(plans[0] || null);
+    }
+    void loadSyncedPlan();
+  }, [eventKey, selectedMatch, userData?.teamId]);
+
+  const planMismatchMessages = useMemo(() => {
+    if (!syncedPlan || !Array.isArray(syncedPlan.robots) || syncedPlan.robots.length === 0) return [];
+    const plannedByTeam = new Map<string, StrategyRobot>();
+    syncedPlan.robots.forEach((robot) => {
+      const key = String(robot.teamNumber || "").trim();
+      if (key) plannedByTeam.set(key, robot);
+    });
+    const actualRobots: RobotReflection[] = [robot1, robot2, robot3];
+    const mismatchedTeams: string[] = [];
+    actualRobots.forEach((robot) => {
+      const key = String(robot.teamNumber || "").trim();
+      if (!key) return;
+      const planned = plannedByTeam.get(key);
+      if (!planned) return;
+      const fields = compareRobotToPlan(robot, planned);
+      if (fields.length > 0) {
+        mismatchedTeams.push(`${key} (${fields.join(", ")})`);
+      }
+    });
+    return mismatchedTeams;
+  }, [robot1, robot2, robot3, syncedPlan]);
   const modalMatchOptions = useMemo<ModalMatchOption[]>(() => {
     const mapped: ModalMatchOption[] = [];
     let finalsIndex = 1;
@@ -296,40 +352,13 @@ function DriveReflectionFormContent() {
     }
     setSaving(true);
     try {
-      if (userData.teamId) {
-        const plansSnap = await getDocs(query(collection(db, "matchStrategyPlans"), where("teamId", "==", userData.teamId)));
-        const plans = plansSnap.docs
-          .map((row) => ({ id: row.id, ...row.data() }) as StrategyPlanDoc)
-          .filter(
-            (row) =>
-              String(row.game || "REBUILT").toUpperCase() === "REBUILT" &&
-              String(row.eventKey || "").trim() === String(eventKey || "").trim() &&
-              String(row.matchKey || "").trim() === String(selectedMatch.key || "").trim()
-          )
-          .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-
-        const latestPlan = plans[0];
-        if (latestPlan && Array.isArray(latestPlan.robots) && latestPlan.robots.length > 0) {
-          const plannedByTeam = new Map<string, StrategyRobot>();
-          latestPlan.robots.forEach((robot) => {
-            const key = String(robot.teamNumber || "").trim();
-            if (key) plannedByTeam.set(key, robot);
-          });
-          const actualRobots: RobotReflection[] = [robot1, robot2, robot3];
-          const mismatchedTeams: string[] = [];
-          actualRobots.forEach((robot) => {
-            const key = String(robot.teamNumber || "").trim();
-            if (!key) return;
-            const planned = plannedByTeam.get(key);
-            if (!planned) return;
-            const fields = compareRobotToPlan(robot, planned);
-            if (fields.length > 0) {
-              mismatchedTeams.push(`${key} (${fields.join(", ")})`);
-            }
-          });
-          if (mismatchedTeams.length > 0) {
-            alert(`Team didn't stay true to their word:\n${mismatchedTeams.join("\n")}`);
-          }
+      if (planMismatchMessages.length > 0) {
+        const proceed = window.confirm(
+          `Warning: drive reflection does not match synced match strategy plan for this match:\n${planMismatchMessages.join("\n")}\n\nSubmit anyway?`
+        );
+        if (!proceed) {
+          setSaving(false);
+          return;
         }
       }
 
@@ -423,8 +452,8 @@ function DriveReflectionFormContent() {
               Information
             </h2>
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-gray-700">Match</span>
-              <span className="font-semibold">{displayMatchLabel(selectedMatch)}</span>
+              <span className="text-lg font-semibold">Match:</span>
+              <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{displayMatchLabel(selectedMatch)}</span>
               <button
                 type="button"
                 onClick={() => setShowMatchPicker(true)}
@@ -433,6 +462,19 @@ function DriveReflectionFormContent() {
               >
                 Fix
               </button>
+            </div>
+            <div className="text-sm">
+              {syncedPlan ? (
+                <div className="text-green-700">This match is synced with a match strategy form.</div>
+              ) : (
+                <div className="text-amber-700">No synced match strategy form found for this match yet.</div>
+              )}
+              {selectedTeamNumbers.length > 0 && syncedPlan && planMismatchMessages.length === 0 && (
+                <div className="text-green-700">Teams in this reflection currently match the synced strategy plan.</div>
+              )}
+              {planMismatchMessages.length > 0 && (
+                <div className="text-red-700">Mismatch: {planMismatchMessages.join("; ")}</div>
+              )}
             </div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />

@@ -21,8 +21,8 @@ type PitEntry = {
   teamNumber?: string;
   scoutName?: string;
   robotPictureUrl?: string;
-  pitDisposition?: boolean;
-  driveDisposition?: boolean;
+  pitDisposition?: boolean | string;
+  driveDisposition?: boolean | string;
   driveBaseType?: string;
   centerOfGravity?: string;
   collectCoralStation?: boolean;
@@ -59,6 +59,16 @@ type PitEntry = {
 
 function isPracticeEntry(entry: PitEntry) {
   return isPracticeScoutedEntry(entry);
+}
+
+function dispositionToCsv(value: PitEntry["pitDisposition"]) {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return value ? "Yes" : "";
+}
+
+function dispositionToCell(value: PitEntry["pitDisposition"]) {
+  if (typeof value === "string" && value.trim()) return formatAnalyticsText(value.trim());
+  return value ? "Yes" : "No";
 }
 
 function PitAnalyticsContent() {
@@ -200,7 +210,7 @@ function PitAnalyticsContent() {
         entry.teamNumber || "",
         entry.scoutName || "",
         entry.robotPictureUrl || "",
-        entry.pitDisposition ? "Yes" : "",
+        dispositionToCsv(entry.pitDisposition),
         entry.driveBaseType || "",
         entry.centerOfGravity || "",
         coralCollecting,
@@ -340,13 +350,14 @@ function PitAnalyticsContent() {
           const algaeScoring = get(idxAlgaeScoring).toLowerCase();
           const climbText = get(idxClimb).toLowerCase();
           const startsText = get(idxStarts).toLowerCase();
+          const dispositionRaw = get(idxDisposition);
           const now = Date.now();
 
           await addDoc(collection(db, "pitScouting"), {
             teamNumber: team,
             scoutName: scout,
             robotPictureUrl: get(idxRobotPicture),
-            pitDisposition: toBoolean(get(idxDisposition)),
+            pitDisposition: toBoolean(dispositionRaw) || dispositionRaw.length > 0,
             driveDisposition: false,
             driveBaseType: get(idxDriveBase),
             centerOfGravity: get(idxCog),
@@ -515,7 +526,7 @@ function PitAnalyticsContent() {
               <thead className="sticky-header">
                 <tr>
                   <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                  <th className="bg-red-300 text-center" colSpan={3}>Readiness</th>
+                  <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
                   <th className="bg-yellow-300 text-center" colSpan={3}>Cycles</th>
@@ -523,7 +534,7 @@ function PitAnalyticsContent() {
                 </tr>
                 <tr>
                   <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                  <th className="bg-red-200 text-center" colSpan={3}>Readiness</th>
+                  <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-200 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-200 text-center" colSpan={3}>Climb</th>
                   <th className="bg-yellow-200 text-center" colSpan={3}>Cycles</th>
@@ -555,8 +566,8 @@ function PitAnalyticsContent() {
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
                     <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
-                    <td>{entry.pitDisposition ? "Yes" : "No"}</td>
-                    <td>{entry.driveDisposition ? "Yes" : "No"}</td>
+                    <td>{dispositionToCell(entry.pitDisposition)}</td>
+                    <td>{dispositionToCell(entry.driveDisposition)}</td>
                     <td>{Number(entry.fuelPreloadCapacity || 0) || "-"}</td>
                     <td>{Number(entry.fuelBallsPerSecond || 0) || "-"}</td>
                     <td>{Number(entry.fuelCarryingCapacity || 0) || "-"}</td>
@@ -588,7 +599,7 @@ function PitAnalyticsContent() {
               <thead className="sticky-header">
                 <tr>
                   <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                  <th className="bg-red-300 text-center" colSpan={3}>Readiness</th>
+                  <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-300 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
                   <th className="bg-green-300 text-center" colSpan={2}>Algae</th>
@@ -597,7 +608,7 @@ function PitAnalyticsContent() {
                 </tr>
                 <tr>
                   <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                  <th className="bg-red-200 text-center" colSpan={3}>Readiness</th>
+                  <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-200 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-200 text-center" colSpan={2}>Coral</th>
                   <th className="bg-green-200 text-center" colSpan={2}>Algae</th>
@@ -633,8 +644,8 @@ function PitAnalyticsContent() {
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
                     <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
-                    <td>{entry.pitDisposition ? "Yes" : "No"}</td>
-                    <td>{entry.driveDisposition ? "Yes" : "No"}</td>
+                    <td>{dispositionToCell(entry.pitDisposition)}</td>
+                    <td>{dispositionToCell(entry.driveDisposition)}</td>
                     <td>{formatAnalyticsText(entry.driveBaseType)}</td>
                     <td>{formatAnalyticsText(entry.centerOfGravity)}</td>
                     <td>{[entry.collectCoralStation && "Station", entry.collectCoralGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
