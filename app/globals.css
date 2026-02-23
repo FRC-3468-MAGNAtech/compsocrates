@@ -73,7 +73,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sticky-header {
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 20;
 }
 
@@ -120,7 +121,7 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky !important;
   left: 0 !important;
   z-index: 29 !important;
-  min-width: 160px;
+  min-width: 192px;
   background: var(--theme-surface) !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
@@ -158,6 +159,21 @@ h1, h2, h3, h4, h5, h6 {
 .sticky-header .sticky-left-0.sticky-row-3,
 .sticky-header .sticky-left-1.sticky-row-3 {
   z-index: 47 !important;
+}
+
+/* Sticky/frozen columns are desktop-only for analytics tables. */
+@media (max-width: 1023px) {
+  .sticky-left-0,
+  .sticky-left-1,
+  .sticky-left-group,
+  .sticky-header .sticky-left-0,
+  .sticky-header .sticky-left-1,
+  .sticky-header .sticky-left-group {
+    position: static !important;
+    left: auto !important;
+    z-index: auto !important;
+    box-shadow: none !important;
+  }
 }
 
 .table-scroll td[style*="minWidth"] {
