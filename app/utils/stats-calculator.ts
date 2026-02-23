@@ -269,7 +269,23 @@ export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[
     });
   }
 
-  return events.sort((a, b) => {
+  const dedupedByName = new Map<string, UpcomingEvent>();
+  events.forEach((event) => {
+    const nameKey = event.name.trim().toLowerCase();
+    if (!nameKey) return;
+    const existing = dedupedByName.get(nameKey);
+    if (!existing) {
+      dedupedByName.set(nameKey, event);
+      return;
+    }
+    const existingTime = new Date(`${existing.startDate}T12:00:00`).getTime();
+    const incomingTime = new Date(`${event.startDate}T12:00:00`).getTime();
+    if (incomingTime < existingTime) {
+      dedupedByName.set(nameKey, event);
+    }
+  });
+
+  return Array.from(dedupedByName.values()).sort((a, b) => {
     const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
     const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
     return aTime - bTime;

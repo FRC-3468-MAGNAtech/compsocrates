@@ -66,6 +66,25 @@ type EventOption = {
   startDate: string;
 };
 
+function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
+  const byName = new Map<string, EventOption>();
+  options.forEach((option) => {
+    const nameKey = option.name.trim().toLowerCase();
+    if (!nameKey) return;
+    const existing = byName.get(nameKey);
+    if (!existing) {
+      byName.set(nameKey, option);
+      return;
+    }
+    const existingTime = new Date(`${existing.startDate}T12:00:00`).getTime();
+    const incomingTime = new Date(`${option.startDate}T12:00:00`).getTime();
+    if (incomingTime < existingTime) {
+      byName.set(nameKey, option);
+    }
+  });
+  return Array.from(byName.values());
+}
+
 function compLevelPriority(compLevel: string) {
   if (compLevel === "qm") return 0;
   if (compLevel === "ef") return 1;
@@ -155,8 +174,9 @@ function AssignmentsContent() {
     }
 
     const staticByKey = new Map(fallbackFromApp.map((event) => [event.key, event]));
-    return selected
+    const resolved = selected
       .map((key) => fromTba.get(key) || staticByKey.get(key) || { key, name: key, startDate: `${new Date().getFullYear()}-01-01` })
+    return dedupeEventOptionsByName(resolved)
       .sort((a, b) => {
         const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
         const bTime = new Date(`${b.startDate}T12:00:00`).getTime();

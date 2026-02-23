@@ -82,11 +82,19 @@ function EventSelectionContent() {
 
   const filteredEvents = useMemo(() => {
     const scoped = searchTerm.trim() ? filterEventsByLocation(events, searchTerm) : events;
-    return [...scoped].sort((a, b) => {
+    const sorted = [...scoped].sort((a, b) => {
       const aTime = new Date(`${a.start_date}T12:00:00`).getTime();
       const bTime = new Date(`${b.start_date}T12:00:00`).getTime();
       return aTime - bTime;
     });
+    const byName = new Map<string, TBAEvent>();
+    sorted.forEach((event) => {
+      const key = String(event.name || "").trim().toLowerCase();
+      if (!key || !byName.has(key)) {
+        byName.set(key, event);
+      }
+    });
+    return Array.from(byName.values());
   }, [events, searchTerm]);
 
   function toggleEvent(eventKey: string) {

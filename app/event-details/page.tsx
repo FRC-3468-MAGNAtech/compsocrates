@@ -19,6 +19,25 @@ type EventCard = {
   end_date: string;
 };
 
+function dedupeEventCardsByName(events: EventCard[]): EventCard[] {
+  const byName = new Map<string, EventCard>();
+  events.forEach((event) => {
+    const key = event.name.trim().toLowerCase();
+    if (!key) return;
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, event);
+      return;
+    }
+    const existingTime = new Date(`${existing.start_date}T12:00:00`).getTime();
+    const incomingTime = new Date(`${event.start_date}T12:00:00`).getTime();
+    if (incomingTime < existingTime) {
+      byName.set(key, event);
+    }
+  });
+  return Array.from(byName.values());
+}
+
 function EventDetailsIndexContent() {
   const { userData } = useAuth();
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
@@ -63,7 +82,7 @@ function EventDetailsIndexContent() {
         if (!encryptedKey && !plainKey) {
           const scopedFallback =
             selected.length > 0 ? fallback.filter((event) => selected.includes(event.key)) : fallback;
-          setEventsToShow(scopedFallback);
+          setEventsToShow(dedupeEventCardsByName(scopedFallback));
           return;
         }
 
@@ -98,11 +117,11 @@ function EventDetailsIndexContent() {
         }));
         const scoped = selected.length > 0 ? fromTBA.filter((event) => selected.includes(event.key)) : fromTBA;
         if (scoped.length > 0) {
-          setEventsToShow(scoped);
+          setEventsToShow(dedupeEventCardsByName(scoped));
         } else {
           const scopedFallback =
             selected.length > 0 ? fallback.filter((event) => selected.includes(event.key)) : fallback;
-          setEventsToShow(scopedFallback);
+          setEventsToShow(dedupeEventCardsByName(scopedFallback));
         }
       } finally {
         setLoading(false);
