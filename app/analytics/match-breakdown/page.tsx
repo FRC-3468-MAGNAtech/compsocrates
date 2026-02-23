@@ -41,6 +41,17 @@ type ScoutingEntry = {
   allianceColor?: string;
   assignedAlliance?: string;
   startingPosition?: string;
+  estimatedScore?: number;
+  auto?: {
+    estimatedFuel?: number;
+    successfulClimb?: boolean;
+  };
+  teleop?: {
+    estimatedFuel?: number;
+  };
+  endgame?: {
+    status?: string;
+  };
 };
 
 type AllianceRow = {
@@ -80,7 +91,16 @@ function normalizeMatchId(entry: ScoutingEntry): string {
   return num ? `${prefix}${num}` : "";
 }
 
-function scoreEntry(entry: ScoutingEntry) {
+function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame) {
+  if (game === "REBUILT") {
+    const autoFuel = Number(entry.auto?.estimatedFuel || 0);
+    const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+    const endStatus = String(entry.endgame?.status || "").toLowerCase();
+    const endgameClimb = endStatus === "level-1" ? 10 : endStatus === "level-2" ? 20 : endStatus === "level-3" ? 30 : 0;
+    return autoFuel + teleFuel + autoClimb + endgameClimb;
+  }
+
   return (
     (entry.leftStartingZone ? 3 : 0) +
     (entry.autoCoralL1 || 0) * 3 +
@@ -167,7 +187,7 @@ function MatchBreakdownContent() {
     selectedRows.forEach((entry) => {
       const team = String(entry.teamNumber || "").trim();
       if (!team) return;
-      const score = scoreEntry(entry);
+      const score = scoreEntry(entry, selectedGame);
       const alliance = inferAlliance(entry);
       const existing = teamScores.get(team);
       if (!existing || score > existing.score) {
@@ -198,7 +218,7 @@ function MatchBreakdownContent() {
     const blueTotal = blue.reduce((sum, row) => sum + row.totalScore, 0);
 
     return { red, blue, redTotal, blueTotal };
-  }, [filteredEntries, selectedMatch]);
+  }, [filteredEntries, selectedMatch, selectedGame]);
 
   return (
     <AnalyticsShell
