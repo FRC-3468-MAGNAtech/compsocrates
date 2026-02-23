@@ -1,7 +1,7 @@
 // Utility functions to calculate real statistics from Firebase data
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
-import { APP_EVENTS } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 import { getUserRoles } from "@/app/utils/roles";
 
 export interface TeamStats {
@@ -192,7 +192,7 @@ export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[
     if (teamDoc.exists()) {
       const teamData = teamDoc.data();
       if (Array.isArray(teamData.selectedEvents)) {
-        selectedEventKeys = teamData.selectedEvents;
+        selectedEventKeys = dedupeEventKeys(teamData.selectedEvents.map((value: unknown) => String(value || "")));
       }
       encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
       plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";

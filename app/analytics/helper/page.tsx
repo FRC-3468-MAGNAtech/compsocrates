@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 
 type HelperEntry = {
@@ -134,7 +135,7 @@ function HelperAnalyticsContent() {
                   <td className="font-semibold">{entry.helperName || "-"}</td>
                   <td>{entry.assistedTeamNumber || "-"}</td>
                   <td>{entry.wasSuccessful ? "Y" : "N"}</td>
-                  <td>{entry.issueSolved || "-"}</td>
+                  <td>{formatAnalyticsText(entry.issueSolved)}</td>
                   <td>{entry.notes || "-"}</td>
                   <td className="text-center">
                     <button

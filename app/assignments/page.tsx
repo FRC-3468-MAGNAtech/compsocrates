@@ -20,7 +20,7 @@ import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getUserRoles } from "@/app/utils/roles";
-import { APP_EVENTS } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 
 interface Assignment {
   id: string;
@@ -110,7 +110,7 @@ function AssignmentsContent() {
 
   async function resolveEventOptions(teamData: Record<string, unknown>): Promise<EventOption[]> {
     const selected = Array.isArray(teamData.selectedEvents)
-      ? teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean)
+      ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
       : [];
     const fallbackFromApp = APP_EVENTS.map((event) => ({
       key: event.key,

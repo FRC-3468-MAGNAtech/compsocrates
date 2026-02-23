@@ -8,7 +8,6 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { Users, Target, ClipboardList } from "lucide-react";
-import { getEventsForGame } from "@/app/utils/analyticsEvents";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles } from "@/app/utils/roles";
 
@@ -102,32 +101,6 @@ function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accura
   return { mobileCount: mobile.length, pcCount: pc.length, mobileAvg, pcAvg, betterDevice };
 }
 
-function scoreScoutingEntry(entry: ScoutingEntry, game: "REEFSCAPE" | "REBUILT"): number {
-  if (game === "REBUILT") return scoreRebuiltEntry(entry);
-
-  let score = 0;
-  if (entry.leftStartingZone) score += 3;
-  score += (entry.autoCoralL1 || 0) * 3;
-  score += (entry.autoCoralL2 || 0) * 4;
-  score += (entry.autoCoralL3 || 0) * 6;
-  score += (entry.autoCoralL4 || 0) * 7;
-  score += (entry.autoAlgaeProcessorScored || 0) * 6;
-  score += (entry.autoAlgaeNetScored || 0) * 4;
-  score += (entry.teleopCoralL1 || 0) * 2;
-  score += (entry.teleopCoralL2 || 0) * 3;
-  score += (entry.teleopCoralL3 || 0) * 4;
-  score += (entry.teleopCoralL4 || 0) * 5;
-  score += (entry.teleopProcessorScored || 0) * 6;
-  score += (entry.teleopNetRobotScored || 0) * 4;
-  score += (entry.teleopNetHumanScored || 0) * 4;
-  score += Number(entry.penaltyPoints || 0);
-  const end = (entry.stageStatus || "").toLowerCase();
-  if (end.includes("deep")) score += 12;
-  else if (end.includes("shallow")) score += 6;
-  else if (end.includes("park") || end.includes("barge")) score += 2;
-  return score;
-}
-
 function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE" | "REBUILT"): number {
   if (game === "REBUILT") return scoreRebuiltEntry(entry);
 
@@ -158,10 +131,8 @@ function ScoutAccuracyContent() {
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
-  const [accuracyView, setAccuracyView] = useState<"practice" | "competition">("practice");
   const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REBUILT");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
-  const [selectedCompetitionEvent, setSelectedCompetitionEvent] = useState("all");
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
   const [rerunSessionId, setRerunSessionId] = useState("");
   const [rerunResultModal, setRerunResultModal] = useState<{
@@ -174,7 +145,7 @@ function ScoutAccuracyContent() {
 
   useEffect(() => {
     loadScoutStats();
-  }, [selectedMode, accuracyView, selectedCompetitionEvent, selectedGame, userData?.teamId]);
+  }, [selectedMode, selectedGame, userData?.teamId]);
 
   async function loadScoutStats() {
     setLoading(true);
@@ -203,66 +174,6 @@ function ScoutAccuracyContent() {
 
       const statsPromises = memberData.map(async (member) => {
         const entries = entriesByScout[member.scoutName] || [];
-
-        if (accuracyView === "competition") {
-          const allCompetitionEntries = Object.values(entriesByScout)
-            .flat()
-            .filter(
-              (entry) =>
-                entry.game === selectedGame &&
-                entry.matchType !== "practice" &&
-                !entry.isPracticeScouting &&
-                !entry.practiceMode
-            )
-            .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
-
-          const baselineByMatch = allCompetitionEntries.reduce<Record<string, number[]>>((acc, entry) => {
-            const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
-            if (!acc[key]) acc[key] = [];
-            acc[key].push(scoreScoutingEntry(entry, selectedGame));
-            return acc;
-          }, {});
-
-          const scoutCompetitionEntries = entries
-            .filter(
-              (entry) =>
-                entry.game === selectedGame &&
-                entry.matchType !== "practice" &&
-                !entry.isPracticeScouting &&
-                !entry.practiceMode
-            )
-            .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
-          const competitionAccuracies = scoutCompetitionEntries.map((entry) => {
-            const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
-            const baselineScores = baselineByMatch[key] || [];
-            const baseline = baselineScores.length
-              ? baselineScores.reduce((sum, value) => sum + value, 0) / baselineScores.length
-              : 0;
-            const score = scoreScoutingEntry(entry, selectedGame);
-            if (baseline <= 0) return 0;
-            return Math.max(0, Math.round((1 - Math.abs(score - baseline) / baseline) * 100));
-          });
-          const nonZeroCompetitionAccuracies = competitionAccuracies.filter((value) => value > 0);
-          const competitionDevicePoints = scoutCompetitionEntries.map((entry, index) => ({
-            deviceType: entry.deviceType,
-            accuracy: competitionAccuracies[index] || 0,
-          }));
-          const averageAccuracy = nonZeroCompetitionAccuracies.length
-            ? Math.round(nonZeroCompetitionAccuracies.reduce((sum, value) => sum + value, 0) / nonZeroCompetitionAccuracies.length)
-            : 0;
-
-          return {
-            scoutName: member.scoutName,
-            role: member.role,
-            roles: member.roles,
-            totalEntries: entries.length,
-            practiceSessionsCompleted: scoutCompetitionEntries.length,
-            averageAccuracy,
-            lastPracticeDate: Date.now(),
-            recentAccuracies: nonZeroCompetitionAccuracies.slice(-5).reverse(),
-            deviceBreakdown: getDeviceBreakdown(competitionDevicePoints),
-          };
-        }
 
         const practiceQuery = query(
           collection(db, "practiceSessions"),
@@ -540,7 +451,7 @@ function ScoutAccuracyContent() {
           <p className="text-gray-600 mb-8">
             Track and verify the accuracy of your team members&apos; data
             <span className="text-sm text-gray-500 ml-2">
-              ({accuracyView === "practice" ? `Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode` : "Showing competition mode"})
+              ({`Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode`})
             </span>
           </p>
 
@@ -576,11 +487,10 @@ function ScoutAccuracyContent() {
           <div className="bg-white rounded-xl shadow-md p-2 mb-6 flex gap-2">
             <button
               onClick={() => {
-                setAccuracyView("practice");
                 setSelectedMode("trial");
               }}
               className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                accuracyView === "practice" && selectedMode === "trial"
+                selectedMode === "trial"
                   ? "bg-red-600 text-white" 
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
@@ -589,47 +499,17 @@ function ScoutAccuracyContent() {
             </button>
             <button
               onClick={() => {
-                setAccuracyView("practice");
                 setSelectedMode("competitive");
               }}
               className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                accuracyView === "practice" && selectedMode === "competitive"
+                selectedMode === "competitive"
                   ? "bg-red-600 text-white" 
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               Competitive Mode
             </button>
-            <button
-              onClick={() => setAccuracyView("competition")}
-              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                accuracyView === "competition"
-                  ? "bg-red-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Competition Accuracy
-            </button>
           </div>
-          {accuracyView === "competition" && (
-            <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Competition</label>
-              <select
-                value={selectedCompetitionEvent}
-                onChange={(event) => setSelectedCompetitionEvent(event.target.value)}
-                className="w-full md:w-96 border rounded p-2"
-              >
-                <option value="all">All Competitions</option>
-                {getEventsForGame(selectedGame)
-                  .filter((event) => event.id !== "app-testing")
-                  .map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
           {canResetScoutData && (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -685,7 +565,7 @@ function ScoutAccuracyContent() {
 
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</h3>
+                    <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
                     <ClipboardList size={22} className="text-gray-500" />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
@@ -825,7 +705,7 @@ function ScoutAccuracyContent() {
                             </p>
                           </div>
                           <div className="p-4 bg-gray-50 rounded-lg">
-                            <p className="text-sm text-gray-600 mb-1">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</p>
+                            <p className="text-sm text-gray-600 mb-1">Practice Sessions</p>
                             <p className="text-4xl font-bold" style={{ color: "var(--primary-color)" }}>{selectedScoutData.practiceSessionsCompleted}</p>
                           </div>
                         </div>
@@ -833,7 +713,7 @@ function ScoutAccuracyContent() {
 
                       {/* RECENT ACCURACY SCORES */}
                       <div>
-                        <h3 className="text-lg font-semibold mb-4">{accuracyView === "competition" ? "Recent Competition Accuracy" : "Recent Practice Scores"}</h3>
+                        <h3 className="text-lg font-semibold mb-4">Recent Practice Scores</h3>
                         {selectedScoutData.recentAccuracies.length > 0 ? (
                           <div className="space-y-2">
                             {selectedScoutData.recentAccuracies.map((accuracy, i) => (

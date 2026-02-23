@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 
 type TeamStrategyEntry = {
@@ -143,8 +144,8 @@ function TeamStrategyAnalyticsContent() {
                 <tr key={entry.id}>
                   <td className="font-semibold">{entry.teamNumber || "-"}</td>
                   <td>{entry.scoutName || "-"}</td>
-                  <td>{entry.preferredStartingPosition || "-"}</td>
-                  <td>{entry.bestAt || "-"}</td>
+                  <td>{formatAnalyticsText(entry.preferredStartingPosition)}</td>
+                  <td>{formatAnalyticsText(entry.bestAt)}</td>
                   <td>{entry.clearsBump ? "Y" : "N"}</td>
                   <td>{entry.clearsTrench ? "Y" : "N"}</td>
                   <td>{entry.canShootWhileIntaking ? "Y" : "N"}</td>

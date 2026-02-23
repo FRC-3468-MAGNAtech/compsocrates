@@ -44,11 +44,17 @@ function MatchListContent() {
           getDoc(doc(db, "teams", userData.teamId)),
         ]);
         const attendanceByEvent = (teamDoc.exists() ? teamDoc.data().eventAttendees : {}) as Record<string, string[]> | undefined;
+        const normalizedUid = String(userData.uid || "").trim();
+        const normalizedName = String(userData.displayName || "").trim().toLowerCase();
         const visibleEvents = userData.isTeamAdmin
           ? allEvents
           : allEvents.filter((event) => {
               const attendees = attendanceByEvent?.[event.key] || [];
-              return attendees.includes(userData.uid) || attendees.includes(userData.displayName || "");
+              if (attendees.length === 0) return true;
+              return attendees.some((value) => {
+                const safe = String(value || "").trim();
+                return safe === normalizedUid || safe.toLowerCase() === normalizedName;
+              });
             });
         setEvents(visibleEvents);
         setActiveEventKey(visibleEvents[0]?.key || "");

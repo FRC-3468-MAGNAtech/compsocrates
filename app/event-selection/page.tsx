@@ -6,7 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
-import { APP_EVENTS } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys, normalizeEventKey } from "@/app/utils/events";
 import { filterEventsByLocation, type TBAEvent } from "@/app/utils/tba-api";
 
 function EventSelectionContent() {
@@ -23,7 +23,10 @@ function EventSelectionContent() {
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       if (!teamDoc.exists()) return;
       const data = teamDoc.data();
-      setSelectedEvents(Array.isArray(data.selectedEvents) ? data.selectedEvents : []);
+      const selected = Array.isArray(data.selectedEvents)
+        ? dedupeEventKeys(data.selectedEvents.map((value: unknown) => String(value || "")))
+        : [];
+      setSelectedEvents(selected);
     }
     loadSelection();
   }, [userData?.teamId]);
@@ -87,8 +90,9 @@ function EventSelectionContent() {
   }, [events, searchTerm]);
 
   function toggleEvent(eventKey: string) {
+    const normalizedKey = normalizeEventKey(eventKey);
     setSelectedEvents((prev) =>
-      prev.includes(eventKey) ? prev.filter((key) => key !== eventKey) : [...prev, eventKey]
+      prev.includes(normalizedKey) ? prev.filter((key) => key !== normalizedKey) : [...prev, normalizedKey]
     );
   }
 
@@ -96,7 +100,9 @@ function EventSelectionContent() {
     if (!userData?.teamId) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, "teams", userData.teamId), { selectedEvents }, { merge: true });
+      const normalizedSelection = dedupeEventKeys(selectedEvents);
+      await setDoc(doc(db, "teams", userData.teamId), { selectedEvents: normalizedSelection }, { merge: true });
+      setSelectedEvents(normalizedSelection);
       alert("Event selection saved.");
     } finally {
       setSaving(false);

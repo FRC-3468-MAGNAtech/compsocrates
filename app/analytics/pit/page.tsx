@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 
 type PitEntry = {
@@ -194,9 +195,9 @@ function PitAnalyticsContent() {
                     <td>{entry.climbLevel1 ? "Y" : "N"}</td>
                     <td>{entry.climbLevel2 ? "Y" : "N"}</td>
                     <td>{entry.climbLevel3 ? "Y" : "N"}</td>
-                    <td>{entry.typicalFuelCycleTime || "-"}</td>
-                    <td>{entry.typicalClimbTime || "-"}</td>
-                    <td>{entry.autoCycleDescription || "-"}</td>
+                    <td>{formatAnalyticsText(entry.typicalFuelCycleTime)}</td>
+                    <td>{formatAnalyticsText(entry.typicalClimbTime)}</td>
+                    <td>{formatAnalyticsText(entry.autoCycleDescription)}</td>
                     <td>{entry.notes || "-"}</td>
                     <td className="text-center">
                       <button
@@ -266,16 +267,16 @@ function PitAnalyticsContent() {
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{entry.pitDisposition ? "Yes" : "No"}</td>
                     <td>{entry.driveDisposition ? "Yes" : "No"}</td>
-                    <td>{entry.driveBaseType || "-"}</td>
-                    <td>{entry.centerOfGravity || "-"}</td>
+                    <td>{formatAnalyticsText(entry.driveBaseType)}</td>
+                    <td>{formatAnalyticsText(entry.centerOfGravity)}</td>
                     <td>{[entry.collectCoralStation && "Station", entry.collectCoralGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
                     <td>{[entry.coralL4 && "L4", entry.coralL3 && "L3", entry.coralL2 && "L2", entry.coralL1 && "L1"].filter(Boolean).join(", ") || "-"}</td>
                     <td>{[entry.collectAlgaeReef && "Reef", entry.collectAlgaeGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
                     <td>{[entry.scoreProcessor && "Processor", entry.scoreNetRobot && "Net"].filter(Boolean).join(", ") || "-"}</td>
-                    <td>{entry.bargeCapability || "-"}</td>
-                    <td>{entry.autoCapabilities || "-"}</td>
+                    <td>{formatAnalyticsText(entry.bargeCapability)}</td>
+                    <td>{formatAnalyticsText(entry.autoCapabilities)}</td>
                     <td>{[entry.startingOpposite && "Opposite", entry.startingMiddle && "Middle", entry.startingProcessor && "Processor"].filter(Boolean).join(", ") || "-"}</td>
-                    <td>{entry.betterAt || "-"}</td>
+                    <td>{formatAnalyticsText(entry.betterAt)}</td>
                     <td>{entry.rating || "-"}</td>
                     <td>{entry.notes || "-"}</td>
                     <td className="text-center">

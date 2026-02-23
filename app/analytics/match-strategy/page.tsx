@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 
 type MatchStrategyEntry = {
@@ -152,20 +153,20 @@ function MatchStrategyAnalyticsContent() {
                     <td className="font-semibold">{entry.matchLabel || "-"}</td>
                     <td>{entry.scoutName || "-"}</td>
                     <td>{r1?.teamNumber || "-"}</td>
-                    <td>{r1?.startingPosition || "-"}</td>
-                    <td>{r1?.role || "-"}</td>
+                    <td>{formatAnalyticsText(r1?.startingPosition)}</td>
+                    <td>{formatAnalyticsText(r1?.role)}</td>
                     <td>{r1?.autoClimb ? "Y" : "N"}</td>
-                    <td>{r1?.endgameClimb || "-"}</td>
+                    <td>{formatAnalyticsText(r1?.endgameClimb)}</td>
                     <td>{r2?.teamNumber || "-"}</td>
-                    <td>{r2?.startingPosition || "-"}</td>
-                    <td>{r2?.role || "-"}</td>
+                    <td>{formatAnalyticsText(r2?.startingPosition)}</td>
+                    <td>{formatAnalyticsText(r2?.role)}</td>
                     <td>{r2?.autoClimb ? "Y" : "N"}</td>
-                    <td>{r2?.endgameClimb || "-"}</td>
+                    <td>{formatAnalyticsText(r2?.endgameClimb)}</td>
                     <td>{r3?.teamNumber || "-"}</td>
-                    <td>{r3?.startingPosition || "-"}</td>
-                    <td>{r3?.role || "-"}</td>
+                    <td>{formatAnalyticsText(r3?.startingPosition)}</td>
+                    <td>{formatAnalyticsText(r3?.role)}</td>
                     <td>{r3?.autoClimb ? "Y" : "N"}</td>
-                    <td>{r3?.endgameClimb || "-"}</td>
+                    <td>{formatAnalyticsText(r3?.endgameClimb)}</td>
                     <td>{entry.notes || "-"}</td>
                     <td className="text-center">
                       <button
