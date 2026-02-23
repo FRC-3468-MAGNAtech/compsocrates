@@ -73,9 +73,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  position: static;
+  z-index: auto;
 }
 
 .sticky-header th {
@@ -102,7 +101,7 @@ h1, h2, h3, h4, h5, h6 {
 .sticky-left-0 {
   position: sticky !important;
   left: 0 !important;
-  z-index: 25 !important;
+  z-index: 15 !important;
   background: var(--theme-surface) !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
   min-width: 96px;
@@ -111,7 +110,7 @@ h1, h2, h3, h4, h5, h6 {
 .sticky-left-1 {
   position: sticky !important;
   left: 96px !important;
-  z-index: 25 !important;
+  z-index: 15 !important;
   background: var(--theme-surface) !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
@@ -159,6 +158,11 @@ h1, h2, h3, h4, h5, h6 {
 .sticky-header .sticky-left-0.sticky-row-3,
 .sticky-header .sticky-left-1.sticky-row-3 {
   z-index: 47 !important;
+}
+
+.table-scroll tbody .sticky-left-0,
+.table-scroll tbody .sticky-left-1 {
+  z-index: 15 !important;
 }
 
 /* Sticky/frozen columns are desktop-only for analytics tables. */
