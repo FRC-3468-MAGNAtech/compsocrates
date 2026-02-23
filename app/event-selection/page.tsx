@@ -172,23 +172,14 @@ function EventSelectionContent() {
         )}
 
       </div>
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-        <div className="mx-auto w-full max-w-[1200px] px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-gray-600">
-              {selectedEvents.length} event{selectedEvents.length === 1 ? "" : "s"} selected
-            </p>
-            <button
-              onClick={saveSelection}
-              disabled={saving}
-              className="w-full sm:w-auto px-6 py-3 rounded text-white font-semibold disabled:opacity-50"
-              style={{ background: "var(--primary-gradient)" }}
-            >
-              {saving ? "Saving..." : "Save Event Selection"}
-            </button>
-          </div>
-        </div>
-      </div>
+      <button
+        onClick={saveSelection}
+        disabled={saving}
+        className="fixed bottom-4 right-4 z-40 px-6 py-3 rounded text-white font-semibold disabled:opacity-50 shadow-lg"
+        style={{ background: "var(--primary-gradient)" }}
+      >
+        {saving ? "Saving..." : "Save Event Selection"}
+      </button>
     </div>
   );
 }
