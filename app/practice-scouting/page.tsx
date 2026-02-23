@@ -475,7 +475,6 @@ function PracticeScoutingContent() {
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
   const REBUILT_WEEK0_EVENT_KEY = "2026week0";
-  const reefscapePracticeAvailable = false;
 
   function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
     const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
@@ -1093,26 +1092,16 @@ function PracticeScoutingContent() {
                 <h2 className="text-xl font-semibold mb-4">Select Game</h2>
                 <div className="grid md:grid-cols-2 gap-4 mb-8">
                   <button
-                    onClick={() => {
-                      if (!reefscapePracticeAvailable) return;
-                      setActiveMatchGame("REEFSCAPE");
-                    }}
-                    disabled={!reefscapePracticeAvailable}
-                    className={`p-6 border-2 rounded-lg text-left transition-colors ${
-                      reefscapePracticeAvailable
-                        ? "border-sky-300 hover:bg-sky-50"
-                        : "border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed"
-                    }`}
+                    onClick={() => setActiveMatchGame("REEFSCAPE")}
+                    className="p-6 border-2 border-sky-300 rounded-lg text-left transition-colors hover:bg-sky-500/10"
                   >
-                    <div className={`text-sm font-semibold mb-2 ${reefscapePracticeAvailable ? "text-sky-700" : "text-gray-500"}`}>REEFSCAPE</div>
+                    <div className="text-sm font-semibold mb-2 text-sky-700">REEFSCAPE</div>
                     <h3 className="font-semibold text-lg mb-1">Scout REEFSCAPE</h3>
-                    <p className={`text-sm ${reefscapePracticeAvailable ? "text-gray-600" : "text-gray-500"}`}>
-                      Use REEFSCAPE practice videos and scoring.
-                    </p>
+                    <p className="text-sm text-gray-600">Use REEFSCAPE practice videos and scoring.</p>
                   </button>
                   <button
                     onClick={() => setActiveMatchGame("REBUILT")}
-                    className="p-6 border-2 rounded-lg text-left transition-colors hover:bg-emerald-50"
+                    className="p-6 border-2 rounded-lg text-left transition-colors hover:bg-emerald-500/10"
                     style={{ borderColor: "#059669" }}
                   >
                     <div className="text-sm font-semibold mb-2" style={{ color: "#047857" }}>REBUILT</div>
