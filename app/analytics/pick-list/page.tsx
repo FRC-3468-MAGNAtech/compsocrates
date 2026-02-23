@@ -78,7 +78,7 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
 
 function PickListContent() {
   const { userData } = useAuth();
-  const isCoach = userData?.role === "coach";
+  const canEditPickList = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -156,13 +156,13 @@ function PickListContent() {
   }, [filteredEntries, pickedTeams, selectedGame]);
 
   function pickTeam(team: TeamPick) {
-    if (!isCoach) return;
+    if (!canEditPickList) return;
     if (pickedTeams.some((p) => p.teamNumber === team.teamNumber)) return;
     setPickedTeams((prev) => [...prev, { ...team, picked: true, pickOrder: prev.length + 1 }]);
   }
 
   function removeTeam(teamNumber: string) {
-    if (!isCoach) return;
+    if (!canEditPickList) return;
     const next = pickedTeams.filter((p) => p.teamNumber !== teamNumber).map((p, i) => ({ ...p, pickOrder: i + 1 }));
     setPickedTeams(next);
   }
@@ -180,9 +180,9 @@ function PickListContent() {
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Pick List</h1>
       <p className="text-gray-600 mb-6">Build and reorder your preferred alliance picks.</p>
-      {!isCoach && (
+      {!canEditPickList && (
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-6">
-          View only: only coaches can add or remove teams from the pick list.
+          View only: only coaches or team admins can add or remove teams from the pick list.
         </p>
       )}
 
@@ -201,12 +201,12 @@ function PickListContent() {
                     <p className="font-semibold">Team {team.teamNumber}</p>
                     <p className="text-sm text-gray-600">Avg {team.avgScore} | High {team.highScore}</p>
                   </div>
-                  {isCoach ? (
+                  {canEditPickList ? (
                     <button onClick={() => pickTeam(team)} className="px-3 py-1.5 rounded theme-primary text-sm">
                       Pick
                     </button>
                   ) : (
-                    <span className="text-xs text-gray-500">Coach only</span>
+                    <span className="text-xs text-gray-500">Coach/Admin only</span>
                   )}
                 </div>
               ))}
@@ -226,7 +226,7 @@ function PickListContent() {
                     </p>
                     <p className="text-sm text-gray-600">Avg {team.avgScore} | High {team.highScore}</p>
                   </div>
-                  {isCoach ? (
+                  {canEditPickList ? (
                     <button
                       onClick={() => removeTeam(team.teamNumber)}
                       className="px-3 py-1.5 rounded bg-red-100 text-red-700 text-sm"
@@ -234,7 +234,7 @@ function PickListContent() {
                       Remove
                     </button>
                   ) : (
-                    <span className="text-xs text-gray-500">Coach only</span>
+                    <span className="text-xs text-gray-500">Coach/Admin only</span>
                   )}
                 </div>
               ))}
