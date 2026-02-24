@@ -68,7 +68,12 @@ function formatMatchLabel(matchId: string): string {
   const num = id.replace(/\D/g, "");
   if (id.startsWith("p")) return `Practice ${num}`;
   if (id.startsWith("q")) return `Qualification ${num}`;
-  if (id.startsWith("f")) return `Finals ${num}`;
+  if (id.startsWith("f")) {
+    const n = Number(num || 0);
+    if (n >= 1 && n <= 13) return `Semifinal ${n}`;
+    if (n >= 14 && n <= 16) return `Finals ${n - 13}`;
+    return `Finals ${num}`;
+  }
   return `Match ${matchId}`;
 }
 

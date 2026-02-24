@@ -162,6 +162,15 @@ function scoreEntry(e: Entry, game: AnalyticsGame) {
 }
 
 function matchLabel(entry: Entry) {
+  function remapLegacyFinalLabel(rawLabel: string) {
+    const parsed = String(rawLabel || "").trim().toUpperCase().match(/^F(\d+)$/);
+    if (!parsed) return rawLabel;
+    const number = Number(parsed[1] || 0);
+    if (number >= 1 && number <= 13) return `SF${number}`;
+    if (number >= 14 && number <= 16) return `F${number - 13}`;
+    return rawLabel;
+  }
+
   const num = entry.matchNumber || "-";
   const matchId = String(entry.matchId || "").trim();
   const matchIdMatch = matchId.match(/^(qf|sf|f)(\d+)(?:m(\d+))?$/i);
@@ -173,12 +182,12 @@ function matchLabel(entry: Entry) {
       return `${prefix}${setNumber || "-"}M${matchNumber || "-"}`;
     }
     if (prefix === "F") {
-      return `F${matchNumber || setNumber || "-"}`;
+      return remapLegacyFinalLabel(`F${matchNumber || setNumber || "-"}`);
     }
   }
   if (entry.matchType === "practice") return `P${num}`;
   if (entry.matchType === "qualification") return `Q${num}`;
-  if (entry.matchType === "finals") return `F${num}`;
+  if (entry.matchType === "finals") return remapLegacyFinalLabel(`F${num}`);
   return num;
 }
 
@@ -366,6 +375,17 @@ function displayEntryText(value: unknown) {
   return raw;
 }
 
+function toDisplayTitle(value: unknown) {
+  const raw = displayEntryText(value);
+  if (raw === "-") return raw;
+  return raw
+    .replace(/[_-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = "";
@@ -476,6 +496,7 @@ function AnalyticsPageContent() {
   const isTeamMember = Boolean(userData?.teamId);
   const canImportCsv = isCoach || isTeamAdmin;
   const canExportCsv = isTeamMember;
+  const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canDeleteEntries = isCoach || isTeamAdmin;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
@@ -729,6 +750,61 @@ function AnalyticsPageContent() {
           : typeof entry.actualScore === "number"
           ? Number(entry.actualScore)
           : null;
+      const practiceEntry = isPracticeScoutingEntry(entry);
+      const practiceSessionId = String(entry.practiceSessionId || "").trim();
+
+      let scopedMatchRows = matchRows;
+      if (practiceEntry && practiceSessionId) {
+        scopedMatchRows = sameGameRows.filter(
+          (row) => String(row.practiceSessionId || "").trim() === practiceSessionId
+        );
+        if (scopedMatchRows.length > 0) {
+          const latestSessionRows = chooseLatestEntryPerTeam(scopedMatchRows);
+          const sessionScoutedPoints = latestSessionRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+          setAccuracyRobotBreakdown(
+            latestSessionRows.map((row) =>
+              entryGame === "REBUILT"
+                ? getRebuiltBreakdown(row)
+                : {
+                    teamNumber: String(row.teamNumber || "-"),
+                    total: scoreEntry(row, entryGame),
+                    source: "reefscape",
+                    autoFuel: 0,
+                    teleFuel: 0,
+                    autoClimb: 0,
+                    endgameClimb: 0,
+                  }
+            )
+          );
+
+          try {
+            const sessionSnap = await getDoc(doc(db, "practiceSessions", practiceSessionId));
+            if (sessionSnap.exists()) {
+              const sessionData = sessionSnap.data() as { officialScore?: number; eventKey?: string };
+              if (typeof sessionData.officialScore === "number") {
+                actualPoints = Number(sessionData.officialScore);
+              }
+            }
+          } catch (sessionError) {
+            console.warn("Could not load practice session while opening accuracy details:", sessionError);
+          }
+
+          setAccuracyDetails({
+            scoutedPoints: sessionScoutedPoints,
+            actualPoints,
+            penaltyPoints:
+              Number(
+                latestSessionRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
+                  entry.penaltyPoints ??
+                  0
+              ) || 0,
+            allRobotsScouted: latestSessionRows.length >= 3 ? "yes" : "no",
+            eventKeyUsed: eventKey,
+            matchLabelUsed,
+          });
+          return;
+        }
+      }
 
       if (!userData?.teamId) {
         const allianceRows =
@@ -766,7 +842,7 @@ function AnalyticsPageContent() {
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
       const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
-      if (eventKey && identity && (encryptedKey || plainKey)) {
+      if (!practiceEntry && eventKey && identity && (encryptedKey || plainKey)) {
         const response = await fetch("/api/tba/matches", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -829,11 +905,11 @@ function AnalyticsPageContent() {
       }
 
       const allianceRows =
-        allianceColor === null
-          ? latestReferenceRows
-          : officialTeamsForAlliance.length > 0
-          ? matchRows.filter((row) => officialTeamsForAlliance.includes(String(row.teamNumber || "").trim()))
-          : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
+          allianceColor === null
+            ? latestReferenceRows
+            : officialTeamsForAlliance.length > 0
+          ? scopedMatchRows.filter((row) => officialTeamsForAlliance.includes(String(row.teamNumber || "").trim()))
+          : scopedMatchRows.filter((row) => inferAllianceColor(row) === allianceColor);
       let latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
       if (officialTeamsForAlliance.length > 0 && latestAllianceRows.length < 2 && latestReferenceRows.length >= 2) {
         // If official-team matching collapses rows (bad/missing team keys), keep scouted alliance rows visible.
@@ -1267,28 +1343,24 @@ function AnalyticsPageContent() {
       onSelectedEventChange={setSelectedEvent}
     >
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        {false && (
-          <>
-            <button
-              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
-              onClick={exportToCSV}
-              disabled={!canExportCsv}
-              title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
-            >
-              Export CSV
-            </button>
-            <label
-              className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
-              title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
-            >
-              Import CSV
-              <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
-            </label>
-          </>
-        )}
+        <button
+          className="px-3 py-1.5 text-sm rounded bg-gray-400 text-white cursor-not-allowed disabled:opacity-100"
+          onClick={exportToCSV}
+          disabled
+          title={csvDisabledReason}
+        >
+          Export CSV
+        </button>
+        <label
+          className="px-3 py-1.5 text-sm rounded text-white bg-gray-400 cursor-not-allowed"
+          title={csvDisabledReason}
+        >
+          Import CSV
+          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
+        </label>
       </div>
 
-      {false && showImportDialog && (
+      {showImportDialog && (
         <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-semibold mb-4">Import CSV</h2>
@@ -1370,7 +1442,8 @@ function AnalyticsPageContent() {
                 <th className="bg-green-300 text-center" colSpan={6}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={3}>Endgame</th>
-                <th className="bg-pink-300 text-center" colSpan={6}>General</th>
+                <th className="bg-pink-300 text-center" colSpan={5}>General</th>
+                <th className="bg-gray-300 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -1379,8 +1452,8 @@ function AnalyticsPageContent() {
                 <th className="bg-green-200 text-center" colSpan={1}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Cycles</th>
-                <th className="bg-blue-200 text-center" colSpan={8}>Fuel</th>
-                <th className="bg-blue-200 text-center" colSpan={5}>Cycles</th>
+                <th className="bg-blue-200 text-center" colSpan={8}>Estimated Fuel</th>
+                <th className="bg-blue-200 text-center" colSpan={5}>Estimated Cycles</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Cycles</th>
@@ -1388,7 +1461,7 @@ function AnalyticsPageContent() {
                 <th className="bg-pink-200 text-center" colSpan={1}>Score</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
                 <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+                <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
                 <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
@@ -1413,7 +1486,7 @@ function AnalyticsPageContent() {
                   {sortLabel(sortKey, sortDir, "autoCarryScale", "Carry")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoFuel")}>
-                  {sortLabel(sortKey, sortDir, "autoFuel", "Fuel")}
+                  {sortLabel(sortKey, sortDir, "autoFuel", "Est. Fuel")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoClimb")}>
                   {sortLabel(sortKey, sortDir, "autoClimb", "Climb Pts")}
@@ -1443,7 +1516,7 @@ function AnalyticsPageContent() {
                   {sortLabel(sortKey, sortDir, "shift4Fuel", "Shift 4")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("teleFuel")}>
-                  {sortLabel(sortKey, sortDir, "teleFuel", "Fuel Used")}
+                  {sortLabel(sortKey, sortDir, "teleFuel", "Est. Fuel Used")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("transitionCycles")}>
                   {sortLabel(sortKey, sortDir, "transitionCycles", "Transition")}
@@ -1473,7 +1546,7 @@ function AnalyticsPageContent() {
                   {sortLabel(sortKey, sortDir, "incidents", "Incidents")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("totalUsed")}>
-                  {sortLabel(sortKey, sortDir, "totalUsed", "Total")}
+                  {sortLabel(sortKey, sortDir, "totalUsed", "Est. Total")}
                 </th>
                 <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
                   {sortLabel(sortKey, sortDir, "notes", "Comments")}
@@ -1509,7 +1582,7 @@ function AnalyticsPageContent() {
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                   <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
                   <td className="text-center">{displayEntryText(entry.scoutName)}</td>
-                  <td className="text-center">{displayEntryText(entry.startingPosition)}</td>
+                  <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                   <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
                   <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
@@ -1529,7 +1602,7 @@ function AnalyticsPageContent() {
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift2Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift3Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift4Cycles)}</td>
-                  <td className="text-center">{entry.endgame?.status || entry.stageStatus || "-"}</td>
+                  <td className="text-center">{toDisplayTitle(entry.endgame?.status || entry.stageStatus || "-")}</td>
                   <td className="text-center">{endgameClimb}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.endgame?.cycleTimes)}</td>
                   <td className="text-center">
@@ -1584,6 +1657,7 @@ function AnalyticsPageContent() {
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
               <th className="bg-pink-300 text-center" colSpan={4}>General</th>
+              <th className="bg-gray-300 text-center" colSpan={1}>Actions</th>
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -1712,7 +1786,7 @@ function AnalyticsPageContent() {
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                 <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
                 <td className="text-center">{displayEntryText(entry.scoutName)}</td>
-                <td className="text-center">{displayEntryText(entry.startingPosition)}</td>
+                <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                 <td className="text-center">{entry.leftStartingZone ? "Y" : "N"}</td>
                 <td className="text-center">{entry.autoCoralMissed || 0}</td>
                 <td className="text-center">{entry.autoCoralL1 || 0}</td>
@@ -1736,7 +1810,7 @@ function AnalyticsPageContent() {
                 <td className="text-center">{entry.teleopNetHumanMissed || 0}</td>
                 <td className="text-center">{entry.teleopNetHumanScored || 0}</td>
                 <td className="text-center">{entry.failedClimb || 0}</td>
-                <td className="text-center">{entry.stageStatus || "-"}</td>
+                <td className="text-center">{toDisplayTitle(entry.stageStatus || "-")}</td>
                 <td className="text-center">
                   {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                 </td>

@@ -79,16 +79,17 @@ export default function AnalyticsShell({
         return withoutWeek0;
       }
 
+      const withoutWeek0OrTesting = withoutWeek0.filter((option) => option.id !== "app-testing");
       const week0 = eventOptions.find((option) => option.id === "2026week0") || { id: "2026week0", name: "Week 0" };
-      const arkansasIndex = withoutWeek0.findIndex((option) => option.id === "2026arli");
+      const arkansasIndex = withoutWeek0OrTesting.findIndex((option) => option.id === "2026arli");
       if (arkansasIndex >= 0) {
         return [
-          ...withoutWeek0.slice(0, arkansasIndex),
+          ...withoutWeek0OrTesting.slice(0, arkansasIndex),
           week0,
-          ...withoutWeek0.slice(arkansasIndex),
+          ...withoutWeek0OrTesting.slice(arkansasIndex),
         ];
       }
-      return [week0, ...withoutWeek0];
+      return [week0, ...withoutWeek0OrTesting];
     }
 
     return eventOptions;

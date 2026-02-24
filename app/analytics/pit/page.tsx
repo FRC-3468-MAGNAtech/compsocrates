@@ -77,6 +77,7 @@ function PitAnalyticsContent() {
   const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const canImportCsv = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const canExportCsv = canImportCsv;
+  const csvDisabledReason = "Temporarily disabled due to bugs.";
   const [entries, setEntries] = useState<PitEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -480,28 +481,24 @@ function PitAnalyticsContent() {
       <h1 className="text-3xl font-bold mb-2 theme-text">Pit Analytics</h1>
       <p className="text-gray-600 mb-4">Pit scouting breakdown with sticky team/scout columns.</p>
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        {false && (
-          <>
-            <button
-              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
-              onClick={exportToCSV}
-              disabled={!canExportCsv}
-              title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
-            >
-              Export CSV
-            </button>
-            <label
-              className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
-              title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
-            >
-              Import CSV
-              <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
-            </label>
-          </>
-        )}
+        <button
+          className="px-3 py-1.5 text-sm rounded bg-gray-400 text-white cursor-not-allowed disabled:opacity-100"
+          onClick={exportToCSV}
+          disabled
+          title={csvDisabledReason}
+        >
+          Export CSV
+        </button>
+        <label
+          className="px-3 py-1.5 text-sm rounded text-white bg-gray-400 cursor-not-allowed"
+          title={csvDisabledReason}
+        >
+          Import CSV
+          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
+        </label>
       </div>
 
-      {false && showImportDialog && (
+      {showImportDialog && (
         <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-semibold mb-4">Import CSV</h2>

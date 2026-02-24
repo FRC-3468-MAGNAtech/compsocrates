@@ -76,6 +76,11 @@ function TeamStrategyFormContent() {
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
 
+  const eventLabel = useMemo(() => {
+    if (!eventKey || eventKey === "app-testing") return "Practice Event";
+    return String(eventKey).toUpperCase();
+  }, [eventKey]);
+
   useEffect(() => {
     if (!userData?.displayName) return;
   }, [userData?.displayName]);
@@ -176,6 +181,11 @@ function TeamStrategyFormContent() {
 
           <div className="bg-white rounded-xl shadow p-4 space-y-3">
             <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-lg font-semibold">Event:</span>
+              <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{eventLabel}</span>
+            </div>
+            <div className="text-sm text-gray-700">Use this layout to mirror match strategy planning format for cleaner review.</div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
 

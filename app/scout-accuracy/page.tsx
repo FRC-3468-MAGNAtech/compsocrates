@@ -70,6 +70,14 @@ type ScoutingEntry = {
   };
 };
 
+function getEntryGame(value: ScoutingEntry): "REEFSCAPE" | "REBUILT" {
+  const explicit = String(value.game || "").trim().toUpperCase();
+  if (explicit === "REBUILT" || explicit === "REEFSCAPE") return explicit;
+  const eventKey = String(value.eventKey || "").trim().toLowerCase();
+  if (eventKey === "2026week0") return "REBUILT";
+  return "REEFSCAPE";
+}
+
 function toNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -128,6 +136,13 @@ function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE
 
 function ScoutAccuracyContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const canViewRestrictedData =
+    Boolean(userData?.isTeamAdmin) ||
+    userData?.role === "coach" ||
+    userRoles.includes("team-coach") ||
+    userRoles.includes("lead-scout") ||
+    userRoles.includes("lead-strategist");
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
@@ -162,18 +177,15 @@ function ScoutAccuracyContent() {
           roles: (data.roles || []) as string[],
         };
       });
-      const scoutNames = memberData.map((member) => member.scoutName);
-
-      const scoutEntrySnapshots = await Promise.all(
-        scoutNames.map((scoutName) => getDocs(query(collection(db, "scouting"), where("scoutName", "==", scoutName))))
-      );
-      const entriesByScout = scoutNames.reduce<Record<string, ScoutingEntry[]>>((acc, scoutName, index) => {
-        acc[scoutName] = scoutEntrySnapshots[index].docs.map((entryDoc) => entryDoc.data() as ScoutingEntry);
-        return acc;
-      }, {});
-
       const statsPromises = memberData.map(async (member) => {
-        const entries = entriesByScout[member.scoutName] || [];
+        const scoutEntriesSnap = await getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.scoutName)));
+        const scoutPracticeEntries = scoutEntriesSnap.docs
+          .map((docSnap) => docSnap.data() as ScoutingEntry)
+          .filter((row) => {
+            if (!row.isPracticeScouting) return false;
+            if (String(row.practiceMode || "").toLowerCase() !== selectedMode) return false;
+            return getEntryGame(row) === selectedGame;
+          });
 
         const practiceQuery = query(
           collection(db, "practiceSessions"),
@@ -212,7 +224,7 @@ function ScoutAccuracyContent() {
           scoutName: member.scoutName,
           role: member.role,
           roles: member.roles,
-          totalEntries: entries.length,
+          totalEntries: scoutPracticeEntries.length,
           practiceSessionsCompleted: practiceRows.length,
           averageAccuracy,
           lastPracticeDate: lastPracticeDate || Date.now(),
@@ -510,7 +522,7 @@ function ScoutAccuracyContent() {
               Competitive Mode
             </button>
           </div>
-          {canResetScoutData && (
+          {canViewRestrictedData && canResetScoutData && (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
@@ -536,53 +548,54 @@ function ScoutAccuracyContent() {
               </div>
             </div>
           )}
-              {/* OVERVIEW STATS */}
-              <div className="grid md:grid-cols-4 gap-6 mb-6">
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Scouts / Members</h3>
-                    <Users size={22} className="text-gray-500" />
+              {canViewRestrictedData && (
+                <div className="grid md:grid-cols-4 gap-6 mb-6">
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Scouts / Members</h3>
+                      <Users size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {actualScoutCount} / {scoutStats.length}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {actualScoutCount} scout{actualScoutCount !== 1 ? 's' : ''}, {scoutStats.length - actualScoutCount} other role{scoutStats.length - actualScoutCount !== 1 ? 's' : ''}
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {actualScoutCount} / {scoutStats.length}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {actualScoutCount} scout{actualScoutCount !== 1 ? 's' : ''}, {scoutStats.length - actualScoutCount} other role{scoutStats.length - actualScoutCount !== 1 ? 's' : ''}
-                  </p>
-                </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Avg. Accuracy</h3>
-                    <Target size={22} className="text-gray-500" />
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Avg. Accuracy</h3>
+                      <Target size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {scoutOnlyStatsWithAccuracy.length > 0
+                        ? Math.round(scoutOnlyStatsWithAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) / scoutOnlyStatsWithAccuracy.length)
+                        : 0}%
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {scoutOnlyStatsWithAccuracy.length > 0 
-                      ? Math.round(scoutOnlyStatsWithAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) / scoutOnlyStatsWithAccuracy.length)
-                      : 0}%
-                  </p>
-                </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
-                    <ClipboardList size={22} className="text-gray-500" />
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
+                      <ClipboardList size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {scoutStats.reduce((sum, s) => sum + s.practiceSessionsCompleted, 0)}
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {scoutStats.reduce((sum, s) => sum + s.practiceSessionsCompleted, 0)}
-                  </p>
-                </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Total Entries</h3>
-                    <ClipboardList size={22} className="text-gray-500" />
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Total Entries</h3>
+                      <ClipboardList size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {scoutStats.reduce((sum, s) => sum + s.totalEntries, 0)}
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {scoutStats.reduce((sum, s) => sum + s.totalEntries, 0)}
-                  </p>
                 </div>
-              </div>
+              )}
 
               {/* LEADERBOARD */}
               <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
@@ -877,10 +890,7 @@ function ScoutAccuracyContent() {
 
 export default function ScoutAccuracyPage() {
   return (
-    <ProtectedRoute
-      requireAuth={true}
-      allowedRoles={["lead-scout", "lead-strategist", "pit-team", "drive-team", "pit-scout", "match-scout", "coach", "scout"]}
-    >
+    <ProtectedRoute requireAuth={true}>
       <ScoutAccuracyContent />
     </ProtectedRoute>
   );
