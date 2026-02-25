@@ -187,6 +187,14 @@ async function createPracticeDoc(
   if (!response.ok) throw new Error(`Failed creating practice match (${response.status}): ${await response.text()}`);
 }
 
+async function deletePracticeDoc(docName: string, authHeaders: Record<string, string>) {
+  const response = await fetch(`https://firestore.googleapis.com/v1/${docName}`, {
+    method: "DELETE",
+    headers: authHeaders,
+  });
+  if (!response.ok) throw new Error(`Failed deleting ${docName} (${response.status}): ${await response.text()}`);
+}
+
 async function run() {
   const { apply, eventKey, eventName } = parseArgs();
   const projectId = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
@@ -200,27 +208,45 @@ async function run() {
 
   const tbaMatches = await fetchTbaQualificationMatches(eventKey, tbaKey);
   const tbaByKey = new Map(tbaMatches.map((match) => [match.key.toLowerCase(), match]));
+  const targetTbaMatches = tbaMatches.filter((match) => match.match_number >= 1 && match.match_number <= 3);
+  if (targetTbaMatches.length === 0) {
+    throw new Error("No TBA qualification matches found for qm1-3.");
+  }
 
   const docs = await listPracticeDocs(projectId, authHeaders);
-  const existingByMatch = new Map<string, Set<"red" | "blue">>();
+  const qm1To15Keys = new Set(
+    tbaMatches
+      .filter((match) => match.match_number >= 1 && match.match_number <= 15)
+      .map((match) => match.key.toLowerCase())
+  );
+  const targetQm1To3Keys = new Set(targetTbaMatches.map((match) => match.key.toLowerCase()));
+  const existingVideoByMatch = new Map<string, string>();
+  const deletes: Array<{ docName: string; summary: string }> = [];
 
   for (const doc of docs) {
     const fields = doc.fields || {};
     const docEventKey = readString(fields.eventKey).toLowerCase();
-    if (docEventKey !== eventKey) continue;
-
     const matchKey = readString(fields.matchKey).toLowerCase();
     const alliance = readString(fields.alliance).toLowerCase();
-    const compLevel = readString(fields.compLevel).toLowerCase();
     const matchType = readString(fields.matchType).toLowerCase();
+    const compLevel = readString(fields.compLevel).toLowerCase();
+    const matchNumber = Number(readString(fields.matchNumber) || 0);
+    const videoUrl = readString(fields.videoUrl).trim();
 
-    if (!matchKey) continue;
-    if (!(alliance === "red" || alliance === "blue")) continue;
-    if (!(compLevel === "qm" || matchType === "qualification")) continue;
+    if (
+      docEventKey === eventKey &&
+      (qm1To15Keys.has(matchKey) ||
+        (matchNumber >= 1 && matchNumber <= 15 && (matchType === "qualification" || compLevel === "qm")))
+    ) {
+      deletes.push({
+        docName: doc.name,
+        summary: `${matchKey || "unknown-match"} | ${alliance || "unknown-alliance"} | #${matchNumber || "?"}`,
+      });
+    }
 
-    const set = existingByMatch.get(matchKey) || new Set<"red" | "blue">();
-    set.add(alliance as "red" | "blue");
-    existingByMatch.set(matchKey, set);
+    if (matchKey && targetQm1To3Keys.has(matchKey) && videoUrl && !existingVideoByMatch.has(matchKey)) {
+      existingVideoByMatch.set(matchKey, videoUrl);
+    }
   }
 
   const creates: Array<{
@@ -229,56 +255,62 @@ async function run() {
     payload: Parameters<typeof createPracticeDoc>[1];
   }> = [];
 
-  for (const [matchKey, alliances] of existingByMatch.entries()) {
-    if (alliances.size >= 2) continue;
-    const missingAlliance = alliances.has("red") ? "blue" : "red";
-    const tba = tbaByKey.get(matchKey);
-    if (!tba) continue;
+  for (const tba of targetTbaMatches) {
+    const matchKey = tba.key.toLowerCase();
+    const tbaMatch = tbaByKey.get(matchKey);
+    if (!tbaMatch) continue;
+    const youtubeKey = (tbaMatch.videos || []).find((video) => video.type === "youtube")?.key || "";
+    const sharedVideoUrl = youtubeKey ? `https://youtu.be/${youtubeKey}` : (existingVideoByMatch.get(matchKey) || "");
 
-    const allianceData = tba.alliances[missingAlliance];
-    const breakdown = (tba.score_breakdown?.[missingAlliance] || {}) as Record<string, unknown>;
-    const penaltyPoints = Number(breakdown.foulPoints || 0);
-    const youtubeKey = (tba.videos || []).find((video) => video.type === "youtube")?.key || "";
-    const videoUrl = youtubeKey ? `https://youtu.be/${youtubeKey}` : "";
-
-    creates.push({
-      matchKey: tba.key,
-      alliance: missingAlliance,
-      payload: {
-        eventKey,
-        eventName,
-        matchKey: tba.key,
-        matchNumber: Number(tba.match_number || 0),
-        matchType: "qualification",
-        compLevel: "qm",
-        setNumber: Number(tba.set_number || 1),
-        videoUrl,
-        difficulty: toDifficulty(Number(allianceData.score || 0)),
-        alliance: missingAlliance,
-        allianceScore: Number(allianceData.score || 0),
-        actualScore: Number(allianceData.score || 0),
-        officialScore: Number(allianceData.score || 0),
-        penaltyPoints,
-        allianceTeams: toTeamNumbers(allianceData.team_keys || []),
-      },
+    (["red", "blue"] as const).forEach((allianceSide) => {
+      const allianceData = tbaMatch.alliances[allianceSide];
+      const breakdown = (tbaMatch.score_breakdown?.[allianceSide] || {}) as Record<string, unknown>;
+      const penaltyPoints = Number(breakdown.foulPoints || 0);
+      creates.push({
+        matchKey: tbaMatch.key,
+        alliance: allianceSide,
+        payload: {
+          eventKey,
+          eventName,
+          matchKey: tbaMatch.key,
+          matchNumber: Number(tbaMatch.match_number || 0),
+          matchType: "qualification",
+          compLevel: "qm",
+          setNumber: Number(tbaMatch.set_number || 1),
+          videoUrl: sharedVideoUrl,
+          difficulty: toDifficulty(Number(allianceData.score || 0)),
+          alliance: allianceSide,
+          allianceScore: Number(allianceData.score || 0),
+          actualScore: Number(allianceData.score || 0),
+          officialScore: Number(allianceData.score || 0),
+          penaltyPoints,
+          allianceTeams: toTeamNumbers(allianceData.team_keys || []),
+        },
+      });
     });
   }
 
   console.log(`Mode: ${apply ? "APPLY" : "DRY RUN"}`);
   console.log(`Event: ${eventKey} (${eventName})`);
   console.log(`TBA qualification matches fetched: ${tbaMatches.length}`);
-  console.log(`Missing alliance docs to create: ${creates.length}`);
+  console.log(`Qualification docs to delete first (qm1-qm15): ${deletes.length}`);
+  deletes.forEach((row) => console.log(`  - DELETE ${row.summary}`));
+  console.log(`Qualification docs to create after delete (qm1-qm3, both alliances): ${creates.length}`);
   creates.forEach((row) => {
     console.log(
-      `  - CREATE ${row.matchKey} | ${row.alliance} | score=${row.payload.officialScore} | teams=${row.payload.allianceTeams.join(",")}`
+      `  - CREATE ${row.matchKey} | ${row.alliance} | score=${row.payload.officialScore} | teams=${row.payload.allianceTeams.join(",")} | video=${row.payload.videoUrl || "-"}`
     );
   });
 
   if (!apply) return;
 
+  for (const row of deletes) {
+    await deletePracticeDoc(row.docName, authHeaders);
+  }
   for (const row of creates) {
     await createPracticeDoc(projectId, row.payload, authHeaders);
   }
+  console.log(`Deleted docs: ${deletes.length}`);
   console.log(`Created docs: ${creates.length}`);
 }
 
@@ -286,4 +318,3 @@ run().catch((error) => {
   console.error("Fill missing qualification alliances failed:", error);
   process.exit(1);
 });
-

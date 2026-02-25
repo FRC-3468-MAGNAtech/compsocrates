@@ -894,6 +894,24 @@ function PracticeScoutingContent() {
     startPracticeMatch(selected);
   }
 
+  function handleUseSelectedMatchFromModal() {
+    if (selectedDifficulty === "live") {
+      if (!liveVideoUrl.trim()) {
+        alert("Paste a live video URL before starting.");
+        return;
+      }
+      const selected = candidateMatches.find((match) => match.id === selectedCandidateId);
+      if (!selected) {
+        alert("Pick a match first.");
+        return;
+      }
+      setShowMatchSelectModal(false);
+      startPracticeMatch(selected);
+      return;
+    }
+    setShowMatchSelectModal(false);
+  }
+
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
 
@@ -1544,7 +1562,7 @@ function PracticeScoutingContent() {
                   <div className="mt-6 rounded-xl border border-cyan-300 bg-cyan-500/5 shadow-md p-4">
                     <h3 className="font-semibold mb-1 text-cyan-700">Live Match Setup</h3>
                     <p className="text-sm text-gray-700 mb-3">
-                      Paste a stream URL, choose a match manually, then start scouting.
+                      Paste a stream URL, then open match select to pick and start.
                     </p>
                     <div className="space-y-3">
                       <div>
@@ -1566,34 +1584,7 @@ function PracticeScoutingContent() {
                         >
                           Choose Live Match
                         </button>
-                        <button
-                          type="button"
-                          onClick={randomizeSelectedMatch}
-                          disabled={modalFilteredMatches.length === 0}
-                          className="px-4 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50 disabled:opacity-60"
-                        >
-                          Randomize
-                        </button>
                       </div>
-                      <p className="text-sm text-gray-700">
-                        Selected: {selectedCandidateMatch
-                          ? `${getPracticeLabel(selectedCandidateMatch)}  •  ${
-                              selectedCandidateMatch.progress === "fresh"
-                                ? "Fresh"
-                                : selectedCandidateMatch.progress === "partial"
-                                ? "Halfway Scouted"
-                                : "Already Scouted"
-                            }`
-                          : "None"}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={beginPracticeFromSelection}
-                        className="px-4 py-2 rounded text-white font-semibold"
-                        style={{ backgroundColor: "var(--primary-color)" }}
-                      >
-                        Start Selected Match
-                      </button>
                     </div>
                   </div>
                 )}
@@ -1676,11 +1667,11 @@ function PracticeScoutingContent() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setShowMatchSelectModal(false)}
+                            onClick={handleUseSelectedMatchFromModal}
                             className="px-4 py-2 rounded text-white font-semibold"
                             style={{ backgroundColor: "var(--primary-color)" }}
                           >
-                            Use Selected Match
+                            {selectedDifficulty === "live" ? "Use & Start Live Match" : "Use Selected Match"}
                           </button>
                         </div>
                       </div>
