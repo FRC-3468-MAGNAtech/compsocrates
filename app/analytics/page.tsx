@@ -163,6 +163,15 @@ function scoreEntry(e: Entry, game: AnalyticsGame) {
 }
 
 function matchLabel(entry: Entry) {
+  function remapLegacyFinalLabel(rawLabel: string) {
+    const parsed = String(rawLabel || "").trim().toUpperCase().match(/^F(\d+)$/);
+    if (!parsed) return rawLabel;
+    const number = Number(parsed[1] || 0);
+    if (number >= 1 && number <= 13) return `SF${number}`;
+    if (number >= 14 && number <= 16) return `F${number - 13}`;
+    return rawLabel;
+  }
+
   const num = entry.matchNumber || "-";
   const matchId = String(entry.matchId || "").trim();
   const matchIdMatch = matchId.match(/^(qf|sf|f)(\d+)(?:m(\d+))?$/i);
@@ -174,12 +183,12 @@ function matchLabel(entry: Entry) {
       return `${prefix}${setNumber || "-"}M${matchNumber || "-"}`;
     }
     if (prefix === "F") {
-      return `F${matchNumber || setNumber || "-"}`;
+      return remapLegacyFinalLabel(`F${matchNumber || setNumber || "-"}`);
     }
   }
   if (entry.matchType === "practice") return `P${num}`;
   if (entry.matchType === "qualification") return `Q${num}`;
-  if (entry.matchType === "finals") return `F${num}`;
+  if (entry.matchType === "finals") return remapLegacyFinalLabel(`F${num}`);
   return num;
 }
 
@@ -284,14 +293,14 @@ function parseMatchIdentity(entry: Pick<Entry, "matchId" | "matchType" | "matchN
 }
 
 function normalizePracticeSessionMatchType(rawType: unknown, rawMatchKey: unknown): "practice" | "qualification" | "finals" {
+  const matchKey = String(rawMatchKey || "").trim().toLowerCase();
+  if (/_qm\d+/.test(matchKey)) return "qualification";
+  if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "finals";
+
   const type = String(rawType || "").trim().toLowerCase();
   if (type === "practice") return "practice";
   if (type === "qualification") return "qualification";
   if (type === "playoff" || type === "finals") return "finals";
-
-  const matchKey = String(rawMatchKey || "").trim().toLowerCase();
-  if (/_qm\d+/.test(matchKey)) return "qualification";
-  if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "finals";
   return "qualification";
 }
 

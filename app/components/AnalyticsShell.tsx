@@ -45,6 +45,7 @@ export default function AnalyticsShell({
   onSelectedEventChange,
 }: AnalyticsShellProps) {
   const pathname = usePathname();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     const saved = localStorage.getItem("analytics-sidebar-collapsed");
@@ -113,10 +114,17 @@ export default function AnalyticsShell({
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
       <div className="flex-1 flex h-screen overflow-hidden">
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/45 z-[60] md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
         <aside
-          className={`bg-white border-r border-gray-200 shrink-0 transition-all duration-300 ${
+          className={`hidden md:block bg-white border-r border-gray-200 shrink-0 transition-all duration-300 ${
             collapsed ? "w-0 overflow-hidden" : "w-64"
           }`}
+          style={{}}
         >
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-bold" style={{ color: "var(--primary-color)" }}>
@@ -161,15 +169,73 @@ export default function AnalyticsShell({
             })}
           </nav>
         </aside>
+        <aside
+          className={`md:hidden fixed top-0 left-0 h-screen w-72 bg-white border-r border-gray-200 z-[70] transition-transform duration-300 ${
+            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-lg font-bold" style={{ color: "var(--primary-color)" }}>
+              Analytics
+            </h2>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+            >
+              X
+            </button>
+          </div>
+          <div className="p-4 border-b border-gray-200">
+            {effectiveEventOptions.length > 0 && onSelectedEventChange && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Event</label>
+                <select
+                  value={selectedEvent}
+                  onChange={(event) => onSelectedEventChange(event.target.value)}
+                  className="w-full border rounded px-2 py-1.5 text-sm"
+                >
+                  {effectiveEventOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <nav className="p-3 space-y-1 overflow-y-auto">
+            {analyticsLinks.map((item, index) => {
+              if ("divider" in item) {
+                return <hr key={`mobile-divider-${index}`} className="my-2 border-gray-300" />;
+              }
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={`mobile-${item.href}`}
+                  href={item.href}
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className={`block px-3 py-2 rounded text-sm ${
+                    active
+                      ? "theme-primary-solid text-white font-semibold"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </aside>
 
         <div className="flex-1 flex flex-col overflow-hidden">
           <button
-            onClick={() => setCollapsed((v) => !v)}
-            className="md:hidden fixed right-4 top-4 z-50 px-3 py-2 rounded border border-gray-200 bg-white shadow hover:bg-gray-100"
-            title={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
-            aria-label={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
+            onClick={() => setMobileSidebarOpen((v) => !v)}
+            className="md:hidden fixed right-4 top-4 z-[80] px-3 py-2 rounded border border-gray-200 bg-white shadow hover:bg-gray-100 touch-manipulation"
+            title={mobileSidebarOpen ? "Close analytics sidebar" : "Open analytics sidebar"}
+            aria-label={mobileSidebarOpen ? "Close analytics sidebar" : "Open analytics sidebar"}
           >
-            {collapsed ? ">" : "<"}
+            {mobileSidebarOpen ? "X" : ">"}
           </button>
           <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">

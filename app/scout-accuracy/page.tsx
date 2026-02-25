@@ -242,14 +242,14 @@ function ScoutAccuracyContent() {
     }
   }
 
-  // Count active scouts only: base scouts + lead scouts (all roles still shown in leaderboard)
+  // Count active scouts only: dedicated match scouts (lead roles are excluded from scout counts).
   const actualScoutCount = scoutStats.filter((s) => {
     const roles = getUserRoles({ role: s.role, roles: s.roles });
-    return roles.includes("match-scout") || roles.includes("lead-scout");
+    return roles.includes("match-scout");
   }).length;
   const scoutOnlyStats = scoutStats.filter((s) => {
     const roles = getUserRoles({ role: s.role, roles: s.roles });
-    return roles.includes("match-scout") || roles.includes("lead-scout");
+    return roles.includes("match-scout");
   });
   const scoutOnlyStatsWithAccuracy = scoutOnlyStats.filter((s) => s.averageAccuracy > 0);
 

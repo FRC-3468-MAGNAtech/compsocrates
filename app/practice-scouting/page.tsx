@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -122,7 +122,7 @@ type PracticeSessionDraft = {
   savedAt: number;
   scoutId: string;
   selectedGame: "REEFSCAPE" | "REBUILT" | null;
-  selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
+  selectedDifficulty: 'easy' | 'medium' | 'hard' | 'live' | null;
   selectedMode: PracticeMode | null;
   currentStep: Extract<PracticeStep, "practice" | "break">;
   currentMatch: PracticeMatch;
@@ -390,11 +390,6 @@ function normalizePracticeMatchType(
   rawMatchKey: unknown,
   rawCompLevel: unknown
 ): "qualification" | "playoff" | "practice" {
-  const typeValue = String(rawType || "").trim().toLowerCase();
-  if (typeValue === "qualification" || typeValue === "playoff" || typeValue === "practice") {
-    return typeValue;
-  }
-
   const compLevel = String(rawCompLevel || "").trim().toLowerCase();
   if (compLevel === "qm") return "qualification";
   if (compLevel === "qf" || compLevel === "sf" || compLevel === "f") return "playoff";
@@ -402,6 +397,11 @@ function normalizePracticeMatchType(
   const matchKey = String(rawMatchKey || "").trim().toLowerCase();
   if (/_qm\d+/.test(matchKey)) return "qualification";
   if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "playoff";
+
+  const typeValue = String(rawType || "").trim().toLowerCase();
+  if (typeValue === "qualification" || typeValue === "playoff" || typeValue === "practice") {
+    return typeValue;
+  }
 
   return "practice";
 }
@@ -491,7 +491,7 @@ function PracticeScoutingContent() {
   const { userData } = useAuth();
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
   const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
@@ -502,6 +502,10 @@ function PracticeScoutingContent() {
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
+  const [selectedModalEventKey, setSelectedModalEventKey] = useState("all");
+  const [selectedModalMatchType, setSelectedModalMatchType] = useState<"all" | "practice" | "qualification" | "playoffs">("all");
+  const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
@@ -512,6 +516,10 @@ function PracticeScoutingContent() {
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
   const REBUILT_WEEK0_EVENT_KEY = "2026week0";
+
+  const persistedDifficulty: "easy" | "medium" | "hard" = selectedDifficulty === "live"
+    ? "hard"
+    : (selectedDifficulty || "easy");
 
   function getPracticeIdentity(match: {
     matchKey?: unknown;
@@ -535,6 +543,33 @@ function PracticeScoutingContent() {
     const allianceLabel = alliance ? `  •  ${alliance === "red" ? "Red" : "Blue"} Alliance` : "";
     const teams = Array.isArray(match.allianceTeams) ? match.allianceTeams.slice(0, 3).join(", ") : "";
     return `${matchTypeLabel} ${match.matchNumber}${allianceLabel}${teams ? `  •  [${teams}]` : ""}`;
+  }
+
+  function comparePracticeMatchesInOrder(a: CandidatePracticeMatch, b: CandidatePracticeMatch) {
+    const stageOrder = { practice: 0, qualification: 1, semifinal: 2, finals: 3 } as const;
+    const aStage = getPracticeStage(a);
+    const bStage = getPracticeStage(b);
+    const stageDiff = stageOrder[aStage] - stageOrder[bStage];
+    if (stageDiff !== 0) return stageDiff;
+
+    const numberDiff = Number(a.matchNumber || 0) - Number(b.matchNumber || 0);
+    if (numberDiff !== 0) return numberDiff;
+
+    const allianceOrder = { red: 0, blue: 1 };
+    const aAlliance = normalizeAllianceSide(a.alliance);
+    const bAlliance = normalizeAllianceSide(b.alliance);
+    const aAllianceRank = aAlliance ? allianceOrder[aAlliance] : 9;
+    const bAllianceRank = bAlliance ? allianceOrder[bAlliance] : 9;
+    if (aAllianceRank !== bAllianceRank) return aAllianceRank - bAllianceRank;
+
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  }
+
+  function compareCandidateMatches(a: CandidatePracticeMatch, b: CandidatePracticeMatch) {
+    const progressRank = { fresh: 0, partial: 1, complete: 2 } as const;
+    const progressDiff = progressRank[a.progress] - progressRank[b.progress];
+    if (progressDiff !== 0) return progressDiff;
+    return comparePracticeMatchesInOrder(a, b);
   }
 
   function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
@@ -672,7 +707,7 @@ function PracticeScoutingContent() {
     }
   }, [userData?.uid]);
 
-  async function selectPracticeMatch(difficulty: 'easy' | 'medium' | 'hard', mode: PracticeMode) {
+  async function selectPracticeMatch(difficulty: 'easy' | 'medium' | 'hard' | 'live', mode: PracticeMode) {
     clearPracticeDraft();
     setPendingDraft(null);
     setLoading(true);
@@ -684,16 +719,21 @@ function PracticeScoutingContent() {
     try {
       let matches: PracticeMatch[] = [];
       try {
-        const matchesQuery = query(
-          collection(db, 'practiceMatches'),
-          where('difficulty', '==', difficulty)
-        );
-        const matchesSnapshot = await getDocs(matchesQuery);
-        matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+        if (difficulty === "live") {
+          const matchesSnapshot = await getDocs(collection(db, "practiceMatches"));
+          matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+        } else {
+          const matchesQuery = query(
+            collection(db, 'practiceMatches'),
+            where('difficulty', '==', difficulty)
+          );
+          const matchesSnapshot = await getDocs(matchesQuery);
+          matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+        }
       } catch (queryError) {
         const allSnapshot = await getDocs(collection(db, "practiceMatches"));
         const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        matches = allMatches.filter((match) => match.difficulty === difficulty);
+        matches = difficulty === "live" ? allMatches : allMatches.filter((match) => match.difficulty === difficulty);
         console.warn("Difficulty query failed; using fallback practice match load.", queryError);
       }
 
@@ -778,31 +818,15 @@ function PracticeScoutingContent() {
             : "fresh";
           return { ...match, progress } as CandidatePracticeMatch;
         })
-        .sort((a, b) => {
-          const rank = { fresh: 0, partial: 1, complete: 2 };
-          const progressDiff = rank[a.progress] - rank[b.progress];
-          if (progressDiff !== 0) return progressDiff;
-          const stageOrder = { practice: 0, qualification: 1, semifinal: 2, finals: 3 } as const;
-          const aStage = getPracticeStage(a);
-          const bStage = getPracticeStage(b);
-          const stageDiff = stageOrder[aStage] - stageOrder[bStage];
-          if (stageDiff !== 0) return stageDiff;
-
-          const numberDiff = Number(a.matchNumber || 0) - Number(b.matchNumber || 0);
-          if (numberDiff !== 0) return numberDiff;
-
-          const allianceOrder = { red: 0, blue: 1 };
-          const aAlliance = normalizeAllianceSide(a.alliance);
-          const bAlliance = normalizeAllianceSide(b.alliance);
-          const aAllianceRank = aAlliance ? allianceOrder[aAlliance] : 9;
-          const bAllianceRank = bAlliance ? allianceOrder[bAlliance] : 9;
-          return aAllianceRank - bAllianceRank;
-        });
+        .sort(compareCandidateMatches);
 
       setCandidateMatches(rankedMatches);
+      setSelectedModalEventKey("all");
+      setSelectedModalMatchType("all");
       if (rankedMatches[0]) {
         setSelectedCandidateId(rankedMatches[0].id);
       }
+      setShowMatchSelectModal(true);
     } catch (error) {
       console.error('Error loading practice match:', error);
       const details = (error as { code?: string; message?: string })?.message || "";
@@ -837,6 +861,7 @@ function PracticeScoutingContent() {
     const safeMatch: PracticeMatch = {
       ...selected,
       matchType: normalizedMatchType,
+      videoUrl: selectedDifficulty === "live" && liveVideoUrl.trim() ? liveVideoUrl.trim() : selected.videoUrl,
       allianceTeams: fallbackTeams,
       officialData: {
         score: safeOfficialScore,
@@ -860,6 +885,10 @@ function PracticeScoutingContent() {
     const selected = candidateMatches.find((match) => match.id === selectedCandidateId);
     if (!selected) {
       alert("Pick a match first.");
+      return;
+    }
+    if (selectedDifficulty === "live" && !liveVideoUrl.trim()) {
+      alert("Paste a live video URL before starting.");
       return;
     }
     startPracticeMatch(selected);
@@ -961,8 +990,10 @@ function PracticeScoutingContent() {
         matchNumber: currentMatch.matchNumber,
         matchType: normalizedMatchType,
         alliance: normalizeAllianceSide(currentMatch.alliance),
-        difficulty: selectedDifficulty || 'easy',
+        difficulty: persistedDifficulty,
         mode: selectedMode || 'trial',
+        isLivePracticeScouting: selectedDifficulty === "live",
+        liveVideoUrl: selectedDifficulty === "live" ? liveVideoUrl.trim() : "",
         scoutedData: allRobotData[0] as unknown as ScoutedData,
         allScoutedData: allRobotData,
         eventKey,
@@ -1054,7 +1085,9 @@ function PracticeScoutingContent() {
             timestamp: now,
             submittedAt: now,
             practiceMode: selectedMode || "trial",
-            difficulty: selectedDifficulty || "easy",
+            difficulty: persistedDifficulty,
+            isLivePracticeScouting: selectedDifficulty === "live",
+            liveVideoUrl: selectedDifficulty === "live" ? liveVideoUrl.trim() : "",
             isPracticeScouting: true,
             practiceSessionId: docRef.id,
             penaltyPoints,
@@ -1115,8 +1148,10 @@ function PracticeScoutingContent() {
         matchNumber: currentMatch.matchNumber,
         matchType: normalizedMatchType,
         alliance: normalizeAllianceSide(currentMatch.alliance),
-        difficulty: selectedDifficulty || 'easy',
+        difficulty: persistedDifficulty,
         mode: selectedMode || 'trial',
+        isLivePracticeScouting: selectedDifficulty === "live",
+        liveVideoUrl: selectedDifficulty === "live" ? liveVideoUrl.trim() : "",
         scoutedData: allRobotData[0],
         allScoutedData: allRobotData,
         eventKey,
@@ -1155,7 +1190,9 @@ function PracticeScoutingContent() {
             timestamp: now,
             submittedAt: now,
             practiceMode: selectedMode || "trial",
-            difficulty: selectedDifficulty || "easy",
+            difficulty: persistedDifficulty,
+            isLivePracticeScouting: selectedDifficulty === "live",
+            liveVideoUrl: selectedDifficulty === "live" ? liveVideoUrl.trim() : "",
             isPracticeScouting: true,
             practiceSessionId: docRef.id,
             penaltyPoints,
@@ -1183,6 +1220,10 @@ function PracticeScoutingContent() {
     setSelectedMode(null);
     setCandidateMatches([]);
     setSelectedCandidateId("");
+    setSelectedModalEventKey("all");
+    setSelectedModalMatchType("all");
+    setShowMatchSelectModal(false);
+    setLiveVideoUrl("");
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
     setBreakCompletedRobotIndex(null);
@@ -1196,6 +1237,37 @@ function PracticeScoutingContent() {
     clearPracticeDraft();
     setPendingDraft(null);
   }
+
+  const matchSelectorEvents = useMemo(() => {
+    const byEvent = new Map<string, string>();
+    candidateMatches.forEach((match) => {
+      const key = getPracticeEventKey(match);
+      const name = String((match as unknown as Record<string, unknown>).eventName || key || "Unknown Event").trim();
+      if (key && !byEvent.has(key)) byEvent.set(key, name || key);
+    });
+    return Array.from(byEvent.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [candidateMatches]);
+
+  const modalFilteredMatches = useMemo(() => {
+    return candidateMatches
+      .filter((match) => {
+        const eventKey = getPracticeEventKey(match);
+        if (selectedModalEventKey !== "all" && eventKey !== selectedModalEventKey) return false;
+        if (selectedModalMatchType === "all") return true;
+        const stage = getPracticeStage(match);
+        if (selectedModalMatchType === "practice") return stage === "practice";
+        if (selectedModalMatchType === "qualification") return stage === "qualification";
+        return stage === "semifinal" || stage === "finals";
+      })
+      .sort(compareCandidateMatches);
+  }, [candidateMatches, selectedModalEventKey, selectedModalMatchType]);
+
+  const selectedCandidateMatch = useMemo(
+    () => candidateMatches.find((match) => match.id === selectedCandidateId) || null,
+    [candidateMatches, selectedCandidateId]
+  );
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -1283,6 +1355,8 @@ function PracticeScoutingContent() {
                       setSelectedDifficulty(null);
                       setCandidateMatches([]);
                       setSelectedCandidateId("");
+                      setLiveVideoUrl("");
+                      setShowMatchSelectModal(false);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
@@ -1343,13 +1417,15 @@ function PracticeScoutingContent() {
                       setSelectedDifficulty(null);
                       setCandidateMatches([]);
                       setSelectedCandidateId("");
+                      setLiveVideoUrl("");
+                      setShowMatchSelectModal(false);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
                     ← Change Mode
                   </button>
                 </div>
-                <div className="grid md:grid-cols-3 gap-4">
+                <div className="grid md:grid-cols-4 gap-4">
                   <button
                     onClick={() => selectPracticeMatch('easy', selectedMode)}
                     disabled={loading}
@@ -1400,30 +1476,62 @@ function PracticeScoutingContent() {
                     <h3 className="font-semibold text-lg mb-1">Hard</h3>
                     <p className="text-sm text-gray-600">High-scoring matches</p>
                   </button>
+
+                  <button
+                    onClick={() => selectPracticeMatch('live', selectedMode)}
+                    disabled={loading}
+                    className="p-6 border-2 border-cyan-300 rounded-lg text-left transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = "rgba(34, 211, 238, 0.12)";
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                  >
+                    <div className="text-sm font-semibold mb-2 text-cyan-700">LIVE</div>
+                    <h3 className="font-semibold text-lg mb-1">Live</h3>
+                    <p className="text-sm text-gray-600">Paste stream URL and pick match manually</p>
+                  </button>
                 </div>
                 {selectedDifficulty && (
                   <div className="mt-6 bg-white rounded-xl shadow-md p-4 border border-gray-200">
                     <h3 className="font-semibold mb-2">Match Selector</h3>
-                    <p className="text-sm text-gray-600 mb-3">
-                      Fresh matches are listed first. Halfway or already scouted matches are backburnered to reduce scouting bias.
-                    </p>
+                    <p className="text-sm text-gray-600 mb-3">Select by event, match type, then match in competition order.</p>
                     {candidateMatches.length === 0 ? (
                       <p className="text-sm text-gray-600">{loading ? "Loading matches..." : "Pick a difficulty to load matches."}</p>
                     ) : (
                       <div className="space-y-3">
-                        <select
-                          value={selectedCandidateId}
-                          onChange={(event) => setSelectedCandidateId(event.target.value)}
-                          className="w-full border rounded p-2"
+                        {selectedDifficulty === "live" && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Live Video URL</label>
+                            <input
+                              type="url"
+                              value={liveVideoUrl}
+                              onChange={(event) => setLiveVideoUrl(event.target.value)}
+                              className="w-full border rounded p-2"
+                              placeholder="https://www.youtube.com/watch?v=..."
+                            />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowMatchSelectModal(true)}
+                          className="px-4 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50"
                         >
-                          {candidateMatches.map((match) => (
-                            <option key={match.id} value={match.id}>
-                              {`${getPracticeLabel(match)}  •  ${
-                                match.progress === "fresh" ? "Fresh" : match.progress === "partial" ? "Halfway Scouted" : "Already Scouted"
-                              }`}
-                            </option>
-                          ))}
-                        </select>
+                          Open Match Select
+                        </button>
+                        <p className="text-sm text-gray-700">
+                          Selected: {selectedCandidateMatch
+                            ? `${getPracticeLabel(selectedCandidateMatch)}  •  ${
+                                selectedCandidateMatch.progress === "fresh"
+                                  ? "Fresh"
+                                  : selectedCandidateMatch.progress === "partial"
+                                  ? "Halfway Scouted"
+                                  : "Already Scouted"
+                              }`
+                            : "None"}
+                        </p>
                         <button
                           type="button"
                           onClick={beginPracticeFromSelection}
@@ -1434,6 +1542,88 @@ function PracticeScoutingContent() {
                         </button>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {showMatchSelectModal && (
+                  <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/45" onClick={() => setShowMatchSelectModal(false)} />
+                    <div className="relative w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-xl bg-white shadow-xl border border-gray-200">
+                      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">Practice Match Select</h3>
+                        <button
+                          type="button"
+                          onClick={() => setShowMatchSelectModal(false)}
+                          className="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                        >
+                          Close
+                        </button>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="grid md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Event</label>
+                            <select
+                              value={selectedModalEventKey}
+                              onChange={(event) => setSelectedModalEventKey(event.target.value)}
+                              className="w-full border rounded p-2"
+                            >
+                              <option value="all">All Events</option>
+                              {matchSelectorEvents.map((event) => (
+                                <option key={event.id} value={event.id}>{event.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
+                            <select
+                              value={selectedModalMatchType}
+                              onChange={(event) => setSelectedModalMatchType(event.target.value as "all" | "practice" | "qualification" | "playoffs")}
+                              className="w-full border rounded p-2"
+                            >
+                              <option value="all">All</option>
+                              <option value="practice">Practice</option>
+                              <option value="qualification">Qualification</option>
+                              <option value="playoffs">Playoffs</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="max-h-[48vh] overflow-y-auto border rounded">
+                          {modalFilteredMatches.length === 0 ? (
+                            <p className="p-4 text-sm text-gray-600">No matches for this filter.</p>
+                          ) : (
+                            <div className="divide-y divide-gray-200">
+                              {modalFilteredMatches.map((match) => {
+                                const selected = selectedCandidateId === match.id;
+                                return (
+                                  <button
+                                    key={match.id}
+                                    type="button"
+                                    onClick={() => setSelectedCandidateId(match.id)}
+                                    className={`w-full text-left p-3 hover:bg-gray-50 ${selected ? "bg-gray-100" : ""}`}
+                                  >
+                                    <div className="font-medium">{getPracticeLabel(match)}</div>
+                                    <div className="text-xs text-gray-600">
+                                      {match.progress === "fresh" ? "Fresh" : match.progress === "partial" ? "Halfway Scouted" : "Already Scouted"}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setShowMatchSelectModal(false)}
+                            className="px-4 py-2 rounded text-white font-semibold"
+                            style={{ backgroundColor: "var(--primary-color)" }}
+                          >
+                            Use Selected Match
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </>

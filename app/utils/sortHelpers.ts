@@ -36,6 +36,16 @@ type MatchSortKey = {
 
 export function parseMatchLabelForSort(label: string): MatchSortKey {
   const normalized = String(label || "").trim().toUpperCase().replace(/\s+/g, "");
+  const legacyFinal = normalized.match(/^F(\d+)$/);
+  if (legacyFinal) {
+    const number = Number(legacyFinal[1] || 0);
+    if (number >= 1 && number <= 13) {
+      return { priority: 3, setNumber: number, matchNumber: 1 };
+    }
+    if (number >= 14 && number <= 16) {
+      return { priority: 4, setNumber: 0, matchNumber: number - 13 };
+    }
+  }
   let prefix = "";
   if (normalized.startsWith("QF")) prefix = "QF";
   else if (normalized.startsWith("SF")) prefix = "SF";

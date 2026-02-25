@@ -113,7 +113,7 @@ export default function Sidebar() {
     <>
       {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-[60] md:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
@@ -121,7 +121,7 @@ export default function Sidebar() {
       {/* Mobile hamburger button */}
       <button
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg"
+        className="md:hidden fixed top-4 left-4 z-[80] p-2 bg-white rounded-lg shadow-lg touch-manipulation"
         style={{ color: "var(--primary-color)" }}
       >
         {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -131,9 +131,9 @@ export default function Sidebar() {
         className={`
           border-r border-gray-200 flex flex-col transition-all duration-300
           ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}
-          ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
+          ${isMobileMenuOpen ? "translate-x-0 pointer-events-auto" : "-translate-x-full pointer-events-none md:pointer-events-auto"}
           md:translate-x-0
-          fixed md:sticky top-0 h-screen z-40
+          fixed md:sticky top-0 h-screen z-[70]
         `}
         style={{
           backgroundColor: "var(--theme-bg)",
