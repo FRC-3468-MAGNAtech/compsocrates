@@ -308,6 +308,14 @@ function MatchStrategyFormContent() {
         const number = Number(q[1]);
         mapped.push({ id: `q${number}`, label: `Qualification ${number}`, type: "qualification", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
       } else {
+        const finalsLike = match.label.match(/^(?:F|SF|QF)\s*(\d+)(?:[-M](\d+))?$/i);
+        if (finalsLike) {
+          const number = Number(finalsLike[2] || finalsLike[1] || finalsIndex);
+          mapped.push({ id: `f${number}`, label: `Finals ${number}`, type: "finals", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
+          finalsIndex = Math.max(finalsIndex, number + 1);
+          continue;
+        }
+
         mapped.push({ id: `f${finalsIndex}`, label: match.label, type: "finals", matchNumber: finalsIndex, scheduleTime: match.scheduleTime, sourceKey: match.key });
         finalsIndex += 1;
       }
@@ -417,7 +425,10 @@ function MatchStrategyFormContent() {
               <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{displayMatchLabel(selectedMatch)}</span>
               <button type="button" onClick={() => setShowMatchPicker(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
             </div>
-            <div className="text-sm text-gray-700">Pit sync checks are active. Field warnings appear under each robot.</div>
+            <div className="text-sm space-y-1">
+              <div className="text-green-700">Detected pit form sync is active for this match.</div>
+              <div className="text-gray-700">Alerts show up below each robot field.</div>
+            </div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
           </div>

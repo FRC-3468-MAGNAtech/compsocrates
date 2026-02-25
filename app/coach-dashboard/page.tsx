@@ -100,6 +100,7 @@ function CoachDashboardContent() {
   const [teamData, setTeamData] = useState<TeamData | null>(null);
   const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
   const [readyScoutIds, setReadyScoutIds] = useState<string[]>([]);
+  const [totalAssignableScouts, setTotalAssignableScouts] = useState(0);
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -161,6 +162,7 @@ function CoachDashboardContent() {
       });
       const scoutDocs = scouts.map((docSnap) => ({ uid: docSnap.id, displayName: String(docSnap.data().displayName || "") }));
       const scoutNames = scoutDocs.map((row) => row.displayName);
+      setTotalAssignableScouts(scoutDocs.length);
 
       const accuracyMapByScout: Record<string, { total: number; count: number }> = {};
       scoutingSnap.forEach((scoutingDoc) => {
@@ -393,10 +395,10 @@ function CoachDashboardContent() {
                     <Users size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {stats?.activeScouts || 0}
+                    {readyScoutNames.length}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
-                    Ready scouts ({stats?.totalScouts || 0} total)
+                    Ready scouts ({totalAssignableScouts} total)
                   </p>
                 </div>
 

@@ -353,6 +353,14 @@ function DriveReflectionFormContent() {
         const number = Number(q[1]);
         mapped.push({ id: `q${number}`, label: `Qualification ${number}`, type: "qualification", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
       } else {
+        const finalsLike = match.label.match(/^(?:F|SF|QF)\s*(\d+)(?:[-M](\d+))?$/i);
+        if (finalsLike) {
+          const number = Number(finalsLike[2] || finalsLike[1] || finalsIndex);
+          mapped.push({ id: `f${number}`, label: `Finals ${number}`, type: "finals", matchNumber: number, scheduleTime: match.scheduleTime, sourceKey: match.key });
+          finalsIndex = Math.max(finalsIndex, number + 1);
+          continue;
+        }
+
         mapped.push({ id: `f${finalsIndex}`, label: match.label, type: "finals", matchNumber: finalsIndex, scheduleTime: match.scheduleTime, sourceKey: match.key });
         finalsIndex += 1;
       }
@@ -505,11 +513,11 @@ function DriveReflectionFormContent() {
             </div>
             <div className="text-sm">
               {syncedPlan ? (
-                <div className="text-green-700">This match is synced with a match strategy form.</div>
+                <div className="text-green-700">Detected match strategy form is synced for this match.</div>
               ) : (
                 <div className="text-amber-700">No synced match strategy form found for this match yet.</div>
               )}
-              <div className="text-gray-700">Mismatch warnings appear directly under each robot field.</div>
+              <div className="text-gray-700">Alerts show up below each robot field.</div>
             </div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />

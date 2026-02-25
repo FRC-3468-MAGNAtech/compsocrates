@@ -406,6 +406,37 @@ function normalizePracticeMatchType(
   return "practice";
 }
 
+function normalizeAllianceSide(rawAlliance: unknown): "red" | "blue" | "" {
+  const alliance = String(rawAlliance || "").trim().toLowerCase();
+  if (alliance === "red" || alliance === "blue") return alliance;
+  return "";
+}
+
+function getPracticeStage(match: {
+  matchType?: unknown;
+  matchKey?: unknown;
+  compLevel?: unknown;
+}): "practice" | "qualification" | "semifinal" | "finals" {
+  const matchKey = String(match.matchKey || "").trim().toLowerCase();
+  const compLevel = String(match.compLevel || "").trim().toLowerCase();
+
+  if (compLevel === "sf" || /_sf\d+m\d+/.test(matchKey)) return "semifinal";
+  if (compLevel === "f" || /_f\d+m\d+/.test(matchKey)) return "finals";
+  if (compLevel === "qf" || /_qf\d+m\d+/.test(matchKey)) return "finals";
+
+  const normalizedType = normalizePracticeMatchType(match.matchType, match.matchKey, match.compLevel);
+  if (normalizedType === "practice") return "practice";
+  if (normalizedType === "qualification") return "qualification";
+  return "finals";
+}
+
+function getPracticeStageLabel(stage: "practice" | "qualification" | "semifinal" | "finals"): string {
+  if (stage === "practice") return "Practice";
+  if (stage === "qualification") return "Qualification";
+  if (stage === "semifinal") return "Semi-Finals";
+  return "Finals";
+}
+
 function normalizeEventValue(value: string): string {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -482,18 +513,28 @@ function PracticeScoutingContent() {
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
   const REBUILT_WEEK0_EVENT_KEY = "2026week0";
 
-  function getPracticeIdentity(match: Pick<PracticeMatch, "matchKey" | "matchNumber" | "matchType">) {
+  function getPracticeIdentity(match: {
+    matchKey?: unknown;
+    matchNumber?: unknown;
+    matchType?: unknown;
+    alliance?: unknown;
+    compLevel?: unknown;
+  }) {
     const key = String(match.matchKey || "").trim().toLowerCase();
-    if (key) return key;
-    const type = normalizePracticeMatchType(match.matchType, match.matchKey, "");
-    return `${type}:${Number(match.matchNumber || 0)}`;
+    const stage = getPracticeStage(match);
+    const baseIdentity = key || `${stage}:${Number(match.matchNumber || 0)}`;
+    const alliance = normalizeAllianceSide(match.alliance);
+    if (!alliance) return baseIdentity;
+    return `${baseIdentity}:${alliance}`;
   }
 
-  function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber" | "allianceTeams">) {
-    const type = normalizePracticeMatchType(match.matchType, "", "");
-    const matchTypeLabel = type === "qualification" ? "Qualification" : type === "playoff" ? "Playoff" : "Practice";
+  function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber" | "allianceTeams" | "alliance" | "matchKey">) {
+    const stage = getPracticeStage(match);
+    const matchTypeLabel = getPracticeStageLabel(stage);
+    const alliance = normalizeAllianceSide(match.alliance);
+    const allianceLabel = alliance ? `  •  ${alliance === "red" ? "Red" : "Blue"} Alliance` : "";
     const teams = Array.isArray(match.allianceTeams) ? match.allianceTeams.slice(0, 3).join(", ") : "";
-    return `${matchTypeLabel} ${match.matchNumber}${teams ? `  •  [${teams}]` : ""}`;
+    return `${matchTypeLabel} ${match.matchNumber}${allianceLabel}${teams ? `  •  [${teams}]` : ""}`;
   }
 
   function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
@@ -699,11 +740,14 @@ function PracticeScoutingContent() {
           const row = docSnap.data() as Record<string, unknown>;
           const game = String(row.game || "REEFSCAPE").toUpperCase();
           if (activeMatchGame && game !== activeMatchGame) return;
-          const fromMatchKey = String(row.matchKey || "").trim().toLowerCase();
-          if (fromMatchKey) userCompletedIdentities.add(fromMatchKey);
-          const type = normalizePracticeMatchType(row.matchType, row.matchKey, row.compLevel);
-          const matchNumber = Number(row.matchNumber || 0);
-          if (matchNumber > 0) userCompletedIdentities.add(`${type}:${matchNumber}`);
+          const identity = getPracticeIdentity({
+            matchKey: row.matchKey,
+            matchNumber: row.matchNumber,
+            matchType: row.matchType,
+            alliance: row.alliance,
+            compLevel: row.compLevel,
+          });
+          if (identity) userCompletedIdentities.add(identity);
         });
 
         const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("scoutId", "==", userData.uid)));
@@ -712,10 +756,13 @@ function PracticeScoutingContent() {
           if (!row.isPracticeScouting) return;
           const game = String(row.game || "REEFSCAPE").toUpperCase();
           if (activeMatchGame && game !== activeMatchGame) return;
-          const fromMatchKey = String(row.matchKey || "").trim().toLowerCase();
-          const type = normalizePracticeMatchType(row.matchType, row.matchKey, row.compLevel);
-          const matchNumber = Number(row.matchNumber || 0);
-          const identity = fromMatchKey || (matchNumber > 0 ? `${type}:${matchNumber}` : "");
+          const identity = getPracticeIdentity({
+            matchKey: row.matchKey,
+            matchNumber: row.matchNumber,
+            matchType: row.matchType,
+            alliance: row.alliance || row.allianceColor,
+            compLevel: row.compLevel,
+          });
           if (!identity) return;
           userPartialCounts.set(identity, (userPartialCounts.get(identity) || 0) + 1);
         });
@@ -735,7 +782,21 @@ function PracticeScoutingContent() {
           const rank = { fresh: 0, partial: 1, complete: 2 };
           const progressDiff = rank[a.progress] - rank[b.progress];
           if (progressDiff !== 0) return progressDiff;
-          return Number(a.matchNumber || 0) - Number(b.matchNumber || 0);
+          const stageOrder = { practice: 0, qualification: 1, semifinal: 2, finals: 3 } as const;
+          const aStage = getPracticeStage(a);
+          const bStage = getPracticeStage(b);
+          const stageDiff = stageOrder[aStage] - stageOrder[bStage];
+          if (stageDiff !== 0) return stageDiff;
+
+          const numberDiff = Number(a.matchNumber || 0) - Number(b.matchNumber || 0);
+          if (numberDiff !== 0) return numberDiff;
+
+          const allianceOrder = { red: 0, blue: 1 };
+          const aAlliance = normalizeAllianceSide(a.alliance);
+          const bAlliance = normalizeAllianceSide(b.alliance);
+          const aAllianceRank = aAlliance ? allianceOrder[aAlliance] : 9;
+          const bAllianceRank = bAlliance ? allianceOrder[bAlliance] : 9;
+          return aAllianceRank - bAllianceRank;
         });
 
       setCandidateMatches(rankedMatches);
@@ -882,6 +943,15 @@ function PracticeScoutingContent() {
       const now = Date.now();
       const device = getScoutDevice();
       const { eventKey, eventName } = resolvePracticeEvent(currentMatch, "REBUILT");
+      const matchStage = getPracticeStage(currentMatch);
+      const analyticsMatchType: "practice" | "qualification" | "finals" =
+        matchStage === "practice" ? "practice" : matchStage === "qualification" ? "qualification" : "finals";
+      const matchIdPrefix = analyticsMatchType === "practice" ? "p" : analyticsMatchType === "finals" ? "f" : "q";
+      const normalizedMatchType = normalizePracticeMatchType(
+        currentMatch.matchType,
+        currentMatch.matchKey,
+        (currentMatch as unknown as Record<string, unknown>).compLevel
+      );
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
         scoutName: userData.displayName,
@@ -889,11 +959,8 @@ function PracticeScoutingContent() {
         matchId: currentMatch.id || '',
         matchKey: currentMatch.matchKey || "",
         matchNumber: currentMatch.matchNumber,
-        matchType: normalizePracticeMatchType(
-          currentMatch.matchType,
-          currentMatch.matchKey,
-          (currentMatch as unknown as Record<string, unknown>).compLevel
-        ),
+        matchType: normalizedMatchType,
+        alliance: normalizeAllianceSide(currentMatch.alliance),
         difficulty: selectedDifficulty || 'easy',
         mode: selectedMode || 'trial',
         scoutedData: allRobotData[0] as unknown as ScoutedData,
@@ -974,9 +1041,12 @@ function PracticeScoutingContent() {
               failedClimb: robotData.endgameFailedClimb,
               cycleTimes: robotData.endgameCycles,
             },
-            matchId: `q${currentMatch.matchNumber}`,
+            matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
             matchNumber: String(currentMatch.matchNumber),
-            matchType: "qualification",
+            matchType: analyticsMatchType,
+            alliance: normalizeAllianceSide(currentMatch.alliance),
+            allianceColor: normalizeAllianceSide(currentMatch.alliance),
+            matchKey: currentMatch.matchKey || "",
             eventKey,
             eventName,
             game: "REBUILT",
@@ -1027,6 +1097,15 @@ function PracticeScoutingContent() {
       const now = Date.now();
       const device = getScoutDevice();
       const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame || "REEFSCAPE");
+      const matchStage = getPracticeStage(currentMatch);
+      const analyticsMatchType: "practice" | "qualification" | "finals" =
+        matchStage === "practice" ? "practice" : matchStage === "qualification" ? "qualification" : "finals";
+      const matchIdPrefix = analyticsMatchType === "practice" ? "p" : analyticsMatchType === "finals" ? "f" : "q";
+      const normalizedMatchType = normalizePracticeMatchType(
+        currentMatch.matchType,
+        currentMatch.matchKey,
+        (currentMatch as unknown as Record<string, unknown>).compLevel
+      );
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
         scoutName: userData.displayName,
@@ -1034,11 +1113,8 @@ function PracticeScoutingContent() {
         matchId: currentMatch.id || '',
         matchKey: currentMatch.matchKey || "",
         matchNumber: currentMatch.matchNumber,
-        matchType: normalizePracticeMatchType(
-          currentMatch.matchType,
-          currentMatch.matchKey,
-          (currentMatch as unknown as Record<string, unknown>).compLevel
-        ),
+        matchType: normalizedMatchType,
+        alliance: normalizeAllianceSide(currentMatch.alliance),
         difficulty: selectedDifficulty || 'easy',
         mode: selectedMode || 'trial',
         scoutedData: allRobotData[0],
@@ -1066,9 +1142,12 @@ function PracticeScoutingContent() {
             ...robotData,
             scoutName: userData.displayName,
             scoutId: userData.uid,
-            matchId: `q${currentMatch.matchNumber}`,
+            matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
             matchNumber: String(currentMatch.matchNumber),
-            matchType: "qualification",
+            matchType: analyticsMatchType,
+            alliance: normalizeAllianceSide(currentMatch.alliance),
+            allianceColor: normalizeAllianceSide(currentMatch.alliance),
+            matchKey: currentMatch.matchKey || "",
             eventKey,
             eventName,
             game: activeMatchGame,
@@ -1416,16 +1495,11 @@ function PracticeScoutingContent() {
               {/* Match Info */}
               <div className="hidden md:block bg-black bg-opacity-90 text-white p-4">
                 <h3 className="font-semibold text-lg">
-                  {normalizePracticeMatchType(
-                    currentMatch.matchType,
-                    currentMatch.matchKey,
-                    (currentMatch as unknown as Record<string, unknown>).compLevel
-                  ) === 'qualification' ? 'Qualification' :
-                   normalizePracticeMatchType(
-                    currentMatch.matchType,
-                    currentMatch.matchKey,
-                    (currentMatch as unknown as Record<string, unknown>).compLevel
-                  ) === 'playoff' ? 'Playoff' : 'Practice'} Match {currentMatch.matchNumber}
+                  {getPracticeStageLabel(getPracticeStage({
+                    matchType: currentMatch.matchType,
+                    matchKey: currentMatch.matchKey,
+                    compLevel: (currentMatch as unknown as Record<string, unknown>).compLevel,
+                  }))} Match {currentMatch.matchNumber}
                 </h3>
                 <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>

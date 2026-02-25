@@ -24,8 +24,8 @@ export function compareSortValues(a: unknown, b: unknown, dir: SortDir): number 
 }
 
 export function sortLabel(currentKey: string, currentDir: SortDir, key: string, label: string) {
-  if (currentKey !== key) return label;
-  return currentDir === "asc" ? `${label} ^` : `${label} v`;
+  if (currentKey !== key) return `${label} ↕`;
+  return currentDir === "asc" ? `${label} ↑` : `${label} ↓`;
 }
 
 type MatchSortKey = {

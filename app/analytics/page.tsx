@@ -20,6 +20,7 @@ import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "
 
 type Entry = {
   id: string;
+  matchKey?: string;
   matchNumber?: string;
   matchType?: "qualification" | "practice" | "finals";
   matchId?: string;
@@ -162,15 +163,6 @@ function scoreEntry(e: Entry, game: AnalyticsGame) {
 }
 
 function matchLabel(entry: Entry) {
-  function remapLegacyFinalLabel(rawLabel: string) {
-    const parsed = String(rawLabel || "").trim().toUpperCase().match(/^F(\d+)$/);
-    if (!parsed) return rawLabel;
-    const number = Number(parsed[1] || 0);
-    if (number >= 1 && number <= 13) return `SF${number}`;
-    if (number >= 14 && number <= 16) return `F${number - 13}`;
-    return rawLabel;
-  }
-
   const num = entry.matchNumber || "-";
   const matchId = String(entry.matchId || "").trim();
   const matchIdMatch = matchId.match(/^(qf|sf|f)(\d+)(?:m(\d+))?$/i);
@@ -182,12 +174,12 @@ function matchLabel(entry: Entry) {
       return `${prefix}${setNumber || "-"}M${matchNumber || "-"}`;
     }
     if (prefix === "F") {
-      return remapLegacyFinalLabel(`F${matchNumber || setNumber || "-"}`);
+      return `F${matchNumber || setNumber || "-"}`;
     }
   }
   if (entry.matchType === "practice") return `P${num}`;
   if (entry.matchType === "qualification") return `Q${num}`;
-  if (entry.matchType === "finals") return remapLegacyFinalLabel(`F${num}`);
+  if (entry.matchType === "finals") return `F${num}`;
   return num;
 }
 
@@ -289,6 +281,18 @@ function parseMatchIdentity(entry: Pick<Entry, "matchId" | "matchType" | "matchN
   }
 
   return null;
+}
+
+function normalizePracticeSessionMatchType(rawType: unknown, rawMatchKey: unknown): "practice" | "qualification" | "finals" {
+  const type = String(rawType || "").trim().toLowerCase();
+  if (type === "practice") return "practice";
+  if (type === "qualification") return "qualification";
+  if (type === "playoff" || type === "finals") return "finals";
+
+  const matchKey = String(rawMatchKey || "").trim().toLowerCase();
+  if (/_qm\d+/.test(matchKey)) return "qualification";
+  if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "finals";
+  return "qualification";
 }
 
 function matchIdentityEquals(a: MatchIdentity, b: MatchIdentity): boolean {
@@ -564,14 +568,67 @@ function AnalyticsPageContent() {
   async function loadData() {
     const snapshot = await getDocs(collection(db, "scouting"));
     const entries = snapshot.docs.map((entryDoc) => ({ id: entryDoc.id, ...entryDoc.data() })) as Entry[];
-    setRawData(entries);
+    const practiceSessionIds = Array.from(
+      new Set(
+        entries
+          .map((entry) => String(entry.practiceSessionId || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    const sessionMetaById = new Map<string, { matchType: "practice" | "qualification" | "finals"; matchNumber?: number; matchKey?: string }>();
+    await Promise.all(
+      practiceSessionIds.map(async (sessionId) => {
+        try {
+          const sessionSnap = await getDoc(doc(db, "practiceSessions", sessionId));
+          if (!sessionSnap.exists()) return;
+          const session = sessionSnap.data() as Record<string, unknown>;
+          sessionMetaById.set(sessionId, {
+            matchType: normalizePracticeSessionMatchType(session.matchType, session.matchKey),
+            matchNumber: typeof session.matchNumber === "number" ? session.matchNumber : undefined,
+            matchKey: String(session.matchKey || "").trim() || undefined,
+          });
+        } catch {
+          // Best-effort enrichment only.
+        }
+      })
+    );
+
+    const enriched = entries.map((entry) => {
+      const sessionId = String(entry.practiceSessionId || "").trim();
+      const sessionMeta = sessionMetaById.get(sessionId);
+      if (!sessionMeta) return entry;
+
+      const fallbackNumber = Number(entry.matchNumber || sessionMeta.matchNumber || 0) || sessionMeta.matchNumber || 0;
+      const prefix = sessionMeta.matchType === "practice" ? "p" : sessionMeta.matchType === "finals" ? "f" : "q";
+      const next: Entry = { ...entry };
+
+      if (
+        sessionMeta.matchType !== "qualification" &&
+        (!entry.matchType || String(entry.matchType).toLowerCase() === "qualification")
+      ) {
+        next.matchType = sessionMeta.matchType;
+      }
+      if (fallbackNumber > 0 && (!entry.matchNumber || String(entry.matchNumber).trim() === "")) {
+        next.matchNumber = String(fallbackNumber);
+      }
+      const existingMatchId = String(entry.matchId || "").trim();
+      if (fallbackNumber > 0 && (!existingMatchId || /^q\d+$/i.test(existingMatchId))) {
+        next.matchId = `${prefix}${fallbackNumber}`;
+      }
+      if (!String(entry.matchKey || "").trim() && sessionMeta.matchKey) {
+        next.matchKey = sessionMeta.matchKey;
+      }
+
+      return next;
+    });
+
+    setRawData(enriched);
   }
 
   useEffect(() => {
-    getDocs(collection(db, "scouting")).then((snapshot) => {
-      const entries = snapshot.docs.map((entryDoc) => ({ id: entryDoc.id, ...entryDoc.data() })) as Entry[];
-      setRawData(entries);
-    });
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -1342,6 +1399,10 @@ function AnalyticsPageContent() {
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
     >
+      <div className="mb-4">
+        <h1 className="text-3xl font-bold mb-1 theme-text">Match Analytics</h1>
+        <p className="text-sm text-gray-600">Match scouting breakdown with sticky match/team columns.</p>
+      </div>
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
         <button
           className="px-3 py-1.5 text-sm rounded bg-gray-400 text-white cursor-not-allowed disabled:opacity-100"
