@@ -826,7 +826,7 @@ function PracticeScoutingContent() {
       if (rankedMatches[0]) {
         setSelectedCandidateId(rankedMatches[0].id);
       }
-      setShowMatchSelectModal(true);
+      setShowMatchSelectModal(difficulty !== "live");
     } catch (error) {
       console.error('Error loading practice match:', error);
       const details = (error as { code?: string; message?: string })?.message || "";
@@ -1269,6 +1269,13 @@ function PracticeScoutingContent() {
     [candidateMatches, selectedCandidateId]
   );
 
+  function randomizeSelectedMatch() {
+    if (modalFilteredMatches.length === 0) return;
+    const index = Math.floor(Math.random() * modalFilteredMatches.length);
+    const picked = modalFilteredMatches[index];
+    if (picked) setSelectedCandidateId(picked.id);
+  }
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
@@ -1494,7 +1501,7 @@ function PracticeScoutingContent() {
                     <p className="text-sm text-gray-600">Paste stream URL and pick match manually</p>
                   </button>
                 </div>
-                {selectedDifficulty && (
+                {selectedDifficulty && selectedDifficulty !== "live" && (
                   <div className="mt-6 bg-white rounded-xl shadow-md p-4 border border-gray-200">
                     <h3 className="font-semibold mb-2">Match Selector</h3>
                     <p className="text-sm text-gray-600 mb-3">Select by event, match type, then match in competition order.</p>
@@ -1502,18 +1509,6 @@ function PracticeScoutingContent() {
                       <p className="text-sm text-gray-600">{loading ? "Loading matches..." : "Pick a difficulty to load matches."}</p>
                     ) : (
                       <div className="space-y-3">
-                        {selectedDifficulty === "live" && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Live Video URL</label>
-                            <input
-                              type="url"
-                              value={liveVideoUrl}
-                              onChange={(event) => setLiveVideoUrl(event.target.value)}
-                              className="w-full border rounded p-2"
-                              placeholder="https://www.youtube.com/watch?v=..."
-                            />
-                          </div>
-                        )}
                         <button
                           type="button"
                           onClick={() => setShowMatchSelectModal(true)}
@@ -1542,6 +1537,64 @@ function PracticeScoutingContent() {
                         </button>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {selectedDifficulty === "live" && (
+                  <div className="mt-6 rounded-xl border border-cyan-300 bg-cyan-500/5 shadow-md p-4">
+                    <h3 className="font-semibold mb-1 text-cyan-700">Live Match Setup</h3>
+                    <p className="text-sm text-gray-700 mb-3">
+                      Paste a stream URL, choose a match manually, then start scouting.
+                    </p>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Live Video URL</label>
+                        <input
+                          type="url"
+                          value={liveVideoUrl}
+                          onChange={(event) => setLiveVideoUrl(event.target.value)}
+                          className="w-full border rounded p-2"
+                          placeholder="https://www.youtube.com/watch?v=..."
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowMatchSelectModal(true)}
+                          className="px-4 py-2 rounded text-white font-semibold"
+                          style={{ backgroundColor: "var(--primary-color)" }}
+                        >
+                          Choose Live Match
+                        </button>
+                        <button
+                          type="button"
+                          onClick={randomizeSelectedMatch}
+                          disabled={modalFilteredMatches.length === 0}
+                          className="px-4 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          Randomize
+                        </button>
+                      </div>
+                      <p className="text-sm text-gray-700">
+                        Selected: {selectedCandidateMatch
+                          ? `${getPracticeLabel(selectedCandidateMatch)}  •  ${
+                              selectedCandidateMatch.progress === "fresh"
+                                ? "Fresh"
+                                : selectedCandidateMatch.progress === "partial"
+                                ? "Halfway Scouted"
+                                : "Already Scouted"
+                            }`
+                          : "None"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={beginPracticeFromSelection}
+                        className="px-4 py-2 rounded text-white font-semibold"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        Start Selected Match
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1613,6 +1666,14 @@ function PracticeScoutingContent() {
                           )}
                         </div>
                         <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={randomizeSelectedMatch}
+                            disabled={modalFilteredMatches.length === 0}
+                            className="px-4 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50 disabled:opacity-60 mr-2"
+                          >
+                            Randomize
+                          </button>
                           <button
                             type="button"
                             onClick={() => setShowMatchSelectModal(false)}
