@@ -56,12 +56,6 @@ function toTeamNumbers(teamKeys: string[]): number[] {
     .filter((value) => Number.isFinite(value));
 }
 
-function toDifficulty(score: number): "easy" | "medium" | "hard" {
-  if (score <= 100) return "easy";
-  if (score <= 200) return "medium";
-  return "hard";
-}
-
 async function getFirebaseIdToken(): Promise<string> {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "";
   const email = process.env.MIGRATION_EMAIL || process.env.FIREBASE_MIGRATION_EMAIL || "";
@@ -278,7 +272,8 @@ async function run() {
           compLevel: "qm",
           setNumber: Number(tbaMatch.set_number || 1),
           videoUrl: sharedVideoUrl,
-          difficulty: toDifficulty(Number(allianceData.score || 0)),
+          // Requested behavior: force qm1-3 migration docs to Easy difficulty.
+          difficulty: "easy",
           alliance: allianceSide,
           allianceScore: Number(allianceData.score || 0),
           actualScore: Number(allianceData.score || 0),
@@ -298,7 +293,7 @@ async function run() {
   console.log(`Qualification docs to create after delete (qm1-qm3, both alliances): ${creates.length}`);
   creates.forEach((row) => {
     console.log(
-      `  - CREATE ${row.matchKey} | ${row.alliance} | score=${row.payload.officialScore} | teams=${row.payload.allianceTeams.join(",")} | video=${row.payload.videoUrl || "-"}`
+      `  - CREATE ${row.matchKey} | ${row.alliance} | diff=${row.payload.difficulty} | score=${row.payload.officialScore} | teams=${row.payload.allianceTeams.join(",")} | video=${row.payload.videoUrl || "-"}`
     );
   });
 

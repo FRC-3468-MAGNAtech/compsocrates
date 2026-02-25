@@ -59,13 +59,45 @@ type ScoutingEntry = {
   penaltyPoints?: number;
   estimatedScore?: number;
   auto?: {
+    preloadScale?: number;
+    bpsScale?: number;
+    carryingScale?: number;
+    cycleTimes?: number[];
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
     estimatedFuel?: number;
     successfulClimb?: boolean;
+    wonAuto?: boolean;
   };
   teleop?: {
+    bpsScale?: number;
+    carryingScale?: number;
+    transitionCycles?: number[];
+    shift1Cycles?: number[];
+    shift2Cycles?: number[];
+    shift3Cycles?: number[];
+    shift4Cycles?: number[];
+    transitionOverride?: number;
+    transitionMissedFuel?: number;
+    shift1Override?: number;
+    shift1MissedFuel?: number;
+    shift2Override?: number;
+    shift2MissedFuel?: number;
+    shift3Override?: number;
+    shift3MissedFuel?: number;
+    shift4Override?: number;
+    shift4MissedFuel?: number;
+    shiftParityFromWonAuto?: boolean;
+    humanPlayerFuel?: number;
     estimatedFuel?: number;
   };
   endgame?: {
+    cycleTimes?: number[];
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
+    estimatedFuel?: number;
     status?: string;
   };
 };
@@ -82,9 +114,66 @@ function toNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function scoreRebuiltEntry(entry: ScoutingEntry): number {
-  const autoFuel = toNumber(entry.auto?.estimatedFuel);
-  const teleopFuel = toNumber(entry.teleop?.estimatedFuel);
+const PRELOAD_SCALE_VALUES: number[][] = [
+  [0],
+  [1, 2],
+  [3, 4],
+  [5, 6],
+  [7, 8],
+];
+
+const BPS_SCALE_VALUES: number[][] = [
+  [0],
+  [1, 2, 3],
+  [4, 5, 6],
+  [7, 8, 9],
+  [10],
+];
+
+const CARRY_SCALE_VALUES: number[][] = [
+  [0],
+  Array.from({ length: 12 }, (_, i) => i + 1),
+  Array.from({ length: 11 }, (_, i) => i + 13),
+  Array.from({ length: 10 }, (_, i) => i + 23),
+  Array.from({ length: 10 }, (_, i) => i + 33),
+  Array.from({ length: 11 }, (_, i) => i + 43),
+  [54],
+];
+
+function getScaleCandidates(scale: unknown, table: number[][], fallback = 0) {
+  const idx = Math.max(0, Math.min(table.length - 1, Number(scale || 0)));
+  const values = table[idx];
+  return values.length > 0 ? values : [fallback];
+}
+
+function estimateFuelFromCycles(
+  cycles: number[] | undefined,
+  bps: number,
+  carry: number,
+  preload?: number
+) {
+  if (!Array.isArray(cycles) || cycles.length === 0) return 0;
+  return cycles.reduce((sum, rawSec, index) => {
+    const sec = toNumber(rawSec);
+    if (sec <= 0 || bps <= 0) return sum;
+    const cap = index === 0 && typeof preload === "number" ? preload : carry;
+    return sum + Math.max(0, Math.round(Math.min(Math.max(0, cap), bps * sec)));
+  }, 0);
+}
+
+function resolveSectionFuel(estimated: number, scoredOverride: unknown, missedFuel: unknown) {
+  const override = toNumber(scoredOverride);
+  if (override > 0) return override;
+  return Math.max(0, estimated - Math.max(0, toNumber(missedFuel)));
+}
+
+function rebuiltEntryScoreCandidates(entry: ScoutingEntry): number[] {
+  const autoPreloadCandidates = getScaleCandidates(entry.auto?.preloadScale, PRELOAD_SCALE_VALUES, 0);
+  const autoBpsCandidates = getScaleCandidates(entry.auto?.bpsScale, BPS_SCALE_VALUES, 0);
+  const autoCarryCandidates = getScaleCandidates(entry.auto?.carryingScale, CARRY_SCALE_VALUES, 0);
+  const teleBpsCandidates = getScaleCandidates(entry.teleop?.bpsScale, BPS_SCALE_VALUES, 0);
+  const teleCarryCandidates = getScaleCandidates(entry.teleop?.carryingScale, CARRY_SCALE_VALUES, 0);
+  const wonAuto = Boolean(entry.auto?.wonAuto || entry.teleop?.shiftParityFromWonAuto);
   const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
   const endStatus = String(entry.endgame?.status || "").toLowerCase();
   const teleopClimb =
@@ -92,7 +181,105 @@ function scoreRebuiltEntry(entry: ScoutingEntry): number {
     endStatus === "level-2" ? 20 :
     endStatus === "level-3" ? 30 : 0;
 
-  return autoFuel + teleopFuel + autoClimb + teleopClimb;
+  const candidates = new Set<number>();
+
+  for (const preload of autoPreloadCandidates) {
+    for (const autoBps of autoBpsCandidates) {
+      for (const autoCarry of autoCarryCandidates) {
+        const autoEstimated = estimateFuelFromCycles(entry.auto?.cycleTimes, autoBps, autoCarry, preload);
+        const autoFuel = resolveSectionFuel(
+          autoEstimated,
+          entry.auto?.counterOverride,
+          entry.auto?.counterOverrideMissedFuel
+        ) + toNumber(entry.auto?.humanPlayerFuel);
+
+        for (const teleBps of teleBpsCandidates) {
+          for (const teleCarry of teleCarryCandidates) {
+            const transition = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.transitionCycles, teleBps, teleCarry),
+              entry.teleop?.transitionOverride,
+              entry.teleop?.transitionMissedFuel
+            );
+            const shift1 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift1Cycles, teleBps, teleCarry),
+              entry.teleop?.shift1Override,
+              entry.teleop?.shift1MissedFuel
+            );
+            const shift2 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift2Cycles, teleBps, teleCarry),
+              entry.teleop?.shift2Override,
+              entry.teleop?.shift2MissedFuel
+            );
+            const shift3 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift3Cycles, teleBps, teleCarry),
+              entry.teleop?.shift3Override,
+              entry.teleop?.shift3MissedFuel
+            );
+            const shift4 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift4Cycles, teleBps, teleCarry),
+              entry.teleop?.shift4Override,
+              entry.teleop?.shift4MissedFuel
+            );
+            const teleFuel = transition + (wonAuto ? shift2 + shift4 : shift1 + shift3) + toNumber(entry.teleop?.humanPlayerFuel);
+            const endgameFuel = resolveSectionFuel(
+              estimateFuelFromCycles(entry.endgame?.cycleTimes, teleBps, teleCarry),
+              entry.endgame?.counterOverride,
+              entry.endgame?.counterOverrideMissedFuel
+            ) + toNumber(entry.endgame?.humanPlayerFuel);
+
+            candidates.add(autoFuel + teleFuel + endgameFuel + autoClimb + teleopClimb);
+          }
+        }
+      }
+    }
+  }
+
+  if (candidates.size === 0) {
+    candidates.add(scoreRebuiltEntry(entry));
+  }
+
+  return Array.from(candidates);
+}
+
+function calculateBestRebuiltPracticeScore(entries: ScoutingEntry[], targetBaseScore: number): number {
+  if (entries.length === 0) return 0;
+  let sums = new Set<number>([0]);
+
+  for (const entry of entries) {
+    const entryCandidates = rebuiltEntryScoreCandidates(entry);
+    const next = new Set<number>();
+    for (const base of sums) {
+      for (const candidate of entryCandidates) {
+        next.add(base + candidate);
+      }
+    }
+    let trimmed = Array.from(next);
+    if (trimmed.length > 6000) {
+      trimmed = trimmed
+        .sort((a, b) => Math.abs(a - targetBaseScore) - Math.abs(b - targetBaseScore))
+        .slice(0, 6000);
+    }
+    sums = new Set(trimmed);
+  }
+
+  const best = Array.from(sums).sort(
+    (a, b) => Math.abs(a - targetBaseScore) - Math.abs(b - targetBaseScore)
+  )[0];
+  return typeof best === "number" ? best : entries.reduce((sum, entry) => sum + scoreRebuiltEntry(entry), 0);
+}
+
+function scoreRebuiltEntry(entry: ScoutingEntry): number {
+  const autoFuel = toNumber(entry.auto?.estimatedFuel);
+  const teleopFuel = toNumber(entry.teleop?.estimatedFuel);
+  const endgameFuel = toNumber(entry.endgame?.estimatedFuel);
+  const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+  const endStatus = String(entry.endgame?.status || "").toLowerCase();
+  const teleopClimb =
+    endStatus === "level-1" ? 10 :
+    endStatus === "level-2" ? 20 :
+    endStatus === "level-3" ? 30 : 0;
+
+  return autoFuel + teleopFuel + endgameFuel + autoClimb + teleopClimb;
 }
 
 function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }>) {
@@ -410,16 +597,16 @@ function ScoutAccuracyContent() {
       }
 
       const sessionGame = String(sessionData.game || "REEFSCAPE").toUpperCase() === "REBUILT" ? "REBUILT" : "REEFSCAPE";
-      const baseScoutedScore = entries.reduce(
-        (sum, entry) => sum + scorePracticeEntryWithoutPenalty(entry, sessionGame),
-        0
-      );
       const sessionPenaltyPoints =
         typeof sessionData.penaltyPoints === "number"
           ? Number(sessionData.penaltyPoints)
           : typeof entries[0]?.penaltyPoints === "number"
           ? Number(entries[0].penaltyPoints)
           : 0;
+      const targetBaseScore = Math.max(0, officialScore - sessionPenaltyPoints);
+      const baseScoutedScore = sessionGame === "REBUILT"
+        ? calculateBestRebuiltPracticeScore(entries, targetBaseScore)
+        : entries.reduce((sum, entry) => sum + scorePracticeEntryWithoutPenalty(entry, sessionGame), 0);
       const totalScoutedScore = baseScoutedScore + sessionPenaltyPoints;
       const recalculatedAccuracy = calculateAccuracy(totalScoutedScore, officialScore);
 

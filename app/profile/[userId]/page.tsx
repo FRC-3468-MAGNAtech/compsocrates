@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { collection, doc, getDoc, getDocFromServer, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -40,19 +40,25 @@ function ProfileContent() {
     avgAccuracy: 0,
     eventsScouted: 0,
   });
+  type BreakdownRow = {
+    season: number;
+    game: string;
+    event: string;
+    match: string;
+    scoutingType: "Trial" | "Competitive" | "Real Competition";
+    difficulty: string;
+    count: number;
+    accuracyTotal: number;
+    accuracyCount: number;
+    lastScoutedAt: number;
+  };
   const [scoutingBreakdown, setScoutingBreakdown] = useState<
-    Array<{
-      season: number;
-      game: string;
-      event: string;
-      match: string;
-      scoutingType: "Trial" | "Competitive" | "Real Competition";
-      difficulty: string;
-      count: number;
-      accuracyTotal: number;
-      accuracyCount: number;
-    }>
+    BreakdownRow[]
   >([]);
+  const [sortKey, setSortKey] = useState<
+    "lastScoutedAt" | "season" | "game" | "event" | "match" | "scoutingType" | "difficulty" | "accuracy" | "count"
+  >("lastScoutedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,17 +105,7 @@ function ProfileContent() {
         const eventKeys = new Set<string>();
         const breakdownMap = new Map<
           string,
-          {
-            season: number;
-            game: string;
-            event: string;
-            match: string;
-            scoutingType: "Trial" | "Competitive" | "Real Competition";
-            difficulty: string;
-            count: number;
-            accuracyTotal: number;
-            accuracyCount: number;
-          }
+          BreakdownRow
         >();
         let practiceEntries = 0;
         scoutingSnap.docs.forEach((entryDoc) => {
@@ -158,33 +154,17 @@ function ProfileContent() {
             count: 0,
             accuracyTotal: 0,
             accuracyCount: 0,
+            lastScoutedAt: 0,
           };
           existing.count += 1;
           if (accuracy !== null && Number.isFinite(accuracy)) {
             existing.accuracyTotal += accuracy;
             existing.accuracyCount += 1;
           }
+          existing.lastScoutedAt = Math.max(existing.lastScoutedAt, fallbackTimestamp || 0);
           breakdownMap.set(key, existing);
         });
-        const scoutingTypeOrder: Record<string, number> = {
-          "Real Competition": 0,
-          Competitive: 1,
-          Trial: 2,
-        };
-        setScoutingBreakdown(
-          Array.from(breakdownMap.values()).sort((a, b) => {
-            if (a.season !== b.season) return b.season - a.season;
-            const gameCompare = a.game.localeCompare(b.game);
-            if (gameCompare !== 0) return gameCompare;
-            const eventCompare = a.event.localeCompare(b.event);
-            if (eventCompare !== 0) return eventCompare;
-            const matchCompare = a.match.localeCompare(b.match);
-            if (matchCompare !== 0) return matchCompare;
-            const typeCompare = (scoutingTypeOrder[a.scoutingType] ?? 99) - (scoutingTypeOrder[b.scoutingType] ?? 99);
-            if (typeCompare !== 0) return typeCompare;
-            return a.difficulty.localeCompare(b.difficulty);
-          })
-        );
+        setScoutingBreakdown(Array.from(breakdownMap.values()));
 
         let accuracyTotal = 0;
         let accuracyCount = 0;
@@ -209,6 +189,55 @@ function ProfileContent() {
     }
     loadProfile();
   }, [params?.userId, userData?.teamId, userData?.uid]);
+
+  const sortedBreakdown = useMemo(() => {
+    const scoutingTypeOrder: Record<string, number> = {
+      "Real Competition": 0,
+      Competitive: 1,
+      Trial: 2,
+    };
+    const rows = [...scoutingBreakdown];
+    rows.sort((a, b) => {
+      const direction = sortDir === "asc" ? 1 : -1;
+      switch (sortKey) {
+        case "lastScoutedAt":
+          return direction * ((a.lastScoutedAt || 0) - (b.lastScoutedAt || 0));
+        case "season":
+          return direction * (a.season - b.season);
+        case "game":
+          return direction * a.game.localeCompare(b.game);
+        case "event":
+          return direction * a.event.localeCompare(b.event);
+        case "match":
+          return direction * a.match.localeCompare(b.match);
+        case "scoutingType":
+          return direction * ((scoutingTypeOrder[a.scoutingType] ?? 99) - (scoutingTypeOrder[b.scoutingType] ?? 99));
+        case "difficulty":
+          return direction * a.difficulty.localeCompare(b.difficulty);
+        case "accuracy":
+          return direction * (((a.accuracyCount > 0 ? a.accuracyTotal / a.accuracyCount : -1) - (b.accuracyCount > 0 ? b.accuracyTotal / b.accuracyCount : -1)));
+        case "count":
+          return direction * (a.count - b.count);
+        default:
+          return 0;
+      }
+    });
+    return rows;
+  }, [scoutingBreakdown, sortDir, sortKey]);
+
+  function handleSort(nextKey: typeof sortKey) {
+    if (nextKey === sortKey) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDir("asc");
+  }
+
+  function sortIndicator(column: typeof sortKey) {
+    if (sortKey !== column) return "↕";
+    return sortDir === "asc" ? "↑" : "↓";
+  }
 
   if (loading) {
     return (
@@ -323,19 +352,21 @@ function ProfileContent() {
                     <table className="w-full min-w-[980px] text-sm">
                       <thead>
                         <tr className="text-left text-gray-500">
-                          <th className="py-1">Season</th>
-                          <th className="py-1">Game</th>
-                          <th className="py-1">Event</th>
-                          <th className="py-1">Match</th>
-                          <th className="py-1">Type</th>
-                          <th className="py-1">Difficulty</th>
-                          <th className="py-1 text-right">Accuracy</th>
-                          <th className="py-1 text-right">Entries</th>
+                          <th className="py-1 cursor-pointer" onClick={() => handleSort("lastScoutedAt")}>Date {sortIndicator("lastScoutedAt")}</th>
+                          <th className="py-1 cursor-pointer" onClick={() => handleSort("season")}>Season {sortIndicator("season")}</th>
+                          <th className="py-1 cursor-pointer" onClick={() => handleSort("game")}>Game {sortIndicator("game")}</th>
+                          <th className="py-1 cursor-pointer" onClick={() => handleSort("event")}>Event {sortIndicator("event")}</th>
+                          <th className="py-1 cursor-pointer" onClick={() => handleSort("match")}>Match {sortIndicator("match")}</th>
+                          <th className="py-1 cursor-pointer" onClick={() => handleSort("scoutingType")}>Type {sortIndicator("scoutingType")}</th>
+                          <th className="py-1 cursor-pointer" onClick={() => handleSort("difficulty")}>Difficulty {sortIndicator("difficulty")}</th>
+                          <th className="py-1 text-right cursor-pointer" onClick={() => handleSort("accuracy")}>Accuracy {sortIndicator("accuracy")}</th>
+                          <th className="py-1 text-right cursor-pointer" onClick={() => handleSort("count")}>Entries {sortIndicator("count")}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {scoutingBreakdown.map((row) => (
+                        {sortedBreakdown.map((row) => (
                           <tr key={`${row.season}-${row.game}-${row.event}-${row.match}-${row.scoutingType}-${row.difficulty}`} className="border-t border-gray-100">
+                            <td className="py-1">{row.lastScoutedAt > 0 ? new Date(row.lastScoutedAt).toLocaleDateString() : "-"}</td>
                             <td className="py-1">{row.season}</td>
                             <td className="py-1">{row.game}</td>
                             <td className="py-1">{row.event}</td>

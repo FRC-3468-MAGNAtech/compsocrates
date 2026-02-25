@@ -72,11 +72,28 @@ type FormState = {
   autoPreloadScale: number;
   autoBpsScale: number;
   autoCarryScale: number;
+  autoHumanPlayerFuel: number;
+  autoCounterOverride: number;
+  autoCounterMissedFuel: number;
   autoFailedClimb: number;
   autoSuccessfulClimb: boolean;
   wonAuto: boolean;
   teleBpsScale: number;
   teleCarryScale: number;
+  transitionCounterOverride: number;
+  transitionCounterMissedFuel: number;
+  shift1CounterOverride: number;
+  shift1CounterMissedFuel: number;
+  shift2CounterOverride: number;
+  shift2CounterMissedFuel: number;
+  shift3CounterOverride: number;
+  shift3CounterMissedFuel: number;
+  shift4CounterOverride: number;
+  shift4CounterMissedFuel: number;
+  teleopHumanPlayerFuel: number;
+  endgameCounterOverride: number;
+  endgameCounterMissedFuel: number;
+  endgameHumanPlayerFuel: number;
   endgameFailedClimb: number;
   endgameStatus: string;
   incidents: string[];
@@ -532,11 +549,28 @@ function ScoutFormContent() {
     autoPreloadScale: 0,
     autoBpsScale: 0,
     autoCarryScale: 0,
+    autoHumanPlayerFuel: 0,
+    autoCounterOverride: 0,
+    autoCounterMissedFuel: 0,
     autoFailedClimb: 0,
     autoSuccessfulClimb: false,
     wonAuto: false,
     teleBpsScale: 0,
     teleCarryScale: 0,
+    transitionCounterOverride: 0,
+    transitionCounterMissedFuel: 0,
+    shift1CounterOverride: 0,
+    shift1CounterMissedFuel: 0,
+    shift2CounterOverride: 0,
+    shift2CounterMissedFuel: 0,
+    shift3CounterOverride: 0,
+    shift3CounterMissedFuel: 0,
+    shift4CounterOverride: 0,
+    shift4CounterMissedFuel: 0,
+    teleopHumanPlayerFuel: 0,
+    endgameCounterOverride: 0,
+    endgameCounterMissedFuel: 0,
+    endgameHumanPlayerFuel: 0,
     endgameFailedClimb: 0,
     endgameStatus: "",
     incidents: [],
@@ -733,23 +767,52 @@ function ScoutFormContent() {
     );
   }, [scoutedCounts, targets]);
 
-  function estimateAutoTotal() {
+  function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {
+    if (scoredOverride > 0) return scoredOverride;
+    return Math.max(0, estimated - Math.max(0, Number(missedFuel || 0)));
+  }
+
+  function estimateAutoSectionFuel() {
     const preloadCap = PRELOAD[Math.max(0, Math.min(4, form.autoPreloadScale))] || 0;
     const carryCap = CARRY[Math.max(0, Math.min(6, form.autoCarryScale))] || 0;
-    return autoCycles.reduce((sum, seconds, i) => {
+    const estimated = autoCycles.reduce((sum, seconds, i) => {
       const capacity = i === 0 && preloadCap > 0 ? preloadCap : carryCap;
       return sum + estimateBalls(seconds, form.autoBpsScale, capacity);
     }, 0);
+    return resolveSectionFuel(estimated, form.autoCounterOverride, form.autoCounterMissedFuel);
+  }
+
+  function estimateTeleSectionFuel() {
+    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const transitionEstimated = transitionCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s1Estimated = shift1Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s2Estimated = shift2Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s3Estimated = shift3Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s4Estimated = shift4Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const transition = resolveSectionFuel(transitionEstimated, form.transitionCounterOverride, form.transitionCounterMissedFuel);
+    const s1 = resolveSectionFuel(s1Estimated, form.shift1CounterOverride, form.shift1CounterMissedFuel);
+    const s2 = resolveSectionFuel(s2Estimated, form.shift2CounterOverride, form.shift2CounterMissedFuel);
+    const s3 = resolveSectionFuel(s3Estimated, form.shift3CounterOverride, form.shift3CounterMissedFuel);
+    const s4 = resolveSectionFuel(s4Estimated, form.shift4CounterOverride, form.shift4CounterMissedFuel);
+    return transition + (form.wonAuto ? s2 + s4 : s1 + s3);
+  }
+
+  function estimateEndgameSectionFuel() {
+    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const estimated = endgameCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    return resolveSectionFuel(estimated, form.endgameCounterOverride, form.endgameCounterMissedFuel);
+  }
+
+  function estimateAutoTotal() {
+    return estimateAutoSectionFuel() + Number(form.autoHumanPlayerFuel || 0);
   }
 
   function estimateTeleTotal() {
-    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
-    const transition = transitionCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s1 = shift1Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s2 = shift2Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s3 = shift3Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s4 = shift4Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    return transition + (form.wonAuto ? s2 + s4 : s1 + s3);
+    return estimateTeleSectionFuel() + Number(form.teleopHumanPlayerFuel || 0);
+  }
+
+  function estimateEndgameTotal() {
+    return estimateEndgameSectionFuel() + Number(form.endgameHumanPlayerFuel || 0);
   }
 
   async function submit() {
@@ -774,9 +837,50 @@ function ScoutFormContent() {
         matchNumber: String(selectedMatch.matchNumber),
         teamNumber: form.teamNumber.trim(),
         startingPosition: form.startingPosition,
-        auto: { preloadScale: form.autoPreloadScale, bpsScale: form.autoBpsScale, carryingScale: form.autoCarryScale, cycleTimes: autoCycles, estimatedFuel: estimateAutoTotal(), failedClimb: form.autoFailedClimb, successfulClimb: form.autoSuccessfulClimb, wonAuto: form.wonAuto },
-        teleop: { shiftParityFromWonAuto: form.wonAuto, bpsScale: form.teleBpsScale, carryingScale: form.teleCarryScale, transitionCycles, shift1Cycles, shift2Cycles, shift3Cycles, shift4Cycles, estimatedFuel: estimateTeleTotal() },
-        endgame: { cycleTimes: endgameCycles, failedClimb: form.endgameFailedClimb, status: form.endgameStatus },
+        auto: {
+          preloadScale: form.autoPreloadScale,
+          bpsScale: form.autoBpsScale,
+          carryingScale: form.autoCarryScale,
+          cycleTimes: autoCycles,
+          estimatedFuel: estimateAutoTotal(),
+          counterOverride: form.autoCounterOverride,
+          counterOverrideMissedFuel: form.autoCounterMissedFuel,
+          humanPlayerFuel: form.autoHumanPlayerFuel,
+          failedClimb: form.autoFailedClimb,
+          successfulClimb: form.autoSuccessfulClimb,
+          wonAuto: form.wonAuto,
+        },
+        teleop: {
+          shiftParityFromWonAuto: form.wonAuto,
+          bpsScale: form.teleBpsScale,
+          carryingScale: form.teleCarryScale,
+          transitionCycles,
+          shift1Cycles,
+          shift2Cycles,
+          shift3Cycles,
+          shift4Cycles,
+          transitionOverride: form.transitionCounterOverride,
+          transitionMissedFuel: form.transitionCounterMissedFuel,
+          shift1Override: form.shift1CounterOverride,
+          shift1MissedFuel: form.shift1CounterMissedFuel,
+          shift2Override: form.shift2CounterOverride,
+          shift2MissedFuel: form.shift2CounterMissedFuel,
+          shift3Override: form.shift3CounterOverride,
+          shift3MissedFuel: form.shift3CounterMissedFuel,
+          shift4Override: form.shift4CounterOverride,
+          shift4MissedFuel: form.shift4CounterMissedFuel,
+          humanPlayerFuel: form.teleopHumanPlayerFuel,
+          estimatedFuel: estimateTeleTotal(),
+        },
+        endgame: {
+          cycleTimes: endgameCycles,
+          counterOverride: form.endgameCounterOverride,
+          counterOverrideMissedFuel: form.endgameCounterMissedFuel,
+          humanPlayerFuel: form.endgameHumanPlayerFuel,
+          estimatedFuel: estimateEndgameTotal(),
+          failedClimb: form.endgameFailedClimb,
+          status: form.endgameStatus,
+        },
         incidents: form.incidents,
         notes: form.notes,
         scoringWeights: { autoFuel: 1, autoClimbLevel1: 15, teleopFuel: 1, teleopClimbLevel1: 10, teleopClimbLevel2: 20, teleopClimbLevel3: 30 },
@@ -790,7 +894,35 @@ function ScoutFormContent() {
         now.add(form.teamNumber.trim());
         return { ...prev, [selectedMatch.id]: Array.from(now) };
       });
-      setForm((prev) => ({ ...prev, teamNumber: assignedTeam || "", startingPosition: "", autoFailedClimb: 0, autoSuccessfulClimb: false, wonAuto: false, endgameFailedClimb: 0, endgameStatus: "", incidents: [], notes: "" }));
+      setForm((prev) => ({
+        ...prev,
+        teamNumber: assignedTeam || "",
+        startingPosition: "",
+        autoHumanPlayerFuel: 0,
+        autoCounterOverride: 0,
+        autoCounterMissedFuel: 0,
+        autoFailedClimb: 0,
+        autoSuccessfulClimb: false,
+        wonAuto: false,
+        transitionCounterOverride: 0,
+        transitionCounterMissedFuel: 0,
+        shift1CounterOverride: 0,
+        shift1CounterMissedFuel: 0,
+        shift2CounterOverride: 0,
+        shift2CounterMissedFuel: 0,
+        shift3CounterOverride: 0,
+        shift3CounterMissedFuel: 0,
+        shift4CounterOverride: 0,
+        shift4CounterMissedFuel: 0,
+        teleopHumanPlayerFuel: 0,
+        endgameCounterOverride: 0,
+        endgameCounterMissedFuel: 0,
+        endgameHumanPlayerFuel: 0,
+        endgameFailedClimb: 0,
+        endgameStatus: "",
+        incidents: [],
+        notes: "",
+      }));
       setAutoCycles([]); setTransitionCycles([]); setShift1Cycles([]); setShift2Cycles([]); setShift3Cycles([]); setShift4Cycles([]); setEndgameCycles([]);
     } catch (error) {
       console.error(error);
@@ -877,6 +1009,11 @@ function ScoutFormContent() {
                   <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.autoCarryScale))]})</label>
                   <input type="range" min={0} max={6} value={form.autoCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
                   <CycleTimer title="Auto Cycle Timer" values={autoCycles} onAdd={(v) => setAutoCycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.autoCounterOverride} onChange={(next) => setForm((p) => ({ ...p, autoCounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.autoCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, autoCounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.autoHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, autoHumanPlayerFuel: next }))} />
                   <ClimbCounter label="Failed Climb" value={form.autoFailedClimb} onChange={(next) => setForm((p) => ({ ...p, autoFailedClimb: next }))} />
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />Successful Climb</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonAuto} onChange={(e) => setForm((p) => ({ ...p, wonAuto: e.target.checked }))} />Won Auto</label>
@@ -889,19 +1026,41 @@ function ScoutFormContent() {
                   <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.teleCarryScale))]})</label>
                   <input type="range" min={0} max={6} value={form.teleCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
                   <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.transitionCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, transitionCounterMissedFuel: next }))} />
                   <p className="text-xs text-gray-600">
                     Counted shifts right now: Transition + {form.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
                     Toggle <span className="font-medium">Won Auto</span> to flip counted shifts.
                   </p>
                   <CycleTimer title={`Shift 1 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift1CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift1CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift1CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift1CounterMissedFuel: next }))} />
                   <CycleTimer title={`Shift 2 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift2Cycles} onAdd={(v) => setShift2Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift2CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift2CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift2CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift2CounterMissedFuel: next }))} />
                   <CycleTimer title={`Shift 3 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift3Cycles} onAdd={(v) => setShift3Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift3CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift3CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift3CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift3CounterMissedFuel: next }))} />
                   <CycleTimer title={`Shift 4 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift4Cycles} onAdd={(v) => setShift4Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift4CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift4CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift4CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift4CounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
                 </div>
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Endgame</h2>
                   <CycleTimer title="Endgame Cycle Timer" values={endgameCycles} onAdd={(v) => setEndgameCycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.endgameCounterOverride} onChange={(next) => setForm((p) => ({ ...p, endgameCounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.endgameCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, endgameCounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.endgameHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, endgameHumanPlayerFuel: next }))} />
                   <ClimbCounter label="Failed Climb" value={form.endgameFailedClimb} onChange={(next) => setForm((p) => ({ ...p, endgameFailedClimb: next }))} />
                   <select className="w-full border rounded p-2" value={form.endgameStatus} onChange={(e) => setForm((p) => ({ ...p, endgameStatus: e.target.value }))}>
                     <option value="">Status At End of Match</option>

@@ -76,6 +76,9 @@ type Entry = {
     failedClimb?: number;
     cycleTimes?: number[];
     estimatedFuel?: number;
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
     successfulClimb?: boolean;
     wonAuto?: boolean;
   };
@@ -87,11 +90,26 @@ type Entry = {
     shift2Cycles?: number[];
     shift3Cycles?: number[];
     shift4Cycles?: number[];
+    transitionOverride?: number;
+    transitionMissedFuel?: number;
+    shift1Override?: number;
+    shift1MissedFuel?: number;
+    shift2Override?: number;
+    shift2MissedFuel?: number;
+    shift3Override?: number;
+    shift3MissedFuel?: number;
+    shift4Override?: number;
+    shift4MissedFuel?: number;
+    humanPlayerFuel?: number;
     shiftParityFromWonAuto?: boolean;
     estimatedFuel?: number;
   };
   endgame?: {
     cycleTimes?: number[];
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
+    estimatedFuel?: number;
     failedClimb?: number;
     status?: string;
   };
@@ -128,12 +146,14 @@ const PTS = {
 };
 
 function scoreRebuiltEntry(e: Entry) {
-  const autoFuel = Number(e.auto?.estimatedFuel || 0);
-  const teleFuel = Number(e.teleop?.estimatedFuel || 0);
+  const rebuiltFuel = getRebuiltFuelBreakdown(e);
+  const autoFuel = rebuiltFuel.autoFuel;
+  const teleFuel = rebuiltFuel.teleFuel;
+  const endgameFuel = rebuiltFuel.endgameFuel;
   const autoClimb = e.auto?.successfulClimb ? 15 : 0;
   const end = String(e.endgame?.status || "").toLowerCase();
   const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
-  return autoFuel + teleFuel + autoClimb + endgameClimb;
+  return autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
 }
 
 function scoreEntry(e: Entry, game: AnalyticsGame) {
@@ -292,6 +312,78 @@ function parseMatchIdentity(entry: Pick<Entry, "matchId" | "matchType" | "matchN
   return null;
 }
 
+function rebuiltAutoFuelFromCycles(cycles: number[] | undefined, preloadScale: number, bpsScale: number, carryScale: number) {
+  if (!Array.isArray(cycles) || cycles.length === 0) return 0;
+  const preloadCap = [0, 2, 4, 6, 8][Math.max(0, Math.min(4, Number(preloadScale || 0)))] || 0;
+  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(4, Number(bpsScale || 0)))] || 0;
+  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(6, Number(carryScale || 0)))] || 0;
+  return cycles.reduce((sum, seconds, index) => {
+    const sec = Number(seconds || 0);
+    if (!Number.isFinite(sec) || sec <= 0) return sum;
+    const capacity = index === 0 && preloadCap > 0 ? preloadCap : carryCap;
+    return sum + Math.max(0, Math.round(Math.min(capacity, bps * sec)));
+  }, 0);
+}
+
+function applyFuelOverride(
+  estimated: number,
+  overrideValue: number | undefined,
+  missedValue: number | undefined
+) {
+  const override = Number(overrideValue || 0);
+  if (override > 0) return override;
+  const missed = Math.max(0, Number(missedValue || 0));
+  return Math.max(0, estimated - missed);
+}
+
+function getRebuiltFuelBreakdown(entry: Entry) {
+  const autoPreloadScale = Number(entry.auto?.preloadScale || 0);
+  const autoBpsScale = Number(entry.auto?.bpsScale || 0);
+  const autoCarryScale = Number(entry.auto?.carryingScale || 0);
+  const teleBpsScale = Number(entry.teleop?.bpsScale || 0);
+  const teleCarryScale = Number(entry.teleop?.carryingScale || 0);
+
+  const autoEstimated = rebuiltAutoFuelFromCycles(entry.auto?.cycleTimes, autoPreloadScale, autoBpsScale, autoCarryScale);
+  const transitionEstimated = rebuiltFuelFromCycles(entry.teleop?.transitionCycles, teleBpsScale, teleCarryScale);
+  const shift1Estimated = rebuiltFuelFromCycles(entry.teleop?.shift1Cycles, teleBpsScale, teleCarryScale);
+  const shift2Estimated = rebuiltFuelFromCycles(entry.teleop?.shift2Cycles, teleBpsScale, teleCarryScale);
+  const shift3Estimated = rebuiltFuelFromCycles(entry.teleop?.shift3Cycles, teleBpsScale, teleCarryScale);
+  const shift4Estimated = rebuiltFuelFromCycles(entry.teleop?.shift4Cycles, teleBpsScale, teleCarryScale);
+  const endgameEstimated = rebuiltFuelFromCycles(entry.endgame?.cycleTimes, teleBpsScale, teleCarryScale);
+
+  const autoSectionFuel = applyFuelOverride(autoEstimated, entry.auto?.counterOverride, entry.auto?.counterOverrideMissedFuel);
+  const transitionFuel = applyFuelOverride(transitionEstimated, entry.teleop?.transitionOverride, entry.teleop?.transitionMissedFuel);
+  const shift1Fuel = applyFuelOverride(shift1Estimated, entry.teleop?.shift1Override, entry.teleop?.shift1MissedFuel);
+  const shift2Fuel = applyFuelOverride(shift2Estimated, entry.teleop?.shift2Override, entry.teleop?.shift2MissedFuel);
+  const shift3Fuel = applyFuelOverride(shift3Estimated, entry.teleop?.shift3Override, entry.teleop?.shift3MissedFuel);
+  const shift4Fuel = applyFuelOverride(shift4Estimated, entry.teleop?.shift4Override, entry.teleop?.shift4MissedFuel);
+  const endgameSectionFuel = applyFuelOverride(endgameEstimated, entry.endgame?.counterOverride, entry.endgame?.counterOverrideMissedFuel);
+
+  const autoHumanFuel = Number(entry.auto?.humanPlayerFuel || 0);
+  const teleHumanFuel = Number(entry.teleop?.humanPlayerFuel || 0);
+  const endgameHumanFuel = Number(entry.endgame?.humanPlayerFuel || 0);
+  const wonAuto = Boolean(entry.auto?.wonAuto || entry.teleop?.shiftParityFromWonAuto);
+
+  const autoFuel = autoSectionFuel + autoHumanFuel;
+  const teleFuel = transitionFuel + (wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + teleHumanFuel;
+  const endgameFuel = endgameSectionFuel + endgameHumanFuel;
+
+  return {
+    autoFuel,
+    autoHumanFuel,
+    transitionFuel,
+    shift1Fuel,
+    shift2Fuel,
+    shift3Fuel,
+    shift4Fuel,
+    teleHumanFuel,
+    teleFuel,
+    endgameSectionFuel,
+    endgameHumanFuel,
+    endgameFuel,
+  };
+}
+
 function normalizePracticeSessionMatchType(rawType: unknown, rawMatchKey: unknown): "practice" | "qualification" | "finals" {
   const matchKey = String(rawMatchKey || "").trim().toLowerCase();
   if (/_qm\d+/.test(matchKey)) return "qualification";
@@ -366,8 +458,9 @@ type AccuracyRobotBreakdown = {
 
 function getRebuiltBreakdown(entry: Entry): AccuracyRobotBreakdown {
   const teamNumber = String(entry.teamNumber || "-").trim() || "-";
-  const autoFuel = Number(entry.auto?.estimatedFuel || 0);
-  const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+  const fuel = getRebuiltFuelBreakdown(entry);
+  const autoFuel = fuel.autoFuel;
+  const teleFuel = fuel.teleFuel + fuel.endgameFuel;
   const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
   const end = String(entry.endgame?.status || "").toLowerCase();
   const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
@@ -482,6 +575,7 @@ type SortKey =
   | "autoBpsScale"
   | "autoCarryScale"
   | "autoFuel"
+  | "autoHumanFuel"
   | "autoClimb"
   | "autoCycles"
   | "teleBpsScale"
@@ -491,6 +585,7 @@ type SortKey =
   | "shift2Fuel"
   | "shift3Fuel"
   | "shift4Fuel"
+  | "teleHumanFuel"
   | "teleFuel"
   | "transitionCycles"
   | "shift1Cycles"
@@ -498,6 +593,8 @@ type SortKey =
   | "shift3Cycles"
   | "shift4Cycles"
   | "endPlace"
+  | "endgameFuel"
+  | "endgameHumanFuel"
   | "endgameClimb"
   | "endgameCycles"
   | "totalUsed";
@@ -650,19 +747,14 @@ function AnalyticsPageContent() {
 
   const data = useMemo(() => {
     const withScore = filtered.map((entry) => {
-      const autoFuel = Number(entry.auto?.estimatedFuel || 0);
-      const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+      const fuel = getRebuiltFuelBreakdown(entry);
+      const autoFuel = fuel.autoFuel;
+      const teleFuel = fuel.teleFuel;
+      const endgameFuel = fuel.endgameFuel;
       const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
       const end = String(entry.endgame?.status || "").toLowerCase();
       const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
-      const teleBpsScale = Number(entry.teleop?.bpsScale || 0);
-      const teleCarryScale = Number(entry.teleop?.carryingScale || 0);
-      const transitionFuel = rebuiltFuelFromCycles(entry.teleop?.transitionCycles, teleBpsScale, teleCarryScale);
-      const shift1Fuel = rebuiltFuelFromCycles(entry.teleop?.shift1Cycles, teleBpsScale, teleCarryScale);
-      const shift2Fuel = rebuiltFuelFromCycles(entry.teleop?.shift2Cycles, teleBpsScale, teleCarryScale);
-      const shift3Fuel = rebuiltFuelFromCycles(entry.teleop?.shift3Cycles, teleBpsScale, teleCarryScale);
-      const shift4Fuel = rebuiltFuelFromCycles(entry.teleop?.shift4Cycles, teleBpsScale, teleCarryScale);
-      const totalUsed = autoFuel + teleFuel + autoClimb + endgameClimb;
+      const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
       const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? Number((entry as Entry & { accuracy?: number }).accuracy)
         : null;
@@ -677,16 +769,20 @@ function AnalyticsPageContent() {
         autoBpsScale: entry.auto?.bpsScale ?? 0,
         autoCarryScale: entry.auto?.carryingScale ?? 0,
         autoFuel,
+        autoHumanFuel: fuel.autoHumanFuel,
         autoClimb,
         autoCycles: entry.auto?.cycleTimes || [],
-        teleBpsScale,
-        teleCarryScale,
-        transitionFuel,
-        shift1Fuel,
-        shift2Fuel,
-        shift3Fuel,
-        shift4Fuel,
+        teleBpsScale: Number(entry.teleop?.bpsScale || 0),
+        teleCarryScale: Number(entry.teleop?.carryingScale || 0),
+        transitionFuel: fuel.transitionFuel,
+        shift1Fuel: fuel.shift1Fuel,
+        shift2Fuel: fuel.shift2Fuel,
+        shift3Fuel: fuel.shift3Fuel,
+        shift4Fuel: fuel.shift4Fuel,
+        teleHumanFuel: fuel.teleHumanFuel,
         teleFuel,
+        endgameFuel,
+        endgameHumanFuel: fuel.endgameHumanFuel,
         transitionCycles: entry.teleop?.transitionCycles || [],
         shift1Cycles: entry.teleop?.shift1Cycles || [],
         shift2Cycles: entry.teleop?.shift2Cycles || [],
@@ -1509,9 +1605,9 @@ function AnalyticsPageContent() {
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
                 <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
-                <th className="bg-green-300 text-center" colSpan={6}>Autonomous</th>
-                <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
-                <th className="bg-purple-300 text-center" colSpan={3}>Endgame</th>
+                <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
+                <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
+                <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
                 <th className="bg-pink-300 text-center" colSpan={5}>General</th>
                 <th className="bg-gray-300 text-center" colSpan={1}>Actions</th>
               </tr>
@@ -1519,11 +1615,13 @@ function AnalyticsPageContent() {
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
                 <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
-                <th className="bg-green-200 text-center" colSpan={1}>Fuel</th>
+                <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Cycles</th>
-                <th className="bg-blue-200 text-center" colSpan={8}>Estimated Fuel</th>
+                <th className="bg-blue-200 text-center" colSpan={9}>Estimated Fuel</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Estimated Cycles</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Fuel</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Human Player</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Cycles</th>
@@ -1558,6 +1656,9 @@ function AnalyticsPageContent() {
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoFuel")}>
                   {sortLabel(sortKey, sortDir, "autoFuel", "Est. Fuel")}
                 </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoHumanFuel")}>
+                  {sortLabel(sortKey, sortDir, "autoHumanFuel", "Human Player")}
+                </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoClimb")}>
                   {sortLabel(sortKey, sortDir, "autoClimb", "Climb Pts")}
                 </th>
@@ -1585,6 +1686,9 @@ function AnalyticsPageContent() {
                 <th className="cursor-pointer text-center" onClick={() => handleSort("shift4Fuel")}>
                   {sortLabel(sortKey, sortDir, "shift4Fuel", "Shift 4")}
                 </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleHumanFuel")}>
+                  {sortLabel(sortKey, sortDir, "teleHumanFuel", "Human Player")}
+                </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("teleFuel")}>
                   {sortLabel(sortKey, sortDir, "teleFuel", "Est. Fuel Used")}
                 </th>
@@ -1602,6 +1706,12 @@ function AnalyticsPageContent() {
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("shift4Cycles")}>
                   {sortLabel(sortKey, sortDir, "shift4Cycles", "Shift 4")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameFuel")}>
+                  {sortLabel(sortKey, sortDir, "endgameFuel", "Fuel")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameHumanFuel")}>
+                  {sortLabel(sortKey, sortDir, "endgameHumanFuel", "Human Player")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("endPlace")}>
                   {sortLabel(sortKey, sortDir, "endPlace", "End Place")}
@@ -1634,19 +1744,14 @@ function AnalyticsPageContent() {
             </thead>
             <tbody>
               {data.map((entry) => {
-                const autoFuel = Number(entry.auto?.estimatedFuel || 0);
-                const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+                const fuel = getRebuiltFuelBreakdown(entry);
+                const autoFuel = fuel.autoFuel;
+                const teleFuel = fuel.teleFuel;
+                const endgameFuel = fuel.endgameFuel;
                 const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
                 const end = String(entry.endgame?.status || "").toLowerCase();
                 const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
-                const totalUsed = autoFuel + teleFuel + autoClimb + endgameClimb;
-                const teleBpsScale = Number(entry.teleop?.bpsScale || 0);
-                const teleCarryScale = Number(entry.teleop?.carryingScale || 0);
-                const transitionFuel = rebuiltFuelFromCycles(entry.teleop?.transitionCycles, teleBpsScale, teleCarryScale);
-                const shift1Fuel = rebuiltFuelFromCycles(entry.teleop?.shift1Cycles, teleBpsScale, teleCarryScale);
-                const shift2Fuel = rebuiltFuelFromCycles(entry.teleop?.shift2Cycles, teleBpsScale, teleCarryScale);
-                const shift3Fuel = rebuiltFuelFromCycles(entry.teleop?.shift3Cycles, teleBpsScale, teleCarryScale);
-                const shift4Fuel = rebuiltFuelFromCycles(entry.teleop?.shift4Cycles, teleBpsScale, teleCarryScale);
+                const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
                 return (
                 <tr key={entry.id}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
@@ -1657,21 +1762,25 @@ function AnalyticsPageContent() {
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
                   <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
                   <td className="text-center">{autoFuel}</td>
+                  <td className="text-center">{fuel.autoHumanFuel}</td>
                   <td className="text-center">{autoClimb}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.auto?.cycleTimes)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.teleop?.bpsScale)}</td>
                   <td className="text-center">{rebuiltCarryRange(entry.teleop?.carryingScale)}</td>
-                  <td className="text-center">{transitionFuel}</td>
-                  <td className="text-center">{shift1Fuel}</td>
-                  <td className="text-center">{shift2Fuel}</td>
-                  <td className="text-center">{shift3Fuel}</td>
-                  <td className="text-center">{shift4Fuel}</td>
+                  <td className="text-center">{fuel.transitionFuel}</td>
+                  <td className="text-center">{fuel.shift1Fuel}</td>
+                  <td className="text-center">{fuel.shift2Fuel}</td>
+                  <td className="text-center">{fuel.shift3Fuel}</td>
+                  <td className="text-center">{fuel.shift4Fuel}</td>
+                  <td className="text-center">{fuel.teleHumanFuel}</td>
                   <td className="text-center">{teleFuel}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.transitionCycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift1Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift2Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift3Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift4Cycles)}</td>
+                  <td className="text-center">{fuel.endgameFuel}</td>
+                  <td className="text-center">{fuel.endgameHumanFuel}</td>
                   <td className="text-center">{toDisplayTitle(entry.endgame?.status || entry.stageStatus || "-")}</td>
                   <td className="text-center">{endgameClimb}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.endgame?.cycleTimes)}</td>

@@ -88,11 +88,28 @@ type RebuiltScoutedData = {
   autoPreloadScale: number;
   autoBpsScale: number;
   autoCarryScale: number;
+  autoHumanPlayerFuel: number;
+  autoCounterOverride: number;
+  autoCounterMissedFuel: number;
   autoFailedClimb: number;
   autoSuccessfulClimb: boolean;
   wonAuto: boolean;
   teleBpsScale: number;
   teleCarryScale: number;
+  transitionCounterOverride: number;
+  transitionCounterMissedFuel: number;
+  shift1CounterOverride: number;
+  shift1CounterMissedFuel: number;
+  shift2CounterOverride: number;
+  shift2CounterMissedFuel: number;
+  shift3CounterOverride: number;
+  shift3CounterMissedFuel: number;
+  shift4CounterOverride: number;
+  shift4CounterMissedFuel: number;
+  teleopHumanPlayerFuel: number;
+  endgameCounterOverride: number;
+  endgameCounterMissedFuel: number;
+  endgameHumanPlayerFuel: number;
   endgameFailedClimb: number;
   endgameStatus: string;
   autoCycles: number[];
@@ -341,11 +358,28 @@ function createEmptyRebuiltScoutedData(teamNumber = "", notes = ""): RebuiltScou
     autoPreloadScale: 0,
     autoBpsScale: 0,
     autoCarryScale: 0,
+    autoHumanPlayerFuel: 0,
+    autoCounterOverride: 0,
+    autoCounterMissedFuel: 0,
     autoFailedClimb: 0,
     autoSuccessfulClimb: false,
     wonAuto: false,
     teleBpsScale: 0,
     teleCarryScale: 0,
+    transitionCounterOverride: 0,
+    transitionCounterMissedFuel: 0,
+    shift1CounterOverride: 0,
+    shift1CounterMissedFuel: 0,
+    shift2CounterOverride: 0,
+    shift2CounterMissedFuel: 0,
+    shift3CounterOverride: 0,
+    shift3CounterMissedFuel: 0,
+    shift4CounterOverride: 0,
+    shift4CounterMissedFuel: 0,
+    teleopHumanPlayerFuel: 0,
+    endgameCounterOverride: 0,
+    endgameCounterMissedFuel: 0,
+    endgameHumanPlayerFuel: 0,
     endgameFailedClimb: 0,
     endgameStatus: "",
     autoCycles: [],
@@ -360,29 +394,161 @@ function createEmptyRebuiltScoutedData(teamNumber = "", notes = ""): RebuiltScou
   };
 }
 
+function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {
+  if (scoredOverride > 0) return scoredOverride;
+  return Math.max(0, estimated - Math.max(0, Number(missedFuel || 0)));
+}
+
 function calculateRebuiltScoutedScore(data: RebuiltScoutedData): number {
   const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, data.autoPreloadScale))] || 0;
   const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, data.autoCarryScale))] || 0;
   const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, data.teleCarryScale))] || 0;
-  const autoFuel = data.autoCycles.reduce((sum, seconds, index) => {
+  const autoEstimatedFuel = data.autoCycles.reduce((sum, seconds, index) => {
     const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
     return sum + estimateRebuiltBalls(seconds, data.autoBpsScale, capacity);
   }, 0);
-  const transitionFuel = data.transitionCycles.reduce(
+  const transitionEstimatedFuel = data.transitionCycles.reduce(
     (sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap),
     0
   );
-  const shift1Fuel = data.shift1Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
-  const shift2Fuel = data.shift2Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
-  const shift3Fuel = data.shift3Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
-  const shift4Fuel = data.shift4Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
-  const teleopFuel = transitionFuel + (data.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel);
+  const shift1EstimatedFuel = data.shift1Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const shift2EstimatedFuel = data.shift2Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const shift3EstimatedFuel = data.shift3Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const shift4EstimatedFuel = data.shift4Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+  const endgameEstimatedFuel = data.endgameCycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, data.teleBpsScale, teleCarryCap), 0);
+
+  const autoFuelSection = resolveSectionFuel(autoEstimatedFuel, data.autoCounterOverride, data.autoCounterMissedFuel);
+  const transitionFuel = resolveSectionFuel(transitionEstimatedFuel, data.transitionCounterOverride, data.transitionCounterMissedFuel);
+  const shift1Fuel = resolveSectionFuel(shift1EstimatedFuel, data.shift1CounterOverride, data.shift1CounterMissedFuel);
+  const shift2Fuel = resolveSectionFuel(shift2EstimatedFuel, data.shift2CounterOverride, data.shift2CounterMissedFuel);
+  const shift3Fuel = resolveSectionFuel(shift3EstimatedFuel, data.shift3CounterOverride, data.shift3CounterMissedFuel);
+  const shift4Fuel = resolveSectionFuel(shift4EstimatedFuel, data.shift4CounterOverride, data.shift4CounterMissedFuel);
+  const endgameFuelSection = resolveSectionFuel(endgameEstimatedFuel, data.endgameCounterOverride, data.endgameCounterMissedFuel);
+
+  const autoFuel = autoFuelSection + Number(data.autoHumanPlayerFuel || 0);
+  const teleopFuel = transitionFuel + (data.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + Number(data.teleopHumanPlayerFuel || 0);
+  const endgameFuel = endgameFuelSection + Number(data.endgameHumanPlayerFuel || 0);
   const autoClimb = data.autoSuccessfulClimb ? 15 : 0;
   const teleopClimb =
     data.endgameStatus === "level-1" ? 10 :
     data.endgameStatus === "level-2" ? 20 :
     data.endgameStatus === "level-3" ? 30 : 0;
-  return autoFuel + teleopFuel + autoClimb + teleopClimb;
+  return autoFuel + teleopFuel + endgameFuel + autoClimb + teleopClimb;
+}
+
+function getScaleCandidatesFromIndex(index: number, labels: "preload" | "bps" | "carry"): number[] {
+  const i = Math.max(0, labels === "carry" ? Math.min(6, Number(index || 0)) : Math.min(4, Number(index || 0)));
+  if (labels === "preload") return [[0], [1, 2], [3, 4], [5, 6], [7, 8]][i] || [0];
+  if (labels === "bps") return [[0], [1, 2, 3], [4, 5, 6], [7, 8, 9], [10]][i] || [0];
+  return [
+    [0],
+    Array.from({ length: 12 }, (_, n) => n + 1),
+    Array.from({ length: 11 }, (_, n) => n + 13),
+    Array.from({ length: 10 }, (_, n) => n + 23),
+    Array.from({ length: 10 }, (_, n) => n + 33),
+    Array.from({ length: 11 }, (_, n) => n + 43),
+    [54],
+  ][i] || [0];
+}
+
+function estimateWithRawParams(cycles: number[], bps: number, carry: number, preload?: number): number {
+  return (cycles || []).reduce((sum, seconds, index) => {
+    const sec = Number(seconds || 0);
+    if (!Number.isFinite(sec) || sec <= 0 || bps <= 0) return sum;
+    const cap = index === 0 && typeof preload === "number" ? preload : carry;
+    return sum + Math.max(0, Math.round(Math.min(Math.max(0, cap), bps * sec)));
+  }, 0);
+}
+
+function rebuiltScoreCandidatesForAccuracy(data: RebuiltScoutedData): number[] {
+  const autoPreloadOptions = getScaleCandidatesFromIndex(data.autoPreloadScale, "preload");
+  const autoBpsOptions = getScaleCandidatesFromIndex(data.autoBpsScale, "bps");
+  const autoCarryOptions = getScaleCandidatesFromIndex(data.autoCarryScale, "carry");
+  const teleBpsOptions = getScaleCandidatesFromIndex(data.teleBpsScale, "bps");
+  const teleCarryOptions = getScaleCandidatesFromIndex(data.teleCarryScale, "carry");
+
+  const candidates = new Set<number>();
+  const autoClimb = data.autoSuccessfulClimb ? 15 : 0;
+  const teleopClimb =
+    data.endgameStatus === "level-1" ? 10 :
+    data.endgameStatus === "level-2" ? 20 :
+    data.endgameStatus === "level-3" ? 30 : 0;
+
+  for (const preload of autoPreloadOptions) {
+    for (const autoBps of autoBpsOptions) {
+      for (const autoCarry of autoCarryOptions) {
+        const autoEstimated = estimateWithRawParams(data.autoCycles, autoBps, autoCarry, preload);
+        const autoFuel = resolveSectionFuel(autoEstimated, data.autoCounterOverride, data.autoCounterMissedFuel) + Number(data.autoHumanPlayerFuel || 0);
+
+        for (const teleBps of teleBpsOptions) {
+          for (const teleCarry of teleCarryOptions) {
+            const transition = resolveSectionFuel(
+              estimateWithRawParams(data.transitionCycles, teleBps, teleCarry),
+              data.transitionCounterOverride,
+              data.transitionCounterMissedFuel
+            );
+            const shift1 = resolveSectionFuel(
+              estimateWithRawParams(data.shift1Cycles, teleBps, teleCarry),
+              data.shift1CounterOverride,
+              data.shift1CounterMissedFuel
+            );
+            const shift2 = resolveSectionFuel(
+              estimateWithRawParams(data.shift2Cycles, teleBps, teleCarry),
+              data.shift2CounterOverride,
+              data.shift2CounterMissedFuel
+            );
+            const shift3 = resolveSectionFuel(
+              estimateWithRawParams(data.shift3Cycles, teleBps, teleCarry),
+              data.shift3CounterOverride,
+              data.shift3CounterMissedFuel
+            );
+            const shift4 = resolveSectionFuel(
+              estimateWithRawParams(data.shift4Cycles, teleBps, teleCarry),
+              data.shift4CounterOverride,
+              data.shift4CounterMissedFuel
+            );
+            const endgameFuel = resolveSectionFuel(
+              estimateWithRawParams(data.endgameCycles, teleBps, teleCarry),
+              data.endgameCounterOverride,
+              data.endgameCounterMissedFuel
+            ) + Number(data.endgameHumanPlayerFuel || 0);
+            const teleFuel = transition + (data.wonAuto ? shift2 + shift4 : shift1 + shift3) + Number(data.teleopHumanPlayerFuel || 0);
+            candidates.add(autoFuel + teleFuel + endgameFuel + autoClimb + teleopClimb);
+          }
+        }
+      }
+    }
+  }
+
+  if (candidates.size === 0) candidates.add(calculateRebuiltScoutedScore(data));
+  return Array.from(candidates);
+}
+
+function calculateBestRebuiltSessionBaseScore(allRobotData: RebuiltScoutedData[], officialScore: number, penaltyPoints: number) {
+  const targetBase = Math.max(0, Number(officialScore || 0) - Number(penaltyPoints || 0));
+  let sums = new Set<number>([0]);
+
+  for (const data of allRobotData) {
+    const entryCandidates = rebuiltScoreCandidatesForAccuracy(data);
+    const next = new Set<number>();
+    for (const sum of sums) {
+      for (const candidate of entryCandidates) {
+        next.add(sum + candidate);
+      }
+    }
+    let trimmed = Array.from(next);
+    if (trimmed.length > 6000) {
+      trimmed = trimmed
+        .sort((a, b) => Math.abs(a - targetBase) - Math.abs(b - targetBase))
+        .slice(0, 6000);
+    }
+    sums = new Set(trimmed);
+  }
+
+  const best = Array.from(sums).sort((a, b) => Math.abs(a - targetBase) - Math.abs(b - targetBase))[0];
+  return typeof best === "number"
+    ? best
+    : allRobotData.reduce((sum, data) => sum + calculateRebuiltScoutedScore(data), 0);
 }
 
 function normalizePracticeMatchType(
@@ -435,6 +601,21 @@ function getPracticeStageLabel(stage: "practice" | "qualification" | "semifinal"
   if (stage === "qualification") return "Qualification";
   if (stage === "semifinal") return "Semi-Finals";
   return "Finals";
+}
+
+function parseBracketNumbers(match: { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown }) {
+  const key = String(match.matchKey || "").toLowerCase();
+  const fromKey = key.match(/_(qf|sf|f)(\d+)m(\d+)$/i);
+  if (fromKey) {
+    return {
+      setNumber: Number(fromKey[2] || 0),
+      matchNumber: Number(fromKey[3] || 0),
+    };
+  }
+
+  const setNumber = Number(match.setNumber || 0);
+  const matchNumber = Number(match.matchNumber || 0);
+  return { setNumber, matchNumber };
 }
 
 function normalizeEventValue(value: string): string {
@@ -536,14 +717,21 @@ function PracticeScoutingContent() {
     return `${baseIdentity}:${alliance}`;
   }
 
-  function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber" | "allianceTeams" | "alliance" | "matchKey">) {
-    const stage = getPracticeStage(match);
-    const matchTypeLabel = getPracticeStageLabel(stage);
-    const alliance = normalizeAllianceSide(match.alliance);
-    const allianceLabel = alliance ? `  •  ${alliance === "red" ? "Red" : "Blue"} Alliance` : "";
-    const teams = Array.isArray(match.allianceTeams) ? match.allianceTeams.slice(0, 3).join(", ") : "";
-    return `${matchTypeLabel} ${match.matchNumber}${allianceLabel}${teams ? `  •  [${teams}]` : ""}`;
-  }
+function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber" | "allianceTeams" | "alliance" | "matchKey">) {
+  const stage = getPracticeStage(match);
+  const baseTypeLabel = getPracticeStageLabel(stage);
+  const { setNumber, matchNumber } = parseBracketNumbers(match as { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown });
+  const matchTypeLabel =
+    stage === "semifinal"
+      ? `${baseTypeLabel} ${Number(match.matchNumber || matchNumber || 1)}`
+      : stage === "finals" && setNumber > 1
+      ? `${baseTypeLabel} ${setNumber}-${matchNumber || Number(match.matchNumber || 1)}`
+      : `${baseTypeLabel} ${Number(match.matchNumber || matchNumber || 1)}`;
+  const alliance = normalizeAllianceSide(match.alliance);
+  const allianceLabel = alliance ? `  •  ${alliance === "red" ? "Red" : "Blue"} Alliance` : "";
+  const teams = Array.isArray(match.allianceTeams) ? match.allianceTeams.slice(0, 3).join(", ") : "";
+  return `${matchTypeLabel}${allianceLabel}${teams ? `  •  [${teams}]` : ""}`;
+}
 
   function comparePracticeMatchesInOrder(a: CandidatePracticeMatch, b: CandidatePracticeMatch) {
     const stageOrder = { practice: 0, qualification: 1, semifinal: 2, finals: 3 } as const;
@@ -675,7 +863,10 @@ function PracticeScoutingContent() {
       typeof draft.humanPlayerRobot === "number" ? Math.max(0, Math.min(2, draft.humanPlayerRobot)) : null
     );
     setFormData(draft.formData || createEmptyScoutedData());
-    setRebuiltFormData(draft.rebuiltFormData || createEmptyRebuiltScoutedData());
+    setRebuiltFormData({
+      ...createEmptyRebuiltScoutedData(),
+      ...(draft.rebuiltFormData || {}),
+    });
     setCurrentStep(safeStep);
     setPendingDraft(null);
   }
@@ -912,6 +1103,19 @@ function PracticeScoutingContent() {
     setShowMatchSelectModal(false);
   }
 
+  function handleChooseLiveMatchClick() {
+    if (!liveVideoUrl.trim()) {
+      alert("Paste a live video URL first.");
+      return;
+    }
+    const selected = candidateMatches.find((match) => match.id === selectedCandidateId);
+    if (selected) {
+      startPracticeMatch(selected);
+      return;
+    }
+    setShowMatchSelectModal(true);
+  }
+
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
 
@@ -975,16 +1179,15 @@ function PracticeScoutingContent() {
 
     setLoading(true);
     try {
-      const scores = allRobotData.map((data) => calculateRebuiltScoutedScore(data));
-      const baseScoutedScore = scores.reduce((a, b) => a + b, 0);
       const penaltyPoints = Number(currentMatch.officialData?.penaltyPoints || 0);
-      const totalScoutedScore = baseScoutedScore + penaltyPoints;
       const officialAllianceScore =
         typeof currentMatch.officialData?.score === "number"
           ? currentMatch.officialData.score
           : typeof currentMatch.actualScore === "number"
           ? currentMatch.actualScore
           : 0;
+      const baseScoutedScore = calculateBestRebuiltSessionBaseScore(allRobotData, officialAllianceScore, penaltyPoints);
+      const totalScoutedScore = baseScoutedScore + penaltyPoints;
       const sessionAccuracy = calculateAccuracy(totalScoutedScore, officialAllianceScore);
 
       const now = Date.now();
@@ -1048,15 +1251,29 @@ function PracticeScoutingContent() {
             const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
             return sum + estimateRebuiltBalls(seconds, robotData.autoBpsScale, capacity);
           }, 0);
-          const transitionFuel = robotData.transitionCycles.reduce(
+          const transitionEstimatedFuel = robotData.transitionCycles.reduce(
             (sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap),
             0
           );
-          const shift1Fuel = robotData.shift1Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
-          const shift2Fuel = robotData.shift2Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
-          const shift3Fuel = robotData.shift3Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
-          const shift4Fuel = robotData.shift4Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
-          const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel);
+          const shift1EstimatedFuel = robotData.shift1Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const shift2EstimatedFuel = robotData.shift2Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const shift3EstimatedFuel = robotData.shift3Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const shift4EstimatedFuel = robotData.shift4Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+          const endgameEstimatedFuel = robotData.endgameCycles.reduce(
+            (sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap),
+            0
+          );
+
+          const autoFuelSection = resolveSectionFuel(autoEstimatedFuel, robotData.autoCounterOverride, robotData.autoCounterMissedFuel);
+          const transitionFuel = resolveSectionFuel(transitionEstimatedFuel, robotData.transitionCounterOverride, robotData.transitionCounterMissedFuel);
+          const shift1Fuel = resolveSectionFuel(shift1EstimatedFuel, robotData.shift1CounterOverride, robotData.shift1CounterMissedFuel);
+          const shift2Fuel = resolveSectionFuel(shift2EstimatedFuel, robotData.shift2CounterOverride, robotData.shift2CounterMissedFuel);
+          const shift3Fuel = resolveSectionFuel(shift3EstimatedFuel, robotData.shift3CounterOverride, robotData.shift3CounterMissedFuel);
+          const shift4Fuel = resolveSectionFuel(shift4EstimatedFuel, robotData.shift4CounterOverride, robotData.shift4CounterMissedFuel);
+          const endgameFuelSection = resolveSectionFuel(endgameEstimatedFuel, robotData.endgameCounterOverride, robotData.endgameCounterMissedFuel);
+          const autoFuelWithHuman = autoFuelSection + Number(robotData.autoHumanPlayerFuel || 0);
+          const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + Number(robotData.teleopHumanPlayerFuel || 0);
+          const endgameFuelWithHuman = endgameFuelSection + Number(robotData.endgameHumanPlayerFuel || 0);
 
           return addDoc(collection(db, "scouting"), {
             scoutName: userData.displayName,
@@ -1071,7 +1288,10 @@ function PracticeScoutingContent() {
               carryingScale: robotData.autoCarryScale,
               cycleTimes: robotData.autoCycles,
               failedClimb: robotData.autoFailedClimb,
-              estimatedFuel: autoEstimatedFuel,
+              estimatedFuel: autoFuelWithHuman,
+              counterOverride: robotData.autoCounterOverride,
+              counterOverrideMissedFuel: robotData.autoCounterMissedFuel,
+              humanPlayerFuel: robotData.autoHumanPlayerFuel,
               successfulClimb: robotData.autoSuccessfulClimb,
               wonAuto: robotData.wonAuto,
             },
@@ -1083,12 +1303,27 @@ function PracticeScoutingContent() {
               shift2Cycles: robotData.shift2Cycles,
               shift3Cycles: robotData.shift3Cycles,
               shift4Cycles: robotData.shift4Cycles,
+              transitionOverride: robotData.transitionCounterOverride,
+              transitionMissedFuel: robotData.transitionCounterMissedFuel,
+              shift1Override: robotData.shift1CounterOverride,
+              shift1MissedFuel: robotData.shift1CounterMissedFuel,
+              shift2Override: robotData.shift2CounterOverride,
+              shift2MissedFuel: robotData.shift2CounterMissedFuel,
+              shift3Override: robotData.shift3CounterOverride,
+              shift3MissedFuel: robotData.shift3CounterMissedFuel,
+              shift4Override: robotData.shift4CounterOverride,
+              shift4MissedFuel: robotData.shift4CounterMissedFuel,
+              humanPlayerFuel: robotData.teleopHumanPlayerFuel,
               estimatedFuel: teleEstimatedFuel,
             },
             endgame: {
               status: robotData.endgameStatus,
               failedClimb: robotData.endgameFailedClimb,
               cycleTimes: robotData.endgameCycles,
+              counterOverride: robotData.endgameCounterOverride,
+              counterOverrideMissedFuel: robotData.endgameCounterMissedFuel,
+              humanPlayerFuel: robotData.endgameHumanPlayerFuel,
+              estimatedFuel: endgameFuelWithHuman,
             },
             matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
             matchNumber: String(currentMatch.matchNumber),
@@ -1450,7 +1685,7 @@ function PracticeScoutingContent() {
                     ← Change Mode
                   </button>
                 </div>
-                <div className="grid md:grid-cols-4 gap-4">
+                <div className={`grid gap-4 ${activeMatchGame === "REBUILT" ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
                   <button
                     onClick={() => selectPracticeMatch('easy', selectedMode)}
                     disabled={loading}
@@ -1502,22 +1737,24 @@ function PracticeScoutingContent() {
                     <p className="text-sm text-gray-600">High-scoring matches</p>
                   </button>
 
-                  <button
-                    onClick={() => selectPracticeMatch('live', selectedMode)}
-                    disabled={loading}
-                    className="p-6 border-2 border-cyan-300 rounded-lg text-left transition-colors disabled:opacity-50"
-                    style={{ backgroundColor: "transparent" }}
-                    onMouseEnter={(event) => {
-                      event.currentTarget.style.backgroundColor = "rgba(34, 211, 238, 0.12)";
-                    }}
-                    onMouseLeave={(event) => {
-                      event.currentTarget.style.backgroundColor = "transparent";
-                    }}
-                  >
-                    <div className="text-sm font-semibold mb-2 text-cyan-700">LIVE</div>
-                    <h3 className="font-semibold text-lg mb-1">Live</h3>
-                    <p className="text-sm text-gray-600">Paste stream URL and pick match manually</p>
-                  </button>
+                  {activeMatchGame === "REBUILT" && (
+                    <button
+                      onClick={() => selectPracticeMatch('live', selectedMode)}
+                      disabled={loading}
+                      className="p-6 border-2 border-cyan-300 rounded-lg text-left transition-colors disabled:opacity-50"
+                      style={{ backgroundColor: "transparent" }}
+                      onMouseEnter={(event) => {
+                        event.currentTarget.style.backgroundColor = "rgba(34, 211, 238, 0.12)";
+                      }}
+                      onMouseLeave={(event) => {
+                        event.currentTarget.style.backgroundColor = "transparent";
+                      }}
+                    >
+                      <div className="text-sm font-semibold mb-2 text-cyan-700">LIVE</div>
+                      <h3 className="font-semibold text-lg mb-1">Live</h3>
+                      <p className="text-sm text-gray-600">Paste stream URL and pick match manually</p>
+                    </button>
+                  )}
                 </div>
                 {selectedDifficulty && selectedDifficulty !== "live" && (
                   <div className="mt-6 bg-white rounded-xl shadow-md p-4 border border-gray-200">
@@ -1578,7 +1815,7 @@ function PracticeScoutingContent() {
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => setShowMatchSelectModal(true)}
+                          onClick={handleChooseLiveMatchClick}
                           className="px-4 py-2 rounded text-white font-semibold"
                           style={{ backgroundColor: "var(--primary-color)" }}
                         >
@@ -1978,6 +2215,23 @@ function PracticeScoutingContent() {
                         values={rebuiltFormData.autoCycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, autoCycles: [...rebuiltFormData.autoCycles, value] })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.autoCounterOverride}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, autoCounterOverride: value })}
+                      />
+                      <Counter
+                        label="Missed Fuel"
+                        value={rebuiltFormData.autoCounterMissedFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, autoCounterMissedFuel: value })}
+                      />
+                      <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.autoHumanPlayerFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, autoHumanPlayerFuel: value })}
+                      />
                       <Counter
                         label="Failed Climb"
                         value={rebuiltFormData.autoFailedClimb}
@@ -2034,6 +2288,17 @@ function PracticeScoutingContent() {
                         values={rebuiltFormData.transitionCycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, transitionCycles: [...rebuiltFormData.transitionCycles, value] })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.transitionCounterOverride}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, transitionCounterOverride: value })}
+                      />
+                      <Counter
+                        label="Missed Fuel"
+                        value={rebuiltFormData.transitionCounterMissedFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, transitionCounterMissedFuel: value })}
+                      />
                       <p className="text-xs text-gray-600">
                         Counted shifts right now: Transition + {rebuiltFormData.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
                       </p>
@@ -2042,20 +2307,70 @@ function PracticeScoutingContent() {
                         values={rebuiltFormData.shift1Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1Cycles: [...rebuiltFormData.shift1Cycles, value] })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.shift1CounterOverride}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1CounterOverride: value })}
+                      />
+                      <Counter
+                        label="Missed Fuel"
+                        value={rebuiltFormData.shift1CounterMissedFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1CounterMissedFuel: value })}
+                      />
                       <RebuiltCycleTimer
                         title={`Shift 2 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                         values={rebuiltFormData.shift2Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2Cycles: [...rebuiltFormData.shift2Cycles, value] })}
+                      />
+                      <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.shift2CounterOverride}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2CounterOverride: value })}
+                      />
+                      <Counter
+                        label="Missed Fuel"
+                        value={rebuiltFormData.shift2CounterMissedFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2CounterMissedFuel: value })}
                       />
                       <RebuiltCycleTimer
                         title={`Shift 3 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
                         values={rebuiltFormData.shift3Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3Cycles: [...rebuiltFormData.shift3Cycles, value] })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.shift3CounterOverride}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3CounterOverride: value })}
+                      />
+                      <Counter
+                        label="Missed Fuel"
+                        value={rebuiltFormData.shift3CounterMissedFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3CounterMissedFuel: value })}
+                      />
                       <RebuiltCycleTimer
                         title={`Shift 4 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                         values={rebuiltFormData.shift4Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift4Cycles: [...rebuiltFormData.shift4Cycles, value] })}
+                      />
+                      <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.shift4CounterOverride}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift4CounterOverride: value })}
+                      />
+                      <Counter
+                        label="Missed Fuel"
+                        value={rebuiltFormData.shift4CounterMissedFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift4CounterMissedFuel: value })}
+                      />
+                      <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.teleopHumanPlayerFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, teleopHumanPlayerFuel: value })}
                       />
                     </div>
                   </div>
@@ -2066,6 +2381,23 @@ function PracticeScoutingContent() {
                       title="Endgame Cycle Timer"
                       values={rebuiltFormData.endgameCycles}
                       onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameCycles: [...rebuiltFormData.endgameCycles, value] })}
+                    />
+                    <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                    <Counter
+                      label="Scored Fuel"
+                      value={rebuiltFormData.endgameCounterOverride}
+                      onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameCounterOverride: value })}
+                    />
+                    <Counter
+                      label="Missed Fuel"
+                      value={rebuiltFormData.endgameCounterMissedFuel}
+                      onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameCounterMissedFuel: value })}
+                    />
+                    <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                    <Counter
+                      label="Scored Fuel"
+                      value={rebuiltFormData.endgameHumanPlayerFuel}
+                      onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameHumanPlayerFuel: value })}
                     />
                     <Counter
                       label="Failed Climb"
@@ -2264,4 +2596,3 @@ export default function PracticeScouting() {
     </ProtectedRoute>
   );
 }
-
