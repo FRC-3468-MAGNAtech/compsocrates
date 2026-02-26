@@ -3,6 +3,7 @@ import { collection, getDocs, query, where, doc, getDoc } from "firebase/firesto
 import { db } from "@/app/firebase";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 import { getUserRoles } from "@/app/utils/roles";
+import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 
 export interface TeamStats {
   totalEntries: number;
@@ -64,6 +65,27 @@ function isRealCompetitionEntry(entry: ScoutingEntry): boolean {
   );
 }
 
+function getEventWindowTimestamp(entry: Record<string, unknown>): number {
+  const submittedAt = Number(entry.submittedAt || 0);
+  if (Number.isFinite(submittedAt) && submittedAt > 0) return submittedAt;
+  const timestamp = Number(entry.timestamp || 0);
+  if (Number.isFinite(timestamp) && timestamp > 0) return timestamp;
+  const createdAt = Number(entry.createdAt || 0);
+  if (Number.isFinite(createdAt) && createdAt > 0) return createdAt;
+  const completedAt = Number(entry.completedAt || 0);
+  if (Number.isFinite(completedAt) && completedAt > 0) return completedAt;
+  const startedAt = Number(entry.startedAt || 0);
+  if (Number.isFinite(startedAt) && startedAt > 0) return startedAt;
+  return 0;
+}
+
+function isDuringRebuiltEventWindow(entry: Record<string, unknown>): boolean {
+  const timestamp = getEventWindowTimestamp(entry);
+  if (!timestamp) return false;
+  const rebuiltEvents = getEventsForGame("REBUILT").filter((event) => event.id !== "app-testing");
+  return rebuiltEvents.some((event) => isInEventWindow(timestamp, event.startDate, event.endDate));
+}
+
 export async function getTeamEntries(teamId: string): Promise<ScoutingEntry[]> {
   // First get all team members
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
@@ -88,13 +110,15 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   // Get team members with new roles model (while accepting legacy role values).
   const usersQuery = query(collection(db, "users"), where("teamId", "==", teamId));
   const usersSnapshot = await getDocs(usersQuery);
-  const teamMemberNames = new Set(usersSnapshot.docs.map((d) => d.data().displayName));
   const scouts = usersSnapshot.docs.filter(doc => {
     const data = doc.data();
     const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
     return roles.includes("match-scout");
   });
   const scoutNames = scouts.map((doc) => doc.data().displayName);
+  const teamMemberNames = new Set(
+    usersSnapshot.docs.map((docSnap) => String(docSnap.data().displayName || "").trim()).filter(Boolean)
+  );
 
   // Use REBUILT scouted-match rows from scouting for dashboard accuracy.
   const scoutingSnapshot = await getDocs(collection(db, "scouting"));
@@ -124,6 +148,31 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
     const data = accuracyByScout[name];
     return Boolean(data && data.count > 0 && (data.total / data.count) >= 80);
   }).length;
+
+  const eventWindowCollections = [
+    "scouting",
+    "pitScouting",
+    "strategyScouting",
+    "matchStrategyPlans",
+    "driveScouting",
+    "helperReports",
+  ] as const;
+
+  const eventWindowEntries = await Promise.all(
+    eventWindowCollections.map(async (collectionName) => {
+      const snap = await getDocs(collection(db, collectionName));
+      return snap.docs
+        .map((docSnap) => docSnap.data() as Record<string, unknown>)
+        .filter((row) => {
+          const rowTeamId = String(row.teamId || "").trim();
+          const rowScout = String(row.scoutName || row.submittedByName || "").trim();
+          const sameTeam = rowTeamId ? rowTeamId === teamId : teamMemberNames.has(rowScout);
+          if (!sameTeam) return false;
+          return isDuringRebuiltEventWindow(row);
+        }).length;
+    })
+  );
+  const rebuiltWindowTotalEntries = eventWindowEntries.reduce((sum, count) => sum + count, 0);
 
   // Count entries by event (based on submittedAt timestamp)
   const entriesByEvent: Record<string, number> = {};
@@ -157,7 +206,7 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
     }));
 
   return {
-    totalEntries: competitionEntries.length,
+    totalEntries: rebuiltWindowTotalEntries,
     activeScouts: readyScoutCount,
     totalScouts: scouts.length,
     averageAccuracy: avgAccuracy,

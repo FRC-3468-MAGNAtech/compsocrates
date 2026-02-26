@@ -9,6 +9,7 @@ import Sidebar from "@/app/components/Sidebar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { getRoleBadge } from "@/app/utils/roles";
+import { getEventsForGame, isInEventWindow, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 type UserProfile = {
   uid: string;
@@ -97,19 +98,42 @@ function ProfileContent() {
           }
         }
 
-        const [scoutingSnap, practiceSnap] = await Promise.all([
+        const [scoutingByNameSnap, scoutingByUidSnap, practiceByNameSnap, practiceByUidSnap] = await Promise.all([
           getDocs(query(collection(db, "scouting"), where("scoutName", "==", mergedProfile.displayName))),
+          getDocs(query(collection(db, "scouting"), where("scoutId", "==", params.userId))),
           getDocs(query(collection(db, "practiceSessions"), where("scoutName", "==", mergedProfile.displayName))),
+          getDocs(query(collection(db, "practiceSessions"), where("scoutId", "==", params.userId))),
         ]);
+        const scoutingDocs = new Map<string, Record<string, unknown>>();
+        scoutingByNameSnap.docs.forEach((entryDoc) => {
+          scoutingDocs.set(entryDoc.id, entryDoc.data() as Record<string, unknown>);
+        });
+        scoutingByUidSnap.docs.forEach((entryDoc) => {
+          scoutingDocs.set(entryDoc.id, entryDoc.data() as Record<string, unknown>);
+        });
+        const practiceDocs = new Map<string, Record<string, unknown>>();
+        practiceByNameSnap.docs.forEach((entryDoc) => {
+          practiceDocs.set(entryDoc.id, entryDoc.data() as Record<string, unknown>);
+        });
+        practiceByUidSnap.docs.forEach((entryDoc) => {
+          practiceDocs.set(entryDoc.id, entryDoc.data() as Record<string, unknown>);
+        });
 
         const eventKeys = new Set<string>();
+        const eventsByGame = new Map<AnalyticsGame, Map<string, { startDate?: string; endDate?: string }>>();
+        (["REEFSCAPE", "REBUILT"] as AnalyticsGame[]).forEach((game) => {
+          const map = new Map<string, { startDate?: string; endDate?: string }>();
+          getEventsForGame(game).forEach((event) => {
+            map.set(event.id, { startDate: event.startDate, endDate: event.endDate });
+          });
+          eventsByGame.set(game, map);
+        });
         const breakdownMap = new Map<
           string,
           BreakdownRow
         >();
         let practiceEntries = 0;
-        scoutingSnap.docs.forEach((entryDoc) => {
-          const entry = entryDoc.data() as Record<string, unknown>;
+        scoutingDocs.forEach((entry) => {
           const eventKey = String(entry.eventKey || "");
           const eventSeason = parseInt(eventKey.slice(0, 4), 10);
           const fallbackTimestamp =
@@ -133,9 +157,17 @@ function ProfileContent() {
           const difficulty = String(entry.difficulty || "").trim();
           const hasPracticeMeta = practiceMode.length > 0 && difficulty.length > 0;
           const isPractice = Boolean(entry.isPracticeScouting) || hasPracticeMeta;
+          const timestampForEventWindow =
+            (typeof entry.submittedAt === "number" ? entry.submittedAt : 0) ||
+            (typeof entry.timestamp === "number" ? entry.timestamp : 0);
+          const entryGame = (String(entry.game || "REEFSCAPE").toUpperCase() === "REBUILT" ? "REBUILT" : "REEFSCAPE") as AnalyticsGame;
+          const eventWindow = eventsByGame.get(entryGame)?.get(eventKey);
+          const insideEventWindow = isInEventWindow(timestampForEventWindow, eventWindow?.startDate, eventWindow?.endDate);
+          if (!isPractice && eventKey && insideEventWindow) {
+            eventKeys.add(eventKey);
+          }
           if (!isPractice) return;
           practiceEntries += 1;
-          if (eventKey) eventKeys.add(eventKey);
           const scoutingType: "Trial" | "Competitive" | "Real Competition" = isPractice
             ? practiceMode === "competitive"
               ? "Competitive"
@@ -168,8 +200,7 @@ function ProfileContent() {
 
         let accuracyTotal = 0;
         let accuracyCount = 0;
-        practiceSnap.docs.forEach((sessionDoc) => {
-          const session = sessionDoc.data();
+        practiceDocs.forEach((session) => {
           if (typeof session.accuracy === "number") {
             accuracyTotal += session.accuracy;
             accuracyCount += 1;
@@ -179,7 +210,7 @@ function ProfileContent() {
         setStats({
           totalEntries: practiceEntries,
           practiceEntries,
-          practiceSessions: practiceSnap.size,
+          practiceSessions: practiceDocs.size,
           avgAccuracy: accuracyCount > 0 ? Math.round(accuracyTotal / accuracyCount) : 0,
           eventsScouted: eventKeys.size,
         });

@@ -686,6 +686,7 @@ function PracticeScoutingContent() {
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
   const [selectedModalEventKey, setSelectedModalEventKey] = useState("all");
   const [selectedModalMatchType, setSelectedModalMatchType] = useState<"all" | "practice" | "qualification" | "playoffs">("all");
+  const [modalSearchTerm, setModalSearchTerm] = useState("");
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -723,7 +724,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   const { setNumber, matchNumber } = parseBracketNumbers(match as { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown });
   const matchTypeLabel =
     stage === "semifinal"
-      ? `${baseTypeLabel} ${Number(match.matchNumber || matchNumber || 1)}`
+      ? `${baseTypeLabel} ${Number(setNumber || matchNumber || match.matchNumber || 1)}`
       : stage === "finals" && setNumber > 1
       ? `${baseTypeLabel} ${setNumber}-${matchNumber || Number(match.matchNumber || 1)}`
       : `${baseTypeLabel} ${Number(match.matchNumber || matchNumber || 1)}`;
@@ -782,6 +783,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     
     if (url.includes("youtube.com/watch?v=")) {
       videoId = url.split("v=")[1]?.split("&")[0] || "";
+    } else if (url.includes("youtube.com/live/")) {
+      videoId = url.split("youtube.com/live/")[1]?.split("?")[0] || "";
     } else if (url.includes("youtu.be/")) {
       videoId = url.split("youtu.be/")[1]?.split("?")[0] || "";
     } else if (url.includes("youtube.com/embed/")) {
@@ -1014,6 +1017,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       setCandidateMatches(rankedMatches);
       setSelectedModalEventKey("all");
       setSelectedModalMatchType("all");
+      setModalSearchTerm("");
       if (rankedMatches[0]) {
         setSelectedCandidateId(rankedMatches[0].id);
       }
@@ -1106,11 +1110,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function handleChooseLiveMatchClick() {
     if (!liveVideoUrl.trim()) {
       alert("Paste a live video URL first.");
-      return;
-    }
-    const selected = candidateMatches.find((match) => match.id === selectedCandidateId);
-    if (selected) {
-      startPracticeMatch(selected);
       return;
     }
     setShowMatchSelectModal(true);
@@ -1475,6 +1474,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setSelectedCandidateId("");
     setSelectedModalEventKey("all");
     setSelectedModalMatchType("all");
+    setModalSearchTerm("");
     setShowMatchSelectModal(false);
     setLiveVideoUrl("");
     setCurrentMatch(null);
@@ -1506,6 +1506,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   const modalFilteredMatches = useMemo(() => {
     return candidateMatches
       .filter((match) => {
+        if (selectedDifficulty && selectedDifficulty !== "live") {
+          const matchDifficulty = String((match as unknown as Record<string, unknown>).difficulty || "").toLowerCase().trim();
+          if (matchDifficulty && matchDifficulty !== selectedDifficulty) return false;
+        }
         const eventKey = getPracticeEventKey(match);
         if (selectedModalEventKey !== "all" && eventKey !== selectedModalEventKey) return false;
         if (selectedModalMatchType === "all") return true;
@@ -1514,8 +1518,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         if (selectedModalMatchType === "qualification") return stage === "qualification";
         return stage === "semifinal" || stage === "finals";
       })
+      .filter((match) => {
+        const term = modalSearchTerm.trim().toLowerCase();
+        if (!term) return true;
+        const eventName = String((match as unknown as Record<string, unknown>).eventName || "").toLowerCase();
+        const teamsText = match.allianceTeams.join(" ");
+        const label = getPracticeLabel(match).toLowerCase();
+        return label.includes(term) || eventName.includes(term) || teamsText.includes(term);
+      })
       .sort(compareCandidateMatches);
-  }, [candidateMatches, selectedModalEventKey, selectedModalMatchType]);
+  }, [candidateMatches, selectedDifficulty, selectedModalEventKey, selectedModalMatchType, modalSearchTerm]);
 
   const selectedCandidateMatch = useMemo(
     () => candidateMatches.find((match) => match.id === selectedCandidateId) || null,
@@ -1526,7 +1538,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     if (modalFilteredMatches.length === 0) return;
     const index = Math.floor(Math.random() * modalFilteredMatches.length);
     const picked = modalFilteredMatches[index];
-    if (picked) setSelectedCandidateId(picked.id);
+    if (!picked) return;
+    setSelectedCandidateId(picked.id);
+    setShowMatchSelectModal(false);
   }
 
   return (
@@ -1573,7 +1587,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       clearPracticeDraft();
                       setPendingDraft(null);
                     }}
-                    className="px-4 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50"
+                    className="px-4 py-2 rounded border font-semibold"
+                    style={{
+                      borderColor: "rgba(var(--primary-rgb), 0.35)",
+                      backgroundColor: "rgba(var(--primary-rgb), 0.06)",
+                      color: "var(--primary-color)",
+                    }}
                   >
                     Discard Saved Session
                   </button>
@@ -1869,6 +1888,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                             </select>
                           </div>
                         </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                          <input
+                            type="text"
+                            value={modalSearchTerm}
+                            onChange={(event) => setModalSearchTerm(event.target.value)}
+                            className="w-full border rounded p-2"
+                            placeholder="Search by match, event, or team..."
+                          />
+                        </div>
                         <div className="max-h-[48vh] overflow-y-auto border rounded">
                           {modalFilteredMatches.length === 0 ? (
                             <p className="p-4 text-sm text-gray-600">No matches for this filter.</p>
@@ -1982,6 +2011,20 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </h3>
                 <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
+                {selectedDifficulty === "live" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCandidateId(currentMatch.id || "");
+                      setCurrentStep("select");
+                      setShowMatchSelectModal(true);
+                    }}
+                    className="mt-2 px-3 py-1 rounded text-sm text-white"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Change Live Match
+                  </button>
+                )}
                 {selectedMode === 'competitive' && (
                   <p className="text-xs mt-2 text-yellow-300">Video cannot be paused in competitive mode.</p>
                 )}
@@ -2010,7 +2053,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </div>
               </div>
 
-              {activeMatchGame === "REEFSCAPE" && humanPlayerRobot === currentRobotIndex && (
+              {humanPlayerRobot === currentRobotIndex && (
                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
                   <div className="flex items-center">
                     <div className="flex-shrink-0">
@@ -2035,7 +2078,19 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 <div className="space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
-                    <input type="text" value={formData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
+                    {selectedDifficulty === "live" ? (
+                      <select
+                        value={formData.teamNumber}
+                        onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
+                        className="w-full border rounded p-2"
+                      >
+                        {currentMatch.allianceTeams.map((team) => (
+                          <option key={team} value={String(team)}>{team}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" value={formData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Starting Position</label>
@@ -2156,7 +2211,19 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     <div className="space-y-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
-                        <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
+                        {selectedDifficulty === "live" ? (
+                          <select
+                            value={rebuiltFormData.teamNumber}
+                            onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teamNumber: e.target.value })}
+                            className="w-full border rounded p-2"
+                          >
+                            {currentMatch.allianceTeams.map((team) => (
+                              <option key={team} value={String(team)}>{team}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
+                        )}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Starting Position</label>

@@ -38,9 +38,9 @@ type PitEntry = {
   scoreNetRobot?: boolean;
   bargeCapability?: string;
   autoCapabilities?: string;
-  fuelPreloadCapacity?: number;
-  fuelBallsPerSecond?: number;
-  fuelCarryingCapacity?: number;
+  fuelPreloadCapacity?: number | string;
+  fuelBallsPerSecond?: number | string;
+  fuelCarryingCapacity?: number | string;
   climbLevel1?: boolean;
   climbLevel2?: boolean;
   climbLevel3?: boolean;
@@ -70,6 +70,20 @@ function dispositionToCsv(value: PitEntry["pitDisposition"]) {
 function dispositionToCell(value: PitEntry["pitDisposition"]) {
   if (typeof value === "string" && value.trim()) return formatAnalyticsText(value.trim());
   return value ? "Yes" : "No";
+}
+
+function normalizeFuelScaleValue(value: number | string | undefined): number {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw || raw === "x") return -1;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : -1;
+}
+
+function fuelScaleDisplay(value: number | string | undefined): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw || raw === "x") return "x";
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? String(parsed) : "x";
 }
 
 function PitAnalyticsContent() {
@@ -191,11 +205,11 @@ function PitAnalyticsContent() {
         case "driveDisposition":
           return entry.driveDisposition ?? "";
         case "fuelPreloadCapacity":
-          return entry.fuelPreloadCapacity ?? 0;
+          return normalizeFuelScaleValue(entry.fuelPreloadCapacity);
         case "fuelBallsPerSecond":
-          return entry.fuelBallsPerSecond ?? 0;
+          return normalizeFuelScaleValue(entry.fuelBallsPerSecond);
         case "fuelCarryingCapacity":
-          return entry.fuelCarryingCapacity ?? 0;
+          return normalizeFuelScaleValue(entry.fuelCarryingCapacity);
         case "climbLevel1":
           return entry.climbLevel1 ? 1 : 0;
         case "climbLevel2":
@@ -642,9 +656,9 @@ function PitAnalyticsContent() {
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>
-                    <td>{Number(entry.fuelPreloadCapacity || 0) || "-"}</td>
-                    <td>{Number(entry.fuelBallsPerSecond || 0) || "-"}</td>
-                    <td>{Number(entry.fuelCarryingCapacity || 0) || "-"}</td>
+                    <td>{fuelScaleDisplay(entry.fuelPreloadCapacity)}</td>
+                    <td>{fuelScaleDisplay(entry.fuelBallsPerSecond)}</td>
+                    <td>{fuelScaleDisplay(entry.fuelCarryingCapacity)}</td>
                     <td>{entry.climbLevel1 ? "Y" : "N"}</td>
                     <td>{entry.climbLevel2 ? "Y" : "N"}</td>
                     <td>{entry.climbLevel3 ? "Y" : "N"}</td>

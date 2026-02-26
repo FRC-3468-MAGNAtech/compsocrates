@@ -359,29 +359,55 @@ function ScoutAccuracyContent() {
       const memberData = allMembers.map((memberDoc) => {
         const data = memberDoc.data();
         return {
+          uid: memberDoc.id,
           scoutName: data.displayName as string,
           role: data.role as string,
           roles: (data.roles || []) as string[],
         };
       });
       const statsPromises = memberData.map(async (member) => {
-        const scoutEntriesSnap = await getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.scoutName)));
-        const scoutPracticeEntries = scoutEntriesSnap.docs
-          .map((docSnap) => docSnap.data() as ScoutingEntry)
+        const [scoutEntriesByNameSnap, scoutEntriesByUidSnap] = await Promise.all([
+          getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.scoutName))),
+          getDocs(query(collection(db, "scouting"), where("scoutId", "==", member.uid))),
+        ]);
+        const scoutEntriesMap = new Map<string, ScoutingEntry>();
+        scoutEntriesByNameSnap.docs.forEach((docSnap) => {
+          scoutEntriesMap.set(docSnap.id, docSnap.data() as ScoutingEntry);
+        });
+        scoutEntriesByUidSnap.docs.forEach((docSnap) => {
+          scoutEntriesMap.set(docSnap.id, docSnap.data() as ScoutingEntry);
+        });
+        const scoutPracticeEntries = Array.from(scoutEntriesMap.values())
           .filter((row) => {
             if (!row.isPracticeScouting) return false;
             if (String(row.practiceMode || "").toLowerCase() !== selectedMode) return false;
             return getEntryGame(row) === selectedGame;
           });
 
-        const practiceQuery = query(
-          collection(db, "practiceSessions"),
-          where("scoutName", "==", member.scoutName),
-          where("mode", "==", selectedMode)
-        );
-        const practiceSnapshot = await getDocs(practiceQuery);
-        const practiceRows = practiceSnapshot.docs
-          .map((docSnap) => docSnap.data() as Record<string, unknown>)
+        const [practiceByNameSnap, practiceByUidSnap] = await Promise.all([
+          getDocs(
+            query(
+              collection(db, "practiceSessions"),
+              where("scoutName", "==", member.scoutName),
+              where("mode", "==", selectedMode)
+            )
+          ),
+          getDocs(
+            query(
+              collection(db, "practiceSessions"),
+              where("scoutId", "==", member.uid),
+              where("mode", "==", selectedMode)
+            )
+          ),
+        ]);
+        const practiceRowsMap = new Map<string, Record<string, unknown>>();
+        practiceByNameSnap.docs.forEach((docSnap) => {
+          practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
+        });
+        practiceByUidSnap.docs.forEach((docSnap) => {
+          practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
+        });
+        const practiceRows = Array.from(practiceRowsMap.values())
           .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame);
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];

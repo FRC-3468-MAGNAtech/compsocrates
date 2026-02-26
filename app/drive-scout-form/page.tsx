@@ -97,16 +97,22 @@ function normalizeText(value: string | undefined) {
 
 function compareRobotToPlan(actual: RobotReflection, planned: StrategyRobot) {
   const mismatches: string[] = [];
-  if (normalizeText(actual.startingPosition) !== normalizeText(planned.startingPosition)) {
+  const actualStarting = normalizeText(actual.startingPosition);
+  const plannedStarting = normalizeText(planned.startingPosition);
+  if (actualStarting && plannedStarting && actualStarting !== plannedStarting) {
     mismatches.push("Starting Position");
   }
-  if (normalizeText(actual.role) !== normalizeText(planned.role)) {
+  const actualRole = normalizeText(actual.role);
+  const plannedRole = normalizeText(planned.role);
+  if (actualRole && plannedRole && actualRole !== plannedRole) {
     mismatches.push("Role");
   }
   if (Boolean(actual.autoClimb) !== Boolean(planned.autoClimb)) {
     mismatches.push("Auto Climb");
   }
-  if (normalizeText(actual.endgameClimb) !== normalizeText(planned.endgameClimb)) {
+  const actualEndgame = normalizeText(actual.endgameClimb);
+  const plannedEndgame = normalizeText(planned.endgameClimb);
+  if (actualEndgame && plannedEndgame && actualEndgame !== plannedEndgame) {
     mismatches.push("Endgame Climb");
   }
   return mismatches;

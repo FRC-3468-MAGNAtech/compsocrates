@@ -358,6 +358,13 @@ function getRebuiltFuelBreakdown(entry: Entry) {
   const shift3Fuel = applyFuelOverride(shift3Estimated, entry.teleop?.shift3Override, entry.teleop?.shift3MissedFuel);
   const shift4Fuel = applyFuelOverride(shift4Estimated, entry.teleop?.shift4Override, entry.teleop?.shift4MissedFuel);
   const endgameSectionFuel = applyFuelOverride(endgameEstimated, entry.endgame?.counterOverride, entry.endgame?.counterOverrideMissedFuel);
+  const autoSectionEstimated = Number(entry.auto?.counterOverride || 0) <= 0 && autoEstimated > 0;
+  const transitionEstimatedUsed = Number(entry.teleop?.transitionOverride || 0) <= 0 && transitionEstimated > 0;
+  const shift1EstimatedUsed = Number(entry.teleop?.shift1Override || 0) <= 0 && shift1Estimated > 0;
+  const shift2EstimatedUsed = Number(entry.teleop?.shift2Override || 0) <= 0 && shift2Estimated > 0;
+  const shift3EstimatedUsed = Number(entry.teleop?.shift3Override || 0) <= 0 && shift3Estimated > 0;
+  const shift4EstimatedUsed = Number(entry.teleop?.shift4Override || 0) <= 0 && shift4Estimated > 0;
+  const endgameSectionEstimated = Number(entry.endgame?.counterOverride || 0) <= 0 && endgameEstimated > 0;
 
   const autoHumanFuel = Number(entry.auto?.humanPlayerFuel || 0);
   const teleHumanFuel = Number(entry.teleop?.humanPlayerFuel || 0);
@@ -366,22 +373,38 @@ function getRebuiltFuelBreakdown(entry: Entry) {
 
   const autoFuel = autoSectionFuel + autoHumanFuel;
   const teleFuel = transitionFuel + (wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + teleHumanFuel;
+  const teleEstimatedUsed = wonAuto
+    ? transitionEstimatedUsed || shift2EstimatedUsed || shift4EstimatedUsed
+    : transitionEstimatedUsed || shift1EstimatedUsed || shift3EstimatedUsed;
   const endgameFuel = endgameSectionFuel + endgameHumanFuel;
 
   return {
     autoFuel,
+    autoSectionEstimated,
     autoHumanFuel,
     transitionFuel,
+    transitionEstimatedUsed,
     shift1Fuel,
+    shift1EstimatedUsed,
     shift2Fuel,
+    shift2EstimatedUsed,
     shift3Fuel,
+    shift3EstimatedUsed,
     shift4Fuel,
+    shift4EstimatedUsed,
     teleHumanFuel,
     teleFuel,
+    teleEstimatedUsed,
     endgameSectionFuel,
+    endgameSectionEstimated,
     endgameHumanFuel,
     endgameFuel,
   };
+}
+
+function formatFuelValue(value: number, isEstimated: boolean) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  return isEstimated ? `~${value}` : String(value);
 }
 
 function normalizePracticeSessionMatchType(rawType: unknown, rawMatchKey: unknown): "practice" | "qualification" | "finals" {
@@ -922,7 +945,7 @@ function AnalyticsPageContent() {
         );
         if (scopedMatchRows.length > 0) {
           const latestSessionRows = chooseLatestEntryPerTeam(scopedMatchRows);
-          const sessionScoutedPoints = latestSessionRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+          let sessionScoutedPoints = latestSessionRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
           setAccuracyRobotBreakdown(
             latestSessionRows.map((row) =>
               entryGame === "REBUILT"
@@ -942,9 +965,12 @@ function AnalyticsPageContent() {
           try {
             const sessionSnap = await getDoc(doc(db, "practiceSessions", practiceSessionId));
             if (sessionSnap.exists()) {
-              const sessionData = sessionSnap.data() as { officialScore?: number; eventKey?: string };
+              const sessionData = sessionSnap.data() as { officialScore?: number; eventKey?: string; scoutedScore?: number };
               if (typeof sessionData.officialScore === "number") {
                 actualPoints = Number(sessionData.officialScore);
+              }
+              if (typeof sessionData.scoutedScore === "number") {
+                sessionScoutedPoints = Number(sessionData.scoutedScore);
               }
             }
           } catch (sessionError) {
@@ -1609,7 +1635,7 @@ function AnalyticsPageContent() {
                 <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
                 <th className="bg-pink-300 text-center" colSpan={5}>General</th>
-                <th className="bg-gray-300 text-center" colSpan={1}>Actions</th>
+                <th className="bg-gray-300 text-center" colSpan={1} />
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -1618,8 +1644,8 @@ function AnalyticsPageContent() {
                 <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Cycles</th>
-                <th className="bg-blue-200 text-center" colSpan={9}>Estimated Fuel</th>
-                <th className="bg-blue-200 text-center" colSpan={5}>Estimated Cycles</th>
+                <th className="bg-blue-200 text-center" colSpan={9}>Fuel</th>
+                <th className="bg-blue-200 text-center" colSpan={5}>Cycles</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Fuel</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Human Player</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
@@ -1654,7 +1680,7 @@ function AnalyticsPageContent() {
                   {sortLabel(sortKey, sortDir, "autoCarryScale", "Carry")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoFuel")}>
-                  {sortLabel(sortKey, sortDir, "autoFuel", "Est. Fuel")}
+                  {sortLabel(sortKey, sortDir, "autoFuel", "Fuel")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoHumanFuel")}>
                   {sortLabel(sortKey, sortDir, "autoHumanFuel", "Human Player")}
@@ -1690,7 +1716,7 @@ function AnalyticsPageContent() {
                   {sortLabel(sortKey, sortDir, "teleHumanFuel", "Human Player")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("teleFuel")}>
-                  {sortLabel(sortKey, sortDir, "teleFuel", "Est. Fuel Used")}
+                  {sortLabel(sortKey, sortDir, "teleFuel", "Fuel Used")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("transitionCycles")}>
                   {sortLabel(sortKey, sortDir, "transitionCycles", "Transition")}
@@ -1726,7 +1752,7 @@ function AnalyticsPageContent() {
                   {sortLabel(sortKey, sortDir, "incidents", "Incidents")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("totalUsed")}>
-                  {sortLabel(sortKey, sortDir, "totalUsed", "Est. Total")}
+                  {sortLabel(sortKey, sortDir, "totalUsed", "Total")}
                 </th>
                 <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
                   {sortLabel(sortKey, sortDir, "notes", "Comments")}
@@ -1761,25 +1787,25 @@ function AnalyticsPageContent() {
                   <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
                   <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
-                  <td className="text-center">{autoFuel}</td>
+                  <td className="text-center">{formatFuelValue(autoFuel, fuel.autoSectionEstimated)}</td>
                   <td className="text-center">{fuel.autoHumanFuel}</td>
                   <td className="text-center">{autoClimb}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.auto?.cycleTimes)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.teleop?.bpsScale)}</td>
                   <td className="text-center">{rebuiltCarryRange(entry.teleop?.carryingScale)}</td>
-                  <td className="text-center">{fuel.transitionFuel}</td>
-                  <td className="text-center">{fuel.shift1Fuel}</td>
-                  <td className="text-center">{fuel.shift2Fuel}</td>
-                  <td className="text-center">{fuel.shift3Fuel}</td>
-                  <td className="text-center">{fuel.shift4Fuel}</td>
+                  <td className="text-center">{formatFuelValue(fuel.transitionFuel, fuel.transitionEstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift1Fuel, fuel.shift1EstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift2Fuel, fuel.shift2EstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift3Fuel, fuel.shift3EstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift4Fuel, fuel.shift4EstimatedUsed)}</td>
                   <td className="text-center">{fuel.teleHumanFuel}</td>
-                  <td className="text-center">{teleFuel}</td>
+                  <td className="text-center">{formatFuelValue(teleFuel, fuel.teleEstimatedUsed)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.transitionCycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift1Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift2Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift3Cycles)}</td>
                   <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift4Cycles)}</td>
-                  <td className="text-center">{fuel.endgameFuel}</td>
+                  <td className="text-center">{formatFuelValue(fuel.endgameFuel, fuel.endgameSectionEstimated)}</td>
                   <td className="text-center">{fuel.endgameHumanFuel}</td>
                   <td className="text-center">{toDisplayTitle(entry.endgame?.status || entry.stageStatus || "-")}</td>
                   <td className="text-center">{endgameClimb}</td>
@@ -1836,7 +1862,7 @@ function AnalyticsPageContent() {
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
               <th className="bg-pink-300 text-center" colSpan={4}>General</th>
-              <th className="bg-gray-300 text-center" colSpan={1}>Actions</th>
+              <th className="bg-gray-300 text-center" colSpan={1} />
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>

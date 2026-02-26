@@ -18,9 +18,9 @@ type PitFormState = {
   robotPictureUrl: string;
   pitDisposition: boolean;
   driveDisposition: boolean;
-  fuelPreloadCapacity: number;
-  fuelBallsPerSecond: number;
-  fuelCarryingCapacity: number;
+  fuelPreloadCapacity: string;
+  fuelBallsPerSecond: string;
+  fuelCarryingCapacity: string;
   climbLevel1: boolean;
   climbLevel2: boolean;
   climbLevel3: boolean;
@@ -99,9 +99,9 @@ function PitScoutFormContent() {
     robotPictureUrl: "",
     pitDisposition: false,
     driveDisposition: false,
-    fuelPreloadCapacity: 1,
-    fuelBallsPerSecond: 1,
-    fuelCarryingCapacity: 1,
+    fuelPreloadCapacity: "",
+    fuelBallsPerSecond: "",
+    fuelCarryingCapacity: "",
     climbLevel1: false,
     climbLevel2: false,
     climbLevel3: false,
@@ -110,6 +110,12 @@ function PitScoutFormContent() {
     autoCycleDescription: "",
     notes: "",
   });
+  function normalizeScaleInput(raw: string): string {
+    const value = raw.trim().toLowerCase();
+    if (!value) return "";
+    if (value === "x") return "x";
+    return value.replace(/[^\d]/g, "");
+  }
   function isValidImageUrl(value: string): boolean {
     try {
       const parsed = new URL(value);
@@ -308,17 +314,35 @@ function PitScoutFormContent() {
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 space-y-4">
-              <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
+              <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Routine</h2>
 
               <h3 className="font-semibold text-gray-800">Fuel</h3>
-              <label className="block text-sm font-medium text-gray-700">Preload Capacity ({form.fuelPreloadCapacity})</label>
-              <input type="range" min={1} max={8} value={form.fuelPreloadCapacity} onChange={(event) => setForm({ ...form, fuelPreloadCapacity: Math.min(8, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
+              <label className="block text-sm font-medium text-gray-700">Preload Capacity</label>
+              <input
+                type="text"
+                value={form.fuelPreloadCapacity}
+                onChange={(event) => setForm({ ...form, fuelPreloadCapacity: normalizeScaleInput(event.target.value) })}
+                className="w-full border rounded p-3"
+                placeholder="Number or x"
+              />
 
-              <label className="block text-sm font-medium text-gray-700">Balls Per Second ({form.fuelBallsPerSecond})</label>
-              <input type="range" min={1} max={10} value={form.fuelBallsPerSecond} onChange={(event) => setForm({ ...form, fuelBallsPerSecond: Math.min(10, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
+              <label className="block text-sm font-medium text-gray-700">Balls Per Second</label>
+              <input
+                type="text"
+                value={form.fuelBallsPerSecond}
+                onChange={(event) => setForm({ ...form, fuelBallsPerSecond: normalizeScaleInput(event.target.value) })}
+                className="w-full border rounded p-3"
+                placeholder="Number or x"
+              />
 
-              <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({form.fuelCarryingCapacity})</label>
-              <input type="range" min={1} max={50} value={form.fuelCarryingCapacity} onChange={(event) => setForm({ ...form, fuelCarryingCapacity: Math.min(50, Math.max(1, Number(event.target.value) || 1)) })} className="w-full" />
+              <label className="block text-sm font-medium text-gray-700">Carrying Capacity</label>
+              <input
+                type="text"
+                value={form.fuelCarryingCapacity}
+                onChange={(event) => setForm({ ...form, fuelCarryingCapacity: normalizeScaleInput(event.target.value) })}
+                className="w-full border rounded p-3"
+                placeholder="Number or x"
+              />
 
               <h3 className="font-semibold text-gray-800">Tower</h3>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.climbLevel1} onChange={(event) => setForm({ ...form, climbLevel1: event.target.checked })} />Level 1 Climb</label>

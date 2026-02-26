@@ -294,7 +294,7 @@ function EventDetailsContent() {
 
 export default function EventDetailsPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
+    <ProtectedRoute requireAuth={true}>
       <EventDetailsContent />
     </ProtectedRoute>
   );

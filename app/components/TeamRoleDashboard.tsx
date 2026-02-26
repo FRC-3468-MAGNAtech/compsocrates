@@ -440,17 +440,28 @@ function TeamRoleDashboardContent({
                   {activeEvent && (
                     <div className="space-y-4">
                       <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
-                        <h2 className="text-xl font-semibold mb-1">Event Data</h2>
-                        <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{activeEvent.name}</p>
-                        <p className="text-gray-600 flex flex-wrap items-center gap-2">
-                          <CalendarDays size={16} />
-                          <span>
-                            {new Date(activeEvent.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(activeEvent.endDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                          </span>
-                          <span aria-hidden="true">|</span>
-                          <MapPin size={16} />
-                          <span>{activeEvent.location}</span>
-                        </p>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h2 className="text-xl font-semibold mb-1">Event Data</h2>
+                            <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{activeEvent.name}</p>
+                            <p className="text-gray-600 flex flex-wrap items-center gap-2">
+                              <CalendarDays size={16} />
+                              <span>
+                                {new Date(activeEvent.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(activeEvent.endDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                              </span>
+                              <span aria-hidden="true">|</span>
+                              <MapPin size={16} />
+                              <span>{activeEvent.location}</span>
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => router.push(`/event-details/${activeEvent.key}`)}
+                            className="px-4 py-2 rounded-lg text-white font-medium whitespace-nowrap"
+                            style={{ backgroundColor: "var(--primary-color)" }}
+                          >
+                            View Details
+                          </button>
+                        </div>
                       </div>
 
                       <div className="bg-white rounded-xl shadow-md overflow-hidden">
