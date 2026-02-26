@@ -18,6 +18,7 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getUserRoles } from "@/app/utils/roles";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
@@ -49,6 +50,11 @@ interface TeamMember {
   displayName: string;
   role: string;
 }
+
+type ScoutWeight = {
+  member: TeamMember;
+  weightedAccuracy: number;
+};
 
 type MatchOption = {
   key: string;
@@ -103,6 +109,64 @@ function matchLabel(match: TBAMatch) {
   return match.key;
 }
 
+function parseTeamNumbers(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === "number") return item;
+        if (typeof item === "string") return parseInt(item.replace(/[^\d]/g, ""), 10);
+        return NaN;
+      })
+      .filter((item) => Number.isFinite(item) && item > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => parseInt(item.replace(/[^\d]/g, ""), 10))
+      .filter((item) => Number.isFinite(item) && item > 0);
+  }
+  return [];
+}
+
+function scoreScoutingRecord(record: Record<string, unknown>): number {
+  let score = 0;
+  if (Boolean(record.leftStartingZone)) score += 3;
+  score += Number(record.autoCoralL1 || 0) * 3;
+  score += Number(record.autoCoralL2 || 0) * 4;
+  score += Number(record.autoCoralL3 || 0) * 6;
+  score += Number(record.autoCoralL4 || 0) * 7;
+  score += Number(record.autoAlgaeProcessorScored || 0) * 6;
+  score += Number(record.autoAlgaeNetScored || 0) * 4;
+  score += Number(record.teleopCoralL1 || 0) * 2;
+  score += Number(record.teleopCoralL2 || 0) * 3;
+  score += Number(record.teleopCoralL3 || 0) * 4;
+  score += Number(record.teleopCoralL4 || 0) * 5;
+  score += Number(record.teleopProcessorScored || 0) * 6;
+  score += Number(record.teleopNetRobotScored || 0) * 4;
+  score += Number(record.teleopNetHumanScored || 0) * 4;
+  score += Number(record.penaltyPoints || 0);
+
+  const end = String(record.stageStatus || "").toLowerCase();
+  if (end.includes("deep")) score += 12;
+  else if (end.includes("shallow")) score += 6;
+  else if (end.includes("park") || end.includes("barge")) score += 2;
+  return score;
+}
+
+async function fetchStatboticsEpa(teamNumber: number, year: number): Promise<number> {
+  try {
+    const response = await fetch(`https://api.statbotics.io/v3/team_year/${teamNumber}/${year}`, { cache: "no-store" });
+    if (!response.ok) return 0;
+    const payload = (await response.json()) as Record<string, unknown>;
+    const norm = payload.norm_epa as Record<string, unknown> | undefined;
+    const current = typeof norm?.current === "number" ? norm.current : 0;
+    return Number.isFinite(current) ? current : 0;
+  } catch (error) {
+    console.error(`Unable to load Statbotics EPA for team ${teamNumber}:`, error);
+    return 0;
+  }
+}
+
 function AssignmentsContent() {
   const { userData } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -114,6 +178,8 @@ function AssignmentsContent() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
   const [eventAttendees, setEventAttendees] = useState<Record<string, string[]>>({});
+  const [manualPriorityTeamsByEvent, setManualPriorityTeamsByEvent] = useState<Record<string, number[]>>({});
+  const [manualPriorityTeamsGlobal, setManualPriorityTeamsGlobal] = useState<number[]>([]);
 
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [selectedScoutId, setSelectedScoutId] = useState("");
@@ -225,6 +291,20 @@ function AssignmentsContent() {
           id: assignmentDoc.id,
           ...assignmentDoc.data(),
         })) as PitAssignment[]
+      );
+      const priorityByEventRaw = (
+        teamData.priorityTeamsByEvent ||
+        teamData.assignmentPriorityTeamsByEvent ||
+        teamData.eventPriorityTeams ||
+        {}
+      ) as Record<string, unknown>;
+      const normalizedByEvent: Record<string, number[]> = {};
+      Object.entries(priorityByEventRaw).forEach(([eventKey, teamList]) => {
+        normalizedByEvent[eventKey] = parseTeamNumbers(teamList);
+      });
+      setManualPriorityTeamsByEvent(normalizedByEvent);
+      setManualPriorityTeamsGlobal(
+        parseTeamNumbers(teamData.priorityTeams || teamData.assignmentPriorityTeams || teamData.priorityTeamNumbers || [])
       );
 
       try {
@@ -400,11 +480,122 @@ function AssignmentsContent() {
       await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
 
       const newAssignments: Array<Omit<Assignment, "id">> = [];
-      let scoutPointer = 0;
+      const lowScoutMode = eligibleMembers.length < 6;
+      const scoutWeights: ScoutWeight[] = await Promise.all(
+        eligibleMembers.map(async (member) => {
+          const [competitionEntries, trialSessions] = await Promise.all([
+            getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.displayName))),
+            getDocs(
+              query(
+                collection(db, "practiceSessions"),
+                where("scoutName", "==", member.displayName),
+                where("mode", "==", "trial")
+              )
+            ),
+          ]);
+
+          const competitionAccuracies = competitionEntries.docs
+            .map((entryDoc) => entryDoc.data() as Record<string, unknown>)
+            .filter((row) => {
+              const matchType = String(row.matchType || "").toLowerCase();
+              const practiceMode = String(row.practiceMode || "").toLowerCase();
+              return (
+                typeof row.accuracy === "number" &&
+                matchType !== "practice" &&
+                !Boolean(row.isPracticeScouting) &&
+                practiceMode !== "trial" &&
+                practiceMode !== "competitive"
+              );
+            })
+            .map((row) => Number(row.accuracy || 0))
+            .filter((value) => Number.isFinite(value) && value > 0);
+          const trialAccuracies = trialSessions.docs
+            .map((sessionDoc) => Number((sessionDoc.data() as Record<string, unknown>).accuracy || 0))
+            .filter((value) => Number.isFinite(value) && value > 0);
+
+          const compAvg =
+            competitionAccuracies.length > 0
+              ? competitionAccuracies.reduce((sum, value) => sum + value, 0) / competitionAccuracies.length
+              : null;
+          const trialAvg =
+            trialAccuracies.length > 0 ? trialAccuracies.reduce((sum, value) => sum + value, 0) / trialAccuracies.length : null;
+
+          let weightedAccuracy = 50;
+          if (compAvg !== null && trialAvg !== null) weightedAccuracy = compAvg * 0.8 + trialAvg * 0.2;
+          else if (compAvg !== null) weightedAccuracy = compAvg;
+          else if (trialAvg !== null) weightedAccuracy = trialAvg;
+
+          return { member, weightedAccuracy };
+        })
+      );
+
+      const scoutsByAccuracy = [...scoutWeights]
+        .sort((a, b) => b.weightedAccuracy - a.weightedAccuracy)
+        .map((row) => row.member);
+      const fallbackScoutOrder = [...eligibleMembers].sort(() => Math.random() - 0.5);
+      let fallbackScoutPointer = 0;
+
+      const allQualificationTeams = Array.from(
+        new Set(qualificationMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
+      );
+      const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
+      const teamHistoryScore = new Map<number, { total: number; count: number }>();
+      const statboticsScore = new Map<number, number>();
+      const manualPriorityTeams = Array.from(
+        new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+      );
+
+      if (lowScoutMode) {
+        const scoutingSnap = await getDocs(collection(db, "scouting"));
+        scoutingSnap.forEach((entryDoc) => {
+          const row = entryDoc.data() as Record<string, unknown>;
+          const parsedTeamNumber = parseInt(String(row.teamNumber || "").replace(/[^\d]/g, ""), 10);
+          if (!Number.isFinite(parsedTeamNumber) || !allQualificationTeams.includes(parsedTeamNumber)) return;
+          const matchType = String(row.matchType || "").toLowerCase();
+          const practiceMode = String(row.practiceMode || "").toLowerCase();
+          if (matchType === "practice" || Boolean(row.isPracticeScouting) || practiceMode === "trial" || practiceMode === "competitive") {
+            return;
+          }
+          const score = scoreScoutingRecord(row);
+          if (!teamHistoryScore.has(parsedTeamNumber)) {
+            teamHistoryScore.set(parsedTeamNumber, { total: 0, count: 0 });
+          }
+          const existing = teamHistoryScore.get(parsedTeamNumber)!;
+          existing.total += score;
+          existing.count += 1;
+        });
+
+        const missingHistoryTeams = allQualificationTeams.filter((team) => !teamHistoryScore.has(team));
+        const statboticsEntries = await Promise.all(
+          missingHistoryTeams.map(async (teamNumber) => [teamNumber, await fetchStatboticsEpa(teamNumber, yearFromEvent)] as const)
+        );
+        statboticsEntries.forEach(([teamNumber, epa]) => {
+          statboticsScore.set(teamNumber, epa);
+        });
+      }
+
       qualificationMatches.forEach((match) => {
-        match.teams.forEach((teamNumber) => {
-          const scout = eligibleMembers[scoutPointer % eligibleMembers.length];
-          scoutPointer += 1;
+        const manualTeams = match.teams.filter((teamNumber) => manualPriorityTeams.includes(teamNumber));
+        const remainingAfterManual = match.teams.filter((teamNumber) => !manualTeams.includes(teamNumber));
+        const withHistory = [...remainingAfterManual].filter((teamNumber) => teamHistoryScore.has(teamNumber));
+        withHistory.sort((a, b) => {
+          const aRow = teamHistoryScore.get(a)!;
+          const bRow = teamHistoryScore.get(b)!;
+          return bRow.total / Math.max(1, bRow.count) - aRow.total / Math.max(1, aRow.count);
+        });
+        const remainingAfterHistory = remainingAfterManual.filter((teamNumber) => !withHistory.includes(teamNumber));
+        const withStatbotics = [...remainingAfterHistory].filter((teamNumber) => statboticsScore.has(teamNumber));
+        withStatbotics.sort((a, b) => (statboticsScore.get(b) || 0) - (statboticsScore.get(a) || 0));
+        const finalRemaining = remainingAfterHistory.filter((teamNumber) => !withStatbotics.includes(teamNumber));
+
+        const teamOrder = lowScoutMode
+          ? [...manualTeams, ...withHistory, ...withStatbotics, ...finalRemaining]
+          : [...match.teams].sort(() => Math.random() - 0.5);
+        teamOrder.forEach((teamNumber, teamIndex) => {
+          const scout = lowScoutMode
+            ? scoutsByAccuracy[teamIndex % scoutsByAccuracy.length]
+            : fallbackScoutOrder[(fallbackScoutPointer++) % fallbackScoutOrder.length];
+          if (!scout) return;
           newAssignments.push({
             eventKey: selectedEvent,
             matchKey: match.key,
@@ -481,6 +672,8 @@ function AssignmentsContent() {
               {events.length === 0 && <option value="">No events selected</option>}
             </select>
           </div>
+
+          <DataSourceCredits className="mb-6" />
 
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between mb-4">

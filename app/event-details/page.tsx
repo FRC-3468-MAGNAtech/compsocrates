@@ -6,6 +6,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENTS } from "@/app/utils/events";
 import type { TBAEvent } from "@/app/utils/tba-api";
@@ -136,6 +137,7 @@ function EventDetailsIndexContent() {
       <div className="flex-1 overflow-y-auto p-8">
         <h1 className="text-3xl font-bold mb-2 theme-text">Event Details</h1>
         <p className="text-gray-600 mb-6">Choose an event to view schedules, teams, and details.</p>
+        <DataSourceCredits className="mb-6" />
 
         {loading ? (
           <div className="bg-white rounded-xl shadow-md p-6">Loading events...</div>

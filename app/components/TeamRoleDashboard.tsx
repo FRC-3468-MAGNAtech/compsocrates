@@ -13,6 +13,7 @@ import { calculateTeamStats, getUpcomingEvents, type TeamStats, type UpcomingEve
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { canAccessForm, normalizeFormAccessOverrides, type FormAccessOverrides, type TeamRole } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, MapPin, Target, TriangleAlert } from "lucide-react";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 
 type DashboardMatch = {
   key: string;
@@ -240,6 +241,7 @@ function TeamRoleDashboardContent({
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{title}</h1>
           <p className="text-gray-600 mb-2">{subtitle}</p>
           <p className="text-sm text-gray-700 mb-8">{roleDescription}</p>
+          <DataSourceCredits className="mb-6" />
 
           {loading ? (
             <div className="text-center py-12">

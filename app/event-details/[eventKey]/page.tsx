@@ -5,10 +5,27 @@ import { useParams } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENT_BY_KEY, type AppEvent } from "@/app/utils/events";
 import type { TBAEvent } from "@/app/utils/tba-api";
+
+type FirstEventTeam = {
+  teamNumber: number;
+  nameShort: string;
+};
+
+function getFirstEventCodeFromTbaKey(key: string): string {
+  const normalized = String(key || "").toLowerCase();
+  const specialMap: Record<string, string> = {
+    "2026labr": "LAKE",
+    "2025lake": "LAKE",
+  };
+  if (specialMap[normalized]) return specialMap[normalized];
+  const suffix = normalized.slice(4).toUpperCase();
+  return suffix || normalized.toUpperCase();
+}
 
 function EventDetailsContent() {
   const params = useParams();
@@ -18,6 +35,9 @@ function EventDetailsContent() {
   const [event, setEvent] = useState<AppEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "teams" | "schedule">("overview");
+  const [teams, setTeams] = useState<FirstEventTeam[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsError, setTeamsError] = useState("");
 
   useEffect(() => {
     async function loadEventDetails() {
@@ -101,6 +121,42 @@ function EventDetailsContent() {
     void loadEventDetails();
   }, [eventKey, userData?.teamId]);
 
+  useEffect(() => {
+    async function loadTeams() {
+      if (!eventKey || activeTab !== "teams") return;
+      const year = Number(eventKey.slice(0, 4));
+      if (!Number.isFinite(year)) return;
+
+      setTeamsLoading(true);
+      setTeamsError("");
+      try {
+        const eventCode = getFirstEventCodeFromTbaKey(eventKey);
+        const response = await fetch("/api/first/teams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year, eventCode }),
+        });
+        if (!response.ok) {
+          setTeams([]);
+          setTeamsError(`Unable to load teams (${response.status}).`);
+          return;
+        }
+        const payload = await response.json();
+        const rows = Array.isArray(payload.teams) ? (payload.teams as FirstEventTeam[]) : [];
+        rows.sort((a, b) => a.teamNumber - b.teamNumber);
+        setTeams(rows);
+      } catch (error) {
+        console.error("Failed to load FIRST teams:", error);
+        setTeams([]);
+        setTeamsError("Unable to load teams right now.");
+      } finally {
+        setTeamsLoading(false);
+      }
+    }
+
+    void loadTeams();
+  }, [activeTab, eventKey]);
+
   if (loading) {
     return (
       <div className="flex h-screen bg-gray-100">
@@ -136,6 +192,7 @@ function EventDetailsContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
+          <DataSourceCredits className="mb-6" />
           <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
             <div className="flex items-start justify-between mb-4">
               <div>
@@ -256,7 +313,7 @@ function EventDetailsContent() {
                     Teams will compete in {event.city}, {event.state_prov} from {eventStart.toLocaleDateString("en-US", { month: "long", day: "numeric" })} to {eventEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.
                   </p>
                   <p className="text-sm text-gray-500 mt-4">
-                    Team lists and match schedules will be available from The Blue Alliance API once the event approaches.
+                    Team lists are loaded from the official FIRST API.
                   </p>
                 </div>
               </div>
@@ -264,14 +321,34 @@ function EventDetailsContent() {
           )}
 
           {activeTab === "teams" && (
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <h2 className="text-2xl font-semibold mb-2">Team List Coming Soon</h2>
-              <p className="text-gray-600">
-                Team information will be available from The Blue Alliance API as the event approaches.
-              </p>
-              <p className="text-sm text-gray-500 mt-4">
-                Check back closer to the event date for the full team list.
-              </p>
+            <div className="bg-white rounded-xl shadow-md p-6">
+              <h2 className="text-2xl font-semibold mb-4">Team List</h2>
+              {teamsLoading ? (
+                <p className="text-gray-600">Loading teams from FIRST API...</p>
+              ) : teamsError ? (
+                <p className="text-red-600">{teamsError}</p>
+              ) : teams.length === 0 ? (
+                <p className="text-gray-600">No teams returned for this event yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th className="text-left px-4 py-2 border-b">Team</th>
+                        <th className="text-left px-4 py-2 border-b">Name</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teams.map((team) => (
+                        <tr key={team.teamNumber} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 border-b font-semibold">{team.teamNumber}</td>
+                          <td className="px-4 py-2 border-b">{team.nameShort}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

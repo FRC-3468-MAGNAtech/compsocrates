@@ -13,6 +13,7 @@ import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getUserRoles } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, Target, Users, Wrench, MapPin } from "lucide-react";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 
 interface TeamData {
   scoutCount?: number;
@@ -248,6 +249,7 @@ function CoachDashboardContent() {
             Team Coach Dashboard
           </h1>
           <p className="text-gray-600 mb-8">Welcome back! Here&apos;s what&apos;s happening with your team.</p>
+          <DataSourceCredits className="mb-6" />
 
           {loading ? (
             <LoadingSpinner message="Loading dashboard..." />

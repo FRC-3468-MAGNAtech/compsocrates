@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { Users, Target, ClipboardList } from "lucide-react";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles } from "@/app/utils/roles";
@@ -679,6 +680,7 @@ function ScoutAccuracyContent() {
               ({`Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode`})
             </span>
           </p>
+          <DataSourceCredits className="mb-6" />
 
           <div className="bg-white rounded-xl shadow-md p-4 mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">Game</label>

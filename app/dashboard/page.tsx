@@ -123,6 +123,7 @@ function NoTeamDashboardContent() {
   const [requestedRole, setRequestedRole] = useState<TeamRole>("match-scout");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
+  const [requestSuccess, setRequestSuccess] = useState("");
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -151,6 +152,7 @@ function NoTeamDashboardContent() {
     if (!user || !userData) return;
 
     setRequestError("");
+    setRequestSuccess("");
     const normalizedTeamCode = teamCode.trim().toUpperCase();
     if (!normalizedTeamCode) {
       setRequestError("Please enter a team code.");
@@ -163,7 +165,9 @@ function NoTeamDashboardContent() {
     }
 
     if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
-      setRequestError("You already have a pending request for that team.");
+      const duplicateMessage = "You already asked to join that team and your request is still pending.";
+      setRequestError(duplicateMessage);
+      window.alert(duplicateMessage);
       return;
     }
 
@@ -173,7 +177,9 @@ function NoTeamDashboardContent() {
       setPendingRequests(refreshedPending);
 
       if (refreshedPending.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
-        setRequestError("You already have a pending request for that team.");
+        const duplicateMessage = "You already asked to join that team and your request is still pending.";
+        setRequestError(duplicateMessage);
+        window.alert(duplicateMessage);
         return;
       }
 
@@ -188,10 +194,12 @@ function NoTeamDashboardContent() {
       setPendingRequests(await fetchPendingRequestsForUser(user.uid));
       setTeamCode("");
       setRequestError("");
+      setRequestSuccess(`Join request submitted for Team ${normalizedTeamCode}. It is now pending approval.`);
     } catch (error) {
       console.error("Error creating team request:", error);
       const message = error instanceof Error ? error.message : String(error || "");
       setRequestError(message ? `Unable to create request: ${message}` : "Unable to create request right now.");
+      setRequestSuccess("");
     } finally {
       setSubmittingRequest(false);
     }
@@ -203,6 +211,7 @@ function NoTeamDashboardContent() {
 
     setCancelingRequestId(requestId);
     setRequestError("");
+    setRequestSuccess("");
     try {
       await deleteDoc(doc(db, "teamJoinRequests", requestId));
       setPendingRequests(await fetchPendingRequestsForUser(user.uid));
@@ -253,6 +262,7 @@ function NoTeamDashboardContent() {
             </select>
           </div>
           {requestError && <p className="text-sm text-red-600">{requestError}</p>}
+          {requestSuccess && <p className="text-sm text-green-700">{requestSuccess}</p>}
           <button
             type="submit"
             disabled={submittingRequest}
@@ -268,6 +278,7 @@ function NoTeamDashboardContent() {
         ) : pendingRequests.length > 0 ? (
           <div className="mb-6">
             <h2 className="text-lg font-semibold mb-3">Pending Requests</h2>
+            <p className="text-sm text-gray-600 mb-3">Your join request was sent successfully and is waiting for a team admin to approve it.</p>
             <div className="space-y-2">
               {pendingRequests.map((request) => (
                 <div key={request.id} className="border rounded p-3 flex items-center justify-between gap-3">
