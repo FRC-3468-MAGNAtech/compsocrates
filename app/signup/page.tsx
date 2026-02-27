@@ -7,28 +7,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "@/app/firebase";
+import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
-
-async function waitForCurrentUid(timeoutMs = 5000): Promise<string | null> {
-  if (auth.currentUser?.uid) return auth.currentUser.uid;
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      unsubscribe();
-      resolve(auth.currentUser?.uid || null);
-    }, timeoutMs);
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      if (nextUser?.uid) {
-        clearTimeout(timeout);
-        unsubscribe();
-        resolve(nextUser.uid);
-      }
-    });
-  });
-}
 
 async function hasPendingJoinRequest(userId: string, teamId: string): Promise<boolean> {
   const normalizedUserId = userId.trim();
@@ -199,11 +181,7 @@ export default function SignupPage() {
         }
 
         // Create user account (without team yet)
-        await signUp(email, password, displayName, role, "", false);
-        const resolvedUid = await waitForCurrentUid();
-        if (!resolvedUid) {
-          throw new Error("Could not verify account session. Please sign in and send the join request from Dashboard.");
-        }
+        const resolvedUid = await signUp(email, password, displayName, role, "", false);
         const hasPending = await hasPendingJoinRequest(resolvedUid, requestedTeamCode);
         if (hasPending) {
           alert("You already have a pending request for this team.");
@@ -221,7 +199,7 @@ export default function SignupPage() {
         });
 
         alert("Account created! Please verify your email and wait for team admin approval.");
-        router.push("/dashboard");
+        router.push(`/dashboard?requestSubmitted=1&team=${encodeURIComponent(requestedTeamCode)}`);
       }
     } catch (error: unknown) {
       console.error("Signup error:", error);

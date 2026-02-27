@@ -1491,6 +1491,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setPendingDraft(null);
   }
 
+  function pausePracticeSession() {
+    if (!currentMatch) return;
+    savePracticeDraft({ currentStep: currentStep === "break" ? "break" : "practice" });
+    router.push("/dashboard");
+  }
+
   const matchSelectorEvents = useMemo(() => {
     const byEvent = new Map<string, string>();
     candidateMatches.forEach((match) => {
@@ -1968,6 +1974,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   style={{ backgroundColor: "var(--primary-color)" }}
                 >
                   Continue To Robot {currentRobotIndex + 2} (Team {currentMatch.allianceTeams[currentRobotIndex + 1]})
+                </button>
+                <button
+                  onClick={pausePracticeSession}
+                  className="flex-1 py-3 rounded-lg border-2 border-blue-300 text-blue-700 font-semibold hover:bg-blue-50"
+                >
+                  Pause Session
                 </button>
                 <button
                   onClick={resetPractice}

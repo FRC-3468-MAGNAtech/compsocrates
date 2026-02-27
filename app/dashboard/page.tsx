@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
@@ -116,6 +116,7 @@ async function createTeamJoinRequestWithFallback(input: {
 
 function NoTeamDashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, userData, logOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [pendingRequests, setPendingRequests] = useState<TeamJoinRequest[]>([]);
@@ -146,6 +147,17 @@ function NoTeamDashboardContent() {
 
     load();
   }, [user, userData, router]);
+
+  useEffect(() => {
+    const requestSubmitted = searchParams.get("requestSubmitted") === "1";
+    if (!requestSubmitted) return;
+    const team = String(searchParams.get("team") || "").trim().toUpperCase();
+    if (team) {
+      setRequestSuccess(`Join request submitted for Team ${team}. It is now pending approval.`);
+    } else {
+      setRequestSuccess("Join request submitted. It is now pending approval.");
+    }
+  }, [searchParams]);
 
   async function handleCreateRequest(event: React.FormEvent) {
     event.preventDefault();

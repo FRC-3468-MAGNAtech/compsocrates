@@ -102,6 +102,7 @@ function CoachDashboardContent() {
   const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
   const [readyScoutIds, setReadyScoutIds] = useState<string[]>([]);
   const [totalAssignableScouts, setTotalAssignableScouts] = useState(0);
+  const [eventAverageAccuracyByKey, setEventAverageAccuracyByKey] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -190,6 +191,33 @@ function CoachDashboardContent() {
           .filter((docSnap) => computedReadyScouts.includes(docSnap.displayName))
           .map((docSnap) => docSnap.uid)
       );
+
+      const avgByEvent: Record<string, number> = {};
+      const scoutAccuracyByUid = new Map<string, number>();
+      const scoutAccuracyByName = new Map<string, number>();
+      scoutDocs.forEach((docSnap) => {
+        const byName = accuracyMapByScout[docSnap.displayName];
+        if (!byName || byName.count <= 0) return;
+        const avg = byName.total / byName.count;
+        scoutAccuracyByUid.set(docSnap.uid, avg);
+        scoutAccuracyByName.set(docSnap.displayName.trim().toLowerCase(), avg);
+      });
+      visibleEvents.forEach((event) => {
+        const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
+        const attendeeAccuracies = attendees
+          .map((value) => {
+            const safe = String(value || "").trim();
+            if (!safe) return null;
+            return scoutAccuracyByUid.get(safe) ?? scoutAccuracyByName.get(safe.toLowerCase()) ?? null;
+          })
+          .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+        if (attendeeAccuracies.length > 0) {
+          avgByEvent[event.key] = Math.round(
+            attendeeAccuracies.reduce((sum, value) => sum + value, 0) / attendeeAccuracies.length
+          );
+        }
+      });
+      setEventAverageAccuracyByKey(avgByEvent);
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -410,9 +438,15 @@ function CoachDashboardContent() {
                     <Target size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {stats?.averageAccuracy || 0}%
+                    {typeof eventAverageAccuracyByKey[activeEventKey] === "number"
+                      ? eventAverageAccuracyByKey[activeEventKey]
+                      : stats?.averageAccuracy || 0}%
                   </p>
-                  <p className="text-sm text-gray-600 mt-1">REBUILT scouted-match reliability</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {typeof eventAverageAccuracyByKey[activeEventKey] === "number"
+                      ? "Average practice accuracy for attending scouts"
+                      : "REBUILT scouted-match reliability"}
+                  </p>
                 </div>
               </div>
 

@@ -27,6 +27,38 @@ function getFirstEventCodeFromTbaKey(key: string): string {
   return suffix || normalized.toUpperCase();
 }
 
+async function loadTeamsFromTbaFallback(teamId: string, eventKey: string): Promise<FirstEventTeam[]> {
+  if (!teamId) return [];
+  const teamDoc = await getDoc(doc(db, "teams", teamId));
+  const teamData = teamDoc.exists() ? teamDoc.data() : {};
+  const encryptedKey =
+    typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
+  const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
+  if (!encryptedKey && !plainKey) return [];
+
+  const response = await fetch("/api/tba/matches", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventKey, encryptedKey, plainKey }),
+  });
+  if (!response.ok) return [];
+  const payload = await response.json();
+  const matches = Array.isArray(payload.matches) ? (payload.matches as Array<Record<string, unknown>>) : [];
+  const teamNumbers = new Set<number>();
+  matches.forEach((match) => {
+    const alliances = (match.alliances as Record<string, unknown> | undefined) || {};
+    const red = ((alliances.red as Record<string, unknown> | undefined)?.team_keys as string[] | undefined) || [];
+    const blue = ((alliances.blue as Record<string, unknown> | undefined)?.team_keys as string[] | undefined) || [];
+    [...red, ...blue].forEach((key) => {
+      const parsed = Number(String(key || "").replace(/[^\d]/g, ""));
+      if (Number.isFinite(parsed) && parsed > 0) teamNumbers.add(parsed);
+    });
+  });
+  return Array.from(teamNumbers)
+    .sort((a, b) => a - b)
+    .map((teamNumber) => ({ teamNumber, nameShort: `Team ${teamNumber}` }));
+}
+
 function EventDetailsContent() {
   const params = useParams();
   const eventKey = params.eventKey as string;
@@ -137,8 +169,20 @@ function EventDetailsContent() {
           body: JSON.stringify({ year, eventCode }),
         });
         if (!response.ok) {
+          const tbaFallback = userData?.teamId ? await loadTeamsFromTbaFallback(userData.teamId, eventKey) : [];
+          if (tbaFallback.length > 0) {
+            setTeams(tbaFallback);
+            setTeamsError("FIRST API is unavailable, showing teams inferred from TBA matches.");
+            return;
+          }
+          const payload = await response.json().catch(() => ({}));
+          const reason = String((payload as { code?: string }).code || "");
           setTeams([]);
-          setTeamsError(`Unable to load teams (${response.status}).`);
+          if (reason === "missing_credentials") {
+            setTeamsError("FIRST API credentials are missing.");
+          } else {
+            setTeamsError(`Unable to load teams (${response.status}).`);
+          }
           return;
         }
         const payload = await response.json();
@@ -147,15 +191,21 @@ function EventDetailsContent() {
         setTeams(rows);
       } catch (error) {
         console.error("Failed to load FIRST teams:", error);
-        setTeams([]);
-        setTeamsError("Unable to load teams right now.");
+        const tbaFallback = userData?.teamId ? await loadTeamsFromTbaFallback(userData.teamId, eventKey) : [];
+        if (tbaFallback.length > 0) {
+          setTeams(tbaFallback);
+          setTeamsError("FIRST API is unavailable, showing teams inferred from TBA matches.");
+        } else {
+          setTeams([]);
+          setTeamsError("Unable to load teams right now.");
+        }
       } finally {
         setTeamsLoading(false);
       }
     }
 
     void loadTeams();
-  }, [activeTab, eventKey]);
+  }, [activeTab, eventKey, userData?.teamId]);
 
   if (loading) {
     return (

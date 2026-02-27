@@ -290,12 +290,12 @@ function TeamManagementContent() {
 
           {isUserAdmin && joinRequests.length > 0 && (
             <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
-              <div className="p-6 border-b bg-yellow-50">
+              <div className="p-6 border-b bg-amber-100/90">
                 <div className="flex items-center gap-3">
-                  <Clock size={24} className="text-yellow-600" />
+                  <Clock size={24} className="text-amber-700" />
                   <div>
-                    <h2 className="text-xl font-semibold">Pending Join Requests</h2>
-                    <p className="text-sm text-gray-600">{joinRequests.length} request(s) waiting for approval</p>
+                    <h2 className="text-xl font-semibold text-amber-900">Pending Join Requests</h2>
+                    <p className="text-sm text-amber-800">{joinRequests.length} request(s) waiting for approval</p>
                   </div>
                 </div>
               </div>

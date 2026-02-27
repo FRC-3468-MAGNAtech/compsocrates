@@ -461,11 +461,7 @@ function ScoutAccuracyContent() {
     const roles = getUserRoles({ role: s.role, roles: s.roles });
     return roles.includes("match-scout");
   }).length;
-  const scoutOnlyStats = scoutStats.filter((s) => {
-    const roles = getUserRoles({ role: s.role, roles: s.roles });
-    return roles.includes("match-scout");
-  });
-  const scoutOnlyStatsWithAccuracy = scoutOnlyStats.filter((s) => s.averageAccuracy > 0);
+  const membersWithPracticeAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
 
   function getAccuracyColor(accuracy: number): string {
     if (accuracy >= 95) return "text-green-600";
@@ -784,8 +780,11 @@ function ScoutAccuracyContent() {
                       <Target size={22} className="text-gray-500" />
                     </div>
                     <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                      {scoutOnlyStatsWithAccuracy.length > 0
-                        ? Math.round(scoutOnlyStatsWithAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) / scoutOnlyStatsWithAccuracy.length)
+                      {membersWithPracticeAccuracy.length > 0
+                        ? Math.round(
+                            membersWithPracticeAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) /
+                              membersWithPracticeAccuracy.length
+                          )
                         : 0}%
                     </p>
                   </div>

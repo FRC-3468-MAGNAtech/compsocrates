@@ -3,8 +3,22 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 function resolveFirstCredentials() {
-  const username = (process.env.FIRST_API_USERNAME || process.env.FIRST_API_USER || "").trim();
-  const token = (process.env.FIRST_API_TOKEN || process.env.FIRST_API_AUTH_TOKEN || "").trim();
+  const username = (
+    process.env.FIRST_API_USERNAME ||
+    process.env.FIRST_API_USER ||
+    process.env.FIRST_USERNAME ||
+    process.env.NEXT_PUBLIC_FIRST_API_USERNAME ||
+    ""
+  ).trim();
+  const token = (
+    process.env.FIRST_API_TOKEN ||
+    process.env.FIRST_API_AUTH_TOKEN ||
+    process.env.FIRST_API_KEY ||
+    process.env.FIRST_AUTH_TOKEN ||
+    process.env.FIRST_API_PASSWORD ||
+    process.env.NEXT_PUBLIC_FIRST_API_TOKEN ||
+    ""
+  ).trim();
   return { username, token };
 }
 
@@ -19,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     const { username, token } = resolveFirstCredentials();
     if (!username || !token) {
-      return NextResponse.json({ error: "Missing FIRST API credentials" }, { status: 500 });
+      return NextResponse.json({ error: "Missing FIRST API credentials", code: "missing_credentials" }, { status: 500 });
     }
 
     const basicAuth = Buffer.from(`${username}:${token}`).toString("base64");
@@ -32,8 +46,9 @@ export async function POST(request: NextRequest) {
     );
 
     if (!response.ok) {
+      const details = await response.text();
       return NextResponse.json(
-        { error: `FIRST request failed (${response.status})` },
+        { error: `FIRST request failed (${response.status})`, details },
         { status: response.status }
       );
     }

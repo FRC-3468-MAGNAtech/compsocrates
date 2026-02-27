@@ -42,7 +42,7 @@ type AuthContextType = {
   currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
-  signUp: (email: string, password: string, name: string, role: UserRole, teamId: string, isTeamAdmin: boolean) => Promise<void>;
+  signUp: (email: string, password: string, name: string, role: UserRole, teamId: string, isTeamAdmin: boolean) => Promise<string>;
   signIn: (email: string, password: string) => Promise<void>;
   logOut: () => Promise<void>;
   updateUserData: (updates: Partial<UserData>) => Promise<void>;
@@ -54,7 +54,7 @@ const AuthContext = createContext<AuthContextType>({
   currentUser: null,
   userData: null,
   loading: true,
-  signUp: async () => {},
+  signUp: async () => "",
   signIn: async () => {},
   logOut: async () => {},
   updateUserData: async () => {},
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: UserRole, 
     teamId: string,
     isTeamAdmin: boolean
-  ) {
+  ): Promise<string> {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const continueUrl =
       typeof window !== "undefined"
@@ -142,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     
     await setSecureUserDoc(userCredential.user.uid, userData as unknown as Record<string, unknown>, false);
+    return userCredential.user.uid;
   }
 
   // Sign in existing user

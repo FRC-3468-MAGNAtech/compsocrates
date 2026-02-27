@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
@@ -95,6 +96,7 @@ function MatchListContent() {
       <div className="flex-1 overflow-y-auto p-8">
         <h1 className="text-3xl font-bold mb-2 theme-text">Match List</h1>
         <p className="text-gray-600 mb-6">API-synced match schedule for your visible events.</p>
+        <DataSourceCredits className="mb-6 max-w-3xl" />
         {loading ? (
           <LoadingSpinner message="Loading matches..." />
         ) : (
@@ -113,35 +115,40 @@ function MatchListContent() {
                 ))}
               </div>
             </div>
-            <div className="bg-white rounded-xl shadow-md overflow-x-auto">
-              <table className="w-full min-w-[840px]">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Red Alliance</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Blue Alliance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {activeMatches.map((match) => (
-                    <tr key={match.key}>
-                      <td className="px-4 py-3 font-medium">{match.label}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {match.time > 0 ? new Date(match.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{match.red.join(", ") || "-"}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{match.blue.join(", ") || "-"}</td>
-                    </tr>
-                  ))}
-                  {activeMatches.length === 0 && (
+            {events.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-md p-6 text-sm text-gray-600">
+                No visible events found. Ask a team lead to mark event attendance in Event Selection.
+              </div>
+            ) : activeMatches.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-md p-6 text-sm text-gray-600">
+                No matches are available for the selected event yet.
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow-md overflow-x-auto">
+                <table className="w-full min-w-[840px]">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">No matches available.</td>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Red Alliance</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Blue Alliance</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {activeMatches.map((match) => (
+                      <tr key={match.key}>
+                        <td className="px-4 py-3 font-medium">{match.label}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {match.time > 0 ? new Date(match.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{match.red.join(", ") || "-"}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{match.blue.join(", ") || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         )}
       </div>

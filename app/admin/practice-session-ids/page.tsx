@@ -46,7 +46,41 @@ function formatMatchType(value: string): string {
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+function getEntryGame(entry: ScoutingEntry): "REEFSCAPE" | "REBUILT" {
+  const explicit = String(entry.game || "").trim().toUpperCase();
+  if (explicit === "REBUILT" || explicit === "REEFSCAPE") return explicit;
+  const eventKey = String(entry.eventKey || "").trim().toLowerCase();
+  if (eventKey === "2026week0") return "REBUILT";
+  return "REEFSCAPE";
+}
+
+function computeRebuiltScore(entry: ScoutingEntry): number {
+  const direct = Number(entry.scoutedScore);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const estimated = Number(entry.estimatedScore);
+  if (Number.isFinite(estimated) && estimated > 0) return estimated;
+
+  const auto = (entry.auto as Record<string, unknown> | undefined) || {};
+  const teleop = (entry.teleop as Record<string, unknown> | undefined) || {};
+  const endgame = (entry.endgame as Record<string, unknown> | undefined) || {};
+
+  const fuel =
+    Number(auto.estimatedFuel || 0) +
+    Number(teleop.estimatedFuel || 0) +
+    Number(endgame.estimatedFuel || 0);
+  const autoClimb = Boolean(auto.successfulClimb) ? 15 : 0;
+  const endStatus = String(endgame.status || "").toLowerCase();
+  const teleopClimb =
+    endStatus === "level-1" ? 10 :
+    endStatus === "level-2" ? 20 :
+    endStatus === "level-3" ? 30 : 0;
+  return Math.max(0, Math.round(fuel + autoClimb + teleopClimb));
+}
+
 function computeEntryScore(entry: ScoutingEntry): number {
+  if (getEntryGame(entry) === "REBUILT") {
+    return computeRebuiltScore(entry);
+  }
   const num = (field: string) => Number(entry[field] || 0);
   let score = 0;
   if (Boolean(entry.leftStartingZone)) score += 3;
