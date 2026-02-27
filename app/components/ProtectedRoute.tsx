@@ -6,23 +6,26 @@ import { useAuth, UserRole } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { getUserRoles } from "@/app/utils/roles";
+import { useMemo } from "react";
 
 type ProtectedRouteProps = {
   children: React.ReactNode;
   allowedRoles?: UserRole[];
   requireAuth?: boolean;
+  requireVersionReleaseAccess?: boolean;
 };
 
 export default function ProtectedRoute({ 
   children, 
   allowedRoles,
-  requireAuth = true 
+  requireAuth = true,
+  requireVersionReleaseAccess = false,
 }: ProtectedRouteProps) {
   const { user, userData, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  function hasAllowedRole(): boolean {
+  const hasAllowedRole = useMemo((): boolean => {
     if (!allowedRoles || !userData) return true;
     if (userData.isTeamAdmin) return true;
     const userRoles = getUserRoles(userData);
@@ -34,7 +37,12 @@ export default function ProtectedRoute({
     if (allowed.has("scout") && userRoles.some((role) => role !== "lead-strategist")) return true;
     if (allowed.has("coach") && (userRoles.includes("lead-strategist") || userRoles.includes("team-coach") || userData.isTeamAdmin)) return true;
     return false;
-  }
+  }, [allowedRoles, userData]);
+
+  const hasRequiredVersionReleaseAccess = useMemo((): boolean => {
+    if (!requireVersionReleaseAccess) return true;
+    return Boolean(userData?.canManageVersionReleases);
+  }, [requireVersionReleaseAccess, userData?.canManageVersionReleases]);
 
   useEffect(() => {
     if (loading) return;
@@ -61,11 +69,16 @@ export default function ProtectedRoute({
     }
 
     // If specific roles are required
-    if (!hasAllowedRole()) {
+    if (!hasAllowedRole) {
       router.push(getDashboardRoute(userData));
       return;
     }
-  }, [user, userData, loading, requireAuth, allowedRoles, router, pathname]);
+
+    if (!hasRequiredVersionReleaseAccess) {
+      router.push(getDashboardRoute(userData));
+      return;
+    }
+  }, [user, userData, loading, requireAuth, router, pathname, hasAllowedRole, hasRequiredVersionReleaseAccess]);
 
   // Show loading state
   if (loading) {
@@ -82,7 +95,8 @@ export default function ProtectedRoute({
   // Don't render children if access is denied
   if (requireAuth && !user) return null;
   if (!requireAuth && user) return null;
-  if (!hasAllowedRole()) return null;
+  if (!hasAllowedRole) return null;
+  if (!hasRequiredVersionReleaseAccess) return null;
 
   return <>{children}</>;
 }

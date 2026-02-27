@@ -15,6 +15,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
 import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { TeamRole, normalizeLegacyRole } from "@/app/utils/roles";
+import { withHiddenOwnerPermissions } from "@/app/utils/ownerPermissions";
 
 // User data structure
 export type UserRole = TeamRole | "scout" | "coach";
@@ -33,6 +34,7 @@ export type UserData = {
   bio?: string;
   profileVisibility?: "team" | "public" | "private";
   preferredDashboard?: string;
+  canManageVersionReleases?: boolean;
 };
 
 type AuthContextType = {
@@ -71,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userDoc = await getDoc(doc(db, "users", uid));
       if (userDoc.exists()) {
         const data = userDoc.data() as UserData & { encryptedUserData?: string };
-        setUserData(data);
+        setUserData(withHiddenOwnerPermissions(data));
         if (!data.encryptedUserData) {
           await setSecureUserDoc(uid, data, true);
         }
@@ -87,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     try {
       await setSecureUserDoc(user.uid, updates as Record<string, unknown>, true);
-      setUserData(prev => prev ? { ...prev, ...updates } : null);
+      setUserData(prev => (prev ? withHiddenOwnerPermissions({ ...prev, ...updates }) : null));
     } catch (error) {
       console.error("Error updating user data:", error);
       throw error;
@@ -171,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Load user data
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) {
-          setUserData(userDoc.data() as UserData);
+          setUserData(withHiddenOwnerPermissions(userDoc.data() as UserData));
         }
       } else {
         setUserData(null);
