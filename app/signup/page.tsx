@@ -6,8 +6,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
@@ -47,6 +45,7 @@ export default function SignupPage() {
     if (lower.includes("invalid-email")) return "That email address is invalid.";
     if (lower.includes("weak-password")) return "Password is too weak. Use 8+ chars with a capital letter, number, and symbol.";
     if (lower.includes("network-request-failed")) return "Network error. Check connection and try again.";
+    if (lower.includes("missing or insufficient permissions")) return "Permission check failed. Please continue; your join request will be sent after login.";
     if (lower.includes("popup")) return "Google popup was blocked or closed. Enable popups and try again.";
     return message || "Unable to create account right now.";
   }
@@ -92,12 +91,6 @@ export default function SignupPage() {
         const requestedTeamCode = joinCode.trim().toUpperCase();
         if (!requestedTeamCode) {
           setError("Please enter a team join code.");
-          setLoading(false);
-          return;
-        }
-        const teamSnap = await getDoc(doc(db, "teams", requestedTeamCode));
-        if (!teamSnap.exists()) {
-          setError("That team join code is not valid.");
           setLoading(false);
           return;
         }

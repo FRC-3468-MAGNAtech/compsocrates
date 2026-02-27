@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -153,12 +153,6 @@ function NoTeamDashboardContent() {
       return;
     }
 
-    const teamDoc = await getDoc(doc(db, "teams", teamId));
-    if (!teamDoc.exists()) {
-      localStorage.removeItem("pending-join-request");
-      return;
-    }
-
     await createTeamJoinRequestWithFallback({
       userId: user.uid,
       userEmail: String(draft?.userEmail || userData.email || user.email || ""),
@@ -219,12 +213,6 @@ function NoTeamDashboardContent() {
       setRequestError("Please enter a team code.");
       return;
     }
-    const teamDoc = await getDoc(doc(db, "teams", normalizedTeamCode));
-    if (!teamDoc.exists()) {
-      setRequestError("That team join code is not valid.");
-      return;
-    }
-
     if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
       const duplicateMessage = "You already asked to join that team and your request is still pending.";
       setRequestError(duplicateMessage);
