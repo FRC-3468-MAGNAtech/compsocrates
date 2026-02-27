@@ -5,7 +5,6 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENTS, dedupeEventKeys, normalizeEventKey } from "@/app/utils/events";
 import { filterEventsByLocation, type TBAEvent } from "@/app/utils/tba-api";
@@ -124,7 +123,6 @@ function EventSelectionContent() {
       <div className="flex-1 overflow-y-auto p-8 pb-32">
         <h1 className="text-3xl font-bold mb-2 theme-text">Event Selection</h1>
         <p className="text-gray-600 mb-6">Select which events your team is attending.</p>
-        <DataSourceCredits className="mb-6 max-w-3xl" />
 
         <div className="max-w-3xl mb-4">
           <input

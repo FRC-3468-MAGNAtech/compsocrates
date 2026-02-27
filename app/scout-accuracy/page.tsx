@@ -640,8 +640,10 @@ function ScoutAccuracyContent() {
       });
 
       for (const entry of entries) {
+        const entryScore = scorePracticeEntryWithoutPenalty(entry, sessionGame);
         await updateDoc(doc(db, "scouting", entry.id), {
           accuracy: recalculatedAccuracy,
+          scoutedScore: entryScore,
           recalculatedAt: Date.now(),
         });
       }

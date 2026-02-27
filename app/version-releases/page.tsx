@@ -24,12 +24,36 @@ function VersionReleasesContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
-
-  const canEdit = Boolean(userData?.canManageVersionReleases);
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
     void loadNotes();
   }, []);
+
+  useEffect(() => {
+    async function loadOwnerAccess() {
+      if (!userData?.uid) {
+        setCanEdit(false);
+        return;
+      }
+      try {
+        const response = await fetch("/api/owner/release-access", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: userData.uid, email: userData.email || "" }),
+        });
+        if (!response.ok) {
+          setCanEdit(Boolean(userData?.canManageVersionReleases));
+          return;
+        }
+        const payload = (await response.json()) as { allowed?: boolean };
+        setCanEdit(Boolean(payload.allowed));
+      } catch {
+        setCanEdit(Boolean(userData?.canManageVersionReleases));
+      }
+    }
+    void loadOwnerAccess();
+  }, [userData?.uid, userData?.email, userData?.canManageVersionReleases]);
 
   async function loadNotes() {
     setLoading(true);
@@ -132,7 +156,7 @@ function VersionReleasesContent() {
   }
 
   const headingText = useMemo(
-    () => (canEdit ? "Publish and update release notes." : "Read-only release notes for all users."),
+    () => (canEdit ? "Publish and update notes." : "Read-only notes for all users."),
     [canEdit]
   );
 
@@ -141,7 +165,7 @@ function VersionReleasesContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto p-8">
         <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-          Version Releases
+          Update Lot
         </h1>
         <p className="text-gray-600 mb-6">{headingText}</p>
 

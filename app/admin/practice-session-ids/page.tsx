@@ -160,10 +160,15 @@ function PracticeSessionIdsContent() {
           const accuracies = sessionEntries
             .map((entry) => Number(entry.accuracy))
             .filter((value) => Number.isFinite(value) && value > 0);
-          const totalScoutedScore = sessionEntries.reduce((sum, entry) => {
+          const computedEntryScore = sessionEntries.reduce((sum, entry) => {
             const direct = Number(entry.scoutedScore);
             return sum + (Number.isFinite(direct) && direct > 0 ? direct : computeEntryScore(entry));
           }, 0);
+          const sessionScoutedScore = Number(data.scoutedScore || data.totalScoutedScore || 0);
+          const totalScoutedScore =
+            Number.isFinite(sessionScoutedScore) && sessionScoutedScore > 0
+              ? sessionScoutedScore
+              : computedEntryScore;
           const submittedAt = sessionEntries.reduce((latest, entry) => {
             const ts = Number(entry.submittedAt || entry.timestamp || 0);
             return ts > latest ? ts : latest;

@@ -956,12 +956,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         candidateMatches = buildLegacyGroupedMatches(gameFilteredMatches);
       }
       if (candidateMatches.length === 0) {
-        const allSnapshot = await getDocs(collection(db, "practiceMatches"));
-        const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        const allGameFilteredMatches = allMatches.filter((match) => matchBelongsToSelectedGame(match));
-        candidateMatches = buildLegacyGroupedMatches(allGameFilteredMatches);
-      }
-      if (candidateMatches.length === 0) {
         alert("No practice matches have valid alliance team data. Please add team numbers to practice match docs.");
         return;
       }
@@ -1514,7 +1508,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       .filter((match) => {
         if (selectedDifficulty && selectedDifficulty !== "live") {
           const matchDifficulty = String((match as unknown as Record<string, unknown>).difficulty || "").toLowerCase().trim();
-          if (matchDifficulty && matchDifficulty !== selectedDifficulty) return false;
+          if (matchDifficulty !== selectedDifficulty) return false;
         }
         const eventKey = getPracticeEventKey(match);
         if (selectedModalEventKey !== "all" && eventKey !== selectedModalEventKey) return false;

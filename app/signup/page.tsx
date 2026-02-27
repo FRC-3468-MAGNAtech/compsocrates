@@ -6,103 +6,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
-
-async function hasPendingJoinRequest(userId: string, teamId: string): Promise<boolean> {
-  const normalizedUserId = userId.trim();
-  const normalizedTeamId = teamId.trim().toLowerCase();
-  if (!normalizedUserId || !normalizedTeamId) return false;
-
-  const requestsQuery = query(collection(db, "teamJoinRequests"), where("userId", "==", normalizedUserId));
-  const requestsSnap = await getDocs(requestsQuery);
-
-  return requestsSnap.docs.some((docSnap) => {
-    const data = docSnap.data() as Record<string, unknown>;
-    const status = String(data.status || "");
-    const requestTeamId = String(data.teamId || "").toLowerCase();
-    return status === "pending" && requestTeamId === normalizedTeamId;
-  });
-}
-
-async function createTeamJoinRequestWithFallback(input: {
-  userId: string;
-  userEmail: string;
-  userName: string;
-  requestedRole: TeamRole;
-  teamId: string;
-}) {
-  const createdAt = Date.now();
-  const normalizedEmail = input.userEmail.trim().toLowerCase();
-  const fullPayload = {
-    userId: input.userId,
-    userEmail: input.userEmail,
-    userEmailLower: normalizedEmail,
-    userName: input.userName,
-    userRole: input.requestedRole,
-    requestedRole: input.requestedRole,
-    teamId: input.teamId,
-    status: "pending",
-    createdAt,
-  };
-  const fallbackPayloads: Array<Record<string, unknown>> = [
-    fullPayload,
-    {
-      userId: input.userId,
-      userEmail: input.userEmail,
-      userEmailLower: normalizedEmail,
-      userName: input.userName,
-      requestedRole: input.requestedRole,
-      teamId: input.teamId,
-      status: "pending",
-      createdAt,
-    },
-    {
-      userId: input.userId,
-      userName: input.userName,
-      requestedRole: input.requestedRole,
-      teamId: input.teamId,
-      status: "pending",
-      createdAt,
-    },
-    {
-      userId: input.userId,
-      role: input.requestedRole,
-      teamId: input.teamId,
-      status: "pending",
-      createdAt,
-    },
-    {
-      userId: input.userId,
-      teamId: input.teamId,
-      status: "pending",
-      createdAt,
-    },
-  ];
-
-  let lastError: unknown = null;
-  for (const payload of fallbackPayloads) {
-    try {
-      await addDoc(collection(db, "teamJoinRequests"), payload);
-      return;
-    } catch (error) {
-      lastError = error;
-      const message = String((error as { message?: string })?.message || "").toLowerCase();
-      const isPermissionLike =
-        message.includes("permission") ||
-        message.includes("insufficient") ||
-        message.includes("missing or insufficient");
-      if (!isPermissionLike) {
-        throw error;
-      }
-    }
-  }
-
-  throw lastError || new Error("Unable to create team join request.");
-}
 
 export default function SignupPage() {
   const router = useRouter();
@@ -118,6 +26,20 @@ export default function SignupPage() {
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  function savePendingJoinDraft(teamId: string, requestedRole: TeamRole, emailValue: string, displayName: string) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(
+      "pending-join-request",
+      JSON.stringify({
+        teamId,
+        requestedRole,
+        userEmail: emailValue,
+        userName: displayName,
+        createdAt: Date.now(),
+      })
+    );
+  }
 
   function toFriendlyAuthError(message: string) {
     const lower = message.toLowerCase();
@@ -181,25 +103,10 @@ export default function SignupPage() {
         }
 
         // Create user account (without team yet)
-        const resolvedUid = await signUp(email, password, displayName, role, "", false);
-        const hasPending = await hasPendingJoinRequest(resolvedUid, requestedTeamCode);
-        if (hasPending) {
-          alert("You already have a pending request for this team.");
-          router.push("/dashboard");
-          return;
-        }
-
-        // Create join request
-        await createTeamJoinRequestWithFallback({
-          userId: resolvedUid,
-          userEmail: email,
-          userName: displayName,
-          requestedRole: role,
-          teamId: requestedTeamCode,
-        });
-
-        alert("Account created! Please verify your email and wait for team admin approval.");
-        router.push(`/dashboard?requestSubmitted=1&team=${encodeURIComponent(requestedTeamCode)}`);
+        await signUp(email, password, displayName, role, "", false);
+        savePendingJoinDraft(requestedTeamCode, role, email, displayName);
+        alert("Account created! Please verify your email. Your join request will be sent automatically after login.");
+        router.push(`/dashboard?autoJoin=1&team=${encodeURIComponent(requestedTeamCode)}&role=${encodeURIComponent(role)}`);
       }
     } catch (error: unknown) {
       console.error("Signup error:", error);

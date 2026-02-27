@@ -127,6 +127,51 @@ function NoTeamDashboardContent() {
   const [requestSuccess, setRequestSuccess] = useState("");
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
 
+  async function autoSendJoinDraftIfPresent() {
+    if (!user || !userData || typeof window === "undefined") return;
+    const raw = localStorage.getItem("pending-join-request");
+    if (!raw) return;
+    let draft: { teamId?: string; requestedRole?: TeamRole; userEmail?: string; userName?: string } | null = null;
+    try {
+      draft = JSON.parse(raw) as { teamId?: string; requestedRole?: TeamRole; userEmail?: string; userName?: string };
+    } catch {
+      localStorage.removeItem("pending-join-request");
+      return;
+    }
+    const teamId = String(draft?.teamId || "").trim().toUpperCase();
+    const requestedRole = normalizeLegacyRole(String(draft?.requestedRole || "match-scout"));
+    if (!teamId) {
+      localStorage.removeItem("pending-join-request");
+      return;
+    }
+
+    const alreadyPending = await fetchPendingRequestsForUser(user.uid);
+    if (alreadyPending.some((request) => request.teamId.toLowerCase() === teamId.toLowerCase())) {
+      localStorage.removeItem("pending-join-request");
+      setPendingRequests(alreadyPending);
+      setRequestSuccess(`Join request already pending for Team ${teamId}.`);
+      return;
+    }
+
+    const teamDoc = await getDoc(doc(db, "teams", teamId));
+    if (!teamDoc.exists()) {
+      localStorage.removeItem("pending-join-request");
+      return;
+    }
+
+    await createTeamJoinRequestWithFallback({
+      userId: user.uid,
+      userEmail: String(draft?.userEmail || userData.email || user.email || ""),
+      userName: String(draft?.userName || userData.displayName || user.displayName || ""),
+      requestedRole,
+      teamId,
+    });
+    localStorage.removeItem("pending-join-request");
+    const refreshed = await fetchPendingRequestsForUser(user.uid);
+    setPendingRequests(refreshed);
+    setRequestSuccess(`Join request submitted for Team ${teamId}. It is now pending approval.`);
+  }
+
   useEffect(() => {
     async function load() {
       if (!user || !userData) return;
@@ -158,6 +203,10 @@ function NoTeamDashboardContent() {
       setRequestSuccess("Join request submitted. It is now pending approval.");
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    void autoSendJoinDraftIfPresent();
+  }, [searchParams, user?.uid, userData?.uid]);
 
   async function handleCreateRequest(event: React.FormEvent) {
     event.preventDefault();

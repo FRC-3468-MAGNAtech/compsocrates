@@ -193,11 +193,11 @@ export default function Sidebar() {
 
         <div className="px-2 pb-2">
           <Link
-            href="/version-releases"
+            href="/update-lot"
             onClick={() => setIsMobileMenuOpen(false)}
             className="inline-flex items-center justify-center w-10 h-10 rounded hover:bg-gray-100 text-gray-700"
-            title="Version Releases"
-            aria-label="Version Releases"
+            title="Update Lot"
+            aria-label="Update Lot"
           >
             <Megaphone size={18} />
           </Link>

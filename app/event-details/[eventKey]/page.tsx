@@ -36,6 +36,19 @@ async function loadTeamsFromTbaFallback(teamId: string, eventKey: string): Promi
   const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
   if (!encryptedKey && !plainKey) return [];
 
+  const teamsResponse = await fetch("/api/tba/teams", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventKey, encryptedKey, plainKey }),
+  });
+  if (teamsResponse.ok) {
+    const payload = await teamsResponse.json();
+    const teams = Array.isArray(payload.teams) ? (payload.teams as FirstEventTeam[]) : [];
+    return teams
+      .filter((team) => Number.isFinite(team.teamNumber) && team.teamNumber > 0)
+      .sort((a, b) => a.teamNumber - b.teamNumber);
+  }
+
   const response = await fetch("/api/tba/matches", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
