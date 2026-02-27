@@ -153,17 +153,28 @@ function NoTeamDashboardContent() {
       return;
     }
 
-    await createTeamJoinRequestWithFallback({
-      userId: user.uid,
-      userEmail: String(draft?.userEmail || userData.email || user.email || ""),
-      userName: String(draft?.userName || userData.displayName || user.displayName || ""),
-      requestedRole,
-      teamId,
-    });
-    localStorage.removeItem("pending-join-request");
-    const refreshed = await fetchPendingRequestsForUser(user.uid);
-    setPendingRequests(refreshed);
-    setRequestSuccess(`Join request submitted for Team ${teamId}. It is now pending approval.`);
+    try {
+      await createTeamJoinRequestWithFallback({
+        userId: user.uid,
+        userEmail: String(draft?.userEmail || userData.email || user.email || ""),
+        userName: String(draft?.userName || userData.displayName || user.displayName || ""),
+        requestedRole,
+        teamId,
+      });
+      localStorage.removeItem("pending-join-request");
+      const refreshed = await fetchPendingRequestsForUser(user.uid);
+      setPendingRequests(refreshed);
+      setRequestError("");
+      setRequestSuccess(`Join request submitted for Team ${teamId}. It is now pending approval.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "");
+      setRequestSuccess("");
+      setRequestError(
+        message
+          ? `Auto-send failed for Team ${teamId}: ${message}. You can tap Send Request manually.`
+          : `Auto-send failed for Team ${teamId}. You can tap Send Request manually.`
+      );
+    }
   }
 
   useEffect(() => {
@@ -244,11 +255,13 @@ function NoTeamDashboardContent() {
       setTeamCode("");
       setRequestError("");
       setRequestSuccess(`Join request submitted for Team ${normalizedTeamCode}. It is now pending approval.`);
+      window.alert(`Join request submitted for Team ${normalizedTeamCode}.`);
     } catch (error) {
       console.error("Error creating team request:", error);
       const message = error instanceof Error ? error.message : String(error || "");
       setRequestError(message ? `Unable to create request: ${message}` : "Unable to create request right now.");
       setRequestSuccess("");
+      window.alert(message ? `Unable to create request: ${message}` : "Unable to create request right now.");
     } finally {
       setSubmittingRequest(false);
     }

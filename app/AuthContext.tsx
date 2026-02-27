@@ -133,8 +133,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: name,
       role: normalizedRole,
       roles: [normalizedRole],
-      specialRole: null,
-      specialRoles: [],
       teamId: teamId,
       isTeamAdmin: isTeamAdmin,
       profileVisibility: "team",
