@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -646,12 +646,7 @@ function NoTeamDashboardContent() {
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
         const message = String(payload.error || "");
-        if (message.toLowerCase().includes("server firebase auth is not configured")) {
-          // Fallback to direct client delete in local/dev where rules may allow it.
-          await deleteDoc(doc(db, "teamJoinRequests", requestId));
-        } else {
-          throw new Error(message || "Unable to cancel request.");
-        }
+        throw new Error(message || "Unable to cancel request.");
       }
       await refreshPendingRequests(user.uid);
       setRequestSuccess("Join request canceled.");

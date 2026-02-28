@@ -18,6 +18,32 @@ function authHeaders(idToken: string): HeadersInit {
   return { Authorization: `Bearer ${idToken}` };
 }
 
+async function markRequestDenied(
+  docUrl: string,
+  idToken: string,
+  callerUid: string
+): Promise<boolean> {
+  const updateUrl = `${docUrl}${docUrl.includes("?") ? "&" : "?"}updateMask.fieldPaths=status&updateMask.fieldPaths=processedAt&updateMask.fieldPaths=processedBy&updateMask.fieldPaths=canceledByUser`;
+  const body = {
+    fields: {
+      status: { stringValue: "denied" },
+      processedAt: { integerValue: String(Date.now()) },
+      processedBy: { stringValue: callerUid },
+      canceledByUser: { booleanValue: true },
+    },
+  };
+  const response = await fetch(updateUrl, {
+    method: "PATCH",
+    headers: {
+      ...authHeaders(idToken),
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+  return response.ok;
+}
+
 async function fetchServerToken(): Promise<string> {
   const staticToken = String(process.env.FIREBASE_ACCESS_TOKEN || process.env.GOOGLE_OAUTH_ACCESS_TOKEN || "").trim();
   if (staticToken) return staticToken;
@@ -113,14 +139,18 @@ export async function POST(request: NextRequest) {
       headers: authHeaders(serverToken),
       cache: "no-store",
     });
-    if (!deleteResponse.ok) {
-      return NextResponse.json({ error: "Unable to delete request" }, { status: 500 });
+    if (deleteResponse.ok) {
+      return NextResponse.json({ ok: true, mode: "deleted" });
     }
 
-    return NextResponse.json({ ok: true });
+    const denied = await markRequestDenied(docUrl, serverToken, callerUid);
+    if (denied) {
+      return NextResponse.json({ ok: true, mode: "denied" });
+    }
+
+    return NextResponse.json({ error: "Unable to cancel request" }, { status: 500 });
   } catch (error) {
     console.error("Cancel join request failed:", error);
     return NextResponse.json({ error: "Unable to cancel request right now." }, { status: 500 });
   }
 }
-
