@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
@@ -231,8 +232,16 @@ export default function LandingPage() {
             <div>
               <h5 className="font-semibold mb-4">Legal</h5>
               <ul className="space-y-2 text-sm text-gray-400">
-                <li>Privacy Policy</li>
-                <li>Terms of Service</li>
+                <li>
+                  <Link href="/privacy-policy" className="hover:text-white underline-offset-2 hover:underline">
+                    Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/terms-of-service" className="hover:text-white underline-offset-2 hover:underline">
+                    Terms of Service
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>
