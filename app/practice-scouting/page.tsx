@@ -770,7 +770,6 @@ function PracticeScoutingContent() {
   const [humanPlayerRobot, setHumanPlayerRobot] = useState<number | null>(null); // 0, 1, 2, or null
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
-  const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
@@ -1066,7 +1065,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setSelectedDifficulty(difficulty);
     setSelectedMode(mode);
     setCandidateMatches([]);
-    setSelectedCandidateId("");
 
     try {
       let matches: PracticeMatch[] = [];
@@ -1168,7 +1166,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (rankedMatches.length > 0) {
         const randomIndex = Math.floor(Math.random() * rankedMatches.length);
         const randomMatch = rankedMatches[randomIndex];
-        if (randomMatch) setSelectedCandidateId(randomMatch.id);
+        if (randomMatch) {
+          if (difficulty !== "live") {
+            startPracticeMatch(randomMatch);
+          }
+        }
       }
       setShowMatchSelectModal(false);
     } catch (error) {
@@ -1227,19 +1229,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setCurrentStep("practice");
   }
 
-  function beginPracticeFromSelection() {
-    const selected = candidateMatches.find((match) => match.id === selectedCandidateId);
-    if (!selected) {
-      alert("Pick a match first.");
-      return;
-    }
-    if (selectedDifficulty === "live" && !liveVideoUrl.trim()) {
-      alert("Paste a live video URL before starting.");
-      return;
-    }
-    startPracticeMatch(selected);
-  }
-
   async function handleChooseLiveMatchClick() {
     if (!liveVideoUrl.trim()) {
       alert("Paste a live video URL first.");
@@ -1268,7 +1257,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
 
-    setSelectedCandidateId(chosen.id);
     startPracticeMatch(chosen);
   }
 
@@ -1630,7 +1618,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setSelectedDifficulty(null);
     setSelectedMode(null);
     setCandidateMatches([]);
-    setSelectedCandidateId("");
     setShowMatchSelectModal(false);
     setLiveVideoUrl("");
     setCurrentMatch(null);
@@ -1652,13 +1639,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     savePracticeDraft({ currentStep: currentStep === "break" ? "break" : "practice" });
     router.push("/dashboard");
   }
-
-  const selectedCandidateMatch = useMemo(
-    () => candidateMatches.find((match) => match.id === selectedCandidateId) || null,
-    [candidateMatches, selectedCandidateId]
-  );
-
-  const liveEventSynced = Boolean(liveEventKeyHint.trim()) && liveEventTeamSuggestions.length > 0;
 
   const sharedModalOptions = useMemo<PracticeSelectorOption[]>(() => {
     return candidateMatches.map((match) => {
@@ -1687,7 +1667,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function handleSharedModalPick(option: PracticeSelectorOption) {
     const picked = candidateMatches.find((match) => match.id === option.sourceId);
     if (!picked) return;
-    setSelectedCandidateId(picked.id);
     if (currentStep === "practice" && selectedDifficulty === "live") {
       startPracticeMatch(picked);
     }
@@ -1783,7 +1762,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setSelectedMode(null);
                       setSelectedDifficulty(null);
                       setCandidateMatches([]);
-                      setSelectedCandidateId("");
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
                     }}
@@ -1845,7 +1823,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setSelectedMode(null);
                       setSelectedDifficulty(null);
                       setCandidateMatches([]);
-                      setSelectedCandidateId("");
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
                     }}
@@ -1925,45 +1902,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     </button>
                   )}
                 </div>
-                {selectedDifficulty && selectedDifficulty !== "live" && (
-                  <div className="mt-6 bg-white rounded-xl shadow-md p-4 border border-gray-200">
-                    <h3 className="font-semibold mb-2">Match Selector</h3>
-                    <p className="text-sm text-gray-600 mb-3">Open the shared match selector and pick a match.</p>
-                    {candidateMatches.length === 0 ? (
-                      <p className="text-sm text-gray-600">{loading ? "Loading matches..." : "Pick a difficulty to load matches."}</p>
-                    ) : (
-                      <div className="space-y-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowMatchSelectModal(true)}
-                          className="px-4 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50"
-                        >
-                          Open Match Select
-                        </button>
-                        <p className="text-sm text-gray-700">
-                          Selected: {selectedCandidateMatch
-                            ? `${getPracticeLabel(selectedCandidateMatch)}  •  ${
-                                selectedCandidateMatch.progress === "fresh"
-                                  ? "Fresh"
-                                  : selectedCandidateMatch.progress === "partial"
-                                  ? "Halfway Scouted"
-                                  : "Already Scouted"
-                              }`
-                            : "None"}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={beginPracticeFromSelection}
-                          className="px-4 py-2 rounded text-white font-semibold"
-                          style={{ backgroundColor: "var(--primary-color)" }}
-                        >
-                          Start Selected Match
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {selectedDifficulty === "live" && (
                   <div className="mt-6 rounded-xl border border-cyan-300 bg-cyan-500/5 shadow-md p-4">
                     <h3 className="font-semibold mb-1 text-cyan-700">Live Match Setup</h3>
@@ -2007,13 +1945,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   </div>
                 )}
 
-                <ReefscapeMatchSelectModal
-                  open={showMatchSelectModal}
-                  onClose={() => setShowMatchSelectModal(false)}
-                  options={sharedModalOptions}
-                  completed={sharedModalCompleted}
-                  onPick={handleSharedModalPick}
-                />
               </>
             )}
           </div>
@@ -2087,12 +2018,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </h3>
                 <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
-                {selectedDifficulty === "live" && liveEventSynced && (
+                {selectedDifficulty === "live" && (
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedCandidateId(currentMatch.id || "");
-                      setCurrentStep("select");
                       setShowMatchSelectModal(true);
                     }}
                     className="mt-2 px-3 py-1 rounded text-sm text-white"
@@ -2110,23 +2039,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             {/* SCOUTING FORM */}
             <div ref={formPaneRef} className="w-full md:w-[22rem] md:flex-none flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4">
               {selectedDifficulty === "live" && (
-                liveEventSynced ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCandidateId(currentMatch?.id || "");
-                      setCurrentStep("select");
-                      setShowMatchSelectModal(true);
-                    }}
-                    className="w-full py-2 rounded border border-cyan-300 text-cyan-800 bg-cyan-50 hover:bg-cyan-100 font-semibold"
-                  >
-                    Match Select (Live)
-                  </button>
-                ) : (
-                  <p className="text-xs text-cyan-900 bg-cyan-50 border border-cyan-200 rounded p-2">
-                    Live match selector appears after event teams sync from the detected stream event.
-                  </p>
-                )
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMatchSelectModal(true);
+                  }}
+                  className="w-full py-2 rounded border border-cyan-300 text-cyan-800 bg-cyan-50 hover:bg-cyan-100 font-semibold"
+                >
+                  Match Select (Live)
+                </button>
               )}
               {/* Progress indicator */}
               <div className="bg-white rounded-lg p-4">
@@ -2178,19 +2099,22 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         <input
                           type="text"
                           inputMode="numeric"
-                          list="live-team-suggestions-reefscape"
+                          list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-reefscape" : undefined}
                           value={formData.teamNumber}
                           onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
                           className="w-full border rounded p-2"
                           placeholder="Type team number"
                         />
-                        <datalist id="live-team-suggestions-reefscape">
-                          {Array.from(new Set([...(currentMatch.allianceTeams || []), ...liveEventTeamSuggestions]))
-                            .sort((a, b) => a - b)
-                            .map((team) => (
-                              <option key={`reef-live-${team}`} value={String(team)} />
-                            ))}
-                        </datalist>
+                        {liveEventTeamSuggestions.length > 0 && (
+                          <datalist id="live-team-suggestions-reefscape">
+                            {liveEventTeamSuggestions
+                              .slice()
+                              .sort((a, b) => a - b)
+                              .map((team) => (
+                                <option key={`reef-live-${team}`} value={String(team)} />
+                              ))}
+                          </datalist>
+                        )}
                       </>
                     ) : (
                       <input type="text" value={formData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
@@ -2320,19 +2244,22 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                             <input
                               type="text"
                               inputMode="numeric"
-                              list="live-team-suggestions-rebuilt"
+                              list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-rebuilt" : undefined}
                               value={rebuiltFormData.teamNumber}
                               onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teamNumber: e.target.value })}
                               className="w-full border rounded p-2"
                               placeholder="Type team number"
                             />
-                            <datalist id="live-team-suggestions-rebuilt">
-                              {Array.from(new Set([...(currentMatch.allianceTeams || []), ...liveEventTeamSuggestions]))
-                                .sort((a, b) => a - b)
-                                .map((team) => (
-                                  <option key={`rebuilt-live-${team}`} value={String(team)} />
-                                ))}
-                            </datalist>
+                            {liveEventTeamSuggestions.length > 0 && (
+                              <datalist id="live-team-suggestions-rebuilt">
+                                {liveEventTeamSuggestions
+                                  .slice()
+                                  .sort((a, b) => a - b)
+                                  .map((team) => (
+                                    <option key={`rebuilt-live-${team}`} value={String(team)} />
+                                  ))}
+                              </datalist>
+                            )}
                           </>
                         ) : (
                           <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
@@ -2764,6 +2691,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             </div>
           </div>
         )}
+        <ReefscapeMatchSelectModal
+          open={showMatchSelectModal && selectedDifficulty === "live"}
+          onClose={() => setShowMatchSelectModal(false)}
+          options={sharedModalOptions}
+          completed={sharedModalCompleted}
+          onPick={handleSharedModalPick}
+        />
       </div>
     </div>
   );
