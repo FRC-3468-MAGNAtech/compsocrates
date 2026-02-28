@@ -553,7 +553,12 @@ function NoTeamDashboardContent() {
   }
 
   async function handleCancelRequest(requestId: string) {
-    if (!user || !userData || cancelingRequestId) return;
+    if (!user || cancelingRequestId) {
+      if (!user) {
+        setRequestError("Still loading your account. Try canceling again in a moment.");
+      }
+      return;
+    }
     if (!window.confirm("Cancel this join request?")) return;
 
     setCancelingRequestId(requestId);
@@ -567,12 +572,12 @@ function NoTeamDashboardContent() {
         return;
       }
       await deleteDoc(doc(db, "teamJoinRequests", requestId));
-      const refreshed = await fetchPendingRequestsForUser(user.uid);
-      setPendingRequests(refreshed);
-      writeLocalPendingCache(refreshed);
+      await refreshPendingRequests(user.uid);
+      setRequestSuccess("Join request canceled.");
     } catch (error) {
       console.error("Error canceling request:", error);
-      setRequestError("Unable to cancel this request right now.");
+      const message = error instanceof Error ? error.message : String(error || "");
+      setRequestError(message ? `Unable to cancel this request: ${message}` : "Unable to cancel this request right now.");
     } finally {
       setCancelingRequestId(null);
     }
