@@ -78,10 +78,25 @@ function labelForMatch(match: TBAMatch) {
   return match.key;
 }
 
+function extractMatchNumber(option: MatchOption): number {
+  const key = String(option.key || "").toLowerCase();
+  const fromKey =
+    key.match(/_qm(\d+)$/)?.[1] ||
+    key.match(/_sf\d+m(\d+)$/)?.[1] ||
+    key.match(/_qf\d+m(\d+)$/)?.[1] ||
+    key.match(/_f\d+m(\d+)$/)?.[1];
+  if (fromKey) return Number(fromKey);
+
+  const label = String(option.label || "");
+  const fromLabel = label.match(/\d+(?:-\d+)?$/)?.[0];
+  if (fromLabel) return Number(fromLabel.split("-").pop() || 0);
+  return Number(option.matchNumber || 0);
+}
+
 function displayMatchLabel(option: MatchOption | null): string {
   if (!option) return "No match selected";
   const rawKey = String(option.key || "").toLowerCase();
-  const number = Number(rawKey.replace(/\D/g, "")) || Number(String(option.label || "").replace(/\D/g, "")) || 0;
+  const number = extractMatchNumber(option) || 0;
   if (rawKey.startsWith("p")) return `Practice Match ${number || 1}`;
   if (rawKey.startsWith("q")) return `Qualification Match ${number || 1}`;
   if (rawKey.startsWith("f")) return `Finals ${number || 1}`;
@@ -199,7 +214,7 @@ function DriveReflectionFormContent() {
         setOurTeamNumber(ourTeamStr);
 
         const matches = await getEventMatches(resolvedEvent);
-        let options: MatchOption[] = matches
+        const options: MatchOption[] = matches
           .map((match) => {
             const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
               .map((key) => key.replace("frc", "").trim())
@@ -213,29 +228,18 @@ function DriveReflectionFormContent() {
           })
           .filter((match) => (ourTeamStr ? match.teams.includes(ourTeamStr) : true))
           .sort((a, b) => a.scheduleTime - b.scheduleTime);
-        if (options.length === 0) {
-          options = matches
-            .map((match) => {
-              const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
-                .map((key) => key.replace("frc", "").trim())
-                .filter(Boolean);
-              return {
-                key: match.key,
-                label: labelForMatch(match),
-                scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
-                teams,
-              };
-            })
-            .sort((a, b) => a.scheduleTime - b.scheduleTime);
-        }
-
-        const resolvedOptions = options.length > 0 ? options : buildFallbackDriveMatches();
+        const resolvedOptions = options.length > 0 ? options : [];
         setMatchOptions(resolvedOptions);
         const now = Date.now() / 1000;
         const next = resolvedOptions.find((match) => match.scheduleTime >= now) || resolvedOptions[0];
         if (next) {
           setSelectedMatchKey(next.key);
           setRobotTeamDefaults(next, ourTeamStr);
+        } else {
+          setSelectedMatchKey("");
+          setRobot1((prev) => ({ ...prev, teamNumber: "" }));
+          setRobot2((prev) => ({ ...prev, teamNumber: "" }));
+          setRobot3((prev) => ({ ...prev, teamNumber: "" }));
         }
       } catch (error) {
         console.error("Failed to load drive reflection context:", error);
@@ -518,6 +522,9 @@ function DriveReflectionFormContent() {
               </button>
             </div>
             <div className="text-sm">
+              {matchOptions.length === 0 && (
+                <div className="text-amber-700">No matches with Team {ourTeamNumber || "your team"} were found at this event. Use manual values if needed.</div>
+              )}
               {syncedPlan ? (
                 <div className="text-green-700">Detected match strategy form is synced for this match.</div>
               ) : (

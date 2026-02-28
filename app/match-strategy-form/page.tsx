@@ -69,10 +69,25 @@ function labelForMatch(match: TBAMatch) {
   return match.key;
 }
 
+function extractMatchNumber(option: MatchOption): number {
+  const key = String(option.key || "").toLowerCase();
+  const fromKey =
+    key.match(/_qm(\d+)$/)?.[1] ||
+    key.match(/_sf\d+m(\d+)$/)?.[1] ||
+    key.match(/_qf\d+m(\d+)$/)?.[1] ||
+    key.match(/_f\d+m(\d+)$/)?.[1];
+  if (fromKey) return Number(fromKey);
+
+  const label = String(option.label || "");
+  const fromLabel = label.match(/\d+(?:-\d+)?$/)?.[0];
+  if (fromLabel) return Number(fromLabel.split("-").pop() || 0);
+  return Number(option.matchNumber || 0);
+}
+
 function displayMatchLabel(option: MatchOption | null): string {
   if (!option) return "No match selected";
   const rawKey = String(option.key || "").toLowerCase();
-  const number = Number(rawKey.replace(/\D/g, "")) || Number(String(option.label || "").replace(/\D/g, "")) || 0;
+  const number = extractMatchNumber(option) || 0;
   if (rawKey.startsWith("p")) return `Practice Match ${number || 1}`;
   if (rawKey.startsWith("q")) return `Qualification Match ${number || 1}`;
   if (rawKey.startsWith("f")) return `Finals ${number || 1}`;
@@ -155,7 +170,7 @@ function MatchStrategyFormContent() {
         const ourTeamNumber = parseTeamNumber(String(teamDoc.data()?.teamNumber || teamDoc.data()?.teamName || userData.teamId));
         setOurTeamNumber(ourTeamNumber > 0 ? String(ourTeamNumber) : "");
         const matches = await getEventMatches(resolvedEvent);
-        let options: MatchOption[] = matches
+        const options: MatchOption[] = matches
           .map((match) => {
             const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
               .map((key) => key.replace("frc", "").trim())
@@ -169,23 +184,7 @@ function MatchStrategyFormContent() {
           })
           .filter((match) => (ourTeamNumber > 0 ? match.teams.includes(String(ourTeamNumber)) : true))
           .sort((a, b) => a.scheduleTime - b.scheduleTime);
-        if (options.length === 0) {
-          options = matches
-            .map((match) => {
-              const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
-                .map((key) => key.replace("frc", "").trim())
-                .filter(Boolean);
-              return {
-                key: match.key,
-                label: labelForMatch(match),
-                scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
-                teams,
-              };
-            })
-            .sort((a, b) => a.scheduleTime - b.scheduleTime);
-        }
-
-        const resolvedOptions = options.length > 0 ? options : buildFallbackMatchStrategyMatches();
+        const resolvedOptions = options.length > 0 ? options : [];
         setMatchOptions(resolvedOptions);
 
         const now = Date.now() / 1000;
@@ -193,6 +192,11 @@ function MatchStrategyFormContent() {
         if (next) {
           setSelectedMatchKey(next.key);
           setRobotTeamDefaults(next, ourTeamNumber > 0 ? String(ourTeamNumber) : "");
+        } else {
+          setSelectedMatchKey("");
+          setRobot1((prev) => ({ ...prev, teamNumber: "" }));
+          setRobot2((prev) => ({ ...prev, teamNumber: "" }));
+          setRobot3((prev) => ({ ...prev, teamNumber: "" }));
         }
       } catch (error) {
         console.error("Failed to load match strategy context:", error);
@@ -426,6 +430,9 @@ function MatchStrategyFormContent() {
               <button type="button" onClick={() => setShowMatchPicker(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
             </div>
             <div className="text-sm space-y-1">
+              {matchOptions.length === 0 && (
+                <div className="text-amber-700">No matches with Team {ourTeamNumber || "your team"} were found at this event. Use manual values if needed.</div>
+              )}
               <div className="text-green-700">Detected pit form sync is active for this match.</div>
               <div className="text-gray-700">Alerts show up below each robot field.</div>
             </div>

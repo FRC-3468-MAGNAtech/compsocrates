@@ -622,9 +622,7 @@ function ScoutFormContent() {
         matches.filter((m) => m.comp_level === "qm").sort((a, b) => a.match_number - b.match_number).forEach((m) => {
           const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
           const time = m.actual_time || m.predicted_time || m.time || 0;
-          next.push({ id: `p${m.match_number}`, label: `Practice ${m.match_number}`, type: "practice", matchNumber: m.match_number, scheduleTime: time, teams });
           next.push({ id: `q${m.match_number}`, label: `Qualification ${m.match_number}`, type: "qualification", matchNumber: m.match_number, scheduleTime: time, teams });
-          nextTargets[`p${m.match_number}`] = teams.length || 6;
           nextTargets[`q${m.match_number}`] = teams.length || 6;
         });
         matches.filter((m) => ["qf", "sf", "f"].includes(m.comp_level)).forEach((m) => {

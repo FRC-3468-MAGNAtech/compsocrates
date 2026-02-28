@@ -95,13 +95,15 @@ function VersionReleasesContent() {
         updatedAt: Date.now(),
         authorUid: userData?.uid || "",
         authorName: userData?.displayName || "",
+        teamId: userData?.teamId || "",
       });
       setDraftTitle("");
       setDraftBody("");
       await loadNotes();
     } catch (error) {
       console.error("Failed to publish release note:", error);
-      alert("Unable to publish this release note.");
+      const details = (error as { code?: string; message?: string })?.message || "";
+      alert(`Unable to publish this release note.${details ? ` ${details}` : ""}`);
     } finally {
       setSaving(false);
     }

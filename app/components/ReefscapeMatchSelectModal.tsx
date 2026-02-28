@@ -52,7 +52,7 @@ function FinalsMatchBox({
         onPick(number);
       }}
       disabled={status === "completed"}
-      className={`absolute w-[120px] min-h-[62px] text-xs rounded border text-left bg-white ${
+      className={`absolute w-[104px] min-h-[58px] text-xs rounded border text-left bg-white ${
         status === "completed" ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"
       }`}
       style={{ left: col, top: row, ...(status === "completed" ? {} : borderStyles[status]) }}
@@ -77,12 +77,14 @@ function FinalsBracket({
   completed,
   onPick,
   timesByNumber,
+  availableNumbers,
 }: {
   completed: Set<string>;
   onPick: (matchNumber: number) => void;
   timesByNumber: Map<number, number>;
+  availableNumbers: number[];
 }) {
-  const B = { w: 120, h: 62, colGap: 60, row: 90 };
+  const B = { w: 104, h: 58, colGap: 52, row: 84 };
   const col = (c: number) => (B.w + B.colGap) * c;
   const r1_1 = 20;
   const r1_2 = r1_1 + B.row;
@@ -110,7 +112,7 @@ function FinalsBracket({
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
-  const firstOpen = Array.from({ length: 14 }, (_, i) => i + 1).find((n) => !completed.has(`f${n}`)) || -1;
+  const firstOpen = availableNumbers.find((n) => !completed.has(`f${n}`)) || -1;
   const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
   const timeFor = (matchId: number) => {
     const epoch = Number(timesByNumber.get(matchId) || 0);
@@ -182,20 +184,24 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   options,
   completed = new Set<string>(),
   onPick,
+  allowManualOverride = true,
 }: {
   open: boolean;
   onClose: () => void;
   options: T[];
   completed?: Set<string>;
   onPick: (option: T) => void;
+  allowManualOverride?: boolean;
 }) {
   const [step, setStep] = useState<"type" | MatchType>("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
+  const [manualMatchNumber, setManualMatchNumber] = useState("");
 
   useEffect(() => {
     if (!open) {
       setStep("type");
       setFinalsStep("bracket");
+      setManualMatchNumber("");
     }
   }, [open]);
 
@@ -211,6 +217,18 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
       });
     return map;
   }, [options]);
+  const availableFinalNumbers = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          options
+            .filter((match) => match.type === "finals")
+            .map((match) => Number(match.matchNumber || 0))
+            .filter((value) => Number.isFinite(value) && value > 0)
+        )
+      ).sort((a, b) => a - b),
+    [options]
+  );
   function isFinalDone(matchNumber: number) {
     if (completed.has(`f${matchNumber}`)) return true;
     const opt = finalsByNumber.get(matchNumber);
@@ -256,77 +274,87 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
               <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
                 {step === "practice" ? "Practice Matches" : "Qualification Matches"}
               </h2>
-              <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
-                {(() => {
-                  const map = rowsByType[step];
-                  const rows =
-                    map.size > 0
-                      ? Array.from(map.values())
-                          .sort((a, b) => a.matchNumber - b.matchNumber)
-                          .map((m) => ({
-                            option: m,
-                            matchNum: m.matchNumber,
-                            timeString: timeStringFromEpoch(m.scheduleTime),
-                            matchId: m.id,
-                          }))
-                      : Array.from({ length: step === "practice" ? 20 : 80 }, (_, i) => {
-                          const matchNum = i + 1;
-                          const base = new Date();
-                          base.setHours(step === "practice" ? 8 : 9, 0, 0, 0);
-                          const timeString = new Date(base.getTime() + i * 7 * 60000).toLocaleTimeString([], {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          });
-                          return {
-                            option: null,
-                            matchNum,
-                            timeString,
-                            matchId: `${step === "practice" ? "p" : "q"}${matchNum}`,
-                          };
-                        });
-
-                  const firstOpenNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
-                  return rows.map(({ option, matchNum, timeString, matchId }) => {
-                    const done = completed.has(matchId);
-                    const status: MatchStatus = done ? "completed" : matchNum === firstOpenNum ? "next" : "upcoming";
-                  const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
-                  const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
-                  return (
-                    <button
-                      key={`${step}-${matchNum}`}
-                      type="button"
-                      disabled={done}
-                      onClick={() => {
-                        if (done) return;
-                        if (option) {
-                          onPick(option);
-                        } else {
+              {rowsByType[step].size === 0 ? (
+                <div className="border rounded p-4 space-y-3">
+                  <p className="text-sm text-gray-700">
+                    No {step} matches were found for this event.
+                  </p>
+                  {allowManualOverride && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        value={manualMatchNumber}
+                        onChange={(event) => setManualMatchNumber(event.target.value.replace(/[^\d]/g, ""))}
+                        className="flex-1 border rounded p-2"
+                        placeholder="Manual match number"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const number = Math.max(1, Number(manualMatchNumber || 0));
+                          const id = `${step === "practice" ? "p" : "q"}${number}`;
                           const fallback = {
-                            id: matchId,
-                            label: displayLabel,
+                            id,
+                            label: step === "practice" ? `Practice ${number}` : `Qualification ${number}`,
                             type: step,
-                            matchNumber: matchNum,
+                            matchNumber: number,
                             scheduleTime: 0,
                           } as T;
                           onPick(fallback);
-                        }
-                        onClose();
-                      }}
-                      className={`relative h-[86px] p-2 rounded-lg border text-left ${done ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
-                      style={done ? undefined : { borderColor: color }}
-                    >
-                      <div className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: color }}>
-                        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
-                      </div>
-                      <div className="mt-3">
-                        <div className="font-semibold text-sm">{displayLabel}</div>
-                        <div className="text-xs text-gray-600">{timeString}</div>
-                      </div>
-                    </button>
-                  );
-                });
-                })()}
-              </div>
+                          onClose();
+                        }}
+                        className="px-3 py-2 rounded text-white"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        Use Manual
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
+                  {(() => {
+                    const rows = Array.from(rowsByType[step].values())
+                      .sort((a, b) => a.matchNumber - b.matchNumber)
+                      .map((m) => ({
+                        option: m,
+                        matchNum: m.matchNumber,
+                        timeString: timeStringFromEpoch(m.scheduleTime),
+                        matchId: m.id,
+                      }));
+                    const firstOpenNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
+                    return rows.map(({ option, matchNum, timeString, matchId }) => {
+                      const done = completed.has(matchId);
+                      const status: MatchStatus = done ? "completed" : matchNum === firstOpenNum ? "next" : "upcoming";
+                      const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
+                      const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
+                      return (
+                        <button
+                          key={`${step}-${matchNum}`}
+                          type="button"
+                          disabled={done}
+                          onClick={() => {
+                            if (done) return;
+                            onPick(option);
+                            onClose();
+                          }}
+                          className={`relative h-[86px] p-2 rounded-lg border text-left ${done ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
+                          style={done ? undefined : { borderColor: color }}
+                        >
+                          <div className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: color }}>
+                            {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
+                          </div>
+                          <div className="mt-3">
+                            <div className="font-semibold text-sm">{displayLabel}</div>
+                            <div className="text-xs text-gray-600">{timeString}</div>
+                          </div>
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
               <button type="button" className="w-full mt-4 py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={onClose}>
                 Close
               </button>
@@ -338,7 +366,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
               {finalsStep === "bracket" && (
                 <FinalsBracket
                   completed={new Set(
-                    Array.from({ length: 14 }, (_, i) => i + 1)
+                    Array.from(new Set([...availableFinalNumbers, ...Array.from({ length: 14 }, (_, i) => i + 1)]))
                       .filter((n) => isFinalDone(n))
                       .map((n) => `f${n}`)
                   )}
@@ -347,6 +375,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                       .filter((match) => match.type === "finals")
                       .map((match) => [match.matchNumber, Number(match.scheduleTime || 0)] as const)
                   )}
+                  availableNumbers={availableFinalNumbers.length > 0 ? availableFinalNumbers : Array.from({ length: 14 }, (_, i) => i + 1)}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
                       setFinalsStep("number");

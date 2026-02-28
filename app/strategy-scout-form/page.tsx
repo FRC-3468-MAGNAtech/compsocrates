@@ -8,7 +8,7 @@ import Sidebar from "@/app/components/Sidebar";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { getEventMatches } from "@/app/utils/tba-api";
-import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
+import { resolveDetectedTeamEvent } from "@/app/utils/eventDetection";
 
 type TeamPickerProps = {
   open: boolean;
@@ -64,6 +64,7 @@ function TeamStrategyFormContent() {
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
+  const [eventName, setEventName] = useState("Practice Event");
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [teamNumber, setTeamNumber] = useState("");
   const [startingPosition, setStartingPosition] = useState("");
@@ -78,8 +79,8 @@ function TeamStrategyFormContent() {
 
   const eventLabel = useMemo(() => {
     if (!eventKey || eventKey === "app-testing") return "Practice Event";
-    return String(eventKey).toUpperCase();
-  }, [eventKey]);
+    return eventName || "Practice Event";
+  }, [eventKey, eventName]);
 
   useEffect(() => {
     if (!userData?.displayName) return;
@@ -89,26 +90,38 @@ function TeamStrategyFormContent() {
     async function loadContext() {
       if (!userData?.teamId) return;
       try {
-        await getDoc(doc(db, "teams", userData.teamId));
-        const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
-        setEventKey(resolvedEvent);
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const resolvedEvent = await resolveDetectedTeamEvent(userData.teamId);
+        const resolvedKey = resolvedEvent?.key || "app-testing";
+        setEventKey(resolvedKey);
+        setEventName(resolvedEvent?.name || "Practice Event");
 
-        if (resolvedEvent !== "app-testing") {
-          const matches = await getEventMatches(resolvedEvent);
+        if (resolvedKey !== "app-testing") {
+          const ourTeam = String(teamDoc.data()?.teamNumber || "").replace(/[^\d]/g, "");
+          const matches = await getEventMatches(resolvedKey);
+          const teamAppears = ourTeam
+            ? matches.some((match) =>
+                [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+                  .map((key) => key.replace("frc", "").trim())
+                  .includes(ourTeam)
+              )
+            : false;
           const teamSet = new Set<string>();
-          matches.forEach((match) => {
-            [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys].forEach((key) => {
-              const team = key.replace("frc", "").trim();
-              if (team) teamSet.add(team);
+          if (teamAppears) {
+            matches.forEach((match) => {
+              [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys].forEach((key) => {
+                const team = key.replace("frc", "").trim();
+                if (team) teamSet.add(team);
+              });
             });
-          });
+          }
           setAvailableTeams(Array.from(teamSet).sort((a, b) => Number(a) - Number(b)));
         } else {
           setAvailableTeams([]);
         }
 
         const strategySnap = await getDocs(
-          query(collection(db, "strategyScouting"), where("teamId", "==", userData.teamId), where("eventKey", "==", resolvedEvent))
+          query(collection(db, "strategyScouting"), where("teamId", "==", userData.teamId), where("eventKey", "==", resolvedKey))
         );
         const done = new Set<string>();
         strategySnap.docs.forEach((snap) => {

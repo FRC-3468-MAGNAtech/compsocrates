@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -805,6 +805,7 @@ function PracticeScoutingContent() {
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<PracticeSessionDraft | null>(null);
   const [teamEventCatalog, setTeamEventCatalog] = useState<DetectedEventOption[]>([]);
+  const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({ encryptedKey: "", plainKey: "" });
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const formPaneRef = useRef<HTMLDivElement | null>(null);
 
@@ -820,14 +821,26 @@ function PracticeScoutingContent() {
     async function loadTeamEventCatalog() {
       if (!userData?.teamId) {
         setTeamEventCatalog([]);
+        setTbaAuth({ encryptedKey: "", plainKey: "" });
         return;
       }
       try {
         const events = await getTeamEventOptions(userData.teamId);
         setTeamEventCatalog(events);
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (teamDoc.exists()) {
+          const data = teamDoc.data() as Record<string, unknown>;
+          setTbaAuth({
+            encryptedKey: String(data.tbaApiKeyEncrypted || "").trim(),
+            plainKey: String(data.tbaApiKey || "").trim(),
+          });
+        } else {
+          setTbaAuth({ encryptedKey: "", plainKey: "" });
+        }
       } catch (error) {
         console.error("Failed loading team event catalog for practice scouting:", error);
         setTeamEventCatalog([]);
+        setTbaAuth({ encryptedKey: "", plainKey: "" });
       }
     }
     void loadTeamEventCatalog();
@@ -985,12 +998,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (!inferredEventKey) return "";
       setLiveEventKeyHint(inferredEventKey);
 
-      const year = Number(inferredEventKey.slice(0, 4));
-      const eventCode = getFirstEventCodeFromTbaKey(inferredEventKey);
-      const teamResponse = await fetch("/api/first/teams", {
+      const teamResponse = await fetch("/api/tba/teams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year, eventCode }),
+        body: JSON.stringify({
+          eventKey: inferredEventKey,
+          encryptedKey: tbaAuth.encryptedKey,
+          plainKey: tbaAuth.plainKey,
+        }),
       });
       if (!teamResponse.ok) return "";
       const teamPayload = (await teamResponse.json()) as { teams?: Array<{ teamNumber?: number }> };
