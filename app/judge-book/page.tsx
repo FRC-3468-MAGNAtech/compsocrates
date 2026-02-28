@@ -10,6 +10,7 @@ import {
   getDoc,
   getDocs,
   query,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -20,7 +21,7 @@ import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { parseCsvLine, splitCsvRecords, normalizeHeader } from "@/app/utils/csvHelpers";
 import { normalizeFormAccessOverrides, type FormAccessOverrides } from "@/app/utils/roles";
-import { canEditJudgeBook, type JudgeBookCard } from "@/app/utils/judgeBook";
+import { canEditJudgeBook, normalizeJudgeBookCard, sortJudgeBookCards, type JudgeBookCard } from "@/app/utils/judgeBook";
 
 type DraftCard = {
   prompt: string;
@@ -30,6 +31,26 @@ type DraftCard = {
 
 function emptyDraft(): DraftCard {
   return { prompt: "", answer: "", imageUrl: "" };
+}
+
+function newJudgeBookId() {
+  return `jb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function toTeamCardPayload(card: JudgeBookCard) {
+  return {
+    id: card.id,
+    teamId: card.teamId,
+    prompt: card.prompt,
+    answer: card.answer,
+    imageUrl: card.imageUrl || "",
+    createdAt: card.createdAt,
+    updatedAt: card.updatedAt,
+    createdByUid: card.createdByUid || "",
+    createdByName: card.createdByName || "",
+    updatedByUid: card.updatedByUid || "",
+    updatedByName: card.updatedByName || "",
+  };
 }
 
 function JudgeBookPageContent() {
@@ -55,20 +76,29 @@ function JudgeBookPageContent() {
       }
       setLoading(true);
       try {
-        const [cardsSnapshot, teamDoc] = await Promise.all([
-          getDocs(query(collection(db, "judgeBookCards"), where("teamId", "==", userData.teamId))),
-          getDoc(doc(db, "teams", userData.teamId)),
-        ]);
-        const rows = cardsSnapshot.docs.map((docSnap) => {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (teamDoc.exists()) {
+          const teamData = teamDoc.data() as Record<string, unknown>;
+          setFormAccessOverrides(normalizeFormAccessOverrides(teamData.formAccessOverrides));
+          const teamRows = (Array.isArray(teamData.judgeBookCards) ? teamData.judgeBookCards : [])
+            .map((value) => normalizeJudgeBookCard(value))
+            .filter((value): value is JudgeBookCard => Boolean(value))
+            .map((value) => ({ ...value, teamId: userData.teamId, source: "team-doc" as const }));
+          if (teamRows.length > 0) {
+            setCards(sortJudgeBookCards(teamRows));
+            return;
+          }
+        }
+        // Legacy fallback collection read for backward compatibility.
+        const cardsSnapshot = await getDocs(query(collection(db, "judgeBookCards"), where("teamId", "==", userData.teamId)));
+        const legacyRows = cardsSnapshot.docs.map((docSnap) => {
           const data = docSnap.data() as Omit<JudgeBookCard, "id">;
-          return { id: docSnap.id, ...data } as JudgeBookCard;
+          return { id: docSnap.id, ...data, source: "legacy-collection" as const } as JudgeBookCard;
         });
-        rows.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        setCards(rows);
-        setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
+        setCards(sortJudgeBookCards(legacyRows));
       } catch (error) {
         console.error("Failed to load judge book cards:", error);
-        alert("Unable to load Judge Book right now.");
+        setCards([]);
       } finally {
         setLoading(false);
       }
@@ -95,26 +125,45 @@ function JudgeBookPageContent() {
     setSaving(true);
     try {
       const now = Date.now();
-      await Promise.all(
-        safeRows.map((row) =>
-          addDoc(collection(db, "judgeBookCards"), {
-            teamId: userData.teamId,
-            prompt: row.prompt,
-            answer: row.answer,
-            imageUrl: row.imageUrl,
-            createdAt: now,
-            updatedAt: now,
-            createdByUid: userData.uid,
-            createdByName: userData.displayName || "Unknown",
-            updatedByUid: userData.uid,
-            updatedByName: userData.displayName || "Unknown",
-          })
-        )
-      );
-      const snapshot = await getDocs(query(collection(db, "judgeBookCards"), where("teamId", "==", userData.teamId)));
-      const nextCards = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Omit<JudgeBookCard, "id">) }));
-      nextCards.sort((a, b) => ((b as JudgeBookCard).updatedAt || 0) - ((a as JudgeBookCard).updatedAt || 0));
-      setCards(nextCards as JudgeBookCard[]);
+      const createdRows: JudgeBookCard[] = safeRows.map((row) => ({
+        id: newJudgeBookId(),
+        teamId: userData.teamId,
+        prompt: row.prompt,
+        answer: row.answer,
+        imageUrl: row.imageUrl,
+        createdAt: now,
+        updatedAt: now,
+        createdByUid: userData.uid || "",
+        createdByName: userData.displayName || "Unknown",
+        updatedByUid: userData.uid || "",
+        updatedByName: userData.displayName || "Unknown",
+        source: "team-doc",
+      }));
+      const teamDocRef = doc(db, "teams", userData.teamId);
+      const nextTeamRows = sortJudgeBookCards([
+        ...createdRows,
+        ...cards.filter((card) => card.source !== "legacy-collection"),
+      ]);
+      try {
+        await setDoc(
+          teamDocRef,
+          {
+            judgeBookCards: nextTeamRows.map((card) => toTeamCardPayload(card)),
+            judgeBookUpdatedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      } catch {
+        await Promise.all(
+          createdRows.map((row) =>
+            addDoc(collection(db, "judgeBookCards"), {
+              ...toTeamCardPayload(row),
+              source: "legacy-collection",
+            })
+          )
+        );
+      }
+      setCards(nextTeamRows);
       setSingleDraft(emptyDraft());
       setMultiDraft("");
       setShowCreateModal(false);
@@ -171,12 +220,31 @@ function JudgeBookPageContent() {
   }
 
   async function handleDeleteCard(cardId: string) {
-    if (!canEdit) return;
+    if (!canEdit || !userData?.teamId) return;
     if (!window.confirm("Delete this Judge Book card?")) return;
 
     try {
-      await deleteDoc(doc(db, "judgeBookCards", cardId));
-      setCards((prev) => prev.filter((card) => card.id !== cardId));
+      const target = cards.find((card) => card.id === cardId);
+      if (!target) return;
+      if (target.source === "legacy-collection") {
+        await deleteDoc(doc(db, "judgeBookCards", cardId));
+        setCards((prev) => prev.filter((card) => card.id !== cardId));
+        return;
+      }
+      const nextRows = cards.filter((card) => card.id !== cardId && card.source !== "legacy-collection");
+      try {
+        await setDoc(
+          doc(db, "teams", userData.teamId),
+          {
+            judgeBookCards: nextRows.map((card) => toTeamCardPayload(card)),
+            judgeBookUpdatedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      } catch {
+        await deleteDoc(doc(db, "judgeBookCards", cardId));
+      }
+      setCards(sortJudgeBookCards(nextRows));
     } catch (error) {
       console.error("Failed to delete judge book card:", error);
       alert("Unable to delete this card right now.");
@@ -202,31 +270,57 @@ function JudgeBookPageContent() {
 
     try {
       const now = Date.now();
-      await updateDoc(doc(db, "judgeBookCards", cardId), {
-        prompt,
-        answer: editDraft.answer.trim(),
-        imageUrl: editDraft.imageUrl.trim(),
-        updatedAt: now,
-        updatedByUid: userData.uid,
-        updatedByName: userData.displayName || "Unknown",
-      });
-      setCards((prev) =>
-        prev
-          .map((card) =>
-            card.id === cardId
-              ? {
-                  ...card,
-                  prompt,
-                  answer: editDraft.answer.trim(),
-                  imageUrl: editDraft.imageUrl.trim(),
-                  updatedAt: now,
-                  updatedByUid: userData.uid,
-                  updatedByName: userData.displayName || "Unknown",
-                }
-              : card
-          )
-          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      const nextCards = cards.map((card) =>
+        card.id === cardId
+          ? {
+              ...card,
+              prompt,
+              answer: editDraft.answer.trim(),
+              imageUrl: editDraft.imageUrl.trim(),
+              updatedAt: now,
+              updatedByUid: userData.uid,
+              updatedByName: userData.displayName || "Unknown",
+            }
+          : card
       );
+      const updatedCard = nextCards.find((card) => card.id === cardId);
+      if (!updatedCard) {
+        throw new Error("Card not found after update.");
+      }
+      if (updatedCard.source === "legacy-collection") {
+        await updateDoc(doc(db, "judgeBookCards", cardId), {
+          prompt: updatedCard.prompt,
+          answer: updatedCard.answer,
+          imageUrl: updatedCard.imageUrl || "",
+          updatedAt: now,
+          updatedByUid: userData.uid,
+          updatedByName: userData.displayName || "Unknown",
+        });
+      } else {
+        const teamRows = nextCards.filter((card) => card.source !== "legacy-collection");
+        try {
+          await setDoc(
+            doc(db, "teams", userData.teamId),
+            {
+              judgeBookCards: teamRows.map((card) => toTeamCardPayload(card)),
+              judgeBookUpdatedAt: Date.now(),
+            },
+            { merge: true }
+          );
+        } catch {
+          await setDoc(
+            doc(db, "judgeBookCards", cardId),
+            {
+              ...toTeamCardPayload({
+                ...updatedCard,
+                source: "legacy-collection",
+              }),
+            },
+            { merge: true }
+          );
+        }
+      }
+      setCards(sortJudgeBookCards(nextCards));
       setEditingCardId(null);
       setEditDraft(emptyDraft());
     } catch (error) {
@@ -343,8 +437,8 @@ function JudgeBookPageContent() {
       </div>
 
       {showCreateModal && canEdit && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 z-[120] flex items-start justify-center p-4 md:p-6 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-3rem)] flex flex-col overflow-hidden my-2">
             <div className="p-6 border-b flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold">Create Judge Book Cards</h2>
@@ -353,7 +447,7 @@ function JudgeBookPageContent() {
               <button onClick={() => setShowCreateModal(false)} className="px-3 py-1 rounded border hover:bg-gray-50">Close</button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto">
               <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <h3 className="text-lg font-semibold mb-3">Question Creator</h3>
                 <div className="grid gap-3 md:grid-cols-2">

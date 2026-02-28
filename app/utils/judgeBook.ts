@@ -12,7 +12,36 @@ export type JudgeBookCard = {
   createdByName: string;
   updatedByUid: string;
   updatedByName: string;
+  source?: "team-doc" | "legacy-collection";
 };
+
+export function normalizeJudgeBookCard(value: unknown): JudgeBookCard | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const id = String(row.id || "").trim();
+  const prompt = String(row.prompt || "").trim();
+  if (!id || !prompt) return null;
+  const createdAt = Number(row.createdAt || 0);
+  const updatedAt = Number(row.updatedAt || 0) || createdAt;
+  return {
+    id,
+    teamId: String(row.teamId || "").trim(),
+    prompt,
+    answer: String(row.answer || ""),
+    imageUrl: String(row.imageUrl || ""),
+    createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now(),
+    updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : Date.now(),
+    createdByUid: String(row.createdByUid || ""),
+    createdByName: String(row.createdByName || ""),
+    updatedByUid: String(row.updatedByUid || ""),
+    updatedByName: String(row.updatedByName || ""),
+    source: "team-doc",
+  };
+}
+
+export function sortJudgeBookCards(cards: JudgeBookCard[]): JudgeBookCard[] {
+  return [...cards].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
 
 export function canEditJudgeBook(
   user: RoleAwareUser | null | undefined,

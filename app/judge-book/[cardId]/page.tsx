@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, getDocs, query, setDoc, updateDoc, where, collection } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { normalizeFormAccessOverrides, type FormAccessOverrides } from "@/app/utils/roles";
-import { canEditJudgeBook, type JudgeBookCard } from "@/app/utils/judgeBook";
+import { canEditJudgeBook, normalizeJudgeBookCard, sortJudgeBookCards, type JudgeBookCard } from "@/app/utils/judgeBook";
 
 type EditDraft = {
   prompt: string;
@@ -31,6 +31,22 @@ function JudgeBookCardPageContent() {
 
   const canEdit = useMemo(() => canEditJudgeBook(userData, formAccessOverrides), [userData, formAccessOverrides]);
 
+  function toTeamCardPayload(cardValue: JudgeBookCard) {
+    return {
+      id: cardValue.id,
+      teamId: cardValue.teamId,
+      prompt: cardValue.prompt,
+      answer: cardValue.answer,
+      imageUrl: cardValue.imageUrl || "",
+      createdAt: cardValue.createdAt,
+      updatedAt: cardValue.updatedAt,
+      createdByUid: cardValue.createdByUid || "",
+      createdByName: cardValue.createdByName || "",
+      updatedByUid: cardValue.updatedByUid || "",
+      updatedByName: cardValue.updatedByName || "",
+    };
+  }
+
   useEffect(() => {
     async function loadCard() {
       if (!cardId || !userData?.teamId) {
@@ -39,23 +55,42 @@ function JudgeBookCardPageContent() {
       }
       setLoading(true);
       try {
-        const snapshot = await getDoc(doc(db, "judgeBookCards", cardId));
-        if (!snapshot.exists()) {
-          setCard(null);
-          return;
-        }
-        const loaded = { id: snapshot.id, ...(snapshot.data() as Omit<JudgeBookCard, "id">) };
-        if (loaded.teamId !== userData.teamId) {
-          setCard(null);
-          return;
-        }
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
-        setCard(loaded);
+        if (teamDoc.exists()) {
+          const teamRows = (Array.isArray(teamDoc.data().judgeBookCards) ? teamDoc.data().judgeBookCards : [])
+            .map((value: unknown) => normalizeJudgeBookCard(value))
+            .filter((value: JudgeBookCard | null): value is JudgeBookCard => Boolean(value))
+            .map((value) => ({ ...value, teamId: userData.teamId, source: "team-doc" as const }));
+          const fromTeam = teamRows.find((value) => value.id === cardId) || null;
+          if (fromTeam) {
+            setCard(fromTeam);
+            setDraft({
+              prompt: fromTeam.prompt || "",
+              answer: fromTeam.answer || "",
+              imageUrl: fromTeam.imageUrl || "",
+            });
+            return;
+          }
+        }
+
+        // Legacy fallback if older cards are still in top-level collection.
+        const legacySnapshot = await getDocs(query(collection(db, "judgeBookCards"), where("teamId", "==", userData.teamId)));
+        const legacyRows = legacySnapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<JudgeBookCard, "id">),
+          source: "legacy-collection" as const,
+        }));
+        const legacyCard = legacyRows.find((value) => value.id === cardId) || null;
+        if (!legacyCard) {
+          setCard(null);
+          return;
+        }
+        setCard(legacyCard);
         setDraft({
-          prompt: loaded.prompt || "",
-          answer: loaded.answer || "",
-          imageUrl: loaded.imageUrl || "",
+          prompt: legacyCard.prompt || "",
+          answer: legacyCard.answer || "",
+          imageUrl: legacyCard.imageUrl || "",
         });
       } catch (error) {
         console.error("Failed to load judge book card:", error);
@@ -69,7 +104,7 @@ function JudgeBookCardPageContent() {
   }, [cardId, userData?.teamId]);
 
   async function handleSave() {
-    if (!card || !userData?.uid || !canEdit) return;
+    if (!card || !userData?.uid || !userData?.teamId || !canEdit) return;
     const prompt = draft.prompt.trim();
     if (!prompt) {
       alert("Question/title is required.");
@@ -88,14 +123,44 @@ function JudgeBookCardPageContent() {
         updatedByUid: userData.uid,
         updatedByName: userData.displayName || "Unknown",
       };
-      await updateDoc(doc(db, "judgeBookCards", card.id), {
-        prompt: next.prompt,
-        answer: next.answer,
-        imageUrl: next.imageUrl,
-        updatedAt: next.updatedAt,
-        updatedByUid: next.updatedByUid,
-        updatedByName: next.updatedByName,
-      });
+      if (card.source === "legacy-collection") {
+        await updateDoc(doc(db, "judgeBookCards", card.id), {
+          prompt: next.prompt,
+          answer: next.answer,
+          imageUrl: next.imageUrl,
+          updatedAt: next.updatedAt,
+          updatedByUid: next.updatedByUid,
+          updatedByName: next.updatedByName,
+        });
+      } else {
+        const teamDocRef = doc(db, "teams", userData.teamId);
+        const teamDoc = await getDoc(teamDocRef);
+        const teamRows = (teamDoc.exists() && Array.isArray(teamDoc.data().judgeBookCards) ? teamDoc.data().judgeBookCards : [])
+          .map((value: unknown) => normalizeJudgeBookCard(value))
+          .filter((value: JudgeBookCard | null): value is JudgeBookCard => Boolean(value))
+          .map((value) => ({ ...value, teamId: userData.teamId, source: "team-doc" as const }));
+        const mergedRows = sortJudgeBookCards(
+          teamRows.map((entry) => (entry.id === card.id ? { ...next, source: "team-doc" as const } : entry))
+        );
+        try {
+          await setDoc(
+            teamDocRef,
+            {
+              judgeBookCards: mergedRows.map((entry) => toTeamCardPayload(entry)),
+              judgeBookUpdatedAt: Date.now(),
+            },
+            { merge: true }
+          );
+        } catch {
+          await setDoc(
+            doc(db, "judgeBookCards", card.id),
+            {
+              ...toTeamCardPayload({ ...next, source: "legacy-collection" }),
+            },
+            { merge: true }
+          );
+        }
+      }
       setCard(next);
       setEditing(false);
     } catch (error) {

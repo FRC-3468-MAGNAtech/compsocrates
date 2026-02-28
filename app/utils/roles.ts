@@ -1,12 +1,12 @@
 export const TEAM_ROLES = [
   "match-scout",
-  "media",
   "pit-scout",
   "pit-team",
   "drive-team",
   "lead-scout",
   "lead-strategist",
   "team-coach",
+  "media",
   "judge-awards",
 ] as const;
 
