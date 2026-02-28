@@ -72,11 +72,15 @@ function VersionReleasesContent() {
           body: JSON.stringify({ uid: userData.uid, email: userData.email || "" }),
         });
         if (!response.ok) {
-          setCanEdit(Boolean(userData?.canManageVersionReleases));
+          setCanEdit(Boolean(userData?.canManageVersionReleases) || Boolean(userData?.isTeamAdmin));
           return;
         }
         const payload = (await response.json()) as { allowed?: boolean };
-        setCanEdit(Boolean(payload.allowed) || Boolean(userData?.isTeamAdmin));
+        setCanEdit(
+          Boolean(payload.allowed) ||
+          Boolean(userData?.canManageVersionReleases) ||
+          Boolean(userData?.isTeamAdmin)
+        );
       } catch {
         setCanEdit(Boolean(userData?.canManageVersionReleases) || Boolean(userData?.isTeamAdmin));
       }
