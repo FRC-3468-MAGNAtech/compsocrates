@@ -6,6 +6,8 @@ export const TEAM_ROLES = [
   "lead-scout",
   "lead-strategist",
   "team-coach",
+  "media",
+  "judge-awards",
 ] as const;
 
 export type TeamRole = (typeof TEAM_ROLES)[number];
@@ -23,7 +25,8 @@ export type FormKey =
   | "strategy-scout-form"
   | "match-strategy-form"
   | "drive-scout-form"
-  | "helper-form";
+  | "helper-form"
+  | "judge-book-edit";
 
 export type FormAccessOverrides = Partial<Record<FormKey, string[]>>;
 
@@ -34,6 +37,7 @@ export const FORM_LABELS: Record<FormKey, string> = {
   "match-strategy-form": "Match Strategy Form",
   "drive-scout-form": "Drive Reflection Form",
   "helper-form": "Helper Form",
+  "judge-book-edit": "Judge Book Edit",
 };
 
 export const FORM_ROLE_REQUIREMENT: Record<FormKey, TeamRole | null> = {
@@ -43,6 +47,7 @@ export const FORM_ROLE_REQUIREMENT: Record<FormKey, TeamRole | null> = {
   "match-strategy-form": "lead-strategist",
   "drive-scout-form": "drive-team",
   "helper-form": "pit-team",
+  "judge-book-edit": "judge-awards",
 };
 
 export function normalizeLegacyRole(role: string | null | undefined): TeamRole {
@@ -53,6 +58,7 @@ export function normalizeLegacyRole(role: string | null | undefined): TeamRole {
   if (safe === "lead_scout") return "lead-scout";
   if (safe === "lead_strategist") return "lead-strategist";
   if (safe === "pit_scout") return "pit-scout";
+  if (safe === "judge_awards" || safe === "judgeawards") return "judge-awards";
   return "match-scout";
 }
 
@@ -72,10 +78,12 @@ export function getPrimaryRole(roles: TeamRole[]): TeamRole {
 
 export function getRoleLabel(role: TeamRole): string {
   if (role === "match-scout") return "Match Scout";
+  if (role === "media") return "Media";
   if (role === "pit-scout") return "Pit Scout";
   if (role === "pit-team") return "Pit Team";
   if (role === "drive-team") return "Drive Team";
   if (role === "lead-scout") return "Lead Scout";
+  if (role === "judge-awards") return "Judge Awards";
   if (role === "team-coach") return "Team Coach";
   return "Lead Strategist";
 }
@@ -110,6 +118,12 @@ export function getRoleBadge(roleInput: string | null | undefined, rolesInput?: 
   if (primaryRole === "team-coach") {
     return { bg: "bg-amber-100", text: "text-amber-800", label: "Team Coach" };
   }
+  if (primaryRole === "judge-awards") {
+    return { bg: "bg-orange-100", text: "text-orange-800", label: "Judge Awards" };
+  }
+  if (primaryRole === "media") {
+    return { bg: "bg-emerald-100", text: "text-emerald-800", label: "Media" };
+  }
   return { bg: "bg-emerald-100", text: "text-emerald-800", label: "Match Scout" };
 }
 
@@ -138,6 +152,7 @@ export function canAccessForm(params: {
   const requiredRole = FORM_ROLE_REQUIREMENT[formKey];
   if (!requiredRole) return true;
   if (userRoles.includes(requiredRole)) return true;
+  if (formKey === "judge-book-edit" && userRoles.includes("team-coach")) return true;
   const overrides = formAccessOverrides?.[formKey] || [];
   return overrides.includes(user.uid);
 }

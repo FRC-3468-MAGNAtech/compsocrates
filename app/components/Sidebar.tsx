@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
@@ -10,10 +10,11 @@ import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { canAccessForm, FormAccessOverrides, getRoleBadge, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings, Megaphone
+  Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings, Megaphone, BookOpen
 } from "lucide-react";
 
 export default function Sidebar() {
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return true;
     const saved = localStorage.getItem("sidebar-collapsed");
@@ -71,6 +72,37 @@ export default function Sidebar() {
     loadTeamName();
   }, [userData?.teamId]);
 
+  const sidebarScrollKey = `sidebar-scroll-top:${userData?.teamId || "global"}`;
+  const compactSidebar = collapsed && !isMobileMenuOpen;
+  const showText = !collapsed || isMobileMenuOpen;
+  const initials = userData?.displayName
+    ? userData.displayName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join("") || "U"
+    : "U";
+
+  const handleSidebarScroll = useCallback(() => {
+    if (typeof window === "undefined" || !sidebarRef.current) return;
+    sessionStorage.setItem(sidebarScrollKey, String(sidebarRef.current.scrollTop || 0));
+  }, [sidebarScrollKey]);
+
+  const restoreSidebarScroll = useCallback(() => {
+    if (typeof window === "undefined" || !sidebarRef.current) return;
+    const stored = sessionStorage.getItem(sidebarScrollKey);
+    const parsed = Number(stored || 0);
+    sidebarRef.current.scrollTop = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [sidebarScrollKey]);
+
+  useEffect(() => {
+    if (!userData?.teamId) return;
+    restoreSidebarScroll();
+    const timer = window.setTimeout(() => restoreSidebarScroll(), 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname, sidebarScrollKey, userData?.teamId, restoreSidebarScroll]);
+
   if (!userData?.teamId) return null;
 
   const userRoles = getUserRoles(userData);
@@ -81,14 +113,6 @@ export default function Sidebar() {
     userRoles.includes("team-coach") ||
     userData.isTeamAdmin;
   const canManageAssignments = userRoles.includes("lead-scout") || userData.isTeamAdmin;
-  const compactSidebar = collapsed && !isMobileMenuOpen;
-  const showText = !collapsed || isMobileMenuOpen;
-  const initials = userData.displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("") || "U";
 
   const navItems = [
     { href: getDashboardRoute(userData), label: "Dashboard", icon: BarChart3 },
@@ -113,6 +137,7 @@ export default function Sidebar() {
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
+    { href: "/judge-book", label: "Judge Book", icon: BookOpen },
     ...(isLeadRole
       ? [
           { href: "/event-selection", label: "Event Selection", icon: Calendar },
@@ -144,6 +169,8 @@ export default function Sidebar() {
       </button>
 
       <div
+        ref={sidebarRef}
+        onScroll={handleSidebarScroll}
         className={`
           border-r border-gray-200 flex flex-col transition-all duration-300
           ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}

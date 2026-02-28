@@ -18,6 +18,8 @@ function AdminPanelContent() {
     { label: "Drive Team", value: "/drive-team-dashboard" },
     { label: "Lead Scout", value: "/lead-scout-dashboard" },
     { label: "Lead Strategist", value: "/lead-strategist-dashboard" },
+    { label: "Media", value: "/media-dashboard" },
+    { label: "Judge Awards", value: "/judge-awards-dashboard" },
     { label: "Team Coach", value: "/team-coach-dashboard" },
   ];
 

@@ -160,7 +160,7 @@ function CoachDashboardContent() {
       const scouts = usersSnap.docs.filter((userDoc) => {
         const data = userDoc.data();
         const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
-        return roles.includes("match-scout");
+        return roles.includes("match-scout") || roles.includes("media");
       });
       const scoutDocs = scouts.map((docSnap) => ({ uid: docSnap.id, displayName: String(docSnap.data().displayName || "") }));
       const scoutNames = scoutDocs.map((row) => row.displayName);

@@ -603,7 +603,7 @@ function AssignmentsContent() {
     const eligibleMembers = sourceMembers.filter((member) => {
       if (!member.displayName.trim()) return false;
       const roles = getUserRoles({ role: member.role });
-      return roles.includes("match-scout") || roles.includes("lead-scout");
+      return roles.includes("match-scout") || roles.includes("media") || roles.includes("lead-scout");
     });
     if (eligibleMembers.length === 0) {
       alert("No eligible scout-role members available to assign.");
@@ -770,7 +770,7 @@ function AssignmentsContent() {
     const eligibleMembers = sourceMembers.filter((member) => {
       if (!member.displayName.trim()) return false;
       const roles = getUserRoles({ role: member.role });
-      return roles.includes("match-scout") || roles.includes("lead-scout");
+      return roles.includes("match-scout") || roles.includes("media") || roles.includes("lead-scout");
     });
     if (eligibleMembers.length === 0) {
       alert("No eligible scout-role members available to assign.");

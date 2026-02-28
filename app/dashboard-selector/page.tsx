@@ -11,12 +11,14 @@ function DashboardSelectorContent() {
 
   const options = [
     { label: "Match Scout", href: "/match-scout-dashboard" },
+    { label: "Media", href: "/media-dashboard" },
     { label: "Pit Scout", href: "/pit-scout-dashboard" },
     { label: "Pit Team", href: "/pit-team-dashboard" },
     { label: "Drive Team", href: "/drive-team-dashboard" },
     { label: "Lead Scout", href: "/lead-scout-dashboard" },
     { label: "Lead Strategist", href: "/lead-strategist-dashboard" },
     { label: "Team Coach", href: "/coach-dashboard" },
+    { label: "Judge Awards", href: "/judge-awards-dashboard" },
   ];
 
   return (

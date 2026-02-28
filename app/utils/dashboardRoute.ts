@@ -9,12 +9,14 @@ type DashboardUser = {
 
 function getRoleDashboard(role: TeamRole): string {
   if (role === "match-scout") return "/match-scout-dashboard";
+  if (role === "media") return "/media-dashboard";
   if (role === "pit-team") return "/pit-team-dashboard";
   if (role === "drive-team") return "/drive-team-dashboard";
   if (role === "pit-scout") return "/pit-scout-dashboard";
   if (role === "lead-scout") return "/lead-scout-dashboard";
   if (role === "lead-strategist") return "/lead-strategist-dashboard";
   if (role === "team-coach") return "/team-coach-dashboard";
+  if (role === "judge-awards") return "/judge-awards-dashboard";
   return "/match-scout-dashboard";
 }
 
@@ -23,12 +25,14 @@ export function getDashboardRoute(user: DashboardUser | null | undefined): strin
   const preferred = String(user.preferredDashboard || "").trim();
   const allowed = new Set([
     "/match-scout-dashboard",
+    "/media-dashboard",
     "/pit-scout-dashboard",
     "/pit-team-dashboard",
     "/drive-team-dashboard",
     "/lead-scout-dashboard",
     "/lead-strategist-dashboard",
     "/team-coach-dashboard",
+    "/judge-awards-dashboard",
     "/coach-dashboard",
   ]);
   if (allowed.has(preferred)) return preferred;
