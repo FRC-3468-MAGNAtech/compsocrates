@@ -29,15 +29,15 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClos
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-xl w-full p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between mb-4 px-6 pt-6">
           <h2 className="text-xl font-bold">Change Roles</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
             <X size={20} />
           </button>
         </div>
 
-        <div className="mb-6">
+        <div className="mb-6 px-6 overflow-y-auto">
           <label className="block text-sm font-semibold text-gray-700 mb-3">Primary Role</label>
           <div className="grid gap-2">
             {TEAM_ROLES.map((role) => (
@@ -85,7 +85,7 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClos
           </div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 px-6 pb-6 pt-2 border-t border-gray-200">
           <button
             onClick={handleSave}
             className="flex-1 py-2 rounded-lg text-white font-semibold"

@@ -34,10 +34,10 @@ export function useScoutAccuracy(teamId?: string) {
         const users = usersSnapshot.docs.map(doc => doc.data());
         
         // Count match scouts + lead scouts from the new role model.
-        const totalScouts = users.filter((u: any) => 
+        const totalScouts = users.filter((u: Record<string, unknown>) => 
           (() => {
             const roles = getUserRoles({ role: String(u.role || ''), roles: u.roles as string[] | undefined });
-            return roles.includes('match-scout') || roles.includes('lead-scout');
+            return roles.includes('match-scout') || roles.includes('media') || roles.includes('lead-scout');
           })()
         ).length;
         
@@ -50,7 +50,7 @@ export function useScoutAccuracy(teamId?: string) {
         const scoutingEntries = scoutingSnapshot.docs.map(doc => doc.data());
         
         // Calculate average accuracy from practice sessions
-        const accuracies = practiceSessions.map((s: any) => s.accuracy || 0);
+        const accuracies = practiceSessions.map((s: Record<string, unknown>) => Number(s.accuracy || 0));
         const avgAccuracy = accuracies.length > 0
           ? Math.round(accuracies.reduce((a, b) => a + b, 0) / accuracies.length)
           : 0;

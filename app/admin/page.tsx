@@ -13,6 +13,7 @@ function AdminPanelContent() {
   const [savingDashboard, setSavingDashboard] = useState(false);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
+    { label: "Media", value: "/media-dashboard" },
     { label: "Pit Scout", value: "/pit-scout-dashboard" },
     { label: "Pit Team", value: "/pit-team-dashboard" },
     { label: "Drive Team", value: "/drive-team-dashboard" },

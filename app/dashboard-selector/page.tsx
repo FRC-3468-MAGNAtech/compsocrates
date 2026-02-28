@@ -11,6 +11,7 @@ function DashboardSelectorContent() {
 
   const options = [
     { label: "Match Scout", href: "/match-scout-dashboard" },
+    { label: "Media", href: "/media-dashboard" },
     { label: "Pit Scout", href: "/pit-scout-dashboard" },
     { label: "Pit Team", href: "/pit-team-dashboard" },
     { label: "Drive Team", href: "/drive-team-dashboard" },

@@ -113,7 +113,7 @@ export async function calculateTeamStats(teamId: string): Promise<TeamStats> {
   const scouts = usersSnapshot.docs.filter(doc => {
     const data = doc.data();
     const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
-    return roles.includes("match-scout");
+    return roles.includes("match-scout") || roles.includes("media");
   });
   const scoutNames = scouts.map((doc) => doc.data().displayName);
   const teamMemberNames = new Set(

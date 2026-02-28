@@ -113,12 +113,12 @@ export default function Sidebar() {
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
+    { href: "/judge-book", label: "Judge Book", icon: BookOpen },
     ...(isLeadRole
       ? [
           { href: "/event-selection", label: "Event Selection", icon: Calendar },
         ]
       : []),
-    { href: "/judge-book", label: "Judge Book", icon: BookOpen },
     { href: "/match-list", label: "Match List", icon: Calendar },
     ...(canManageAssignments ? [{ href: "/assignments", label: "Assignments", icon: Calendar }] : []),
     { href: "/people", label: "People", icon: UserCircle2 },

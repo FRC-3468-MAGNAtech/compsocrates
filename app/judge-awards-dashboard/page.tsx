@@ -5,15 +5,14 @@ export default function JudgeAwardsDashboardPage() {
     <TeamRoleDashboard
       role="judge-awards"
       title="Judge Awards Dashboard"
-      subtitle="Capture judging-ready facts, updates, and visuals in one place."
-      roleDescription="Builds and maintains the Judge Book so your team can quickly answer awards questions with accurate, current evidence."
+      subtitle="Track assignments and event readiness, then keep awards content polished."
+      roleDescription="Uses the same operational dashboard flow as Match Scout, while prioritizing Judge Book quality before interviews."
       specialNotice={{
-        title: "Judge Book Focus",
-        description: "Use Judge Book to add or refine cards before interviews so judges get clear, accurate answers fast.",
-        actionLabel: "Open Judge Book",
+        title: "Judge Book",
+        description: "Open Judge Book to review, update, and present your awards content.",
+        actionLabel: "View Judge Book",
         actionHref: "/judge-book",
       }}
     />
   );
 }
-

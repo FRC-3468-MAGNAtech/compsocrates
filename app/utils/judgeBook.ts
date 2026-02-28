@@ -1,4 +1,4 @@
-import { RoleAwareUser, getUserRoles } from "@/app/utils/roles";
+import { FormAccessOverrides, RoleAwareUser, getUserRoles } from "@/app/utils/roles";
 
 export type JudgeBookCard = {
   id: string;
@@ -14,11 +14,15 @@ export type JudgeBookCard = {
   updatedByName: string;
 };
 
-export function canEditJudgeBook(user: RoleAwareUser | null | undefined): boolean {
+export function canEditJudgeBook(
+  user: RoleAwareUser | null | undefined,
+  formAccessOverrides?: FormAccessOverrides
+): boolean {
   if (!user) return false;
   if (user.isTeamAdmin) return true;
   if (String(user.role || "").trim().toLowerCase() === "coach") return true;
   const roles = getUserRoles(user);
-  return roles.includes("team-coach") || roles.includes("judge-awards");
+  if (roles.includes("team-coach") || roles.includes("judge-awards")) return true;
+  const overrides = formAccessOverrides?.["judge-book-edit"] || [];
+  return Boolean(user.uid && overrides.includes(user.uid));
 }
-

@@ -8,6 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
+import { normalizeFormAccessOverrides, type FormAccessOverrides } from "@/app/utils/roles";
 import { canEditJudgeBook, type JudgeBookCard } from "@/app/utils/judgeBook";
 
 type EditDraft = {
@@ -24,10 +25,11 @@ function JudgeBookCardPageContent() {
   const [card, setCard] = useState<JudgeBookCard | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EditDraft>({ prompt: "", answer: "", imageUrl: "" });
 
-  const canEdit = useMemo(() => canEditJudgeBook(userData), [userData]);
+  const canEdit = useMemo(() => canEditJudgeBook(userData, formAccessOverrides), [userData, formAccessOverrides]);
 
   useEffect(() => {
     async function loadCard() {
@@ -47,6 +49,8 @@ function JudgeBookCardPageContent() {
           setCard(null);
           return;
         }
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
         setCard(loaded);
         setDraft({
           prompt: loaded.prompt || "",

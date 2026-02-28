@@ -459,7 +459,7 @@ function ScoutAccuracyContent() {
   // Count active scouts only: dedicated match scouts (lead roles are excluded from scout counts).
   const actualScoutCount = scoutStats.filter((s) => {
     const roles = getUserRoles({ role: s.role, roles: s.roles });
-    return roles.includes("match-scout");
+    return roles.includes("match-scout") || roles.includes("media");
   }).length;
   const membersWithPracticeAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
 

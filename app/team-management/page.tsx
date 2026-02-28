@@ -202,6 +202,15 @@ function TeamManagementContent() {
     return sanitizeRoles(member.roles, member.role);
   }
 
+  function hasPermissionByRole(formKey: FormKey, memberRoles: TeamRole[]): boolean {
+    if (formKey === "judge-book-edit") {
+      return memberRoles.includes("judge-awards") || memberRoles.includes("team-coach");
+    }
+    const requiredRole = FORM_ROLE_REQUIREMENT[formKey];
+    if (!requiredRole) return true;
+    return memberRoles.includes(requiredRole);
+  }
+
   async function saveFormAccessOverrides() {
     if (!userData?.teamId || !isUserAdmin) return;
     try {
@@ -210,10 +219,10 @@ function TeamManagementContent() {
       });
       setFormAccessOverrides(draftFormAccessOverrides);
       setShowFormAccessModal(false);
-      alert("Form access updated.");
+      alert("Permissions updated.");
     } catch (error) {
-      console.error("Error saving form access:", error);
-      alert("Could not save form access settings.");
+      console.error("Error saving permissions:", error);
+      alert("Could not save permissions settings.");
     }
   }
 
@@ -249,7 +258,7 @@ function TeamManagementContent() {
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Team Management
           </h1>
-          <p className="text-gray-600 mb-8">Manage your team members, roles, and form access.</p>
+          <p className="text-gray-600 mb-8">Manage your team members, roles, and permissions.</p>
 
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between">
@@ -266,7 +275,7 @@ function TeamManagementContent() {
                     }}
                     className="px-4 py-2 rounded border font-semibold hover:bg-gray-50"
                   >
-                    Form Access
+                    Permissions
                   </button>
                 )}
                 <button
@@ -417,8 +426,8 @@ function TeamManagementContent() {
               <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="p-6 border-b flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold">Form Access Overrides</h2>
-                    <p className="text-sm text-gray-600">Grant extra form access to users who do not have the required role.</p>
+                    <h2 className="text-xl font-bold">Permissions Overrides</h2>
+                    <p className="text-sm text-gray-600">Grant extra access to users who do not have default role permissions.</p>
                   </div>
                   <button onClick={() => setShowFormAccessModal(false)} className="px-3 py-1 rounded border hover:bg-gray-50">
                     Close
@@ -433,12 +442,12 @@ function TeamManagementContent() {
                         <div key={formKey} className="border rounded-lg p-4">
                           <h3 className="font-semibold text-lg">{FORM_LABELS[formKey]}</h3>
                           <p className="text-sm text-gray-600 mb-3">
-                            Default role access: {requiredRole ? getRoleLabel(requiredRole) : "All Team Members"}
+                            Default role access: {formKey === "judge-book-edit" ? "Judge Awards, Team Coach" : requiredRole ? getRoleLabel(requiredRole) : "All Team Members"}
                           </p>
                           <div className="grid md:grid-cols-2 gap-2">
                             {members.map((member) => {
                               const memberRoles = getMemberRoles(member);
-                              const hasDefaultRole = requiredRole ? memberRoles.includes(requiredRole) : true;
+                              const hasDefaultRole = hasPermissionByRole(formKey, memberRoles);
                               const hasAdminAccess = member.isTeamAdmin;
                               const hasSystemAccess = hasDefaultRole || hasAdminAccess;
                               const checked = (draftFormAccessOverrides[formKey] || []).includes(member.uid);
