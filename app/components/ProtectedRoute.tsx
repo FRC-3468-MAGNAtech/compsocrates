@@ -65,6 +65,7 @@ export default function ProtectedRoute({
         pathname === "/dashboard" ||
         pathname === "/account" ||
         pathname === "/verify-email" ||
+        pathname === "/changelog" ||
         pathname === "/update-lot" ||
         pathname === "/version-releases";
       if (!allowNoTeam) {

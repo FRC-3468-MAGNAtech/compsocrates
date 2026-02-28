@@ -31,6 +31,21 @@ export default function Sidebar() {
     localStorage.setItem("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!isMobileMenuOpen) {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+      return;
+    }
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+    };
+  }, [isMobileMenuOpen]);
+
   // Load team name from Firestore
   useEffect(() => {
     async function loadTeamName() {
@@ -101,7 +116,6 @@ export default function Sidebar() {
     ...(isLeadRole
       ? [
           { href: "/event-selection", label: "Event Selection", icon: Calendar },
-          { href: "/update-lot", label: "Update Lot", icon: Settings },
         ]
       : []),
     { href: "/match-list", label: "Match List", icon: Calendar },
@@ -195,11 +209,11 @@ export default function Sidebar() {
 
         <div className="px-2 pb-2">
           <Link
-            href="/update-lot"
+            href="/changelog"
             onClick={() => setIsMobileMenuOpen(false)}
             className="inline-flex items-center justify-center w-10 h-10 rounded hover:bg-gray-100 text-gray-700"
-            title="Update Lot"
-            aria-label="Update Lot"
+            title="Changelog"
+            aria-label="Changelog"
           >
             <Megaphone size={18} />
           </Link>

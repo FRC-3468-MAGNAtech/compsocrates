@@ -709,6 +709,15 @@ function ScoutFormContent() {
     return selectedMatch.label || "No match is set";
   }
 
+  function pickTeamNumber() {
+    const availableTeams = selectedTeams.filter((team) => !selectedScoutedTeams.has(team));
+    const source = availableTeams.length > 0 ? availableTeams : selectedTeams;
+    if (source.length === 0) return;
+    const randomTeam = source[Math.floor(Math.random() * source.length)];
+    if (!randomTeam) return;
+    setForm((prev) => ({ ...prev, teamNumber: randomTeam }));
+  }
+
   useEffect(() => {
     if (assignedTeam) setForm((prev) => ({ ...prev, teamNumber: assignedTeam }));
   }, [assignedTeam]);
@@ -981,12 +990,18 @@ function ScoutFormContent() {
                   {assignedTeam ? (
                     <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.teamNumber} disabled />
                   ) : selectedTeams.length > 0 ? (
-                    <select className="w-full border rounded p-2" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value }))}>
-                      <option value="">Select Team</option>
-                      {selectedTeams.map((team) => <option key={team} value={team} disabled={selectedScoutedTeams.has(team)}>{selectedScoutedTeams.has(team) ? `${team} (Scouted)` : team}</option>)}
-                    </select>
+                    <div className="flex gap-2">
+                      <select className="flex-1 border rounded p-2" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value }))}>
+                        <option value="">Select Team</option>
+                        {selectedTeams.map((team) => <option key={team} value={team} disabled={selectedScoutedTeams.has(team)}>{selectedScoutedTeams.has(team) ? `${team} (Scouted)` : team}</option>)}
+                      </select>
+                      <button type="button" className="px-4 rounded border" onClick={pickTeamNumber}>Pick</button>
+                    </div>
                   ) : (
-                    <input className="w-full border rounded p-2" placeholder="Enter team number" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))} />
+                    <div className="flex gap-2">
+                      <input className="flex-1 border rounded p-2" placeholder="Enter team number" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))} />
+                      <button type="button" className="px-4 rounded border disabled:opacity-50" onClick={pickTeamNumber} disabled={selectedTeams.length === 0}>Pick</button>
+                    </div>
                   )}
                   <label className="block text-sm font-medium text-gray-700">Starting Position</label>
                   <select className="w-full border rounded p-2" value={form.startingPosition} onChange={(e) => setForm((p) => ({ ...p, startingPosition: e.target.value }))}>

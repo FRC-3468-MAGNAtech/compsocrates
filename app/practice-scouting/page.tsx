@@ -1027,6 +1027,18 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
   }
 
+  function pickLiveTeamNumber(target: "reefscape" | "rebuilt") {
+    if (liveEventTeamSuggestions.length === 0) return;
+    const randomTeam = liveEventTeamSuggestions[Math.floor(Math.random() * liveEventTeamSuggestions.length)];
+    if (!randomTeam) return;
+    const teamNumber = String(randomTeam);
+    if (target === "rebuilt") {
+      setRebuiltFormData((prev) => ({ ...prev, teamNumber }));
+      return;
+    }
+    setFormData((prev) => ({ ...prev, teamNumber }));
+  }
+
   useEffect(() => {
     if (selectedMode !== "competitive") return;
 
@@ -1041,6 +1053,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       clearInterval(interval);
     };
   }, [selectedMode, currentMatch?.id]);
+
+  useEffect(() => {
+    if (!currentMatch || selectedDifficulty === "live") return;
+    const expectedTeam = currentMatch.allianceTeams[currentRobotIndex]?.toString() || "";
+    if (activeMatchGame === "REBUILT") {
+      setRebuiltFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
+      return;
+    }
+    setFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
+  }, [activeMatchGame, currentMatch, currentRobotIndex, selectedDifficulty]);
 
   function clearPracticeDraft() {
     if (typeof window === "undefined" || !userData?.uid) return;
@@ -2256,7 +2278,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </h3>
                 <p className="text-sm">
                   {selectedDifficulty === "live"
-                    ? `Robot ${currentRobotIndex + 1}`
+                    ? `Robot ${currentRobotIndex + 1}${
+                        activeMatchGame === "REBUILT"
+                          ? rebuiltFormData.teamNumber
+                            ? ` • Team ${rebuiltFormData.teamNumber}`
+                            : ""
+                          : formData.teamNumber
+                          ? ` • Team ${formData.teamNumber}`
+                          : ""
+                      }`
                     : `Robot ${currentRobotIndex + 1} of 3 • Team ${currentMatch.allianceTeams[currentRobotIndex]}`}
                 </p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
@@ -2339,15 +2369,24 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
                     {selectedDifficulty === "live" ? (
                       <>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-reefscape" : undefined}
-                          value={formData.teamNumber}
-                          onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
-                          className="w-full border rounded p-2"
-                          placeholder="Type team number"
-                        />
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-reefscape" : undefined}
+                            value={formData.teamNumber}
+                            onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
+                            className="flex-1 border rounded p-2"
+                            placeholder="Type team number"
+                          />
+                          <button
+                            type="button"
+                            className="px-4 rounded border"
+                            onClick={() => pickLiveTeamNumber("reefscape")}
+                          >
+                            Pick
+                          </button>
+                        </div>
                         {liveEventTeamSuggestions.length > 0 && (
                           <datalist id="live-team-suggestions-reefscape">
                             {liveEventTeamSuggestions
@@ -2484,15 +2523,26 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
                         {selectedDifficulty === "live" ? (
                           <>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-rebuilt" : undefined}
-                              value={rebuiltFormData.teamNumber}
-                              onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teamNumber: e.target.value })}
-                              className="w-full border rounded p-2"
-                              placeholder="Type team number"
-                            />
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-rebuilt" : undefined}
+                                value={rebuiltFormData.teamNumber}
+                                onChange={(e) =>
+                                  setRebuiltFormData({ ...rebuiltFormData, teamNumber: e.target.value.replace(/[^\d]/g, "") })
+                                }
+                                className="flex-1 border rounded p-2"
+                                placeholder="Type team number"
+                              />
+                              <button
+                                type="button"
+                                className="px-4 rounded border"
+                                onClick={() => pickLiveTeamNumber("rebuilt")}
+                              >
+                                Pick
+                              </button>
+                            </div>
                             {liveEventTeamSuggestions.length > 0 && (
                               <datalist id="live-team-suggestions-rebuilt">
                                 {liveEventTeamSuggestions

@@ -101,10 +101,9 @@ function VersionReleasesContent() {
           .filter((entry): entry is ReleaseNote => Boolean(entry))
           .map((entry) => ({ ...entry, source: "team-doc" as const }));
 
-        if (loadedTeamNotes.length > 0) {
-          setNotes(sortNotes(loadedTeamNotes));
-          return;
-        }
+        // Team-scoped notes are the source of truth for signed-in team users.
+        setNotes(sortNotes(loadedTeamNotes));
+        return;
       }
 
       // Backward-compatible fallback for older top-level storage.
@@ -276,7 +275,7 @@ function VersionReleasesContent() {
   }
 
   const headingText = useMemo(
-    () => (canEdit ? "Publish and update notes." : "Read-only notes for all users."),
+    () => (canEdit ? "Publish and update changelog entries." : "Read-only changelog for all users."),
     [canEdit]
   );
 
@@ -285,13 +284,13 @@ function VersionReleasesContent() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto p-8">
         <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-          Update Lot
+          Changelog
         </h1>
         <p className="text-gray-600 mb-6">{headingText}</p>
 
         {canEdit && (
           <div className="bg-white rounded-xl shadow-md p-6 mb-6 space-y-3">
-            <h2 className="text-lg font-semibold">{editingId ? "Edit Release" : "New Release"}</h2>
+            <h2 className="text-lg font-semibold">{editingId ? "Edit Entry" : "New Entry"}</h2>
             <input
               value={draftTitle}
               onChange={(event) => setDraftTitle(event.target.value)}
@@ -302,7 +301,7 @@ function VersionReleasesContent() {
               value={draftBody}
               onChange={(event) => setDraftBody(event.target.value)}
               className="w-full border rounded p-2 min-h-28"
-              placeholder="What changed in this release?"
+              placeholder="What changed in this update?"
             />
             <div className="flex gap-2">
               <button
@@ -319,7 +318,7 @@ function VersionReleasesContent() {
                 className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >
-                {saving ? "Saving..." : editingId ? "Update Release" : "Publish Release"}
+                {saving ? "Saving..." : editingId ? "Update Entry" : "Publish Entry"}
               </button>
               {editingId && (
                 <button
@@ -339,9 +338,9 @@ function VersionReleasesContent() {
 
         <div className="space-y-4">
           {loading ? (
-            <div className="bg-white rounded-xl shadow-md p-6 text-gray-600">Loading releases...</div>
+            <div className="bg-white rounded-xl shadow-md p-6 text-gray-600">Loading changelog...</div>
           ) : notes.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-md p-6 text-gray-600">No release notes published yet.</div>
+            <div className="bg-white rounded-xl shadow-md p-6 text-gray-600">No changelog entries yet.</div>
           ) : (
             notes.map((note) => (
               <div key={note.id} className="bg-white rounded-xl shadow-md p-6">
