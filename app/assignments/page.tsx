@@ -45,6 +45,19 @@ interface PitAssignment {
   assignedAt: number;
 }
 
+interface PracticeAssignment {
+  id: string;
+  eventKey: string;
+  practiceMatchId: string;
+  matchKey: string;
+  matchLabel: string;
+  scoutId: string;
+  scoutName: string;
+  teamNumber: number;
+  assignedBy: string;
+  assignedAt: number;
+}
+
 interface TeamMember {
   uid: string;
   displayName: string;
@@ -70,6 +83,17 @@ type EventOption = {
   key: string;
   name: string;
   startDate: string;
+};
+
+type PracticeMatchOption = {
+  id: string;
+  eventKey: string;
+  matchKey: string;
+  label: string;
+  teams: number[];
+  stage: "practice" | "qualification" | "playoff";
+  matchNumber: number;
+  scheduleTime: number;
 };
 
 function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
@@ -128,6 +152,29 @@ function parseTeamNumbers(value: unknown): number[] {
   return [];
 }
 
+function normalizePracticeStage(rawType: unknown, rawMatchKey: unknown, rawCompLevel: unknown): "practice" | "qualification" | "playoff" {
+  const compLevel = String(rawCompLevel || "").toLowerCase().trim();
+  if (compLevel === "qm") return "qualification";
+  if (compLevel === "qf" || compLevel === "sf" || compLevel === "f") return "playoff";
+
+  const matchKey = String(rawMatchKey || "").toLowerCase().trim();
+  if (/_qm\d+/.test(matchKey)) return "qualification";
+  if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "playoff";
+
+  const type = String(rawType || "").toLowerCase().trim();
+  if (type === "qualification") return "qualification";
+  if (type === "playoff" || type === "finals") return "playoff";
+  return "practice";
+}
+
+function practiceMatchLabel(stage: "practice" | "qualification" | "playoff", matchNumber: number, alliance: string) {
+  const prefix = stage === "practice" ? "Practice" : stage === "qualification" ? "Qualification" : "Playoff";
+  const allianceLabel = alliance === "red" || alliance === "blue"
+    ? `${alliance.charAt(0).toUpperCase()}${alliance.slice(1)} Alliance`
+    : "Alliance";
+  return `${prefix} ${matchNumber} • ${allianceLabel}`;
+}
+
 function scoreScoutingRecord(record: Record<string, unknown>): number {
   let score = 0;
   if (Boolean(record.leftStartingZone)) score += 3;
@@ -171,12 +218,14 @@ function AssignmentsContent() {
   const { userData } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [pitAssignments, setPitAssignments] = useState<PitAssignment[]>([]);
+  const [practiceAssignments, setPracticeAssignments] = useState<PracticeAssignment[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [selectedEvent, setSelectedEvent] = useState("");
   const [events, setEvents] = useState<EventOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
+  const [practiceMatchOptions, setPracticeMatchOptions] = useState<PracticeMatchOption[]>([]);
   const [eventAttendees, setEventAttendees] = useState<Record<string, string[]>>({});
   const [manualPriorityTeamsByEvent, setManualPriorityTeamsByEvent] = useState<Record<string, number[]>>({});
   const [manualPriorityTeamsGlobal, setManualPriorityTeamsGlobal] = useState<number[]>([]);
@@ -272,13 +321,17 @@ function AssignmentsContent() {
       if (!effectiveEvent) {
         setAssignments([]);
         setPitAssignments([]);
+        setPracticeAssignments([]);
         setMatchOptions([]);
+        setPracticeMatchOptions([]);
         return;
       }
 
-      const [assignmentsSnap, pitAssignmentsSnap] = await Promise.all([
+      const [assignmentsSnap, pitAssignmentsSnap, practiceAssignmentsSnap, practiceMatchesSnap] = await Promise.all([
         getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", effectiveEvent))),
         getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", effectiveEvent))),
+        getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", effectiveEvent))),
+        getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", effectiveEvent))),
       ]);
       setAssignments(
         assignmentsSnap.docs.map((assignmentDoc) => ({
@@ -292,6 +345,43 @@ function AssignmentsContent() {
           ...assignmentDoc.data(),
         })) as PitAssignment[]
       );
+      setPracticeAssignments(
+        practiceAssignmentsSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...assignmentDoc.data(),
+        })) as PracticeAssignment[]
+      );
+
+      const practiceOptions = practiceMatchesSnap.docs
+        .map((practiceDoc) => {
+          const data = practiceDoc.data() as Record<string, unknown>;
+          const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+          const matchNumber = Number(data.matchNumber || 0);
+          const scheduleTime = Number(data.scheduleTime || data.time || 0);
+          const alliance = String(data.alliance || "").trim().toLowerCase();
+          const teams = parseTeamNumbers(
+            data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+          ).slice(0, 3);
+          return {
+            id: practiceDoc.id,
+            eventKey: effectiveEvent,
+            matchKey: String(data.matchKey || practiceDoc.id),
+            label: practiceMatchLabel(stage, matchNumber, alliance),
+            teams,
+            stage,
+            matchNumber,
+            scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+          } as PracticeMatchOption;
+        })
+        .filter((row) => row.teams.length >= 3 && row.matchNumber > 0)
+        .sort((a, b) => {
+          const stageOrder = a.stage === "practice" ? 0 : a.stage === "qualification" ? 1 : 2;
+          const otherStageOrder = b.stage === "practice" ? 0 : b.stage === "qualification" ? 1 : 2;
+          if (stageOrder !== otherStageOrder) return stageOrder - otherStageOrder;
+          if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
+          return a.id.localeCompare(b.id);
+        });
+      setPracticeMatchOptions(practiceOptions);
       const priorityByEventRaw = (
         teamData.priorityTeamsByEvent ||
         teamData.assignmentPriorityTeamsByEvent ||
@@ -354,6 +444,17 @@ function AssignmentsContent() {
     const next = timedMatches.find((match) => match.scheduleTime >= now);
     return next?.key || timedMatches[timedMatches.length - 1].key;
   }, [matchOptions]);
+  const activeOrNextPracticeMatchId = useMemo(() => {
+    const now = Date.now() / 1000;
+    const timedMatches = [...practiceMatchOptions]
+      .filter((match) => match.scheduleTime > 0)
+      .sort((a, b) => a.scheduleTime - b.scheduleTime);
+    if (timedMatches.length === 0) return "";
+    const active = timedMatches.find((match) => now >= match.scheduleTime && now <= match.scheduleTime + 8 * 60);
+    if (active) return active.id;
+    const next = timedMatches.find((match) => match.scheduleTime >= now);
+    return next?.id || timedMatches[timedMatches.length - 1].id;
+  }, [practiceMatchOptions]);
 
   const typeFilteredMatches = useMemo(() => {
     if (selectedMatchType === "practice") {
@@ -447,6 +548,17 @@ function AssignmentsContent() {
     } catch (error) {
       console.error("Error deleting pit assignment:", error);
       alert("Error deleting pit assignment");
+    }
+  }
+
+  async function deletePracticeAssignment(id: string) {
+    if (!confirm("Delete this practice assignment?")) return;
+    try {
+      await deleteDoc(doc(db, "practiceAssignments", id));
+      await loadData();
+    } catch (error) {
+      console.error("Error deleting practice assignment:", error);
+      alert("Error deleting practice assignment");
     }
   }
 
@@ -615,6 +727,96 @@ function AssignmentsContent() {
     } catch (error) {
       console.error("Error randomizing assignments:", error);
       alert("Error randomizing assignments.");
+    }
+  }
+
+  async function randomizePracticeAssignments() {
+    if (!userData || !selectedEvent) return;
+    if (practiceMatchOptions.length === 0) {
+      alert("No practice matches available to randomize.");
+      return;
+    }
+
+    const attendeeKeys = eventAttendees[selectedEvent] || [];
+    const attendeeMembers = members.filter(
+      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
+    );
+    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
+    const eligibleMembers = sourceMembers.filter((member) => {
+      if (!member.displayName.trim()) return false;
+      const roles = getUserRoles({ role: member.role });
+      return roles.includes("match-scout") || roles.includes("lead-scout");
+    });
+    if (eligibleMembers.length === 0) {
+      alert("No eligible scout-role members available to assign.");
+      return;
+    }
+
+    if (!confirm("Randomize practice scouting assignments for this event? Existing practice assignments will be replaced.")) return;
+
+    try {
+      const existing = practiceAssignments.filter((assignment) => assignment.eventKey === selectedEvent);
+      await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "practiceAssignments", assignment.id))));
+
+      const manualPriorityTeams = Array.from(
+        new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+      );
+
+      const practiceTeamCounts = new Map<number, number>();
+      const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", selectedEvent)));
+      scoutingSnap.docs.forEach((docSnap) => {
+        const row = docSnap.data() as Record<string, unknown>;
+        const team = parseInt(String(row.teamNumber || "").replace(/[^\d]/g, ""), 10);
+        if (!Number.isFinite(team) || team <= 0) return;
+        const isPractice =
+          Boolean(row.isPracticeScouting) ||
+          String(row.matchType || "").toLowerCase() === "practice" ||
+          String(row.practiceMode || "").length > 0;
+        if (!isPractice) return;
+        practiceTeamCounts.set(team, (practiceTeamCounts.get(team) || 0) + 1);
+      });
+
+      const shuffledScouts = [...eligibleMembers].sort(() => Math.random() - 0.5);
+      let scoutPointer = 0;
+      const now = Date.now();
+      const newAssignments: Array<Omit<PracticeAssignment, "id">> = [];
+
+      practiceMatchOptions.forEach((match, matchIndex) => {
+        const teamOrder = [...match.teams].sort((a, b) => {
+          const aPriority = manualPriorityTeams.includes(a) ? 0 : 1;
+          const bPriority = manualPriorityTeams.includes(b) ? 0 : 1;
+          if (aPriority !== bPriority) return aPriority - bPriority;
+
+          const aCount = practiceTeamCounts.get(a) || 0;
+          const bCount = practiceTeamCounts.get(b) || 0;
+          if (aCount !== bCount) return aCount - bCount;
+          return Math.random() - 0.5;
+        });
+
+        teamOrder.forEach((teamNumber) => {
+          const scout = shuffledScouts[scoutPointer % shuffledScouts.length];
+          scoutPointer += 1;
+          if (!scout) return;
+          newAssignments.push({
+            eventKey: selectedEvent,
+            practiceMatchId: match.id,
+            matchKey: match.matchKey,
+            matchLabel: match.label,
+            scoutId: scout.uid,
+            scoutName: scout.displayName,
+            teamNumber,
+            assignedBy: userData.uid,
+            assignedAt: now + matchIndex,
+          });
+        });
+      });
+
+      await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "practiceAssignments"), assignment)));
+      await loadData();
+      alert(`Randomized ${newAssignments.length} practice assignments across ${practiceMatchOptions.length} practice matches.`);
+    } catch (error) {
+      console.error("Error randomizing practice assignments:", error);
+      alert("Error randomizing practice assignments.");
     }
   }
 
@@ -801,6 +1003,108 @@ function AssignmentsContent() {
                     <tr>
                       <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-500">
                         No pit assignments yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+            <h2 className="text-xl font-semibold mb-1">Practice Scouting Assignments</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Separate from comp match assignments. Priority teams and low-data teams are assigned first.
+            </p>
+
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Practice Match</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {practiceAssignments
+                    .slice()
+                    .sort((a, b) => String(a.matchLabel || "").localeCompare(String(b.matchLabel || "")))
+                    .map((assignment) => (
+                      <tr key={assignment.id}>
+                        <td className="px-4 py-2 font-medium">{assignment.matchLabel || assignment.matchKey}</td>
+                        <td className="px-4 py-2">{assignment.scoutName}</td>
+                        <td className="px-4 py-2">Team {assignment.teamNumber}</td>
+                        <td className="px-4 py-2">
+                          <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {practiceAssignments.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-500">
+                        No practice assignments yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Practice Match Schedule</h2>
+                <p className="text-sm text-gray-600">Practice scouting queue with prioritized team coverage.</p>
+              </div>
+              <button
+                onClick={randomizePracticeAssignments}
+                className="px-4 py-2 rounded text-white text-sm font-semibold"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Randomize Practice
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {practiceMatchOptions.map((match) => {
+                    const perMatch = practiceAssignments.filter((assignment) => assignment.practiceMatchId === match.id);
+                    const isActive = activeOrNextPracticeMatchId === match.id;
+                    return (
+                      <tr key={match.id} className={isActive ? "bg-yellow-50" : ""}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-medium">{match.label}</span>
+                          {isActive && <span className="ml-2 text-xs font-semibold text-yellow-700">ACTIVE/NEXT</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {match.scheduleTime > 0
+                            ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                            : "TBD"}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {perMatch.length === 0
+                            ? "Unassigned"
+                            : perMatch.map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`).join(" | ")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {practiceMatchOptions.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-6 text-center text-sm text-gray-500">
+                        No practice matches found for this event.
                       </td>
                     </tr>
                   )}
