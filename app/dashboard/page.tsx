@@ -215,7 +215,11 @@ function NoTeamDashboardContent() {
 
   async function handleCreateRequest(event: React.FormEvent) {
     event.preventDefault();
-    if (!user || !userData) return;
+    if (!user || !userData) {
+      setRequestError("Still loading your account. Try again in a moment.");
+      setRequestSuccess("");
+      return;
+    }
 
     setRequestError("");
     setRequestSuccess("");
@@ -327,11 +331,11 @@ function NoTeamDashboardContent() {
           {requestSuccess && <p className="text-sm text-green-700">{requestSuccess}</p>}
           <button
             type="submit"
-            disabled={submittingRequest}
+            disabled={submittingRequest || loading || !user || !userData}
             className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
             style={{ backgroundColor: "var(--primary-color)" }}
           >
-            {submittingRequest ? "Submitting..." : "Send Request"}
+            {submittingRequest ? "Sending..." : "Send Request"}
           </button>
         </form>
 
