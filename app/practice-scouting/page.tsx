@@ -357,18 +357,18 @@ function readScoreFromOfficialData(value: unknown): number | null {
 
 function getPracticeMatchScore(match: PracticeMatch): number | null {
   const data = match as unknown as Record<string, unknown>;
-  const scoreCandidates = [
+  const scoreCandidates: Array<number | null> = [
     readScoreFromOfficialData(data.officialData),
     Number(data.officialScore),
     Number(data.allianceScore),
     Number(data.actualScore),
   ];
   for (const candidate of scoreCandidates) {
-    if (Number.isFinite(candidate) && candidate > 0) return candidate;
+    if (candidate !== null && Number.isFinite(candidate) && candidate > 0) return candidate;
   }
 
   for (const candidate of scoreCandidates) {
-    if (Number.isFinite(candidate) && candidate === 0) return 0;
+    if (candidate !== null && Number.isFinite(candidate) && candidate === 0) return 0;
   }
 
   return null;
@@ -959,7 +959,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ year, eventCode }),
       });
-      if (!teamResponse.ok) return;
+      if (!teamResponse.ok) return "";
       const teamPayload = (await teamResponse.json()) as { teams?: Array<{ teamNumber?: number }> };
       const teams = Array.isArray(teamPayload.teams)
         ? teamPayload.teams
