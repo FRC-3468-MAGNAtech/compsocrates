@@ -19,6 +19,7 @@ function AdminPanelContent() {
     { label: "Lead Scout", value: "/lead-scout-dashboard" },
     { label: "Lead Strategist", value: "/lead-strategist-dashboard" },
     { label: "Team Coach", value: "/team-coach-dashboard" },
+    { label: "Judge Awards", value: "/judge-awards-dashboard" },
   ];
 
   async function savePreferredDashboard(nextValue: string) {

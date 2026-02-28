@@ -15,6 +15,7 @@ function getRoleDashboard(role: TeamRole): string {
   if (role === "lead-scout") return "/lead-scout-dashboard";
   if (role === "lead-strategist") return "/lead-strategist-dashboard";
   if (role === "team-coach") return "/team-coach-dashboard";
+  if (role === "judge-awards") return "/judge-awards-dashboard";
   return "/match-scout-dashboard";
 }
 
@@ -29,6 +30,7 @@ export function getDashboardRoute(user: DashboardUser | null | undefined): strin
     "/lead-scout-dashboard",
     "/lead-strategist-dashboard",
     "/team-coach-dashboard",
+    "/judge-awards-dashboard",
     "/coach-dashboard",
   ]);
   if (allowed.has(preferred)) return preferred;

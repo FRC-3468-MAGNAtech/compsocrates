@@ -45,6 +45,12 @@ type TeamRoleDashboardProps = {
   title: string;
   subtitle: string;
   roleDescription: string;
+  specialNotice?: {
+    title: string;
+    description: string;
+    actionLabel?: string;
+    actionHref?: string;
+  };
   showAssignmentsAction?: boolean;
   analyticsGuidance?: boolean;
   pitScoutFocus?: boolean;
@@ -111,6 +117,7 @@ function TeamRoleDashboardContent({
   title,
   subtitle,
   roleDescription,
+  specialNotice,
   showAssignmentsAction,
   analyticsGuidance,
   pitScoutFocus,
@@ -250,6 +257,24 @@ function TeamRoleDashboardContent({
             </div>
           ) : (
             <>
+              {specialNotice && (
+                <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                  <h2 className="text-xl font-semibold mb-2">{specialNotice.title}</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-gray-700">{specialNotice.description}</p>
+                    {specialNotice.actionLabel && specialNotice.actionHref && (
+                      <button
+                        onClick={() => router.push(specialNotice.actionHref || "/")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        {specialNotice.actionLabel}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {showAssignmentsAction && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                   <h2 className="text-xl font-semibold mb-2">Match Assignments</h2>

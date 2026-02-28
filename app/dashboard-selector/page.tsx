@@ -17,6 +17,7 @@ function DashboardSelectorContent() {
     { label: "Lead Scout", href: "/lead-scout-dashboard" },
     { label: "Lead Strategist", href: "/lead-strategist-dashboard" },
     { label: "Team Coach", href: "/coach-dashboard" },
+    { label: "Judge Awards", href: "/judge-awards-dashboard" },
   ];
 
   return (

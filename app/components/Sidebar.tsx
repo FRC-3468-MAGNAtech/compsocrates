@@ -10,7 +10,7 @@ import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { canAccessForm, FormAccessOverrides, getRoleBadge, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings, Megaphone
+  Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings, Megaphone, BookOpen
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -118,6 +118,7 @@ export default function Sidebar() {
           { href: "/event-selection", label: "Event Selection", icon: Calendar },
         ]
       : []),
+    { href: "/judge-book", label: "Judge Book", icon: BookOpen },
     { href: "/match-list", label: "Match List", icon: Calendar },
     ...(canManageAssignments ? [{ href: "/assignments", label: "Assignments", icon: Calendar }] : []),
     { href: "/people", label: "People", icon: UserCircle2 },

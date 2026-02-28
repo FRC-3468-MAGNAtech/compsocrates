@@ -6,6 +6,7 @@ export const TEAM_ROLES = [
   "lead-scout",
   "lead-strategist",
   "team-coach",
+  "judge-awards",
 ] as const;
 
 export type TeamRole = (typeof TEAM_ROLES)[number];
@@ -53,6 +54,7 @@ export function normalizeLegacyRole(role: string | null | undefined): TeamRole {
   if (safe === "lead_scout") return "lead-scout";
   if (safe === "lead_strategist") return "lead-strategist";
   if (safe === "pit_scout") return "pit-scout";
+  if (safe === "judge_awards" || safe === "judgeawards") return "judge-awards";
   return "match-scout";
 }
 
@@ -76,6 +78,7 @@ export function getRoleLabel(role: TeamRole): string {
   if (role === "pit-team") return "Pit Team";
   if (role === "drive-team") return "Drive Team";
   if (role === "lead-scout") return "Lead Scout";
+  if (role === "judge-awards") return "Judge Awards";
   if (role === "team-coach") return "Team Coach";
   return "Lead Strategist";
 }
@@ -109,6 +112,9 @@ export function getRoleBadge(roleInput: string | null | undefined, rolesInput?: 
   }
   if (primaryRole === "team-coach") {
     return { bg: "bg-amber-100", text: "text-amber-800", label: "Team Coach" };
+  }
+  if (primaryRole === "judge-awards") {
+    return { bg: "bg-orange-100", text: "text-orange-800", label: "Judge Awards" };
   }
   return { bg: "bg-emerald-100", text: "text-emerald-800", label: "Match Scout" };
 }
