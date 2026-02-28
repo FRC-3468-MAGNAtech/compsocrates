@@ -21,6 +21,7 @@ export type FormKey =
   | "match-scout-form"
   | "pit-scout-form"
   | "strategy-scout-form"
+  | "match-strategy-form"
   | "drive-scout-form"
   | "helper-form";
 
@@ -29,8 +30,9 @@ export type FormAccessOverrides = Partial<Record<FormKey, string[]>>;
 export const FORM_LABELS: Record<FormKey, string> = {
   "match-scout-form": "Match Scout Form",
   "pit-scout-form": "Pit Scout Form",
-  "strategy-scout-form": "Strategy Scout Form",
-  "drive-scout-form": "Drive Scout Form",
+  "strategy-scout-form": "Team Strategy Form",
+  "match-strategy-form": "Match Strategy Form",
+  "drive-scout-form": "Drive Reflection Form",
   "helper-form": "Helper Form",
 };
 
@@ -38,6 +40,7 @@ export const FORM_ROLE_REQUIREMENT: Record<FormKey, TeamRole | null> = {
   "match-scout-form": null,
   "pit-scout-form": "pit-scout",
   "strategy-scout-form": "lead-strategist",
+  "match-strategy-form": "lead-strategist",
   "drive-scout-form": "drive-team",
   "helper-form": "pit-team",
 };

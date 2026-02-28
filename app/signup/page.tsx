@@ -6,28 +6,24 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "@/app/firebase";
+import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
+import { db } from "@/app/firebase";
 
-async function waitForCurrentUid(timeoutMs = 5000): Promise<string | null> {
-  if (auth.currentUser?.uid) return auth.currentUser.uid;
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      unsubscribe();
-      resolve(auth.currentUser?.uid || null);
-    }, timeoutMs);
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      if (nextUser?.uid) {
-        clearTimeout(timeout);
-        unsubscribe();
-        resolve(nextUser.uid);
-      }
-    });
-  });
+async function teamCodeExists(teamCode: string): Promise<"exists" | "missing" | "unknown"> {
+  const normalizedCode = teamCode.trim().toUpperCase();
+  if (!normalizedCode) return "missing";
+  try {
+    const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, { cache: "no-store" });
+    if (!response.ok) return "unknown";
+    const payload = (await response.json()) as { exists?: boolean; verified?: boolean };
+    if (!payload.verified) return "unknown";
+    return payload.exists ? "exists" : "missing";
+  } catch {
+    return "unknown";
+  }
 }
 
 async function hasPendingJoinRequest(userId: string, teamId: string): Promise<boolean> {
@@ -113,12 +109,9 @@ async function createTeamJoinRequestWithFallback(input: {
         message.includes("permission") ||
         message.includes("insufficient") ||
         message.includes("missing or insufficient");
-      if (!isPermissionLike) {
-        throw error;
-      }
+      if (!isPermissionLike) throw error;
     }
   }
-
   throw lastError || new Error("Unable to create team join request.");
 }
 
@@ -129,16 +122,57 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<TeamRole>("match-scout");
   const [joinCode, setJoinCode] = useState("");
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function savePendingJoinDraft(teamId: string, requestedRole: TeamRole, emailValue: string, displayName: string) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(
+      "pending-join-request",
+      JSON.stringify({
+        teamId,
+        requestedRole,
+        userEmail: emailValue,
+        userName: displayName,
+        createdAt: Date.now(),
+      })
+    );
+  }
+
+  function toFriendlyAuthError(message: string) {
+    const lower = message.toLowerCase();
+    if (lower.includes("email-already-in-use")) return "That email is already in use. Try logging in instead.";
+    if (lower.includes("invalid-email")) return "That email address is invalid.";
+    if (lower.includes("weak-password")) return "Password is too weak. Use 8+ chars with a capital letter, number, and symbol.";
+    if (lower.includes("network-request-failed")) return "Network error. Check connection and try again.";
+    if (lower.includes("missing or insufficient permissions")) return "Permission check failed. Please continue; your join request will be sent after login.";
+    if (lower.includes("popup")) return "Google popup was blocked or closed. Enable popups and try again.";
+    return message || "Unable to create account right now.";
+  }
+
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    if (!displayName) {
+      setError("Please enter your first and last name.");
+      return;
+    }
+
+    const passwordStrong =
+      password.length >= 8 &&
+      /[A-Z]/.test(password) &&
+      /[0-9]/.test(password) &&
+      /[^A-Za-z0-9]/.test(password);
+    if (!passwordStrong) {
+      setError("Password must be 8+ chars and include a capital letter, number, and symbol.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords don't match");
@@ -155,45 +189,57 @@ export default function SignupPage() {
     try {
       if (isCreatingTeam) {
         // Create new team
-        await signUp(email, password, displayName, role, joinCode, true);
+        await signUp(email, password, displayName, role, joinCode.trim().toUpperCase(), true);
         alert("Account created! Please verify your email to continue.");
         router.push("/dashboard");
       } else {
-        const requestedTeamCode = joinCode.trim();
+        const requestedTeamCode = joinCode.trim().toUpperCase();
         if (!requestedTeamCode) {
           setError("Please enter a team join code.");
           setLoading(false);
           return;
         }
-
-        // Create user account (without team yet)
-        await signUp(email, password, displayName, role, "", false);
-        const resolvedUid = await waitForCurrentUid();
-        if (!resolvedUid) {
-          throw new Error("Could not verify account session. Please sign in and send the join request from Dashboard.");
+        const exists = await teamCodeExists(requestedTeamCode);
+        if (exists === "missing") {
+          setError(`Team code "${requestedTeamCode}" does not exist. Please check with your team admin.`);
+          setLoading(false);
+          return;
         }
-        const hasPending = await hasPendingJoinRequest(resolvedUid, requestedTeamCode);
-        if (hasPending) {
-          alert("You already have a pending request for this team.");
-          router.push("/dashboard");
+        if (exists === "unknown") {
+          setError("Unable to verify that team code right now. Please try again in a moment.");
+          setLoading(false);
           return;
         }
 
-        // Create join request
-        await createTeamJoinRequestWithFallback({
-          userId: resolvedUid,
-          userEmail: email,
-          userName: displayName,
-          requestedRole: role,
-          teamId: requestedTeamCode,
-        });
-
-        alert("Account created! Please verify your email and wait for team admin approval.");
-        router.push("/dashboard");
+        // Create user account (without team yet)
+        const newUid = await signUp(email, password, displayName, role, "", false);
+        const alreadyPending = await hasPendingJoinRequest(newUid, requestedTeamCode);
+        if (alreadyPending) {
+          alert("You already asked to join that team and your request is still pending.");
+          router.push(`/dashboard?requestSubmitted=1&team=${encodeURIComponent(requestedTeamCode)}`);
+          return;
+        }
+        try {
+          await createTeamJoinRequestWithFallback({
+            userId: newUid,
+            userEmail: email,
+            userName: displayName,
+            requestedRole: role,
+            teamId: requestedTeamCode,
+          });
+          alert("Account created! Join request sent. Please verify your email.");
+          router.push(`/dashboard?requestSubmitted=1&team=${encodeURIComponent(requestedTeamCode)}`);
+          return;
+        } catch {
+          savePendingJoinDraft(requestedTeamCode, role, email, displayName);
+          alert("Account created! Please verify your email. Your join request will be sent automatically after login.");
+          router.push(`/dashboard?autoJoin=1&team=${encodeURIComponent(requestedTeamCode)}&role=${encodeURIComponent(role)}`);
+        }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Signup error:", error);
-      setError(error.message || "An error occurred during signup");
+      const message = error instanceof Error ? error.message : "An error occurred during signup";
+      setError(toFriendlyAuthError(message));
     } finally {
       setLoading(false);
     }
@@ -218,12 +264,25 @@ export default function SignupPage() {
         <form onSubmit={handleSignup} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name
+              First Name
             </label>
             <input
               type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              className="w-full border rounded-lg p-3"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Last Name
+            </label>
+            <input
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
               className="w-full border rounded-lg p-3"
               required
             />
@@ -251,9 +310,10 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full border rounded-lg p-3"
-              minLength={6}
+              minLength={8}
               required
             />
+            <p className="text-xs text-gray-500 mt-1">Must be 8+ chars with a capital letter, number, and symbol.</p>
           </div>
 
           <div>
@@ -265,7 +325,7 @@ export default function SignupPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full border rounded-lg p-3"
-              minLength={6}
+              minLength={8}
               required
             />
           </div>
@@ -306,14 +366,15 @@ export default function SignupPage() {
             <input
               type="text"
               value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               className="w-full border rounded-lg p-3"
               placeholder={isCreatingTeam ? "e.g., team3468" : "Ask your team admin"}
+              autoCapitalize="characters"
               required
             />
             {!isCreatingTeam && (
               <p className="text-xs text-gray-500 mt-1">
-                You'll need admin approval to join the team
+                You&apos;ll need admin approval to join the team
               </p>
             )}
           </div>
@@ -340,6 +401,18 @@ export default function SignupPage() {
           <Link href="/login" className="font-semibold hover:underline" style={{ color: "var(--primary-color)" }}>
             Sign In
           </Link>
+        </p>
+
+        <p className="text-center text-xs text-gray-500 mt-4">
+          By creating an account, you agree to our{" "}
+          <Link href="/terms-of-service" className="underline hover:text-gray-700">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy-policy" className="underline hover:text-gray-700">
+            Privacy Policy
+          </Link>
+          .
         </p>
       </div>
     </div>

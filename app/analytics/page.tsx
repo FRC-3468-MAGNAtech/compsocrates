@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -16,9 +16,11 @@ import {
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
+import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 
 type Entry = {
   id: string;
+  matchKey?: string;
   matchNumber?: string;
   matchType?: "qualification" | "practice" | "finals";
   matchId?: string;
@@ -30,6 +32,11 @@ type Entry = {
   eventName?: string;
   game?: string;
   penaltyPoints?: number;
+  alliance?: string;
+  allianceColor?: string;
+  assignedAlliance?: string;
+  officialScore?: number;
+  actualScore?: number;
   teamNumber: string;
   scoutName: string;
   startingPosition: string;
@@ -61,6 +68,51 @@ type Entry = {
   incidents: string[];
   notes: string;
   timestamp: number;
+  estimatedScore?: number;
+  auto?: {
+    preloadScale?: number;
+    bpsScale?: number;
+    carryingScale?: number;
+    failedClimb?: number;
+    cycleTimes?: number[];
+    estimatedFuel?: number;
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
+    successfulClimb?: boolean;
+    wonAuto?: boolean;
+  };
+  teleop?: {
+    bpsScale?: number;
+    carryingScale?: number;
+    transitionCycles?: number[];
+    shift1Cycles?: number[];
+    shift2Cycles?: number[];
+    shift3Cycles?: number[];
+    shift4Cycles?: number[];
+    transitionOverride?: number;
+    transitionMissedFuel?: number;
+    shift1Override?: number;
+    shift1MissedFuel?: number;
+    shift2Override?: number;
+    shift2MissedFuel?: number;
+    shift3Override?: number;
+    shift3MissedFuel?: number;
+    shift4Override?: number;
+    shift4MissedFuel?: number;
+    humanPlayerFuel?: number;
+    shiftParityFromWonAuto?: boolean;
+    estimatedFuel?: number;
+  };
+  endgame?: {
+    cycleTimes?: number[];
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
+    estimatedFuel?: number;
+    failedClimb?: number;
+    status?: string;
+  };
 };
 
 const INCIDENT_LABELS: Record<string, string> = {
@@ -93,7 +145,20 @@ const PTS = {
   CLIMB_DEEP: 12,
 };
 
-function scoreEntry(e: Entry) {
+function scoreRebuiltEntry(e: Entry) {
+  const rebuiltFuel = getRebuiltFuelBreakdown(e);
+  const autoFuel = rebuiltFuel.autoFuel;
+  const teleFuel = rebuiltFuel.teleFuel;
+  const endgameFuel = rebuiltFuel.endgameFuel;
+  const autoClimb = e.auto?.successfulClimb ? 15 : 0;
+  const end = String(e.endgame?.status || "").toLowerCase();
+  const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+  return autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
+}
+
+function scoreEntry(e: Entry, game: AnalyticsGame) {
+  if (game === "REBUILT") return scoreRebuiltEntry(e);
+
   let s = 0;
   if (e.leftStartingZone) s += PTS.LEAVE;
   s += e.autoCoralL1 * PTS.AUTO_CORAL_L1;
@@ -117,23 +182,33 @@ function scoreEntry(e: Entry) {
   return s;
 }
 
-function matchPriority(type?: string) {
-  if (type === "practice") return 0;
-  if (type === "qualification") return 1;
-  if (type === "finals") return 2;
-  return 999;
-}
-
-function matchNumberValue(value?: string) {
-  if (!value) return 0;
-  return parseInt(String(value).replace(/\D/g, ""), 10) || 0;
-}
-
 function matchLabel(entry: Entry) {
+  function remapLegacyFinalLabel(rawLabel: string) {
+    const parsed = String(rawLabel || "").trim().toUpperCase().match(/^F(\d+)$/);
+    if (!parsed) return rawLabel;
+    const number = Number(parsed[1] || 0);
+    if (number >= 1 && number <= 13) return `SF${number}`;
+    if (number >= 14 && number <= 16) return `F${number - 13}`;
+    return rawLabel;
+  }
+
   const num = entry.matchNumber || "-";
+  const matchId = String(entry.matchId || "").trim();
+  const matchIdMatch = matchId.match(/^(qf|sf|f)(\d+)(?:m(\d+))?$/i);
+  if (matchIdMatch) {
+    const prefix = matchIdMatch[1].toUpperCase();
+    const setNumber = Number(matchIdMatch[2] || 0);
+    const matchNumber = Number(matchIdMatch[3] || 0);
+    if (prefix === "QF" || prefix === "SF") {
+      return `${prefix}${setNumber || "-"}M${matchNumber || "-"}`;
+    }
+    if (prefix === "F") {
+      return remapLegacyFinalLabel(`F${matchNumber || setNumber || "-"}`);
+    }
+  }
   if (entry.matchType === "practice") return `P${num}`;
   if (entry.matchType === "qualification") return `Q${num}`;
-  if (entry.matchType === "finals") return `F${num}`;
+  if (entry.matchType === "finals") return remapLegacyFinalLabel(`F${num}`);
   return num;
 }
 
@@ -141,42 +216,303 @@ function isPracticeScoutingEntry(entry: Entry) {
   return isPracticeScoutedEntry(entry);
 }
 
-function isEntryBlank(entry: Entry) {
-  const numbers = [
-    entry.autoCoralMissed,
-    entry.autoCoralL1,
-    entry.autoCoralL2,
-    entry.autoCoralL3,
-    entry.autoCoralL4,
-    entry.autoAlgaeProcessorMissed,
-    entry.autoAlgaeProcessorScored,
-    entry.autoAlgaeNetMissed,
-    entry.autoAlgaeNetScored,
-    entry.teleopCoralMissed,
-    entry.teleopCoralL1,
-    entry.teleopCoralL2,
-    entry.teleopCoralL3,
-    entry.teleopCoralL4,
-    entry.teleopProcessorMissed,
-    entry.teleopProcessorScored,
-    entry.teleopNetRobotMissed,
-    entry.teleopNetRobotScored,
-    entry.teleopNetHumanMissed,
-    entry.teleopNetHumanScored,
-    entry.failedClimb,
-  ];
-  const hasAnyNumbers = numbers.some((value) => Number(value || 0) > 0);
-  return (
-    !String(entry.teamNumber || "").trim() &&
-    !String(entry.scoutName || "").trim() &&
-    !String(entry.startingPosition || "").trim() &&
-    !String(entry.stageStatus || "").trim() &&
-    !String(entry.notes || "").trim() &&
-    (!entry.incidents || entry.incidents.length === 0) &&
-    !entry.leftStartingZone &&
-    !entry.teleopAlgaeRemoved &&
-    !hasAnyNumbers
-  );
+type MatchIdentity = {
+  compLevel: "qm" | "qf" | "sf" | "f";
+  setNumber: number | null;
+  matchNumber: number;
+};
+
+type TbaMatchRow = {
+  key?: string;
+  comp_level?: string;
+  set_number?: number;
+  match_number?: number;
+  alliances?: {
+    red?: { team_keys?: string[]; score?: number };
+    blue?: { team_keys?: string[]; score?: number };
+  };
+};
+
+const REBUILT_PRELOAD_RANGES = ["0", "1-2", "3-4", "5-6", "7-8"];
+const REBUILT_BPS_RANGES = ["0", "1-3", "4-6", "7-9", "10+"];
+const REBUILT_CARRY_RANGES = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
+const REBUILT_BPS_VALUES = [0, 2, 5, 8, 10];
+const REBUILT_CARRY_VALUES = [0, 12, 23, 32, 42, 53, 54];
+
+function rebuiltPreloadRange(scale?: number) {
+  const idx = Math.max(0, Math.min(4, Number(scale ?? 0)));
+  return REBUILT_PRELOAD_RANGES[idx];
+}
+
+function rebuiltBpsRange(scale?: number) {
+  const idx = Math.max(0, Math.min(4, Number(scale ?? 0)));
+  return REBUILT_BPS_RANGES[idx];
+}
+
+function rebuiltCarryRange(scale?: number) {
+  const idx = Math.max(0, Math.min(6, Number(scale ?? 0)));
+  return REBUILT_CARRY_RANGES[idx];
+}
+
+function rebuiltFuelFromCycles(cycles: number[] | undefined, bpsScale: number, carryScale: number) {
+  if (!Array.isArray(cycles) || cycles.length === 0) return 0;
+  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(4, Number(bpsScale || 0)))] || 0;
+  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(6, Number(carryScale || 0)))] || 0;
+  return cycles.reduce((sum, seconds) => {
+    const sec = Number(seconds || 0);
+    if (!Number.isFinite(sec) || sec <= 0) return sum;
+    return sum + Math.max(0, Math.round(Math.min(carryCap, bps * sec)));
+  }, 0);
+}
+
+function formatCyclesCell(cycles: number[] | undefined) {
+  return Array.isArray(cycles) && cycles.length > 0 ? cycles.map((v) => Number(v).toFixed(2)).join(", ") : "-";
+}
+
+function inferAllianceColor(entry: Entry): "red" | "blue" | null {
+  const raw = String(entry.allianceColor || entry.assignedAlliance || entry.alliance || "")
+    .trim()
+    .toLowerCase();
+  if (raw.includes("red")) return "red";
+  if (raw.includes("blue")) return "blue";
+  return null;
+}
+
+function parseMatchIdentity(entry: Pick<Entry, "matchId" | "matchType" | "matchNumber">): MatchIdentity | null {
+  const matchId = String(entry.matchId || "").trim().toLowerCase();
+  const rawType = String(entry.matchType || "").trim().toLowerCase();
+  const matchNumberFallback = Number(String(entry.matchNumber || "").replace(/\D/g, ""));
+
+  const qmLike = matchId.match(/^(?:q|qm|p)(\d+)$/);
+  if (qmLike) {
+    return { compLevel: "qm", setNumber: null, matchNumber: Number(qmLike[1]) };
+  }
+
+  const playoff = matchId.match(/^(qf|sf|f)(\d+)(?:m(\d+))?$/);
+  if (playoff) {
+    const compLevel = playoff[1] as "qf" | "sf" | "f";
+    const first = Number(playoff[2]);
+    const second = playoff[3] ? Number(playoff[3]) : null;
+    return {
+      compLevel,
+      setNumber: second === null ? null : first,
+      matchNumber: second === null ? first : second,
+    };
+  }
+
+  if (matchNumberFallback > 0) {
+    if (rawType === "qualification" || rawType === "practice") {
+      return { compLevel: "qm", setNumber: null, matchNumber: matchNumberFallback };
+    }
+    if (rawType === "finals") {
+      return { compLevel: "f", setNumber: null, matchNumber: matchNumberFallback };
+    }
+  }
+
+  return null;
+}
+
+function rebuiltAutoFuelFromCycles(cycles: number[] | undefined, preloadScale: number, bpsScale: number, carryScale: number) {
+  if (!Array.isArray(cycles) || cycles.length === 0) return 0;
+  const preloadCap = [0, 2, 4, 6, 8][Math.max(0, Math.min(4, Number(preloadScale || 0)))] || 0;
+  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(4, Number(bpsScale || 0)))] || 0;
+  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(6, Number(carryScale || 0)))] || 0;
+  return cycles.reduce((sum, seconds, index) => {
+    const sec = Number(seconds || 0);
+    if (!Number.isFinite(sec) || sec <= 0) return sum;
+    const capacity = index === 0 && preloadCap > 0 ? preloadCap : carryCap;
+    return sum + Math.max(0, Math.round(Math.min(capacity, bps * sec)));
+  }, 0);
+}
+
+function applyFuelOverride(
+  estimated: number,
+  overrideValue: number | undefined,
+  missedValue: number | undefined
+) {
+  const override = Number(overrideValue || 0);
+  if (override > 0) return override;
+  const missed = Math.max(0, Number(missedValue || 0));
+  return Math.max(0, estimated - missed);
+}
+
+function getRebuiltFuelBreakdown(entry: Entry) {
+  const autoPreloadScale = Number(entry.auto?.preloadScale || 0);
+  const autoBpsScale = Number(entry.auto?.bpsScale || 0);
+  const autoCarryScale = Number(entry.auto?.carryingScale || 0);
+  const teleBpsScale = Number(entry.teleop?.bpsScale || 0);
+  const teleCarryScale = Number(entry.teleop?.carryingScale || 0);
+
+  const autoEstimated = rebuiltAutoFuelFromCycles(entry.auto?.cycleTimes, autoPreloadScale, autoBpsScale, autoCarryScale);
+  const transitionEstimated = rebuiltFuelFromCycles(entry.teleop?.transitionCycles, teleBpsScale, teleCarryScale);
+  const shift1Estimated = rebuiltFuelFromCycles(entry.teleop?.shift1Cycles, teleBpsScale, teleCarryScale);
+  const shift2Estimated = rebuiltFuelFromCycles(entry.teleop?.shift2Cycles, teleBpsScale, teleCarryScale);
+  const shift3Estimated = rebuiltFuelFromCycles(entry.teleop?.shift3Cycles, teleBpsScale, teleCarryScale);
+  const shift4Estimated = rebuiltFuelFromCycles(entry.teleop?.shift4Cycles, teleBpsScale, teleCarryScale);
+  const endgameEstimated = rebuiltFuelFromCycles(entry.endgame?.cycleTimes, teleBpsScale, teleCarryScale);
+
+  const autoSectionFuel = applyFuelOverride(autoEstimated, entry.auto?.counterOverride, entry.auto?.counterOverrideMissedFuel);
+  const transitionFuel = applyFuelOverride(transitionEstimated, entry.teleop?.transitionOverride, entry.teleop?.transitionMissedFuel);
+  const shift1Fuel = applyFuelOverride(shift1Estimated, entry.teleop?.shift1Override, entry.teleop?.shift1MissedFuel);
+  const shift2Fuel = applyFuelOverride(shift2Estimated, entry.teleop?.shift2Override, entry.teleop?.shift2MissedFuel);
+  const shift3Fuel = applyFuelOverride(shift3Estimated, entry.teleop?.shift3Override, entry.teleop?.shift3MissedFuel);
+  const shift4Fuel = applyFuelOverride(shift4Estimated, entry.teleop?.shift4Override, entry.teleop?.shift4MissedFuel);
+  const endgameSectionFuel = applyFuelOverride(endgameEstimated, entry.endgame?.counterOverride, entry.endgame?.counterOverrideMissedFuel);
+  const autoSectionEstimated = Number(entry.auto?.counterOverride || 0) <= 0 && autoEstimated > 0;
+  const transitionEstimatedUsed = Number(entry.teleop?.transitionOverride || 0) <= 0 && transitionEstimated > 0;
+  const shift1EstimatedUsed = Number(entry.teleop?.shift1Override || 0) <= 0 && shift1Estimated > 0;
+  const shift2EstimatedUsed = Number(entry.teleop?.shift2Override || 0) <= 0 && shift2Estimated > 0;
+  const shift3EstimatedUsed = Number(entry.teleop?.shift3Override || 0) <= 0 && shift3Estimated > 0;
+  const shift4EstimatedUsed = Number(entry.teleop?.shift4Override || 0) <= 0 && shift4Estimated > 0;
+  const endgameSectionEstimated = Number(entry.endgame?.counterOverride || 0) <= 0 && endgameEstimated > 0;
+
+  const autoHumanFuel = Number(entry.auto?.humanPlayerFuel || 0);
+  const teleHumanFuel = Number(entry.teleop?.humanPlayerFuel || 0);
+  const endgameHumanFuel = Number(entry.endgame?.humanPlayerFuel || 0);
+  const wonAuto = Boolean(entry.auto?.wonAuto || entry.teleop?.shiftParityFromWonAuto);
+
+  const autoFuel = autoSectionFuel + autoHumanFuel;
+  const teleFuel = transitionFuel + (wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + teleHumanFuel;
+  const teleEstimatedUsed = wonAuto
+    ? transitionEstimatedUsed || shift2EstimatedUsed || shift4EstimatedUsed
+    : transitionEstimatedUsed || shift1EstimatedUsed || shift3EstimatedUsed;
+  const endgameFuel = endgameSectionFuel + endgameHumanFuel;
+
+  return {
+    autoFuel,
+    autoSectionEstimated,
+    autoHumanFuel,
+    transitionFuel,
+    transitionEstimatedUsed,
+    shift1Fuel,
+    shift1EstimatedUsed,
+    shift2Fuel,
+    shift2EstimatedUsed,
+    shift3Fuel,
+    shift3EstimatedUsed,
+    shift4Fuel,
+    shift4EstimatedUsed,
+    teleHumanFuel,
+    teleFuel,
+    teleEstimatedUsed,
+    endgameSectionFuel,
+    endgameSectionEstimated,
+    endgameHumanFuel,
+    endgameFuel,
+  };
+}
+
+function formatFuelValue(value: number, isEstimated: boolean) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  return isEstimated ? `~${value}` : String(value);
+}
+
+function normalizePracticeSessionMatchType(rawType: unknown, rawMatchKey: unknown): "practice" | "qualification" | "finals" {
+  const matchKey = String(rawMatchKey || "").trim().toLowerCase();
+  if (/_qm\d+/.test(matchKey)) return "qualification";
+  if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "finals";
+
+  const type = String(rawType || "").trim().toLowerCase();
+  if (type === "practice") return "practice";
+  if (type === "qualification") return "qualification";
+  if (type === "playoff" || type === "finals") return "finals";
+  return "qualification";
+}
+
+function matchIdentityEquals(a: MatchIdentity, b: MatchIdentity): boolean {
+  if (a.compLevel !== b.compLevel) return false;
+  if (a.matchNumber !== b.matchNumber) return false;
+  if (a.setNumber === null || b.setNumber === null) return true;
+  return a.setNumber === b.setNumber;
+}
+
+function parseMatchIdentityFromLabel(label: string): MatchIdentity | null {
+  const normalized = normalizeMatchLabel(label);
+  return parseMatchIdentity({
+    matchId: normalized.matchId,
+    matchType: normalized.matchType,
+    matchNumber: normalized.matchNumber,
+  });
+}
+
+function tbaMatchLabel(row: TbaMatchRow): string {
+  const level = String(row.comp_level || "").toLowerCase();
+  const matchNumber = Number(row.match_number || 0);
+  if (level === "f") return `F${matchNumber || "-"}`;
+  if (level === "qm") return `Q${matchNumber || "-"}`;
+  if (level === "sf") return `SF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
+  if (level === "qf") return `QF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
+  return `M${matchNumber || "-"}`;
+}
+
+function chooseLatestEntryPerTeam(entries: Entry[]): Entry[] {
+  const byTeam = new Map<string, Entry>();
+  entries.forEach((entry) => {
+    const team = String(entry.teamNumber || "").trim();
+    if (!team) return;
+    const prev = byTeam.get(team);
+    const prevTime = Number(prev?.submittedAt || prev?.timestamp || 0);
+    const currentTime = Number(entry.submittedAt || entry.timestamp || 0);
+    if (!prev || currentTime >= prevTime) {
+      byTeam.set(team, entry);
+    }
+  });
+  return Array.from(byTeam.values());
+}
+
+type AccuracyDetails = {
+  scoutedPoints: number;
+  actualPoints: number | null;
+  penaltyPoints: number;
+  allRobotsScouted: "yes" | "no" | "unknown";
+  eventKeyUsed: string;
+  matchLabelUsed: string;
+};
+
+type AccuracyRobotBreakdown = {
+  teamNumber: string;
+  total: number;
+  source: "computed" | "reefscape";
+  autoFuel: number;
+  teleFuel: number;
+  autoClimb: number;
+  endgameClimb: number;
+};
+
+function getRebuiltBreakdown(entry: Entry): AccuracyRobotBreakdown {
+  const teamNumber = String(entry.teamNumber || "-").trim() || "-";
+  const fuel = getRebuiltFuelBreakdown(entry);
+  const autoFuel = fuel.autoFuel;
+  const teleFuel = fuel.teleFuel + fuel.endgameFuel;
+  const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+  const end = String(entry.endgame?.status || "").toLowerCase();
+  const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+  return {
+    teamNumber,
+    total: autoFuel + teleFuel + autoClimb + endgameClimb,
+    source: "computed",
+    autoFuel,
+    teleFuel,
+    autoClimb,
+    endgameClimb,
+  };
+}
+
+function displayEntryText(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw === "0" || raw.toLowerCase() === "n/a" || raw.toLowerCase() === "unknown") return "-";
+  return raw;
+}
+
+function toDisplayTitle(value: unknown) {
+  const raw = displayEntryText(value);
+  if (raw === "-") return raw;
+  return raw
+    .replace(/[_-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function parseCsvLine(line: string): string[] {
@@ -252,8 +588,39 @@ function parseAccuracyPercent(value: string): number | undefined {
   return undefined;
 }
 
-type SortKey = keyof Entry | "score";
-type SortDir = "asc" | "desc";
+type SortKey =
+  | keyof Entry
+  | "score"
+  | "matchLabel"
+  | "accuracy"
+  | "scriptStatus"
+  | "autoPreloadScale"
+  | "autoBpsScale"
+  | "autoCarryScale"
+  | "autoFuel"
+  | "autoHumanFuel"
+  | "autoClimb"
+  | "autoCycles"
+  | "teleBpsScale"
+  | "teleCarryScale"
+  | "transitionFuel"
+  | "shift1Fuel"
+  | "shift2Fuel"
+  | "shift3Fuel"
+  | "shift4Fuel"
+  | "teleHumanFuel"
+  | "teleFuel"
+  | "transitionCycles"
+  | "shift1Cycles"
+  | "shift2Cycles"
+  | "shift3Cycles"
+  | "shift4Cycles"
+  | "endPlace"
+  | "endgameFuel"
+  | "endgameHumanFuel"
+  | "endgameClimb"
+  | "endgameCycles"
+  | "totalUsed";
 
 function AnalyticsPageContent() {
   const { userData } = useAuth();
@@ -262,10 +629,10 @@ function AnalyticsPageContent() {
   const isTeamMember = Boolean(userData?.teamId);
   const canImportCsv = isCoach || isTeamAdmin;
   const canExportCsv = isTeamMember;
-  const canCleanBlankRows = isCoach || isTeamAdmin;
+  const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canDeleteEntries = isCoach || isTeamAdmin;
   const [rawData, setRawData] = useState<Entry[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>("matchNumber");
+  const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
@@ -281,13 +648,23 @@ function AnalyticsPageContent() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importMatchMode, setImportMatchMode] = useState<"official" | "practice-scouted">("official");
   const [importing, setImporting] = useState(false);
-  const [cleaningBlankRows, setCleaningBlankRows] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
     return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
   });
   const [importEvent, setImportEvent] = useState("app-testing");
+  const [selectedAccuracyEntry, setSelectedAccuracyEntry] = useState<Entry | null>(null);
+  const [accuracyModalLoading, setAccuracyModalLoading] = useState(false);
+  const [accuracyDetails, setAccuracyDetails] = useState<AccuracyDetails>({
+    scoutedPoints: 0,
+    actualPoints: null,
+    penaltyPoints: 0,
+    allRobotsScouted: "unknown",
+    eventKeyUsed: "",
+    matchLabelUsed: "",
+  });
+  const [accuracyRobotBreakdown, setAccuracyRobotBreakdown] = useState<AccuracyRobotBreakdown[]>([]);
 
   const eventOptions = useMemo(
     () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(rawData, selectedGame)],
@@ -320,14 +697,67 @@ function AnalyticsPageContent() {
   async function loadData() {
     const snapshot = await getDocs(collection(db, "scouting"));
     const entries = snapshot.docs.map((entryDoc) => ({ id: entryDoc.id, ...entryDoc.data() })) as Entry[];
-    setRawData(entries);
+    const practiceSessionIds = Array.from(
+      new Set(
+        entries
+          .map((entry) => String(entry.practiceSessionId || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    const sessionMetaById = new Map<string, { matchType: "practice" | "qualification" | "finals"; matchNumber?: number; matchKey?: string }>();
+    await Promise.all(
+      practiceSessionIds.map(async (sessionId) => {
+        try {
+          const sessionSnap = await getDoc(doc(db, "practiceSessions", sessionId));
+          if (!sessionSnap.exists()) return;
+          const session = sessionSnap.data() as Record<string, unknown>;
+          sessionMetaById.set(sessionId, {
+            matchType: normalizePracticeSessionMatchType(session.matchType, session.matchKey),
+            matchNumber: typeof session.matchNumber === "number" ? session.matchNumber : undefined,
+            matchKey: String(session.matchKey || "").trim() || undefined,
+          });
+        } catch {
+          // Best-effort enrichment only.
+        }
+      })
+    );
+
+    const enriched = entries.map((entry) => {
+      const sessionId = String(entry.practiceSessionId || "").trim();
+      const sessionMeta = sessionMetaById.get(sessionId);
+      if (!sessionMeta) return entry;
+
+      const fallbackNumber = Number(entry.matchNumber || sessionMeta.matchNumber || 0) || sessionMeta.matchNumber || 0;
+      const prefix = sessionMeta.matchType === "practice" ? "p" : sessionMeta.matchType === "finals" ? "f" : "q";
+      const next: Entry = { ...entry };
+
+      if (
+        sessionMeta.matchType !== "qualification" &&
+        (!entry.matchType || String(entry.matchType).toLowerCase() === "qualification")
+      ) {
+        next.matchType = sessionMeta.matchType;
+      }
+      if (fallbackNumber > 0 && (!entry.matchNumber || String(entry.matchNumber).trim() === "")) {
+        next.matchNumber = String(fallbackNumber);
+      }
+      const existingMatchId = String(entry.matchId || "").trim();
+      if (fallbackNumber > 0 && (!existingMatchId || /^q\d+$/i.test(existingMatchId))) {
+        next.matchId = `${prefix}${fallbackNumber}`;
+      }
+      if (!String(entry.matchKey || "").trim() && sessionMeta.matchKey) {
+        next.matchKey = sessionMeta.matchKey;
+      }
+
+      return next;
+    });
+
+    setRawData(enriched);
   }
 
   useEffect(() => {
-    getDocs(collection(db, "scouting")).then((snapshot) => {
-      const entries = snapshot.docs.map((entryDoc) => ({ id: entryDoc.id, ...entryDoc.data() })) as Entry[];
-      setRawData(entries);
-    });
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -339,28 +769,64 @@ function AnalyticsPageContent() {
   }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const data = useMemo(() => {
-    const withScore = filtered.map((entry) => ({ ...entry, score: scoreEntry(entry) }));
-    return withScore.sort((a, b) => {
-      if (sortKey === "matchNumber") {
-        const eventDiff = String(a.eventName || a.eventKey || "").localeCompare(String(b.eventName || b.eventKey || ""));
-        if (eventDiff !== 0) return sortDir === "asc" ? eventDiff : -eventDiff;
-        const typeDiff = matchPriority(a.matchType) - matchPriority(b.matchType);
-        if (typeDiff !== 0) return sortDir === "asc" ? typeDiff : -typeDiff;
-        const numDiff = matchNumberValue(a.matchNumber) - matchNumberValue(b.matchNumber);
-        return sortDir === "asc" ? numDiff : -numDiff;
-      }
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      if (typeof av === "number" && typeof bv === "number") {
-        return sortDir === "asc" ? av - bv : bv - av;
-      }
-      const as = String(av ?? "").toLowerCase();
-      const bs = String(bv ?? "").toLowerCase();
-      if (as < bs) return sortDir === "asc" ? -1 : 1;
-      if (as > bs) return sortDir === "asc" ? 1 : -1;
-      return 0;
+    const withScore = filtered.map((entry) => {
+      const fuel = getRebuiltFuelBreakdown(entry);
+      const autoFuel = fuel.autoFuel;
+      const teleFuel = fuel.teleFuel;
+      const endgameFuel = fuel.endgameFuel;
+      const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+      const end = String(entry.endgame?.status || "").toLowerCase();
+      const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+      const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
+      const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
+        ? Number((entry as Entry & { accuracy?: number }).accuracy)
+        : null;
+
+      return {
+        ...entry,
+        score: scoreEntry(entry, selectedGame),
+        matchLabel: matchLabel(entry),
+        accuracy: accuracyValue ?? "",
+        scriptStatus: accuracyValue === null ? "" : "complete",
+        autoPreloadScale: entry.auto?.preloadScale ?? 0,
+        autoBpsScale: entry.auto?.bpsScale ?? 0,
+        autoCarryScale: entry.auto?.carryingScale ?? 0,
+        autoFuel,
+        autoHumanFuel: fuel.autoHumanFuel,
+        autoClimb,
+        autoCycles: entry.auto?.cycleTimes || [],
+        teleBpsScale: Number(entry.teleop?.bpsScale || 0),
+        teleCarryScale: Number(entry.teleop?.carryingScale || 0),
+        transitionFuel: fuel.transitionFuel,
+        shift1Fuel: fuel.shift1Fuel,
+        shift2Fuel: fuel.shift2Fuel,
+        shift3Fuel: fuel.shift3Fuel,
+        shift4Fuel: fuel.shift4Fuel,
+        teleHumanFuel: fuel.teleHumanFuel,
+        teleFuel,
+        endgameFuel,
+        endgameHumanFuel: fuel.endgameHumanFuel,
+        transitionCycles: entry.teleop?.transitionCycles || [],
+        shift1Cycles: entry.teleop?.shift1Cycles || [],
+        shift2Cycles: entry.teleop?.shift2Cycles || [],
+        shift3Cycles: entry.teleop?.shift3Cycles || [],
+        shift4Cycles: entry.teleop?.shift4Cycles || [],
+        endPlace: entry.endgame?.status || entry.stageStatus || "",
+        endgameClimb,
+        endgameCycles: entry.endgame?.cycleTimes || [],
+        totalUsed,
+      };
     });
-  }, [filtered, sortDir, sortKey]);
+
+    return withScore.sort((a, b) => {
+      if (sortKey === "matchLabel") {
+        const labelDiff = compareMatchLabels(String(a.matchLabel || ""), String(b.matchLabel || ""), sortDir);
+        if (labelDiff !== 0) return labelDiff;
+        return compareSortValues(String(a.eventName || a.eventKey || ""), String(b.eventName || b.eventKey || ""), sortDir);
+      }
+      return compareSortValues(a[sortKey], b[sortKey], sortDir);
+    });
+  }, [filtered, sortDir, sortKey, selectedGame]);
 
   function handleSort(key: SortKey) {
     setSortKey((prevKey) => {
@@ -403,31 +869,282 @@ function AnalyticsPageContent() {
     await loadData();
   }
 
-  async function handleCleanBlankEntries() {
-    if (!canCleanBlankRows) {
-      alert("Only coaches or team admins can clean blank rows.");
-      return;
-    }
-    const blankRows = rawData.filter((entry) => isEntryBlank(entry));
-    if (blankRows.length === 0) {
-      alert("No blank rows found.");
-      return;
-    }
-    const ok = window.confirm(`Delete ${blankRows.length} blank rows?`);
-    if (!ok) return;
-    setCleaningBlankRows(true);
+  async function loadAccuracyDetails(entry: Entry) {
+    setAccuracyModalLoading(true);
+    const clickedLabel = matchLabel(entry);
+    setAccuracyRobotBreakdown([]);
+    setAccuracyDetails({
+      scoutedPoints: 0,
+      actualPoints: null,
+      penaltyPoints: Number(entry.penaltyPoints || 0),
+      allRobotsScouted: "unknown",
+      eventKeyUsed: "",
+      matchLabelUsed: clickedLabel,
+    });
     try {
-      await Promise.all(blankRows.map((entry) => deleteDoc(doc(db, "scouting", entry.id))));
-      await loadData();
-      alert(`Deleted ${blankRows.length} blank rows.`);
-    } finally {
-      setCleaningBlankRows(false);
-    }
-  }
+      const selectedTeam = String(entry.teamNumber || "").trim();
+      const entryGame = String(entry.game || "REEFSCAPE").toUpperCase() as AnalyticsGame;
+      const sameGameRows = rawData.filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === entryGame);
+      const sameLabelRows = sameGameRows.filter((row) => matchLabel(row) === clickedLabel);
+      const sameScoutRows = sameLabelRows.filter(
+        (row) => String(row.scoutName || "").trim() === String(entry.scoutName || "").trim()
+      );
 
-  function sortLabel(key: SortKey, label: string) {
-    if (sortKey !== key) return label;
-    return sortDir === "asc" ? `${label} ▲` : `${label} ▼`;
+      const eventKeyFromEntry = String(entry.eventKey || "").trim();
+      const eventKeyFromSelector = selectedEvent !== "all" ? selectedEvent : "";
+      const eventKeyPool = sameLabelRows
+        .filter((row) => !selectedTeam || String(row.teamNumber || "").trim() === selectedTeam)
+        .map((row) => String(row.eventKey || "").trim())
+        .filter(Boolean);
+      const eventKeyFrequency = eventKeyPool.reduce<Record<string, number>>((acc, key) => {
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const mostCommonEventKey =
+        Object.entries(eventKeyFrequency).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+        sameLabelRows.map((row) => String(row.eventKey || "").trim()).filter(Boolean)[0] ||
+        "";
+      // If user filtered by an event, trust that selection before row-level event keys.
+      const eventKey = eventKeyFromSelector || eventKeyFromEntry || mostCommonEventKey;
+
+      const poolByEvent = eventKey
+        ? sameGameRows.filter((row) => String(row.eventKey || "").trim() === eventKey)
+        : sameLabelRows;
+      const identity =
+        parseMatchIdentity(entry) ||
+        parseMatchIdentityFromLabel(clickedLabel) ||
+        sameLabelRows.map((row) => parseMatchIdentity(row)).find((value): value is MatchIdentity => Boolean(value)) ||
+        null;
+      const matchRows = poolByEvent.filter((row) => {
+        if (matchLabel(row) === clickedLabel) return true;
+        if (!identity) return false;
+        const rowIdentity = parseMatchIdentity(row) || parseMatchIdentityFromLabel(matchLabel(row));
+        return Boolean(rowIdentity && matchIdentityEquals(identity, rowIdentity));
+      });
+      const latestReferenceRows = chooseLatestEntryPerTeam(sameScoutRows.length > 0 ? sameScoutRows : matchRows);
+      const scoutedTeamsReference = new Set(
+        latestReferenceRows.map((row) => String(row.teamNumber || "").trim()).filter(Boolean)
+      );
+
+      let allianceColor = inferAllianceColor(entry);
+      let officialTeamsForAlliance: string[] = [];
+      let matchLabelUsed = clickedLabel;
+      let actualPoints: number | null =
+        typeof entry.officialScore === "number"
+          ? Number(entry.officialScore)
+          : typeof entry.actualScore === "number"
+          ? Number(entry.actualScore)
+          : null;
+      const practiceEntry = isPracticeScoutingEntry(entry);
+      const practiceSessionId = String(entry.practiceSessionId || "").trim();
+
+      let scopedMatchRows = matchRows;
+      if (practiceEntry && practiceSessionId) {
+        scopedMatchRows = sameGameRows.filter(
+          (row) => String(row.practiceSessionId || "").trim() === practiceSessionId
+        );
+        if (scopedMatchRows.length > 0) {
+          const latestSessionRows = chooseLatestEntryPerTeam(scopedMatchRows);
+          let sessionScoutedPoints = latestSessionRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+          setAccuracyRobotBreakdown(
+            latestSessionRows.map((row) =>
+              entryGame === "REBUILT"
+                ? getRebuiltBreakdown(row)
+                : {
+                    teamNumber: String(row.teamNumber || "-"),
+                    total: scoreEntry(row, entryGame),
+                    source: "reefscape",
+                    autoFuel: 0,
+                    teleFuel: 0,
+                    autoClimb: 0,
+                    endgameClimb: 0,
+                  }
+            )
+          );
+
+          try {
+            const sessionSnap = await getDoc(doc(db, "practiceSessions", practiceSessionId));
+            if (sessionSnap.exists()) {
+              const sessionData = sessionSnap.data() as { officialScore?: number; eventKey?: string; scoutedScore?: number };
+              if (typeof sessionData.officialScore === "number") {
+                actualPoints = Number(sessionData.officialScore);
+              }
+              if (typeof sessionData.scoutedScore === "number") {
+                sessionScoutedPoints = Number(sessionData.scoutedScore);
+              }
+            }
+          } catch (sessionError) {
+            console.warn("Could not load practice session while opening accuracy details:", sessionError);
+          }
+
+          setAccuracyDetails({
+            scoutedPoints: sessionScoutedPoints,
+            actualPoints,
+            penaltyPoints:
+              Number(
+                latestSessionRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
+                  entry.penaltyPoints ??
+                  0
+              ) || 0,
+            allRobotsScouted: latestSessionRows.length >= 3 ? "yes" : "no",
+            eventKeyUsed: eventKey,
+            matchLabelUsed,
+          });
+          return;
+        }
+      }
+
+      if (!userData?.teamId) {
+        const allianceRows =
+          allianceColor === null
+            ? latestReferenceRows
+            : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
+        const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
+        const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+        setAccuracyRobotBreakdown(
+          latestAllianceRows.map((row) =>
+            entryGame === "REBUILT"
+              ? getRebuiltBreakdown(row)
+              : {
+                  teamNumber: String(row.teamNumber || "-"),
+                  total: scoreEntry(row, entryGame),
+                  source: "reefscape",
+                  autoFuel: 0,
+                  teleFuel: 0,
+                  autoClimb: 0,
+                  endgameClimb: 0,
+                }
+          )
+        );
+        setAccuracyDetails({
+          scoutedPoints,
+          actualPoints,
+          penaltyPoints: Number(entry.penaltyPoints || 0),
+          allRobotsScouted: "unknown",
+          eventKeyUsed: eventKey,
+          matchLabelUsed: matchLabelUsed,
+        });
+        return;
+      }
+
+      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+      const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
+      const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+      if (!practiceEntry && eventKey && identity && (encryptedKey || plainKey)) {
+        const response = await fetch("/api/tba/matches", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventKey, encryptedKey, plainKey }),
+        });
+        if (response.ok) {
+          const payload = await response.json();
+          const matches = (Array.isArray(payload.matches) ? payload.matches : []) as TbaMatchRow[];
+          const candidates = matches.filter((row) => {
+            const rowLevel = String(row.comp_level || "").toLowerCase();
+            return ["qm", "qf", "sf", "f"].includes(rowLevel);
+          });
+          const scoredCandidates = candidates
+            .map((row) => {
+              const redTeams = (row.alliances?.red?.team_keys || [])
+                .map((key) => String(key).replace("frc", "").trim())
+                .filter(Boolean);
+              const blueTeams = (row.alliances?.blue?.team_keys || [])
+                .map((key) => String(key).replace("frc", "").trim())
+                .filter(Boolean);
+              const redOverlap = redTeams.filter((team) => scoutedTeamsReference.has(team)).length;
+              const blueOverlap = blueTeams.filter((team) => scoutedTeamsReference.has(team)).length;
+              const bestOverlap = Math.max(redOverlap, blueOverlap);
+              const overlapAlliance: "red" | "blue" = redOverlap >= blueOverlap ? "red" : "blue";
+              const rowIdentity: MatchIdentity = {
+                compLevel: String(row.comp_level || "").toLowerCase() as MatchIdentity["compLevel"],
+                setNumber: Number(row.set_number || 0) > 0 ? Number(row.set_number || 0) : null,
+                matchNumber: Number(row.match_number || 0),
+              };
+              const identityBoost = identity && matchIdentityEquals(identity, rowIdentity) ? 1 : 0;
+              return { row, rowIdentity, redTeams, blueTeams, redOverlap, blueOverlap, bestOverlap, overlapAlliance, identityBoost };
+            })
+            .sort((a, b) => {
+              if (b.bestOverlap !== a.bestOverlap) return b.bestOverlap - a.bestOverlap;
+              if (b.identityBoost !== a.identityBoost) return b.identityBoost - a.identityBoost;
+              return 0;
+            });
+          const exactIdentityCandidates =
+            identity
+              ? scoredCandidates.filter((candidate) => matchIdentityEquals(identity, candidate.rowIdentity))
+              : [];
+          const best = (exactIdentityCandidates.length > 0 ? exactIdentityCandidates : scoredCandidates)[0];
+          if (best && best.bestOverlap > 0) {
+            const alliances = best.row.alliances || {};
+            if (!allianceColor) {
+              if (selectedTeam && best.redTeams.includes(selectedTeam)) allianceColor = "red";
+              else if (selectedTeam && best.blueTeams.includes(selectedTeam)) allianceColor = "blue";
+              else allianceColor = best.overlapAlliance;
+            }
+            if (allianceColor === "red") {
+              officialTeamsForAlliance = best.redTeams;
+              actualPoints = typeof alliances.red?.score === "number" ? alliances.red.score : actualPoints;
+            } else if (allianceColor === "blue") {
+              officialTeamsForAlliance = best.blueTeams;
+              actualPoints = typeof alliances.blue?.score === "number" ? alliances.blue.score : actualPoints;
+            }
+            matchLabelUsed = tbaMatchLabel(best.row);
+          }
+        }
+      }
+
+      const allianceRows =
+          allianceColor === null
+            ? latestReferenceRows
+            : officialTeamsForAlliance.length > 0
+          ? scopedMatchRows.filter((row) => officialTeamsForAlliance.includes(String(row.teamNumber || "").trim()))
+          : scopedMatchRows.filter((row) => inferAllianceColor(row) === allianceColor);
+      let latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
+      if (officialTeamsForAlliance.length > 0 && latestAllianceRows.length < 2 && latestReferenceRows.length >= 2) {
+        // If official-team matching collapses rows (bad/missing team keys), keep scouted alliance rows visible.
+        latestAllianceRows = latestReferenceRows;
+      }
+      const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+      setAccuracyRobotBreakdown(
+        latestAllianceRows.map((row) =>
+          entryGame === "REBUILT"
+            ? getRebuiltBreakdown(row)
+            : {
+                teamNumber: String(row.teamNumber || "-"),
+                total: scoreEntry(row, entryGame),
+                source: "reefscape",
+                autoFuel: 0,
+                teleFuel: 0,
+                autoClimb: 0,
+                endgameClimb: 0,
+              }
+        )
+      );
+      const scoutedTeams = new Set(latestAllianceRows.map((row) => String(row.teamNumber || "").trim()).filter(Boolean));
+      const allRobotsScouted =
+        officialTeamsForAlliance.length > 0
+          ? officialTeamsForAlliance.every((team) => scoutedTeams.has(team))
+            ? "yes"
+            : "no"
+          : "unknown";
+      setAccuracyDetails({
+        scoutedPoints,
+        actualPoints,
+        penaltyPoints:
+          Number(
+            latestAllianceRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
+              entry.penaltyPoints ??
+              0
+          ) || 0,
+        allRobotsScouted,
+        eventKeyUsed: eventKey,
+        matchLabelUsed: matchLabelUsed,
+      });
+    } catch (error) {
+      console.error("Failed to load alliance robot details:", error);
+      setAccuracyDetails((prev) => ({ ...prev, allRobotsScouted: "unknown", matchLabelUsed: clickedLabel }));
+    } finally {
+      setAccuracyModalLoading(false);
+    }
   }
 
   function exportToCSV() {
@@ -619,6 +1336,7 @@ function AnalyticsPageContent() {
           const teamRaw = (values[idxTeam] || "").trim();
           const scoutRaw = (values[idxScout] || "").trim();
           const startRaw = (values[idxStartingPos] || "").trim();
+          const parsedTeamNumber = Number(teamRaw.replace(/\D/g, ""));
           const rowSignals = [matchRaw, teamRaw, scoutRaw, startRaw].map(normalizeHeader);
           const looksLikeHeaderRow =
             rowSignals.includes("match") ||
@@ -663,7 +1381,7 @@ function AnalyticsPageContent() {
             Boolean((values[idxIncidents] || "").trim()) ||
             Boolean((values[idxEndPlace] || "").trim());
           const hasMatchSignal = /\d/.test(matchRaw) || /(practice|final|upper|lower|ub|lb|qual|qm|round)/i.test(matchRaw);
-          const hasCoreIds = hasMatchSignal && /\d/.test(teamRaw);
+          const hasCoreIds = hasMatchSignal && Number.isFinite(parsedTeamNumber) && parsedTeamNumber > 0;
           if (looksLikeHeaderRow || !hasCoreIds || (!hasNumericData && !hasTextData)) {
             skipped += 1;
             continue;
@@ -812,30 +1530,26 @@ function AnalyticsPageContent() {
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
     >
+      <div className="mb-4">
+        <h1 className="text-3xl font-bold mb-1 theme-text">Match Analytics</h1>
+        <p className="text-sm text-gray-600">Match scouting breakdown with sticky match/team columns.</p>
+      </div>
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
         <button
-          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white disabled:opacity-60"
+          className="px-3 py-1.5 text-sm rounded bg-gray-400 text-white cursor-not-allowed disabled:opacity-100"
           onClick={exportToCSV}
-          disabled={!canExportCsv}
-          title={canExportCsv ? undefined : "Only coaches or team admins can export CSV files."}
+          disabled
+          title={csvDisabledReason}
         >
           Export CSV
         </button>
         <label
-          className={`px-3 py-1.5 text-sm rounded text-white ${canImportCsv ? "bg-blue-600 cursor-pointer" : "bg-gray-400 cursor-not-allowed"}`}
-          title={canImportCsv ? undefined : "Only coaches or team admins can import CSV files."}
+          className="px-3 py-1.5 text-sm rounded text-white bg-gray-400 cursor-not-allowed"
+          title={csvDisabledReason}
         >
           Import CSV
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled={!canImportCsv} />
+          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
         </label>
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-red-600 text-white disabled:opacity-60"
-          onClick={() => void handleCleanBlankEntries()}
-          disabled={cleaningBlankRows || !canCleanBlankRows}
-          title={canCleanBlankRows ? undefined : "Only coaches or team admins can clean blank rows."}
-        >
-          {cleaningBlankRows ? "Cleaning..." : "Clean Blank Rows"}
-        </button>
       </div>
 
       {showImportDialog && (
@@ -911,18 +1625,247 @@ function AnalyticsPageContent() {
       )}
 
       <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
+        {selectedGame === "REBUILT" ? (
+          <table>
+            <thead className="sticky-header">
+              <tr>
+                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
+                <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
+                <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
+                <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
+                <th className="bg-pink-300 text-center" colSpan={5}>General</th>
+                <th className="bg-gray-300 text-center" colSpan={1} />
+              </tr>
+              <tr>
+                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
+                <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
+                <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
+                <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
+                <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
+                <th className="bg-green-200 text-center" colSpan={1}>Cycles</th>
+                <th className="bg-blue-200 text-center" colSpan={9}>Fuel</th>
+                <th className="bg-blue-200 text-center" colSpan={5}>Cycles</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Fuel</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Human Player</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Cycles</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Incidents</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Score</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
+                <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>
+                <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
+              </tr>
+              <tr>
+                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                  {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
+                </th>
+                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
+                  {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                  {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+                  {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoPreloadScale")}>
+                  {sortLabel(sortKey, sortDir, "autoPreloadScale", "Preload")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoBpsScale")}>
+                  {sortLabel(sortKey, sortDir, "autoBpsScale", "BPS")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoCarryScale")}>
+                  {sortLabel(sortKey, sortDir, "autoCarryScale", "Carry")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoFuel")}>
+                  {sortLabel(sortKey, sortDir, "autoFuel", "Fuel")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoHumanFuel")}>
+                  {sortLabel(sortKey, sortDir, "autoHumanFuel", "Human Player")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoClimb")}>
+                  {sortLabel(sortKey, sortDir, "autoClimb", "Climb Pts")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("autoCycles")}>
+                  {sortLabel(sortKey, sortDir, "autoCycles", "Cycles")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleBpsScale")}>
+                  {sortLabel(sortKey, sortDir, "teleBpsScale", "BPS")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleCarryScale")}>
+                  {sortLabel(sortKey, sortDir, "teleCarryScale", "Carry")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("transitionFuel")}>
+                  {sortLabel(sortKey, sortDir, "transitionFuel", "Transition")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift1Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift1Fuel", "Shift 1")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift2Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift2Fuel", "Shift 2")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift3Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift3Fuel", "Shift 3")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift4Fuel")}>
+                  {sortLabel(sortKey, sortDir, "shift4Fuel", "Shift 4")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleHumanFuel")}>
+                  {sortLabel(sortKey, sortDir, "teleHumanFuel", "Human Player")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("teleFuel")}>
+                  {sortLabel(sortKey, sortDir, "teleFuel", "Fuel Used")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("transitionCycles")}>
+                  {sortLabel(sortKey, sortDir, "transitionCycles", "Transition")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift1Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift1Cycles", "Shift 1")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift2Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift2Cycles", "Shift 2")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift3Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift3Cycles", "Shift 3")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("shift4Cycles")}>
+                  {sortLabel(sortKey, sortDir, "shift4Cycles", "Shift 4")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameFuel")}>
+                  {sortLabel(sortKey, sortDir, "endgameFuel", "Fuel")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameHumanFuel")}>
+                  {sortLabel(sortKey, sortDir, "endgameHumanFuel", "Human Player")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endPlace")}>
+                  {sortLabel(sortKey, sortDir, "endPlace", "End Place")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameClimb")}>
+                  {sortLabel(sortKey, sortDir, "endgameClimb", "Climb Pts")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("endgameCycles")}>
+                  {sortLabel(sortKey, sortDir, "endgameCycles", "Cycles")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("incidents")}>
+                  {sortLabel(sortKey, sortDir, "incidents", "Incidents")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("totalUsed")}>
+                  {sortLabel(sortKey, sortDir, "totalUsed", "Total")}
+                </th>
+                <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
+                  {sortLabel(sortKey, sortDir, "notes", "Comments")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
+                  {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
+                  {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                  {sortLabel(sortKey, sortDir, "id", "Actions")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((entry) => {
+                const fuel = getRebuiltFuelBreakdown(entry);
+                const autoFuel = fuel.autoFuel;
+                const teleFuel = fuel.teleFuel;
+                const endgameFuel = fuel.endgameFuel;
+                const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+                const end = String(entry.endgame?.status || "").toLowerCase();
+                const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
+                const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
+                return (
+                <tr key={entry.id}>
+                  <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
+                  <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
+                  <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                  <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
+                  <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
+                  <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
+                  <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
+                  <td className="text-center">{formatFuelValue(autoFuel, fuel.autoSectionEstimated)}</td>
+                  <td className="text-center">{fuel.autoHumanFuel}</td>
+                  <td className="text-center">{autoClimb}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.auto?.cycleTimes)}</td>
+                  <td className="text-center">{rebuiltBpsRange(entry.teleop?.bpsScale)}</td>
+                  <td className="text-center">{rebuiltCarryRange(entry.teleop?.carryingScale)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.transitionFuel, fuel.transitionEstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift1Fuel, fuel.shift1EstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift2Fuel, fuel.shift2EstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift3Fuel, fuel.shift3EstimatedUsed)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.shift4Fuel, fuel.shift4EstimatedUsed)}</td>
+                  <td className="text-center">{fuel.teleHumanFuel}</td>
+                  <td className="text-center">{formatFuelValue(teleFuel, fuel.teleEstimatedUsed)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.transitionCycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift1Cycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift2Cycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift3Cycles)}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.teleop?.shift4Cycles)}</td>
+                  <td className="text-center">{formatFuelValue(fuel.endgameFuel, fuel.endgameSectionEstimated)}</td>
+                  <td className="text-center">{fuel.endgameHumanFuel}</td>
+                  <td className="text-center">{toDisplayTitle(entry.endgame?.status || entry.stageStatus || "-")}</td>
+                  <td className="text-center">{endgameClimb}</td>
+                  <td className="text-center" style={{ minWidth: "140px", whiteSpace: "normal", overflowWrap: "anywhere" }}>{formatCyclesCell(entry.endgame?.cycleTimes)}</td>
+                  <td className="text-center">
+                    {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
+                  </td>
+                  <td className="text-center font-semibold">{totalUsed}</td>
+                  <td className="text-left align-top" style={{ minWidth: "260px", whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                    {entry.notes || "-"}
+                  </td>
+                  <td className="text-center">
+                    {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAccuracyEntry(entry);
+                          void loadAccuracyDetails(entry);
+                        }}
+                        className="underline decoration-dotted underline-offset-2"
+                        style={{ color: "var(--primary-color)" }}
+                      >
+                        {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
+                      </button>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
+                  <td className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteEntry(entry)}
+                      className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                      style={{ backgroundColor: "#dc2626" }}
+                      disabled={!canDeleteEntries}
+                      title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
         <table>
           <thead className="sticky-header">
             <tr>
-              <th className="sticky-left-group bg-red-300 text-center" colSpan={2}>Information</th>
+              <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
               <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
               <th className="bg-pink-300 text-center" colSpan={4}>General</th>
+              <th className="bg-gray-300 text-center" colSpan={1} />
             </tr>
             <tr>
-              <th className="sticky-left-group bg-red-200 text-center" colSpan={2}>Information</th>
+              <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
               <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
@@ -941,48 +1884,114 @@ function AnalyticsPageContent() {
               <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
             </tr>
             <tr>
-              <th className="sticky-left-0 cursor-pointer text-center" onClick={() => handleSort("matchNumber")}>{sortLabel("matchNumber", "Match")}</th>
-              <th className="sticky-left-1 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>{sortLabel("teamNumber", "Team")}</th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>{sortLabel("scoutName", "Scout")}</th>
-              <th className="text-center">Starting Position</th>
-              <th className="text-center">Leave</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">L1</th>
-              <th className="text-center">L2</th>
-              <th className="text-center">L3</th>
-              <th className="text-center">L4</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">L1</th>
-              <th className="text-center">L2</th>
-              <th className="text-center">L3</th>
-              <th className="text-center">L4</th>
-              <th className="text-center">Removed Reef</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Missed</th>
-              <th className="text-center">Scored</th>
-              <th className="text-center">Failed</th>
-              <th className="text-center">End Place</th>
-              <th className="text-center">Miscellaneous</th>
-              <th className="text-center" style={{ minWidth: "260px" }}>Comments</th>
-              <th className="text-center">Alliance Accuracy</th>
-              <th className="text-center">Script Status</th>
-              <th className="text-center">Delete</th>
+              <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
+              </th>
+              <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
+                {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+                {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("leftStartingZone")}>
+                {sortLabel(sortKey, sortDir, "leftStartingZone", "Leave")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralMissed")}>
+                {sortLabel(sortKey, sortDir, "autoCoralMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL1")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL1", "L1")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL2")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL2", "L2")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL3")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL3", "L3")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoCoralL4")}>
+                {sortLabel(sortKey, sortDir, "autoCoralL4", "L4")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeProcessorMissed")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeProcessorMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeProcessorScored")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeProcessorScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeNetMissed")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeNetMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("autoAlgaeNetScored")}>
+                {sortLabel(sortKey, sortDir, "autoAlgaeNetScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL1")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL1", "L1")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL2")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL2", "L2")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL3")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL3", "L3")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopCoralL4")}>
+                {sortLabel(sortKey, sortDir, "teleopCoralL4", "L4")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopAlgaeRemoved")}>
+                {sortLabel(sortKey, sortDir, "teleopAlgaeRemoved", "Removed Reef")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopProcessorMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopProcessorMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopProcessorScored")}>
+                {sortLabel(sortKey, sortDir, "teleopProcessorScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetRobotMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopNetRobotMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetRobotScored")}>
+                {sortLabel(sortKey, sortDir, "teleopNetRobotScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetHumanMissed")}>
+                {sortLabel(sortKey, sortDir, "teleopNetHumanMissed", "Missed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("teleopNetHumanScored")}>
+                {sortLabel(sortKey, sortDir, "teleopNetHumanScored", "Scored")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("failedClimb")}>
+                {sortLabel(sortKey, sortDir, "failedClimb", "Failed")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("stageStatus")}>
+                {sortLabel(sortKey, sortDir, "stageStatus", "End Place")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("incidents")}>
+                {sortLabel(sortKey, sortDir, "incidents", "Miscellaneous")}
+              </th>
+              <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
+                {sortLabel(sortKey, sortDir, "notes", "Comments")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
+                {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
+                {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
+              </th>
+              <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                {sortLabel(sortKey, sortDir, "id", "Actions")}
+              </th>
             </tr>
           </thead>
           <tbody>
             {data.map((entry) => (
               <tr key={entry.id}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
-                <td className="sticky-left-1 bg-white font-semibold text-center">{entry.teamNumber || "-"}</td>
-                <td className="text-center">{entry.scoutName || "-"}</td>
-                <td className="text-center">{entry.startingPosition || "-"}</td>
+                <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
+                <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                 <td className="text-center">{entry.leftStartingZone ? "Y" : "N"}</td>
                 <td className="text-center">{entry.autoCoralMissed || 0}</td>
                 <td className="text-center">{entry.autoCoralL1 || 0}</td>
@@ -1006,14 +2015,30 @@ function AnalyticsPageContent() {
                 <td className="text-center">{entry.teleopNetHumanMissed || 0}</td>
                 <td className="text-center">{entry.teleopNetHumanScored || 0}</td>
                 <td className="text-center">{entry.failedClimb || 0}</td>
-                <td className="text-center">{entry.stageStatus || "-"}</td>
+                <td className="text-center">{toDisplayTitle(entry.stageStatus || "-")}</td>
                 <td className="text-center">
                   {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                 </td>
                 <td className="text-left align-top" style={{ minWidth: "260px", whiteSpace: "normal", overflowWrap: "anywhere" }}>
                   {entry.notes || "-"}
                 </td>
-                <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? `${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%` : "-"}</td>
+                <td className="text-center">
+                  {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAccuracyEntry(entry);
+                        void loadAccuracyDetails(entry);
+                      }}
+                      className="underline decoration-dotted underline-offset-2"
+                      style={{ color: "var(--primary-color)" }}
+                    >
+                      {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
+                    </button>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                 <td className="text-center">
                   <button
@@ -1031,7 +2056,55 @@ function AnalyticsPageContent() {
             ))}
           </tbody>
         </table>
+        )}
       </div>
+
+      {selectedAccuracyEntry && (
+        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-semibold mb-3">Alliance Accuracy Details</h2>
+            {(() => {
+              return (
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-semibold">Match:</span> {accuracyDetails.matchLabelUsed || "-"}</p>
+                  <p><span className="font-semibold">Event:</span> {accuracyDetails.eventKeyUsed || "Unknown"}</p>
+                  <p><span className="font-semibold">Scouted Points:</span> {accuracyDetails.scoutedPoints}</p>
+                  <p><span className="font-semibold">Actual Points:</span> {accuracyDetails.actualPoints ?? "Unavailable"}</p>
+                  <p>
+                    <span className="font-semibold">All Robots Scouted:</span>{" "}
+                    {accuracyModalLoading ? "Checking..." : accuracyDetails.allRobotsScouted === "yes" ? "Yes" : accuracyDetails.allRobotsScouted === "no" ? "No" : "Unknown"}
+                  </p>
+                  <p><span className="font-semibold">Penalty Points:</span> {accuracyDetails.penaltyPoints}</p>
+                  {accuracyRobotBreakdown.length > 0 && (
+                    <div className="pt-2">
+                      <p className="font-semibold mb-1">Score Breakdown</p>
+                      <div className="space-y-1 text-xs">
+                        {accuracyRobotBreakdown.map((row) => (
+                          <p key={`${row.teamNumber}-${row.source}`}>
+                            Team {row.teamNumber}: {row.total}{" "}
+                            {row.source === "computed"
+                              ? `(autoFuel=${row.autoFuel} + teleFuel=${row.teleFuel} + autoClimb=${row.autoClimb} + endgameClimb=${row.endgameClimb})`
+                              : "(REEFSCAPE scorer)"}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            <div className="mt-5">
+              <button
+                onClick={() => setSelectedAccuracyEntry(null)}
+                className="w-full py-2 rounded text-white font-semibold"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AnalyticsShell>
   );
 }
@@ -1043,3 +2116,4 @@ export default function AnalyticsPage() {
     </ProtectedRoute>
   );
 }
+

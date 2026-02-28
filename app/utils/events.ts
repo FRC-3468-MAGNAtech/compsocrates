@@ -42,3 +42,25 @@ export const APP_EVENT_BY_KEY = APP_EVENTS.reduce<Record<string, AppEvent>>((acc
   acc[event.key] = event;
   return acc;
 }, {});
+
+const EVENT_KEY_ALIASES: Record<string, string> = {
+  // Legacy Bayou key used during 2025 data seeding.
+  "2025lake": "2026labr",
+};
+
+export function normalizeEventKey(eventKey: string): string {
+  const trimmed = String(eventKey || "").trim();
+  return EVENT_KEY_ALIASES[trimmed] || trimmed;
+}
+
+export function dedupeEventKeys(eventKeys: string[]): string[] {
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  eventKeys.forEach((rawKey) => {
+    const key = normalizeEventKey(rawKey);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(key);
+  });
+  return deduped;
+}

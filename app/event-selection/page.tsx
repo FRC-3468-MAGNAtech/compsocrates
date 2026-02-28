@@ -5,8 +5,9 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
-import { APP_EVENTS } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys, normalizeEventKey } from "@/app/utils/events";
 import { filterEventsByLocation, type TBAEvent } from "@/app/utils/tba-api";
 
 function EventSelectionContent() {
@@ -23,7 +24,10 @@ function EventSelectionContent() {
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       if (!teamDoc.exists()) return;
       const data = teamDoc.data();
-      setSelectedEvents(Array.isArray(data.selectedEvents) ? data.selectedEvents : []);
+      const selected = Array.isArray(data.selectedEvents)
+        ? dedupeEventKeys(data.selectedEvents.map((value: unknown) => String(value || "")))
+        : [];
+      setSelectedEvents(selected);
     }
     loadSelection();
   }, [userData?.teamId]);
@@ -79,16 +83,25 @@ function EventSelectionContent() {
 
   const filteredEvents = useMemo(() => {
     const scoped = searchTerm.trim() ? filterEventsByLocation(events, searchTerm) : events;
-    return [...scoped].sort((a, b) => {
+    const sorted = [...scoped].sort((a, b) => {
       const aTime = new Date(`${a.start_date}T12:00:00`).getTime();
       const bTime = new Date(`${b.start_date}T12:00:00`).getTime();
       return aTime - bTime;
     });
+    const byName = new Map<string, TBAEvent>();
+    sorted.forEach((event) => {
+      const key = String(event.name || "").trim().toLowerCase();
+      if (!key || !byName.has(key)) {
+        byName.set(key, event);
+      }
+    });
+    return Array.from(byName.values());
   }, [events, searchTerm]);
 
   function toggleEvent(eventKey: string) {
+    const normalizedKey = normalizeEventKey(eventKey);
     setSelectedEvents((prev) =>
-      prev.includes(eventKey) ? prev.filter((key) => key !== eventKey) : [...prev, eventKey]
+      prev.includes(normalizedKey) ? prev.filter((key) => key !== normalizedKey) : [...prev, normalizedKey]
     );
   }
 
@@ -96,7 +109,9 @@ function EventSelectionContent() {
     if (!userData?.teamId) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, "teams", userData.teamId), { selectedEvents }, { merge: true });
+      const normalizedSelection = dedupeEventKeys(selectedEvents);
+      await setDoc(doc(db, "teams", userData.teamId), { selectedEvents: normalizedSelection }, { merge: true });
+      setSelectedEvents(normalizedSelection);
       alert("Event selection saved.");
     } finally {
       setSaving(false);
@@ -106,9 +121,10 @@ function EventSelectionContent() {
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-8 pb-32">
         <h1 className="text-3xl font-bold mb-2 theme-text">Event Selection</h1>
         <p className="text-gray-600 mb-6">Select which events your team is attending.</p>
+        <DataSourceCredits className="mb-6 max-w-3xl" />
 
         <div className="max-w-3xl mb-4">
           <input
@@ -157,15 +173,15 @@ function EventSelectionContent() {
           </div>
         )}
 
-        <button
-          onClick={saveSelection}
-          disabled={saving}
-          className="mt-6 px-6 py-3 rounded text-white font-semibold disabled:opacity-50"
-          style={{ background: "var(--primary-gradient)" }}
-        >
-          {saving ? "Saving..." : "Save Event Selection"}
-        </button>
       </div>
+      <button
+        onClick={saveSelection}
+        disabled={saving}
+        className="fixed bottom-4 right-6 md:right-8 z-40 px-6 py-3 rounded text-white font-semibold disabled:opacity-50 shadow-lg"
+        style={{ background: "var(--primary-gradient)" }}
+      >
+        {saving ? "Saving..." : "Save Event Selection"}
+      </button>
     </div>
   );
 }

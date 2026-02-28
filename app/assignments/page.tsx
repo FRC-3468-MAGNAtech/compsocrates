@@ -18,11 +18,37 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { getUserRoles } from "@/app/utils/roles";
+import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 
 interface Assignment {
   id: string;
   eventKey: string;
+  matchKey: string;
+  matchLabel: string;
+  scoutId: string;
+  scoutName: string;
+  teamNumber: number;
+  assignedBy: string;
+  assignedAt: number;
+}
+
+interface PitAssignment {
+  id: string;
+  eventKey: string;
+  teamNumber: number;
+  scoutId: string;
+  scoutName: string;
+  assignedBy: string;
+  assignedAt: number;
+}
+
+interface PracticeAssignment {
+  id: string;
+  eventKey: string;
+  practiceMatchId: string;
   matchKey: string;
   matchLabel: string;
   scoutId: string;
@@ -38,6 +64,11 @@ interface TeamMember {
   role: string;
 }
 
+type ScoutWeight = {
+  member: TeamMember;
+  weightedAccuracy: number;
+};
+
 type MatchOption = {
   key: string;
   label: string;
@@ -47,6 +78,42 @@ type MatchOption = {
   setNumber: number;
   scheduleTime: number;
 };
+
+type EventOption = {
+  key: string;
+  name: string;
+  startDate: string;
+};
+
+type PracticeMatchOption = {
+  id: string;
+  eventKey: string;
+  matchKey: string;
+  label: string;
+  teams: number[];
+  stage: "practice" | "qualification" | "playoff";
+  matchNumber: number;
+  scheduleTime: number;
+};
+
+function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
+  const byName = new Map<string, EventOption>();
+  options.forEach((option) => {
+    const nameKey = option.name.trim().toLowerCase();
+    if (!nameKey) return;
+    const existing = byName.get(nameKey);
+    if (!existing) {
+      byName.set(nameKey, option);
+      return;
+    }
+    const existingTime = new Date(`${existing.startDate}T12:00:00`).getTime();
+    const incomingTime = new Date(`${option.startDate}T12:00:00`).getTime();
+    if (incomingTime < existingTime) {
+      byName.set(nameKey, option);
+    }
+  });
+  return Array.from(byName.values());
+}
 
 function compLevelPriority(compLevel: string) {
   if (compLevel === "qm") return 0;
@@ -66,53 +133,297 @@ function matchLabel(match: TBAMatch) {
   return match.key;
 }
 
+function parseTeamNumbers(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === "number") return item;
+        if (typeof item === "string") return parseInt(item.replace(/[^\d]/g, ""), 10);
+        return NaN;
+      })
+      .filter((item) => Number.isFinite(item) && item > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => parseInt(item.replace(/[^\d]/g, ""), 10))
+      .filter((item) => Number.isFinite(item) && item > 0);
+  }
+  return [];
+}
+
+function normalizePracticeStage(rawType: unknown, rawMatchKey: unknown, rawCompLevel: unknown): "practice" | "qualification" | "playoff" {
+  const compLevel = String(rawCompLevel || "").toLowerCase().trim();
+  if (compLevel === "qm") return "qualification";
+  if (compLevel === "qf" || compLevel === "sf" || compLevel === "f") return "playoff";
+
+  const matchKey = String(rawMatchKey || "").toLowerCase().trim();
+  if (/_qm\d+/.test(matchKey)) return "qualification";
+  if (/_qf\d+m\d+/.test(matchKey) || /_sf\d+m\d+/.test(matchKey) || /_f\d+m\d+/.test(matchKey)) return "playoff";
+
+  const type = String(rawType || "").toLowerCase().trim();
+  if (type === "qualification") return "qualification";
+  if (type === "playoff" || type === "finals") return "playoff";
+  return "practice";
+}
+
+function practiceMatchLabel(stage: "practice" | "qualification" | "playoff", matchNumber: number, alliance: string) {
+  const prefix = stage === "practice" ? "Practice" : stage === "qualification" ? "Qualification" : "Playoff";
+  const allianceLabel = alliance === "red" || alliance === "blue"
+    ? `${alliance.charAt(0).toUpperCase()}${alliance.slice(1)} Alliance`
+    : "Alliance";
+  return `${prefix} ${matchNumber} • ${allianceLabel}`;
+}
+
+function scoreScoutingRecord(record: Record<string, unknown>): number {
+  let score = 0;
+  if (Boolean(record.leftStartingZone)) score += 3;
+  score += Number(record.autoCoralL1 || 0) * 3;
+  score += Number(record.autoCoralL2 || 0) * 4;
+  score += Number(record.autoCoralL3 || 0) * 6;
+  score += Number(record.autoCoralL4 || 0) * 7;
+  score += Number(record.autoAlgaeProcessorScored || 0) * 6;
+  score += Number(record.autoAlgaeNetScored || 0) * 4;
+  score += Number(record.teleopCoralL1 || 0) * 2;
+  score += Number(record.teleopCoralL2 || 0) * 3;
+  score += Number(record.teleopCoralL3 || 0) * 4;
+  score += Number(record.teleopCoralL4 || 0) * 5;
+  score += Number(record.teleopProcessorScored || 0) * 6;
+  score += Number(record.teleopNetRobotScored || 0) * 4;
+  score += Number(record.teleopNetHumanScored || 0) * 4;
+  score += Number(record.penaltyPoints || 0);
+
+  const end = String(record.stageStatus || "").toLowerCase();
+  if (end.includes("deep")) score += 12;
+  else if (end.includes("shallow")) score += 6;
+  else if (end.includes("park") || end.includes("barge")) score += 2;
+  return score;
+}
+
+async function fetchStatboticsEpa(teamNumber: number, year: number): Promise<number> {
+  try {
+    const response = await fetch(`https://api.statbotics.io/v3/team_year/${teamNumber}/${year}`, { cache: "no-store" });
+    if (!response.ok) return 0;
+    const payload = (await response.json()) as Record<string, unknown>;
+    const norm = payload.norm_epa as Record<string, unknown> | undefined;
+    const current = typeof norm?.current === "number" ? norm.current : 0;
+    return Number.isFinite(current) ? current : 0;
+  } catch (error) {
+    console.error(`Unable to load Statbotics EPA for team ${teamNumber}:`, error);
+    return 0;
+  }
+}
+
+async function fetchEventMatchesForAssignments(
+  eventKey: string,
+  encryptedKey: string,
+  plainKey: string
+): Promise<TBAMatch[]> {
+  const safeEvent = String(eventKey || "").trim();
+  if (!safeEvent) return [];
+
+  if (encryptedKey || plainKey) {
+    const response = await fetch("/api/tba/matches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventKey: safeEvent, encryptedKey, plainKey }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { matches?: TBAMatch[] };
+      if (Array.isArray(payload.matches)) return payload.matches;
+    }
+  }
+
+  return getEventMatches(safeEvent);
+}
+
 function AssignmentsContent() {
   const { userData } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [pitAssignments, setPitAssignments] = useState<PitAssignment[]>([]);
+  const [practiceAssignments, setPracticeAssignments] = useState<PracticeAssignment[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [selectedEvent, setSelectedEvent] = useState("2026arli");
+  const [selectedEvent, setSelectedEvent] = useState("");
+  const [events, setEvents] = useState<EventOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
+  const [practiceMatchOptions, setPracticeMatchOptions] = useState<PracticeMatchOption[]>([]);
   const [eventAttendees, setEventAttendees] = useState<Record<string, string[]>>({});
+  const [manualPriorityTeamsByEvent, setManualPriorityTeamsByEvent] = useState<Record<string, number[]>>({});
+  const [manualPriorityTeamsGlobal, setManualPriorityTeamsGlobal] = useState<number[]>([]);
 
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [selectedScoutId, setSelectedScoutId] = useState("");
   const [selectedTeamNumber, setSelectedTeamNumber] = useState("");
+  const [selectedPitScoutId, setSelectedPitScoutId] = useState("");
+  const [selectedPitTeamNumber, setSelectedPitTeamNumber] = useState("");
   const [selectedMatchType, setSelectedMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
-
-  const events = [
-    { key: "2026arli", name: "Arkansas Regional" },
-    { key: "2026labr", name: "Bayou Regional" },
-  ];
+  const [assignmentModalMode, setAssignmentModalMode] = useState<"match" | "pit">("match");
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [selectedEvent, userData?.teamId]);
+
+  async function resolveEventOptions(teamData: Record<string, unknown>): Promise<EventOption[]> {
+    const selected = Array.isArray(teamData.selectedEvents)
+      ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
+      : [];
+    const fallbackFromApp = APP_EVENTS.map((event) => ({
+      key: event.key,
+      name: event.name,
+      startDate: event.startDate,
+    }));
+    if (selected.length === 0) return fallbackFromApp;
+
+    const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
+    const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
+    const fromTba = new Map<string, EventOption>();
+    if (encryptedKey || plainKey) {
+      const years = new Set<number>();
+      selected.forEach((eventKey) => {
+        const year = Number(eventKey.slice(0, 4));
+        if (Number.isFinite(year)) years.add(year);
+      });
+      if (years.size === 0) years.add(new Date().getFullYear());
+
+      const responses = await Promise.all(
+        Array.from(years).map(async (year) => {
+          const response = await fetch("/api/tba/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ year, encryptedKey, plainKey }),
+          });
+          if (!response.ok) return [] as Array<Record<string, unknown>>;
+          const payload = await response.json();
+          return Array.isArray(payload.events) ? (payload.events as Array<Record<string, unknown>>) : [];
+        })
+      );
+
+      responses.flat().forEach((event) => {
+        const key = String(event.key || "").trim();
+        if (!key || !selected.includes(key)) return;
+        fromTba.set(key, {
+          key,
+          name: String(event.name || key),
+          startDate: String(event.start_date || `${new Date().getFullYear()}-01-01`),
+        });
+      });
+    }
+
+    const staticByKey = new Map(fallbackFromApp.map((event) => [event.key, event]));
+    const resolved = selected
+      .map((key) => fromTba.get(key) || staticByKey.get(key) || { key, name: key, startDate: `${new Date().getFullYear()}-01-01` })
+    return dedupeEventOptionsByName(resolved)
+      .sort((a, b) => {
+        const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+        const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+        return aTime - bTime;
+      });
+  }
 
   async function loadData() {
     if (!userData?.teamId) return;
     setLoading(true);
     try {
-      const [membersSnap, assignmentsSnap, teamDoc] = await Promise.all([
+      const [membersSnap, teamDoc] = await Promise.all([
         getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
-        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", selectedEvent))),
         getDoc(doc(db, "teams", userData.teamId)),
       ]);
-
       setMembers(membersSnap.docs.map((memberDoc) => ({ uid: memberDoc.id, ...memberDoc.data() } as TeamMember)));
+      const teamData = teamDoc.exists() ? teamDoc.data() : {};
+      setEventAttendees(teamData.eventAttendees || {});
+      const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
+      const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
+      const resolvedEvents = await resolveEventOptions(teamData);
+      setEvents(resolvedEvents);
+      const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
+        ? selectedEvent
+        : (resolvedEvents[0]?.key || "");
+      if (!selectedEvent || effectiveEvent !== selectedEvent) {
+        setSelectedEvent(effectiveEvent);
+      }
+      if (!effectiveEvent) {
+        setAssignments([]);
+        setPitAssignments([]);
+        setPracticeAssignments([]);
+        setMatchOptions([]);
+        setPracticeMatchOptions([]);
+        return;
+      }
+
+      const [assignmentsSnap, pitAssignmentsSnap, practiceAssignmentsSnap, practiceMatchesSnap] = await Promise.all([
+        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", effectiveEvent))),
+        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", effectiveEvent))),
+        getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", effectiveEvent))),
+        getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", effectiveEvent))),
+      ]);
       setAssignments(
         assignmentsSnap.docs.map((assignmentDoc) => ({
           id: assignmentDoc.id,
           ...assignmentDoc.data(),
         })) as Assignment[]
       );
+      setPitAssignments(
+        pitAssignmentsSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...assignmentDoc.data(),
+        })) as PitAssignment[]
+      );
+      setPracticeAssignments(
+        practiceAssignmentsSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...assignmentDoc.data(),
+        })) as PracticeAssignment[]
+      );
 
-      const teamData = teamDoc.exists() ? teamDoc.data() : {};
-      setEventAttendees(teamData.eventAttendees || {});
+      const practiceOptions = practiceMatchesSnap.docs
+        .map((practiceDoc) => {
+          const data = practiceDoc.data() as Record<string, unknown>;
+          const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+          const matchNumber = Number(data.matchNumber || 0);
+          const scheduleTime = Number(data.scheduleTime || data.time || 0);
+          const alliance = String(data.alliance || "").trim().toLowerCase();
+          const teams = parseTeamNumbers(
+            data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+          ).slice(0, 3);
+          return {
+            id: practiceDoc.id,
+            eventKey: effectiveEvent,
+            matchKey: String(data.matchKey || practiceDoc.id),
+            label: practiceMatchLabel(stage, matchNumber, alliance),
+            teams,
+            stage,
+            matchNumber,
+            scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+          } as PracticeMatchOption;
+        })
+        .filter((row) => row.teams.length >= 3 && row.matchNumber > 0)
+        .sort((a, b) => {
+          const stageOrder = a.stage === "practice" ? 0 : a.stage === "qualification" ? 1 : 2;
+          const otherStageOrder = b.stage === "practice" ? 0 : b.stage === "qualification" ? 1 : 2;
+          if (stageOrder !== otherStageOrder) return stageOrder - otherStageOrder;
+          if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
+          return a.id.localeCompare(b.id);
+        });
+      setPracticeMatchOptions(practiceOptions);
+      const priorityByEventRaw = (
+        teamData.priorityTeamsByEvent ||
+        teamData.assignmentPriorityTeamsByEvent ||
+        teamData.eventPriorityTeams ||
+        {}
+      ) as Record<string, unknown>;
+      const normalizedByEvent: Record<string, number[]> = {};
+      Object.entries(priorityByEventRaw).forEach(([eventKey, teamList]) => {
+        normalizedByEvent[eventKey] = parseTeamNumbers(teamList);
+      });
+      setManualPriorityTeamsByEvent(normalizedByEvent);
+      setManualPriorityTeamsGlobal(
+        parseTeamNumbers(teamData.priorityTeams || teamData.assignmentPriorityTeams || teamData.priorityTeamNumbers || [])
+      );
 
       try {
-        const matches = await getEventMatches(selectedEvent);
+        const matches = await fetchEventMatchesForAssignments(effectiveEvent, encryptedKey, plainKey);
         const sorted = [...matches].sort((a, b) => {
           const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
           if (priorityDiff !== 0) return priorityDiff;
@@ -158,6 +469,17 @@ function AssignmentsContent() {
     const next = timedMatches.find((match) => match.scheduleTime >= now);
     return next?.key || timedMatches[timedMatches.length - 1].key;
   }, [matchOptions]);
+  const activeOrNextPracticeMatchId = useMemo(() => {
+    const now = Date.now() / 1000;
+    const timedMatches = [...practiceMatchOptions]
+      .filter((match) => match.scheduleTime > 0)
+      .sort((a, b) => a.scheduleTime - b.scheduleTime);
+    if (timedMatches.length === 0) return "";
+    const active = timedMatches.find((match) => now >= match.scheduleTime && now <= match.scheduleTime + 8 * 60);
+    if (active) return active.id;
+    const next = timedMatches.find((match) => match.scheduleTime >= now);
+    return next?.id || timedMatches[timedMatches.length - 1].id;
+  }, [practiceMatchOptions]);
 
   const typeFilteredMatches = useMemo(() => {
     if (selectedMatchType === "practice") {
@@ -168,6 +490,11 @@ function AssignmentsContent() {
     }
     return matchOptions.filter((match) => match.compLevel !== "qm");
   }, [matchOptions, selectedMatchType]);
+  const pitTeamOptions = useMemo(() => {
+    const teams = Array.from(new Set(matchOptions.flatMap((match) => match.teams))).sort((a, b) => a - b);
+    const assigned = new Set(pitAssignments.map((assignment) => assignment.teamNumber));
+    return teams.filter((teamNumber) => !assigned.has(teamNumber));
+  }, [matchOptions, pitAssignments]);
 
   async function createAssignment() {
     if (!userData || !selectedMatch || !selectedScoutId || !selectedTeamNumber) return;
@@ -197,6 +524,36 @@ function AssignmentsContent() {
     }
   }
 
+  async function createPitAssignment() {
+    if (!userData || !selectedPitScoutId || !selectedPitTeamNumber) return;
+    const scout = members.find((member) => member.uid === selectedPitScoutId);
+    if (!scout) return;
+    const teamNumber = parseInt(selectedPitTeamNumber, 10);
+    if (!Number.isFinite(teamNumber)) return;
+    if (pitAssignments.some((assignment) => assignment.teamNumber === teamNumber)) {
+      alert("That team already has a pit scout assignment.");
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "pitAssignments"), {
+        eventKey: selectedEvent,
+        teamNumber,
+        scoutId: selectedPitScoutId,
+        scoutName: scout.displayName,
+        assignedBy: userData.uid,
+        assignedAt: Date.now(),
+      });
+      setSelectedPitScoutId("");
+      setSelectedPitTeamNumber("");
+      setShowAssignModal(false);
+      await loadData();
+    } catch (error) {
+      console.error("Error creating pit assignment:", error);
+      alert("Error creating pit assignment");
+    }
+  }
+
   async function deleteAssignment(id: string) {
     if (!confirm("Are you sure you want to delete this assignment?")) return;
     try {
@@ -208,6 +565,28 @@ function AssignmentsContent() {
     }
   }
 
+  async function deletePitAssignment(id: string) {
+    if (!confirm("Delete this pit assignment?")) return;
+    try {
+      await deleteDoc(doc(db, "pitAssignments", id));
+      await loadData();
+    } catch (error) {
+      console.error("Error deleting pit assignment:", error);
+      alert("Error deleting pit assignment");
+    }
+  }
+
+  async function deletePracticeAssignment(id: string) {
+    if (!confirm("Delete this practice assignment?")) return;
+    try {
+      await deleteDoc(doc(db, "practiceAssignments", id));
+      await loadData();
+    } catch (error) {
+      console.error("Error deleting practice assignment:", error);
+      alert("Error deleting practice assignment");
+    }
+  }
+
   async function randomizeAllAssignments() {
     if (!userData || !selectedEvent) return;
     const qualificationMatches = matchOptions.filter((match) => match.compLevel === "qm");
@@ -216,13 +595,18 @@ function AssignmentsContent() {
       return;
     }
 
-    const attendeeNames = eventAttendees[selectedEvent] || [];
-    const attendeeMembers = members.filter((member) => attendeeNames.includes(member.displayName));
-    const eligibleMembers = (attendeeMembers.length > 0 ? attendeeMembers : members).filter(
-      (member) => member.displayName.trim().length > 0
+    const attendeeKeys = eventAttendees[selectedEvent] || [];
+    const attendeeMembers = members.filter(
+      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
     );
+    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
+    const eligibleMembers = sourceMembers.filter((member) => {
+      if (!member.displayName.trim()) return false;
+      const roles = getUserRoles({ role: member.role });
+      return roles.includes("match-scout") || roles.includes("lead-scout");
+    });
     if (eligibleMembers.length === 0) {
-      alert("No available members to assign.");
+      alert("No eligible scout-role members available to assign.");
       return;
     }
 
@@ -233,11 +617,122 @@ function AssignmentsContent() {
       await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
 
       const newAssignments: Array<Omit<Assignment, "id">> = [];
-      let scoutPointer = 0;
+      const lowScoutMode = eligibleMembers.length < 6;
+      const scoutWeights: ScoutWeight[] = await Promise.all(
+        eligibleMembers.map(async (member) => {
+          const [competitionEntries, trialSessions] = await Promise.all([
+            getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.displayName))),
+            getDocs(
+              query(
+                collection(db, "practiceSessions"),
+                where("scoutName", "==", member.displayName),
+                where("mode", "==", "trial")
+              )
+            ),
+          ]);
+
+          const competitionAccuracies = competitionEntries.docs
+            .map((entryDoc) => entryDoc.data() as Record<string, unknown>)
+            .filter((row) => {
+              const matchType = String(row.matchType || "").toLowerCase();
+              const practiceMode = String(row.practiceMode || "").toLowerCase();
+              return (
+                typeof row.accuracy === "number" &&
+                matchType !== "practice" &&
+                !Boolean(row.isPracticeScouting) &&
+                practiceMode !== "trial" &&
+                practiceMode !== "competitive"
+              );
+            })
+            .map((row) => Number(row.accuracy || 0))
+            .filter((value) => Number.isFinite(value) && value > 0);
+          const trialAccuracies = trialSessions.docs
+            .map((sessionDoc) => Number((sessionDoc.data() as Record<string, unknown>).accuracy || 0))
+            .filter((value) => Number.isFinite(value) && value > 0);
+
+          const compAvg =
+            competitionAccuracies.length > 0
+              ? competitionAccuracies.reduce((sum, value) => sum + value, 0) / competitionAccuracies.length
+              : null;
+          const trialAvg =
+            trialAccuracies.length > 0 ? trialAccuracies.reduce((sum, value) => sum + value, 0) / trialAccuracies.length : null;
+
+          let weightedAccuracy = 50;
+          if (compAvg !== null && trialAvg !== null) weightedAccuracy = compAvg * 0.8 + trialAvg * 0.2;
+          else if (compAvg !== null) weightedAccuracy = compAvg;
+          else if (trialAvg !== null) weightedAccuracy = trialAvg;
+
+          return { member, weightedAccuracy };
+        })
+      );
+
+      const scoutsByAccuracy = [...scoutWeights]
+        .sort((a, b) => b.weightedAccuracy - a.weightedAccuracy)
+        .map((row) => row.member);
+      const fallbackScoutOrder = [...eligibleMembers].sort(() => Math.random() - 0.5);
+      let fallbackScoutPointer = 0;
+
+      const allQualificationTeams = Array.from(
+        new Set(qualificationMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
+      );
+      const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
+      const teamHistoryScore = new Map<number, { total: number; count: number }>();
+      const statboticsScore = new Map<number, number>();
+      const manualPriorityTeams = Array.from(
+        new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+      );
+
+      if (lowScoutMode) {
+        const scoutingSnap = await getDocs(collection(db, "scouting"));
+        scoutingSnap.forEach((entryDoc) => {
+          const row = entryDoc.data() as Record<string, unknown>;
+          const parsedTeamNumber = parseInt(String(row.teamNumber || "").replace(/[^\d]/g, ""), 10);
+          if (!Number.isFinite(parsedTeamNumber) || !allQualificationTeams.includes(parsedTeamNumber)) return;
+          const matchType = String(row.matchType || "").toLowerCase();
+          const practiceMode = String(row.practiceMode || "").toLowerCase();
+          if (matchType === "practice" || Boolean(row.isPracticeScouting) || practiceMode === "trial" || practiceMode === "competitive") {
+            return;
+          }
+          const score = scoreScoutingRecord(row);
+          if (!teamHistoryScore.has(parsedTeamNumber)) {
+            teamHistoryScore.set(parsedTeamNumber, { total: 0, count: 0 });
+          }
+          const existing = teamHistoryScore.get(parsedTeamNumber)!;
+          existing.total += score;
+          existing.count += 1;
+        });
+
+        const missingHistoryTeams = allQualificationTeams.filter((team) => !teamHistoryScore.has(team));
+        const statboticsEntries = await Promise.all(
+          missingHistoryTeams.map(async (teamNumber) => [teamNumber, await fetchStatboticsEpa(teamNumber, yearFromEvent)] as const)
+        );
+        statboticsEntries.forEach(([teamNumber, epa]) => {
+          statboticsScore.set(teamNumber, epa);
+        });
+      }
+
       qualificationMatches.forEach((match) => {
-        match.teams.forEach((teamNumber) => {
-          const scout = eligibleMembers[scoutPointer % eligibleMembers.length];
-          scoutPointer += 1;
+        const manualTeams = match.teams.filter((teamNumber) => manualPriorityTeams.includes(teamNumber));
+        const remainingAfterManual = match.teams.filter((teamNumber) => !manualTeams.includes(teamNumber));
+        const withHistory = [...remainingAfterManual].filter((teamNumber) => teamHistoryScore.has(teamNumber));
+        withHistory.sort((a, b) => {
+          const aRow = teamHistoryScore.get(a)!;
+          const bRow = teamHistoryScore.get(b)!;
+          return bRow.total / Math.max(1, bRow.count) - aRow.total / Math.max(1, aRow.count);
+        });
+        const remainingAfterHistory = remainingAfterManual.filter((teamNumber) => !withHistory.includes(teamNumber));
+        const withStatbotics = [...remainingAfterHistory].filter((teamNumber) => statboticsScore.has(teamNumber));
+        withStatbotics.sort((a, b) => (statboticsScore.get(b) || 0) - (statboticsScore.get(a) || 0));
+        const finalRemaining = remainingAfterHistory.filter((teamNumber) => !withStatbotics.includes(teamNumber));
+
+        const teamOrder = lowScoutMode
+          ? [...manualTeams, ...withHistory, ...withStatbotics, ...finalRemaining]
+          : [...match.teams].sort(() => Math.random() - 0.5);
+        teamOrder.forEach((teamNumber, teamIndex) => {
+          const scout = lowScoutMode
+            ? scoutsByAccuracy[teamIndex % scoutsByAccuracy.length]
+            : fallbackScoutOrder[(fallbackScoutPointer++) % fallbackScoutOrder.length];
+          if (!scout) return;
           newAssignments.push({
             eventKey: selectedEvent,
             matchKey: match.key,
@@ -260,11 +755,101 @@ function AssignmentsContent() {
     }
   }
 
-  function toggleAttendee(displayName: string) {
+  async function randomizePracticeAssignments() {
+    if (!userData || !selectedEvent) return;
+    if (practiceMatchOptions.length === 0) {
+      alert("No practice matches available to randomize.");
+      return;
+    }
+
+    const attendeeKeys = eventAttendees[selectedEvent] || [];
+    const attendeeMembers = members.filter(
+      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
+    );
+    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
+    const eligibleMembers = sourceMembers.filter((member) => {
+      if (!member.displayName.trim()) return false;
+      const roles = getUserRoles({ role: member.role });
+      return roles.includes("match-scout") || roles.includes("lead-scout");
+    });
+    if (eligibleMembers.length === 0) {
+      alert("No eligible scout-role members available to assign.");
+      return;
+    }
+
+    if (!confirm("Randomize practice scouting assignments for this event? Existing practice assignments will be replaced.")) return;
+
+    try {
+      const existing = practiceAssignments.filter((assignment) => assignment.eventKey === selectedEvent);
+      await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "practiceAssignments", assignment.id))));
+
+      const manualPriorityTeams = Array.from(
+        new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+      );
+
+      const practiceTeamCounts = new Map<number, number>();
+      const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", selectedEvent)));
+      scoutingSnap.docs.forEach((docSnap) => {
+        const row = docSnap.data() as Record<string, unknown>;
+        const team = parseInt(String(row.teamNumber || "").replace(/[^\d]/g, ""), 10);
+        if (!Number.isFinite(team) || team <= 0) return;
+        const isPractice =
+          Boolean(row.isPracticeScouting) ||
+          String(row.matchType || "").toLowerCase() === "practice" ||
+          String(row.practiceMode || "").length > 0;
+        if (!isPractice) return;
+        practiceTeamCounts.set(team, (practiceTeamCounts.get(team) || 0) + 1);
+      });
+
+      const shuffledScouts = [...eligibleMembers].sort(() => Math.random() - 0.5);
+      let scoutPointer = 0;
+      const now = Date.now();
+      const newAssignments: Array<Omit<PracticeAssignment, "id">> = [];
+
+      practiceMatchOptions.forEach((match, matchIndex) => {
+        const teamOrder = [...match.teams].sort((a, b) => {
+          const aPriority = manualPriorityTeams.includes(a) ? 0 : 1;
+          const bPriority = manualPriorityTeams.includes(b) ? 0 : 1;
+          if (aPriority !== bPriority) return aPriority - bPriority;
+
+          const aCount = practiceTeamCounts.get(a) || 0;
+          const bCount = practiceTeamCounts.get(b) || 0;
+          if (aCount !== bCount) return aCount - bCount;
+          return Math.random() - 0.5;
+        });
+
+        teamOrder.forEach((teamNumber) => {
+          const scout = shuffledScouts[scoutPointer % shuffledScouts.length];
+          scoutPointer += 1;
+          if (!scout) return;
+          newAssignments.push({
+            eventKey: selectedEvent,
+            practiceMatchId: match.id,
+            matchKey: match.matchKey,
+            matchLabel: match.label,
+            scoutId: scout.uid,
+            scoutName: scout.displayName,
+            teamNumber,
+            assignedBy: userData.uid,
+            assignedAt: now + matchIndex,
+          });
+        });
+      });
+
+      await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "practiceAssignments"), assignment)));
+      await loadData();
+      alert(`Randomized ${newAssignments.length} practice assignments across ${practiceMatchOptions.length} practice matches.`);
+    } catch (error) {
+      console.error("Error randomizing practice assignments:", error);
+      alert("Error randomizing practice assignments.");
+    }
+  }
+
+  function toggleAttendee(member: TeamMember) {
     const current = eventAttendees[selectedEvent] || [];
-    const updated = current.includes(displayName)
-      ? current.filter((name) => name !== displayName)
-      : [...current, displayName];
+    const hasMember = current.includes(member.uid) || current.includes(member.displayName);
+    const cleaned = current.filter((value) => value !== member.displayName);
+    const updated = hasMember ? cleaned.filter((value) => value !== member.uid) : [...cleaned, member.uid];
     setEventAttendees((prev) => ({ ...prev, [selectedEvent]: updated }));
   }
 
@@ -311,8 +896,11 @@ function AssignmentsContent() {
                   {event.name}
                 </option>
               ))}
+              {events.length === 0 && <option value="">No events selected</option>}
             </select>
           </div>
+
+          <DataSourceCredits className="mb-6" />
 
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
@@ -330,8 +918,11 @@ function AssignmentsContent() {
                 <label key={member.uid} className="flex items-center gap-2 p-3 border rounded-lg">
                   <input
                     type="checkbox"
-                    checked={(eventAttendees[selectedEvent] || []).includes(member.displayName)}
-                    onChange={() => toggleAttendee(member.displayName)}
+                    checked={
+                      (eventAttendees[selectedEvent] || []).includes(member.uid) ||
+                      (eventAttendees[selectedEvent] || []).includes(member.displayName)
+                    }
+                    onChange={() => toggleAttendee(member)}
                   />
                   <span className="font-medium">{member.displayName}</span>
                   <span className="text-xs text-gray-500 capitalize">{member.role}</span>
@@ -405,6 +996,148 @@ function AssignmentsContent() {
             </div>
           )}
 
+          <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+            <h2 className="text-xl font-semibold mb-1">Pit Scouting Assignments</h2>
+            <p className="text-sm text-gray-600 mb-4">Use New Assignment modal to add pit assignments.</p>
+
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {pitAssignments
+                    .slice()
+                    .sort((a, b) => a.teamNumber - b.teamNumber)
+                    .map((assignment) => (
+                      <tr key={assignment.id}>
+                        <td className="px-4 py-2 font-medium">Team {assignment.teamNumber}</td>
+                        <td className="px-4 py-2">{assignment.scoutName}</td>
+                        <td className="px-4 py-2">
+                          <button onClick={() => void deletePitAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {pitAssignments.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-500">
+                        No pit assignments yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+            <h2 className="text-xl font-semibold mb-1">Practice Scouting Assignments</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Separate from comp match assignments. Priority teams and low-data teams are assigned first.
+            </p>
+
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Practice Match</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {practiceAssignments
+                    .slice()
+                    .sort((a, b) => String(a.matchLabel || "").localeCompare(String(b.matchLabel || "")))
+                    .map((assignment) => (
+                      <tr key={assignment.id}>
+                        <td className="px-4 py-2 font-medium">{assignment.matchLabel || assignment.matchKey}</td>
+                        <td className="px-4 py-2">{assignment.scoutName}</td>
+                        <td className="px-4 py-2">Team {assignment.teamNumber}</td>
+                        <td className="px-4 py-2">
+                          <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {practiceAssignments.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-500">
+                        No practice assignments yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Practice Match Schedule</h2>
+                <p className="text-sm text-gray-600">Practice scouting queue with prioritized team coverage.</p>
+              </div>
+              <button
+                onClick={randomizePracticeAssignments}
+                className="px-4 py-2 rounded text-white text-sm font-semibold"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Randomize Practice
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {practiceMatchOptions.map((match) => {
+                    const perMatch = practiceAssignments.filter((assignment) => assignment.practiceMatchId === match.id);
+                    const isActive = activeOrNextPracticeMatchId === match.id;
+                    return (
+                      <tr key={match.id} className={isActive ? "bg-yellow-50" : ""}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-medium">{match.label}</span>
+                          {isActive && <span className="ml-2 text-xs font-semibold text-yellow-700">ACTIVE/NEXT</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {match.scheduleTime > 0
+                            ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                            : "TBD"}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {perMatch.length === 0
+                            ? "Unassigned"
+                            : perMatch.map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`).join(" | ")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {practiceMatchOptions.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-6 text-center text-sm text-gray-500">
+                        No practice matches found for this event.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <div>
@@ -462,8 +1195,23 @@ function AssignmentsContent() {
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
                 <h2 className="text-2xl font-bold mb-4 theme-text">New Assignment</h2>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <button
+                    onClick={() => setAssignmentModalMode("match")}
+                    className={`py-2 rounded text-sm font-medium ${assignmentModalMode === "match" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                  >
+                    Match Scout
+                  </button>
+                  <button
+                    onClick={() => setAssignmentModalMode("pit")}
+                    className={`py-2 rounded text-sm font-medium ${assignmentModalMode === "pit" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                  >
+                    Pit Scout
+                  </button>
+                </div>
                 <div className="space-y-4">
-                  <div>
+                  {assignmentModalMode === "match" ? (
+                    <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Match</label>
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       <button
@@ -516,13 +1264,33 @@ function AssignmentsContent() {
                         <p className="text-sm text-gray-500 text-center py-4">No matches found for this type.</p>
                       )}
                     </div>
-                  </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                      <select
+                        className="w-full border rounded p-2"
+                        value={selectedPitTeamNumber}
+                        onChange={(e) => setSelectedPitTeamNumber(e.target.value)}
+                      >
+                        <option value="">Select Team</option>
+                        {pitTeamOptions.map((teamNumber) => (
+                          <option key={teamNumber} value={teamNumber}>
+                            Team {teamNumber}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Member</label>
                     <select
                       className="w-full border rounded p-2"
-                      value={selectedScoutId}
-                      onChange={(e) => setSelectedScoutId(e.target.value)}
+                      value={assignmentModalMode === "match" ? selectedScoutId : selectedPitScoutId}
+                      onChange={(e) => {
+                        if (assignmentModalMode === "match") setSelectedScoutId(e.target.value);
+                        else setSelectedPitScoutId(e.target.value);
+                      }}
                     >
                       <option value="">Select Member</option>
                       {members.map((member) => (
@@ -532,6 +1300,7 @@ function AssignmentsContent() {
                       ))}
                     </select>
                   </div>
+                  {assignmentModalMode === "match" && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
                     <select
@@ -548,13 +1317,18 @@ function AssignmentsContent() {
                       ))}
                     </select>
                   </div>
+                  )}
                 </div>
                 <div className="flex gap-3 mt-6">
                   <button
-                    onClick={createAssignment}
+                    onClick={assignmentModalMode === "match" ? createAssignment : () => void createPitAssignment()}
                     className="flex-1 py-2 rounded text-white font-semibold disabled:opacity-50"
                     style={{ backgroundColor: "var(--primary-color)" }}
-                    disabled={!selectedMatchKey || !selectedScoutId || !selectedTeamNumber}
+                    disabled={
+                      assignmentModalMode === "match"
+                        ? (!selectedMatchKey || !selectedScoutId || !selectedTeamNumber)
+                        : (!selectedPitScoutId || !selectedPitTeamNumber)
+                    }
                   >
                     Create
                   </button>

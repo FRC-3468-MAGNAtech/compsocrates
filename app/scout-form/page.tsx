@@ -1,247 +1,346 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import ProtectedRoute from "@/app/components/ProtectedRoute";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
+import ProtectedRoute from "@/app/components/ProtectedRoute";
+import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
+import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
-import { isEventActive } from "@/app/utils/eventDates";
-import { APP_EVENT_BY_KEY } from "@/app/utils/events";
-import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { getEventMatches } from "@/app/utils/tba-api";
+import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 
-/* -------------------------------------------------------
-   MODAL — Fade In + Fade Out + Smooth Resize
--------------------------------------------------------- */
-function Modal({
+type MatchType = "practice" | "qualification" | "finals";
+type MatchStatus = "completed" | "next" | "upcoming";
+
+type MatchOption = {
+  id: string;
+  label: string;
+  type: MatchType;
+  matchNumber: number;
+  scheduleTime: number;
+  teams: string[];
+};
+
+type AssignmentRow = {
+  matchKey?: string;
+  matchLabel?: string;
+  teamNumber?: number;
+};
+
+function TeamPickerModal({
   open,
+  teams,
+  scoutedTeams,
   onClose,
-  step,
-  children,
+  onSelect,
 }: {
   open: boolean;
+  teams: string[];
+  scoutedTeams: Set<string>;
   onClose: () => void;
-  step: string;
-  children: React.ReactNode;
+  onSelect: (team: string) => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const [height, setHeight] = useState<string | number>("auto");
-  const [hasOpened, setHasOpened] = useState(false);
+  return (
+    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
+      <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
+      <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
+        {teams.length === 0 ? (
+          <p className="p-3 text-sm text-gray-600">No robots detected for this match.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {teams.map((team) => {
+              const done = scoutedTeams.has(team);
+              return (
+                <button
+                  key={team}
+                  type="button"
+                  disabled={done}
+                  onClick={() => {
+                    onSelect(team);
+                    onClose();
+                  }}
+                  className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
+                >
+                  {done ? `${team} (Scouted)` : team}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-4 w-full py-2 rounded text-white"
+        style={{ backgroundColor: "var(--primary-color)" }}
+      >
+        Close
+      </button>
+    </ReefscapeStyleModal>
+  );
+}
 
-  const contentRef = useRef<HTMLDivElement | null>(null);
+function buildFallbackScoutOptions(): MatchOption[] {
+  const rows: MatchOption[] = [];
+  for (let n = 1; n <= 20; n += 1) {
+    rows.push({
+      id: `p${n}`,
+      label: `Practice ${n}`,
+      type: "practice",
+      matchNumber: n,
+      scheduleTime: 0,
+      teams: [],
+    });
+  }
+  for (let n = 1; n <= 80; n += 1) {
+    rows.push({
+      id: `q${n}`,
+      label: `Qualification ${n}`,
+      type: "qualification",
+      matchNumber: n,
+      scheduleTime: 0,
+      teams: [],
+    });
+  }
+  for (let n = 1; n <= 3; n += 1) {
+    rows.push({
+      id: `f${n}`,
+      label: `Finals ${n}`,
+      type: "finals",
+      matchNumber: n,
+      scheduleTime: 0,
+      teams: [],
+    });
+  }
+  return rows;
+}
 
-  
+type FormState = {
+  scoutName: string;
+  teamNumber: string;
+  startingPosition: string;
+  autoPreloadScale: number;
+  autoBpsScale: number;
+  autoCarryScale: number;
+  autoHumanPlayerFuel: number;
+  autoCounterOverride: number;
+  autoCounterMissedFuel: number;
+  autoFailedClimb: number;
+  autoSuccessfulClimb: boolean;
+  wonAuto: boolean;
+  teleBpsScale: number;
+  teleCarryScale: number;
+  transitionCounterOverride: number;
+  transitionCounterMissedFuel: number;
+  shift1CounterOverride: number;
+  shift1CounterMissedFuel: number;
+  shift2CounterOverride: number;
+  shift2CounterMissedFuel: number;
+  shift3CounterOverride: number;
+  shift3CounterMissedFuel: number;
+  shift4CounterOverride: number;
+  shift4CounterMissedFuel: number;
+  teleopHumanPlayerFuel: number;
+  endgameCounterOverride: number;
+  endgameCounterMissedFuel: number;
+  endgameHumanPlayerFuel: number;
+  endgameFailedClimb: number;
+  endgameStatus: string;
+  incidents: string[];
+  notes: string;
+};
+
+const INCIDENTS = [
+  { value: "died", label: "Died During Match" },
+  { value: "never-started", label: "Never Started Match" },
+  { value: "disabled", label: "Disabled by FRC" },
+  { value: "recovered", label: "Recovered from Freeze" },
+  { value: "tipped", label: "Tipped Over" },
+  { value: "yellow-card", label: "Yellow Card" },
+  { value: "red-card", label: "Red Card" },
+];
+
+const BPS = [0, 2, 5, 8, 10];
+const CARRY = [0, 12, 23, 32, 42, 53, 54];
+const PRELOAD = [0, 2, 4, 6, 8];
+const PRELOAD_LABELS = ["0", "1-2", "3-4", "5-6", "7-8"];
+const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10+"];
+const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
+
+function convertPitScale(value: number, kind: "preload" | "bps" | "carry") {
+  const n = Number(value || 0);
+  if (kind === "preload") return n <= 0 ? 0 : n <= 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 3 : 4;
+  if (kind === "bps") return n <= 0 ? 0 : n <= 3 ? 1 : n <= 6 ? 2 : n <= 9 ? 3 : 4;
+  return n <= 0 ? 0 : n <= 12 ? 1 : n <= 23 ? 2 : n <= 32 ? 3 : n <= 42 ? 4 : n <= 53 ? 5 : 6;
+}
+
+function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number) {
+  return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (BPS[bpsScale] || 0) * seconds)));
+}
+
+function CycleTimer({ title, values, onAdd }: { title: string; values: number[]; onAdd: (value: number) => void }) {
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMounted(true);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setVisible(true);
-          setHasOpened(true);
-        });
-      });
-    } else {
-      setVisible(false);
-      setHasOpened(false);
-      const timeout = setTimeout(() => setMounted(false), 250);
-      return () => clearTimeout(timeout);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (contentRef.current) {
-      const newHeight = contentRef.current.scrollHeight + "px";
-      if (!hasOpened) {
-        setHeight(newHeight);
-      } else {
-        requestAnimationFrame(() => setHeight(newHeight));
-      }
-    }
-  }, [step, mounted, hasOpened, children]);
-
-  if (!mounted) return null;
+    if (!running) return;
+    const id = window.setInterval(() => {
+      if (startRef.current === null) return;
+      setElapsed((performance.now() - startRef.current) / 1000);
+    }, 20);
+    return () => window.clearInterval(id);
+  }, [running]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className={`
-          absolute inset-0 bg-black/40 backdrop-blur-sm
-          transition-opacity duration-300
-          ${visible ? "opacity-100" : "opacity-0"}
-        `}
-        onClick={onClose}
-      />
-
-      <div
-        className={`
-          relative bg-white rounded-2xl shadow-xl
-          transition-all duration-300
-          ${visible ? "opacity-100" : "opacity-0"}
-          ${
-            step === "qualification"
-              ? "w-[85%] max-w-[900px]"
-              : step === "finals"
-              ? "w-[90%] max-w-[1400px]"
-              : "w-[90%] max-w-md"
+    <div className="border rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-sm">{title}</span>
+        <span className="font-mono text-sm">{elapsed.toFixed(2)} s</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (!running) {
+            startRef.current = performance.now();
+            setElapsed(0);
+            setRunning(true);
+            return;
           }
-        `}
+          setRunning(false);
+          onAdd(Number(elapsed.toFixed(2)));
+          setElapsed(0);
+          startRef.current = null;
+        }}
+        className="px-3 py-2 rounded text-white text-sm"
+        style={{ backgroundColor: running ? "#dc2626" : "var(--primary-color)" }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 px-3 py-1 rounded border text-sm text-gray-700 bg-white hover:bg-gray-50 z-10"
-        >
-          Cancel
-        </button>
-        <div
-          style={{ height }}
-          className={`
-            overflow-hidden
-            ${hasOpened ? "transition-[height] duration-300 ease-out" : ""}
-          `}
-        >
-          <div ref={contentRef} className="p-6">
-            {children}
-          </div>
-        </div>
+        {running ? "Stop" : "Start"}
+      </button>
+      {values.map((v, i) => (
+        <div key={`${title}-${i}-${v}`} className="text-xs text-gray-700">Cycle {i + 1}: {v.toFixed(2)}</div>
+      ))}
+    </div>
+  );
+}
+function ClimbCounter({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2">
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <div className="flex items-center gap-2">
+      <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="theme-stepper-btn">
+        -
+      </button>
+      <span className="w-8 text-center font-semibold">{value}</span>
+      <button type="button" onClick={() => onChange(value + 1)} className="theme-stepper-btn">
+        +
+      </button>
       </div>
     </div>
   );
 }
 
-/* -------------------------------------------------------
-   MATCH BOX — Used in Finals Bracket
--------------------------------------------------------- */
-type MatchStatus = "completed" | "next" | "upcoming";
-
-interface Match {
-  id: number;
-  label: string;
-  status: MatchStatus;
-  bracket?: "upper" | "lower";
-}
-
-type ActivePresetField = {
-  id: string;
-  type?: string;
-  options?: string[];
-};
-
-function MatchBox({
-  match,
-  setSelectedMatch,
+function FinalsMatchBox({
+  number,
+  row,
+  col,
+  status,
+  onPick,
+  label,
 }: {
-  match: Match;
-  setSelectedMatch: (id: number, bracket?: "upper" | "lower") => void;
+  number: number;
+  row: number;
+  col: number;
+  status: MatchStatus;
+  onPick: (matchNumber: number) => void;
+  label?: string;
 }) {
-  const borderColors: Record<MatchStatus, string> = {
-    completed: "border-green-500",
-    next: "border-yellow-500",
-    upcoming: "border-red-500",
+  const borderStyles: Record<MatchStatus, React.CSSProperties> = {
+    completed: { borderColor: "#16a34a" },
+    next: { borderColor: "#ca8a04" },
+    upcoming: { borderColor: "#ef4444" },
   };
-
-  const badgeColors: Record<MatchStatus, string> = {
-    completed: "bg-[#c42221]",
-    next: "bg-[#c42221]",
-    upcoming: "bg-[#c42221]",
-  };
-
-  const badgeText: Record<MatchStatus, string> = {
-    completed: "Done",
-    next: "Next",
-    upcoming: "Up",
+  const badgeBg: Record<MatchStatus, string> = {
+    completed: "#16a34a",
+    next: "#ca8a04",
+    upcoming: "#ef4444",
   };
 
   return (
     <button
+      type="button"
       onClick={() => {
-        setSelectedMatch(match.id, match.bracket);
+        if (status === "completed") return;
+        onPick(number);
       }}
-      className={`
-        relative w-[120px] min-h-[62px] text-xs rounded border text-left bg-white
-        border-t border-b border-l border-r
-        ${borderColors[match.status]}
-        hover:bg-gray-50
-      `}
+      disabled={status === "completed"}
+      className={`absolute w-[120px] min-h-[62px] text-xs rounded border text-left bg-white ${
+        status === "completed" ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"
+      }`}
+      style={{ left: col, top: row, ...(status === "completed" ? {} : borderStyles[status]) }}
     >
       <div
-        className={`
-          absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white
-          ${badgeColors[match.status]}
-        `}
+        className="absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center"
+        style={{ backgroundColor: badgeBg[status] }}
       >
-        {badgeText[match.status]}
+        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
       </div>
       <div className="pt-1.5 pb-1 px-1.5">
-        <div className="font-semibold text-[11px] leading-tight">{match.label}</div>
-        <div className="mt-1.5 border-t border-gray-200 pt-1">
-          {(() => {
-            const baseTime = new Date();
-            baseTime.setHours(13, 0, 0, 0);
-            const matchTime = new Date(baseTime.getTime() + (match.id - 1) * 6 * 60000);
-            const timeString = matchTime.toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            });
-            
-            return (
-              <div className="text-[10px] text-gray-600 text-center">
-                {timeString}
-              </div>
-            );
-          })()}
-        </div>
+        <div className="font-semibold text-[11px] leading-tight">{label || `Match ${number}`}</div>
       </div>
     </button>
   );
 }
 
 function FinalsBracket({
-  setSelectedMatch,
+  completed,
+  onPick,
 }: {
-  setSelectedMatch: (id: number, bracket?: "upper" | "lower") => void;
+  completed: Set<string>;
+  onPick: (matchNumber: number) => void;
 }) {
   const B = { w: 120, h: 62, colGap: 60, row: 90 };
   const col = (c: number) => (B.w + B.colGap) * c;
-
   const r1_1 = 20;
   const r1_2 = r1_1 + B.row;
   const r1_3 = r1_2 + B.row + 30;
   const r1_4 = r1_3 + B.row;
-  
   const r2_7 = (r1_1 + r1_2 + B.h) / 2 - B.h / 2;
   const r2_8 = (r1_3 + r1_4 + B.h) / 2 - B.h / 2;
-  
   const r3_11 = (r2_7 + r2_8 + B.h) / 2 - B.h / 2;
-  
   const lower_5 = r1_4 + B.row + 50;
   const lower_6 = lower_5 + B.row;
-  
   const lower_9 = lower_5 - 30;
   const lower_10 = lower_6 - 30;
-  
   const lower_12 = (lower_9 + lower_10 + B.h) / 2 - B.h / 2;
-  
   const y13 = lower_9;
-  
   const yFinals = (r3_11 + y13 + B.h) / 2 - B.h / 2;
-  
   const c0 = 0;
   const c1 = col(1);
   const c2 = col(2);
   const c3 = col(3);
   const c4 = col(4);
   const c5 = col(5);
-  
   const join1 = c0 + B.w + 30;
   const join2 = c1 + B.w + 30;
   const join3 = c2 + B.w + 30;
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
-  
-  const height = 600;
   const totalWidth = c5 + B.w;
+  const firstOpen = Array.from({ length: 14 }, (_, i) => i + 1).find((n) => !completed.has(`f${n}`)) || -1;
+  const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
 
   return (
     <div className="relative w-full flex justify-center py-6 overflow-x-auto">
@@ -254,165 +353,390 @@ function FinalsBracket({
           ))}
         </div>
 
-        <div className="relative" style={{ width: totalWidth, height }}>
-          <svg className="absolute inset-0 pointer-events-none overflow-visible" width={totalWidth} height={height}>
+        <div className="relative" style={{ width: totalWidth, height: 600 }}>
+          <svg className="absolute inset-0 pointer-events-none overflow-visible" width={totalWidth} height={600}>
             <g stroke="#9ca3af" strokeWidth="2" fill="none">
               <path d={`M ${c0 + B.w} ${r1_1 + B.h / 2} H ${join1} V ${r1_2 + B.h / 2} H ${c0 + B.w}`} />
               <path d={`M ${join1} ${r2_7 + B.h / 2} H ${c1}`} />
-              
               <path d={`M ${c0 + B.w} ${r1_3 + B.h / 2} H ${join1} V ${r1_4 + B.h / 2} H ${c0 + B.w}`} />
               <path d={`M ${join1} ${r2_8 + B.h / 2} H ${c1}`} />
-              
               <path d={`M ${c1 + B.w} ${r2_7 + B.h / 2} H ${join2} V ${r2_8 + B.h / 2} H ${c1 + B.w}`} />
               <path d={`M ${join2} ${r3_11 + B.h / 2} H ${c3}`} />
-              
               <path d={`M ${c1 + B.w} ${lower_5 + B.h / 2} H ${join2} V ${lower_9 + B.h / 2} H ${c2}`} />
-              
               <path d={`M ${c1 + B.w} ${lower_6 + B.h / 2} H ${join2} V ${lower_10 + B.h / 2} H ${c2}`} />
-              
               <path d={`M ${c2 + B.w} ${lower_9 + B.h / 2} H ${join3} V ${lower_10 + B.h / 2} H ${c2 + B.w}`} />
               <path d={`M ${join3} ${lower_12 + B.h / 2} H ${c3}`} />
-              
               <path d={`M ${c3 + B.w} ${lower_12 + B.h / 2} H ${join4} V ${y13 + B.h / 2} H ${c4}`} />
-              
               <path d={`M ${c3 + B.w} ${r3_11 + B.h / 2} H ${join5} V ${yFinals + B.h / 2} H ${c5}`} />
-              
               <path d={`M ${c4 + B.w} ${y13 + B.h / 2} H ${join5} V ${yFinals + B.h / 2}`} />
             </g>
           </svg>
 
-          <div className="absolute" style={{ left: c0, top: r1_1 }}>
-            <MatchBox match={{ id: 1, label: "Match 1", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c0, top: r1_2 }}>
-            <MatchBox match={{ id: 2, label: "Match 2", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c0, top: r1_3 }}>
-            <MatchBox match={{ id: 3, label: "Match 3", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c0, top: r1_4 }}>
-            <MatchBox match={{ id: 4, label: "Match 4", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-
-          <div className="absolute" style={{ left: c1, top: r2_7 }}>
-            <MatchBox match={{ id: 7, label: "Match 7", status: "completed", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c1, top: r2_8 }}>
-            <MatchBox match={{ id: 8, label: "Match 8", status: "next", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c1, top: lower_5 }}>
-            <MatchBox match={{ id: 5, label: "Match 5", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c1, top: lower_6 }}>
-            <MatchBox match={{ id: 6, label: "Match 6", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-
-          <div className="absolute" style={{ left: c2, top: lower_9 }}>
-            <MatchBox match={{ id: 9, label: "Match 9", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c2, top: lower_10 }}>
-            <MatchBox match={{ id: 10, label: "Match 10", status: "completed", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-
-          <div className="absolute" style={{ left: c3, top: r3_11 }}>
-            <MatchBox match={{ id: 11, label: "Match 11", status: "upcoming", bracket: "upper" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-          <div className="absolute" style={{ left: c3, top: lower_12 }}>
-            <MatchBox match={{ id: 12, label: "Match 12", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-
-          <div className="absolute" style={{ left: c4, top: y13 }}>
-            <MatchBox match={{ id: 13, label: "Match 13", status: "upcoming", bracket: "lower" }} setSelectedMatch={setSelectedMatch} />
-          </div>
-
-          <div className="absolute" style={{ left: c5, top: yFinals }}>
-            <MatchBox match={{ id: 14, label: "FINALS", status: "upcoming" }} setSelectedMatch={setSelectedMatch} />
-          </div>
+          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} />
+          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} />
+          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} />
+          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} />
+          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} />
+          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} />
+          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} />
+          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} />
+          <FinalsMatchBox number={9} row={lower_9} col={c2} status={statusOf(9)} onPick={onPick} />
+          <FinalsMatchBox number={10} row={lower_10} col={c2} status={statusOf(10)} onPick={onPick} />
+          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} />
+          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} />
+          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} />
+          <FinalsMatchBox
+            number={14}
+            row={yFinals}
+            col={c5}
+            label="FINALS"
+            status={completed.has("f1") && completed.has("f2") && completed.has("f3") ? "completed" : "upcoming"}
+            onPick={onPick}
+          />
         </div>
       </div>
     </div>
   );
 }
 
-/* -------------------------------------------------------
-   MAIN PAGE
--------------------------------------------------------- */
+function MatchModal({
+  open,
+  onClose,
+  options,
+  completed,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  options: MatchOption[];
+  completed: Set<string>;
+  onPick: (m: MatchOption) => void;
+}) {
+  const [step, setStep] = useState<"type" | MatchType>("type");
+  const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
+
+  useEffect(() => {
+    if (!open) {
+      setStep("type");
+      setFinalsStep("bracket");
+    }
+  }, [open]);
+
+  const current = options.filter((m) => m.type === step);
+  const firstOpen = current.find((m) => !completed.has(m.id))?.id || "";
+  const finalsById = new Map(options.filter((m) => m.type === "finals").map((m) => [m.id, m] as const));
+
+  return (
+    <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
+        {step === "type" ? (
+          <>
+            <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Match Type</h2>
+            <div className="space-y-3">
+              <button type="button" className="w-full py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={() => setStep("practice")}>Practice</button>
+              <button type="button" className="w-full py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={() => setStep("qualification")}>Qualification</button>
+              <button type="button" className="w-full py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={() => setStep("finals")}>Finals</button>
+            </div>
+          </>
+        ) : (
+          <>
+            {(step === "practice" || step === "qualification") && (
+              <>
+                <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
+                  {step === "practice" ? "Practice Matches" : "Qualification Matches"}
+                </h2>
+                <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
+                  {current.length === 0 && (
+                    <div className="col-span-full border rounded p-3 text-sm text-gray-600">
+                      No matches available for this type yet.
+                    </div>
+                  )}
+                  {current.map((m) => {
+                    const done = completed.has(m.id);
+                    const status: MatchStatus = done ? "completed" : m.id === firstOpen ? "next" : "upcoming";
+                    const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        disabled={done}
+                        onClick={() => {
+                          if (done) return;
+                          onPick(m);
+                          onClose();
+                        }}
+                        className={`relative h-[86px] p-2 rounded-lg border text-left ${done ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
+                        style={done ? undefined : { borderColor: color }}
+                      >
+                        <div className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: color }}>
+                          {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
+                        </div>
+                        <div className="mt-3">
+                          <div className="font-semibold text-sm">{m.label}</div>
+                          <div className="text-xs text-gray-600">{m.scheduleTime > 0 ? new Date(m.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="w-full mt-4 py-2 rounded text-white"
+                  style={{ backgroundColor: "var(--primary-color)" }}
+                  onClick={onClose}
+                >
+                  Close
+                </button>
+              </>
+            )}
+
+            {step === "finals" && (
+              <>
+                {finalsStep === "bracket" && (
+                  <FinalsBracket
+                    completed={new Set(Array.from(completed).filter((id) => id.startsWith("f")))}
+                    onPick={(matchNumber) => {
+                      if (matchNumber === 14) {
+                        setFinalsStep("number");
+                        return;
+                      }
+                      const key = `f${matchNumber}`;
+                      const picked = finalsById.get(key) || {
+                        id: key,
+                        label: `Finals ${matchNumber}`,
+                        type: "finals" as const,
+                        matchNumber,
+                        scheduleTime: 0,
+                        teams: [],
+                      };
+                      onPick(picked);
+                      onClose();
+                    }}
+                  />
+                )}
+                {finalsStep === "number" && (
+                  <>
+                    <div className="flex items-center justify-between mb-6">
+                      <button
+                        type="button"
+                        onClick={() => setFinalsStep("bracket")}
+                        className="text-gray-600 hover:text-gray-900 flex items-center gap-2"
+                      >
+                        ← Back to Bracket
+                      </button>
+                      <h2 className="text-xl font-semibold">Select Finals Match Number</h2>
+                      <div className="w-32" />
+                    </div>
+                    <p className="text-gray-600 mb-6 text-center">Which finals match are you scouting?</p>
+                    <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
+                      {[1, 2, 3].map((matchNum) => (
+                        <button
+                          key={matchNum}
+                          type="button"
+                          onClick={() => {
+                            const key = `f${matchNum}`;
+                            const picked = finalsById.get(key) || {
+                              id: key,
+                              label: `Finals ${matchNum}`,
+                              type: "finals" as const,
+                              matchNumber: matchNum,
+                              scheduleTime: 0,
+                              teams: [],
+                            };
+                            onPick(picked);
+                            onClose();
+                          }}
+                          disabled={completed.has(`f${matchNum}`)}
+                          className={`group relative p-8 border-2 border-gray-300 rounded-2xl transition-all ${completed.has(`f${matchNum}`) ? "opacity-45 cursor-not-allowed bg-gray-100" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
+                        >
+                          <div className="text-center">
+                            <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
+                              F{matchNum}
+                            </div>
+                            <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">{`Finals ${matchNum}`}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </>
+        )}
+    </ReefscapeStyleModal>
+  );
+}
+
+function mapAssignmentToMatchId(labelOrKey: string) {
+  const raw = String(labelOrKey || "").toLowerCase();
+  const qm = raw.match(/(?:_qm|qualification\s+)(\d+)/);
+  if (qm) return `q${qm[1]}`;
+  const practice = raw.match(/practice\s+(\d+)/);
+  if (practice) return `p${practice[1]}`;
+  const sf = raw.match(/(?:_sf\d+m|semifinal\s+\d+-)(\d+)/);
+  if (sf) return `sf${sf[1]}`;
+  const qf = raw.match(/(?:_qf\d+m|quarterfinal\s+\d+-)(\d+)/);
+  if (qf) return `qf${qf[1]}`;
+  const finals = raw.match(/(?:_f\d+m|finals\s+)(\d+)/);
+  if (finals) return `f${finals[1]}`;
+  return "";
+}
 function ScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  const showEventWarning = !isEventActive();
-
+  const searchParams = useSearchParams();
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [eventKey, setEventKey] = useState("app-testing");
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalStep, setModalStep] = useState<"type" | "practice" | "qualification" | "finals">("type");
-  const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
-  const [activeFormGame, setActiveFormGame] = useState<"REEFSCAPE" | "REBUILT">("REEFSCAPE");
-  const [activeFormFields, setActiveFormFields] = useState<ActivePresetField[]>([]);
-  const [selectedMatch, setSelectedMatch] = useState<{ id: number; type?: "qualification" | "practice" | "finals"; bracket?: "upper" | "lower" }>({ 
-    id: 0,
-    type: undefined,
-  });
-
-  const [formData, setFormData] = useState({
+  const [showTeamPicker, setShowTeamPicker] = useState(false);
+  const [options, setOptions] = useState<MatchOption[]>([]);
+  const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
+  const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
+  const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
+  const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
+  const [targets, setTargets] = useState<Record<string, number>>({});
+  const [pitLock, setPitLock] = useState({ preload: false, bps: false, carry: false });
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<FormState>({
     scoutName: userData?.displayName || "",
     teamNumber: "",
     startingPosition: "",
-    leftStartingZone: false,
-    autoCoralMissed: 0,
-    autoCoralL1: 0,
-    autoCoralL2: 0,
-    autoCoralL3: 0,
-    autoCoralL4: 0,
-    autoAlgaeProcessorMissed: 0,
-    autoAlgaeProcessorScored: 0,
-    autoAlgaeNetMissed: 0,
-    autoAlgaeNetScored: 0,
-    teleopCoralMissed: 0,
-    teleopCoralL1: 0,
-    teleopCoralL2: 0,
-    teleopCoralL3: 0,
-    teleopCoralL4: 0,
-    teleopAlgaeRemoved: false,
-    teleopProcessorMissed: 0,
-    teleopProcessorScored: 0,
-    teleopNetRobotMissed: 0,
-    teleopNetRobotScored: 0,
-    teleopNetHumanMissed: 0,
-    teleopNetHumanScored: 0,
-    failedClimb: 0,
-    stageStatus: "",
-    incidents: [] as string[],
+    autoPreloadScale: 0,
+    autoBpsScale: 0,
+    autoCarryScale: 0,
+    autoHumanPlayerFuel: 0,
+    autoCounterOverride: 0,
+    autoCounterMissedFuel: 0,
+    autoFailedClimb: 0,
+    autoSuccessfulClimb: false,
+    wonAuto: false,
+    teleBpsScale: 0,
+    teleCarryScale: 0,
+    transitionCounterOverride: 0,
+    transitionCounterMissedFuel: 0,
+    shift1CounterOverride: 0,
+    shift1CounterMissedFuel: 0,
+    shift2CounterOverride: 0,
+    shift2CounterMissedFuel: 0,
+    shift3CounterOverride: 0,
+    shift3CounterMissedFuel: 0,
+    shift4CounterOverride: 0,
+    shift4CounterMissedFuel: 0,
+    teleopHumanPlayerFuel: 0,
+    endgameCounterOverride: 0,
+    endgameCounterMissedFuel: 0,
+    endgameHumanPlayerFuel: 0,
+    endgameFailedClimb: 0,
+    endgameStatus: "",
+    incidents: [],
     notes: "",
   });
 
-  useEffect(() => {
-    async function loadActivePreset() {
-      if (!userData?.teamId) return;
-      const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-      if (!teamDoc.exists()) return;
-      const activeMatchFormPresetId = teamDoc.data().activeMatchFormPresetId as string | undefined;
-      if (!activeMatchFormPresetId) return;
-      const presetDoc = await getDoc(doc(db, "formPresets", activeMatchFormPresetId));
-      if (!presetDoc.exists()) return;
-      const preset = presetDoc.data() as { name?: string; fields?: ActivePresetField[]; game?: "REEFSCAPE" | "REBUILT" };
-      setActiveFormGame(preset.game === "REBUILT" ? "REBUILT" : "REEFSCAPE");
-      setActiveFormFields(Array.isArray(preset.fields) ? preset.fields : []);
-    }
-    loadActivePreset();
-  }, [userData?.teamId]);
+  const [autoCycles, setAutoCycles] = useState<number[]>([]);
+  const [transitionCycles, setTransitionCycles] = useState<number[]>([]);
+  const [shift1Cycles, setShift1Cycles] = useState<number[]>([]);
+  const [shift2Cycles, setShift2Cycles] = useState<number[]>([]);
+  const [shift3Cycles, setShift3Cycles] = useState<number[]>([]);
+  const [shift4Cycles, setShift4Cycles] = useState<number[]>([]);
+  const [endgameCycles, setEndgameCycles] = useState<number[]>([]);
 
-  function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
-    if (id === 14 && !bracket) {
-      setSelectedMatch({ id: 0, type: "finals" });
-      setFinalsStep("number");
-      setModalStep("finals");
-      return;
+  useEffect(() => {
+    if (!userData?.displayName) return;
+    setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
+  }, [userData?.displayName]);
+
+  useEffect(() => {
+    async function loadEventContext() {
+      if (!userData?.teamId) {
+        setEventKey("app-testing");
+        const fallback = buildFallbackScoutOptions();
+        setOptions(fallback);
+        setTargets({});
+        if (!selectedMatch && fallback.length > 0) {
+          setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
+        }
+        return;
+      }
+      try {
+        const currentEvent = await resolveDetectedTeamEventKey(userData.teamId);
+        setEventKey(currentEvent);
+        if (currentEvent === "app-testing") {
+          const fallback = buildFallbackScoutOptions();
+          setOptions(fallback);
+          setTargets({});
+          if (!selectedMatch && fallback.length > 0) {
+            setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
+          }
+          return;
+        }
+
+        const matches = await getEventMatches(currentEvent);
+        const next: MatchOption[] = [];
+        const nextTargets: Record<string, number> = {};
+        matches.filter((m) => m.comp_level === "qm").sort((a, b) => a.match_number - b.match_number).forEach((m) => {
+          const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
+          const time = m.actual_time || m.predicted_time || m.time || 0;
+          next.push({ id: `q${m.match_number}`, label: `Qualification ${m.match_number}`, type: "qualification", matchNumber: m.match_number, scheduleTime: time, teams });
+          nextTargets[`q${m.match_number}`] = teams.length || 6;
+        });
+        matches.filter((m) => ["qf", "sf", "f"].includes(m.comp_level)).forEach((m) => {
+          const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
+          const time = m.actual_time || m.predicted_time || m.time || 0;
+          const id = m.comp_level === "f" ? `f${m.match_number}` : m.comp_level === "sf" ? `sf${m.match_number}` : `qf${m.match_number}`;
+          next.push({ id, label: m.comp_level === "f" ? `Finals ${m.match_number}` : m.comp_level === "sf" ? `Semifinal ${m.set_number}-${m.match_number}` : `Quarterfinal ${m.set_number}-${m.match_number}`, type: "finals", matchNumber: m.match_number, scheduleTime: time, teams });
+          nextTargets[id] = teams.length || 6;
+        });
+        const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
+        setOptions(resolved);
+        setTargets(next.length > 0 ? nextTargets : {});
+        if (!selectedMatch && resolved.length > 0) setSelectedMatch(resolved.find((m) => m.type === "qualification") || resolved[0]);
+
+        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
+        const assigned: Record<string, string> = {};
+        assignmentSnap.docs.forEach((row) => {
+          const data = row.data() as AssignmentRow;
+          const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
+          const team = String(data.teamNumber || "").trim();
+          if (matchId && team) assigned[matchId] = team;
+        });
+        setAssignedTeams(assigned);
+      } catch (error) {
+        console.error("Failed to load match context:", error);
+        const fallback = buildFallbackScoutOptions();
+        setOptions(fallback);
+        setTargets({});
+        if (!selectedMatch && fallback.length > 0) {
+          setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
+        }
+      }
     }
-    setSelectedMatch({ id, type: "finals", bracket });
-    setModalOpen(false);
-    setModalStep("type");
-    setFinalsStep("bracket");
-  }
+    void loadEventContext();
+  }, [userData?.teamId, userData?.uid, selectedMatch]);
+  useEffect(() => {
+    async function loadScouted() {
+      if (!eventKey) return;
+      const snap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)));
+      const counts: Record<string, number> = {};
+      const teamsMap = new Map<string, Set<string>>();
+      snap.docs.forEach((d) => {
+        const row = d.data() as Record<string, unknown>;
+        const matchId = String(row.matchId || "").toLowerCase().trim();
+        const team = String(row.teamNumber || "").trim();
+        if (!matchId) return;
+        counts[matchId] = (counts[matchId] || 0) + 1;
+        if (!teamsMap.has(matchId)) teamsMap.set(matchId, new Set<string>());
+        if (team) teamsMap.get(matchId)?.add(team);
+      });
+      setScoutedCounts(counts);
+      setScoutedTeamsByMatch(Object.fromEntries(Array.from(teamsMap.entries()).map(([k, v]) => [k, Array.from(v)])));
+    }
+    void loadScouted();
+  }, [eventKey]);
+
+  const selectedMatchId = selectedMatch?.id || "";
+  const selectedTeams = selectedMatch?.teams || [];
+  const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
+  const assignedTeam = assignedTeams[selectedMatchId] || "";
 
   function getFinalsDisplayLabel(matchNum: number) {
     if (matchNum === 1) return "Upper Bracket Match 1";
@@ -428,744 +752,421 @@ function ScoutFormContent() {
     if (matchNum === 11) return "Upper Bracket Match 11";
     if (matchNum === 12) return "Lower Bracket Match 12";
     if (matchNum === 13) return "Lower Bracket Match 13";
-    if (matchNum === 14) return "Finals 1 (F14)";
-    if (matchNum === 15) return "Finals 2 (F15)";
-    if (matchNum === 16) return "Finals 3 (F16)";
-    return `Finals (F${matchNum})`;
+    return `Finals ${matchNum}`;
   }
 
-  const getMatchDisplay = () => {
-    if (!selectedMatch.type || selectedMatch.id <= 0) return "No match is set";
-    if (selectedMatch.type === "finals") {
-      return getFinalsDisplayLabel(selectedMatch.id);
-    } else if (selectedMatch.type === "practice") {
-      return `Practice Match ${selectedMatch.id}`;
-    } else {
-      return `Qualification Match ${selectedMatch.id}`;
+  function getSelectedMatchDisplay() {
+    if (!selectedMatch) return "No match is set";
+    if (selectedMatch.type === "practice") return `Practice Match ${selectedMatch.matchNumber}`;
+    if (selectedMatch.type === "qualification") return `Qualification Match ${selectedMatch.matchNumber}`;
+    if (selectedMatch.type === "finals") return getFinalsDisplayLabel(selectedMatch.matchNumber);
+    return selectedMatch.label || "No match is set";
+  }
+
+  useEffect(() => {
+    if (assignedTeam) setForm((prev) => ({ ...prev, teamNumber: assignedTeam }));
+  }, [assignedTeam]);
+
+  useEffect(() => {
+    async function loadPitDefaults() {
+      if (!userData?.teamId || !form.teamNumber.trim()) {
+        setPitLock({ preload: false, bps: false, carry: false });
+        return;
+      }
+      const baseQuery = query(
+        collection(db, "pitScouting"),
+        where("teamId", "==", userData.teamId),
+        where("teamNumber", "==", form.teamNumber.trim()),
+        where("game", "==", "REBUILT")
+      );
+      const pitSnap = await getDocs(baseQuery);
+      const eventScopedRows = pitSnap.docs
+        .map((r) => r.data() as Record<string, unknown>)
+        .filter((row) => String(row.eventKey || "").trim() === String(eventKey || "").trim());
+      const rows = eventScopedRows.length > 0 ? eventScopedRows : pitSnap.docs.map((r) => r.data() as Record<string, unknown>);
+      if (rows.length === 0) {
+        setPitLock({ preload: false, bps: false, carry: false });
+        return;
+      }
+      const latest = rows.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
+      const preloadRaw = Number(latest.fuelPreloadCapacity || 0);
+      const bpsRaw = Number(latest.fuelBallsPerSecond || 0);
+      const carryRaw = Number(latest.fuelCarryingCapacity || 0);
+      const preload = preloadRaw > 0;
+      const bps = bpsRaw > 0;
+      const carry = carryRaw > 0;
+      setPitLock({ preload, bps, carry });
+      setForm((prev) => ({
+        ...prev,
+        autoPreloadScale: preload ? convertPitScale(preloadRaw, "preload") : prev.autoPreloadScale,
+        autoBpsScale: bps ? convertPitScale(bpsRaw, "bps") : prev.autoBpsScale,
+        autoCarryScale: carry ? convertPitScale(carryRaw, "carry") : prev.autoCarryScale,
+        teleBpsScale: bps ? convertPitScale(bpsRaw, "bps") : prev.teleBpsScale,
+        teleCarryScale: carry ? convertPitScale(carryRaw, "carry") : prev.teleCarryScale,
+      }));
     }
-  };
+    void loadPitDefaults();
+  }, [userData?.teamId, form.teamNumber, eventKey]);
 
-  const activeTeamField = activeFormFields.find(
-    (field) => field.id === "team" || field.id === "teamNumber"
-  );
-  const presetTeamOptions = Array.isArray(activeTeamField?.options)
-    ? activeTeamField.options.filter((option) => option.trim().length > 0)
-    : [];
-  const allowManualTeamEntry = showEventWarning || activeTeamField?.type === "number" || activeTeamField?.type === "text";
+  const completedMatches = useMemo(() => {
+    return new Set(
+      Object.keys(scoutedCounts).filter((id) => {
+        const target = targets[id];
+        if (typeof target !== "number" || target <= 0) return false;
+        return (scoutedCounts[id] || 0) >= target;
+      })
+    );
+  }, [scoutedCounts, targets]);
 
-  const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => onChange(Math.max(0, value - 1))}
-          className="theme-stepper-btn"
-        >
-          −
-        </button>
-        <span className="w-8 text-center font-semibold">{value}</span>
-        <button
-          onClick={() => onChange(value + 1)}
-          className="theme-stepper-btn"
-        >
-          +
-        </button>
-      </div>
-    </div>
-  );
-
-  function calculateSubmissionScore(penaltyPoints = 0) {
-    let score = 0;
-    if (formData.leftStartingZone) score += 3;
-    score += formData.autoCoralL1 * 3;
-    score += formData.autoCoralL2 * 4;
-    score += formData.autoCoralL3 * 6;
-    score += formData.autoCoralL4 * 7;
-    score += formData.autoAlgaeProcessorScored * 6;
-    score += formData.autoAlgaeNetScored * 4;
-    score += formData.teleopCoralL1 * 2;
-    score += formData.teleopCoralL2 * 3;
-    score += formData.teleopCoralL3 * 4;
-    score += formData.teleopCoralL4 * 5;
-    score += formData.teleopProcessorScored * 6;
-    score += formData.teleopNetRobotScored * 4;
-    score += formData.teleopNetHumanScored * 4;
-    const stageStatus = formData.stageStatus.toLowerCase();
-    if (stageStatus.includes("deep")) score += 12;
-    else if (stageStatus.includes("shallow")) score += 6;
-    else if (stageStatus.includes("park") || stageStatus.includes("barge")) score += 2;
-    return score + penaltyPoints;
+  function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {
+    if (scoredOverride > 0) return scoredOverride;
+    return Math.max(0, estimated - Math.max(0, Number(missedFuel || 0)));
   }
+
+  function estimateAutoSectionFuel() {
+    const preloadCap = PRELOAD[Math.max(0, Math.min(4, form.autoPreloadScale))] || 0;
+    const carryCap = CARRY[Math.max(0, Math.min(6, form.autoCarryScale))] || 0;
+    const estimated = autoCycles.reduce((sum, seconds, i) => {
+      const capacity = i === 0 && preloadCap > 0 ? preloadCap : carryCap;
+      return sum + estimateBalls(seconds, form.autoBpsScale, capacity);
+    }, 0);
+    return resolveSectionFuel(estimated, form.autoCounterOverride, form.autoCounterMissedFuel);
+  }
+
+  function estimateTeleSectionFuel() {
+    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const transitionEstimated = transitionCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s1Estimated = shift1Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s2Estimated = shift2Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s3Estimated = shift3Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const s4Estimated = shift4Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const transition = resolveSectionFuel(transitionEstimated, form.transitionCounterOverride, form.transitionCounterMissedFuel);
+    const s1 = resolveSectionFuel(s1Estimated, form.shift1CounterOverride, form.shift1CounterMissedFuel);
+    const s2 = resolveSectionFuel(s2Estimated, form.shift2CounterOverride, form.shift2CounterMissedFuel);
+    const s3 = resolveSectionFuel(s3Estimated, form.shift3CounterOverride, form.shift3CounterMissedFuel);
+    const s4 = resolveSectionFuel(s4Estimated, form.shift4CounterOverride, form.shift4CounterMissedFuel);
+    return transition + (form.wonAuto ? s2 + s4 : s1 + s3);
+  }
+
+  function estimateEndgameSectionFuel() {
+    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const estimated = endgameCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    return resolveSectionFuel(estimated, form.endgameCounterOverride, form.endgameCounterMissedFuel);
+  }
+
+  function estimateAutoTotal() {
+    return estimateAutoSectionFuel() + Number(form.autoHumanPlayerFuel || 0);
+  }
+
+  function estimateTeleTotal() {
+    return estimateTeleSectionFuel() + Number(form.teleopHumanPlayerFuel || 0);
+  }
+
+  function estimateEndgameTotal() {
+    return estimateEndgameSectionFuel() + Number(form.endgameHumanPlayerFuel || 0);
+  }
+
+  async function submit() {
+    if (!userData?.uid) {
+      alert("You must be logged in to submit.");
+      return;
+    }
+    if (!selectedMatch) return alert("Select a match first.");
+    if (!form.teamNumber.trim()) return alert("Team number required.");
+    if (selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
+
+    setSaving(true);
+    try {
+      await addDoc(collection(db, "scouting"), {
+        scoutName: userData.displayName || "",
+        scoutId: userData.uid,
+        teamId: userData.teamId || "",
+        eventKey,
+        game: "REBUILT",
+        matchId: selectedMatch.id,
+        matchType: selectedMatch.type,
+        matchNumber: String(selectedMatch.matchNumber),
+        teamNumber: form.teamNumber.trim(),
+        startingPosition: form.startingPosition,
+        auto: {
+          preloadScale: form.autoPreloadScale,
+          bpsScale: form.autoBpsScale,
+          carryingScale: form.autoCarryScale,
+          cycleTimes: autoCycles,
+          estimatedFuel: estimateAutoTotal(),
+          counterOverride: form.autoCounterOverride,
+          counterOverrideMissedFuel: form.autoCounterMissedFuel,
+          humanPlayerFuel: form.autoHumanPlayerFuel,
+          failedClimb: form.autoFailedClimb,
+          successfulClimb: form.autoSuccessfulClimb,
+          wonAuto: form.wonAuto,
+        },
+        teleop: {
+          shiftParityFromWonAuto: form.wonAuto,
+          bpsScale: form.teleBpsScale,
+          carryingScale: form.teleCarryScale,
+          transitionCycles,
+          shift1Cycles,
+          shift2Cycles,
+          shift3Cycles,
+          shift4Cycles,
+          transitionOverride: form.transitionCounterOverride,
+          transitionMissedFuel: form.transitionCounterMissedFuel,
+          shift1Override: form.shift1CounterOverride,
+          shift1MissedFuel: form.shift1CounterMissedFuel,
+          shift2Override: form.shift2CounterOverride,
+          shift2MissedFuel: form.shift2CounterMissedFuel,
+          shift3Override: form.shift3CounterOverride,
+          shift3MissedFuel: form.shift3CounterMissedFuel,
+          shift4Override: form.shift4CounterOverride,
+          shift4MissedFuel: form.shift4CounterMissedFuel,
+          humanPlayerFuel: form.teleopHumanPlayerFuel,
+          estimatedFuel: estimateTeleTotal(),
+        },
+        endgame: {
+          cycleTimes: endgameCycles,
+          counterOverride: form.endgameCounterOverride,
+          counterOverrideMissedFuel: form.endgameCounterMissedFuel,
+          humanPlayerFuel: form.endgameHumanPlayerFuel,
+          estimatedFuel: estimateEndgameTotal(),
+          failedClimb: form.endgameFailedClimb,
+          status: form.endgameStatus,
+        },
+        incidents: form.incidents,
+        notes: form.notes,
+        scoringWeights: { autoFuel: 1, autoClimbLevel1: 15, teleopFuel: 1, teleopClimbLevel1: 10, teleopClimbLevel2: 20, teleopClimbLevel3: 30 },
+        submittedAt: Date.now(),
+        timestamp: Date.now(),
+      });
+      alert("Match scout form submitted.");
+      setScoutedCounts((prev) => ({ ...prev, [selectedMatch.id]: (prev[selectedMatch.id] || 0) + 1 }));
+      setScoutedTeamsByMatch((prev) => {
+        const now = new Set(prev[selectedMatch.id] || []);
+        now.add(form.teamNumber.trim());
+        return { ...prev, [selectedMatch.id]: Array.from(now) };
+      });
+      setForm((prev) => ({
+        ...prev,
+        teamNumber: assignedTeam || "",
+        startingPosition: "",
+        autoHumanPlayerFuel: 0,
+        autoCounterOverride: 0,
+        autoCounterMissedFuel: 0,
+        autoFailedClimb: 0,
+        autoSuccessfulClimb: false,
+        wonAuto: false,
+        transitionCounterOverride: 0,
+        transitionCounterMissedFuel: 0,
+        shift1CounterOverride: 0,
+        shift1CounterMissedFuel: 0,
+        shift2CounterOverride: 0,
+        shift2CounterMissedFuel: 0,
+        shift3CounterOverride: 0,
+        shift3CounterMissedFuel: 0,
+        shift4CounterOverride: 0,
+        shift4CounterMissedFuel: 0,
+        teleopHumanPlayerFuel: 0,
+        endgameCounterOverride: 0,
+        endgameCounterMissedFuel: 0,
+        endgameHumanPlayerFuel: 0,
+        endgameFailedClimb: 0,
+        endgameStatus: "",
+        incidents: [],
+        notes: "",
+      }));
+      setAutoCycles([]); setTransitionCycles([]); setShift1Cycles([]); setShift2Cycles([]); setShift3Cycles([]); setShift4Cycles([]); setEndgameCycles([]);
+    } catch (error) {
+      console.error(error);
+      alert("Could not submit match scout form.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  const fromPractice = searchParams.get("practice") === "1";
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-      {/* LEFT COLUMN */}
-      <div className="flex-1 p-4 space-y-6 max-w-3xl">
-        <div className="bg-white rounded-xl shadow p-4">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-            Match Scouting Form
-          </h1>
-          {userData?.isTeamAdmin && (
-            <div className="mt-3 max-w-sm">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Form Select (Admin)</label>
-              <select
-                className="w-full border rounded p-2"
-                value="reefscape"
-                onChange={(event) => {
-                  if (event.target.value === "placeholder") {
-                    router.push("/scout-form-placeholder");
-                  }
-                }}
-              >
-                <option value="reefscape">REEFSCAPE Form</option>
-                <option value="placeholder">REBUILT Form</option>
-              </select>
-            </div>
-          )}
-        </div>
-        {showEventWarning && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-            <p className="text-sm text-yellow-700">
-              Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
-            </p>
-          </div>
-        )}
-        {/* MATCH SELECTOR HEADER */}
-        <div
-          className="bg-white rounded-xl shadow p-4 border-l-4"
-          style={{ borderColor: "var(--primary-color)" }}
-        >
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-lg font-semibold">Assigned Match:</span>
-            <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>
-              {getMatchDisplay()}
-            </span>
-            <button
-              onClick={() => {
-                setModalStep("type");
-                setModalOpen(true);
-              }}
-              className="px-2 py-0.5 text-xs rounded text-white"
-              style={{ backgroundColor: "var(--primary-color)" }}
-            >
-              Fix
-            </button>
-          </div>
-        </div>
-
-        {/* SECTION 1: PRE-MATCH INFO */}
-        <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-            Pre-Match Info
-          </h2>
-          
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Scout Name
-              </label>
-              <input
-                type="text"
-                value={formData.scoutName}
-                disabled
-                className="w-full border rounded p-2 bg-gray-100 text-gray-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Team Number
-              </label>
-              {allowManualTeamEntry ? (
-                <input
-                  type="text"
-                  value={formData.teamNumber}
-                  onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
-                  className="w-full border rounded p-2"
-                  placeholder={showEventWarning ? "No match is set - enter team number" : "Enter team number"}
-                />
-              ) : (
-                <select
-                  value={formData.teamNumber}
-                  onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
-                  className="w-full border rounded p-2"
-                >
-                  <option value="">Select Team</option>
-                  {presetTeamOptions.length > 0 ? (
-                    presetTeamOptions.map((teamOption) => (
-                      <option key={teamOption} value={teamOption}>
-                        {teamOption}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="1234">1234</option>
-                      <option value="5678">5678</option>
-                      <option value="9012">9012</option>
-                      <option value="3456">3456</option>
-                      <option value="7890">7890</option>
-                      <option value="1122">1122</option>
-                    </>
-                  )}
-                </select>
+          <div className="flex-1 p-4 space-y-6 max-w-3xl">
+            <div className="bg-white rounded-xl shadow p-4">
+              <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Match Scout Form</h1>
+              {fromPractice && (
+                <p className="text-sm text-gray-600 mb-2">Opened from Practice Scouting.</p>
               )}
+              <div className="mt-3 max-w-sm">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
+                <select
+                  className="w-full border rounded p-2"
+                  value="REBUILT"
+                  onChange={(e) => {
+                    if (e.target.value === "REEFSCAPE") {
+                      router.push("/scout-form-reefscape");
+                    }
+                  }}
+                >
+                  <option value="REEFSCAPE">REEFSCAPE Form</option>
+                  <option value="REBUILT">REBUILT Form</option>
+                </select>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Starting Position
-              </label>
-              <select
-                value={formData.startingPosition}
-                onChange={(e) => setFormData({ ...formData, startingPosition: e.target.value })}
-                className="w-full border rounded p-2"
-              >
-                <option value="">Select Position</option>
-                <option value="not-there">Not There</option>
-                <option value="processor">Processor Side</option>
-                <option value="middle">Middle</option>
-                <option value="opposite">Opposite Side</option>
-              </select>
+            <div className="bg-white rounded-xl shadow p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-lg font-semibold">Assigned Match:</span>
+                <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
+                <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* SECTION 2: AUTONOMOUS */}
-        <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-            Autonomous
-          </h2>
-
-          <div className="mb-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.leftStartingZone}
-                onChange={(e) => setFormData({ ...formData, leftStartingZone: e.target.checked })}
-                className="w-4 h-4"
-              />
-              <span className="text-sm font-medium text-gray-700">Left Starting Zone</span>
-            </label>
-          </div>
-
-          <div className="border-t pt-3 mt-3">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Auto Coral</h3>
-            <Counter label="Missed Attempts" value={formData.autoCoralMissed} onChange={(val) => setFormData({ ...formData, autoCoralMissed: val })} />
-            <Counter label="Level 1" value={formData.autoCoralL1} onChange={(val) => setFormData({ ...formData, autoCoralL1: val })} />
-            <Counter label="Level 2" value={formData.autoCoralL2} onChange={(val) => setFormData({ ...formData, autoCoralL2: val })} />
-            <Counter label="Level 3" value={formData.autoCoralL3} onChange={(val) => setFormData({ ...formData, autoCoralL3: val })} />
-            <Counter label="Level 4" value={formData.autoCoralL4} onChange={(val) => setFormData({ ...formData, autoCoralL4: val })} />
-          </div>
-
-          <div className="border-t pt-3 mt-3">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Auto Algae Processor</h3>
-            <Counter label="Missed Attempts" value={formData.autoAlgaeProcessorMissed} onChange={(val) => setFormData({ ...formData, autoAlgaeProcessorMissed: val })} />
-            <Counter label="Scored" value={formData.autoAlgaeProcessorScored} onChange={(val) => setFormData({ ...formData, autoAlgaeProcessorScored: val })} />
-          </div>
-
-          <div className="border-t pt-3 mt-3">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Auto Algae Net</h3>
-            <Counter label="Missed Attempts" value={formData.autoAlgaeNetMissed} onChange={(val) => setFormData({ ...formData, autoAlgaeNetMissed: val })} />
-            <Counter label="Scored" value={formData.autoAlgaeNetScored} onChange={(val) => setFormData({ ...formData, autoAlgaeNetScored: val })} />
-          </div>
-        </div>
-
-        {/* SECTION 3: TELEOP */}
-        <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-            Teleop
-          </h2>
-
-          <div className="border-b pb-3 mb-3">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Teleop Coral</h3>
-            <Counter label="Missed Attempts" value={formData.teleopCoralMissed} onChange={(val) => setFormData({ ...formData, teleopCoralMissed: val })} />
-            <Counter label="Level 1" value={formData.teleopCoralL1} onChange={(val) => setFormData({ ...formData, teleopCoralL1: val })} />
-            <Counter label="Level 2" value={formData.teleopCoralL2} onChange={(val) => setFormData({ ...formData, teleopCoralL2: val })} />
-            <Counter label="Level 3" value={formData.teleopCoralL3} onChange={(val) => setFormData({ ...formData, teleopCoralL3: val })} />
-            <Counter label="Level 4" value={formData.teleopCoralL4} onChange={(val) => setFormData({ ...formData, teleopCoralL4: val })} />
-          </div>
-
-          <div className="mb-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.teleopAlgaeRemoved}
-                onChange={(e) => setFormData({ ...formData, teleopAlgaeRemoved: e.target.checked })}
-                className="w-4 h-4"
-              />
-              <span className="text-sm font-medium text-gray-700">Removed Algae from Reef</span>
-            </label>
-          </div>
-
-          <div className="border-t pt-3 mt-3">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Teleop Processor</h3>
-            <Counter label="Missed Attempts" value={formData.teleopProcessorMissed} onChange={(val) => setFormData({ ...formData, teleopProcessorMissed: val })} />
-            <Counter label="Scored" value={formData.teleopProcessorScored} onChange={(val) => setFormData({ ...formData, teleopProcessorScored: val })} />
-          </div>
-
-          <div className="border-t pt-3 mt-3">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Teleop Algae Net – Robot</h3>
-            <Counter label="Missed Attempts" value={formData.teleopNetRobotMissed} onChange={(val) => setFormData({ ...formData, teleopNetRobotMissed: val })} />
-            <Counter label="Scored" value={formData.teleopNetRobotScored} onChange={(val) => setFormData({ ...formData, teleopNetRobotScored: val })} />
-          </div>
-
-          <div className="border-t pt-3 mt-3">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Teleop Algae Net – Human Player</h3>
-            <Counter label="Missed Attempts" value={formData.teleopNetHumanMissed} onChange={(val) => setFormData({ ...formData, teleopNetHumanMissed: val })} />
-            <Counter label="Scored" value={formData.teleopNetHumanScored} onChange={(val) => setFormData({ ...formData, teleopNetHumanScored: val })} />
-          </div>
-        </div>
-
-        {/* SECTION 4: ENDGAME */}
-        <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-            Endgame
-          </h2>
-
-          <Counter label="Failed Climb" value={formData.failedClimb} onChange={(val) => setFormData({ ...formData, failedClimb: val })} />
-
-          <div className="mt-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Stage Status
-            </label>
-            <select
-              value={formData.stageStatus}
-              onChange={(e) => setFormData({ ...formData, stageStatus: e.target.value })}
-              className="w-full border rounded p-2"
-            >
-              <option value="">Select Status</option>
-              <option value="not-parked">Not Parked</option>
-              <option value="barge">Parked in Barge Zone</option>
-              <option value="shallow">Shallow Cage</option>
-              <option value="deep">Deep Cage</option>
-            </select>
-          </div>
-        </div>
-
-        {/* SECTION 5: GENERAL */}
-        <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-            General
-          </h2>
-
-          <div className="mb-4">
-            <h3 className="font-semibold text-base mb-2 text-gray-800">Things That Occurred</h3>
-            <div className="space-y-2">
-              {[
-                { value: "died", label: "Died During Match" },
-                { value: "never-started", label: "Never Started Match" },
-                { value: "disabled", label: "Disabled by FRC" },
-                { value: "recovered", label: "Recovered from Freeze" },
-                { value: "tipped", label: "Tipped Over" },
-                { value: "yellow-card", label: "Yellow Card" },
-                { value: "red-card", label: "Red Card" },
-              ].map((incident) => (
-                <label key={incident.value} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.incidents.includes(incident.value)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setFormData({ ...formData, incidents: [...formData.incidents, incident.value] });
-                      } else {
-                        setFormData({ ...formData, incidents: formData.incidents.filter(i => i !== incident.value) });
-                      }
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm text-gray-700">{incident.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* SUBMIT */}
-        <div className="bg-white rounded-xl shadow p-4">
-          <button
-            className="w-full py-3 rounded text-white font-semibold"
-            style={{ backgroundColor: "var(--primary-color)" }}
-            onClick={async () => {
-              try {
-                // Add to Firebase with proper labels
-                const { addDoc, collection } = await import("firebase/firestore");
-                const { db } = await import("@/app/firebase");
-                
-                const matchPrefix = selectedMatch.type === "practice"
-                  ? "p"
-                  : selectedMatch.type === "finals"
-                  ? "f"
-                  : selectedMatch.type === "qualification"
-                  ? "q"
-                  : "u";
-                const safeMatchNumber = selectedMatch.id > 0 ? selectedMatch.id : 0;
-                const matchId = `${matchPrefix}${safeMatchNumber}`;
-                const now = Date.now();
-                const eventKey = "app-testing";
-                const eventName = APP_EVENT_BY_KEY[eventKey]?.name || "App Testing";
-                const penaltyPoints = 0;
-                const submission = {
-                  ...formData,
-                  matchId,
-                  matchNumber: safeMatchNumber.toString(),
-                  matchType: selectedMatch.type || "practice",
-                  bracket: selectedMatch.bracket || null,
-                  eventKey,
-                  eventName,
-                  game: activeFormGame,
-                  penaltyPoints,
-                  scoutedScore: calculateSubmissionScore(penaltyPoints),
-                  timestamp: now,
-                  submittedAt: now,
-                };
-                
-                await addDoc(collection(db, "scouting"), submission);
-                alert("Scouting report submitted successfully!");
-                
-                // Reset form
-                setFormData({
-                  scoutName: userData?.displayName || "",
-                  teamNumber: "",
-                  startingPosition: "",
-                  leftStartingZone: false,
-                  autoCoralMissed: 0,
-                  autoCoralL1: 0,
-                  autoCoralL2: 0,
-                  autoCoralL3: 0,
-                  autoCoralL4: 0,
-                  autoAlgaeProcessorMissed: 0,
-                  autoAlgaeProcessorScored: 0,
-                  autoAlgaeNetMissed: 0,
-                  autoAlgaeNetScored: 0,
-                  teleopCoralMissed: 0,
-                  teleopCoralL1: 0,
-                  teleopCoralL2: 0,
-                  teleopCoralL3: 0,
-                  teleopCoralL4: 0,
-                  teleopAlgaeRemoved: false,
-                  teleopProcessorMissed: 0,
-                  teleopProcessorScored: 0,
-                  teleopNetRobotMissed: 0,
-                  teleopNetRobotScored: 0,
-                  teleopNetHumanMissed: 0,
-                  teleopNetHumanScored: 0,
-                  failedClimb: 0,
-                  stageStatus: "",
-                  incidents: [],
-                  notes: "",
-                });
-              } catch (error) {
-                console.error("Error submitting:", error);
-                alert("Error submitting report. Check console.");
-              }
-            }}
-          >
-            Submit Scouting Report
-          </button>
-        </div>
-      </div>
-
-      {/* RIGHT COLUMN — NOTES PANEL (DESKTOP) */}
-      <div className="hidden md:block w-80 p-4">
-        <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: 'calc(100vh - 2rem)' }}>
-          <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>
-            Notes
-          </h2>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            className="flex-1 border rounded p-2 resize-none"
-            placeholder="Optionl notes"
-          />
-        </div>
-      </div>
-
-      {/* MOBILE NOTES DRAWER */}
-      <div className="md:hidden fixed right-0 top-1/2 transform -translate-y-1/2 z-50">
-        <button
-          onClick={() => setMobileNotesOpen((prev) => !prev)}
-          className="px-2 py-4 rounded-l-xl text-white"
-          style={{ backgroundColor: "var(--primary-color)" }}
-        >
-          {mobileNotesOpen ? ">" : "<"}
-        </button>
-      </div>
-      {mobileNotesOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => setMobileNotesOpen(false)}
-          />
-          <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>
-                Notes
-              </h2>
-              <button
-                onClick={() => setMobileNotesOpen(false)}
-                className="px-3 py-1 rounded bg-gray-100 text-gray-700"
-              >
-                Close
-              </button>
-            </div>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
-              placeholder="Write notes here..."
-            />
-          </div>
-        </>
-      )}
-
-      {/* MODAL CONTENT — MATCH SELECTION FLOW */}
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        step={modalStep}
-      >
-        {/* STEP 1 — SELECT MATCH TYPE */}
-        {modalStep === "type" && (
-          <>
-            <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-              Select Match Type
-            </h2>
-
-            <div className="space-y-3">
-              <button
-                onClick={() => setModalStep("practice")}
-                className="w-full py-2 rounded text-white"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                Practice
-              </button>
-
-              <button
-                onClick={() => setModalStep("qualification")}
-                className="w-full py-2 rounded text-white"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                Qualification
-              </button>
-
-              <button
-                onClick={() => setModalStep("finals")}
-                className="w-full py-2 rounded text-white"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                Finals
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* STEP 2 — PRACTICE MATCH */}
-        {modalStep === "practice" && (
-          <>
-            <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-              Practice Match
-            </h2>
-
-            <p className="text-gray-600 mb-4">
-              Practice matches are unscheduled. Enter match number manually.
-            </p>
-
-            <input
-              type="number"
-              placeholder="Practice Match #"
-              className="w-full border rounded p-2 mb-4"
-              id="practiceMatchInput"
-            />
-
-            <button
-              className="w-full py-2 rounded text-white"
-              style={{ backgroundColor: "var(--primary-color)" }}
-              onClick={() => {
-                const input = document.getElementById("practiceMatchInput") as HTMLInputElement;
-                const matchNum = parseInt(input.value);
-                if (matchNum && matchNum > 0) {
-                  setSelectedMatch({ id: matchNum, type: "practice" });
-                  setModalOpen(false);
-                }
+            <form
+              className="space-y-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submit();
               }}
             >
-              Confirm
-            </button>
-          </>
-        )}
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
+                  <label className="block text-sm font-medium text-gray-700">Scout Name</label>
+                  <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.scoutName} disabled />
+                  <label className="block text-sm font-medium text-gray-700">Team Number</label>
+                  {assignedTeam ? (
+                    <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.teamNumber} disabled />
+                  ) : selectedTeams.length > 0 ? (
+                    <div className="flex gap-2">
+                      <select className="flex-1 border rounded p-2" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value }))}>
+                        <option value="">Select Team</option>
+                        {selectedTeams.map((team) => <option key={team} value={team} disabled={selectedScoutedTeams.has(team)}>{selectedScoutedTeams.has(team) ? `${team} (Scouted)` : team}</option>)}
+                      </select>
+                      <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input className="flex-1 border rounded p-2" placeholder="Enter team number" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))} />
+                      <button type="button" className="px-4 rounded border disabled:opacity-50" onClick={() => setShowTeamPicker(true)} disabled={selectedTeams.length === 0}>Pick</button>
+                    </div>
+                  )}
+                  <label className="block text-sm font-medium text-gray-700">Starting Position</label>
+                  <select className="w-full border rounded p-2" value={form.startingPosition} onChange={(e) => setForm((p) => ({ ...p, startingPosition: e.target.value }))}>
+                    <option value="">Select Position</option>
+                    <option value="outpost-side">Outpost Side</option>
+                    <option value="middle">Middle</option>
+                    <option value="depot-side">Depot Side</option>
+                  </select>
+                </div>
 
-        {/* STEP 3 — QUALIFICATION */}
-        {modalStep === "qualification" && (
-          <>
-            <h2
-              className="text-xl font-semibold mb-4"
-              style={{ color: "var(--primary-color)" }}
-            >
-              Qualification Matches
-            </h2>
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
+                  <label className="block text-sm font-medium text-gray-700">Preload Capacity ({PRELOAD_LABELS[Math.max(0, Math.min(4, form.autoPreloadScale))]})</label>
+                  <input type="range" min={0} max={4} value={form.autoPreloadScale} disabled={pitLock.preload} onChange={(e) => setForm((p) => ({ ...p, autoPreloadScale: Number(e.target.value) }))} className={`w-full ${pitLock.preload ? "opacity-60" : ""}`} />
+                  <label className="block text-sm font-medium text-gray-700">Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.autoBpsScale))]})</label>
+                  <input type="range" min={0} max={4} value={form.autoBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
+                  <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.autoCarryScale))]})</label>
+                  <input type="range" min={0} max={6} value={form.autoCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
+                  <CycleTimer title="Auto Cycle Timer" values={autoCycles} onAdd={(v) => setAutoCycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.autoCounterOverride} onChange={(next) => setForm((p) => ({ ...p, autoCounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.autoCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, autoCounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.autoHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, autoHumanPlayerFuel: next }))} />
+                  <ClimbCounter label="Failed Climb" value={form.autoFailedClimb} onChange={(next) => setForm((p) => ({ ...p, autoFailedClimb: next }))} />
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />Successful Climb</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonAuto} onChange={(e) => setForm((p) => ({ ...p, wonAuto: e.target.checked }))} />Won Auto</label>
+                </div>
 
-            {(() => {
-              const currentMatch = 67;
-              const totalMatches = 80;
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
+                  <label className="block text-sm font-medium text-gray-700">Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.teleBpsScale))]})</label>
+                  <input type="range" min={0} max={4} value={form.teleBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
+                  <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.teleCarryScale))]})</label>
+                  <input type="range" min={0} max={6} value={form.teleCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
+                  <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.transitionCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, transitionCounterMissedFuel: next }))} />
+                  <p className="text-xs text-gray-600">
+                    Counted shifts right now: Transition + {form.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
+                    Toggle <span className="font-medium">Won Auto</span> to flip counted shifts.
+                  </p>
+                  <CycleTimer title={`Shift 1 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift1CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift1CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift1CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift1CounterMissedFuel: next }))} />
+                  <CycleTimer title={`Shift 2 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift2Cycles} onAdd={(v) => setShift2Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift2CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift2CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift2CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift2CounterMissedFuel: next }))} />
+                  <CycleTimer title={`Shift 3 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift3Cycles} onAdd={(v) => setShift3Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift3CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift3CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift3CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift3CounterMissedFuel: next }))} />
+                  <CycleTimer title={`Shift 4 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift4Cycles} onAdd={(v) => setShift4Cycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.shift4CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift4CounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.shift4CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift4CounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
+                </div>
 
-              const baseTime = new Date();
-              baseTime.setHours(9, 0, 0, 0);
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Endgame</h2>
+                  <CycleTimer title="Endgame Cycle Timer" values={endgameCycles} onAdd={(v) => setEndgameCycles((p) => [...p, v])} />
+                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.endgameCounterOverride} onChange={(next) => setForm((p) => ({ ...p, endgameCounterOverride: next }))} />
+                  <ClimbCounter label="Missed Fuel" value={form.endgameCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, endgameCounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.endgameHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, endgameHumanPlayerFuel: next }))} />
+                  <ClimbCounter label="Failed Climb" value={form.endgameFailedClimb} onChange={(next) => setForm((p) => ({ ...p, endgameFailedClimb: next }))} />
+                  <select className="w-full border rounded p-2" value={form.endgameStatus} onChange={(e) => setForm((p) => ({ ...p, endgameStatus: e.target.value }))}>
+                    <option value="">Status At End of Match</option>
+                    <option value="parked">Parked</option>
+                    <option value="level-1">Level 1</option>
+                    <option value="level-2">Level 2</option>
+                    <option value="level-3">Level 3</option>
+                  </select>
+                </div>
 
-              const schedule = Array.from({ length: totalMatches }, (_, i) => {
-                const matchNum = i + 1;
-                const matchTime = new Date(
-                  baseTime.getTime() + i * 7 * 60000
-                );
-
-                const timeString = matchTime.toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                });
-
-                let status: MatchStatus = "upcoming";
-                if (matchNum < currentMatch) status = "completed";
-                else if (matchNum === currentMatch) status = "next";
-
-                return { matchNum, timeString, status };
-              });
-
-              const borderColors: Record<MatchStatus, string> = {
-                completed: "border-green-500",
-                next: "border-yellow-500",
-                upcoming: "border-red-500",
-              };
-
-              const badgeColors: Record<MatchStatus, string> = {
-                completed: "bg-[#c42221]",
-                next: "bg-[#c42221]",
-                upcoming: "bg-[#c42221]",
-              };
-
-              const badgeText: Record<MatchStatus, string> = {
-                completed: "Done",
-                next: "Next",
-                upcoming: "Up",
-              };
-
-              return (
-                <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {schedule.map(({ matchNum, timeString, status }) => (
-                    <button
-                      key={matchNum}
-                      onClick={() => {
-                        setSelectedMatch({ id: matchNum, type: "qualification" });
-                        setModalOpen(false);
-                      }}
-                      className={`
-                        relative p-2 rounded-lg border text-left
-                        ${borderColors[status]}
-                        hover:bg-gray-50
-                      `}
-                    >
-                      <div
-                        className={`
-                          absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white
-                          ${badgeColors[status]}
-                        `}
-                      >
-                        {badgeText[status]}
-                      </div>
-
-                      <div className="mt-3">
-                        <div className="font-semibold text-sm">
-                          Qualification {matchNum}
-                        </div>
-                        <div className="text-xs text-gray-600">
-                          {timeString}
-                        </div>
-                      </div>
-                    </button>
+                <div className="bg-white rounded-xl shadow p-4 space-y-2">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>General</h2>
+                  {INCIDENTS.map((incident) => (
+                    <label key={incident.value} className="flex items-center gap-2">
+                      <input type="checkbox" checked={form.incidents.includes(incident.value)} onChange={(e) => setForm((p) => ({ ...p, incidents: e.target.checked ? [...p.incidents, incident.value] : p.incidents.filter((v) => v !== incident.value) }))} />
+                      {incident.label}
+                    </label>
                   ))}
                 </div>
-              );
-            })()}
 
-            <button
-              className="w-full mt-4 py-2 rounded text-white"
-              style={{ backgroundColor: "var(--primary-color)" }}
-              onClick={() => setModalOpen(false)}
-            >
-              Close
-            </button>
-          </>
-        )}
+                <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>{saving ? "Submitting..." : "Submit Match Scout Form"}</button>
+            </form>
+          </div>
 
-        {/* STEP 4 — FINALS */}
-        {modalStep === "finals" && finalsStep === "bracket" && (
-          <FinalsBracket
-            setSelectedMatch={handleMatchSelect}
+          <div className="hidden md:block w-80 p-4">
+            <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
+              <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
+              <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Optional notes..." />
+            </div>
+          </div>
+
+          <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
+            <button onClick={() => setMobileNotesOpen((p) => !p)} className="px-2 py-4 rounded-l-xl text-white" style={{ backgroundColor: "var(--primary-color)" }}>{mobileNotesOpen ? ">" : "<"}</button>
+          </div>
+          {mobileNotesOpen && (
+            <div className="fixed inset-0 z-50 bg-white p-4">
+              <div className="flex items-center justify-between mb-2"><h2 className="text-xl font-semibold">Notes</h2><button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+              <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full h-[calc(100%-3rem)] border rounded p-3 resize-none" />
+            </div>
+          )}
+
+          <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
+          <TeamPickerModal
+            open={showTeamPicker}
+            teams={selectedTeams}
+            scoutedTeams={selectedScoutedTeams}
+            onClose={() => setShowTeamPicker(false)}
+            onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
           />
-        )}
-        
-        {modalStep === "finals" && finalsStep === "number" && (
-          <>
-            <div className="flex items-center justify-between mb-6">
-              <button
-                onClick={() => {
-                  setFinalsStep("bracket");
-                  setSelectedMatch({ id: 0, type: "qualification" });
-                }}
-                className="text-gray-600 hover:text-gray-900 flex items-center gap-2"
-              >
-                ← Back to Bracket
-              </button>
-              <h2 className="text-xl font-semibold">
-                Select Finals Match Number
-              </h2>
-              <div className="w-32"></div>
-            </div>
-
-            <p className="text-gray-600 mb-6 text-center">
-              Which finals match are you scouting?
-            </p>
-
-            <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
-              {[14, 15, 16].map(matchNum => (
-                <button
-                  key={matchNum}
-                  onClick={() => {
-                    setSelectedMatch(prev => ({
-                      ...prev,
-                      type: "finals",
-                      id: matchNum
-                    }));
-                    setModalOpen(false);
-                    setModalStep("type");
-                    setFinalsStep("bracket");
-                  }}
-                  className="group relative p-8 border-2 border-gray-300 rounded-2xl hover:border-red-500 hover:bg-red-50 transition-all hover:shadow-lg"
-                >
-                  <div className="text-center">
-                    <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
-                      F{matchNum}
-                    </div>
-                    <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">
-                      {getFinalsDisplayLabel(matchNum)}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-2">
-                      {matchNum === 14 && "First Finals"}
-                      {matchNum === 15 && "Second Finals"}
-                      {matchNum === 16 && "Third Finals (if needed)"}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <p className="text-center text-sm text-gray-500 mt-6">
-              Select the specific finals match you&apos;re scouting
-            </p>
-          </>
-        )}
-      </Modal>
         </div>
       </div>
     </div>
@@ -1179,4 +1180,3 @@ export default function Page() {
     </ProtectedRoute>
   );
 }
-

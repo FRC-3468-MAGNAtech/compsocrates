@@ -6,6 +6,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENTS } from "@/app/utils/events";
 import type { TBAEvent } from "@/app/utils/tba-api";
@@ -18,6 +19,25 @@ type EventCard = {
   start_date: string;
   end_date: string;
 };
+
+function dedupeEventCardsByName(events: EventCard[]): EventCard[] {
+  const byName = new Map<string, EventCard>();
+  events.forEach((event) => {
+    const key = event.name.trim().toLowerCase();
+    if (!key) return;
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, event);
+      return;
+    }
+    const existingTime = new Date(`${existing.start_date}T12:00:00`).getTime();
+    const incomingTime = new Date(`${event.start_date}T12:00:00`).getTime();
+    if (incomingTime < existingTime) {
+      byName.set(key, event);
+    }
+  });
+  return Array.from(byName.values());
+}
 
 function EventDetailsIndexContent() {
   const { userData } = useAuth();
@@ -63,7 +83,7 @@ function EventDetailsIndexContent() {
         if (!encryptedKey && !plainKey) {
           const scopedFallback =
             selected.length > 0 ? fallback.filter((event) => selected.includes(event.key)) : fallback;
-          setEventsToShow(scopedFallback);
+          setEventsToShow(dedupeEventCardsByName(scopedFallback));
           return;
         }
 
@@ -98,11 +118,11 @@ function EventDetailsIndexContent() {
         }));
         const scoped = selected.length > 0 ? fromTBA.filter((event) => selected.includes(event.key)) : fromTBA;
         if (scoped.length > 0) {
-          setEventsToShow(scoped);
+          setEventsToShow(dedupeEventCardsByName(scoped));
         } else {
           const scopedFallback =
             selected.length > 0 ? fallback.filter((event) => selected.includes(event.key)) : fallback;
-          setEventsToShow(scopedFallback);
+          setEventsToShow(dedupeEventCardsByName(scopedFallback));
         }
       } finally {
         setLoading(false);
@@ -117,6 +137,7 @@ function EventDetailsIndexContent() {
       <div className="flex-1 overflow-y-auto p-8">
         <h1 className="text-3xl font-bold mb-2 theme-text">Event Details</h1>
         <p className="text-gray-600 mb-6">Choose an event to view schedules, teams, and details.</p>
+        <DataSourceCredits className="mb-6" />
 
         {loading ? (
           <div className="bg-white rounded-xl shadow-md p-6">Loading events...</div>

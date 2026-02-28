@@ -15,6 +15,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
 import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { TeamRole, normalizeLegacyRole } from "@/app/utils/roles";
+import { withHiddenOwnerPermissions } from "@/app/utils/ownerPermissions";
 
 // User data structure
 export type UserRole = TeamRole | "scout" | "coach";
@@ -32,6 +33,8 @@ export type UserData = {
   photoURL?: string;
   bio?: string;
   profileVisibility?: "team" | "public" | "private";
+  preferredDashboard?: string;
+  canManageVersionReleases?: boolean;
 };
 
 type AuthContextType = {
@@ -39,7 +42,7 @@ type AuthContextType = {
   currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
-  signUp: (email: string, password: string, name: string, role: UserRole, teamId: string, isTeamAdmin: boolean) => Promise<void>;
+  signUp: (email: string, password: string, name: string, role: UserRole, teamId: string, isTeamAdmin: boolean) => Promise<string>;
   signIn: (email: string, password: string) => Promise<void>;
   logOut: () => Promise<void>;
   updateUserData: (updates: Partial<UserData>) => Promise<void>;
@@ -51,7 +54,7 @@ const AuthContext = createContext<AuthContextType>({
   currentUser: null,
   userData: null,
   loading: true,
-  signUp: async () => {},
+  signUp: async () => "",
   signIn: async () => {},
   logOut: async () => {},
   updateUserData: async () => {},
@@ -70,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userDoc = await getDoc(doc(db, "users", uid));
       if (userDoc.exists()) {
         const data = userDoc.data() as UserData & { encryptedUserData?: string };
-        setUserData(data);
+        setUserData(withHiddenOwnerPermissions(data));
         if (!data.encryptedUserData) {
           await setSecureUserDoc(uid, data, true);
         }
@@ -86,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     try {
       await setSecureUserDoc(user.uid, updates as Record<string, unknown>, true);
-      setUserData(prev => prev ? { ...prev, ...updates } : null);
+      setUserData(prev => (prev ? withHiddenOwnerPermissions({ ...prev, ...updates }) : null));
     } catch (error) {
       console.error("Error updating user data:", error);
       throw error;
@@ -107,9 +110,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: UserRole, 
     teamId: string,
     isTeamAdmin: boolean
-  ) {
+  ): Promise<string> {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await sendEmailVerification(userCredential.user);
+    const continueUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/verify-email?email=${encodeURIComponent(email)}`
+        : "https://compsocrates.app/verify-email";
+    await sendEmailVerification(userCredential.user, {
+      url: continueUrl,
+      handleCodeInApp: false,
+    });
     alert("Verification email sent! Please check your inbox.");
     
     // Update display name
@@ -123,8 +133,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: name,
       role: normalizedRole,
       roles: [normalizedRole],
-      specialRole: null,
-      specialRoles: [],
       teamId: teamId,
       isTeamAdmin: isTeamAdmin,
       profileVisibility: "team",
@@ -132,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     
     await setSecureUserDoc(userCredential.user.uid, userData as unknown as Record<string, unknown>, false);
+    return userCredential.user.uid;
   }
 
   // Sign in existing user
@@ -163,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Load user data
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) {
-          setUserData(userDoc.data() as UserData);
+          setUserData(withHiddenOwnerPermissions(userDoc.data() as UserData));
         }
       } else {
         setUserData(null);

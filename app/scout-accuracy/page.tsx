@@ -7,8 +7,8 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { Users, Target, ClipboardList } from "lucide-react";
-import { getEventsForGame } from "@/app/utils/analyticsEvents";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles } from "@/app/utils/roles";
 
@@ -58,7 +58,230 @@ type ScoutingEntry = {
   teleopNetHumanScored?: number;
   stageStatus?: string;
   penaltyPoints?: number;
+  estimatedScore?: number;
+  auto?: {
+    preloadScale?: number;
+    bpsScale?: number;
+    carryingScale?: number;
+    cycleTimes?: number[];
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
+    estimatedFuel?: number;
+    successfulClimb?: boolean;
+    wonAuto?: boolean;
+  };
+  teleop?: {
+    bpsScale?: number;
+    carryingScale?: number;
+    transitionCycles?: number[];
+    shift1Cycles?: number[];
+    shift2Cycles?: number[];
+    shift3Cycles?: number[];
+    shift4Cycles?: number[];
+    transitionOverride?: number;
+    transitionMissedFuel?: number;
+    shift1Override?: number;
+    shift1MissedFuel?: number;
+    shift2Override?: number;
+    shift2MissedFuel?: number;
+    shift3Override?: number;
+    shift3MissedFuel?: number;
+    shift4Override?: number;
+    shift4MissedFuel?: number;
+    shiftParityFromWonAuto?: boolean;
+    humanPlayerFuel?: number;
+    estimatedFuel?: number;
+  };
+  endgame?: {
+    cycleTimes?: number[];
+    counterOverride?: number;
+    counterOverrideMissedFuel?: number;
+    humanPlayerFuel?: number;
+    estimatedFuel?: number;
+    status?: string;
+  };
 };
+
+function getEntryGame(value: ScoutingEntry): "REEFSCAPE" | "REBUILT" {
+  const explicit = String(value.game || "").trim().toUpperCase();
+  if (explicit === "REBUILT" || explicit === "REEFSCAPE") return explicit;
+  const eventKey = String(value.eventKey || "").trim().toLowerCase();
+  if (eventKey === "2026week0") return "REBUILT";
+  return "REEFSCAPE";
+}
+
+function toNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+const PRELOAD_SCALE_VALUES: number[][] = [
+  [0],
+  [1, 2],
+  [3, 4],
+  [5, 6],
+  [7, 8],
+];
+
+const BPS_SCALE_VALUES: number[][] = [
+  [0],
+  [1, 2, 3],
+  [4, 5, 6],
+  [7, 8, 9],
+  [10],
+];
+
+const CARRY_SCALE_VALUES: number[][] = [
+  [0],
+  Array.from({ length: 12 }, (_, i) => i + 1),
+  Array.from({ length: 11 }, (_, i) => i + 13),
+  Array.from({ length: 10 }, (_, i) => i + 23),
+  Array.from({ length: 10 }, (_, i) => i + 33),
+  Array.from({ length: 11 }, (_, i) => i + 43),
+  [54],
+];
+
+function getScaleCandidates(scale: unknown, table: number[][], fallback = 0) {
+  const idx = Math.max(0, Math.min(table.length - 1, Number(scale || 0)));
+  const values = table[idx];
+  return values.length > 0 ? values : [fallback];
+}
+
+function estimateFuelFromCycles(
+  cycles: number[] | undefined,
+  bps: number,
+  carry: number,
+  preload?: number
+) {
+  if (!Array.isArray(cycles) || cycles.length === 0) return 0;
+  return cycles.reduce((sum, rawSec, index) => {
+    const sec = toNumber(rawSec);
+    if (sec <= 0 || bps <= 0) return sum;
+    const cap = index === 0 && typeof preload === "number" ? preload : carry;
+    return sum + Math.max(0, Math.round(Math.min(Math.max(0, cap), bps * sec)));
+  }, 0);
+}
+
+function resolveSectionFuel(estimated: number, scoredOverride: unknown, missedFuel: unknown) {
+  const override = toNumber(scoredOverride);
+  if (override > 0) return override;
+  return Math.max(0, estimated - Math.max(0, toNumber(missedFuel)));
+}
+
+function rebuiltEntryScoreCandidates(entry: ScoutingEntry): number[] {
+  const autoPreloadCandidates = getScaleCandidates(entry.auto?.preloadScale, PRELOAD_SCALE_VALUES, 0);
+  const autoBpsCandidates = getScaleCandidates(entry.auto?.bpsScale, BPS_SCALE_VALUES, 0);
+  const autoCarryCandidates = getScaleCandidates(entry.auto?.carryingScale, CARRY_SCALE_VALUES, 0);
+  const teleBpsCandidates = getScaleCandidates(entry.teleop?.bpsScale, BPS_SCALE_VALUES, 0);
+  const teleCarryCandidates = getScaleCandidates(entry.teleop?.carryingScale, CARRY_SCALE_VALUES, 0);
+  const wonAuto = Boolean(entry.auto?.wonAuto || entry.teleop?.shiftParityFromWonAuto);
+  const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+  const endStatus = String(entry.endgame?.status || "").toLowerCase();
+  const teleopClimb =
+    endStatus === "level-1" ? 10 :
+    endStatus === "level-2" ? 20 :
+    endStatus === "level-3" ? 30 : 0;
+
+  const candidates = new Set<number>();
+
+  for (const preload of autoPreloadCandidates) {
+    for (const autoBps of autoBpsCandidates) {
+      for (const autoCarry of autoCarryCandidates) {
+        const autoEstimated = estimateFuelFromCycles(entry.auto?.cycleTimes, autoBps, autoCarry, preload);
+        const autoFuel = resolveSectionFuel(
+          autoEstimated,
+          entry.auto?.counterOverride,
+          entry.auto?.counterOverrideMissedFuel
+        ) + toNumber(entry.auto?.humanPlayerFuel);
+
+        for (const teleBps of teleBpsCandidates) {
+          for (const teleCarry of teleCarryCandidates) {
+            const transition = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.transitionCycles, teleBps, teleCarry),
+              entry.teleop?.transitionOverride,
+              entry.teleop?.transitionMissedFuel
+            );
+            const shift1 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift1Cycles, teleBps, teleCarry),
+              entry.teleop?.shift1Override,
+              entry.teleop?.shift1MissedFuel
+            );
+            const shift2 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift2Cycles, teleBps, teleCarry),
+              entry.teleop?.shift2Override,
+              entry.teleop?.shift2MissedFuel
+            );
+            const shift3 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift3Cycles, teleBps, teleCarry),
+              entry.teleop?.shift3Override,
+              entry.teleop?.shift3MissedFuel
+            );
+            const shift4 = resolveSectionFuel(
+              estimateFuelFromCycles(entry.teleop?.shift4Cycles, teleBps, teleCarry),
+              entry.teleop?.shift4Override,
+              entry.teleop?.shift4MissedFuel
+            );
+            const teleFuel = transition + (wonAuto ? shift2 + shift4 : shift1 + shift3) + toNumber(entry.teleop?.humanPlayerFuel);
+            const endgameFuel = resolveSectionFuel(
+              estimateFuelFromCycles(entry.endgame?.cycleTimes, teleBps, teleCarry),
+              entry.endgame?.counterOverride,
+              entry.endgame?.counterOverrideMissedFuel
+            ) + toNumber(entry.endgame?.humanPlayerFuel);
+
+            candidates.add(autoFuel + teleFuel + endgameFuel + autoClimb + teleopClimb);
+          }
+        }
+      }
+    }
+  }
+
+  if (candidates.size === 0) {
+    candidates.add(scoreRebuiltEntry(entry));
+  }
+
+  return Array.from(candidates);
+}
+
+function calculateBestRebuiltPracticeScore(entries: ScoutingEntry[], targetBaseScore: number): number {
+  if (entries.length === 0) return 0;
+  let sums = new Set<number>([0]);
+
+  for (const entry of entries) {
+    const entryCandidates = rebuiltEntryScoreCandidates(entry);
+    const next = new Set<number>();
+    for (const base of sums) {
+      for (const candidate of entryCandidates) {
+        next.add(base + candidate);
+      }
+    }
+    let trimmed = Array.from(next);
+    if (trimmed.length > 6000) {
+      trimmed = trimmed
+        .sort((a, b) => Math.abs(a - targetBaseScore) - Math.abs(b - targetBaseScore))
+        .slice(0, 6000);
+    }
+    sums = new Set(trimmed);
+  }
+
+  const best = Array.from(sums).sort(
+    (a, b) => Math.abs(a - targetBaseScore) - Math.abs(b - targetBaseScore)
+  )[0];
+  return typeof best === "number" ? best : entries.reduce((sum, entry) => sum + scoreRebuiltEntry(entry), 0);
+}
+
+function scoreRebuiltEntry(entry: ScoutingEntry): number {
+  const autoFuel = toNumber(entry.auto?.estimatedFuel);
+  const teleopFuel = toNumber(entry.teleop?.estimatedFuel);
+  const endgameFuel = toNumber(entry.endgame?.estimatedFuel);
+  const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+  const endStatus = String(entry.endgame?.status || "").toLowerCase();
+  const teleopClimb =
+    endStatus === "level-1" ? 10 :
+    endStatus === "level-2" ? 20 :
+    endStatus === "level-3" ? 30 : 0;
+
+  return autoFuel + teleopFuel + endgameFuel + autoClimb + teleopClimb;
+}
 
 function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }>) {
   const mobile = points.filter((p) => p.deviceType === "mobile");
@@ -74,31 +297,9 @@ function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accura
   return { mobileCount: mobile.length, pcCount: pc.length, mobileAvg, pcAvg, betterDevice };
 }
 
-function scoreScoutingEntry(entry: ScoutingEntry): number {
-  let score = 0;
-  if (entry.leftStartingZone) score += 3;
-  score += (entry.autoCoralL1 || 0) * 3;
-  score += (entry.autoCoralL2 || 0) * 4;
-  score += (entry.autoCoralL3 || 0) * 6;
-  score += (entry.autoCoralL4 || 0) * 7;
-  score += (entry.autoAlgaeProcessorScored || 0) * 6;
-  score += (entry.autoAlgaeNetScored || 0) * 4;
-  score += (entry.teleopCoralL1 || 0) * 2;
-  score += (entry.teleopCoralL2 || 0) * 3;
-  score += (entry.teleopCoralL3 || 0) * 4;
-  score += (entry.teleopCoralL4 || 0) * 5;
-  score += (entry.teleopProcessorScored || 0) * 6;
-  score += (entry.teleopNetRobotScored || 0) * 4;
-  score += (entry.teleopNetHumanScored || 0) * 4;
-  score += Number(entry.penaltyPoints || 0);
-  const end = (entry.stageStatus || "").toLowerCase();
-  if (end.includes("deep")) score += 12;
-  else if (end.includes("shallow")) score += 6;
-  else if (end.includes("park") || end.includes("barge")) score += 2;
-  return score;
-}
+function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE" | "REBUILT"): number {
+  if (game === "REBUILT") return scoreRebuiltEntry(entry);
 
-function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry): number {
   let score = 0;
   if (entry.leftStartingZone) score += 3;
   score += (entry.autoCoralL1 || 0) * 3;
@@ -123,12 +324,18 @@ function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry): number {
 
 function ScoutAccuracyContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const canViewRestrictedData =
+    Boolean(userData?.isTeamAdmin) ||
+    userData?.role === "coach" ||
+    userRoles.includes("team-coach") ||
+    userRoles.includes("lead-scout") ||
+    userRoles.includes("lead-strategist");
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
-  const [accuracyView, setAccuracyView] = useState<"practice" | "competition">("practice");
+  const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REBUILT");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
-  const [selectedCompetitionEvent, setSelectedCompetitionEvent] = useState("all");
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
   const [rerunSessionId, setRerunSessionId] = useState("");
   const [rerunResultModal, setRerunResultModal] = useState<{
@@ -141,7 +348,7 @@ function ScoutAccuracyContent() {
 
   useEffect(() => {
     loadScoutStats();
-  }, [selectedMode, accuracyView, selectedCompetitionEvent, userData?.teamId]);
+  }, [selectedMode, selectedGame, userData?.teamId]);
 
   async function loadScoutStats() {
     setLoading(true);
@@ -153,96 +360,61 @@ function ScoutAccuracyContent() {
       const memberData = allMembers.map((memberDoc) => {
         const data = memberDoc.data();
         return {
+          uid: memberDoc.id,
           scoutName: data.displayName as string,
           role: data.role as string,
           roles: (data.roles || []) as string[],
         };
       });
-      const scoutNames = memberData.map((member) => member.scoutName);
-
-      const scoutEntrySnapshots = await Promise.all(
-        scoutNames.map((scoutName) => getDocs(query(collection(db, "scouting"), where("scoutName", "==", scoutName))))
-      );
-      const entriesByScout = scoutNames.reduce<Record<string, ScoutingEntry[]>>((acc, scoutName, index) => {
-        acc[scoutName] = scoutEntrySnapshots[index].docs.map((entryDoc) => entryDoc.data() as ScoutingEntry);
-        return acc;
-      }, {});
-
       const statsPromises = memberData.map(async (member) => {
-        const entries = entriesByScout[member.scoutName] || [];
-
-        if (accuracyView === "competition") {
-          const allCompetitionEntries = Object.values(entriesByScout)
-            .flat()
-            .filter(
-              (entry) =>
-                entry.game === "REEFSCAPE" &&
-                entry.matchType !== "practice" &&
-                !entry.isPracticeScouting &&
-                !entry.practiceMode
-            )
-            .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
-
-          const baselineByMatch = allCompetitionEntries.reduce<Record<string, number[]>>((acc, entry) => {
-            const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
-            if (!acc[key]) acc[key] = [];
-            acc[key].push(scoreScoutingEntry(entry));
-            return acc;
-          }, {});
-
-          const scoutCompetitionEntries = entries
-            .filter(
-              (entry) =>
-                entry.game === "REEFSCAPE" &&
-                entry.matchType !== "practice" &&
-                !entry.isPracticeScouting &&
-                !entry.practiceMode
-            )
-            .filter((entry) => selectedCompetitionEvent === "all" || entry.eventKey === selectedCompetitionEvent);
-          const competitionAccuracies = scoutCompetitionEntries.map((entry) => {
-            const key = `${entry.matchId || "unknown"}-${entry.teamNumber || "unknown"}`;
-            const baselineScores = baselineByMatch[key] || [];
-            const baseline = baselineScores.length
-              ? baselineScores.reduce((sum, value) => sum + value, 0) / baselineScores.length
-              : 0;
-            const score = scoreScoutingEntry(entry);
-            if (baseline <= 0) return 0;
-            return Math.max(0, Math.round((1 - Math.abs(score - baseline) / baseline) * 100));
+        const [scoutEntriesByNameSnap, scoutEntriesByUidSnap] = await Promise.all([
+          getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.scoutName))),
+          getDocs(query(collection(db, "scouting"), where("scoutId", "==", member.uid))),
+        ]);
+        const scoutEntriesMap = new Map<string, ScoutingEntry>();
+        scoutEntriesByNameSnap.docs.forEach((docSnap) => {
+          scoutEntriesMap.set(docSnap.id, docSnap.data() as ScoutingEntry);
+        });
+        scoutEntriesByUidSnap.docs.forEach((docSnap) => {
+          scoutEntriesMap.set(docSnap.id, docSnap.data() as ScoutingEntry);
+        });
+        const scoutPracticeEntries = Array.from(scoutEntriesMap.values())
+          .filter((row) => {
+            if (!row.isPracticeScouting) return false;
+            if (String(row.practiceMode || "").toLowerCase() !== selectedMode) return false;
+            return getEntryGame(row) === selectedGame;
           });
-          const nonZeroCompetitionAccuracies = competitionAccuracies.filter((value) => value > 0);
-          const competitionDevicePoints = scoutCompetitionEntries.map((entry, index) => ({
-            deviceType: entry.deviceType,
-            accuracy: competitionAccuracies[index] || 0,
-          }));
-          const averageAccuracy = nonZeroCompetitionAccuracies.length
-            ? Math.round(nonZeroCompetitionAccuracies.reduce((sum, value) => sum + value, 0) / nonZeroCompetitionAccuracies.length)
-            : 0;
 
-          return {
-            scoutName: member.scoutName,
-            role: member.role,
-            roles: member.roles,
-            totalEntries: entries.length,
-            practiceSessionsCompleted: scoutCompetitionEntries.length,
-            averageAccuracy,
-            lastPracticeDate: Date.now(),
-            recentAccuracies: nonZeroCompetitionAccuracies.slice(-5).reverse(),
-            deviceBreakdown: getDeviceBreakdown(competitionDevicePoints),
-          };
-        }
-
-        const practiceQuery = query(
-          collection(db, "practiceSessions"),
-          where("scoutName", "==", member.scoutName),
-          where("mode", "==", selectedMode)
-        );
-        const practiceSnapshot = await getDocs(practiceQuery);
+        const [practiceByNameSnap, practiceByUidSnap] = await Promise.all([
+          getDocs(
+            query(
+              collection(db, "practiceSessions"),
+              where("scoutName", "==", member.scoutName),
+              where("mode", "==", selectedMode)
+            )
+          ),
+          getDocs(
+            query(
+              collection(db, "practiceSessions"),
+              where("scoutId", "==", member.uid),
+              where("mode", "==", selectedMode)
+            )
+          ),
+        ]);
+        const practiceRowsMap = new Map<string, Record<string, unknown>>();
+        practiceByNameSnap.docs.forEach((docSnap) => {
+          practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
+        });
+        practiceByUidSnap.docs.forEach((docSnap) => {
+          practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
+        });
+        const practiceRows = Array.from(practiceRowsMap.values())
+          .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame);
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];
         let lastPracticeDate = 0;
         const practiceDevicePoints: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }> = [];
-        practiceSnapshot.forEach((doc) => {
-          const data = doc.data();
+        practiceRows.forEach((data) => {
           if (typeof data.accuracy === "number") {
             totalAccuracy += data.accuracy;
             recentAccuracies.push(data.accuracy);
@@ -251,8 +423,9 @@ function ScoutAccuracyContent() {
               accuracy: Number(data.accuracy || 0),
             });
           }
-          if (data.timestamp > lastPracticeDate) {
-            lastPracticeDate = data.timestamp;
+          const rowTimestamp = Number(data.timestamp || 0);
+          if (rowTimestamp > lastPracticeDate) {
+            lastPracticeDate = rowTimestamp;
           }
         });
         const nonZeroRecentAccuracies = recentAccuracies.filter((value) => value > 0);
@@ -265,8 +438,8 @@ function ScoutAccuracyContent() {
           scoutName: member.scoutName,
           role: member.role,
           roles: member.roles,
-          totalEntries: entries.length,
-          practiceSessionsCompleted: practiceSnapshot.size,
+          totalEntries: scoutPracticeEntries.length,
+          practiceSessionsCompleted: practiceRows.length,
           averageAccuracy,
           lastPracticeDate: lastPracticeDate || Date.now(),
           recentAccuracies,
@@ -283,16 +456,12 @@ function ScoutAccuracyContent() {
     }
   }
 
-  // Count active scouts only: base scouts + lead scouts (all roles still shown in leaderboard)
+  // Count active scouts only: dedicated match scouts (lead roles are excluded from scout counts).
   const actualScoutCount = scoutStats.filter((s) => {
     const roles = getUserRoles({ role: s.role, roles: s.roles });
-    return roles.includes("match-scout") || roles.includes("lead-scout");
+    return roles.includes("match-scout");
   }).length;
-  const scoutOnlyStats = scoutStats.filter((s) => {
-    const roles = getUserRoles({ role: s.role, roles: s.roles });
-    return roles.includes("match-scout") || roles.includes("lead-scout");
-  });
-  const scoutOnlyStatsWithAccuracy = scoutOnlyStats.filter((s) => s.averageAccuracy > 0);
+  const membersWithPracticeAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
 
   function getAccuracyColor(accuracy: number): string {
     if (accuracy >= 95) return "text-green-600";
@@ -450,13 +619,17 @@ function ScoutAccuracyContent() {
         return;
       }
 
-      const baseScoutedScore = entries.reduce((sum, entry) => sum + scorePracticeEntryWithoutPenalty(entry), 0);
+      const sessionGame = String(sessionData.game || "REEFSCAPE").toUpperCase() === "REBUILT" ? "REBUILT" : "REEFSCAPE";
       const sessionPenaltyPoints =
         typeof sessionData.penaltyPoints === "number"
           ? Number(sessionData.penaltyPoints)
           : typeof entries[0]?.penaltyPoints === "number"
           ? Number(entries[0].penaltyPoints)
           : 0;
+      const targetBaseScore = Math.max(0, officialScore - sessionPenaltyPoints);
+      const baseScoutedScore = sessionGame === "REBUILT"
+        ? calculateBestRebuiltPracticeScore(entries, targetBaseScore)
+        : entries.reduce((sum, entry) => sum + scorePracticeEntryWithoutPenalty(entry, sessionGame), 0);
       const totalScoutedScore = baseScoutedScore + sessionPenaltyPoints;
       const recalculatedAccuracy = calculateAccuracy(totalScoutedScore, officialScore);
 
@@ -467,8 +640,10 @@ function ScoutAccuracyContent() {
       });
 
       for (const entry of entries) {
+        const entryScore = scorePracticeEntryWithoutPenalty(entry, sessionGame);
         await updateDoc(doc(db, "scouting", entry.id), {
           accuracy: recalculatedAccuracy,
+          scoutedScore: entryScore,
           recalculatedAt: Date.now(),
         });
       }
@@ -500,9 +675,22 @@ function ScoutAccuracyContent() {
           <p className="text-gray-600 mb-8">
             Track and verify the accuracy of your team members&apos; data
             <span className="text-sm text-gray-500 ml-2">
-              ({accuracyView === "practice" ? `Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode` : "Showing competition mode"})
+              ({`Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode`})
             </span>
           </p>
+          <DataSourceCredits className="mb-6" />
+
+          <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Game</label>
+            <select
+              value={selectedGame}
+              onChange={(event) => setSelectedGame(event.target.value === "REBUILT" ? "REBUILT" : "REEFSCAPE")}
+              className="w-full md:w-96 border rounded p-2"
+            >
+              <option value="REEFSCAPE">REEFSCAPE</option>
+              <option value="REBUILT">REBUILT</option>
+            </select>
+          </div>
 
           {loading ? (
             <div className="text-center py-12">
@@ -524,11 +712,10 @@ function ScoutAccuracyContent() {
           <div className="bg-white rounded-xl shadow-md p-2 mb-6 flex gap-2">
             <button
               onClick={() => {
-                setAccuracyView("practice");
                 setSelectedMode("trial");
               }}
               className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                accuracyView === "practice" && selectedMode === "trial"
+                selectedMode === "trial"
                   ? "bg-red-600 text-white" 
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
@@ -537,46 +724,18 @@ function ScoutAccuracyContent() {
             </button>
             <button
               onClick={() => {
-                setAccuracyView("practice");
                 setSelectedMode("competitive");
               }}
               className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                accuracyView === "practice" && selectedMode === "competitive"
+                selectedMode === "competitive"
                   ? "bg-red-600 text-white" 
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               Competitive Mode
             </button>
-            <button
-              onClick={() => setAccuracyView("competition")}
-              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                accuracyView === "competition"
-                  ? "bg-red-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Competition Accuracy
-            </button>
           </div>
-          {accuracyView === "competition" && (
-            <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Competition</label>
-              <select
-                value={selectedCompetitionEvent}
-                onChange={(event) => setSelectedCompetitionEvent(event.target.value)}
-                className="w-full md:w-96 border rounded p-2"
-              >
-                <option value="all">All Competitions</option>
-                {getEventsForGame("REEFSCAPE").map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {canResetScoutData && (
+          {canViewRestrictedData && canResetScoutData && (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
@@ -602,53 +761,57 @@ function ScoutAccuracyContent() {
               </div>
             </div>
           )}
-              {/* OVERVIEW STATS */}
-              <div className="grid md:grid-cols-4 gap-6 mb-6">
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Scouts / Members</h3>
-                    <Users size={22} className="text-gray-500" />
+              {canViewRestrictedData && (
+                <div className="grid md:grid-cols-4 gap-6 mb-6">
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Scouts / Members</h3>
+                      <Users size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {actualScoutCount} / {scoutStats.length}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {actualScoutCount} scout{actualScoutCount !== 1 ? 's' : ''}, {scoutStats.length - actualScoutCount} other role{scoutStats.length - actualScoutCount !== 1 ? 's' : ''}
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {actualScoutCount} / {scoutStats.length}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {actualScoutCount} scout{actualScoutCount !== 1 ? 's' : ''}, {scoutStats.length - actualScoutCount} other role{scoutStats.length - actualScoutCount !== 1 ? 's' : ''}
-                  </p>
-                </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Avg. Accuracy</h3>
-                    <Target size={22} className="text-gray-500" />
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Avg. Accuracy</h3>
+                      <Target size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {membersWithPracticeAccuracy.length > 0
+                        ? Math.round(
+                            membersWithPracticeAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) /
+                              membersWithPracticeAccuracy.length
+                          )
+                        : 0}%
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {scoutOnlyStatsWithAccuracy.length > 0 
-                      ? Math.round(scoutOnlyStatsWithAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) / scoutOnlyStatsWithAccuracy.length)
-                      : 0}%
-                  </p>
-                </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</h3>
-                    <ClipboardList size={22} className="text-gray-500" />
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
+                      <ClipboardList size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {scoutStats.reduce((sum, s) => sum + s.practiceSessionsCompleted, 0)}
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {scoutStats.reduce((sum, s) => sum + s.practiceSessionsCompleted, 0)}
-                  </p>
-                </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-700">Total Entries</h3>
-                    <ClipboardList size={22} className="text-gray-500" />
+                  <div className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-700">Total Entries</h3>
+                      <ClipboardList size={22} className="text-gray-500" />
+                    </div>
+                    <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
+                      {scoutStats.reduce((sum, s) => sum + s.totalEntries, 0)}
+                    </p>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {scoutStats.reduce((sum, s) => sum + s.totalEntries, 0)}
-                  </p>
                 </div>
-              </div>
+              )}
 
               {/* LEADERBOARD */}
               <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
@@ -771,7 +934,7 @@ function ScoutAccuracyContent() {
                             </p>
                           </div>
                           <div className="p-4 bg-gray-50 rounded-lg">
-                            <p className="text-sm text-gray-600 mb-1">{accuracyView === "competition" ? "Competition Matches" : "Practice Sessions"}</p>
+                            <p className="text-sm text-gray-600 mb-1">Practice Sessions</p>
                             <p className="text-4xl font-bold" style={{ color: "var(--primary-color)" }}>{selectedScoutData.practiceSessionsCompleted}</p>
                           </div>
                         </div>
@@ -779,7 +942,7 @@ function ScoutAccuracyContent() {
 
                       {/* RECENT ACCURACY SCORES */}
                       <div>
-                        <h3 className="text-lg font-semibold mb-4">{accuracyView === "competition" ? "Recent Competition Accuracy" : "Recent Practice Scores"}</h3>
+                        <h3 className="text-lg font-semibold mb-4">Recent Practice Scores</h3>
                         {selectedScoutData.recentAccuracies.length > 0 ? (
                           <div className="space-y-2">
                             {selectedScoutData.recentAccuracies.map((accuracy, i) => (
@@ -943,10 +1106,7 @@ function ScoutAccuracyContent() {
 
 export default function ScoutAccuracyPage() {
   return (
-    <ProtectedRoute
-      requireAuth={true}
-      allowedRoles={["lead-scout", "lead-strategist", "pit-team", "drive-team", "pit-scout", "match-scout", "coach", "scout"]}
-    >
+    <ProtectedRoute requireAuth={true}>
       <ScoutAccuracyContent />
     </ProtectedRoute>
   );

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { useRouter } from "next/navigation";
-import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -30,6 +30,8 @@ function AccountContent() {
   const [profileBio, setProfileBio] = useState(userData?.bio || "");
   const [profileVisibility, setProfileVisibility] = useState<"team" | "public" | "private">(userData?.profileVisibility || "team");
   const [teamDisplayLabel, setTeamDisplayLabel] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     setProfileBio(userData?.bio || "");
@@ -151,10 +153,16 @@ function AccountContent() {
     setLoading(false);
   }
 
-  if (!userData) return null;
+  const displayName = userData?.displayName || user?.displayName || "User";
+  const displayEmail = userData?.email || user?.email || "";
+  const displayRoleRaw = userData
+    ? (userData.roles && userData.roles.length ? userData.roles.join(", ") : userData.role)
+    : "match-scout";
+  const displayRole = String(displayRoleRaw).replace(/-/g, " ");
+  const hasUserDoc = Boolean(userData);
 
   async function handleSaveProfilePreferences() {
-    if (!user?.uid) return;
+    if (!user?.uid || !hasUserDoc) return;
     setLoading(true);
     setError("");
     setSuccess("");
@@ -199,17 +207,61 @@ function AccountContent() {
     }
   }
 
+  async function handleDeleteAccount() {
+    if (!user?.uid) return;
+    if (deleteConfirmText.trim().toUpperCase() !== "DELETE") {
+      setError('Type "DELETE" to confirm account deletion.');
+      setSuccess("");
+      return;
+    }
+    if (!confirm("Delete your account permanently? This cannot be undone.")) return;
+
+    setDeletingAccount(true);
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const idToken = await user.getIdToken();
+      const cleanupResponse = await fetch("/api/user/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ uid: user.uid }),
+      });
+      if (!cleanupResponse.ok) {
+        const payload = (await cleanupResponse.json().catch(() => ({}))) as { error?: string };
+        throw new Error(String(payload.error || "Unable to remove account data."));
+      }
+      await deleteUser(user);
+      router.push("/signup");
+    } catch (err: unknown) {
+      console.error("Delete account error:", err);
+      const code = (err as { code?: string })?.code || "";
+      const message = (err as { message?: string })?.message || "";
+      if (code === "auth/requires-recent-login") {
+        setError("For security, please log out and log back in, then delete your account again.");
+      } else {
+        setError(message || "Failed to delete account.");
+      }
+    } finally {
+      setDeletingAccount(false);
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
       
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto p-8">
+      <div className="flex-1 min-w-0 overflow-y-auto">
+        <div className="max-w-4xl mx-auto p-4 sm:p-6 md:p-8">
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
             Account Settings
           </h1>
           <p className="text-gray-600 mb-8">Manage your account information and security</p>
-          {!userData.teamId && (
+          {!userData?.teamId && (
             <div className="mb-6">
               <button
                 onClick={() => router.push("/dashboard")}
@@ -242,25 +294,25 @@ function AccountContent() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Name
                 </label>
-                <p className="text-gray-900">{userData.displayName}</p>
+                <p className="text-gray-900">{displayName}</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
-                <p className="text-gray-900">{userData.email}</p>
+                <p className="text-gray-900">{displayEmail || "Unknown"}</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Role
                 </label>
-                <p className="text-gray-900 capitalize">{(userData.roles && userData.roles.length ? userData.roles.join(", ") : userData.role).replace(/-/g, " ")}</p>
+                <p className="text-gray-900 capitalize">{displayRole}</p>
               </div>
 
               <div>
-                {userData.isTeamAdmin && (
+                {Boolean(userData?.isTeamAdmin) && (
                   <p className="text-xs text-gray-500 mt-1">You are the team admin</p>
                 )}
               </div>
@@ -272,11 +324,11 @@ function AccountContent() {
             <ProfilePictureUpload />
           </div>
 
-          {userData.teamId && (
+          {userData?.teamId && (
             <div className="bg-white rounded-xl shadow p-6 mb-6">
               <h2 className="text-xl font-semibold mb-2">Team Membership</h2>
               <p className="text-sm text-gray-600 mb-4">
-                You are currently on Team <span className="font-semibold">{teamDisplayLabel || userData.teamId}</span>.
+                You are currently on Team <span className="font-semibold">{teamDisplayLabel || userData?.teamId}</span>.
               </p>
               <button
                 type="button"
@@ -319,12 +371,17 @@ function AccountContent() {
               <button
                 type="button"
                 onClick={handleSaveProfilePreferences}
-                disabled={loading}
+                disabled={loading || !hasUserDoc}
                 className="px-6 py-2 rounded-lg text-white font-semibold disabled:opacity-50"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Save Profile Preferences
               </button>
+              {!hasUserDoc && (
+                <p className="text-xs text-red-600">
+                  Your profile document could not be loaded, so profile preference updates are temporarily disabled.
+                </p>
+              )}
             </div>
           </div>
 
@@ -435,6 +492,36 @@ function AccountContent() {
                 {loading ? "Updating..." : "Update Password"}
               </button>
             </form>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 mt-6 border border-red-200">
+            <h2 className="text-xl font-semibold text-red-700 mb-2">Danger Zone</h2>
+            <p className="text-sm text-gray-700 mb-4">
+              Deleting your account permanently removes your profile and pending join requests.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Type DELETE to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="DELETE"
+                  disabled={deletingAccount}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount || loading}
+                className="px-6 py-2 rounded-lg text-white font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingAccount ? "Deleting Account..." : "Delete Account"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

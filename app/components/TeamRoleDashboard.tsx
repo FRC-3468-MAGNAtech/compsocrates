@@ -13,6 +13,7 @@ import { calculateTeamStats, getUpcomingEvents, type TeamStats, type UpcomingEve
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { canAccessForm, normalizeFormAccessOverrides, type FormAccessOverrides, type TeamRole } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, MapPin, Target, TriangleAlert } from "lucide-react";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 
 type DashboardMatch = {
   key: string;
@@ -25,14 +26,17 @@ type DashboardMatch = {
 function filterEventsByAttendance(
   events: UpcomingEvent[],
   attendanceByEvent: Record<string, string[]>,
-  displayName: string,
-  isTeamAdmin: boolean
+  uid: string,
+  displayName: string
 ) {
-  if (isTeamAdmin) return events;
+  const normalizedUid = uid.trim();
   const normalizedName = displayName.trim().toLowerCase();
   return events.filter((event) => {
     const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
-    return attendees.some((name) => String(name || "").trim().toLowerCase() === normalizedName);
+    return attendees.some((value) => {
+      const safe = String(value || "").trim();
+      return safe === normalizedUid || safe.toLowerCase() === normalizedName;
+    });
   });
 }
 
@@ -46,6 +50,7 @@ type TeamRoleDashboardProps = {
   pitScoutFocus?: boolean;
   pitTeamFocus?: boolean;
   driveTeamFocus?: boolean;
+  showManualScoutFallback?: boolean;
 };
 
 function compLevelPriority(compLevel: TBAMatch["comp_level"]) {
@@ -111,6 +116,7 @@ function TeamRoleDashboardContent({
   pitScoutFocus,
   pitTeamFocus,
   driveTeamFocus,
+  showManualScoutFallback,
 }: Omit<TeamRoleDashboardProps, "role">) {
   const { userData } = useAuth();
   const router = useRouter();
@@ -150,8 +156,8 @@ function TeamRoleDashboardContent({
       const visibleEvents = filterEventsByAttendance(
         events,
         attendanceByEvent,
-        userData.displayName || "",
-        Boolean(userData.isTeamAdmin)
+        userData.uid || "",
+        userData.displayName || ""
       );
 
       setStats(teamStats);
@@ -235,6 +241,7 @@ function TeamRoleDashboardContent({
           <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{title}</h1>
           <p className="text-gray-600 mb-2">{subtitle}</p>
           <p className="text-sm text-gray-700 mb-8">{roleDescription}</p>
+          <DataSourceCredits className="mb-6" />
 
           {loading ? (
             <div className="text-center py-12">
@@ -243,6 +250,22 @@ function TeamRoleDashboardContent({
             </div>
           ) : (
             <>
+              {showAssignmentsAction && (
+                <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                  <h2 className="text-xl font-semibold mb-2">Match Assignments</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-gray-700">Review assignment coverage and manage scout workload before scouting starts.</p>
+                    <button
+                      onClick={() => router.push("/assignments")}
+                      className="px-4 py-2 rounded-lg text-white font-medium"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      Open Assignments
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {pitScoutFocus && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6">
                   <h2 className="text-xl font-semibold mb-2">Teams Left To Scout</h2>
@@ -260,7 +283,16 @@ function TeamRoleDashboardContent({
                       )}
                     </>
                   ) : (
-                    <p className="text-sm text-gray-700">No competition detected yet.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No teams have been picked for pit scouting yet.</p>
+                      <button
+                        onClick={() => router.push("/event-details")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        View Team List
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -280,7 +312,16 @@ function TeamRoleDashboardContent({
                       </button>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-700">No active competition right now, so helper logging is not needed.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No active competition detected yet.</p>
+                      <button
+                        onClick={() => router.push("/event-details")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        View Events
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -294,10 +335,19 @@ function TeamRoleDashboardContent({
                       <p className="text-sm text-gray-600 mb-2">
                         {new Date(nextTeamMatch.scheduleTime * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                       </p>
-                      <p className="text-sm text-gray-700">Reminder: complete the Drive Scout Form immediately after this match.</p>
+                      <p className="text-sm text-gray-700">Reminder: complete the Drive Reflection Form immediately after this match.</p>
                     </>
                   ) : (
-                    <p className="text-sm text-gray-700">No upcoming team match detected right now, so no Drive Scout Form is needed yet.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No team matches are assigned yet.</p>
+                      <button
+                        onClick={() => router.push("/match-list")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        View Match List
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -308,8 +358,33 @@ function TeamRoleDashboardContent({
                   {activeEvent ? (
                     <p className="text-sm text-gray-700">Use Analytics to shape match plans for {activeEvent.name} and adjust strategy between matches.</p>
                   ) : (
-                    <p className="text-sm text-gray-700">No active competition is detected. You can still use Analytics to prepare and compare teams.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-700">No active competition is detected yet.</p>
+                      <button
+                        onClick={() => router.push("/analytics")}
+                        className="px-4 py-2 rounded-lg text-white font-medium"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        Open Analytics
+                      </button>
+                    </div>
                   )}
+                </div>
+              )}
+
+              {showManualScoutFallback && activeMatches.length === 0 && (
+                <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                  <h2 className="text-xl font-semibold mb-2">No Matches Assigned Yet</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-gray-700">You can still open the match form and scout manually.</p>
+                    <button
+                      onClick={() => router.push("/scout-form")}
+                      className="px-4 py-2 rounded-lg text-white font-medium"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      Scout Manually
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -367,17 +442,28 @@ function TeamRoleDashboardContent({
                   {activeEvent && (
                     <div className="space-y-4">
                       <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
-                        <h2 className="text-xl font-semibold mb-1">Event Data</h2>
-                        <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{activeEvent.name}</p>
-                        <p className="text-gray-600 flex flex-wrap items-center gap-2">
-                          <CalendarDays size={16} />
-                          <span>
-                            {new Date(activeEvent.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(activeEvent.endDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                          </span>
-                          <span aria-hidden="true">|</span>
-                          <MapPin size={16} />
-                          <span>{activeEvent.location}</span>
-                        </p>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h2 className="text-xl font-semibold mb-1">Event Data</h2>
+                            <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{activeEvent.name}</p>
+                            <p className="text-gray-600 flex flex-wrap items-center gap-2">
+                              <CalendarDays size={16} />
+                              <span>
+                                {new Date(activeEvent.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} - {new Date(activeEvent.endDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                              </span>
+                              <span aria-hidden="true">|</span>
+                              <MapPin size={16} />
+                              <span>{activeEvent.location}</span>
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => router.push(`/event-details/${activeEvent.key}`)}
+                            className="px-4 py-2 rounded-lg text-white font-medium whitespace-nowrap"
+                            style={{ backgroundColor: "var(--primary-color)" }}
+                          >
+                            View Details
+                          </button>
+                        </div>
                       </div>
 
                       <div className="bg-white rounded-xl shadow-md overflow-hidden">
@@ -447,7 +533,7 @@ function TeamRoleDashboardContent({
                     <BarChart3 size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>{stats?.averageAccuracy || 0}%</p>
-                  <p className="text-sm text-gray-600 mt-1">Practice-derived average</p>
+                  <p className="text-sm text-gray-600 mt-1">REBUILT scouted-match average</p>
                 </div>
               </div>
 

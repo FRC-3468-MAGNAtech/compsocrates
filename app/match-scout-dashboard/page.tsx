@@ -7,6 +7,7 @@ export default function MatchScoutDashboardPage() {
       title="Match Scout Dashboard"
       subtitle="Track your assignments, submit clean match data, and stay event-ready."
       roleDescription="Collects objective and qualitative match data to support strategy and alliance decisions."
+      showManualScoutFallback
     />
   );
 }

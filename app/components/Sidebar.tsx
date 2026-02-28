@@ -10,7 +10,7 @@ import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { canAccessForm, FormAccessOverrides, getRoleBadge, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
 import { 
   BarChart3, ClipboardList, TrendingUp, Target, Users, 
-  Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings
+  Menu, X, ChevronLeft, ChevronRight, Calendar, UserCircle2, Settings, Megaphone
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -30,6 +30,21 @@ export default function Sidebar() {
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!isMobileMenuOpen) {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+      return;
+    }
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+    };
+  }, [isMobileMenuOpen]);
 
   // Load team name from Firestore
   useEffect(() => {
@@ -66,7 +81,14 @@ export default function Sidebar() {
     userRoles.includes("team-coach") ||
     userData.isTeamAdmin;
   const canManageAssignments = userRoles.includes("lead-scout") || userData.isTeamAdmin;
+  const compactSidebar = collapsed && !isMobileMenuOpen;
   const showText = !collapsed || isMobileMenuOpen;
+  const initials = userData.displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "U";
 
   const navItems = [
     { href: getDashboardRoute(userData), label: "Dashboard", icon: BarChart3 },
@@ -77,10 +99,13 @@ export default function Sidebar() {
       ? [{ href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "strategy-scout-form", user: userData, formAccessOverrides })
-      ? [{ href: "/strategy-scout-form", label: "Strategy Scout Form", icon: ClipboardList }]
+      ? [{ href: "/strategy-scout-form", label: "Team Strategy Form", icon: ClipboardList }]
+      : []),
+    ...(canAccessForm({ formKey: "match-strategy-form", user: userData, formAccessOverrides })
+      ? [{ href: "/match-strategy-form", label: "Match Strategy Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "drive-scout-form", user: userData, formAccessOverrides })
-      ? [{ href: "/drive-scout-form", label: "Drive Scout Form", icon: ClipboardList }]
+      ? [{ href: "/drive-scout-form", label: "Drive Reflection Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "helper-form", user: userData, formAccessOverrides })
       ? [{ href: "/helper-form", label: "Helper Form", icon: ClipboardList }]
@@ -93,6 +118,7 @@ export default function Sidebar() {
           { href: "/event-selection", label: "Event Selection", icon: Calendar },
         ]
       : []),
+    { href: "/match-list", label: "Match List", icon: Calendar },
     ...(canManageAssignments ? [{ href: "/assignments", label: "Assignments", icon: Calendar }] : []),
     { href: "/people", label: "People", icon: UserCircle2 },
     ...(isLeadRole ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
@@ -103,7 +129,7 @@ export default function Sidebar() {
     <>
       {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-[60] md:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
@@ -111,7 +137,7 @@ export default function Sidebar() {
       {/* Mobile hamburger button */}
       <button
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg"
+        className="md:hidden fixed top-4 left-4 z-[80] p-2 bg-white rounded-lg shadow-lg touch-manipulation"
         style={{ color: "var(--primary-color)" }}
       >
         {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -121,9 +147,9 @@ export default function Sidebar() {
         className={`
           border-r border-gray-200 flex flex-col transition-all duration-300
           ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}
-          ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
+          ${isMobileMenuOpen ? "translate-x-0 pointer-events-auto" : "-translate-x-full pointer-events-none md:pointer-events-auto"}
           md:translate-x-0
-          fixed md:sticky top-0 h-screen z-40
+          fixed md:sticky top-0 h-screen z-[70] overflow-y-auto
         `}
         style={{
           backgroundColor: "var(--theme-bg)",
@@ -158,7 +184,7 @@ export default function Sidebar() {
         </div>
 
         {/* NAVIGATION */}
-        <nav className="flex-1 p-2 overflow-y-auto">
+        <nav className="flex-1 p-2 md:overflow-y-auto">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -180,6 +206,18 @@ export default function Sidebar() {
             );
           })}
         </nav>
+
+        <div className="px-2 pb-2">
+          <Link
+            href="/changelog"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="inline-flex items-center justify-center w-10 h-10 rounded hover:bg-gray-100 text-gray-700"
+            title="Changelog"
+            aria-label="Changelog"
+          >
+            <Megaphone size={18} />
+          </Link>
+        </div>
 
         {/* USER PROFILE */}
         <div className="p-2 border-t border-gray-200 relative">
@@ -205,7 +243,7 @@ export default function Sidebar() {
                   border: "1px solid rgba(var(--primary-rgb), 0.28)",
                 }}
               >
-                {userData.displayName.substring(0, 2).toUpperCase()}
+                {initials}
               </div>
             )}
             {showText && (
@@ -227,7 +265,7 @@ export default function Sidebar() {
               <div
                 className={`
                   absolute bottom-full mb-2 bg-white rounded-lg shadow-xl border border-gray-200 z-50
-                  ${collapsed ? "left-full ml-2 w-48" : "left-2 right-2"}
+                  ${compactSidebar ? "left-0 w-48" : "left-2 right-2"}
                 `}
               >
                 <Link
@@ -237,18 +275,6 @@ export default function Sidebar() {
                 >
                   Account Settings
                 </Link>
-                {isLeadRole && (
-                  <Link
-                    href="/settings/api-keys"
-                    className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"
-                    onClick={() => setShowSettings(false)}
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <Settings size={14} />
-                      Team API Keys
-                    </span>
-                  </Link>
-                )}
                 <Link
                   href={`/profile/${userData.uid}`}
                   className="block px-4 py-2 hover:bg-gray-100 text-sm text-gray-700"

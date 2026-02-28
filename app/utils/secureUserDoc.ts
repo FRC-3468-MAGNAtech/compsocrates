@@ -48,11 +48,20 @@ export async function setSecureUserDoc(
         userDataEncryptedAt: Date.now(),
       }
     : { ...data };
-  await setDoc(
-    ref,
-    payload,
-    { merge }
-  );
+  try {
+    await setDoc(
+      ref,
+      payload,
+      { merge }
+    );
+  } catch (error) {
+    // If security rules reject encrypted fields, retry the plain payload.
+    if (encryptedUserData) {
+      await setDoc(ref, { ...data }, { merge });
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function updateSecureUserDoc(uid: string, updates: Record<string, unknown>) {

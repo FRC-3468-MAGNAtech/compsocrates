@@ -87,24 +87,24 @@ export default function ProfilePictureUpload() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
         {/* Current Picture */}
-        <div className="relative">
+        <div className="relative shrink-0">
           {currentPhotoURL ? (
             <img
               src={currentPhotoURL}
               alt="Profile"
-              className="w-32 h-32 rounded-full object-cover border-4 border-gray-300"
+              className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-300 aspect-square"
             />
           ) : (
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-4xl font-bold border-4 border-gray-300">
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-4xl font-bold border-4 border-gray-300 aspect-square">
               {getInitials()}
             </div>
           )}
         </div>
 
         {/* URL controls */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0 w-full">
           <div className="space-y-2">
             <p className="text-sm font-medium">Profile Picture URL</p>
             <input
@@ -115,7 +115,7 @@ export default function ProfilePictureUpload() {
               placeholder="https://example.com/profile.jpg"
               disabled={saving}
             />
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleSaveUrl}
                 disabled={saving}

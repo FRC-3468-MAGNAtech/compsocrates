@@ -21,6 +21,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const googleAuthAvailable = false;
+
+  function toFriendlyAuthError(message: string) {
+    const lower = message.toLowerCase();
+    if (lower.includes("invalid-credential") || lower.includes("wrong-password") || lower.includes("user-not-found")) {
+      return "Email or password is incorrect.";
+    }
+    if (lower.includes("too-many-requests")) return "Too many attempts. Try again in a few minutes.";
+    if (lower.includes("network-request-failed")) return "Network error. Check connection and try again.";
+    if (lower.includes("popup")) return "Google popup was blocked or closed. Enable popups and try again.";
+    return message || "Login failed.";
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -37,9 +49,10 @@ export default function LoginPage() {
       const userDoc = await getDoc(doc(db, "users", currentUser.uid));
       const data = userDoc.exists() ? userDoc.data() : null;
       router.push(getDashboardRoute(data as { role?: string; roles?: string[]; teamId?: string } | null));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Login error:", error);
-      setError(error.message || "Invalid email or password");
+      const message = error instanceof Error ? error.message : "Invalid email or password";
+      setError(toFriendlyAuthError(message));
     } finally {
       setLoading(false);
     }
@@ -51,6 +64,7 @@ export default function LoginPage() {
 
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
@@ -77,9 +91,10 @@ export default function LoginPage() {
         const userData = userDoc.data();
         router.push(getDashboardRoute(userData));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Google sign-in error:", error);
-      setError(error.message || "Failed to sign in with Google");
+      const message = error instanceof Error ? error.message : "Failed to sign in with Google";
+      setError(toFriendlyAuthError(message));
     } finally {
       setLoading(false);
     }
@@ -146,8 +161,11 @@ export default function LoginPage() {
 
         <button
           onClick={handleGoogleSignIn}
-          disabled={loading}
-          className="w-full py-3 rounded-lg border-2 border-gray-300 hover:bg-gray-50 font-semibold flex items-center justify-center gap-3 disabled:opacity-50"
+          disabled={loading || !googleAuthAvailable}
+          title={!googleAuthAvailable ? "Google Sign-In is currently unavailable" : undefined}
+          className={`w-full py-3 rounded-lg border-2 border-gray-300 font-semibold flex items-center justify-center gap-3 disabled:opacity-50 ${
+            googleAuthAvailable ? "hover:bg-gray-50" : "bg-gray-100 text-gray-500 cursor-not-allowed"
+          }`}
         >
           <svg width="20" height="20" viewBox="0 0 20 20">
             <path fill="#4285F4" d="M19.6 10.23c0-.82-.1-1.42-.25-2.05H10v3.72h5.5c-.15.96-.74 2.31-2.04 3.22v2.45h3.16c1.89-1.73 2.98-4.3 2.98-7.34z"/>
@@ -155,14 +173,26 @@ export default function LoginPage() {
             <path fill="#FBBC05" d="M3.99 10c0-.69.12-1.35.32-1.97V5.51H1.07A9.973 9.973 0 000 10c0 1.61.39 3.14 1.07 4.49l3.24-2.52c-.2-.62-.32-1.28-.32-1.97z"/>
             <path fill="#EA4335" d="M10 3.88c1.88 0 3.13.81 3.85 1.48l2.84-2.76C14.96.99 12.7 0 10 0 6.09 0 2.72 2.25 1.07 5.51l3.24 2.52C5.12 5.62 7.36 3.88 10 3.88z"/>
           </svg>
-          Continue with Google
+          Continue with Google (Unavailable)
         </button>
 
         <p className="text-center text-sm text-gray-600 mt-6">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link href="/signup" className="font-semibold hover:underline" style={{ color: "var(--primary-color)" }}>
             Sign Up
           </Link>
+        </p>
+
+        <p className="text-center text-xs text-gray-500 mt-4">
+          By continuing, you agree to our{" "}
+          <Link href="/terms-of-service" className="underline hover:text-gray-700">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy-policy" className="underline hover:text-gray-700">
+            Privacy Policy
+          </Link>
+          .
         </p>
       </div>
     </div>

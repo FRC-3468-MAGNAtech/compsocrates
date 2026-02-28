@@ -13,6 +13,7 @@ import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getUserRoles } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, Target, Users, Wrench, MapPin } from "lucide-react";
+import DataSourceCredits from "@/app/components/DataSourceCredits";
 
 interface TeamData {
   scoutCount?: number;
@@ -32,14 +33,17 @@ type DashboardMatch = {
 function filterEventsByAttendance(
   events: UpcomingEvent[],
   attendanceByEvent: Record<string, string[]>,
-  displayName: string,
-  isTeamAdmin: boolean
+  uid: string,
+  displayName: string
 ) {
-  if (isTeamAdmin) return events;
+  const normalizedUid = uid.trim();
   const normalizedName = displayName.trim().toLowerCase();
   return events.filter((event) => {
     const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
-    return attendees.some((name) => String(name || "").trim().toLowerCase() === normalizedName);
+    return attendees.some((value) => {
+      const safe = String(value || "").trim();
+      return safe === normalizedUid || safe.toLowerCase() === normalizedName;
+    });
   });
 }
 
@@ -96,6 +100,9 @@ function CoachDashboardContent() {
   const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
   const [teamData, setTeamData] = useState<TeamData | null>(null);
   const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
+  const [readyScoutIds, setReadyScoutIds] = useState<string[]>([]);
+  const [totalAssignableScouts, setTotalAssignableScouts] = useState(0);
+  const [eventAverageAccuracyByKey, setEventAverageAccuracyByKey] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -111,12 +118,12 @@ function CoachDashboardContent() {
     
     setLoading(true);
     try {
-      const [teamStats, events, teamDoc, usersSnap, practiceSnap] = await Promise.all([
+      const [teamStats, events, teamDoc, usersSnap, scoutingSnap] = await Promise.all([
         calculateTeamStats(userData.teamId),
         getUpcomingEvents(userData.teamId),
         getDoc(doc(db, "teams", userData.teamId)),
         getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
-        getDocs(collection(db, "practiceSessions")),
+        getDocs(collection(db, "scouting")),
       ]);
       
       setStats(teamStats);
@@ -126,8 +133,8 @@ function CoachDashboardContent() {
       const visibleEvents = filterEventsByAttendance(
         events,
         attendanceByEvent,
-        userData.displayName || "",
-        Boolean(userData.isTeamAdmin)
+        userData.uid || "",
+        userData.displayName || ""
       );
       setUpcomingEvents(visibleEvents);
       setActiveEventKey((current) => {
@@ -153,14 +160,19 @@ function CoachDashboardContent() {
       const scouts = usersSnap.docs.filter((userDoc) => {
         const data = userDoc.data();
         const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
-        return roles.includes("match-scout") || roles.includes("lead-scout");
+        return roles.includes("match-scout");
       });
-      const scoutNames = scouts.map((docSnap) => docSnap.data().displayName);
+      const scoutDocs = scouts.map((docSnap) => ({ uid: docSnap.id, displayName: String(docSnap.data().displayName || "") }));
+      const scoutNames = scoutDocs.map((row) => row.displayName);
+      setTotalAssignableScouts(scoutDocs.length);
 
       const accuracyMapByScout: Record<string, { total: number; count: number }> = {};
-      practiceSnap.forEach((practiceDoc) => {
-        const data = practiceDoc.data();
-        if (!scoutNames.includes(data.scoutName) || typeof data.accuracy !== "number") return;
+      scoutingSnap.forEach((scoutingDoc) => {
+        const data = scoutingDoc.data() as Record<string, unknown>;
+        const isRebuilt = String(data.game || "").toUpperCase() === "REBUILT";
+        const isPracticeScouted = Boolean(data.isPracticeScouting) || Boolean(data.practiceMode) || Boolean(data.practiceSessionId);
+        if (!isRebuilt || !isPracticeScouted || typeof data.accuracy !== "number") return;
+        if (!scoutNames.includes(String(data.scoutName || ""))) return;
         const scoutName = String(data.scoutName || "");
         if (!accuracyMapByScout[scoutName]) {
           accuracyMapByScout[scoutName] = { total: 0, count: 0 };
@@ -174,6 +186,38 @@ function CoachDashboardContent() {
         return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
       });
       setReadyScoutNames(computedReadyScouts);
+      setReadyScoutIds(
+        scoutDocs
+          .filter((docSnap) => computedReadyScouts.includes(docSnap.displayName))
+          .map((docSnap) => docSnap.uid)
+      );
+
+      const avgByEvent: Record<string, number> = {};
+      const scoutAccuracyByUid = new Map<string, number>();
+      const scoutAccuracyByName = new Map<string, number>();
+      scoutDocs.forEach((docSnap) => {
+        const byName = accuracyMapByScout[docSnap.displayName];
+        if (!byName || byName.count <= 0) return;
+        const avg = byName.total / byName.count;
+        scoutAccuracyByUid.set(docSnap.uid, avg);
+        scoutAccuracyByName.set(docSnap.displayName.trim().toLowerCase(), avg);
+      });
+      visibleEvents.forEach((event) => {
+        const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
+        const attendeeAccuracies = attendees
+          .map((value) => {
+            const safe = String(value || "").trim();
+            if (!safe) return null;
+            return scoutAccuracyByUid.get(safe) ?? scoutAccuracyByName.get(safe.toLowerCase()) ?? null;
+          })
+          .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+        if (attendeeAccuracies.length > 0) {
+          avgByEvent[event.key] = Math.round(
+            attendeeAccuracies.reduce((sum, value) => sum + value, 0) / attendeeAccuracies.length
+          );
+        }
+      });
+      setEventAverageAccuracyByKey(avgByEvent);
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -233,6 +277,7 @@ function CoachDashboardContent() {
             Team Coach Dashboard
           </h1>
           <p className="text-gray-600 mb-8">Welcome back! Here&apos;s what&apos;s happening with your team.</p>
+          <DataSourceCredits className="mb-6" />
 
           {loading ? (
             <LoadingSpinner message="Loading dashboard..." />
@@ -264,9 +309,13 @@ function CoachDashboardContent() {
                     if (!event) return null;
                     const expected = teamData?.eventScoutCounts?.[event.key] || teamData?.scoutCount || 6;
                     const attendees = Array.isArray(teamData?.eventAttendees?.[event.key]) ? teamData.eventAttendees[event.key] : [];
-                    const readyLookup = new Set(readyScoutNames.map((name) => name.trim().toLowerCase()));
+                    const readyNameLookup = new Set(readyScoutNames.map((name) => name.trim().toLowerCase()));
+                    const readyIdLookup = new Set(readyScoutIds.map((id) => id.trim()));
                     const readyAttendees = attendees.length > 0
-                      ? attendees.filter((name: string) => readyLookup.has(String(name || "").trim().toLowerCase())).length
+                      ? attendees.filter((value: string) => {
+                          const safe = String(value || "").trim();
+                          return readyIdLookup.has(safe) || readyNameLookup.has(safe.toLowerCase());
+                        }).length
                       : readyScoutNames.length;
                     const eventMatches = eventMatchesByKey[event.key] || [];
                     return (
@@ -376,10 +425,10 @@ function CoachDashboardContent() {
                     <Users size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {stats?.activeScouts || 0}
+                    {readyScoutNames.length}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
-                    Ready scouts ({stats?.totalScouts || 0} total)
+                    Ready scouts ({totalAssignableScouts} total)
                   </p>
                 </div>
 
@@ -389,9 +438,15 @@ function CoachDashboardContent() {
                     <Target size={22} />
                   </div>
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                    {stats?.averageAccuracy || 0}%
+                    {typeof eventAverageAccuracyByKey[activeEventKey] === "number"
+                      ? eventAverageAccuracyByKey[activeEventKey]
+                      : stats?.averageAccuracy || 0}%
                   </p>
-                  <p className="text-sm text-gray-600 mt-1">Scout reliability</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {typeof eventAverageAccuracyByKey[activeEventKey] === "number"
+                      ? "Average practice accuracy for attending scouts"
+                      : "REBUILT scouted-match reliability"}
+                  </p>
                 </div>
               </div>
 
