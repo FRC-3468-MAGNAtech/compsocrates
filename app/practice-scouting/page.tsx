@@ -11,7 +11,7 @@ import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
-import { getTeamEventOptions, type DetectedEventOption } from "@/app/utils/eventDetection";
+import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -702,15 +702,17 @@ function parseBracketNumbers(match: { matchKey?: unknown; setNumber?: unknown; m
   return { setNumber, matchNumber };
 }
 
-function getFirstEventCodeFromTbaKey(key: string): string {
-  const normalized = String(key || "").toLowerCase();
-  const specialMap: Record<string, string> = {
-    "2026labr": "LAKE",
-    "2025lake": "LAKE",
-  };
-  if (specialMap[normalized]) return specialMap[normalized];
-  const suffix = normalized.slice(4).toUpperCase();
-  return suffix || normalized.toUpperCase();
+function parsePracticeMatchNumber(match: { matchKey?: unknown; matchNumber?: unknown }): number {
+  const key = String(match.matchKey || "").toLowerCase();
+  const fromKey =
+    key.match(/_qm(\d+)$/)?.[1] ||
+    key.match(/_pm(\d+)$/)?.[1] ||
+    key.match(/_pr(\d+)$/)?.[1] ||
+    key.match(/_m(\d+)$/)?.[1];
+  if (fromKey) return Number(fromKey);
+  const number = Number(match.matchNumber || 0);
+  if (Number.isFinite(number) && number > 0) return number;
+  return 1;
 }
 
 function normalizeEventValue(value: string): string {
@@ -865,12 +867,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   const stage = getPracticeStage(match);
   const baseTypeLabel = getPracticeStageLabel(stage);
   const { setNumber, matchNumber } = parseBracketNumbers(match as { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown });
+  const normalizedNumber = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown });
   const matchTypeLabel =
     stage === "semifinal"
       ? `${baseTypeLabel} ${Number(setNumber || matchNumber || match.matchNumber || 1)}`
       : stage === "finals" && setNumber > 1
       ? `${baseTypeLabel} ${setNumber}-${matchNumber || Number(match.matchNumber || 1)}`
-      : `${baseTypeLabel} ${Number(match.matchNumber || matchNumber || 1)}`;
+      : `${baseTypeLabel} ${normalizedNumber}`;
   const alliance = normalizeAllianceSide(match.alliance);
   const allianceLabel = alliance ? `  •  ${alliance === "red" ? "Red" : "Blue"} Alliance` : "";
   const teams = Array.isArray(match.allianceTeams) ? match.allianceTeams.slice(0, 3).join(", ") : "";
@@ -994,7 +997,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (!title) return "";
       setLiveStreamTitle(title);
 
-      const inferredEventKey = inferEventKeyFromStreamTitle(title, activeMatchGame);
+      const inferredFromTitle = inferEventKeyFromStreamTitle(title, activeMatchGame);
+      const fallbackEventKey = teamEventCatalog.length > 0 ? pickDetectedEventKey(teamEventCatalog) : "";
+      const inferredEventKey = inferredFromTitle || fallbackEventKey;
       if (!inferredEventKey) return "";
       setLiveEventKeyHint(inferredEventKey);
 
@@ -1879,7 +1884,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         id: `${modalType}-${match.matchNumber}-${match.id}`,
         label: getPracticeLabel(match),
         type: modalType,
-        matchNumber: Number(match.matchNumber || 0),
+        matchNumber: parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown }),
         scheduleTime,
         sourceId: match.id,
         progress: match.progress,

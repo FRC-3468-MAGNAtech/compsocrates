@@ -214,6 +214,29 @@ async function fetchStatboticsEpa(teamNumber: number, year: number): Promise<num
   }
 }
 
+async function fetchEventMatchesForAssignments(
+  eventKey: string,
+  encryptedKey: string,
+  plainKey: string
+): Promise<TBAMatch[]> {
+  const safeEvent = String(eventKey || "").trim();
+  if (!safeEvent) return [];
+
+  if (encryptedKey || plainKey) {
+    const response = await fetch("/api/tba/matches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventKey: safeEvent, encryptedKey, plainKey }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { matches?: TBAMatch[] };
+      if (Array.isArray(payload.matches)) return payload.matches;
+    }
+  }
+
+  return getEventMatches(safeEvent);
+}
+
 function AssignmentsContent() {
   const { userData } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -310,6 +333,8 @@ function AssignmentsContent() {
       setMembers(membersSnap.docs.map((memberDoc) => ({ uid: memberDoc.id, ...memberDoc.data() } as TeamMember)));
       const teamData = teamDoc.exists() ? teamDoc.data() : {};
       setEventAttendees(teamData.eventAttendees || {});
+      const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
+      const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
       const resolvedEvents = await resolveEventOptions(teamData);
       setEvents(resolvedEvents);
       const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
@@ -398,7 +423,7 @@ function AssignmentsContent() {
       );
 
       try {
-        const matches = await getEventMatches(effectiveEvent);
+        const matches = await fetchEventMatchesForAssignments(effectiveEvent, encryptedKey, plainKey);
         const sorted = [...matches].sort((a, b) => {
           const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
           if (priorityDiff !== 0) return priorityDiff;

@@ -90,7 +90,7 @@ function extractMatchNumber(option: MatchOption): number {
   const label = String(option.label || "");
   const fromLabel = label.match(/\d+(?:-\d+)?$/)?.[0];
   if (fromLabel) return Number(fromLabel.split("-").pop() || 0);
-  return Number(option.matchNumber || 0);
+  return 0;
 }
 
 function displayMatchLabel(option: MatchOption | null): string {
