@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 export default function Sidebar() {
+  const navScrollRef = useRef<HTMLElement | null>(null);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return true;
     const saved = localStorage.getItem("sidebar-collapsed");
@@ -71,6 +72,26 @@ export default function Sidebar() {
     loadTeamName();
   }, [userData?.teamId]);
 
+  const sidebarScrollKey = `sidebar-scroll-top:${userData?.teamId || "global"}`;
+
+  const handleSidebarScroll = useCallback(() => {
+    if (typeof window === "undefined" || !navScrollRef.current) return;
+    sessionStorage.setItem(sidebarScrollKey, String(navScrollRef.current.scrollTop || 0));
+  }, [sidebarScrollKey]);
+
+  const restoreSidebarScroll = useCallback(() => {
+    if (typeof window === "undefined" || !navScrollRef.current) return;
+    const stored = sessionStorage.getItem(sidebarScrollKey);
+    const parsed = Number(stored || 0);
+    navScrollRef.current.scrollTop = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [sidebarScrollKey]);
+
+  useEffect(() => {
+    if (!userData?.teamId) return;
+    restoreSidebarScroll();
+    const timer = window.setTimeout(() => restoreSidebarScroll(), 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname, sidebarScrollKey, userData?.teamId, restoreSidebarScroll]);
   if (!userData?.teamId) return null;
 
   const userRoles = getUserRoles(userData);
@@ -149,7 +170,7 @@ export default function Sidebar() {
           ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}
           ${isMobileMenuOpen ? "translate-x-0 pointer-events-auto" : "-translate-x-full pointer-events-none md:pointer-events-auto"}
           md:translate-x-0
-          fixed md:sticky top-0 h-screen z-[70] overflow-y-auto
+          fixed md:sticky top-0 h-screen z-[70] overflow-hidden
         `}
         style={{
           backgroundColor: "var(--theme-bg)",
@@ -184,7 +205,11 @@ export default function Sidebar() {
         </div>
 
         {/* NAVIGATION */}
-        <nav className="flex-1 p-2 md:overflow-y-auto">
+        <nav
+          ref={navScrollRef}
+          onScroll={handleSidebarScroll}
+          className="flex-1 p-2 overflow-y-auto"
+        >
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
