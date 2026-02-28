@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -17,11 +17,8 @@ type TeamJoinRequest = {
   createdAt?: number;
 };
 
-function formatTeamLabelFromCode(teamCode: string): string {
+function fallbackTeamLabel(teamCode: string): string {
   const raw = String(teamCode || "").trim().toUpperCase();
-  const numericChunk = raw.match(/\d+/)?.[0] || "";
-  const parsed = Number(numericChunk);
-  if (Number.isFinite(parsed) && parsed > 0) return `Team ${parsed}`;
   return `Team ${raw}`;
 }
 
@@ -167,6 +164,7 @@ function NoTeamDashboardContent() {
   const [requestError, setRequestError] = useState("");
   const [requestSuccess, setRequestSuccess] = useState("");
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
+  const [teamLabelByCode, setTeamLabelByCode] = useState<Record<string, string>>({});
   const duplicatePendingText = "you already asked to join that team and your request is still pending.";
 
   function ensurePendingVisible(teamId: string, role: TeamRole) {
@@ -217,7 +215,7 @@ function NoTeamDashboardContent() {
       } else {
         ensurePendingVisible(teamId, requestedRole);
       }
-      setRequestSuccess(`Join request already pending for ${formatTeamLabelFromCode(teamId)}.`);
+      setRequestSuccess(`Join request already pending for ${teamLabelByCode[teamId] || fallbackTeamLabel(teamId)}.`);
       return;
     }
 
@@ -238,7 +236,7 @@ function NoTeamDashboardContent() {
         ensurePendingVisible(teamId, requestedRole);
       }
       setRequestError("");
-      setRequestSuccess(`Join request submitted for ${formatTeamLabelFromCode(teamId)}. It is now pending approval.`);
+      setRequestSuccess(`Join request submitted for ${teamLabelByCode[teamId] || fallbackTeamLabel(teamId)}. It is now pending approval.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || "");
       setRequestSuccess("");
@@ -262,6 +260,39 @@ function NoTeamDashboardContent() {
     return localRows;
   }
 
+  async function resolveTeamLabel(teamCode: string): Promise<string> {
+    const normalizedCode = String(teamCode || "").trim().toUpperCase();
+    if (!normalizedCode) return fallbackTeamLabel(teamCode);
+    if (teamLabelByCode[normalizedCode]) return teamLabelByCode[normalizedCode];
+    try {
+      const teamDoc = await getDoc(doc(db, "teams", normalizedCode));
+      if (teamDoc.exists()) {
+        const data = teamDoc.data() as { teamNumber?: string | number; teamName?: string };
+        const teamNumberRaw = String(data.teamNumber || "").trim();
+        const teamNameRaw = String(data.teamName || "").trim();
+        const numeric = Number(teamNumberRaw);
+        const label =
+          Number.isFinite(numeric) && numeric > 0
+            ? `Team ${numeric}`
+            : teamNameRaw
+            ? teamNameRaw
+            : fallbackTeamLabel(normalizedCode);
+        setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
+        return label;
+      }
+    } catch {
+      // Ignore and fall back to team code.
+    }
+    const fallback = fallbackTeamLabel(normalizedCode);
+    setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: fallback }));
+    return fallback;
+  }
+
+  async function warmTeamLabels(requests: TeamJoinRequest[]) {
+    const codes = Array.from(new Set(requests.map((row) => String(row.teamId || "").trim().toUpperCase()).filter(Boolean)));
+    await Promise.all(codes.map((code) => resolveTeamLabel(code)));
+  }
+
   useEffect(() => {
     async function load() {
       if (!user) {
@@ -279,7 +310,8 @@ function NoTeamDashboardContent() {
 
       setLoading(true);
       try {
-        await refreshPendingRequests(user.uid);
+        const rows = await refreshPendingRequests(user.uid);
+        await warmTeamLabels(rows);
       } catch (error) {
         console.error("Error loading pending requests:", error);
         setPendingRequests(readLocalPendingCache());
@@ -292,11 +324,45 @@ function NoTeamDashboardContent() {
   }, [user, userData, router]);
 
   useEffect(() => {
+    if (!user || !userData || userData.teamId) return;
+    const requestsQuery = query(collection(db, "teamJoinRequests"), where("userId", "==", user.uid));
+    const unsubscribe = onSnapshot(
+      requestsQuery,
+      (snapshot) => {
+        const rows: TeamJoinRequest[] = snapshot.docs
+          .map((docSnap) => {
+            const data = docSnap.data() as Record<string, unknown>;
+            return {
+              id: docSnap.id,
+              teamId: String(data.teamId || ""),
+              requestedRole: normalizeLegacyRole(String(data.requestedRole || data.userRole || data.role || "match-scout")),
+              status: String(data.status || ""),
+              createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
+            };
+          })
+          .filter((row) => row.status === "pending" && row.teamId)
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        if (rows.length > 0) {
+          setPendingRequests(rows);
+          writeLocalPendingCache(rows);
+          void warmTeamLabels(rows);
+        }
+      },
+      () => {
+        // Ignore listener errors and keep existing fallback state.
+      }
+    );
+    return () => unsubscribe();
+  }, [user, userData]);
+
+  useEffect(() => {
     const requestSubmitted = searchParams.get("requestSubmitted") === "1";
     if (!requestSubmitted) return;
     const team = String(searchParams.get("team") || "").trim().toUpperCase();
     if (team) {
-      setRequestSuccess(`Join request submitted for ${formatTeamLabelFromCode(team)}. It is now pending approval.`);
+      void resolveTeamLabel(team).then((label) => {
+        setRequestSuccess(`Join request submitted for ${label}. It is now pending approval.`);
+      });
     } else {
       setRequestSuccess("Join request submitted. It is now pending approval.");
     }
@@ -325,7 +391,8 @@ function NoTeamDashboardContent() {
     if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
       ensurePendingVisible(normalizedTeamCode, requestedRole);
       setRequestError("");
-      setRequestSuccess(`Join request already pending for ${formatTeamLabelFromCode(normalizedTeamCode)}.`);
+      const teamLabel = await resolveTeamLabel(normalizedTeamCode);
+      setRequestSuccess(`Join request already pending for ${teamLabel}.`);
       setSubmittingRequest(false);
       return;
     }
@@ -335,7 +402,8 @@ function NoTeamDashboardContent() {
       if (refreshedPending.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
         ensurePendingVisible(normalizedTeamCode, requestedRole);
         setRequestError("");
-        setRequestSuccess(`Join request already pending for ${formatTeamLabelFromCode(normalizedTeamCode)}.`);
+        const teamLabel = await resolveTeamLabel(normalizedTeamCode);
+        setRequestSuccess(`Join request already pending for ${teamLabel}.`);
         return;
       }
 
@@ -356,7 +424,8 @@ function NoTeamDashboardContent() {
       }
       setTeamCode("");
       setRequestError("");
-      setRequestSuccess(`Join request submitted for ${formatTeamLabelFromCode(normalizedTeamCode)}. It is now pending approval.`);
+      const teamLabel = await resolveTeamLabel(normalizedTeamCode);
+      setRequestSuccess(`Join request submitted for ${teamLabel}. It is now pending approval.`);
     } catch (error) {
       console.error("Error creating team request:", error);
       const message = error instanceof Error ? error.message : String(error || "");
@@ -453,7 +522,7 @@ function NoTeamDashboardContent() {
               {pendingRequests.map((request) => (
                 <div key={request.id} className="border rounded p-3 flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">{formatTeamLabelFromCode(request.teamId)}</p>
+                    <p className="font-medium">{teamLabelByCode[String(request.teamId || "").trim().toUpperCase()] || fallbackTeamLabel(request.teamId)}</p>
                     <p className="text-sm text-gray-600">
                       Status: Pending ({getRoleLabel(request.requestedRole || "match-scout")})
                     </p>
