@@ -333,26 +333,62 @@ function scoreToDifficulty(score: number): "easy" | "medium" | "hard" {
   return "hard";
 }
 
+function readScoreFromOfficialData(value: unknown): number | null {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(record, "score")) {
+      const score = Number(record.score);
+      if (Number.isFinite(score) && score >= 0) return score;
+    }
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      if (Object.prototype.hasOwnProperty.call(parsed, "score")) {
+        const score = Number(parsed.score);
+        if (Number.isFinite(score) && score >= 0) return score;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function getPracticeMatchScore(match: PracticeMatch): number | null {
+  const data = match as unknown as Record<string, unknown>;
+  const officialDataScore = readScoreFromOfficialData(data.officialData);
+  if (officialDataScore !== null) return officialDataScore;
+
+  const scoreCandidates = [data.officialScore, data.allianceScore, data.actualScore];
+  for (const candidate of scoreCandidates) {
+    const score = Number(candidate);
+    if (Number.isFinite(score) && score >= 0) return score;
+  }
+
+  return null;
+}
+
 function resolvePracticeMatchDifficulty(match: PracticeMatch): "easy" | "medium" | "hard" {
   const raw = String((match as unknown as Record<string, unknown>).difficulty || "").toLowerCase().trim();
   const explicit = raw === "easy" || raw === "medium" || raw === "hard" ? raw : "";
 
-  const official = readOfficialData((match as unknown as Record<string, unknown>).officialData);
-  const allianceScoreRaw = Number((match as unknown as Record<string, unknown>).allianceScore);
-  const actualScoreRaw = Number((match as unknown as Record<string, unknown>).actualScore);
-  const score =
-    Number.isFinite(official.score) && official.score > 0
-      ? official.score
-      : Number.isFinite(allianceScoreRaw) && allianceScoreRaw > 0
-      ? allianceScoreRaw
-      : Number.isFinite(actualScoreRaw) && actualScoreRaw > 0
-      ? actualScoreRaw
-      : NaN;
+  const score = getPracticeMatchScore(match);
 
   // Trust measured score over legacy difficulty tags when score is available.
-  if (Number.isFinite(score)) return scoreToDifficulty(score);
+  if (score !== null) return scoreToDifficulty(score);
   if (explicit) return explicit;
   return "easy";
+}
+
+function matchMatchesDifficulty(match: PracticeMatch, difficulty: "easy" | "medium" | "hard"): boolean {
+  const stage = getPracticeStage(match);
+  if (stage === "qualification") {
+    const qualificationScore = getPracticeMatchScore(match);
+    if (qualificationScore === null) return false;
+    return scoreToDifficulty(qualificationScore) === difficulty;
+  }
+  return resolvePracticeMatchDifficulty(match) === difficulty;
 }
 
 function dedupePracticeMatches(matches: PracticeMatch[]): PracticeMatch[] {
@@ -1142,7 +1178,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       }
       candidateMatches = dedupePracticeMatches(candidateMatches);
       if (difficulty !== "live") {
-        candidateMatches = candidateMatches.filter((match) => resolvePracticeMatchDifficulty(match) === difficulty);
+        candidateMatches = candidateMatches.filter((match) => matchMatchesDifficulty(match, difficulty));
       }
       if (candidateMatches.length === 0) {
         alert(`No ${difficulty} matches found for the selected game.`);
@@ -1204,7 +1240,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (rankedMatches[0]) {
         setSelectedCandidateId(rankedMatches[0].id);
       }
-      setShowMatchSelectModal(difficulty !== "live");
+      setShowMatchSelectModal(false);
     } catch (error) {
       console.error('Error loading practice match:', error);
       const details = (error as { code?: string; message?: string })?.message || "";
@@ -1297,8 +1333,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       alert("Paste a live video URL first.");
       return;
     }
+    setShowMatchSelectModal(false);
     void hydrateLiveStreamContext(liveVideoUrl.trim());
-    setShowMatchSelectModal(true);
   }
 
   async function submitCurrentRobot() {
@@ -1701,8 +1737,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return candidateMatches
       .filter((match) => {
         if (selectedDifficulty && selectedDifficulty !== "live") {
-          const matchDifficulty = resolvePracticeMatchDifficulty(match);
-          if (matchDifficulty !== selectedDifficulty) return false;
+          if (!matchMatchesDifficulty(match, selectedDifficulty)) return false;
         }
         const eventKey = getPracticeEventKey(match);
         if (selectedModalEventKey !== "all" && eventKey !== selectedModalEventKey) return false;
@@ -2020,7 +2055,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         <input
                           type="url"
                           value={liveVideoUrl}
-                          onChange={(event) => setLiveVideoUrl(event.target.value)}
+                          onChange={(event) => {
+                            setLiveVideoUrl(event.target.value);
+                            setShowMatchSelectModal(false);
+                          }}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") event.preventDefault();
                           }}
