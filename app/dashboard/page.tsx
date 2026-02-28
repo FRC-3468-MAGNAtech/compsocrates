@@ -446,8 +446,10 @@ function NoTeamDashboardContent() {
         setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: meta.label }));
         updateCachedTeamLabel(normalizedCode, meta.label);
       }
-      if (!meta.verified) return "unknown";
-      return meta.exists ? "exists" : "missing";
+      if (meta.verified) {
+        return meta.exists ? "exists" : "missing";
+      }
+      // If API cannot verify in this environment, continue with client-side checks below.
     }
     try {
       const directDoc = await getDoc(doc(db, "teams", normalizedCode));
@@ -462,6 +464,7 @@ function NoTeamDashboardContent() {
     } catch {
       // Ignore.
     }
+    // Unknown means we could not verify due environment/rules, not that the team is definitely missing.
     return "unknown";
   }
 
