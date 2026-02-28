@@ -13,14 +13,14 @@ function AdminPanelContent() {
   const [savingDashboard, setSavingDashboard] = useState(false);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
-    { label: "Media", value: "/media-dashboard" },
     { label: "Pit Scout", value: "/pit-scout-dashboard" },
     { label: "Pit Team", value: "/pit-team-dashboard" },
     { label: "Drive Team", value: "/drive-team-dashboard" },
     { label: "Lead Scout", value: "/lead-scout-dashboard" },
     { label: "Lead Strategist", value: "/lead-strategist-dashboard" },
-    { label: "Team Coach", value: "/team-coach-dashboard" },
+    { label: "Media", value: "/media-dashboard" },
     { label: "Judge Awards", value: "/judge-awards-dashboard" },
+    { label: "Team Coach", value: "/team-coach-dashboard" },
   ];
 
   async function savePreferredDashboard(nextValue: string) {

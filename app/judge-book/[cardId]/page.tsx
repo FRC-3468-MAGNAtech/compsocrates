@@ -30,6 +30,7 @@ function JudgeBookCardPageContent() {
   const [draft, setDraft] = useState<EditDraft>({ prompt: "", answer: "", imageUrl: "" });
 
   const canEdit = useMemo(() => canEditJudgeBook(userData, formAccessOverrides), [userData, formAccessOverrides]);
+  const displayImageUrl = (editing ? draft.imageUrl : String(card?.imageUrl || "")).trim();
 
   function toTeamCardPayload(cardValue: JudgeBookCard) {
     return {
@@ -198,7 +199,7 @@ function JudgeBookCardPageContent() {
               <p className="text-xs text-gray-500 mt-2">Updated {new Date(card.updatedAt || card.createdAt || 0).toLocaleString()}</p>
             </div>
 
-            <div className="p-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
+            <div className={`p-6 grid gap-6 ${displayImageUrl ? "lg:grid-cols-[2fr_1fr]" : ""}`}>
               <div>
                 {editing ? (
                   <textarea
@@ -211,18 +212,15 @@ function JudgeBookCardPageContent() {
                 )}
               </div>
 
-              <div className="min-h-[260px] rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
-                {(editing ? draft.imageUrl.trim() : String(card.imageUrl || "").trim()) ? (
-                  // Keep this section dedicated for optional charts/images.
+              {displayImageUrl && (
+                <div className="min-h-[260px] rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
                   <img
-                    src={(editing ? draft.imageUrl : String(card.imageUrl || "")).trim()}
+                    src={displayImageUrl}
                     alt="Judge Book visual"
                     className="w-full h-full object-cover min-h-[260px]"
                   />
-                ) : (
-                  <div className="w-full h-full min-h-[260px]" />
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {canEdit && (
