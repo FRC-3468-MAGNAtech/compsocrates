@@ -130,19 +130,31 @@ export async function GET(request: NextRequest) {
 
     const authHeader = String(request.headers.get("authorization") || "");
     const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    const idToken = callerToken || (await fetchIdToken());
-    const byDocId =
-      (await readTeamByDocId(projectId, idToken, teamCode, apiKey)) ||
-      (idToken ? await readTeamByDocId(projectId, "", teamCode, apiKey) : null);
-    if (byDocId) {
-      return NextResponse.json({ label: formatLabel(teamCode, byDocId.teamName, byDocId.teamNumber), exists: true, verified: true });
+    const serverToken = await fetchIdToken();
+    const tokenCandidates = Array.from(
+      new Set([callerToken, serverToken, ""].map((token) => String(token || "").trim()))
+    );
+
+    for (const token of tokenCandidates) {
+      const byDocId = await readTeamByDocId(projectId, token, teamCode, apiKey);
+      if (byDocId) {
+        return NextResponse.json({
+          label: formatLabel(teamCode, byDocId.teamName, byDocId.teamNumber),
+          exists: true,
+          verified: true,
+        });
+      }
     }
 
-    const byField =
-      (await readTeamByTeamIdField(projectId, idToken, teamCode, apiKey)) ||
-      (idToken ? await readTeamByTeamIdField(projectId, "", teamCode, apiKey) : null);
-    if (byField) {
-      return NextResponse.json({ label: formatLabel(teamCode, byField.teamName, byField.teamNumber), exists: true, verified: true });
+    for (const token of tokenCandidates) {
+      const byField = await readTeamByTeamIdField(projectId, token, teamCode, apiKey);
+      if (byField) {
+        return NextResponse.json({
+          label: formatLabel(teamCode, byField.teamName, byField.teamNumber),
+          exists: true,
+          verified: true,
+        });
+      }
     }
 
     return NextResponse.json({ label: `Team ${teamCode}`, exists: false, verified: false });
