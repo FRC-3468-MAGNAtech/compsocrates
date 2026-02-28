@@ -151,10 +151,16 @@ function AccountContent() {
     setLoading(false);
   }
 
-  if (!userData) return null;
+  const displayName = userData?.displayName || user?.displayName || "User";
+  const displayEmail = userData?.email || user?.email || "";
+  const displayRoleRaw = userData
+    ? (userData.roles && userData.roles.length ? userData.roles.join(", ") : userData.role)
+    : "match-scout";
+  const displayRole = String(displayRoleRaw).replace(/-/g, " ");
+  const hasUserDoc = Boolean(userData);
 
   async function handleSaveProfilePreferences() {
-    if (!user?.uid) return;
+    if (!user?.uid || !hasUserDoc) return;
     setLoading(true);
     setError("");
     setSuccess("");
@@ -209,7 +215,7 @@ function AccountContent() {
             Account Settings
           </h1>
           <p className="text-gray-600 mb-8">Manage your account information and security</p>
-          {!userData.teamId && (
+          {!userData?.teamId && (
             <div className="mb-6">
               <button
                 onClick={() => router.push("/dashboard")}
@@ -242,25 +248,25 @@ function AccountContent() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Name
                 </label>
-                <p className="text-gray-900">{userData.displayName}</p>
+                <p className="text-gray-900">{displayName}</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
-                <p className="text-gray-900">{userData.email}</p>
+                <p className="text-gray-900">{displayEmail || "Unknown"}</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Role
                 </label>
-                <p className="text-gray-900 capitalize">{(userData.roles && userData.roles.length ? userData.roles.join(", ") : userData.role).replace(/-/g, " ")}</p>
+                <p className="text-gray-900 capitalize">{displayRole}</p>
               </div>
 
               <div>
-                {userData.isTeamAdmin && (
+                {Boolean(userData?.isTeamAdmin) && (
                   <p className="text-xs text-gray-500 mt-1">You are the team admin</p>
                 )}
               </div>
@@ -272,11 +278,11 @@ function AccountContent() {
             <ProfilePictureUpload />
           </div>
 
-          {userData.teamId && (
+          {userData?.teamId && (
             <div className="bg-white rounded-xl shadow p-6 mb-6">
               <h2 className="text-xl font-semibold mb-2">Team Membership</h2>
               <p className="text-sm text-gray-600 mb-4">
-                You are currently on Team <span className="font-semibold">{teamDisplayLabel || userData.teamId}</span>.
+                You are currently on Team <span className="font-semibold">{teamDisplayLabel || userData?.teamId}</span>.
               </p>
               <button
                 type="button"
@@ -319,12 +325,17 @@ function AccountContent() {
               <button
                 type="button"
                 onClick={handleSaveProfilePreferences}
-                disabled={loading}
+                disabled={loading || !hasUserDoc}
                 className="px-6 py-2 rounded-lg text-white font-semibold disabled:opacity-50"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >
                 Save Profile Preferences
               </button>
+              {!hasUserDoc && (
+                <p className="text-xs text-red-600">
+                  Your profile document could not be loaded, so profile preference updates are temporarily disabled.
+                </p>
+              )}
             </div>
           </div>
 

@@ -50,10 +50,21 @@ async function fetchIdToken(): Promise<string> {
   return String(payload.idToken || "");
 }
 
-async function readTeamByDocId(projectId: string, idToken: string, teamCode: string): Promise<{ teamName: string; teamNumber: string } | null> {
-  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/teams/${encodeURIComponent(teamCode)}`;
+function firestoreAuthHeaders(idToken: string): HeadersInit {
+  if (!idToken) return {};
+  return { Authorization: `Bearer ${idToken}` };
+}
+
+async function readTeamByDocId(
+  projectId: string,
+  idToken: string,
+  teamCode: string,
+  apiKey: string
+): Promise<{ teamName: string; teamNumber: string } | null> {
+  const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : "";
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/teams/${encodeURIComponent(teamCode)}${keyQuery}`;
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${idToken}` },
+    headers: firestoreAuthHeaders(idToken),
     cache: "no-store",
   });
   if (!response.ok) return null;
@@ -65,12 +76,18 @@ async function readTeamByDocId(projectId: string, idToken: string, teamCode: str
   };
 }
 
-async function readTeamByTeamIdField(projectId: string, idToken: string, teamCode: string): Promise<{ teamName: string; teamNumber: string } | null> {
-  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:runQuery`;
+async function readTeamByTeamIdField(
+  projectId: string,
+  idToken: string,
+  teamCode: string,
+  apiKey: string
+): Promise<{ teamName: string; teamNumber: string } | null> {
+  const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : "";
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:runQuery${keyQuery}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${idToken}`,
+      ...firestoreAuthHeaders(idToken),
       "Content-Type": "application/json",
     },
     cache: "no-store",
@@ -109,18 +126,19 @@ export async function GET(request: NextRequest) {
     if (!projectId) {
       return NextResponse.json({ error: "Missing Firebase project id" }, { status: 500 });
     }
+    const apiKey = String(process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "").trim();
 
     const idToken = await fetchIdToken();
-    if (!idToken) {
-      return NextResponse.json({ error: "No server Firebase auth configured" }, { status: 500 });
-    }
-
-    const byDocId = await readTeamByDocId(projectId, idToken, teamCode);
+    const byDocId =
+      (await readTeamByDocId(projectId, idToken, teamCode, apiKey)) ||
+      (idToken ? await readTeamByDocId(projectId, "", teamCode, apiKey) : null);
     if (byDocId) {
       return NextResponse.json({ label: formatLabel(teamCode, byDocId.teamName, byDocId.teamNumber) });
     }
 
-    const byField = await readTeamByTeamIdField(projectId, idToken, teamCode);
+    const byField =
+      (await readTeamByTeamIdField(projectId, idToken, teamCode, apiKey)) ||
+      (idToken ? await readTeamByTeamIdField(projectId, "", teamCode, apiKey) : null);
     if (byField) {
       return NextResponse.json({ label: formatLabel(teamCode, byField.teamName, byField.teamNumber) });
     }
@@ -131,4 +149,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unable to resolve team label" }, { status: 500 });
   }
 }
-
