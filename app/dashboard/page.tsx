@@ -179,7 +179,14 @@ function NoTeamDashboardContent() {
 
   useEffect(() => {
     async function load() {
-      if (!user || !userData) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      if (!userData) {
+        setLoading(false);
+        return;
+      }
       if (userData.teamId) {
         router.push(getDashboardRoute(userData));
         return;
@@ -215,7 +222,7 @@ function NoTeamDashboardContent() {
 
   async function handleCreateRequest(event: React.FormEvent) {
     event.preventDefault();
-    if (!user || !userData) {
+    if (!user) {
       setRequestError("Still loading your account. Try again in a moment.");
       setRequestSuccess("");
       return;
@@ -228,14 +235,14 @@ function NoTeamDashboardContent() {
       setRequestError("Please enter a team code.");
       return;
     }
+    setSubmittingRequest(true);
     if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
       const duplicateMessage = "You already asked to join that team and your request is still pending.";
       setRequestError(duplicateMessage);
       window.alert(duplicateMessage);
+      setSubmittingRequest(false);
       return;
     }
-
-    setSubmittingRequest(true);
     try {
       const refreshedPending = await fetchPendingRequestsForUser(user.uid);
       setPendingRequests(refreshedPending);
@@ -249,8 +256,8 @@ function NoTeamDashboardContent() {
 
       await createTeamJoinRequestWithFallback({
         userId: user.uid,
-        userEmail: userData.email || user.email || "",
-        userName: userData.displayName || user.displayName || "",
+        userEmail: userData?.email || user.email || "",
+        userName: userData?.displayName || user.displayName || "",
         requestedRole,
         teamId: normalizedTeamCode,
       });
@@ -331,7 +338,7 @@ function NoTeamDashboardContent() {
           {requestSuccess && <p className="text-sm text-green-700">{requestSuccess}</p>}
           <button
             type="submit"
-            disabled={submittingRequest || loading || !user || !userData}
+            disabled={submittingRequest || !user}
             className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
             style={{ backgroundColor: "var(--primary-color)" }}
           >
