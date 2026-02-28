@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { useRouter } from "next/navigation";
-import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from "firebase/auth";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ThemePicker from "@/app/components/ThemePicker";
@@ -30,6 +30,8 @@ function AccountContent() {
   const [profileBio, setProfileBio] = useState(userData?.bio || "");
   const [profileVisibility, setProfileVisibility] = useState<"team" | "public" | "private">(userData?.profileVisibility || "team");
   const [teamDisplayLabel, setTeamDisplayLabel] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     setProfileBio(userData?.bio || "");
@@ -201,6 +203,40 @@ function AccountContent() {
       console.error("Leave team error:", err);
       setError("Failed to leave team.");
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!user?.uid) return;
+    if (deleteConfirmText.trim().toUpperCase() !== "DELETE") {
+      setError('Type "DELETE" to confirm account deletion.');
+      setSuccess("");
+      return;
+    }
+    if (!confirm("Delete your account permanently? This cannot be undone.")) return;
+
+    setDeletingAccount(true);
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const joinRequestsSnap = await getDocs(query(collection(db, "teamJoinRequests"), where("userId", "==", user.uid)));
+      await Promise.all(joinRequestsSnap.docs.map((row) => deleteDoc(doc(db, "teamJoinRequests", row.id))));
+      await deleteDoc(doc(db, "users", user.uid));
+      await deleteUser(user);
+      router.push("/signup");
+    } catch (err: unknown) {
+      console.error("Delete account error:", err);
+      const code = (err as { code?: string })?.code || "";
+      const message = (err as { message?: string })?.message || "";
+      if (code === "auth/requires-recent-login") {
+        setError("For security, please log out and log back in, then delete your account again.");
+      } else {
+        setError(message || "Failed to delete account.");
+      }
+    } finally {
+      setDeletingAccount(false);
       setLoading(false);
     }
   }
@@ -446,6 +482,36 @@ function AccountContent() {
                 {loading ? "Updating..." : "Update Password"}
               </button>
             </form>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 mt-6 border border-red-200">
+            <h2 className="text-xl font-semibold text-red-700 mb-2">Danger Zone</h2>
+            <p className="text-sm text-gray-700 mb-4">
+              Deleting your account permanently removes your profile and pending join requests.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Type DELETE to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="DELETE"
+                  disabled={deletingAccount}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount || loading}
+                className="px-6 py-2 rounded-lg text-white font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingAccount ? "Deleting Account..." : "Delete Account"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
