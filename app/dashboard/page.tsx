@@ -33,6 +33,15 @@ function formatTeamLabelFromNameOrCode(teamName: string, teamCode: string): stri
   return fallbackTeamLabel(teamCode);
 }
 
+function readFirestoreRestStringField(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const row = value as { stringValue?: string; integerValue?: string; doubleValue?: number };
+  if (typeof row.stringValue === "string") return row.stringValue;
+  if (typeof row.integerValue === "string") return row.integerValue;
+  if (typeof row.doubleValue === "number") return String(row.doubleValue);
+  return "";
+}
+
 const LOCAL_PENDING_CACHE_KEY = "pending-join-request-cache";
 
 function readLocalPendingCache(): TeamJoinRequest[] {
@@ -64,6 +73,19 @@ function writeLocalPendingCache(rows: TeamJoinRequest[]) {
     createdAt: row.createdAt || Date.now(),
   }));
   localStorage.setItem(LOCAL_PENDING_CACHE_KEY, JSON.stringify(safe));
+}
+
+function updateCachedTeamLabel(teamCode: string, label: string) {
+  const normalized = String(teamCode || "").trim().toUpperCase();
+  if (!normalized || !label) return;
+  const rows = readLocalPendingCache();
+  if (rows.length === 0) return;
+  const next = rows.map((row) =>
+    String(row.teamId || "").trim().toUpperCase() === normalized
+      ? { ...row, teamDisplayLabel: label }
+      : row
+  );
+  writeLocalPendingCache(next);
 }
 
 async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequest[]> {
@@ -291,11 +313,35 @@ function NoTeamDashboardContent() {
         const label = String(payload.label || "").trim();
         if (label) {
           setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
+          updateCachedTeamLabel(normalizedCode, label);
           return label;
         }
       }
     } catch {
       // Fall through to client-side reads.
+    }
+    try {
+      const projectId = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
+      const apiKey = String(process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "").trim();
+      if (projectId && apiKey) {
+        const docUrl =
+          `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/teams/${encodeURIComponent(normalizedCode)}` +
+          `?key=${encodeURIComponent(apiKey)}`;
+        const docResponse = await fetch(docUrl, { cache: "no-store" });
+        if (docResponse.ok) {
+          const payload = (await docResponse.json()) as { fields?: Record<string, unknown> };
+          const fields = payload.fields || {};
+          const label = formatTeamLabelFromNameOrCode(
+            readFirestoreRestStringField(fields.teamName) || readFirestoreRestStringField(fields.teamNumber),
+            normalizedCode
+          );
+          setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
+          updateCachedTeamLabel(normalizedCode, label);
+          return label;
+        }
+      }
+    } catch {
+      // Fall through to SDK reads.
     }
     try {
       const teamDoc = await getDoc(doc(db, "teams", normalizedCode));
@@ -305,6 +351,7 @@ function NoTeamDashboardContent() {
         const teamNumberRaw = String(data.teamNumber || "").trim();
         const label = formatTeamLabelFromNameOrCode(teamNameRaw || teamNumberRaw, normalizedCode);
         setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
+        updateCachedTeamLabel(normalizedCode, label);
         return label;
       }
     } catch {
@@ -319,6 +366,7 @@ function NoTeamDashboardContent() {
         const teamNumberRaw = String(data.teamNumber || "").trim();
         const label = formatTeamLabelFromNameOrCode(teamNameRaw || teamNumberRaw, normalizedCode);
         setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
+        updateCachedTeamLabel(normalizedCode, label);
         return label;
       }
     } catch {
