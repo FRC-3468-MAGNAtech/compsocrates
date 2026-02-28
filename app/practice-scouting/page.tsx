@@ -6,6 +6,7 @@ import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
@@ -80,6 +81,53 @@ const RebuiltCycleTimer = ({
     </div>
   );
 };
+
+function TeamPickerModal({
+  open,
+  teams,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  teams: string[];
+  onClose: () => void;
+  onSelect: (team: string) => void;
+}) {
+  return (
+    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
+      <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
+      <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
+        {teams.length === 0 ? (
+          <p className="p-3 text-sm text-gray-600">No robots detected. Client may be offline.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {teams.map((team) => (
+              <button
+                key={team}
+                type="button"
+                onClick={() => {
+                  onSelect(team);
+                  onClose();
+                }}
+                className="rounded-lg border border-red-400 p-3 text-sm text-left hover:bg-gray-50"
+              >
+                {team}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-4 w-full py-2 rounded text-white"
+        style={{ backgroundColor: "var(--primary-color)" }}
+      >
+        Close
+      </button>
+    </ReefscapeStyleModal>
+  );
+}
 
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
@@ -798,6 +846,8 @@ function PracticeScoutingContent() {
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
+  const [showLiveTeamPicker, setShowLiveTeamPicker] = useState(false);
+  const [liveTeamPickerTarget, setLiveTeamPickerTarget] = useState<"reefscape" | "rebuilt">("reefscape");
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
   const [liveEventKeyHint, setLiveEventKeyHint] = useState("");
@@ -818,6 +868,13 @@ function PracticeScoutingContent() {
   const persistedDifficulty: "easy" | "medium" | "hard" = selectedDifficulty === "live"
     ? "hard"
     : (selectedDifficulty || "easy");
+
+  const livePickerTeams = useMemo(() => {
+    const detected = liveEventTeamSuggestions.map((team) => String(team).trim()).filter(Boolean);
+    if (detected.length > 0) return Array.from(new Set(detected));
+    const fromMatch = (currentMatch?.allianceTeams || []).map((team) => String(team).trim()).filter(Boolean);
+    return Array.from(new Set(fromMatch));
+  }, [currentMatch?.allianceTeams, liveEventTeamSuggestions]);
 
   useEffect(() => {
     async function loadTeamEventCatalog() {
@@ -1027,16 +1084,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
   }
 
-  function pickLiveTeamNumber(target: "reefscape" | "rebuilt") {
-    if (liveEventTeamSuggestions.length === 0) return;
-    const randomTeam = liveEventTeamSuggestions[Math.floor(Math.random() * liveEventTeamSuggestions.length)];
-    if (!randomTeam) return;
-    const teamNumber = String(randomTeam);
+  function handleLiveTeamSelect(teamNumber: string, target: "reefscape" | "rebuilt") {
     if (target === "rebuilt") {
       setRebuiltFormData((prev) => ({ ...prev, teamNumber }));
       return;
     }
     setFormData((prev) => ({ ...prev, teamNumber }));
+  }
+
+  function openLiveTeamPicker(target: "reefscape" | "rebuilt") {
+    setLiveTeamPickerTarget(target);
+    setShowLiveTeamPicker(true);
   }
 
   useEffect(() => {
@@ -2382,7 +2440,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                           <button
                             type="button"
                             className="px-4 rounded border"
-                            onClick={() => pickLiveTeamNumber("reefscape")}
+                            onClick={() => openLiveTeamPicker("reefscape")}
                           >
                             Pick
                           </button>
@@ -2538,7 +2596,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                               <button
                                 type="button"
                                 className="px-4 rounded border"
-                                onClick={() => pickLiveTeamNumber("rebuilt")}
+                                onClick={() => openLiveTeamPicker("rebuilt")}
                               >
                                 Pick
                               </button>
@@ -2994,6 +3052,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           options={sharedModalOptions}
           completed={sharedModalCompleted}
           onPick={handleSharedModalPick}
+        />
+        <TeamPickerModal
+          open={showLiveTeamPicker}
+          teams={livePickerTeams}
+          onClose={() => setShowLiveTeamPicker(false)}
+          onSelect={(team) => handleLiveTeamSelect(team, liveTeamPickerTarget)}
         />
       </div>
     </div>

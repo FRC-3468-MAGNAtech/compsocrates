@@ -31,6 +31,59 @@ type AssignmentRow = {
   teamNumber?: number;
 };
 
+function TeamPickerModal({
+  open,
+  teams,
+  scoutedTeams,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  teams: string[];
+  scoutedTeams: Set<string>;
+  onClose: () => void;
+  onSelect: (team: string) => void;
+}) {
+  return (
+    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
+      <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
+      <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
+        {teams.length === 0 ? (
+          <p className="p-3 text-sm text-gray-600">No robots detected for this match.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {teams.map((team) => {
+              const done = scoutedTeams.has(team);
+              return (
+                <button
+                  key={team}
+                  type="button"
+                  disabled={done}
+                  onClick={() => {
+                    onSelect(team);
+                    onClose();
+                  }}
+                  className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
+                >
+                  {done ? `${team} (Scouted)` : team}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-4 w-full py-2 rounded text-white"
+        style={{ backgroundColor: "var(--primary-color)" }}
+      >
+        Close
+      </button>
+    </ReefscapeStyleModal>
+  );
+}
+
 function buildFallbackScoutOptions(): MatchOption[] {
   const rows: MatchOption[] = [];
   for (let n = 1; n <= 20; n += 1) {
@@ -535,6 +588,7 @@ function ScoutFormContent() {
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
   const [modalOpen, setModalOpen] = useState(false);
+  const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [options, setOptions] = useState<MatchOption[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
@@ -707,15 +761,6 @@ function ScoutFormContent() {
     if (selectedMatch.type === "qualification") return `Qualification Match ${selectedMatch.matchNumber}`;
     if (selectedMatch.type === "finals") return getFinalsDisplayLabel(selectedMatch.matchNumber);
     return selectedMatch.label || "No match is set";
-  }
-
-  function pickTeamNumber() {
-    const availableTeams = selectedTeams.filter((team) => !selectedScoutedTeams.has(team));
-    const source = availableTeams.length > 0 ? availableTeams : selectedTeams;
-    if (source.length === 0) return;
-    const randomTeam = source[Math.floor(Math.random() * source.length)];
-    if (!randomTeam) return;
-    setForm((prev) => ({ ...prev, teamNumber: randomTeam }));
   }
 
   useEffect(() => {
@@ -995,12 +1040,12 @@ function ScoutFormContent() {
                         <option value="">Select Team</option>
                         {selectedTeams.map((team) => <option key={team} value={team} disabled={selectedScoutedTeams.has(team)}>{selectedScoutedTeams.has(team) ? `${team} (Scouted)` : team}</option>)}
                       </select>
-                      <button type="button" className="px-4 rounded border" onClick={pickTeamNumber}>Pick</button>
+                      <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
                     </div>
                   ) : (
                     <div className="flex gap-2">
                       <input className="flex-1 border rounded p-2" placeholder="Enter team number" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))} />
-                      <button type="button" className="px-4 rounded border disabled:opacity-50" onClick={pickTeamNumber} disabled={selectedTeams.length === 0}>Pick</button>
+                      <button type="button" className="px-4 rounded border disabled:opacity-50" onClick={() => setShowTeamPicker(true)} disabled={selectedTeams.length === 0}>Pick</button>
                     </div>
                   )}
                   <label className="block text-sm font-medium text-gray-700">Starting Position</label>
@@ -1115,6 +1160,13 @@ function ScoutFormContent() {
           )}
 
           <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
+          <TeamPickerModal
+            open={showTeamPicker}
+            teams={selectedTeams}
+            scoutedTeams={selectedScoutedTeams}
+            onClose={() => setShowTeamPicker(false)}
+            onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
+          />
         </div>
       </div>
     </div>
