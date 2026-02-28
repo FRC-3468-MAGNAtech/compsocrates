@@ -12,6 +12,7 @@ import { TEAM_ROLES, TeamRole, getRoleLabel, normalizeLegacyRole } from "@/app/u
 type TeamJoinRequest = {
   id: string;
   teamId: string;
+  teamDisplayLabel?: string;
   requestedRole?: TeamRole;
   status: string;
   createdAt?: number;
@@ -76,6 +77,7 @@ async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequ
     const request: TeamJoinRequest = {
       id: docSnap.id,
       teamId: String(data.teamId || ""),
+      teamDisplayLabel: String(data.teamDisplayLabel || data.teamName || "").trim() || undefined,
       requestedRole: normalizeLegacyRole(String(data.requestedRole || data.userRole || data.role || "match-scout")),
       status: String(data.status || ""),
       createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
@@ -92,6 +94,7 @@ async function createTeamJoinRequestWithFallback(input: {
   userName: string;
   requestedRole: TeamRole;
   teamId: string;
+  teamDisplayLabel?: string;
 }) {
   const createdAt = Date.now();
   const normalizedEmail = input.userEmail.trim().toLowerCase();
@@ -103,6 +106,7 @@ async function createTeamJoinRequestWithFallback(input: {
     userRole: input.requestedRole,
     requestedRole: input.requestedRole,
     teamId: input.teamId,
+    teamDisplayLabel: input.teamDisplayLabel || "",
     status: "pending",
     createdAt,
   };
@@ -115,6 +119,7 @@ async function createTeamJoinRequestWithFallback(input: {
       userName: input.userName,
       requestedRole: input.requestedRole,
       teamId: input.teamId,
+      teamDisplayLabel: input.teamDisplayLabel || "",
       status: "pending",
       createdAt,
     },
@@ -123,6 +128,7 @@ async function createTeamJoinRequestWithFallback(input: {
       userName: input.userName,
       requestedRole: input.requestedRole,
       teamId: input.teamId,
+      teamDisplayLabel: input.teamDisplayLabel || "",
       status: "pending",
       createdAt,
     },
@@ -130,12 +136,14 @@ async function createTeamJoinRequestWithFallback(input: {
       userId: input.userId,
       role: input.requestedRole,
       teamId: input.teamId,
+      teamDisplayLabel: input.teamDisplayLabel || "",
       status: "pending",
       createdAt,
     },
     {
       userId: input.userId,
       teamId: input.teamId,
+      teamDisplayLabel: input.teamDisplayLabel || "",
       status: "pending",
       createdAt,
     },
@@ -188,6 +196,7 @@ function NoTeamDashboardContent() {
       const next: TeamJoinRequest = {
         id: `local-${normalizedTeamId}-${Date.now()}`,
         teamId: normalizedTeamId,
+        teamDisplayLabel: teamLabelByCode[normalizedTeamId] || fallbackTeamLabel(normalizedTeamId),
         requestedRole: role,
         status: "pending",
         createdAt: Date.now(),
@@ -236,6 +245,7 @@ function NoTeamDashboardContent() {
         userName: String(draft?.userName || userData?.displayName || user.displayName || ""),
         requestedRole,
         teamId,
+        teamDisplayLabel: await resolveTeamLabel(teamId),
       });
       localStorage.removeItem("pending-join-request");
       const refreshed = await fetchPendingRequestsForUser(user.uid);
@@ -275,6 +285,19 @@ function NoTeamDashboardContent() {
     if (!normalizedCode) return fallbackTeamLabel(teamCode);
     if (teamLabelByCode[normalizedCode]) return teamLabelByCode[normalizedCode];
     try {
+      const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, { cache: "no-store" });
+      if (response.ok) {
+        const payload = (await response.json()) as { label?: string };
+        const label = String(payload.label || "").trim();
+        if (label) {
+          setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
+          return label;
+        }
+      }
+    } catch {
+      // Fall through to client-side reads.
+    }
+    try {
       const teamDoc = await getDoc(doc(db, "teams", normalizedCode));
       if (teamDoc.exists()) {
         const data = teamDoc.data() as { teamNumber?: string | number; teamName?: string };
@@ -301,12 +324,20 @@ function NoTeamDashboardContent() {
     } catch {
       // Ignore and fall back to team code.
     }
-    const fallback = fallbackTeamLabel(normalizedCode);
-    setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: fallback }));
-    return fallback;
+    return fallbackTeamLabel(normalizedCode);
   }
 
   async function warmTeamLabels(requests: TeamJoinRequest[]) {
+    setTeamLabelByCode((prev) => {
+      const merged = { ...prev };
+      for (const row of requests) {
+        const code = String(row.teamId || "").trim().toUpperCase();
+        const fromRequest = String(row.teamDisplayLabel || "").trim();
+        if (!code || !fromRequest) continue;
+        merged[code] = formatTeamLabelFromNameOrCode(fromRequest, code);
+      }
+      return merged;
+    });
     const codes = Array.from(new Set(requests.map((row) => String(row.teamId || "").trim().toUpperCase()).filter(Boolean)));
     await Promise.all(codes.map((code) => resolveTeamLabel(code)));
   }
@@ -349,6 +380,7 @@ function NoTeamDashboardContent() {
             return {
               id: docSnap.id,
               teamId: String(data.teamId || ""),
+              teamDisplayLabel: String(data.teamDisplayLabel || data.teamName || "").trim() || undefined,
               requestedRole: normalizeLegacyRole(String(data.requestedRole || data.userRole || data.role || "match-scout")),
               status: String(data.status || ""),
               createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
@@ -427,6 +459,7 @@ function NoTeamDashboardContent() {
         userName: userData?.displayName || user.displayName || "",
         requestedRole,
         teamId: normalizedTeamCode,
+        teamDisplayLabel: await resolveTeamLabel(normalizedTeamCode),
       });
 
       const refreshedAfterCreate = await fetchPendingRequestsForUser(user.uid);
@@ -536,7 +569,14 @@ function NoTeamDashboardContent() {
               {pendingRequests.map((request) => (
                 <div key={request.id} className="border rounded p-3 flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">{teamLabelByCode[String(request.teamId || "").trim().toUpperCase()] || fallbackTeamLabel(request.teamId)}</p>
+                    <p className="font-medium">
+                      {formatTeamLabelFromNameOrCode(
+                        String(request.teamDisplayLabel || "").trim() ||
+                          teamLabelByCode[String(request.teamId || "").trim().toUpperCase()] ||
+                          "",
+                        request.teamId
+                      )}
+                    </p>
                     <p className="text-sm text-gray-600">
                       Status: Pending ({getRoleLabel(request.requestedRole || "match-scout")})
                     </p>
