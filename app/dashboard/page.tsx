@@ -98,11 +98,17 @@ function updateCachedTeamLabel(teamCode: string, label: string) {
   writeLocalPendingCache(next);
 }
 
-async function lookupTeamMeta(teamCode: string): Promise<{ label: string; exists: boolean; verified: boolean } | null> {
+async function lookupTeamMeta(
+  teamCode: string,
+  idToken?: string
+): Promise<{ label: string; exists: boolean; verified: boolean } | null> {
   const normalizedCode = String(teamCode || "").trim().toUpperCase();
   if (!normalizedCode) return null;
   try {
-    const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, { cache: "no-store" });
+    const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, {
+      cache: "no-store",
+      headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+    });
     if (!response.ok) return null;
     const payload = (await response.json()) as { label?: string; exists?: boolean; verified?: boolean };
     return {
@@ -332,21 +338,18 @@ function NoTeamDashboardContent() {
 
   async function refreshPendingRequests(userId: string): Promise<TeamJoinRequest[]> {
     const fetched = await fetchPendingRequestsForUser(userId);
-    if (fetched.length > 0) {
-      setPendingRequests(fetched);
-      writeLocalPendingCache(fetched);
-      return fetched;
-    }
-    const localRows = readLocalPendingCache();
-    setPendingRequests(localRows);
-    return localRows;
+    // Firestore is source of truth. If empty, clear stale local pending cache.
+    setPendingRequests(fetched);
+    writeLocalPendingCache(fetched);
+    return fetched;
   }
 
   async function resolveTeamLabel(teamCode: string): Promise<string> {
     const normalizedCode = String(teamCode || "").trim().toUpperCase();
     if (!normalizedCode) return fallbackTeamLabel(teamCode);
     if (teamLabelByCode[normalizedCode]) return teamLabelByCode[normalizedCode];
-    const meta = await lookupTeamMeta(normalizedCode);
+    const userToken = user ? await user.getIdToken().catch(() => "") : "";
+    const meta = await lookupTeamMeta(normalizedCode, userToken);
     if (meta?.label) {
       setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: meta.label }));
       updateCachedTeamLabel(normalizedCode, meta.label);
@@ -424,7 +427,8 @@ function NoTeamDashboardContent() {
   async function ensureTeamExists(teamCode: string): Promise<"exists" | "missing" | "unknown"> {
     const normalizedCode = String(teamCode || "").trim().toUpperCase();
     if (!normalizedCode) return "missing";
-    const meta = await lookupTeamMeta(normalizedCode);
+    const userToken = user ? await user.getIdToken().catch(() => "") : "";
+    const meta = await lookupTeamMeta(normalizedCode, userToken);
     if (meta) {
       if (meta.label) {
         setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: meta.label }));
@@ -514,9 +518,9 @@ function NoTeamDashboardContent() {
           })
           .filter((row) => row.status === "pending" && row.teamId)
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setPendingRequests(rows);
+        writeLocalPendingCache(rows);
         if (rows.length > 0) {
-          setPendingRequests(rows);
-          writeLocalPendingCache(rows);
           void warmTeamLabels(rows);
         }
       },

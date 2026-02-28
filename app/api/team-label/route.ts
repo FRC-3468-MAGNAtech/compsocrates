@@ -128,7 +128,9 @@ export async function GET(request: NextRequest) {
     }
     const apiKey = String(process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "").trim();
 
-    const idToken = await fetchIdToken();
+    const authHeader = String(request.headers.get("authorization") || "");
+    const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    const idToken = callerToken || (await fetchIdToken());
     const byDocId =
       (await readTeamByDocId(projectId, idToken, teamCode, apiKey)) ||
       (idToken ? await readTeamByDocId(projectId, "", teamCode, apiKey) : null);
