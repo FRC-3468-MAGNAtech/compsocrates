@@ -357,13 +357,18 @@ function readScoreFromOfficialData(value: unknown): number | null {
 
 function getPracticeMatchScore(match: PracticeMatch): number | null {
   const data = match as unknown as Record<string, unknown>;
-  const officialDataScore = readScoreFromOfficialData(data.officialData);
-  if (officialDataScore !== null) return officialDataScore;
-
-  const scoreCandidates = [data.officialScore, data.allianceScore, data.actualScore];
+  const scoreCandidates = [
+    readScoreFromOfficialData(data.officialData),
+    Number(data.officialScore),
+    Number(data.allianceScore),
+    Number(data.actualScore),
+  ];
   for (const candidate of scoreCandidates) {
-    const score = Number(candidate);
-    if (Number.isFinite(score) && score >= 0) return score;
+    if (Number.isFinite(candidate) && candidate > 0) return candidate;
+  }
+
+  for (const candidate of scoreCandidates) {
+    if (Number.isFinite(candidate) && candidate === 0) return 0;
   }
 
   return null;
@@ -925,9 +930,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return "";
   }
 
-  async function hydrateLiveStreamContext(url: string) {
+  async function hydrateLiveStreamContext(url: string): Promise<string> {
     const trimmed = String(url || "").trim();
-    if (!trimmed || !activeMatchGame) return;
+    if (!trimmed || !activeMatchGame) return "";
     setLiveStreamTitle("");
     setLiveEventKeyHint("");
     setLiveEventTeamSuggestions([]);
@@ -940,11 +945,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       });
       const titlePayload = (await titleResponse.json().catch(() => ({}))) as { title?: string };
       const title = String(titlePayload.title || "").trim();
-      if (!title) return;
+      if (!title) return "";
       setLiveStreamTitle(title);
 
       const inferredEventKey = inferEventKeyFromStreamTitle(title, activeMatchGame);
-      if (!inferredEventKey) return;
+      if (!inferredEventKey) return "";
       setLiveEventKeyHint(inferredEventKey);
 
       const year = Number(inferredEventKey.slice(0, 4));
@@ -962,8 +967,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             .filter((n) => Number.isFinite(n) && n > 0)
         : [];
       setLiveEventTeamSuggestions(Array.from(new Set(teams)).sort((a, b) => a - b));
+      return inferredEventKey;
     } catch {
       // Best effort only.
+      return "";
     }
   }
 
@@ -1130,22 +1137,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     try {
       let matches: PracticeMatch[] = [];
       try {
-        if (difficulty === "live") {
-          const matchesSnapshot = await getDocs(collection(db, "practiceMatches"));
-          matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        } else {
-          const matchesQuery = query(
-            collection(db, 'practiceMatches'),
-            where('difficulty', '==', difficulty)
-          );
-          const matchesSnapshot = await getDocs(matchesQuery);
-          matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        }
+        const matchesSnapshot = await getDocs(collection(db, "practiceMatches"));
+        matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
       } catch (queryError) {
         const allSnapshot = await getDocs(collection(db, "practiceMatches"));
-        const allMatches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
-        matches = difficulty === "live" ? allMatches : allMatches.filter((match) => match.difficulty === difficulty);
-        console.warn("Difficulty query failed; using fallback practice match load.", queryError);
+        matches = allSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as PracticeMatch[];
+        console.warn("Practice match load query failed; using fallback practice match load.", queryError);
       }
 
       if (matches.length === 0) {
@@ -1237,8 +1234,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       setSelectedModalEventKey("all");
       setSelectedModalMatchType("all");
       setModalSearchTerm("");
-      if (rankedMatches[0]) {
-        setSelectedCandidateId(rankedMatches[0].id);
+      if (rankedMatches.length > 0) {
+        const randomIndex = Math.floor(Math.random() * rankedMatches.length);
+        const randomMatch = rankedMatches[randomIndex];
+        if (randomMatch) setSelectedCandidateId(randomMatch.id);
       }
       setShowMatchSelectModal(false);
     } catch (error) {
@@ -1328,13 +1327,36 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowMatchSelectModal(false);
   }
 
-  function handleChooseLiveMatchClick() {
+  async function handleChooseLiveMatchClick() {
     if (!liveVideoUrl.trim()) {
       alert("Paste a live video URL first.");
       return;
     }
     setShowMatchSelectModal(false);
-    void hydrateLiveStreamContext(liveVideoUrl.trim());
+    const inferredEventKey = await hydrateLiveStreamContext(liveVideoUrl.trim());
+
+    const pickFrom = candidateMatches;
+    if (pickFrom.length === 0) {
+      alert("No live matches loaded yet. Select Live difficulty first.");
+      return;
+    }
+
+    const hintedEvent = inferredEventKey.trim().toLowerCase();
+    const hintedMatches =
+      hintedEvent.length > 0
+        ? pickFrom.filter((match) => getPracticeEventKey(match).trim().toLowerCase() === hintedEvent)
+        : [];
+
+    const pool = hintedMatches.length > 0 ? hintedMatches : pickFrom;
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    const chosen = pool[randomIndex];
+    if (!chosen) {
+      alert("Could not pick a live match.");
+      return;
+    }
+
+    setSelectedCandidateId(chosen.id);
+    startPracticeMatch(chosen);
   }
 
   async function submitCurrentRobot() {
