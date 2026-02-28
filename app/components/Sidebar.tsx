@@ -66,6 +66,7 @@ export default function Sidebar() {
     userRoles.includes("team-coach") ||
     userData.isTeamAdmin;
   const canManageAssignments = userRoles.includes("lead-scout") || userData.isTeamAdmin;
+  const compactSidebar = collapsed && !isMobileMenuOpen;
   const showText = !collapsed || isMobileMenuOpen;
   const initials = userData.displayName
     .split(/\s+/)
@@ -133,7 +134,7 @@ export default function Sidebar() {
           ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}
           ${isMobileMenuOpen ? "translate-x-0 pointer-events-auto" : "-translate-x-full pointer-events-none md:pointer-events-auto"}
           md:translate-x-0
-          fixed md:sticky top-0 h-screen z-[70]
+          fixed md:sticky top-0 h-screen z-[70] overflow-y-auto
         `}
         style={{
           backgroundColor: "var(--theme-bg)",
@@ -168,7 +169,7 @@ export default function Sidebar() {
         </div>
 
         {/* NAVIGATION */}
-        <nav className="flex-1 p-2 overflow-y-auto">
+        <nav className="flex-1 p-2 md:overflow-y-auto">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -249,7 +250,7 @@ export default function Sidebar() {
               <div
                 className={`
                   absolute bottom-full mb-2 bg-white rounded-lg shadow-xl border border-gray-200 z-50
-                  ${collapsed ? "left-full ml-2 w-48" : "left-2 right-2"}
+                  ${compactSidebar ? "left-0 w-48" : "left-2 right-2"}
                 `}
               >
                 <Link

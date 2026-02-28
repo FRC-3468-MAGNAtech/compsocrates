@@ -11,6 +11,7 @@ import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { getTeamEventOptions, type DetectedEventOption } from "@/app/utils/eventDetection";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -716,7 +717,11 @@ function normalizeEventValue(value: string): string {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function resolvePracticeEvent(match: PracticeMatch, game: AnalyticsGame): { eventKey: string; eventName: string } {
+function resolvePracticeEvent(
+  match: PracticeMatch,
+  game: AnalyticsGame,
+  dynamicCatalog: DetectedEventOption[] = []
+): { eventKey: string; eventName: string } {
   const nameCandidate = String((match as unknown as Record<string, unknown>).eventName || "").trim();
   const explicitKey = String((match as unknown as Record<string, unknown>).eventKey || "").trim().toLowerCase();
 
@@ -726,10 +731,24 @@ function resolvePracticeEvent(match: PracticeMatch, game: AnalyticsGame): { even
   }
 
   // Build a wider catalog across both games for robust name/key mapping.
-  const catalog = [
+  const staticCatalog = [
     ...getEventsForGame("REEFSCAPE").filter((event) => event.id !== "app-testing"),
     ...getEventsForGame("REBUILT").filter((event) => event.id !== "app-testing"),
   ];
+  const dynamicEvents = dynamicCatalog.map((event) => ({
+    id: event.key,
+    key: event.key,
+    name: event.name,
+    startDate: event.startDate,
+    endDate: event.endDate,
+  }));
+  const catalogById = new Map<string, { id: string; key?: string; name: string }>();
+  [...staticCatalog, ...dynamicEvents].forEach((event) => {
+    const key = String(event.id || "").trim().toLowerCase();
+    if (!key || catalogById.has(key)) return;
+    catalogById.set(key, event);
+  });
+  const catalog = Array.from(catalogById.values());
   const byKey = new Map(catalog.map((event) => [event.id.toLowerCase(), event]));
   const byName = new Map(catalog.map((event) => [normalizeEventValue(event.name), event]));
 
@@ -785,6 +804,7 @@ function PracticeScoutingContent() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<PracticeSessionDraft | null>(null);
+  const [teamEventCatalog, setTeamEventCatalog] = useState<DetectedEventOption[]>([]);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const formPaneRef = useRef<HTMLDivElement | null>(null);
 
@@ -795,6 +815,23 @@ function PracticeScoutingContent() {
   const persistedDifficulty: "easy" | "medium" | "hard" = selectedDifficulty === "live"
     ? "hard"
     : (selectedDifficulty || "easy");
+
+  useEffect(() => {
+    async function loadTeamEventCatalog() {
+      if (!userData?.teamId) {
+        setTeamEventCatalog([]);
+        return;
+      }
+      try {
+        const events = await getTeamEventOptions(userData.teamId);
+        setTeamEventCatalog(events);
+      } catch (error) {
+        console.error("Failed loading team event catalog for practice scouting:", error);
+        setTeamEventCatalog([]);
+      }
+    }
+    void loadTeamEventCatalog();
+  }, [userData?.teamId]);
 
   function getPracticeIdentity(match: {
     matchKey?: unknown;
@@ -906,7 +943,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function inferEventKeyFromStreamTitle(title: string, game: AnalyticsGame): string {
     const normalizedTitle = normalizeEventValue(title);
     if (!normalizedTitle) return "";
-    const events = getEventsForGame(game).filter((event) => event.id !== "app-testing");
+    const staticEvents = getEventsForGame(game).filter((event) => event.id !== "app-testing");
+    const dynamicEvents = teamEventCatalog.map((event) => ({ id: event.key, name: event.name }));
+    const byId = new Map<string, { id: string; name: string }>();
+    [...staticEvents, ...dynamicEvents].forEach((event) => {
+      const key = String(event.id || "").trim().toLowerCase();
+      if (!key || byId.has(key)) return;
+      byId.set(key, { id: event.id, name: event.name });
+    });
+    const events = Array.from(byId.values());
     for (const event of events) {
       const normalizedName = normalizeEventValue(event.name);
       if (normalizedName && normalizedTitle.includes(normalizedName)) return event.id;
@@ -1348,7 +1393,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       const now = Date.now();
       const device = getScoutDevice();
-      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, "REBUILT");
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, "REBUILT", teamEventCatalog);
       const matchStage = getPracticeStage(currentMatch);
       const analyticsMatchType: "practice" | "qualification" | "finals" =
         matchStage === "practice" ? "practice" : matchStage === "qualification" ? "qualification" : "finals";
@@ -1538,7 +1583,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       const now = Date.now();
       const device = getScoutDevice();
-      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame || "REEFSCAPE");
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame || "REEFSCAPE", teamEventCatalog);
       const matchStage = getPracticeStage(currentMatch);
       const analyticsMatchType: "practice" | "qualification" | "finals" =
         matchStage === "practice" ? "practice" : matchStage === "qualification" ? "qualification" : "finals";
@@ -1651,7 +1696,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     try {
       const now = Date.now();
       const device = getScoutDevice();
-      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame || "REEFSCAPE");
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame || "REEFSCAPE", teamEventCatalog);
       const matchStage = getPracticeStage(currentMatch);
       const analyticsMatchType: "practice" | "qualification" | "finals" =
         matchStage === "practice" ? "practice" : matchStage === "qualification" ? "qualification" : "finals";

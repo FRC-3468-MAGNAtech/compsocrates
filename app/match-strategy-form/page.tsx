@@ -8,7 +8,7 @@ import Sidebar from "@/app/components/Sidebar";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
-import { classifyRebuiltEventByTimestamp } from "@/app/utils/analyticsEvents";
+import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 
 type RobotPlan = {
   teamNumber: string;
@@ -143,7 +143,7 @@ function MatchStrategyFormContent() {
       }
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        const resolvedEvent = classifyRebuiltEventByTimestamp(Date.now());
+        const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
         setEventKey(resolvedEvent);
         if (resolvedEvent === "app-testing") {
           const fallback = buildFallbackMatchStrategyMatches();

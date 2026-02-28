@@ -76,9 +76,11 @@ function FinalsMatchBox({
 function FinalsBracket({
   completed,
   onPick,
+  timesByNumber,
 }: {
   completed: Set<string>;
   onPick: (matchNumber: number) => void;
+  timesByNumber: Map<number, number>;
 }) {
   const B = { w: 120, h: 62, colGap: 60, row: 90 };
   const col = (c: number) => (B.w + B.colGap) * c;
@@ -111,10 +113,11 @@ function FinalsBracket({
   const firstOpen = Array.from({ length: 14 }, (_, i) => i + 1).find((n) => !completed.has(`f${n}`)) || -1;
   const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
   const timeFor = (matchId: number) => {
-    const baseTime = new Date();
-    baseTime.setHours(13, 0, 0, 0);
-    const matchTime = new Date(baseTime.getTime() + (matchId - 1) * 6 * 60000);
-    return matchTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const epoch = Number(timesByNumber.get(matchId) || 0);
+    if (epoch > 0) {
+      return new Date(epoch * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+    return "TBD";
   };
 
   return (
@@ -338,6 +341,11 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                     Array.from({ length: 14 }, (_, i) => i + 1)
                       .filter((n) => isFinalDone(n))
                       .map((n) => `f${n}`)
+                  )}
+                  timesByNumber={new Map(
+                    options
+                      .filter((match) => match.type === "finals")
+                      .map((match) => [match.matchNumber, Number(match.scheduleTime || 0)] as const)
                   )}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
