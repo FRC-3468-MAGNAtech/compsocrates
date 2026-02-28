@@ -58,11 +58,11 @@ function JudgeBookCardPageContent() {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
         if (teamDoc.exists()) {
-          const teamRows = (Array.isArray(teamDoc.data().judgeBookCards) ? teamDoc.data().judgeBookCards : [])
+          const teamRows: JudgeBookCard[] = (Array.isArray(teamDoc.data().judgeBookCards) ? teamDoc.data().judgeBookCards : [])
             .map((value: unknown) => normalizeJudgeBookCard(value))
             .filter((value: JudgeBookCard | null): value is JudgeBookCard => Boolean(value))
-            .map((value) => ({ ...value, teamId: userData.teamId, source: "team-doc" as const }));
-          const fromTeam = teamRows.find((value) => value.id === cardId) || null;
+            .map((value: JudgeBookCard) => ({ ...value, teamId: userData.teamId, source: "team-doc" as const }));
+          const fromTeam = teamRows.find((value: JudgeBookCard) => value.id === cardId) || null;
           if (fromTeam) {
             setCard(fromTeam);
             setDraft({
@@ -76,12 +76,12 @@ function JudgeBookCardPageContent() {
 
         // Legacy fallback if older cards are still in top-level collection.
         const legacySnapshot = await getDocs(query(collection(db, "judgeBookCards"), where("teamId", "==", userData.teamId)));
-        const legacyRows = legacySnapshot.docs.map((docSnap) => ({
+        const legacyRows: JudgeBookCard[] = legacySnapshot.docs.map((docSnap: { id: string; data: () => unknown }) => ({
           id: docSnap.id,
           ...(docSnap.data() as Omit<JudgeBookCard, "id">),
           source: "legacy-collection" as const,
         }));
-        const legacyCard = legacyRows.find((value) => value.id === cardId) || null;
+        const legacyCard = legacyRows.find((value: JudgeBookCard) => value.id === cardId) || null;
         if (!legacyCard) {
           setCard(null);
           return;
@@ -138,9 +138,9 @@ function JudgeBookCardPageContent() {
         const teamRows = (teamDoc.exists() && Array.isArray(teamDoc.data().judgeBookCards) ? teamDoc.data().judgeBookCards : [])
           .map((value: unknown) => normalizeJudgeBookCard(value))
           .filter((value: JudgeBookCard | null): value is JudgeBookCard => Boolean(value))
-          .map((value) => ({ ...value, teamId: userData.teamId, source: "team-doc" as const }));
+          .map((value: JudgeBookCard) => ({ ...value, teamId: userData.teamId, source: "team-doc" as const }));
         const mergedRows = sortJudgeBookCards(
-          teamRows.map((entry) => (entry.id === card.id ? { ...next, source: "team-doc" as const } : entry))
+          teamRows.map((entry: JudgeBookCard) => (entry.id === card.id ? { ...next, source: "team-doc" as const } : entry))
         );
         try {
           await setDoc(
