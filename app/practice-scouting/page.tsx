@@ -428,6 +428,12 @@ function getPracticeEventKey(match: PracticeMatch): string {
   return "app-testing";
 }
 
+function toLiveEventName(eventName: string): string {
+  const trimmed = String(eventName || "").trim();
+  if (!trimmed) return "Live Stream (Live)";
+  return /\(live\)$/i.test(trimmed) ? trimmed : `${trimmed} (Live)`;
+}
+
 function createEmptyRebuiltScoutedData(teamNumber = "", notes = ""): RebuiltScoutedData {
   return {
     teamNumber,
@@ -1262,6 +1268,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
+    if (selectedDifficulty === "live") {
+      await submitLiveRobot();
+      return;
+    }
 
     if (activeMatchGame === "REBUILT") {
       const robotData = { ...rebuiltFormData };
@@ -1307,7 +1317,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function continueToNextRobot() {
     if (!currentMatch) return;
     const nextRobotIndex = currentRobotIndex + 1;
-    if (nextRobotIndex > 2) return;
+    if (selectedDifficulty !== "live" && nextRobotIndex > 2) return;
 
     setCurrentRobotIndex(nextRobotIndex);
     const defaultTeam = currentMatch.allianceTeams[nextRobotIndex]?.toString() || "";
@@ -1634,6 +1644,163 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setPendingDraft(null);
   }
 
+  async function submitLiveRobot() {
+    if (!currentMatch || !userData) return;
+
+    setLoading(true);
+    try {
+      const now = Date.now();
+      const device = getScoutDevice();
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, activeMatchGame || "REEFSCAPE");
+      const matchStage = getPracticeStage(currentMatch);
+      const analyticsMatchType: "practice" | "qualification" | "finals" =
+        matchStage === "practice" ? "practice" : matchStage === "qualification" ? "qualification" : "finals";
+      const matchIdPrefix = analyticsMatchType === "practice" ? "p" : analyticsMatchType === "finals" ? "f" : "q";
+      const liveEventName = toLiveEventName(eventName);
+      const alliance = normalizeAllianceSide(currentMatch.alliance);
+      const penaltyPoints = Number(currentMatch.officialData?.penaltyPoints || 0);
+
+      if (activeMatchGame === "REBUILT") {
+        const robotData = { ...rebuiltFormData };
+        const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, robotData.autoPreloadScale))] || 0;
+        const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.autoCarryScale))] || 0;
+        const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.teleCarryScale))] || 0;
+        const autoEstimatedFuel = robotData.autoCycles.reduce((sum, seconds, index) => {
+          const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
+          return sum + estimateRebuiltBalls(seconds, robotData.autoBpsScale, capacity);
+        }, 0);
+        const transitionEstimatedFuel = robotData.transitionCycles.reduce(
+          (sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap),
+          0
+        );
+        const shift1EstimatedFuel = robotData.shift1Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+        const shift2EstimatedFuel = robotData.shift2Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+        const shift3EstimatedFuel = robotData.shift3Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+        const shift4EstimatedFuel = robotData.shift4Cycles.reduce((sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap), 0);
+        const endgameEstimatedFuel = robotData.endgameCycles.reduce(
+          (sum, seconds) => sum + estimateRebuiltBalls(seconds, robotData.teleBpsScale, teleCarryCap),
+          0
+        );
+
+        const autoFuelSection = resolveSectionFuel(autoEstimatedFuel, robotData.autoCounterOverride, robotData.autoCounterMissedFuel);
+        const transitionFuel = resolveSectionFuel(transitionEstimatedFuel, robotData.transitionCounterOverride, robotData.transitionCounterMissedFuel);
+        const shift1Fuel = resolveSectionFuel(shift1EstimatedFuel, robotData.shift1CounterOverride, robotData.shift1CounterMissedFuel);
+        const shift2Fuel = resolveSectionFuel(shift2EstimatedFuel, robotData.shift2CounterOverride, robotData.shift2CounterMissedFuel);
+        const shift3Fuel = resolveSectionFuel(shift3EstimatedFuel, robotData.shift3CounterOverride, robotData.shift3CounterMissedFuel);
+        const shift4Fuel = resolveSectionFuel(shift4EstimatedFuel, robotData.shift4CounterOverride, robotData.shift4CounterMissedFuel);
+        const endgameFuelSection = resolveSectionFuel(endgameEstimatedFuel, robotData.endgameCounterOverride, robotData.endgameCounterMissedFuel);
+        const autoFuelWithHuman = autoFuelSection + Number(robotData.autoHumanPlayerFuel || 0);
+        const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + Number(robotData.teleopHumanPlayerFuel || 0);
+        const endgameFuelWithHuman = endgameFuelSection + Number(robotData.endgameHumanPlayerFuel || 0);
+
+        await addDoc(collection(db, "scouting"), {
+          scoutName: userData.displayName,
+          scoutId: userData.uid,
+          teamNumber: robotData.teamNumber,
+          startingPosition: robotData.startingPosition,
+          incidents: robotData.incidents,
+          notes: robotData.notes,
+          auto: {
+            preloadScale: robotData.autoPreloadScale,
+            bpsScale: robotData.autoBpsScale,
+            carryingScale: robotData.autoCarryScale,
+            cycleTimes: robotData.autoCycles,
+            failedClimb: robotData.autoFailedClimb,
+            estimatedFuel: autoFuelWithHuman,
+            counterOverride: robotData.autoCounterOverride,
+            counterOverrideMissedFuel: robotData.autoCounterMissedFuel,
+            humanPlayerFuel: robotData.autoHumanPlayerFuel,
+            successfulClimb: robotData.autoSuccessfulClimb,
+            wonAuto: robotData.wonAuto,
+          },
+          teleop: {
+            bpsScale: robotData.teleBpsScale,
+            carryingScale: robotData.teleCarryScale,
+            transitionCycles: robotData.transitionCycles,
+            shift1Cycles: robotData.shift1Cycles,
+            shift2Cycles: robotData.shift2Cycles,
+            shift3Cycles: robotData.shift3Cycles,
+            shift4Cycles: robotData.shift4Cycles,
+            transitionOverride: robotData.transitionCounterOverride,
+            transitionMissedFuel: robotData.transitionCounterMissedFuel,
+            shift1Override: robotData.shift1CounterOverride,
+            shift1MissedFuel: robotData.shift1CounterMissedFuel,
+            shift2Override: robotData.shift2CounterOverride,
+            shift2MissedFuel: robotData.shift2CounterMissedFuel,
+            shift3Override: robotData.shift3CounterOverride,
+            shift3MissedFuel: robotData.shift3CounterMissedFuel,
+            shift4Override: robotData.shift4CounterOverride,
+            shift4MissedFuel: robotData.shift4CounterMissedFuel,
+            humanPlayerFuel: robotData.teleopHumanPlayerFuel,
+            estimatedFuel: teleEstimatedFuel,
+          },
+          endgame: {
+            status: robotData.endgameStatus,
+            failedClimb: robotData.endgameFailedClimb,
+            cycleTimes: robotData.endgameCycles,
+            counterOverride: robotData.endgameCounterOverride,
+            counterOverrideMissedFuel: robotData.endgameCounterMissedFuel,
+            humanPlayerFuel: robotData.endgameHumanPlayerFuel,
+            estimatedFuel: endgameFuelWithHuman,
+          },
+          matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
+          matchNumber: String(currentMatch.matchNumber),
+          matchType: analyticsMatchType,
+          alliance,
+          allianceColor: alliance,
+          matchKey: currentMatch.matchKey || "",
+          eventKey,
+          eventName: liveEventName,
+          game: "REBUILT",
+          timestamp: now,
+          submittedAt: now,
+          practiceMode: selectedMode || "trial",
+          difficulty: persistedDifficulty,
+          isLivePracticeScouting: true,
+          liveVideoUrl: liveVideoUrl.trim(),
+          isPracticeScouting: true,
+          penaltyPoints,
+          deviceType: device.deviceType,
+          deviceDetails: device.details,
+        });
+      } else {
+        const robotData = { ...formData };
+        await addDoc(collection(db, "scouting"), {
+          ...robotData,
+          scoutName: userData.displayName,
+          scoutId: userData.uid,
+          matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
+          matchNumber: String(currentMatch.matchNumber),
+          matchType: analyticsMatchType,
+          alliance,
+          allianceColor: alliance,
+          matchKey: currentMatch.matchKey || "",
+          eventKey,
+          eventName: liveEventName,
+          game: activeMatchGame,
+          timestamp: now,
+          submittedAt: now,
+          practiceMode: selectedMode || "trial",
+          difficulty: persistedDifficulty,
+          isLivePracticeScouting: true,
+          liveVideoUrl: liveVideoUrl.trim(),
+          isPracticeScouting: true,
+          penaltyPoints,
+          deviceType: device.deviceType,
+          deviceDetails: device.details,
+        });
+      }
+
+      setBreakCompletedRobotIndex(currentRobotIndex);
+      setCurrentStep("break");
+    } catch (error) {
+      console.error("Error submitting live practice robot:", error);
+      alert("Error submitting live practice robot: " + (error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function pausePracticeSession() {
     if (!currentMatch) return;
     savePracticeDraft({ currentStep: currentStep === "break" ? "break" : "practice" });
@@ -1957,7 +2124,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 Robot {breakCompletedRobotIndex + 1} Complete
               </h1>
               <p className="text-gray-700 text-lg mb-3">
-                Team {currentMatch.allianceTeams[breakCompletedRobotIndex]} scouting is complete.
+                Team {selectedDifficulty === "live"
+                  ? (activeMatchGame === "REBUILT" ? rebuiltFormData.teamNumber || "Unknown" : formData.teamNumber || "Unknown")
+                  : currentMatch.allianceTeams[breakCompletedRobotIndex]} scouting is complete.
               </p>
               <p className="text-gray-600 mb-8">
                 Take a short break before the next robot, just like normal scouting rotations between matches.
@@ -1968,14 +2137,18 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   className="flex-1 py-3 rounded-lg text-white font-semibold"
                   style={{ backgroundColor: "var(--primary-color)" }}
                 >
-                  Continue To Robot {currentRobotIndex + 2} (Team {currentMatch.allianceTeams[currentRobotIndex + 1]})
+                  {selectedDifficulty === "live"
+                    ? "Continue To Next Robot"
+                    : `Continue To Robot ${currentRobotIndex + 2} (Team ${currentMatch.allianceTeams[currentRobotIndex + 1]})`}
                 </button>
-                <button
-                  onClick={pausePracticeSession}
-                  className="flex-1 py-3 rounded-lg border-2 border-blue-300 text-blue-700 font-semibold hover:bg-blue-50"
-                >
-                  Pause Session
-                </button>
+                {selectedDifficulty !== "live" && (
+                  <button
+                    onClick={pausePracticeSession}
+                    className="flex-1 py-3 rounded-lg border-2 border-blue-300 text-blue-700 font-semibold hover:bg-blue-50"
+                  >
+                    Pause Session
+                  </button>
+                )}
                 <button
                   onClick={resetPractice}
                   className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
@@ -2016,7 +2189,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     compLevel: (currentMatch as unknown as Record<string, unknown>).compLevel,
                   }))} Match {currentMatch.matchNumber}
                 </h3>
-                <p className="text-sm">Robot {currentRobotIndex + 1} of 3 • Team {currentMatch.allianceTeams[currentRobotIndex]}</p>
+                <p className="text-sm">
+                  {selectedDifficulty === "live"
+                    ? `Robot ${currentRobotIndex + 1}`
+                    : `Robot ${currentRobotIndex + 1} of 3 • Team ${currentMatch.allianceTeams[currentRobotIndex]}`}
+                </p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
                 {selectedDifficulty === "live" && (
                   <button
@@ -2049,25 +2226,26 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   Match Select (Live)
                 </button>
               )}
-              {/* Progress indicator */}
-              <div className="bg-white rounded-lg p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-semibold">Progress</span>
-                  <span className="text-sm text-gray-600">Robot {currentRobotIndex + 1}/3</span>
+              {selectedDifficulty !== "live" && (
+                <div className="bg-white rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-semibold">Progress</span>
+                    <span className="text-sm text-gray-600">Robot {currentRobotIndex + 1}/3</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {[0, 1, 2].map(i => (
+                      <div
+                        key={i}
+                        className={`flex-1 h-2 rounded ${
+                          i < currentRobotIndex ? 'bg-green-500' :
+                          i === currentRobotIndex ? 'bg-blue-500' :
+                          'bg-gray-200'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  {[0, 1, 2].map(i => (
-                    <div
-                      key={i}
-                      className={`flex-1 h-2 rounded ${
-                        i < currentRobotIndex ? 'bg-green-500' :
-                        i === currentRobotIndex ? 'bg-blue-500' :
-                        'bg-gray-200'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
+              )}
 
               {humanPlayerRobot === currentRobotIndex && (
                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
@@ -2558,15 +2736,19 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   className="w-full py-3 rounded-lg text-white font-semibold disabled:opacity-50"
                   style={{ backgroundColor: "var(--primary-color)" }}
                 >
-                  {loading ? "Submitting..." : 
-                   currentRobotIndex === 2 ? "Finish Session" : 
-                   `Next Robot (${currentRobotIndex + 2}/3)`}
+                  {loading
+                    ? "Submitting..."
+                    : selectedDifficulty === "live"
+                    ? "Submit Robot"
+                    : currentRobotIndex === 2
+                    ? "Finish Session"
+                    : `Next Robot (${currentRobotIndex + 2}/3)`}
                 </button>
                 <button
                   onClick={resetPractice}
                   className="w-full py-2 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
                 >
-                  Cancel
+                  {selectedDifficulty === "live" ? "End Session" : "Cancel"}
                 </button>
               </div>
             </div>
