@@ -64,8 +64,18 @@ function JudgeBookPageContent() {
   const [multiDraft, setMultiDraft] = useState("");
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<DraftCard>(emptyDraft());
+  const [searchQuery, setSearchQuery] = useState("");
 
   const canEdit = useMemo(() => canEditJudgeBook(userData, formAccessOverrides), [userData, formAccessOverrides]);
+  const filteredCards = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return cards;
+    return cards.filter((card) => {
+      const prompt = String(card.prompt || "").toLowerCase();
+      const answer = String(card.answer || "").toLowerCase();
+      return prompt.includes(normalizedQuery) || answer.includes(normalizedQuery);
+    });
+  }, [cards, searchQuery]);
 
   useEffect(() => {
     async function loadCardsAndPermissions() {
@@ -357,14 +367,28 @@ function JudgeBookPageContent() {
             Read-only access. Only Judge Awards, Team Coach, Team Admin, or members granted Permissions access can add or edit cards.
           </div>
         )}
+        {!loading && cards.length > 0 && (
+          <div className="mb-4">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search Judge Book cards..."
+              className="w-full md:max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              aria-label="Search Judge Book cards"
+            />
+          </div>
+        )}
 
         {loading ? (
           <div className="bg-white rounded-xl shadow-md p-6">Loading Judge Book...</div>
         ) : cards.length === 0 ? (
           <div className="bg-white rounded-xl shadow-md p-6">No Judge Book cards yet.</div>
+        ) : filteredCards.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-md p-6">No Judge Book cards match your search.</div>
         ) : (
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {cards.map((card) => (
+            {filteredCards.map((card) => (
               <Link
                 key={card.id}
                 href={`/judge-book/${card.id}`}

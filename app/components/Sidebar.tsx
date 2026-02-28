@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 export default function Sidebar() {
-  const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const navScrollRef = useRef<HTMLElement | null>(null);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return true;
     const saved = localStorage.getItem("sidebar-collapsed");
@@ -85,15 +85,15 @@ export default function Sidebar() {
     : "U";
 
   const handleSidebarScroll = useCallback(() => {
-    if (typeof window === "undefined" || !sidebarRef.current) return;
-    sessionStorage.setItem(sidebarScrollKey, String(sidebarRef.current.scrollTop || 0));
+    if (typeof window === "undefined" || !navScrollRef.current) return;
+    sessionStorage.setItem(sidebarScrollKey, String(navScrollRef.current.scrollTop || 0));
   }, [sidebarScrollKey]);
 
   const restoreSidebarScroll = useCallback(() => {
-    if (typeof window === "undefined" || !sidebarRef.current) return;
+    if (typeof window === "undefined" || !navScrollRef.current) return;
     const stored = sessionStorage.getItem(sidebarScrollKey);
     const parsed = Number(stored || 0);
-    sidebarRef.current.scrollTop = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    navScrollRef.current.scrollTop = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }, [sidebarScrollKey]);
 
   useEffect(() => {
@@ -169,14 +169,12 @@ export default function Sidebar() {
       </button>
 
       <div
-        ref={sidebarRef}
-        onScroll={handleSidebarScroll}
         className={`
           border-r border-gray-200 flex flex-col transition-all duration-300
           ${isMobileMenuOpen ? "w-72" : collapsed ? "w-16" : "w-64"}
           ${isMobileMenuOpen ? "translate-x-0 pointer-events-auto" : "-translate-x-full pointer-events-none md:pointer-events-auto"}
           md:translate-x-0
-          fixed md:sticky top-0 h-screen z-[70] overflow-y-auto
+          fixed md:sticky top-0 h-screen z-[70] overflow-hidden
         `}
         style={{
           backgroundColor: "var(--theme-bg)",
@@ -211,7 +209,11 @@ export default function Sidebar() {
         </div>
 
         {/* NAVIGATION */}
-        <nav className="flex-1 p-2 md:overflow-y-auto">
+        <nav
+          ref={navScrollRef}
+          onScroll={handleSidebarScroll}
+          className="flex-1 p-2 overflow-y-auto"
+        >
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
