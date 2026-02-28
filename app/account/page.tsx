@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { useRouter } from "next/navigation";
 import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from "firebase/auth";
-import { collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ThemePicker from "@/app/components/ThemePicker";
@@ -221,9 +221,19 @@ function AccountContent() {
     setError("");
     setSuccess("");
     try {
-      const joinRequestsSnap = await getDocs(query(collection(db, "teamJoinRequests"), where("userId", "==", user.uid)));
-      await Promise.all(joinRequestsSnap.docs.map((row) => deleteDoc(doc(db, "teamJoinRequests", row.id))));
-      await deleteDoc(doc(db, "users", user.uid));
+      const idToken = await user.getIdToken();
+      const cleanupResponse = await fetch("/api/user/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ uid: user.uid }),
+      });
+      if (!cleanupResponse.ok) {
+        const payload = (await cleanupResponse.json().catch(() => ({}))) as { error?: string };
+        throw new Error(String(payload.error || "Unable to remove account data."));
+      }
       await deleteUser(user);
       router.push("/signup");
     } catch (err: unknown) {
