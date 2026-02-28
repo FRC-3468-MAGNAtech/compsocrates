@@ -33,6 +33,10 @@ function formatTeamLabelFromNameOrCode(teamName: string, teamCode: string): stri
   return fallbackTeamLabel(teamCode);
 }
 
+function isFallbackCodeLabel(label: string, teamCode: string): boolean {
+  return String(label || "").trim().toLowerCase() === fallbackTeamLabel(teamCode).toLowerCase();
+}
+
 function readFirestoreRestStringField(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const row = value as { stringValue?: string; integerValue?: string; doubleValue?: number };
@@ -54,6 +58,11 @@ function readLocalPendingCache(): TeamJoinRequest[] {
       .map((row) => ({
         id: String(row.id || ""),
         teamId: String(row.teamId || ""),
+        teamDisplayLabel: (() => {
+          const teamId = String(row.teamId || "");
+          const raw = String(row.teamDisplayLabel || "").trim();
+          return raw && !isFallbackCodeLabel(raw, teamId) ? raw : undefined;
+        })(),
         requestedRole: normalizeLegacyRole(String(row.requestedRole || "match-scout")),
         status: "pending",
         createdAt: Number(row.createdAt || Date.now()),
@@ -69,6 +78,7 @@ function writeLocalPendingCache(rows: TeamJoinRequest[]) {
   const safe = rows.map((row) => ({
     id: row.id,
     teamId: row.teamId,
+    teamDisplayLabel: row.teamDisplayLabel || "",
     requestedRole: row.requestedRole || "match-scout",
     createdAt: row.createdAt || Date.now(),
   }));
@@ -96,10 +106,12 @@ async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequ
   const byUserIdSnap = await getDocs(byUserIdQuery);
   byUserIdSnap.docs.forEach((docSnap) => {
     const data = docSnap.data() as Record<string, unknown>;
+    const teamId = String(data.teamId || "");
+    const rawDisplay = String(data.teamDisplayLabel || data.teamName || "").trim();
     const request: TeamJoinRequest = {
       id: docSnap.id,
-      teamId: String(data.teamId || ""),
-      teamDisplayLabel: String(data.teamDisplayLabel || data.teamName || "").trim() || undefined,
+      teamId,
+      teamDisplayLabel: rawDisplay && !isFallbackCodeLabel(rawDisplay, teamId) ? rawDisplay : undefined,
       requestedRole: normalizeLegacyRole(String(data.requestedRole || data.userRole || data.role || "match-scout")),
       status: String(data.status || ""),
       createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
@@ -110,7 +122,7 @@ async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequ
   return Array.from(byId.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
-async function createTeamJoinRequestWithFallback(input: {
+  async function createTeamJoinRequestWithFallback(input: {
   userId: string;
   userEmail: string;
   userName: string;
@@ -128,7 +140,7 @@ async function createTeamJoinRequestWithFallback(input: {
     userRole: input.requestedRole,
     requestedRole: input.requestedRole,
     teamId: input.teamId,
-    teamDisplayLabel: input.teamDisplayLabel || "",
+    ...(input.teamDisplayLabel ? { teamDisplayLabel: input.teamDisplayLabel } : {}),
     status: "pending",
     createdAt,
   };
@@ -141,7 +153,7 @@ async function createTeamJoinRequestWithFallback(input: {
       userName: input.userName,
       requestedRole: input.requestedRole,
       teamId: input.teamId,
-      teamDisplayLabel: input.teamDisplayLabel || "",
+      ...(input.teamDisplayLabel ? { teamDisplayLabel: input.teamDisplayLabel } : {}),
       status: "pending",
       createdAt,
     },
@@ -150,7 +162,7 @@ async function createTeamJoinRequestWithFallback(input: {
       userName: input.userName,
       requestedRole: input.requestedRole,
       teamId: input.teamId,
-      teamDisplayLabel: input.teamDisplayLabel || "",
+      ...(input.teamDisplayLabel ? { teamDisplayLabel: input.teamDisplayLabel } : {}),
       status: "pending",
       createdAt,
     },
@@ -158,14 +170,14 @@ async function createTeamJoinRequestWithFallback(input: {
       userId: input.userId,
       role: input.requestedRole,
       teamId: input.teamId,
-      teamDisplayLabel: input.teamDisplayLabel || "",
+      ...(input.teamDisplayLabel ? { teamDisplayLabel: input.teamDisplayLabel } : {}),
       status: "pending",
       createdAt,
     },
     {
       userId: input.userId,
       teamId: input.teamId,
-      teamDisplayLabel: input.teamDisplayLabel || "",
+      ...(input.teamDisplayLabel ? { teamDisplayLabel: input.teamDisplayLabel } : {}),
       status: "pending",
       createdAt,
     },
@@ -218,7 +230,10 @@ function NoTeamDashboardContent() {
       const next: TeamJoinRequest = {
         id: `local-${normalizedTeamId}-${Date.now()}`,
         teamId: normalizedTeamId,
-        teamDisplayLabel: teamLabelByCode[normalizedTeamId] || fallbackTeamLabel(normalizedTeamId),
+        teamDisplayLabel:
+          teamLabelByCode[normalizedTeamId] && !isFallbackCodeLabel(teamLabelByCode[normalizedTeamId], normalizedTeamId)
+            ? teamLabelByCode[normalizedTeamId]
+            : undefined,
         requestedRole: role,
         status: "pending",
         createdAt: Date.now(),
@@ -261,13 +276,14 @@ function NoTeamDashboardContent() {
     }
 
     try {
+      const resolvedTeamLabel = await resolveTeamLabel(teamId);
       await createTeamJoinRequestWithFallback({
         userId: user.uid,
         userEmail: String(draft?.userEmail || userData?.email || user.email || ""),
         userName: String(draft?.userName || userData?.displayName || user.displayName || ""),
         requestedRole,
         teamId,
-        teamDisplayLabel: await resolveTeamLabel(teamId),
+        teamDisplayLabel: !isFallbackCodeLabel(resolvedTeamLabel, teamId) ? resolvedTeamLabel : undefined,
       });
       localStorage.removeItem("pending-join-request");
       const refreshed = await fetchPendingRequestsForUser(user.uid);
@@ -428,7 +444,11 @@ function NoTeamDashboardContent() {
             return {
               id: docSnap.id,
               teamId: String(data.teamId || ""),
-              teamDisplayLabel: String(data.teamDisplayLabel || data.teamName || "").trim() || undefined,
+              teamDisplayLabel: (() => {
+                const teamId = String(data.teamId || "");
+                const raw = String(data.teamDisplayLabel || data.teamName || "").trim();
+                return raw && !isFallbackCodeLabel(raw, teamId) ? raw : undefined;
+              })(),
               requestedRole: normalizeLegacyRole(String(data.requestedRole || data.userRole || data.role || "match-scout")),
               status: String(data.status || ""),
               createdAt: typeof data.createdAt === "number" ? data.createdAt : undefined,
@@ -501,13 +521,14 @@ function NoTeamDashboardContent() {
         return;
       }
 
+      const resolvedTeamLabel = await resolveTeamLabel(normalizedTeamCode);
       await createTeamJoinRequestWithFallback({
         userId: user.uid,
         userEmail: userData?.email || user.email || "",
         userName: userData?.displayName || user.displayName || "",
         requestedRole,
         teamId: normalizedTeamCode,
-        teamDisplayLabel: await resolveTeamLabel(normalizedTeamCode),
+        teamDisplayLabel: !isFallbackCodeLabel(resolvedTeamLabel, normalizedTeamCode) ? resolvedTeamLabel : undefined,
       });
 
       const refreshedAfterCreate = await fetchPendingRequestsForUser(user.uid);
@@ -619,7 +640,10 @@ function NoTeamDashboardContent() {
                   <div>
                     <p className="font-medium">
                       {formatTeamLabelFromNameOrCode(
-                        String(request.teamDisplayLabel || "").trim() ||
+                        (() => {
+                          const raw = String(request.teamDisplayLabel || "").trim();
+                          return raw && !isFallbackCodeLabel(raw, request.teamId) ? raw : "";
+                        })() ||
                           teamLabelByCode[String(request.teamId || "").trim().toUpperCase()] ||
                           "",
                         request.teamId
