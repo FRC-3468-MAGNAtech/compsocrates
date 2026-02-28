@@ -17,6 +17,47 @@ type TeamJoinRequest = {
   createdAt?: number;
 };
 
+function formatTeamLabelFromCode(teamCode: string): string {
+  const raw = String(teamCode || "").trim().toUpperCase();
+  const numericChunk = raw.match(/\d+/)?.[0] || "";
+  const parsed = Number(numericChunk);
+  if (Number.isFinite(parsed) && parsed > 0) return `Team ${parsed}`;
+  return `Team ${raw}`;
+}
+
+const LOCAL_PENDING_CACHE_KEY = "pending-join-request-cache";
+
+function readLocalPendingCache(): TeamJoinRequest[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_PENDING_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+    return parsed
+      .map((row) => ({
+        id: String(row.id || ""),
+        teamId: String(row.teamId || ""),
+        requestedRole: normalizeLegacyRole(String(row.requestedRole || "match-scout")),
+        status: "pending",
+        createdAt: Number(row.createdAt || Date.now()),
+      }))
+      .filter((row) => row.id && row.teamId);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalPendingCache(rows: TeamJoinRequest[]) {
+  if (typeof window === "undefined") return;
+  const safe = rows.map((row) => ({
+    id: row.id,
+    teamId: row.teamId,
+    requestedRole: row.requestedRole || "match-scout",
+    createdAt: row.createdAt || Date.now(),
+  }));
+  localStorage.setItem(LOCAL_PENDING_CACHE_KEY, JSON.stringify(safe));
+}
+
 async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequest[]> {
   if (!userId) return [];
   const byId = new Map<string, TeamJoinRequest>();
@@ -127,6 +168,27 @@ function NoTeamDashboardContent() {
   const [requestSuccess, setRequestSuccess] = useState("");
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
 
+  function ensurePendingVisible(teamId: string, role: TeamRole) {
+    const normalizedTeamId = teamId.trim().toUpperCase();
+    setPendingRequests((prev) => {
+      const existing = prev.find((row) => row.teamId.toLowerCase() === normalizedTeamId.toLowerCase());
+      if (existing) {
+        writeLocalPendingCache(prev);
+        return prev;
+      }
+      const next: TeamJoinRequest = {
+        id: `local-${normalizedTeamId}-${Date.now()}`,
+        teamId: normalizedTeamId,
+        requestedRole: role,
+        status: "pending",
+        createdAt: Date.now(),
+      };
+      const merged = [next, ...prev];
+      writeLocalPendingCache(merged);
+      return merged;
+    });
+  }
+
   async function autoSendJoinDraftIfPresent() {
     if (!user || !userData || typeof window === "undefined") return;
     const raw = localStorage.getItem("pending-join-request");
@@ -148,8 +210,13 @@ function NoTeamDashboardContent() {
     const alreadyPending = await fetchPendingRequestsForUser(user.uid);
     if (alreadyPending.some((request) => request.teamId.toLowerCase() === teamId.toLowerCase())) {
       localStorage.removeItem("pending-join-request");
-      setPendingRequests(alreadyPending);
-      setRequestSuccess(`Join request already pending for Team ${teamId}.`);
+      if (alreadyPending.length > 0) {
+        setPendingRequests(alreadyPending);
+        writeLocalPendingCache(alreadyPending);
+      } else {
+        ensurePendingVisible(teamId, requestedRole);
+      }
+      setRequestSuccess(`Join request already pending for ${formatTeamLabelFromCode(teamId)}.`);
       return;
     }
 
@@ -163,9 +230,14 @@ function NoTeamDashboardContent() {
       });
       localStorage.removeItem("pending-join-request");
       const refreshed = await fetchPendingRequestsForUser(user.uid);
-      setPendingRequests(refreshed);
+      if (refreshed.length > 0) {
+        setPendingRequests(refreshed);
+        writeLocalPendingCache(refreshed);
+      } else {
+        ensurePendingVisible(teamId, requestedRole);
+      }
       setRequestError("");
-      setRequestSuccess(`Join request submitted for Team ${teamId}. It is now pending approval.`);
+      setRequestSuccess(`Join request submitted for ${formatTeamLabelFromCode(teamId)}. It is now pending approval.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || "");
       setRequestSuccess("");
@@ -194,9 +266,16 @@ function NoTeamDashboardContent() {
 
       setLoading(true);
       try {
-        setPendingRequests(await fetchPendingRequestsForUser(user.uid));
+        const fetched = await fetchPendingRequestsForUser(user.uid);
+        if (fetched.length > 0) {
+          setPendingRequests(fetched);
+          writeLocalPendingCache(fetched);
+        } else {
+          setPendingRequests(readLocalPendingCache());
+        }
       } catch (error) {
         console.error("Error loading pending requests:", error);
+        setPendingRequests(readLocalPendingCache());
       } finally {
         setLoading(false);
       }
@@ -210,7 +289,7 @@ function NoTeamDashboardContent() {
     if (!requestSubmitted) return;
     const team = String(searchParams.get("team") || "").trim().toUpperCase();
     if (team) {
-      setRequestSuccess(`Join request submitted for Team ${team}. It is now pending approval.`);
+      setRequestSuccess(`Join request submitted for ${formatTeamLabelFromCode(team)}. It is now pending approval.`);
     } else {
       setRequestSuccess("Join request submitted. It is now pending approval.");
     }
@@ -238,6 +317,7 @@ function NoTeamDashboardContent() {
     setSubmittingRequest(true);
     if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
       const duplicateMessage = "You already asked to join that team and your request is still pending.";
+      ensurePendingVisible(normalizedTeamCode, requestedRole);
       setRequestError(duplicateMessage);
       window.alert(duplicateMessage);
       setSubmittingRequest(false);
@@ -245,10 +325,14 @@ function NoTeamDashboardContent() {
     }
     try {
       const refreshedPending = await fetchPendingRequestsForUser(user.uid);
-      setPendingRequests(refreshedPending);
+      if (refreshedPending.length > 0) {
+        setPendingRequests(refreshedPending);
+        writeLocalPendingCache(refreshedPending);
+      }
 
       if (refreshedPending.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
         const duplicateMessage = "You already asked to join that team and your request is still pending.";
+        ensurePendingVisible(normalizedTeamCode, requestedRole);
         setRequestError(duplicateMessage);
         window.alert(duplicateMessage);
         return;
@@ -262,11 +346,17 @@ function NoTeamDashboardContent() {
         teamId: normalizedTeamCode,
       });
 
-      setPendingRequests(await fetchPendingRequestsForUser(user.uid));
+      const refreshedAfterCreate = await fetchPendingRequestsForUser(user.uid);
+      if (refreshedAfterCreate.length > 0) {
+        setPendingRequests(refreshedAfterCreate);
+        writeLocalPendingCache(refreshedAfterCreate);
+      } else {
+        ensurePendingVisible(normalizedTeamCode, requestedRole);
+      }
       setTeamCode("");
       setRequestError("");
-      setRequestSuccess(`Join request submitted for Team ${normalizedTeamCode}. It is now pending approval.`);
-      window.alert(`Join request submitted for Team ${normalizedTeamCode}.`);
+      setRequestSuccess(`Join request submitted for ${formatTeamLabelFromCode(normalizedTeamCode)}. It is now pending approval.`);
+      window.alert(`Join request submitted for ${formatTeamLabelFromCode(normalizedTeamCode)}.`);
     } catch (error) {
       console.error("Error creating team request:", error);
       const message = error instanceof Error ? error.message : String(error || "");
@@ -286,8 +376,16 @@ function NoTeamDashboardContent() {
     setRequestError("");
     setRequestSuccess("");
     try {
+      if (requestId.startsWith("local-")) {
+        const next = pendingRequests.filter((request) => request.id !== requestId);
+        setPendingRequests(next);
+        writeLocalPendingCache(next);
+        return;
+      }
       await deleteDoc(doc(db, "teamJoinRequests", requestId));
-      setPendingRequests(await fetchPendingRequestsForUser(user.uid));
+      const refreshed = await fetchPendingRequestsForUser(user.uid);
+      setPendingRequests(refreshed);
+      writeLocalPendingCache(refreshed);
     } catch (error) {
       console.error("Error canceling request:", error);
       setRequestError("Unable to cancel this request right now.");
@@ -356,7 +454,7 @@ function NoTeamDashboardContent() {
               {pendingRequests.map((request) => (
                 <div key={request.id} className="border rounded p-3 flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">Team {request.teamId}</p>
+                    <p className="font-medium">{formatTeamLabelFromCode(request.teamId)}</p>
                     <p className="text-sm text-gray-600">
                       Status: Pending ({getRoleLabel(request.requestedRole || "match-scout")})
                     </p>
@@ -375,7 +473,11 @@ function NoTeamDashboardContent() {
           </div>
         ) : (
           <div className="mb-6 border rounded p-4 bg-gray-50">
-            <p className="text-gray-700">No pending team requests found.</p>
+            <p className="text-gray-700">
+              {requestSuccess.toLowerCase().includes("pending")
+                ? "Refreshing pending requests..."
+                : "No pending team requests found."}
+            </p>
           </div>
         )}
 

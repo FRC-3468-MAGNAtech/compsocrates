@@ -61,7 +61,12 @@ export default function ProtectedRoute({
 
     // If user has no team, force no-team dashboard except allowed onboarding pages.
     if (requireAuth && user && userData && !userData.teamId) {
-      const allowNoTeam = pathname === "/dashboard" || pathname === "/account" || pathname === "/verify-email";
+      const allowNoTeam =
+        pathname === "/dashboard" ||
+        pathname === "/account" ||
+        pathname === "/verify-email" ||
+        pathname === "/update-lot" ||
+        pathname === "/version-releases";
       if (!allowNoTeam) {
         router.push("/dashboard");
         return;
