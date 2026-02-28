@@ -133,17 +133,17 @@ export async function GET(request: NextRequest) {
       (await readTeamByDocId(projectId, idToken, teamCode, apiKey)) ||
       (idToken ? await readTeamByDocId(projectId, "", teamCode, apiKey) : null);
     if (byDocId) {
-      return NextResponse.json({ label: formatLabel(teamCode, byDocId.teamName, byDocId.teamNumber), exists: true });
+      return NextResponse.json({ label: formatLabel(teamCode, byDocId.teamName, byDocId.teamNumber), exists: true, verified: true });
     }
 
     const byField =
       (await readTeamByTeamIdField(projectId, idToken, teamCode, apiKey)) ||
       (idToken ? await readTeamByTeamIdField(projectId, "", teamCode, apiKey) : null);
     if (byField) {
-      return NextResponse.json({ label: formatLabel(teamCode, byField.teamName, byField.teamNumber), exists: true });
+      return NextResponse.json({ label: formatLabel(teamCode, byField.teamName, byField.teamNumber), exists: true, verified: true });
     }
 
-    return NextResponse.json({ label: `Team ${teamCode}`, exists: false });
+    return NextResponse.json({ label: `Team ${teamCode}`, exists: false, verified: false });
   } catch (error) {
     console.error("Team label resolve failed:", error);
     return NextResponse.json({ error: "Unable to resolve team label" }, { status: 500 });

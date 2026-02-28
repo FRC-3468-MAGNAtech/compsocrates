@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -98,16 +98,17 @@ function updateCachedTeamLabel(teamCode: string, label: string) {
   writeLocalPendingCache(next);
 }
 
-async function lookupTeamMeta(teamCode: string): Promise<{ label: string; exists: boolean } | null> {
+async function lookupTeamMeta(teamCode: string): Promise<{ label: string; exists: boolean; verified: boolean } | null> {
   const normalizedCode = String(teamCode || "").trim().toUpperCase();
   if (!normalizedCode) return null;
   try {
     const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, { cache: "no-store" });
     if (!response.ok) return null;
-    const payload = (await response.json()) as { label?: string; exists?: boolean };
+    const payload = (await response.json()) as { label?: string; exists?: boolean; verified?: boolean };
     return {
       label: String(payload.label || `Team ${normalizedCode}`).trim(),
       exists: Boolean(payload.exists),
+      verified: Boolean(payload.verified),
     };
   } catch {
     return null;
@@ -278,7 +279,7 @@ function NoTeamDashboardContent() {
       return;
     }
     const teamExists = await ensureTeamExists(teamId);
-    if (!teamExists) {
+    if (teamExists === "missing") {
       localStorage.removeItem("pending-join-request");
       setRequestSuccess("");
       setRequestError(`Team code "${teamId}" does not exist. Please check the code and try again.`);
@@ -420,31 +421,32 @@ function NoTeamDashboardContent() {
     return fallbackTeamLabel(normalizedCode);
   }
 
-  async function ensureTeamExists(teamCode: string): Promise<boolean> {
+  async function ensureTeamExists(teamCode: string): Promise<"exists" | "missing" | "unknown"> {
     const normalizedCode = String(teamCode || "").trim().toUpperCase();
-    if (!normalizedCode) return false;
+    if (!normalizedCode) return "missing";
     const meta = await lookupTeamMeta(normalizedCode);
     if (meta) {
       if (meta.label) {
         setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: meta.label }));
         updateCachedTeamLabel(normalizedCode, meta.label);
       }
-      return meta.exists;
+      if (!meta.verified) return "unknown";
+      return meta.exists ? "exists" : "missing";
     }
     try {
       const directDoc = await getDoc(doc(db, "teams", normalizedCode));
-      if (directDoc.exists()) return true;
+      if (directDoc.exists()) return "exists";
     } catch {
       // Ignore; continue fallback.
     }
     try {
       const byFieldQuery = query(collection(db, "teams"), where("teamId", "==", normalizedCode), limit(1));
       const byFieldSnap = await getDocs(byFieldQuery);
-      if (!byFieldSnap.empty) return true;
+      if (!byFieldSnap.empty) return "exists";
     } catch {
       // Ignore.
     }
-    return false;
+    return "unknown";
   }
 
   async function warmTeamLabels(requests: TeamJoinRequest[]) {
@@ -558,7 +560,7 @@ function NoTeamDashboardContent() {
       return;
     }
     const teamExists = await ensureTeamExists(normalizedTeamCode);
-    if (!teamExists) {
+    if (teamExists === "missing") {
       setRequestError(`Team code "${normalizedTeamCode}" does not exist. Please check the code and try again.`);
       setRequestSuccess("");
       return;
@@ -643,11 +645,24 @@ function NoTeamDashboardContent() {
         },
         body: JSON.stringify({ requestId }),
       });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        const message = String(payload.error || "");
-        throw new Error(message || "Unable to cancel request.");
-      }
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          const message = String(payload.error || "");
+          const lower = message.toLowerCase();
+          const canTryClientUpdate =
+            lower.includes("server firebase auth is not configured") ||
+            lower.includes("unable to cancel request");
+          if (canTryClientUpdate) {
+            await updateDoc(doc(db, "teamJoinRequests", requestId), {
+              status: "denied",
+              canceledByUser: true,
+              processedAt: Date.now(),
+              processedBy: user.uid,
+            });
+          } else {
+            throw new Error(message || "Unable to cancel request.");
+          }
+        }
       await refreshPendingRequests(user.uid);
       setRequestSuccess("Join request canceled.");
     } catch (error) {

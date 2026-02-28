@@ -12,16 +12,17 @@ import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
 import { db } from "@/app/firebase";
 
-async function teamCodeExists(teamCode: string): Promise<boolean> {
+async function teamCodeExists(teamCode: string): Promise<"exists" | "missing" | "unknown"> {
   const normalizedCode = teamCode.trim().toUpperCase();
-  if (!normalizedCode) return false;
+  if (!normalizedCode) return "missing";
   try {
     const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, { cache: "no-store" });
-    if (!response.ok) return false;
-    const payload = (await response.json()) as { exists?: boolean };
-    return Boolean(payload.exists);
+    if (!response.ok) return "unknown";
+    const payload = (await response.json()) as { exists?: boolean; verified?: boolean };
+    if (!payload.verified) return "unknown";
+    return payload.exists ? "exists" : "missing";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
@@ -199,7 +200,7 @@ export default function SignupPage() {
           return;
         }
         const exists = await teamCodeExists(requestedTeamCode);
-        if (!exists) {
+        if (exists === "missing") {
           setError(`Team code "${requestedTeamCode}" does not exist. Please check with your team admin.`);
           setLoading(false);
           return;
