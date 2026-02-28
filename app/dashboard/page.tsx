@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
@@ -20,6 +20,16 @@ type TeamJoinRequest = {
 function fallbackTeamLabel(teamCode: string): string {
   const raw = String(teamCode || "").trim().toUpperCase();
   return `Team ${raw}`;
+}
+
+function formatTeamLabelFromNameOrCode(teamName: string, teamCode: string): string {
+  const trimmedName = String(teamName || "").trim();
+  if (trimmedName) {
+    const parsed = Number(trimmedName);
+    if (Number.isFinite(parsed) && parsed > 0) return `Team ${parsed}`;
+    return trimmedName;
+  }
+  return fallbackTeamLabel(teamCode);
 }
 
 const LOCAL_PENDING_CACHE_KEY = "pending-join-request-cache";
@@ -189,7 +199,7 @@ function NoTeamDashboardContent() {
   }
 
   async function autoSendJoinDraftIfPresent() {
-    if (!user || !userData || typeof window === "undefined") return;
+    if (!user || typeof window === "undefined") return;
     const raw = localStorage.getItem("pending-join-request");
     if (!raw) return;
     let draft: { teamId?: string; requestedRole?: TeamRole; userEmail?: string; userName?: string } | null = null;
@@ -222,8 +232,8 @@ function NoTeamDashboardContent() {
     try {
       await createTeamJoinRequestWithFallback({
         userId: user.uid,
-        userEmail: String(draft?.userEmail || userData.email || user.email || ""),
-        userName: String(draft?.userName || userData.displayName || user.displayName || ""),
+        userEmail: String(draft?.userEmail || userData?.email || user.email || ""),
+        userName: String(draft?.userName || userData?.displayName || user.displayName || ""),
         requestedRole,
         teamId,
       });
@@ -268,15 +278,23 @@ function NoTeamDashboardContent() {
       const teamDoc = await getDoc(doc(db, "teams", normalizedCode));
       if (teamDoc.exists()) {
         const data = teamDoc.data() as { teamNumber?: string | number; teamName?: string };
-        const teamNumberRaw = String(data.teamNumber || "").trim();
         const teamNameRaw = String(data.teamName || "").trim();
-        const numeric = Number(teamNumberRaw);
-        const label =
-          Number.isFinite(numeric) && numeric > 0
-            ? `Team ${numeric}`
-            : teamNameRaw
-            ? teamNameRaw
-            : fallbackTeamLabel(normalizedCode);
+        const teamNumberRaw = String(data.teamNumber || "").trim();
+        const label = formatTeamLabelFromNameOrCode(teamNameRaw || teamNumberRaw, normalizedCode);
+        setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
+        return label;
+      }
+    } catch {
+      // Ignore and fall back to team code.
+    }
+    try {
+      const byFieldQuery = query(collection(db, "teams"), where("teamId", "==", normalizedCode), limit(1));
+      const byFieldSnap = await getDocs(byFieldQuery);
+      if (!byFieldSnap.empty) {
+        const data = byFieldSnap.docs[0].data() as { teamNumber?: string | number; teamName?: string };
+        const teamNameRaw = String(data.teamName || "").trim();
+        const teamNumberRaw = String(data.teamNumber || "").trim();
+        const label = formatTeamLabelFromNameOrCode(teamNameRaw || teamNumberRaw, normalizedCode);
         setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: label }));
         return label;
       }
@@ -299,11 +317,7 @@ function NoTeamDashboardContent() {
         setLoading(false);
         return;
       }
-      if (!userData) {
-        setLoading(false);
-        return;
-      }
-      if (userData.teamId) {
+      if (userData?.teamId) {
         router.push(getDashboardRoute(userData));
         return;
       }
@@ -324,7 +338,7 @@ function NoTeamDashboardContent() {
   }, [user, userData, router]);
 
   useEffect(() => {
-    if (!user || !userData || userData.teamId) return;
+    if (!user || userData?.teamId) return;
     const requestsQuery = query(collection(db, "teamJoinRequests"), where("userId", "==", user.uid));
     const unsubscribe = onSnapshot(
       requestsQuery,
