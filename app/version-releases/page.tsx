@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
@@ -14,7 +14,35 @@ type ReleaseNote = {
   createdAt: number;
   updatedAt?: number;
   authorName?: string;
+  authorUid?: string;
+  teamId?: string;
+  source?: "team-doc" | "legacy-collection";
 };
+
+function normalizeReleaseNote(value: unknown): ReleaseNote | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const id = String(record.id || "");
+  const title = String(record.title || "").trim();
+  const body = String(record.body || "").trim();
+  const createdAt = Number(record.createdAt || 0);
+  if (!id || !title || !body || !Number.isFinite(createdAt) || createdAt <= 0) return null;
+  return {
+    id,
+    title,
+    body,
+    createdAt,
+    updatedAt: Number(record.updatedAt || 0) || undefined,
+    authorName: String(record.authorName || ""),
+    authorUid: String(record.authorUid || ""),
+    teamId: String(record.teamId || ""),
+    source: "team-doc",
+  };
+}
+
+function sortNotes(items: ReleaseNote[]) {
+  return [...items].sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+}
 
 function VersionReleasesContent() {
   const { userData } = useAuth();
@@ -28,7 +56,8 @@ function VersionReleasesContent() {
 
   useEffect(() => {
     void loadNotes();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userData?.teamId]);
 
   useEffect(() => {
     async function loadOwnerAccess() {
@@ -47,19 +76,36 @@ function VersionReleasesContent() {
           return;
         }
         const payload = (await response.json()) as { allowed?: boolean };
-        setCanEdit(Boolean(payload.allowed));
+        setCanEdit(Boolean(payload.allowed) || Boolean(userData?.isTeamAdmin));
       } catch {
-        setCanEdit(Boolean(userData?.canManageVersionReleases));
+        setCanEdit(Boolean(userData?.canManageVersionReleases) || Boolean(userData?.isTeamAdmin));
       }
     }
     void loadOwnerAccess();
-  }, [userData?.uid, userData?.email, userData?.canManageVersionReleases]);
+  }, [userData?.uid, userData?.email, userData?.canManageVersionReleases, userData?.isTeamAdmin]);
 
   async function loadNotes() {
     setLoading(true);
     try {
+      if (userData?.teamId) {
+        const teamRef = doc(db, "teams", userData.teamId);
+        const teamSnap = await getDoc(teamRef);
+        const teamData = teamSnap.exists() ? (teamSnap.data() as Record<string, unknown>) : {};
+        const rawTeamNotes = Array.isArray(teamData.versionReleases) ? teamData.versionReleases : [];
+        const loadedTeamNotes = rawTeamNotes
+          .map((entry) => normalizeReleaseNote(entry))
+          .filter((entry): entry is ReleaseNote => Boolean(entry))
+          .map((entry) => ({ ...entry, source: "team-doc" as const }));
+
+        if (loadedTeamNotes.length > 0) {
+          setNotes(sortNotes(loadedTeamNotes));
+          return;
+        }
+      }
+
+      // Backward-compatible fallback for older top-level storage.
       const snap = await getDocs(collection(db, "versionReleases"));
-      const loaded = snap.docs
+      const loadedLegacy = snap.docs
         .map((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
           return {
@@ -69,13 +115,40 @@ function VersionReleasesContent() {
             createdAt: Number(data.createdAt || 0),
             updatedAt: Number(data.updatedAt || 0) || undefined,
             authorName: String(data.authorName || ""),
+            authorUid: String(data.authorUid || ""),
+            teamId: String(data.teamId || ""),
+            source: "legacy-collection" as const,
           } as ReleaseNote;
         })
-        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
-      setNotes(loaded);
+        .filter((entry) => entry.title.trim().length > 0 && entry.body.trim().length > 0);
+      setNotes(sortNotes(loadedLegacy));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function persistTeamNotes(nextNotes: ReleaseNote[]) {
+    if (!userData?.teamId) {
+      throw new Error("No team detected for this account.");
+    }
+    const teamRef = doc(db, "teams", userData.teamId);
+    await setDoc(
+      teamRef,
+      {
+        versionReleases: nextNotes.map((note) => ({
+          id: note.id,
+          title: note.title,
+          body: note.body,
+          createdAt: note.createdAt,
+          updatedAt: note.updatedAt || note.createdAt,
+          authorName: note.authorName || "",
+          authorUid: note.authorUid || "",
+          teamId: userData.teamId,
+        })),
+        versionReleasesUpdatedAt: Date.now(),
+      },
+      { merge: true }
+    );
   }
 
   async function handleCreate() {
@@ -88,15 +161,34 @@ function VersionReleasesContent() {
     }
     setSaving(true);
     try {
-      await addDoc(collection(db, "versionReleases"), {
+      const now = Date.now();
+      const newNote: ReleaseNote = {
+        id: `rel-${now}-${Math.random().toString(36).slice(2, 8)}`,
         title,
         body,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
         authorUid: userData?.uid || "",
         authorName: userData?.displayName || "",
         teamId: userData?.teamId || "",
-      });
+        source: "team-doc",
+      };
+
+      if (userData?.teamId) {
+        const next = sortNotes([newNote, ...notes.filter((note) => note.source === "team-doc")]);
+        await persistTeamNotes(next);
+      } else {
+        // Legacy fallback for environments without team binding.
+        await addDoc(collection(db, "versionReleases"), {
+          title,
+          body,
+          createdAt: now,
+          updatedAt: now,
+          authorUid: userData?.uid || "",
+          authorName: userData?.displayName || "",
+          teamId: "",
+        });
+      }
       setDraftTitle("");
       setDraftBody("");
       await loadNotes();
@@ -119,11 +211,28 @@ function VersionReleasesContent() {
     }
     setSaving(true);
     try {
-      await updateDoc(doc(db, "versionReleases", note.id), {
-        title,
-        body,
-        updatedAt: Date.now(),
-      });
+      if (note.source === "team-doc" && userData?.teamId) {
+        const now = Date.now();
+        const next = notes
+          .filter((entry) => entry.source === "team-doc")
+          .map((entry) =>
+            entry.id === note.id
+              ? {
+                  ...entry,
+                  title,
+                  body,
+                  updatedAt: now,
+                }
+              : entry
+          );
+        await persistTeamNotes(sortNotes(next));
+      } else {
+        await updateDoc(doc(db, "versionReleases", note.id), {
+          title,
+          body,
+          updatedAt: Date.now(),
+        });
+      }
       setEditingId(null);
       setDraftTitle("");
       setDraftBody("");
@@ -141,7 +250,12 @@ function VersionReleasesContent() {
     if (!window.confirm(`Delete "${note.title}"?`)) return;
     setSaving(true);
     try {
-      await deleteDoc(doc(db, "versionReleases", note.id));
+      if (note.source === "team-doc" && userData?.teamId) {
+        const next = notes.filter((entry) => entry.source === "team-doc" && entry.id !== note.id);
+        await persistTeamNotes(sortNotes(next));
+      } else {
+        await deleteDoc(doc(db, "versionReleases", note.id));
+      }
       await loadNotes();
     } catch (error) {
       console.error("Failed to delete release note:", error);

@@ -101,6 +101,7 @@ export default function Sidebar() {
     ...(isLeadRole
       ? [
           { href: "/event-selection", label: "Event Selection", icon: Calendar },
+          { href: "/update-lot", label: "Update Lot", icon: Settings },
         ]
       : []),
     { href: "/match-list", label: "Match List", icon: Calendar },
