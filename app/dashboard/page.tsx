@@ -167,6 +167,7 @@ function NoTeamDashboardContent() {
   const [requestError, setRequestError] = useState("");
   const [requestSuccess, setRequestSuccess] = useState("");
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
+  const duplicatePendingText = "you already asked to join that team and your request is still pending.";
 
   function ensurePendingVisible(teamId: string, role: TeamRole) {
     const normalizedTeamId = teamId.trim().toUpperCase();
@@ -249,6 +250,18 @@ function NoTeamDashboardContent() {
     }
   }
 
+  async function refreshPendingRequests(userId: string): Promise<TeamJoinRequest[]> {
+    const fetched = await fetchPendingRequestsForUser(userId);
+    if (fetched.length > 0) {
+      setPendingRequests(fetched);
+      writeLocalPendingCache(fetched);
+      return fetched;
+    }
+    const localRows = readLocalPendingCache();
+    setPendingRequests(localRows);
+    return localRows;
+  }
+
   useEffect(() => {
     async function load() {
       if (!user) {
@@ -266,13 +279,7 @@ function NoTeamDashboardContent() {
 
       setLoading(true);
       try {
-        const fetched = await fetchPendingRequestsForUser(user.uid);
-        if (fetched.length > 0) {
-          setPendingRequests(fetched);
-          writeLocalPendingCache(fetched);
-        } else {
-          setPendingRequests(readLocalPendingCache());
-        }
+        await refreshPendingRequests(user.uid);
       } catch (error) {
         console.error("Error loading pending requests:", error);
         setPendingRequests(readLocalPendingCache());
@@ -316,25 +323,19 @@ function NoTeamDashboardContent() {
     }
     setSubmittingRequest(true);
     if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
-      const duplicateMessage = "You already asked to join that team and your request is still pending.";
       ensurePendingVisible(normalizedTeamCode, requestedRole);
-      setRequestError(duplicateMessage);
-      window.alert(duplicateMessage);
+      setRequestError("");
+      setRequestSuccess(`Join request already pending for ${formatTeamLabelFromCode(normalizedTeamCode)}.`);
       setSubmittingRequest(false);
       return;
     }
     try {
-      const refreshedPending = await fetchPendingRequestsForUser(user.uid);
-      if (refreshedPending.length > 0) {
-        setPendingRequests(refreshedPending);
-        writeLocalPendingCache(refreshedPending);
-      }
+      const refreshedPending = await refreshPendingRequests(user.uid);
 
       if (refreshedPending.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
-        const duplicateMessage = "You already asked to join that team and your request is still pending.";
         ensurePendingVisible(normalizedTeamCode, requestedRole);
-        setRequestError(duplicateMessage);
-        window.alert(duplicateMessage);
+        setRequestError("");
+        setRequestSuccess(`Join request already pending for ${formatTeamLabelFromCode(normalizedTeamCode)}.`);
         return;
       }
 
@@ -356,13 +357,11 @@ function NoTeamDashboardContent() {
       setTeamCode("");
       setRequestError("");
       setRequestSuccess(`Join request submitted for ${formatTeamLabelFromCode(normalizedTeamCode)}. It is now pending approval.`);
-      window.alert(`Join request submitted for ${formatTeamLabelFromCode(normalizedTeamCode)}.`);
     } catch (error) {
       console.error("Error creating team request:", error);
       const message = error instanceof Error ? error.message : String(error || "");
       setRequestError(message ? `Unable to create request: ${message}` : "Unable to create request right now.");
       setRequestSuccess("");
-      window.alert(message ? `Unable to create request: ${message}` : "Unable to create request right now.");
     } finally {
       setSubmittingRequest(false);
     }
@@ -474,7 +473,9 @@ function NoTeamDashboardContent() {
         ) : (
           <div className="mb-6 border rounded p-4 bg-gray-50">
             <p className="text-gray-700">
-              {requestSuccess.toLowerCase().includes("pending")
+              {requestSuccess.toLowerCase().includes("pending") ||
+              requestError.toLowerCase().includes(duplicatePendingText) ||
+              submittingRequest
                 ? "Refreshing pending requests..."
                 : "No pending team requests found."}
             </p>
