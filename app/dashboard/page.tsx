@@ -98,6 +98,22 @@ function updateCachedTeamLabel(teamCode: string, label: string) {
   writeLocalPendingCache(next);
 }
 
+async function lookupTeamMeta(teamCode: string): Promise<{ label: string; exists: boolean } | null> {
+  const normalizedCode = String(teamCode || "").trim().toUpperCase();
+  if (!normalizedCode) return null;
+  try {
+    const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, { cache: "no-store" });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { label?: string; exists?: boolean };
+    return {
+      label: String(payload.label || `Team ${normalizedCode}`).trim(),
+      exists: Boolean(payload.exists),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequest[]> {
   if (!userId) return [];
   const byId = new Map<string, TeamJoinRequest>();
@@ -261,6 +277,13 @@ function NoTeamDashboardContent() {
       localStorage.removeItem("pending-join-request");
       return;
     }
+    const teamExists = await ensureTeamExists(teamId);
+    if (!teamExists) {
+      localStorage.removeItem("pending-join-request");
+      setRequestSuccess("");
+      setRequestError(`Team code "${teamId}" does not exist. Please check the code and try again.`);
+      return;
+    }
 
     const alreadyPending = await fetchPendingRequestsForUser(user.uid);
     if (alreadyPending.some((request) => request.teamId.toLowerCase() === teamId.toLowerCase())) {
@@ -322,6 +345,12 @@ function NoTeamDashboardContent() {
     const normalizedCode = String(teamCode || "").trim().toUpperCase();
     if (!normalizedCode) return fallbackTeamLabel(teamCode);
     if (teamLabelByCode[normalizedCode]) return teamLabelByCode[normalizedCode];
+    const meta = await lookupTeamMeta(normalizedCode);
+    if (meta?.label) {
+      setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: meta.label }));
+      updateCachedTeamLabel(normalizedCode, meta.label);
+      return meta.label;
+    }
     try {
       const response = await fetch(`/api/team-label?teamCode=${encodeURIComponent(normalizedCode)}`, { cache: "no-store" });
       if (response.ok) {
@@ -389,6 +418,33 @@ function NoTeamDashboardContent() {
       // Ignore and fall back to team code.
     }
     return fallbackTeamLabel(normalizedCode);
+  }
+
+  async function ensureTeamExists(teamCode: string): Promise<boolean> {
+    const normalizedCode = String(teamCode || "").trim().toUpperCase();
+    if (!normalizedCode) return false;
+    const meta = await lookupTeamMeta(normalizedCode);
+    if (meta) {
+      if (meta.label) {
+        setTeamLabelByCode((prev) => ({ ...prev, [normalizedCode]: meta.label }));
+        updateCachedTeamLabel(normalizedCode, meta.label);
+      }
+      return meta.exists;
+    }
+    try {
+      const directDoc = await getDoc(doc(db, "teams", normalizedCode));
+      if (directDoc.exists()) return true;
+    } catch {
+      // Ignore; continue fallback.
+    }
+    try {
+      const byFieldQuery = query(collection(db, "teams"), where("teamId", "==", normalizedCode), limit(1));
+      const byFieldSnap = await getDocs(byFieldQuery);
+      if (!byFieldSnap.empty) return true;
+    } catch {
+      // Ignore.
+    }
+    return false;
   }
 
   async function warmTeamLabels(requests: TeamJoinRequest[]) {
@@ -501,6 +557,12 @@ function NoTeamDashboardContent() {
       setRequestError("Please enter a team code.");
       return;
     }
+    const teamExists = await ensureTeamExists(normalizedTeamCode);
+    if (!teamExists) {
+      setRequestError(`Team code "${normalizedTeamCode}" does not exist. Please check the code and try again.`);
+      setRequestSuccess("");
+      return;
+    }
     setSubmittingRequest(true);
     if (pendingRequests.some((request) => request.teamId.toLowerCase() === normalizedTeamCode.toLowerCase())) {
       ensurePendingVisible(normalizedTeamCode, requestedRole);
@@ -569,9 +631,28 @@ function NoTeamDashboardContent() {
         const next = pendingRequests.filter((request) => request.id !== requestId);
         setPendingRequests(next);
         writeLocalPendingCache(next);
+        setRequestSuccess("Join request canceled.");
         return;
       }
-      await deleteDoc(doc(db, "teamJoinRequests", requestId));
+      const idToken = await user.getIdToken();
+      const response = await fetch("/api/team-join-requests/cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ requestId }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        const message = String(payload.error || "");
+        if (message.toLowerCase().includes("server firebase auth is not configured")) {
+          // Fallback to direct client delete in local/dev where rules may allow it.
+          await deleteDoc(doc(db, "teamJoinRequests", requestId));
+        } else {
+          throw new Error(message || "Unable to cancel request.");
+        }
+      }
       await refreshPendingRequests(user.uid);
       setRequestSuccess("Join request canceled.");
     } catch (error) {
