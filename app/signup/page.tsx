@@ -205,6 +205,11 @@ export default function SignupPage() {
           setLoading(false);
           return;
         }
+        if (exists === "unknown") {
+          setError("Unable to verify that team code right now. Please try again in a moment.");
+          setLoading(false);
+          return;
+        }
 
         // Create user account (without team yet)
         const newUid = await signUp(email, password, displayName, role, "", false);

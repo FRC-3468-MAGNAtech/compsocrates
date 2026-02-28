@@ -37,6 +37,11 @@ function isFallbackCodeLabel(label: string, teamCode: string): boolean {
   return String(label || "").trim().toLowerCase() === fallbackTeamLabel(teamCode).toLowerCase();
 }
 
+function isMeaningfulTeamLabel(label: string, teamCode: string): boolean {
+  const trimmed = String(label || "").trim();
+  return Boolean(trimmed) && !isFallbackCodeLabel(trimmed, teamCode);
+}
+
 function readFirestoreRestStringField(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const row = value as { stringValue?: string; integerValue?: string; doubleValue?: number };
@@ -254,7 +259,7 @@ function NoTeamDashboardContent() {
         id: `local-${normalizedTeamId}-${Date.now()}`,
         teamId: normalizedTeamId,
         teamDisplayLabel:
-          teamLabelByCode[normalizedTeamId] && !isFallbackCodeLabel(teamLabelByCode[normalizedTeamId], normalizedTeamId)
+          teamLabelByCode[normalizedTeamId] && isMeaningfulTeamLabel(teamLabelByCode[normalizedTeamId], normalizedTeamId)
             ? teamLabelByCode[normalizedTeamId]
             : undefined,
         requestedRole: role,
@@ -289,6 +294,12 @@ function NoTeamDashboardContent() {
       localStorage.removeItem("pending-join-request");
       setRequestSuccess("");
       setRequestError(`Team code "${teamId}" does not exist. Please check the code and try again.`);
+      return;
+    }
+    if (teamExists === "unknown") {
+      localStorage.removeItem("pending-join-request");
+      setRequestSuccess("");
+      setRequestError("Unable to verify that team code right now. Please try again in a moment.");
       return;
     }
 
@@ -347,7 +358,8 @@ function NoTeamDashboardContent() {
   async function resolveTeamLabel(teamCode: string): Promise<string> {
     const normalizedCode = String(teamCode || "").trim().toUpperCase();
     if (!normalizedCode) return fallbackTeamLabel(teamCode);
-    if (teamLabelByCode[normalizedCode]) return teamLabelByCode[normalizedCode];
+    const cached = String(teamLabelByCode[normalizedCode] || "").trim();
+    if (isMeaningfulTeamLabel(cached, normalizedCode)) return cached;
     const userToken = user ? await user.getIdToken().catch(() => "") : "";
     const meta = await lookupTeamMeta(normalizedCode, userToken);
     if (meta?.label) {
@@ -459,7 +471,7 @@ function NoTeamDashboardContent() {
       for (const row of requests) {
         const code = String(row.teamId || "").trim().toUpperCase();
         const fromRequest = String(row.teamDisplayLabel || "").trim();
-        if (!code || !fromRequest) continue;
+        if (!code || !isMeaningfulTeamLabel(fromRequest, code)) continue;
         merged[code] = formatTeamLabelFromNameOrCode(fromRequest, code);
       }
       return merged;
@@ -566,6 +578,11 @@ function NoTeamDashboardContent() {
     const teamExists = await ensureTeamExists(normalizedTeamCode);
     if (teamExists === "missing") {
       setRequestError(`Team code "${normalizedTeamCode}" does not exist. Please check the code and try again.`);
+      setRequestSuccess("");
+      return;
+    }
+    if (teamExists === "unknown") {
+      setRequestError("Unable to verify that team code right now. Please try again in a moment.");
       setRequestSuccess("");
       return;
     }
@@ -741,11 +758,13 @@ function NoTeamDashboardContent() {
                     <p className="font-medium">
                       {formatTeamLabelFromNameOrCode(
                         (() => {
-                          const raw = String(request.teamDisplayLabel || "").trim();
-                          return raw && !isFallbackCodeLabel(raw, request.teamId) ? raw : "";
-                        })() ||
-                          teamLabelByCode[String(request.teamId || "").trim().toUpperCase()] ||
-                          "",
+                          const code = String(request.teamId || "").trim().toUpperCase();
+                          const fromLookup = String(teamLabelByCode[code] || "").trim();
+                          if (isMeaningfulTeamLabel(fromLookup, code)) return fromLookup;
+                          const fromRequest = String(request.teamDisplayLabel || "").trim();
+                          if (isMeaningfulTeamLabel(fromRequest, code)) return fromRequest;
+                          return "";
+                        })(),
                         request.teamId
                       )}
                     </p>
