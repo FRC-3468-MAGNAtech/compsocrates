@@ -259,6 +259,12 @@ function TeamManagementContent() {
             Team Management
           </h1>
           <p className="text-gray-600 mb-8">Manage your team members, roles, and permissions.</p>
+          {showRoleSelector && selectedMember && (
+            <div className="bg-white rounded-xl shadow-md p-4 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+              <p className="text-sm text-gray-600">Editing Roles For</p>
+              <p className="text-xl font-semibold">{selectedMember.displayName}</p>
+            </div>
+          )}
 
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between">

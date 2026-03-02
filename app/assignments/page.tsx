@@ -20,7 +20,7 @@ import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
-import { getUserRoles } from "@/app/utils/roles";
+import { getRoleLabel, getUserRoles, normalizeLegacyRole } from "@/app/utils/roles";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 
 interface Assignment {
@@ -83,6 +83,7 @@ type EventOption = {
   key: string;
   name: string;
   startDate: string;
+  endDate: string;
 };
 
 type PracticeMatchOption = {
@@ -113,6 +114,23 @@ function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
     }
   });
   return Array.from(byName.values());
+}
+
+function isPastEventOption(event: EventOption) {
+  const now = Date.now();
+  const end = new Date(`${event.endDate}T23:59:59`).getTime();
+  return Number.isFinite(end) && now > end;
+}
+
+function sortEventOptions(events: EventOption[]) {
+  return [...events].sort((a, b) => {
+    const aPast = isPastEventOption(a);
+    const bPast = isPastEventOption(b);
+    if (aPast !== bPast) return aPast ? 1 : -1;
+    const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+    const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+    return aTime - bTime;
+  });
 }
 
 function compLevelPriority(compLevel: string) {
@@ -273,8 +291,9 @@ function AssignmentsContent() {
       key: event.key,
       name: event.name,
       startDate: event.startDate,
+      endDate: event.endDate,
     }));
-    if (selected.length === 0) return fallbackFromApp;
+    if (selected.length === 0) return sortEventOptions(fallbackFromApp);
 
     const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
     const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
@@ -307,19 +326,20 @@ function AssignmentsContent() {
           key,
           name: String(event.name || key),
           startDate: String(event.start_date || `${new Date().getFullYear()}-01-01`),
+          endDate: String(event.end_date || event.start_date || `${new Date().getFullYear()}-01-01`),
         });
       });
     }
 
     const staticByKey = new Map(fallbackFromApp.map((event) => [event.key, event]));
     const resolved = selected
-      .map((key) => fromTba.get(key) || staticByKey.get(key) || { key, name: key, startDate: `${new Date().getFullYear()}-01-01` })
-    return dedupeEventOptionsByName(resolved)
-      .sort((a, b) => {
-        const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
-        const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
-        return aTime - bTime;
+      .map((key) => fromTba.get(key) || staticByKey.get(key) || {
+        key,
+        name: key,
+        startDate: `${new Date().getFullYear()}-01-01`,
+        endDate: `${new Date().getFullYear()}-01-01`,
       });
+    return sortEventOptions(dedupeEventOptionsByName(resolved));
   }
 
   async function loadData() {
@@ -925,7 +945,7 @@ function AssignmentsContent() {
                     onChange={() => toggleAttendee(member)}
                   />
                   <span className="font-medium">{member.displayName}</span>
-                  <span className="text-xs text-gray-500 capitalize">{member.role}</span>
+                  <span className="text-xs text-gray-500">{getRoleLabel(normalizeLegacyRole(member.role))}</span>
                 </label>
               ))}
             </div>

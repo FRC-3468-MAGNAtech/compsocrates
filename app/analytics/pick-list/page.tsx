@@ -196,7 +196,7 @@ function PickListContent() {
             </div>
             <div className="max-h-[60vh] overflow-y-auto">
               {teams.filter((t) => !t.picked).map((team) => (
-                <div key={team.teamNumber} className="p-4 border-b flex items-center justify-between">
+                <div key={team.teamNumber} data-analytics-search-item="true" className="p-4 border-b flex items-center justify-between">
                   <div>
                     <p className="font-semibold">Team {team.teamNumber}</p>
                     <p className="text-sm text-gray-600">Avg {team.avgScore} | High {team.highScore}</p>
@@ -219,7 +219,7 @@ function PickListContent() {
             </div>
             <div className="max-h-[60vh] overflow-y-auto">
               {pickedTeams.map((team) => (
-                <div key={team.teamNumber} className="p-4 border-b flex items-center justify-between">
+                <div key={team.teamNumber} data-analytics-search-item="true" className="p-4 border-b flex items-center justify-between">
                   <div>
                     <p className="font-semibold">
                       {team.pickOrder}. Team {team.teamNumber}

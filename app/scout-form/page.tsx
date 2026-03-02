@@ -178,6 +178,36 @@ function convertPitScale(value: number, kind: "preload" | "bps" | "carry") {
   return n <= 0 ? 0 : n <= 12 ? 1 : n <= 23 ? 2 : n <= 32 ? 3 : n <= 42 ? 4 : n <= 53 ? 5 : 6;
 }
 
+function scaleRangeForIndex(kind: "preload" | "bps" | "carry", index: number): { min: number; max: number } {
+  if (kind === "preload") {
+    if (index <= 0) return { min: 0, max: 0 };
+    if (index === 1) return { min: 1, max: 2 };
+    if (index === 2) return { min: 3, max: 4 };
+    if (index === 3) return { min: 5, max: 6 };
+    return { min: 7, max: 8 };
+  }
+  if (kind === "bps") {
+    if (index <= 0) return { min: 0, max: 0 };
+    if (index === 1) return { min: 1, max: 3 };
+    if (index === 2) return { min: 4, max: 6 };
+    if (index === 3) return { min: 7, max: 9 };
+    return { min: 10, max: Number.POSITIVE_INFINITY };
+  }
+  if (index <= 0) return { min: 0, max: 0 };
+  if (index === 1) return { min: 1, max: 12 };
+  if (index === 2) return { min: 13, max: 23 };
+  if (index === 3) return { min: 24, max: 32 };
+  if (index === 4) return { min: 33, max: 42 };
+  if (index === 5) return { min: 43, max: 53 };
+  return { min: 54, max: Number.POSITIVE_INFINITY };
+}
+
+function pitValueFitsScale(kind: "preload" | "bps" | "carry", value: number | null, scaleIndex: number) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return false;
+  const range = scaleRangeForIndex(kind, scaleIndex);
+  return value >= range.min && value <= range.max;
+}
+
 function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number) {
   return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (BPS[bpsScale] || 0) * seconds)));
 }
@@ -595,7 +625,17 @@ function ScoutFormContent() {
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
   const [targets, setTargets] = useState<Record<string, number>>({});
-  const [pitLock, setPitLock] = useState({ preload: false, bps: false, carry: false });
+  const [pitSync, setPitSync] = useState<{
+    eventSynced: boolean;
+    preloadRaw: number | null;
+    bpsRaw: number | null;
+    carryRaw: number | null;
+  }>({
+    eventSynced: false,
+    preloadRaw: null,
+    bpsRaw: null,
+    carryRaw: null,
+  });
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormState>({
     scoutName: userData?.displayName || "",
@@ -737,6 +777,41 @@ function ScoutFormContent() {
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
   const assignedTeam = assignedTeams[selectedMatchId] || "";
+  const pitPreloadFits = pitValueFitsScale("preload", pitSync.preloadRaw, form.autoPreloadScale);
+  const pitBpsFitsAuto = pitValueFitsScale("bps", pitSync.bpsRaw, form.autoBpsScale);
+  const pitBpsFitsTele = pitValueFitsScale("bps", pitSync.bpsRaw, form.teleBpsScale);
+  const pitCarryFitsAuto = pitValueFitsScale("carry", pitSync.carryRaw, form.autoCarryScale);
+  const pitCarryFitsTele = pitValueFitsScale("carry", pitSync.carryRaw, form.teleCarryScale);
+  const pitMismatchMessages = useMemo(() => {
+    if (!pitSync.eventSynced) return [] as string[];
+    const messages: string[] = [];
+    if (pitSync.preloadRaw !== null && !pitPreloadFits) {
+      messages.push(`Preload Capacity scale does not include pit value ${pitSync.preloadRaw}.`);
+    }
+    if (pitSync.bpsRaw !== null && !pitBpsFitsAuto) {
+      messages.push(`Autonomous Balls Per Second scale does not include pit value ${pitSync.bpsRaw}.`);
+    }
+    if (pitSync.bpsRaw !== null && !pitBpsFitsTele) {
+      messages.push(`Teleop Balls Per Second scale does not include pit value ${pitSync.bpsRaw}.`);
+    }
+    if (pitSync.carryRaw !== null && !pitCarryFitsAuto) {
+      messages.push(`Autonomous Carrying Capacity scale does not include pit value ${pitSync.carryRaw}.`);
+    }
+    if (pitSync.carryRaw !== null && !pitCarryFitsTele) {
+      messages.push(`Teleop Carrying Capacity scale does not include pit value ${pitSync.carryRaw}.`);
+    }
+    return messages;
+  }, [
+    pitSync.eventSynced,
+    pitSync.preloadRaw,
+    pitSync.bpsRaw,
+    pitSync.carryRaw,
+    pitPreloadFits,
+    pitBpsFitsAuto,
+    pitBpsFitsTele,
+    pitCarryFitsAuto,
+    pitCarryFitsTele,
+  ]);
 
   function getFinalsDisplayLabel(matchNum: number) {
     if (matchNum === 1) return "Upper Bracket Match 1";
@@ -770,7 +845,7 @@ function ScoutFormContent() {
   useEffect(() => {
     async function loadPitDefaults() {
       if (!userData?.teamId || !form.teamNumber.trim()) {
-        setPitLock({ preload: false, bps: false, carry: false });
+        setPitSync({ eventSynced: false, preloadRaw: null, bpsRaw: null, carryRaw: null });
         return;
       }
       const baseQuery = query(
@@ -783,26 +858,25 @@ function ScoutFormContent() {
       const eventScopedRows = pitSnap.docs
         .map((r) => r.data() as Record<string, unknown>)
         .filter((row) => String(row.eventKey || "").trim() === String(eventKey || "").trim());
-      const rows = eventScopedRows.length > 0 ? eventScopedRows : pitSnap.docs.map((r) => r.data() as Record<string, unknown>);
-      if (rows.length === 0) {
-        setPitLock({ preload: false, bps: false, carry: false });
+      if (eventScopedRows.length === 0) {
+        setPitSync({ eventSynced: false, preloadRaw: null, bpsRaw: null, carryRaw: null });
         return;
       }
-      const latest = rows.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
+      const latest = eventScopedRows.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
       const preloadRaw = Number(latest.fuelPreloadCapacity || 0);
       const bpsRaw = Number(latest.fuelBallsPerSecond || 0);
       const carryRaw = Number(latest.fuelCarryingCapacity || 0);
-      const preload = preloadRaw > 0;
-      const bps = bpsRaw > 0;
-      const carry = carryRaw > 0;
-      setPitLock({ preload, bps, carry });
+      const preload = Number.isFinite(preloadRaw) && preloadRaw > 0 ? preloadRaw : null;
+      const bps = Number.isFinite(bpsRaw) && bpsRaw > 0 ? bpsRaw : null;
+      const carry = Number.isFinite(carryRaw) && carryRaw > 0 ? carryRaw : null;
+      setPitSync({ eventSynced: true, preloadRaw: preload, bpsRaw: bps, carryRaw: carry });
       setForm((prev) => ({
         ...prev,
-        autoPreloadScale: preload ? convertPitScale(preloadRaw, "preload") : prev.autoPreloadScale,
-        autoBpsScale: bps ? convertPitScale(bpsRaw, "bps") : prev.autoBpsScale,
-        autoCarryScale: carry ? convertPitScale(carryRaw, "carry") : prev.autoCarryScale,
-        teleBpsScale: bps ? convertPitScale(bpsRaw, "bps") : prev.teleBpsScale,
-        teleCarryScale: carry ? convertPitScale(carryRaw, "carry") : prev.teleCarryScale,
+        autoPreloadScale: preload !== null ? convertPitScale(preload, "preload") : prev.autoPreloadScale,
+        autoBpsScale: bps !== null ? convertPitScale(bps, "bps") : prev.autoBpsScale,
+        autoCarryScale: carry !== null ? convertPitScale(carry, "carry") : prev.autoCarryScale,
+        teleBpsScale: bps !== null ? convertPitScale(bps, "bps") : prev.teleBpsScale,
+        teleCarryScale: carry !== null ? convertPitScale(carry, "carry") : prev.teleCarryScale,
       }));
     }
     void loadPitDefaults();
@@ -824,22 +898,28 @@ function ScoutFormContent() {
   }
 
   function estimateAutoSectionFuel() {
-    const preloadCap = PRELOAD[Math.max(0, Math.min(4, form.autoPreloadScale))] || 0;
-    const carryCap = CARRY[Math.max(0, Math.min(6, form.autoCarryScale))] || 0;
+    const preloadCapFromScale = PRELOAD[Math.max(0, Math.min(4, form.autoPreloadScale))] || 0;
+    const carryCapFromScale = CARRY[Math.max(0, Math.min(6, form.autoCarryScale))] || 0;
+    const preloadCap = pitSync.preloadRaw !== null && pitPreloadFits ? pitSync.preloadRaw : preloadCapFromScale;
+    const carryCap = pitSync.carryRaw !== null && pitCarryFitsAuto ? pitSync.carryRaw : carryCapFromScale;
+    const autoBps = pitSync.bpsRaw !== null && pitBpsFitsAuto ? pitSync.bpsRaw : (BPS[form.autoBpsScale] || 0);
     const estimated = autoCycles.reduce((sum, seconds, i) => {
       const capacity = i === 0 && preloadCap > 0 ? preloadCap : carryCap;
-      return sum + estimateBalls(seconds, form.autoBpsScale, capacity);
+      return sum + Math.max(0, Math.round(Math.min(Math.max(0, capacity), autoBps * seconds)));
     }, 0);
     return resolveSectionFuel(estimated, form.autoCounterOverride, form.autoCounterMissedFuel);
   }
 
   function estimateTeleSectionFuel() {
-    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
-    const transitionEstimated = transitionCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s1Estimated = shift1Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s2Estimated = shift2Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s3Estimated = shift3Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
-    const s4Estimated = shift4Cycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const carryCapFromScale = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const carryCap = pitSync.carryRaw !== null && pitCarryFitsTele ? pitSync.carryRaw : carryCapFromScale;
+    const teleBps = pitSync.bpsRaw !== null && pitBpsFitsTele ? pitSync.bpsRaw : (BPS[form.teleBpsScale] || 0);
+    const estimateSection = (sec: number) => Math.max(0, Math.round(Math.min(Math.max(0, carryCap), teleBps * sec)));
+    const transitionEstimated = transitionCycles.reduce((sum, sec) => sum + estimateSection(sec), 0);
+    const s1Estimated = shift1Cycles.reduce((sum, sec) => sum + estimateSection(sec), 0);
+    const s2Estimated = shift2Cycles.reduce((sum, sec) => sum + estimateSection(sec), 0);
+    const s3Estimated = shift3Cycles.reduce((sum, sec) => sum + estimateSection(sec), 0);
+    const s4Estimated = shift4Cycles.reduce((sum, sec) => sum + estimateSection(sec), 0);
     const transition = resolveSectionFuel(transitionEstimated, form.transitionCounterOverride, form.transitionCounterMissedFuel);
     const s1 = resolveSectionFuel(s1Estimated, form.shift1CounterOverride, form.shift1CounterMissedFuel);
     const s2 = resolveSectionFuel(s2Estimated, form.shift2CounterOverride, form.shift2CounterMissedFuel);
@@ -849,8 +929,13 @@ function ScoutFormContent() {
   }
 
   function estimateEndgameSectionFuel() {
-    const carryCap = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
-    const estimated = endgameCycles.reduce((sum, sec) => sum + estimateBalls(sec, form.teleBpsScale, carryCap), 0);
+    const carryCapFromScale = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const carryCap = pitSync.carryRaw !== null && pitCarryFitsTele ? pitSync.carryRaw : carryCapFromScale;
+    const teleBps = pitSync.bpsRaw !== null && pitBpsFitsTele ? pitSync.bpsRaw : (BPS[form.teleBpsScale] || 0);
+    const estimated = endgameCycles.reduce(
+      (sum, sec) => sum + Math.max(0, Math.round(Math.min(Math.max(0, carryCap), teleBps * sec))),
+      0
+    );
     return resolveSectionFuel(estimated, form.endgameCounterOverride, form.endgameCounterMissedFuel);
   }
 
@@ -874,6 +959,12 @@ function ScoutFormContent() {
     if (!selectedMatch) return alert("Select a match first.");
     if (!form.teamNumber.trim()) return alert("Team number required.");
     if (selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
+    if (pitMismatchMessages.length > 0) {
+      const proceed = window.confirm(
+        `Warning: match scout scales do not match synced pit scout values for this event:\n${pitMismatchMessages.join("\n")}\n\nSubmit anyway?`
+      );
+      if (!proceed) return;
+    }
 
     setSaving(true);
     try {
@@ -995,6 +1086,23 @@ function ScoutFormContent() {
               {fromPractice && (
                 <p className="text-sm text-gray-600 mb-2">Opened from Practice Scouting.</p>
               )}
+              {pitSync.eventSynced ? (
+                <p className="text-sm text-green-700 mb-2">Detected pit scout form is synced for this team and event.</p>
+              ) : (
+                <p className="text-sm text-amber-700 mb-2">No pit scout form synced for this team in this event yet.</p>
+              )}
+              {pitMismatchMessages.length > 0 && (
+                <div className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-2">
+                  <p className="text-sm font-medium text-red-700">
+                    Warning: match scout scales do not match synced pit scout values for this team.
+                  </p>
+                  {pitMismatchMessages.map((message) => (
+                    <p key={message} className="text-xs text-red-700">
+                      {message}
+                    </p>
+                  ))}
+                </div>
+              )}
               <div className="mt-3 max-w-sm">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
                 <select
@@ -1059,12 +1167,21 @@ function ScoutFormContent() {
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
-                  <label className="block text-sm font-medium text-gray-700">Preload Capacity ({PRELOAD_LABELS[Math.max(0, Math.min(4, form.autoPreloadScale))]})</label>
-                  <input type="range" min={0} max={4} value={form.autoPreloadScale} disabled={pitLock.preload} onChange={(e) => setForm((p) => ({ ...p, autoPreloadScale: Number(e.target.value) }))} className={`w-full ${pitLock.preload ? "opacity-60" : ""}`} />
-                  <label className="block text-sm font-medium text-gray-700">Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.autoBpsScale))]})</label>
-                  <input type="range" min={0} max={4} value={form.autoBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
-                  <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.autoCarryScale))]})</label>
-                  <input type="range" min={0} max={6} value={form.autoCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
+                  <label className="block text-sm font-medium text-gray-700">
+                    Preload Capacity ({PRELOAD_LABELS[Math.max(0, Math.min(4, form.autoPreloadScale))]})
+                    {pitSync.preloadRaw !== null ? ` | Pit: ${pitSync.preloadRaw}` : ""}
+                  </label>
+                  <input type="range" min={0} max={4} value={form.autoPreloadScale} onChange={(e) => setForm((p) => ({ ...p, autoPreloadScale: Number(e.target.value) }))} className="w-full" />
+                  <label className="block text-sm font-medium text-gray-700">
+                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.autoBpsScale))]})
+                    {pitSync.bpsRaw !== null ? ` | Pit: ${pitSync.bpsRaw}` : ""}
+                  </label>
+                  <input type="range" min={0} max={4} value={form.autoBpsScale} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className="w-full" />
+                  <label className="block text-sm font-medium text-gray-700">
+                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.autoCarryScale))]})
+                    {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
+                  </label>
+                  <input type="range" min={0} max={6} value={form.autoCarryScale} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className="w-full" />
                   <CycleTimer title="Auto Cycle Timer" values={autoCycles} onAdd={(v) => setAutoCycles((p) => [...p, v])} />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.autoCounterOverride} onChange={(next) => setForm((p) => ({ ...p, autoCounterOverride: next }))} />
@@ -1078,10 +1195,16 @@ function ScoutFormContent() {
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
-                  <label className="block text-sm font-medium text-gray-700">Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.teleBpsScale))]})</label>
-                  <input type="range" min={0} max={4} value={form.teleBpsScale} disabled={pitLock.bps} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className={`w-full ${pitLock.bps ? "opacity-60" : ""}`} />
-                  <label className="block text-sm font-medium text-gray-700">Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.teleCarryScale))]})</label>
-                  <input type="range" min={0} max={6} value={form.teleCarryScale} disabled={pitLock.carry} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className={`w-full ${pitLock.carry ? "opacity-60" : ""}`} />
+                  <label className="block text-sm font-medium text-gray-700">
+                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.teleBpsScale))]})
+                    {pitSync.bpsRaw !== null ? ` | Pit: ${pitSync.bpsRaw}` : ""}
+                  </label>
+                  <input type="range" min={0} max={4} value={form.teleBpsScale} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className="w-full" />
+                  <label className="block text-sm font-medium text-gray-700">
+                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.teleCarryScale))]})
+                    {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
+                  </label>
+                  <input type="range" min={0} max={6} value={form.teleCarryScale} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className="w-full" />
                   <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
