@@ -87,6 +87,23 @@ function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
     }));
 }
 
+function isPastEvent(event: UpcomingEvent) {
+  const now = Date.now();
+  const end = new Date(`${event.endDate}T23:59:59`).getTime();
+  return Number.isFinite(end) && now > end;
+}
+
+function sortDashboardEvents(events: UpcomingEvent[]) {
+  return [...events].sort((a, b) => {
+    const aPast = isPastEvent(a);
+    const bPast = isPastEvent(b);
+    if (aPast !== bPast) return aPast ? 1 : -1;
+    const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+    const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+    return aTime - bTime;
+  });
+}
+
 function CoachDashboardContent() {
   const router = useRouter();
   const { userData } = useAuth();
@@ -136,16 +153,17 @@ function CoachDashboardContent() {
         userData.uid || "",
         userData.displayName || ""
       );
-      setUpcomingEvents(visibleEvents);
+      const orderedEvents = sortDashboardEvents(visibleEvents);
+      setUpcomingEvents(orderedEvents);
       setActiveEventKey((current) => {
-        if (current && visibleEvents.some((event) => event.key === current)) return current;
-        return visibleEvents[0]?.key || "";
+        if (current && orderedEvents.some((event) => event.key === current)) return current;
+        return orderedEvents[0]?.key || "";
       });
       if (teamDoc.exists()) {
         setTeamData(teamDoc.data());
       }
       const eventMatches = await Promise.all(
-        visibleEvents.map(async (event) => {
+        orderedEvents.map(async (event) => {
           try {
             const matches = await getEventMatches(event.key);
             return [event.key, normalizeMatches(matches)] as const;
@@ -202,7 +220,7 @@ function CoachDashboardContent() {
         scoutAccuracyByUid.set(docSnap.uid, avg);
         scoutAccuracyByName.set(docSnap.displayName.trim().toLowerCase(), avg);
       });
-      visibleEvents.forEach((event) => {
+      orderedEvents.forEach((event) => {
         const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
         const attendeeAccuracies = attendees
           .map((value) => {
@@ -318,12 +336,13 @@ function CoachDashboardContent() {
                         }).length
                       : readyScoutNames.length;
                     const eventMatches = eventMatchesByKey[event.key] || [];
+                    const eventIsPast = isPastEvent(event);
                     return (
                       <div className="space-y-4">
                         <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                           <div className="flex items-start justify-between">
                             <div>
-                              <h2 className="text-xl font-semibold mb-1">Upcoming Event</h2>
+                              <h2 className="text-xl font-semibold mb-1">{eventIsPast ? "Past Event" : "Upcoming Event"}</h2>
                               <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
                                 {event.name}
                               </p>
@@ -338,8 +357,8 @@ function CoachDashboardContent() {
                               </p>
                               <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div>
-                                  <p className="text-sm text-gray-600">Days Until Event</p>
-                                  <p className="text-2xl font-bold">{event.daysUntil}</p>
+                                  <p className="text-sm text-gray-600">{eventIsPast ? "Event Status" : "Days Until Event"}</p>
+                                  <p className="text-2xl font-bold">{eventIsPast ? "Ended" : event.daysUntil}</p>
                                 </div>
                                 <div>
                                   <p className="text-sm text-gray-600">Scouts Ready</p>
