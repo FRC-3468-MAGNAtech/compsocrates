@@ -12,6 +12,7 @@ import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { getEventMatches } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
+import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 
 type MatchType = "practice" | "qualification" | "finals";
 type MatchStatus = "completed" | "next" | "upcoming";
@@ -221,6 +222,29 @@ function parsePitValue(raw: unknown): number | null {
   if (!numeric) return null;
   const parsed = Number(numeric[0]);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeTeamNumber(raw: unknown) {
+  return String(raw || "").replace(/[^\d]/g, "");
+}
+
+function rowMatchesEvent(row: Record<string, unknown>, eventKey: string) {
+  const target = String(eventKey || "").trim().toLowerCase();
+  if (!target) return false;
+  const key = String(row.eventKey || "").trim().toLowerCase();
+  if (key) return key === target;
+
+  const timestamp =
+    Number(row.submittedAt || 0) ||
+    Number(row.timestamp || 0) ||
+    Number(row.createdAt || 0) ||
+    Number(row.completedAt || 0) ||
+    Number(row.startedAt || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
+
+  const event = getEventsForGame("REBUILT").find((item) => item.id === target);
+  if (!event?.startDate || !event?.endDate) return false;
+  return isInEventWindow(timestamp, event.startDate, event.endDate);
 }
 
 function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number) {
@@ -858,23 +882,30 @@ function ScoutFormContent() {
         return;
       }
       const team = form.teamNumber.trim();
-      const normalizedEventKey = String(eventKey || "").trim().toLowerCase();
+      const normalizedEventKey = String(eventKey || "").trim();
       const strictQuery = query(
         collection(db, "pitScouting"),
         where("teamId", "==", userData.teamId),
         where("teamNumber", "==", team),
         where("game", "==", "REBUILT")
       );
-      const broadQuery = query(collection(db, "pitScouting"), where("teamNumber", "==", team), where("game", "==", "REBUILT"));
-      const legacyQuery = query(collection(db, "pitScouting"), where("teamNumber", "==", team));
+      const eventQuery = normalizedEventKey ? query(collection(db, "pitScouting"), where("eventKey", "==", normalizedEventKey)) : null;
+      const rebuiltQuery = query(collection(db, "pitScouting"), where("game", "==", "REBUILT"));
+
       let rows = (await getDocs(strictQuery)).docs.map((r) => r.data() as Record<string, unknown>);
-      if (rows.length === 0) {
-        rows = (await getDocs(broadQuery)).docs.map((r) => r.data() as Record<string, unknown>);
+      if (rows.length === 0 && eventQuery) {
+        rows = (await getDocs(eventQuery)).docs.map((r) => r.data() as Record<string, unknown>);
       }
       if (rows.length === 0) {
-        rows = (await getDocs(legacyQuery)).docs.map((r) => r.data() as Record<string, unknown>);
+        rows = (await getDocs(rebuiltQuery)).docs.map((r) => r.data() as Record<string, unknown>);
       }
-      const eventScopedRows = rows.filter((row) => String(row.eventKey || "").trim().toLowerCase() === normalizedEventKey);
+      const eventScopedRows = rows
+        .filter((row) => normalizeTeamNumber(row.teamNumber) === normalizeTeamNumber(team))
+        .filter((row) => {
+          const rowTeamId = String(row.teamId || "").trim();
+          return !rowTeamId || rowTeamId === userData.teamId;
+        })
+        .filter((row) => rowMatchesEvent(row, normalizedEventKey));
       if (eventScopedRows.length === 0) {
         setPitSync({ eventSynced: false, preloadRaw: null, bpsRaw: null, carryRaw: null });
         return;
