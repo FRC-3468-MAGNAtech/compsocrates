@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -1850,10 +1850,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
   }
 
-  const startPracticeMatch = useCallback((
+  function startPracticeMatch(
     selected: CandidatePracticeMatch,
     options?: { robotIndex?: number; teamNumber?: string }
-  ) => {
+  ) {
     const fallbackTeams = selected.allianceTeams.slice(0, 3);
     const official = readOfficialData(selected.officialData);
     const safeOfficialScore =
@@ -1896,7 +1896,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setHumanPlayerRobot(Math.floor(Math.random() * 3));
     setCurrentStep("practice");
     setShowDifficultyMatchModal(false);
-  }, [selectedDifficulty, liveVideoUrl]);
+  }
 
   function getAllianceOfficialScore(match: PracticeMatch) {
     const official = readOfficialData(match.officialData);
@@ -1905,11 +1905,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return 0;
   }
 
-  const computeLiveLeaderboardFromLobby = useCallback((
+  function computeLiveLeaderboardFromLobby(
     bundle: LiveMatchBundle,
     assignments: Record<string, LiveAssignment>,
     submissions: Record<string, Record<string, unknown>>
-  ) => {
+  ) {
     const byGroup = new Map<number, Array<{ assignment: LiveAssignment; submission: Record<string, unknown> }>>();
     Object.entries(submissions).forEach(([uid, submission]) => {
       const assignment = assignments[uid];
@@ -1939,7 +1939,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           .map((entry) => (entry.submission.scoutedData || null) as ScoutedData | null)
           .filter((row): row is ScoutedData => Boolean(row));
         if (reefRobots.length > 0) {
-          const score = calculateScoutedScore(reefRobots) + penaltyPoints;
+          const score = reefRobots.reduce((sum, row) => sum + calculateScoutedScore(row), 0) + penaltyPoints;
           accuracy = calculateAccuracy(score, officialScore);
         }
       }
@@ -1953,7 +1953,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
     rows.sort((a, b) => b.accuracy - a.accuracy);
     return rows;
-  }, [activeMatchGame]);
+  }
 
   async function handleChooseLiveMatchClick() {
     if (!liveVideoUrl.trim()) {
