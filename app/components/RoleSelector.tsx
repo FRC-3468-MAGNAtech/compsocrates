@@ -5,11 +5,12 @@ import { TeamRole, TEAM_ROLES, getRoleLabel } from "@/app/utils/roles";
 interface RoleSelectorProps {
   currentRoles: TeamRole[];
   isTeamAdmin: boolean;
+  memberName?: string;
   onSave: (roles: TeamRole[], isTeamAdmin: boolean) => void;
   onClose: () => void;
 }
 
-export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClose }: RoleSelectorProps) {
+export default function RoleSelector({ currentRoles, isTeamAdmin, memberName, onSave, onClose }: RoleSelectorProps) {
   const initialPrimary = currentRoles.includes("drive-team")
     ? "drive-team"
     : currentRoles.includes("pit-team")
@@ -31,7 +32,10 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, onSave, onClos
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-xl w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between mb-4 px-6 pt-6">
-          <h2 className="text-xl font-bold">Change Roles</h2>
+          <div>
+            <h2 className="text-xl font-bold">Change Roles</h2>
+            {memberName ? <p className="text-sm text-gray-600 mt-1">{memberName}</p> : null}
+          </div>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
             <X size={20} />
           </button>

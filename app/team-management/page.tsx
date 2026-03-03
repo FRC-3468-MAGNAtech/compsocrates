@@ -419,6 +419,7 @@ function TeamManagementContent() {
             <RoleSelector
               currentRoles={getMemberRoles(selectedMember)}
               isTeamAdmin={selectedMember.isTeamAdmin}
+              memberName={selectedMember.displayName}
               onSave={(roles, memberIsAdmin) => void handleUpdateRole(selectedMember.uid, roles, memberIsAdmin)}
               onClose={() => {
                 setShowRoleSelector(false);
