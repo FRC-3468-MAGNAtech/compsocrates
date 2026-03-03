@@ -349,14 +349,14 @@ function TeamBreakdownContent() {
                       Team {row.teamNumber}
                     </Link>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{teamNameByNumber[row.teamNumber] || "-"}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{teamNameByNumber[row.teamNumber] || `Team ${row.teamNumber}`}</td>
                   <td className="px-6 py-4">{row.avgScore === null ? "-" : row.avgScore}</td>
                   <td className="px-6 py-4">{row.matches}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {row.lastSeen > 0 ? new Date(row.lastSeen).toLocaleString() : "-"}
                   </td>
                   <td className="px-6 py-4 text-sm">
-                    {row.preferredEventKey ? (
+                    {row.preferredEventKey && teamNameByNumber[row.teamNumber] ? (
                       <Link
                         href={`/event-details/${row.preferredEventKey}?tab=teams&team=${row.teamNumber}`}
                         className="text-blue-700 hover:underline"

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
@@ -428,10 +429,20 @@ function EventDetailsContent() {
                         <tr
                           key={team.teamNumber}
                           id={`team-${team.teamNumber}`}
-                          className={`hover:bg-gray-50 ${highlightedTeam === team.teamNumber ? "bg-yellow-100" : ""}`}
+                          className={`hover:bg-gray-50 ${
+                            highlightedTeam === team.teamNumber ? "bg-yellow-200 text-gray-900" : ""
+                          }`}
                         >
-                          <td className="px-4 py-2 border-b font-semibold">{team.teamNumber}</td>
-                          <td className="px-4 py-2 border-b">{team.nameShort}</td>
+                          <td className="px-4 py-2 border-b font-semibold">
+                            <Link href={`/analytics/team-breakdown/${team.teamNumber}`} className="hover:underline">
+                              {team.teamNumber}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-2 border-b">
+                            <Link href={`/analytics/team-breakdown/${team.teamNumber}`} className="hover:underline">
+                              {team.nameShort}
+                            </Link>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

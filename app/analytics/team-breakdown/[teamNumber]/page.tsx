@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -17,6 +18,7 @@ import {
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { getTeamEvents } from "@/app/utils/tba-api";
+import { dedupeEventKeys } from "@/app/utils/events";
 
 type ScoutingEntry = {
   eventKey?: string;
@@ -119,6 +121,44 @@ type DriveEntry = {
   }>;
 };
 
+type StatboticsEpa = {
+  total_points?: { mean?: number };
+  breakdown?: Record<string, number>;
+  ranks?: {
+    total?: {
+      rank?: number;
+      percentile?: number;
+      team_count?: number;
+    };
+  };
+};
+
+type StatboticsRecord = {
+  wins?: number;
+  losses?: number;
+  ties?: number;
+  count?: number;
+  winrate?: number;
+};
+
+type StatboticsTeamYear = {
+  name?: string;
+  epa?: StatboticsEpa;
+  record?: StatboticsRecord;
+};
+
+type StatboticsTeamEvent = {
+  event_name?: string;
+  epa?: StatboticsEpa;
+  record?: {
+    qual?: {
+      rank?: number;
+      num_teams?: number;
+    };
+    total?: StatboticsRecord;
+  };
+};
+
 function normalizeTeam(input: unknown) {
   return String(input || "").replace(/[^\d]/g, "");
 }
@@ -163,6 +203,26 @@ function percentTrue(values: Array<boolean | undefined | null>) {
 function displayNumber(value: number | null, digits = 1) {
   if (value === null || !Number.isFinite(value)) return "-";
   return value.toFixed(digits);
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function asPercent(value: unknown, digits = 1) {
+  const numeric = asFiniteNumber(value);
+  if (numeric === null) return "-";
+  return `${(numeric * 100).toFixed(digits)}%`;
+}
+
+function formatRecord(record?: StatboticsRecord | null) {
+  if (!record) return "-";
+  const wins = Number(record.wins || 0);
+  const losses = Number(record.losses || 0);
+  const ties = Number(record.ties || 0);
+  if (wins + losses + ties <= 0) return "-";
+  return `${wins}-${losses}-${ties}`;
 }
 
 function yesNo(value: boolean | null) {
@@ -218,6 +278,7 @@ function getFirstEventCodeFromTbaKey(key: string): string {
 
 function TeamBreakdownDetailContent() {
   const params = useParams<{ teamNumber: string }>();
+  const { userData } = useAuth();
   const teamNumber = normalizeTeam(params?.teamNumber);
   const [scoutingEntries, setScoutingEntries] = useState<ScoutingEntry[]>([]);
   const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
@@ -227,7 +288,13 @@ function TeamBreakdownDetailContent() {
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [knownTeamEvents, setKnownTeamEvents] = useState<Array<{ key: string; name: string; start_date?: string }>>([]);
+  const [selectedTeamEvents, setSelectedTeamEvents] = useState<string[]>([]);
   const [teamDisplayName, setTeamDisplayName] = useState("");
+  const [summaryTab, setSummaryTab] = useState<"matchScouted" | "statbotics">("matchScouted");
+  const [statboticsTeamYear, setStatboticsTeamYear] = useState<StatboticsTeamYear | null>(null);
+  const [statboticsTeamEvent, setStatboticsTeamEvent] = useState<StatboticsTeamEvent | null>(null);
+  const [statboticsLoading, setStatboticsLoading] = useState(false);
+  const [statboticsError, setStatboticsError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -292,6 +359,30 @@ function TeamBreakdownDetailContent() {
     }
     void loadTeamEvents();
   }, [teamNumber]);
+
+  useEffect(() => {
+    async function loadSelectedTeamEvents() {
+      if (!userData?.teamId) {
+        setSelectedTeamEvents([]);
+        return;
+      }
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (!teamDoc.exists()) {
+          setSelectedTeamEvents([]);
+          return;
+        }
+        const raw = teamDoc.data().selectedEvents;
+        const selected = Array.isArray(raw)
+          ? dedupeEventKeys(raw.map((value: unknown) => String(value || "").trim()).filter(Boolean))
+          : [];
+        setSelectedTeamEvents(selected);
+      } catch {
+        setSelectedTeamEvents([]);
+      }
+    }
+    void loadSelectedTeamEvents();
+  }, [userData?.teamId]);
 
   useEffect(() => {
     async function loadTeamName() {
@@ -506,8 +597,71 @@ function TeamBreakdownDetailContent() {
       if (!event.key) return;
       if (!merged.has(event.key)) merged.set(event.key, event.name || event.key);
     });
-    return Array.from(merged.entries()).map(([key, name]) => ({ key, name }));
-  }, [teamScoutingAll, pitEntries, strategyEntries, driveEntries, teamNumber, knownTeamEvents, selectedGame, isReefscape]);
+    const selectedEventSet = new Set(selectedTeamEvents.map((value) => String(value || "").trim()).filter(Boolean));
+    return Array.from(merged.entries())
+      .map(([key, name]) => ({ key, name, isCommon: selectedEventSet.has(key) }))
+      .sort((a, b) => {
+        if (a.isCommon !== b.isCommon) return a.isCommon ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [teamScoutingAll, pitEntries, strategyEntries, driveEntries, teamNumber, knownTeamEvents, selectedGame, isReefscape, selectedTeamEvents]);
+
+  const statboticsYear = useMemo(() => {
+    const preferred = selectedEvent !== "all" ? Number(selectedEvent.slice(0, 4)) : NaN;
+    if (Number.isFinite(preferred) && preferred > 2000) return preferred;
+    const fromKnown = knownEvents
+      .map((event) => Number(String(event.key || "").slice(0, 4)))
+      .find((year) => Number.isFinite(year) && year > 2000);
+    if (Number.isFinite(fromKnown)) return fromKnown as number;
+    return new Date().getFullYear();
+  }, [selectedEvent, knownEvents]);
+
+  useEffect(() => {
+    async function loadStatbotics() {
+      if (!teamNumber) {
+        setStatboticsTeamYear(null);
+        setStatboticsTeamEvent(null);
+        setStatboticsError("");
+        return;
+      }
+      setStatboticsLoading(true);
+      setStatboticsError("");
+      try {
+        const params = new URLSearchParams({
+          teamNumber,
+          year: String(statboticsYear),
+        });
+        if (selectedEvent !== "all") params.set("eventKey", selectedEvent);
+        const response = await fetch(`/api/statbotics/team?${params.toString()}`);
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          teamYear?: StatboticsTeamYear;
+          teamEvent?: StatboticsTeamEvent;
+        };
+        if (!response.ok) {
+          setStatboticsTeamYear(null);
+          setStatboticsTeamEvent(null);
+          setStatboticsError(payload.error || `Unable to load Statbotics (${response.status})`);
+          return;
+        }
+        setStatboticsTeamYear(payload.teamYear || null);
+        setStatboticsTeamEvent(payload.teamEvent || null);
+      } catch {
+        setStatboticsTeamYear(null);
+        setStatboticsTeamEvent(null);
+        setStatboticsError("Unable to load Statbotics right now.");
+      } finally {
+        setStatboticsLoading(false);
+      }
+    }
+    void loadStatbotics();
+  }, [teamNumber, statboticsYear, selectedEvent]);
+
+  useEffect(() => {
+    if (teamDisplayName) return;
+    const fallback = String(statboticsTeamYear?.name || "").trim();
+    if (fallback) setTeamDisplayName(fallback);
+  }, [teamDisplayName, statboticsTeamYear]);
 
   const pastEvents = useMemo(() => {
     const byEvent = new Map<string, { count: number; totalScore: number }>();
@@ -593,30 +747,92 @@ function TeamBreakdownDetailContent() {
           </div>
 
           <div className="bg-white rounded-xl shadow p-5" data-analytics-search-item="true">
-            <h2 className="text-xl font-semibold mb-3">Match-Scouted Averages In Event</h2>
-            {isReefscape ? (
-              <div className="grid md:grid-cols-3 gap-3 text-sm">
-                <p>
-                  Avg Match Score:{" "}
-                  <span className="font-semibold">
-                    {displayNumber(avg(teamScoutingFiltered.map((entry) => scoreEntry(entry, selectedGame))), 2)}
-                  </span>
-                </p>
-                <p>Avg Auto L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoCoralL4))))}</span></p>
-                <p>Avg Teleop L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL4))))}</span></p>
-                <p>Avg Auto Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoAlgaeProcessorScored))))}</span></p>
-                <p>Avg Teleop Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopProcessorScored))))}</span></p>
-                <p>Avg Penalty Points: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.penaltyPoints))))}</span></p>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setSummaryTab("matchScouted")}
+                  className={`px-3 py-2 text-sm font-medium ${summaryTab === "matchScouted" ? "bg-gray-100" : "bg-white hover:bg-gray-50"}`}
+                >
+                  Match-Scouted
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSummaryTab("statbotics")}
+                  className={`px-3 py-2 text-sm font-medium border-l border-gray-300 ${summaryTab === "statbotics" ? "bg-gray-100" : "bg-white hover:bg-gray-50"}`}
+                >
+                  Statbotics
+                </button>
               </div>
+              {summaryTab === "statbotics" && (
+                <p className="text-xs text-gray-500">
+                  Source: <a href="https://www.statbotics.io/" target="_blank" rel="noreferrer" className="underline">Statbotics</a> (api.statbotics.io)
+                </p>
+              )}
+            </div>
+            {summaryTab === "matchScouted" ? (
+              isReefscape ? (
+                <div className="grid md:grid-cols-3 gap-3 text-sm">
+                  <p>
+                    Avg Match Score:{" "}
+                    <span className="font-semibold">
+                      {displayNumber(avg(teamScoutingFiltered.map((entry) => scoreEntry(entry, selectedGame))), 2)}
+                    </span>
+                  </p>
+                  <p>Avg Auto L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoCoralL4))))}</span></p>
+                  <p>Avg Teleop L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL4))))}</span></p>
+                  <p>Avg Auto Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoAlgaeProcessorScored))))}</span></p>
+                  <p>Avg Teleop Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopProcessorScored))))}</span></p>
+                  <p>Avg Penalty Points: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.penaltyPoints))))}</span></p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-3 gap-3 text-sm">
+                  <p>Auto Preload Scale: <span className="font-semibold">{displayNumber(matchAverages.preloadScale)}</span></p>
+                  <p>Auto BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.autoBpsScale)}</span></p>
+                  <p>Auto Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.autoCarryScale)}</span></p>
+                  <p>Teleop BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.teleBpsScale)}</span></p>
+                  <p>Teleop Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.teleCarryScale)}</span></p>
+                  <p>Avg Auto Fuel: <span className="font-semibold">{displayNumber(matchAverages.autoFuel)}</span></p>
+                  <p>Avg Teleop Fuel: <span className="font-semibold">{displayNumber(matchAverages.teleFuel)}</span></p>
+                </div>
+              )
+            ) : statboticsLoading ? (
+              <p className="text-sm text-gray-600">Loading Statbotics data...</p>
+            ) : statboticsError ? (
+              <p className="text-sm text-red-600">{statboticsError}</p>
             ) : (
-              <div className="grid md:grid-cols-3 gap-3 text-sm">
-                <p>Auto Preload Scale: <span className="font-semibold">{displayNumber(matchAverages.preloadScale)}</span></p>
-                <p>Auto BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.autoBpsScale)}</span></p>
-                <p>Auto Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.autoCarryScale)}</span></p>
-                <p>Teleop BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.teleBpsScale)}</span></p>
-                <p>Teleop Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.teleCarryScale)}</span></p>
-                <p>Avg Auto Fuel: <span className="font-semibold">{displayNumber(matchAverages.autoFuel)}</span></p>
-                <p>Avg Teleop Fuel: <span className="font-semibold">{displayNumber(matchAverages.teleFuel)}</span></p>
+              <div className="space-y-4 text-sm">
+                <div className="grid md:grid-cols-3 gap-3">
+                  <p>Season EPA (Points): <span className="font-semibold">{displayNumber(asFiniteNumber(statboticsTeamYear?.epa?.total_points?.mean), 2)}</span></p>
+                  <p>Season Record: <span className="font-semibold">{formatRecord(statboticsTeamYear?.record)}</span></p>
+                  <p>Season Win Rate: <span className="font-semibold">{asPercent(statboticsTeamYear?.record?.winrate)}</span></p>
+                  <p>
+                    Global Rank:{" "}
+                    <span className="font-semibold">
+                      {statboticsTeamYear?.epa?.ranks?.total?.rank && statboticsTeamYear?.epa?.ranks?.total?.team_count
+                        ? `${statboticsTeamYear.epa.ranks.total.rank}/${statboticsTeamYear.epa.ranks.total.team_count}`
+                        : "-"}
+                    </span>
+                  </p>
+                  <p>Global Percentile: <span className="font-semibold">{asPercent(statboticsTeamYear?.epa?.ranks?.total?.percentile)}</span></p>
+                  <p>Auto / Teleop / Endgame EPA: <span className="font-semibold">{`${displayNumber(asFiniteNumber(statboticsTeamYear?.epa?.breakdown?.auto_points), 2)} / ${displayNumber(asFiniteNumber(statboticsTeamYear?.epa?.breakdown?.teleop_points), 2)} / ${displayNumber(asFiniteNumber(statboticsTeamYear?.epa?.breakdown?.endgame_points), 2)}`}</span></p>
+                </div>
+                {selectedEvent !== "all" && statboticsTeamEvent && (
+                  <div className="pt-3 border-t border-gray-200 grid md:grid-cols-3 gap-3">
+                    <p>Event: <span className="font-semibold">{statboticsTeamEvent.event_name || selectedEvent}</span></p>
+                    <p>Event EPA (Points): <span className="font-semibold">{displayNumber(asFiniteNumber(statboticsTeamEvent.epa?.total_points?.mean), 2)}</span></p>
+                    <p>Event Record: <span className="font-semibold">{formatRecord(statboticsTeamEvent.record?.total)}</span></p>
+                    <p>
+                      Event Qual Rank:{" "}
+                      <span className="font-semibold">
+                        {statboticsTeamEvent.record?.qual?.rank && statboticsTeamEvent.record?.qual?.num_teams
+                          ? `${statboticsTeamEvent.record.qual.rank}/${statboticsTeamEvent.record.qual.num_teams}`
+                          : "-"}
+                      </span>
+                    </p>
+                    <p>Event Auto / Teleop / Endgame EPA: <span className="font-semibold">{`${displayNumber(asFiniteNumber(statboticsTeamEvent.epa?.breakdown?.auto_points), 2)} / ${displayNumber(asFiniteNumber(statboticsTeamEvent.epa?.breakdown?.teleop_points), 2)} / ${displayNumber(asFiniteNumber(statboticsTeamEvent.epa?.breakdown?.endgame_points), 2)}`}</span></p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -771,7 +987,12 @@ function TeamBreakdownDetailContent() {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {knownEvents.map((event) => (
-                  <span key={event.key} className="px-3 py-1 rounded border bg-gray-50 text-sm">
+                  <span
+                    key={event.key}
+                    className={`px-3 py-1 rounded border text-sm ${
+                      event.isCommon ? "bg-green-100 border-green-300 text-green-900" : "bg-gray-50"
+                    }`}
+                  >
                     {event.name}
                   </span>
                 ))}
