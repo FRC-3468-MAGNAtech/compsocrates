@@ -24,13 +24,15 @@ export async function GET(request: NextRequest) {
     const teamEvent = eventResponse && eventResponse.ok ? await eventResponse.json() : null;
 
     if (!teamYear) {
-      return NextResponse.json(
-        { error: `Unable to load Statbotics team-year data (${yearResponse.status})` },
-        { status: 502 }
-      );
+      return NextResponse.json({
+        teamYear: null,
+        teamEvent,
+        unavailable: true,
+        upstreamStatus: yearResponse.status,
+      });
     }
 
-    return NextResponse.json({ teamYear, teamEvent });
+    return NextResponse.json({ teamYear, teamEvent, unavailable: false });
   } catch (error) {
     console.error("Failed to fetch Statbotics data:", error);
     return NextResponse.json({ error: "Unable to fetch Statbotics data" }, { status: 500 });

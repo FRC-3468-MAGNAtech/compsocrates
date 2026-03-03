@@ -293,6 +293,7 @@ function TeamBreakdownDetailContent() {
   const [summaryTab, setSummaryTab] = useState<"matchScouted" | "statbotics">("matchScouted");
   const [statboticsTeamYear, setStatboticsTeamYear] = useState<StatboticsTeamYear | null>(null);
   const [statboticsTeamEvent, setStatboticsTeamEvent] = useState<StatboticsTeamEvent | null>(null);
+  const [statboticsUnavailable, setStatboticsUnavailable] = useState(false);
   const [statboticsLoading, setStatboticsLoading] = useState(false);
   const [statboticsError, setStatboticsError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -621,10 +622,12 @@ function TeamBreakdownDetailContent() {
       if (!teamNumber) {
         setStatboticsTeamYear(null);
         setStatboticsTeamEvent(null);
+        setStatboticsUnavailable(false);
         setStatboticsError("");
         return;
       }
       setStatboticsLoading(true);
+      setStatboticsUnavailable(false);
       setStatboticsError("");
       try {
         const params = new URLSearchParams({
@@ -637,18 +640,23 @@ function TeamBreakdownDetailContent() {
           error?: string;
           teamYear?: StatboticsTeamYear;
           teamEvent?: StatboticsTeamEvent;
+          unavailable?: boolean;
+          upstreamStatus?: number;
         };
         if (!response.ok) {
           setStatboticsTeamYear(null);
           setStatboticsTeamEvent(null);
+          setStatboticsUnavailable(false);
           setStatboticsError(payload.error || `Unable to load Statbotics (${response.status})`);
           return;
         }
+        setStatboticsUnavailable(Boolean(payload.unavailable));
         setStatboticsTeamYear(payload.teamYear || null);
         setStatboticsTeamEvent(payload.teamEvent || null);
       } catch {
         setStatboticsTeamYear(null);
         setStatboticsTeamEvent(null);
+        setStatboticsUnavailable(false);
         setStatboticsError("Unable to load Statbotics right now.");
       } finally {
         setStatboticsLoading(false);
@@ -747,23 +755,31 @@ function TeamBreakdownDetailContent() {
           </div>
 
           <div className="bg-white rounded-xl shadow p-5" data-analytics-search-item="true">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-              <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setSummaryTab("matchScouted")}
-                  className={`px-3 py-2 text-sm font-medium ${summaryTab === "matchScouted" ? "bg-gray-100" : "bg-white hover:bg-gray-50"}`}
-                >
-                  Match-Scouted
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSummaryTab("statbotics")}
-                  className={`px-3 py-2 text-sm font-medium border-l border-gray-300 ${summaryTab === "statbotics" ? "bg-gray-100" : "bg-white hover:bg-gray-50"}`}
-                >
-                  Statbotics
-                </button>
-              </div>
+            <div className="bg-white rounded-xl shadow-md p-2 mb-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSummaryTab("matchScouted")}
+                className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                  summaryTab === "matchScouted"
+                    ? "bg-red-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                Match-Scouted
+              </button>
+              <button
+                type="button"
+                onClick={() => setSummaryTab("statbotics")}
+                className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                  summaryTab === "statbotics"
+                    ? "bg-red-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                Statbotics
+              </button>
+            </div>
+            <div className="flex justify-end mb-3">
               {summaryTab === "statbotics" && (
                 <p className="text-xs text-gray-500">
                   Source: <a href="https://www.statbotics.io/" target="_blank" rel="noreferrer" className="underline">Statbotics</a> (api.statbotics.io)
@@ -798,6 +814,8 @@ function TeamBreakdownDetailContent() {
               )
             ) : statboticsLoading ? (
               <p className="text-sm text-gray-600">Loading Statbotics data...</p>
+            ) : statboticsUnavailable ? (
+              <p className="text-sm text-gray-600">Statbotics does not currently have data available for this team/year.</p>
             ) : statboticsError ? (
               <p className="text-sm text-red-600">{statboticsError}</p>
             ) : (
