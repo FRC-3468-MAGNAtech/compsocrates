@@ -221,6 +221,8 @@ type LivePracticeLobby = {
   playersByUid?: Record<string, { name?: string; joinedAt?: number }>;
 };
 
+type LivePracticeLobbyStorage = Omit<LivePracticeLobby, "id"> & { id?: string };
+
 type PracticeSelectorOption = ReefscapeMatchOption & {
   sourceId: string;
   progress: CandidatePracticeMatch["progress"];
@@ -872,6 +874,7 @@ function PracticeScoutingContent() {
   const [liveLobbyCodeInput, setLiveLobbyCodeInput] = useState("");
   const [liveLobby, setLiveLobby] = useState<LivePracticeLobby | null>(null);
   const [liveLobbyBusy, setLiveLobbyBusy] = useState(false);
+  const [liveLobbyError, setLiveLobbyError] = useState("");
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
@@ -910,6 +913,40 @@ function PracticeScoutingContent() {
   const liveLobbyPlayerCount = liveLobbyPlayers.length;
   const liveLobbyCanStart = liveLobbyPlayerCount > 0 && liveLobbyPlayerCount % 3 === 0;
   const userIsLiveLobbyHost = Boolean(liveLobby && userData?.uid && liveLobby.hostId === userData.uid);
+
+  function getLocalLobbyStore() {
+    if (typeof window === "undefined") return {} as Record<string, LivePracticeLobbyStorage>;
+    try {
+      const raw = localStorage.getItem("practice-live-lobbies");
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, LivePracticeLobbyStorage>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function setLocalLobbyStore(store: Record<string, LivePracticeLobbyStorage>) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("practice-live-lobbies", JSON.stringify(store));
+  }
+
+  function upsertLocalLobby(code: string, lobby: LivePracticeLobbyStorage) {
+    const store = getLocalLobbyStore();
+    store[code] = lobby;
+    setLocalLobbyStore(store);
+  }
+
+  function readLocalLobby(code: string) {
+    const store = getLocalLobbyStore();
+    return store[code] || null;
+  }
+
+  function removeLocalLobby(code: string) {
+    const store = getLocalLobbyStore();
+    delete store[code];
+    setLocalLobbyStore(store);
+  }
 
   useEffect(() => {
     async function loadTeamEventCatalog() {
@@ -986,6 +1023,7 @@ function PracticeScoutingContent() {
   async function createLiveLobby() {
     if (!userData?.uid || !selectedMode || !activeMatchGame) return;
     setLiveLobbyBusy(true);
+    setLiveLobbyError("");
     try {
       let code = createLobbyCode();
       const payload: Omit<LivePracticeLobby, "id"> = {
@@ -1015,7 +1053,10 @@ function PracticeScoutingContent() {
         console.warn("Cloud live lobby unavailable; falling back to local lobby.", cloudError);
         const localId = `local:${Date.now()}`;
         setLiveLobbyId(localId);
-        setLiveLobby({ id: localId, ...payload });
+        const localLobby = { id: localId, ...payload };
+        setLiveLobby(localLobby);
+        upsertLocalLobby(code, localLobby);
+        setLiveLobbyError("Cloud lobby storage is unavailable. This lobby is local-only (same browser/device).");
       }
     } catch (error) {
       console.error("Failed creating live lobby:", error);
@@ -1033,7 +1074,26 @@ function PracticeScoutingContent() {
       return;
     }
     setLiveLobbyBusy(true);
+    setLiveLobbyError("");
     try {
+      const localLobby = readLocalLobby(code);
+      if (localLobby) {
+        const localId = String(localLobby.id || `local:${Date.now()}`);
+        const joinedLobby: LivePracticeLobby = {
+          ...localLobby,
+          id: localId,
+          playersByUid: {
+            ...(localLobby.playersByUid || {}),
+            [userData.uid]: { name: userData.displayName || "Player", joinedAt: Date.now() },
+          },
+        };
+        setLiveLobby(joinedLobby);
+        setLiveLobbyId(localId);
+        setActiveMatchGame(joinedLobby.game);
+        setSelectedMode(joinedLobby.mode);
+        upsertLocalLobby(code, joinedLobby);
+        return;
+      }
       if (liveLobbyId.startsWith("local:") && liveLobby && liveLobby.code === code) {
         const joined = {
           ...liveLobby,
@@ -1072,7 +1132,11 @@ function PracticeScoutingContent() {
       setLiveLobbyId(lobbyDoc.id);
     } catch (error) {
       console.error("Failed joining live lobby:", error);
-      alert("Could not join lobby.");
+      const codeValue = (error as { code?: string })?.code || "";
+      if (String(codeValue).toLowerCase().includes("permission")) {
+        setLiveLobbyError("Join blocked by Firestore permissions for live lobbies in this deployment.");
+      }
+      alert(`Could not join lobby${codeValue ? ` (${codeValue})` : ""}.`);
     } finally {
       setLiveLobbyBusy(false);
     }
@@ -1084,13 +1148,16 @@ function PracticeScoutingContent() {
     try {
       if (liveLobby.id.startsWith("local:")) {
         if (userIsLiveLobbyHost) {
+          removeLocalLobby(liveLobby.code);
           setLiveLobby(null);
           setLiveLobbyId("");
           return;
         }
         const nextPlayers = { ...(liveLobby.playersByUid || {}) };
         delete nextPlayers[userData.uid];
-        setLiveLobby({ ...liveLobby, playersByUid: nextPlayers });
+        const nextLobby = { ...liveLobby, playersByUid: nextPlayers };
+        setLiveLobby(nextLobby);
+        upsertLocalLobby(liveLobby.code, nextLobby);
         return;
       }
       if (userIsLiveLobbyHost) {
@@ -2510,6 +2577,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                           Join Lobby
                         </button>
                       </div>
+                      {liveLobbyError && <p className="text-sm text-amber-700">{liveLobbyError}</p>}
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -2518,9 +2586,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         <span className="font-semibold">Game:</span> {liveLobby.game} •{" "}
                         <span className="font-semibold">Mode:</span> {liveLobby.mode}
                       </p>
-                      <div className="rounded border p-3 bg-white/80">
-                        <p className="text-sm font-semibold mb-2">Players ({liveLobbyPlayerCount})</p>
-                        <div className="grid sm:grid-cols-2 gap-1 text-sm">
+                      {liveLobby.id.startsWith("local:") && (
+                        <p className="text-xs text-amber-700">Local-only lobby fallback (same browser/device).</p>
+                      )}
+                      <div className="rounded border border-gray-300 p-3 bg-gray-50 text-gray-900">
+                        <p className="text-sm font-semibold mb-2 text-gray-900">Players ({liveLobbyPlayerCount})</p>
+                        <div className="grid sm:grid-cols-2 gap-1 text-sm text-gray-900">
                           {liveLobbyPlayers.map((player) => (
                             <p key={player.uid}>
                               {player.name}
