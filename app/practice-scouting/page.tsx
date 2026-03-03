@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
@@ -948,6 +949,15 @@ function PracticeScoutingContent() {
     setLocalLobbyStore(store);
   }
 
+  async function authHeaders(extra: HeadersInit = {}) {
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) return extra;
+    return {
+      ...extra,
+      Authorization: `Bearer ${token}`,
+    } as HeadersInit;
+  }
+
   useEffect(() => {
     async function loadTeamEventCatalog() {
       if (!userData?.teamId) {
@@ -987,7 +997,9 @@ function PracticeScoutingContent() {
     let cancelled = false;
     const loadLobby = async () => {
       try {
+        const headers = await authHeaders();
         const response = await fetch(`/api/live-lobbies?code=${encodeURIComponent(liveLobby.code)}`, {
+          headers,
           cache: "no-store",
         });
         if (!response.ok) {
@@ -1046,9 +1058,10 @@ function PracticeScoutingContent() {
       try {
         let createdLobby: LivePracticeLobby | null = null;
         for (let attempt = 0; attempt < 6; attempt += 1) {
+          const headers = await authHeaders({ "Content-Type": "application/json" });
           const response = await fetch("/api/live-lobbies", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({
               action: "create",
               code,
@@ -1130,7 +1143,7 @@ function PracticeScoutingContent() {
       }
       const response = await fetch("/api/live-lobbies", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           action: "join",
           code,
@@ -1186,7 +1199,7 @@ function PracticeScoutingContent() {
       }
       const response = await fetch("/api/live-lobbies", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           action: "leave",
           code: liveLobby.code,
@@ -1221,7 +1234,7 @@ function PracticeScoutingContent() {
       }
       const response = await fetch("/api/live-lobbies", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           action: "start",
           code: liveLobby.code,

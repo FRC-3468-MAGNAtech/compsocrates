@@ -71,6 +71,12 @@ async function fetchIdToken() {
   return String(payload.idToken || "");
 }
 
+function readBearerToken(request: NextRequest) {
+  const raw = String(request.headers.get("authorization") || "");
+  if (!raw.toLowerCase().startsWith("bearer ")) return "";
+  return raw.slice(7).trim();
+}
+
 function headersFor(idToken: string): HeadersInit {
   return {
     Authorization: `Bearer ${idToken}`,
@@ -170,7 +176,9 @@ export async function GET(request: NextRequest) {
 
     const projectId = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
     const apiKey = String(process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "").trim();
-    const idToken = await fetchIdToken();
+    const callerToken = readBearerToken(request);
+    const serverToken = await fetchIdToken();
+    const idToken = callerToken || serverToken;
     if (!projectId || !idToken) return NextResponse.json({ error: "Missing Firebase server credentials" }, { status: 500 });
 
     const lobby = await queryLobbyByCode(projectId, apiKey, idToken, code);
@@ -188,7 +196,9 @@ export async function POST(request: NextRequest) {
     const action = String(body.action || "").trim().toLowerCase();
     const projectId = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
     const apiKey = String(process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "").trim();
-    const idToken = await fetchIdToken();
+    const callerToken = readBearerToken(request);
+    const serverToken = await fetchIdToken();
+    const idToken = callerToken || serverToken;
     if (!projectId || !idToken) return NextResponse.json({ error: "Missing Firebase server credentials" }, { status: 500 });
 
     if (action === "create") {
