@@ -56,6 +56,8 @@ type ScoutingEntry = {
   };
   matchId?: string;
   matchNumber?: string | number;
+  startingPosition?: string;
+  stageStatus?: string;
   isPracticeScouting?: boolean;
   practiceMode?: string;
   practiceSessionId?: string;
@@ -66,6 +68,22 @@ type PitEntry = {
   game?: string;
   teamNumber?: string;
   createdAt?: number;
+  pitDisposition?: boolean;
+  driveDisposition?: boolean;
+  collectCoralStation?: boolean;
+  collectCoralGround?: boolean;
+  coralL1?: boolean;
+  coralL2?: boolean;
+  coralL3?: boolean;
+  coralL4?: boolean;
+  collectAlgaeReef?: boolean;
+  collectAlgaeGround?: boolean;
+  scoreProcessor?: boolean;
+  scoreNetRobot?: boolean;
+  bargeCapability?: string;
+  startingOpposite?: boolean;
+  startingMiddle?: boolean;
+  startingProcessor?: boolean;
   fuelPreloadCapacity?: string | number;
   fuelBallsPerSecond?: string | number;
   fuelCarryingCapacity?: string | number;
@@ -145,6 +163,11 @@ function percentTrue(values: Array<boolean | undefined | null>) {
 function displayNumber(value: number | null, digits = 1) {
   if (value === null || !Number.isFinite(value)) return "-";
   return value.toFixed(digits);
+}
+
+function yesNo(value: boolean | null) {
+  if (value === null) return "-";
+  return value ? "Yes" : "No";
 }
 
 function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
@@ -322,6 +345,44 @@ function TeamBreakdownDetailContent() {
     if (!pitLatest) return "-";
     return String(pitLatest.robotName || pitLatest.robotNickname || pitLatest.robot || pitLatest.botName || "").trim() || "-";
   }, [pitLatest]);
+
+  const reefscapePitSummary = useMemo(() => {
+    if (!isReefscape || teamPitFiltered.length === 0) {
+      return {
+        coralL1: null as boolean | null,
+        coralL2: null as boolean | null,
+        coralL3: null as boolean | null,
+        coralL4: null as boolean | null,
+        scoreProcessor: null as boolean | null,
+        scoreNetRobot: null as boolean | null,
+        startingOpposite: null as boolean | null,
+        startingMiddle: null as boolean | null,
+        startingProcessor: null as boolean | null,
+        pitDisposition: "-",
+        driveDisposition: "-",
+        bargeCapability: "-",
+      };
+    }
+    const anyTrue = (selector: (row: PitEntry) => boolean | undefined) => {
+      const values = teamPitFiltered.map(selector).filter((value): value is boolean => typeof value === "boolean");
+      if (values.length === 0) return null;
+      return values.some(Boolean);
+    };
+    return {
+      coralL1: anyTrue((row) => row.coralL1),
+      coralL2: anyTrue((row) => row.coralL2),
+      coralL3: anyTrue((row) => row.coralL3),
+      coralL4: anyTrue((row) => row.coralL4),
+      scoreProcessor: anyTrue((row) => row.scoreProcessor),
+      scoreNetRobot: anyTrue((row) => row.scoreNetRobot),
+      startingOpposite: anyTrue((row) => row.startingOpposite),
+      startingMiddle: anyTrue((row) => row.startingMiddle),
+      startingProcessor: anyTrue((row) => row.startingProcessor),
+      pitDisposition: percentTrue(teamPitFiltered.map((row) => row.pitDisposition)),
+      driveDisposition: percentTrue(teamPitFiltered.map((row) => row.driveDisposition)),
+      bargeCapability: mode(teamPitFiltered.map((row) => row.bargeCapability)),
+    };
+  }, [isReefscape, teamPitFiltered]);
 
   const matchAverages = useMemo(() => {
     return {
@@ -505,18 +566,43 @@ function TeamBreakdownDetailContent() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 <tr>
-                  <td className="px-3 py-2 font-medium">Preload / BPS / Carry</td>
+                  <td className="px-3 py-2 font-medium">{isReefscape ? "Coral Scoring (L1/L2/L3/L4)" : "Preload / BPS / Carry"}</td>
                   <td className="px-3 py-2 text-sm">
-                    {`${displayNumber(matchAverages.preloadScale)} / ${displayNumber(matchAverages.autoBpsScale)} / ${displayNumber(matchAverages.autoCarryScale)}`}
+                    {isReefscape
+                      ? `${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL1))))} / ${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL2))))} / ${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL3))))} / ${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL4))))}`
+                      : `${displayNumber(matchAverages.preloadScale)} / ${displayNumber(matchAverages.autoBpsScale)} / ${displayNumber(matchAverages.autoCarryScale)}`}
                   </td>
                   <td className="px-3 py-2 text-sm">
-                    {pitLatest
-                      ? `${pitLatest.fuelPreloadCapacity || "-"} / ${pitLatest.fuelBallsPerSecond || "-"} / ${pitLatest.fuelCarryingCapacity || "-"}`
-                      : "-"}
+                    {isReefscape
+                      ? `${yesNo(reefscapePitSummary.coralL1)} / ${yesNo(reefscapePitSummary.coralL2)} / ${yesNo(reefscapePitSummary.coralL3)} / ${yesNo(reefscapePitSummary.coralL4)}`
+                      : pitLatest
+                        ? `${pitLatest.fuelPreloadCapacity || "-"} / ${pitLatest.fuelBallsPerSecond || "-"} / ${pitLatest.fuelCarryingCapacity || "-"}`
+                        : "-"}
                   </td>
                   {!isReefscape && <td className="px-3 py-2 text-sm">-</td>}
                   {!isReefscape && <td className="px-3 py-2 text-sm">-</td>}
                 </tr>
+                {isReefscape && (
+                  <tr>
+                    <td className="px-3 py-2 font-medium">Algae Scoring (Processor / Net)</td>
+                    <td className="px-3 py-2 text-sm">
+                      {`${displayNumber(
+                        avg(
+                          teamScoutingFiltered.map(
+                            (entry) => Number(toNumber(entry.autoAlgaeProcessorScored) || 0) + Number(toNumber(entry.teleopProcessorScored) || 0)
+                          )
+                        )
+                      )} / ${displayNumber(
+                        avg(
+                          teamScoutingFiltered.map(
+                            (entry) => Number(toNumber(entry.teleopNetRobotScored) || 0) + Number(toNumber(entry.teleopNetHumanScored) || 0)
+                          )
+                        )
+                      )}`}
+                    </td>
+                    <td className="px-3 py-2 text-sm">{`${yesNo(reefscapePitSummary.scoreProcessor)} / ${yesNo(reefscapePitSummary.scoreNetRobot)}`}</td>
+                  </tr>
+                )}
                 {!isReefscape && (
                   <tr>
                     <td className="px-3 py-2 font-medium">Starting Position</td>
@@ -551,9 +637,32 @@ function TeamBreakdownDetailContent() {
                 </tr>
                 {isReefscape && (
                   <tr>
+                    <td className="px-3 py-2 font-medium">Starting Position</td>
+                    <td className="px-3 py-2 text-sm">{mode(teamScoutingFiltered.map((entry) => entry.startingPosition))}</td>
+                    <td className="px-3 py-2 text-sm">
+                      {`Opposite:${yesNo(reefscapePitSummary.startingOpposite)} | Middle:${yesNo(reefscapePitSummary.startingMiddle)} | Processor:${yesNo(reefscapePitSummary.startingProcessor)}`}
+                    </td>
+                  </tr>
+                )}
+                {isReefscape && (
+                  <tr>
+                    <td className="px-3 py-2 font-medium">Barge / Endgame</td>
+                    <td className="px-3 py-2 text-sm">{mode(teamScoutingFiltered.map((entry) => entry.stageStatus || entry.endgame?.status))}</td>
+                    <td className="px-3 py-2 text-sm">{reefscapePitSummary.bargeCapability}</td>
+                  </tr>
+                )}
+                {isReefscape && (
+                  <tr>
                     <td className="px-3 py-2 font-medium">Left Starting Zone</td>
                     <td className="px-3 py-2 text-sm">{percentTrue(teamScoutingFiltered.map((entry) => Boolean(entry.leftStartingZone)))}</td>
                     <td className="px-3 py-2 text-sm">-</td>
+                  </tr>
+                )}
+                {isReefscape && (
+                  <tr>
+                    <td className="px-3 py-2 font-medium">Disposition (Pit / Drive)</td>
+                    <td className="px-3 py-2 text-sm">-</td>
+                    <td className="px-3 py-2 text-sm">{`${reefscapePitSummary.pitDisposition} / ${reefscapePitSummary.driveDisposition}`}</td>
                   </tr>
                 )}
               </tbody>
