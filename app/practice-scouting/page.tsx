@@ -1052,10 +1052,12 @@ function PracticeScoutingContent() {
       } catch (cloudError) {
         console.warn("Cloud live lobby unavailable; falling back to local lobby.", cloudError);
         const localId = `local:${Date.now()}`;
+        const localCode = code.startsWith("LOCAL-") ? code : `LOCAL-${code}`;
+        payload.code = localCode;
         setLiveLobbyId(localId);
         const localLobby = { id: localId, ...payload };
         setLiveLobby(localLobby);
-        upsertLocalLobby(code, localLobby);
+        upsertLocalLobby(localCode, localLobby);
         setLiveLobbyError("Cloud lobby storage is unavailable. This lobby is local-only (same browser/device).");
       }
     } catch (error) {
@@ -1076,6 +1078,13 @@ function PracticeScoutingContent() {
     setLiveLobbyBusy(true);
     setLiveLobbyError("");
     try {
+      if (code.startsWith("LOCAL-")) {
+        const localOnly = readLocalLobby(code);
+        if (!localOnly) {
+          setLiveLobbyError("This is a local-only lobby code and can only be joined on the host device/browser.");
+          return;
+        }
+      }
       const localLobby = readLocalLobby(code);
       if (localLobby) {
         const localId = String(localLobby.id || `local:${Date.now()}`);
@@ -1135,8 +1144,9 @@ function PracticeScoutingContent() {
       const codeValue = (error as { code?: string })?.code || "";
       if (String(codeValue).toLowerCase().includes("permission")) {
         setLiveLobbyError("Join blocked by Firestore permissions for live lobbies in this deployment.");
+        return;
       }
-      alert(`Could not join lobby${codeValue ? ` (${codeValue})` : ""}.`);
+      setLiveLobbyError(`Could not join lobby${codeValue ? ` (${codeValue})` : ""}.`);
     } finally {
       setLiveLobbyBusy(false);
     }
@@ -2587,7 +2597,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         <span className="font-semibold">Mode:</span> {liveLobby.mode}
                       </p>
                       {liveLobby.id.startsWith("local:") && (
-                        <p className="text-xs text-amber-700">Local-only lobby fallback (same browser/device).</p>
+                        <p className="text-xs text-amber-700">Local-only lobby fallback (same browser/device). Share code is disabled across different devices.</p>
                       )}
                       <div className="rounded border border-gray-300 p-3 bg-gray-50 text-gray-900">
                         <p className="text-sm font-semibold mb-2 text-gray-900">Players ({liveLobbyPlayerCount})</p>
