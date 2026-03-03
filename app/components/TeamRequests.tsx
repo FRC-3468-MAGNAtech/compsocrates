@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { CheckCircle, XCircle, Clock, Mail } from "lucide-react";
 import { getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
+import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 interface TeamRequest {
   id: string;
@@ -15,6 +16,11 @@ interface TeamRequest {
   status: "pending" | "approved" | "rejected";
   createdAt: number;
 }
+
+type UserLookupRow = {
+  displayName?: string;
+  email?: string;
+};
 
 export default function TeamRequests({ teamId }: { teamId: string }) {
   const [requests, setRequests] = useState<TeamRequest[]>([]);
@@ -33,10 +39,43 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
         where("status", "==", "pending")
       );
       const snapshot = await getDocs(q);
-      const reqs = snapshot.docs.map(doc => ({
+      const mapped = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as TeamRequest[];
+      const userIdsNeedingLookup = Array.from(
+        new Set(
+          mapped
+            .filter((request) => request.userId && (!request.userName || request.userName.startsWith("User ")))
+            .map((request) => String(request.userId || ""))
+            .filter(Boolean)
+        )
+      );
+      const lookup = new Map<string, UserLookupRow>();
+      await Promise.all(
+        userIdsNeedingLookup.map(async (uid) => {
+          try {
+            const userDoc = await getDoc(doc(db, "users", uid));
+            if (!userDoc.exists()) return;
+            lookup.set(uid, userDoc.data() as UserLookupRow);
+          } catch {
+            // Best-effort hydration only.
+          }
+        })
+      );
+      const reqs = mapped.map((request) => {
+        const userRow = lookup.get(String(request.userId || ""));
+        const displayName = String(userRow?.displayName || "").trim();
+        const email = String(userRow?.email || "").trim();
+        return {
+          ...request,
+          userName:
+            request.userName && !String(request.userName).startsWith("User ")
+              ? request.userName
+              : displayName || request.userName,
+          userEmail: request.userEmail || email,
+        };
+      });
       
       setRequests(reqs);
     } catch (error) {
@@ -60,7 +99,7 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
       }
 
       // Add user first; only then mark request approved.
-      await updateDoc(doc(db, "users", targetUserId), {
+      await updateSecureUserDoc(targetUserId, {
         teamId,
         role: resolvedRole,
         roles: [resolvedRole],

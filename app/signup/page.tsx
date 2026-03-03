@@ -84,7 +84,15 @@ async function createTeamJoinRequestWithFallback(input: {
     },
     {
       userId: input.userId,
+      userName: input.userName,
       role: input.requestedRole,
+      teamId: input.teamId,
+      status: "pending",
+      createdAt,
+    },
+    {
+      userId: input.userId,
+      userName: input.userName,
       teamId: input.teamId,
       status: "pending",
       createdAt,

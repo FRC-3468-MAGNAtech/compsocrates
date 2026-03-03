@@ -46,6 +46,11 @@ interface JoinRequest {
   createdAt: number;
 }
 
+type UserLookupRow = {
+  displayName?: string;
+  email?: string;
+};
+
 function TeamManagementContent() {
   const { userData } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -83,7 +88,7 @@ function TeamManagementContent() {
         where("status", "==", "pending")
       );
       const requestsSnap = await getDocs(requestsQuery);
-      const requests = requestsSnap.docs.map((docSnap) => {
+      const mappedRequests = requestsSnap.docs.map((docSnap) => {
         const data = docSnap.data() as Record<string, unknown>;
         const fallbackUserId = String(data.userId || "");
         return {
@@ -97,6 +102,39 @@ function TeamManagementContent() {
           status: String(data.status || "pending"),
           createdAt: typeof data.createdAt === "number" ? data.createdAt : Date.now(),
         } as JoinRequest;
+      });
+      const userIdsNeedingLookup = Array.from(
+        new Set(
+          mappedRequests
+            .filter((request) => request.userId && (!request.userName || request.userName.startsWith("User ")))
+            .map((request) => request.userId)
+        )
+      );
+      const userLookup = new Map<string, UserLookupRow>();
+      await Promise.all(
+        userIdsNeedingLookup.map(async (uid) => {
+          try {
+            const userDoc = await getDoc(doc(db, "users", uid));
+            if (!userDoc.exists()) return;
+            const data = userDoc.data() as UserLookupRow;
+            userLookup.set(uid, data);
+          } catch {
+            // Best-effort hydration; ignore per-user lookup failures.
+          }
+        })
+      );
+      const requests = mappedRequests.map((request) => {
+        const lookup = userLookup.get(request.userId);
+        const displayName = String(lookup?.displayName || "").trim();
+        const email = String(lookup?.email || "").trim();
+        return {
+          ...request,
+          userName:
+            request.userName && !request.userName.startsWith("User ")
+              ? request.userName
+              : displayName || request.userName,
+          userEmail: request.userEmail || email,
+        };
       });
       setJoinRequests(requests);
 
@@ -124,7 +162,7 @@ function TeamManagementContent() {
         return;
       }
 
-      await updateDoc(doc(db, "users", targetUserId), {
+      await updateSecureUserDoc(targetUserId, {
         teamId: request.teamId,
         role: resolvedRole,
         roles: [resolvedRole],

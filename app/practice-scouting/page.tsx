@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { auth } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -1908,6 +1908,65 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return rows;
   }
 
+  async function syncLiveGroupAccuracyToScoutingRows(input: {
+    bundle: LiveMatchBundle;
+    assignments: Record<string, LiveAssignment>;
+    submissions: Record<string, Record<string, unknown>>;
+    groupIndex: number;
+    matchKey: string;
+    matchId: string;
+    matchNumber: string;
+    alliance: "red" | "blue" | "";
+  }) {
+    const { bundle, assignments, submissions, groupIndex, matchKey, matchId, matchNumber, alliance } = input;
+    if (groupIndex < 0) return;
+    if (!matchId && !matchKey) return;
+
+    const groupMembers = Object.entries(assignments)
+      .filter(([, assignment]) => assignment.groupIndex === groupIndex)
+      .map(([uid]) => uid);
+    if (groupMembers.length !== 3) return;
+
+    const board = computeLiveLeaderboardFromLobby(bundle, assignments, submissions);
+    const groupRow = board.find((row) => row.groupIndex === groupIndex);
+    if (!groupRow) return;
+
+    const groupSubmissionCount = Object.entries(submissions).filter(([uid]) => groupMembers.includes(uid)).length;
+    if (groupSubmissionCount < 3) return;
+
+    await Promise.all(
+      groupMembers.map(async (uid) => {
+        try {
+          const scoutRowsSnap = await getDocs(query(collection(db, "scouting"), where("scoutId", "==", uid)));
+          const candidates = scoutRowsSnap.docs
+            .map((docSnap) => ({ id: docSnap.id, data: docSnap.data() as Record<string, unknown> }))
+            .filter((row) => {
+              const data = row.data;
+              if (!data.isLivePracticeScouting) return false;
+              const rowMatchKey = String(data.matchKey || "");
+              const rowMatchId = String(data.matchId || "");
+              const rowMatchNumber = String(data.matchNumber || "");
+              const rowAlliance = normalizeAllianceSide(data.alliance);
+              const matchKeyMatches = Boolean(matchKey) && rowMatchKey === matchKey;
+              const matchIdMatches = Boolean(matchId) && rowMatchId === matchId;
+              const matchNumberMatches = Boolean(matchNumber) && rowMatchNumber === matchNumber;
+              if (!matchKeyMatches && !matchIdMatches && !matchNumberMatches) return false;
+              if (alliance && rowAlliance && rowAlliance !== alliance) return false;
+              return true;
+            })
+            .sort((a, b) => Number(b.data.submittedAt || b.data.timestamp || 0) - Number(a.data.submittedAt || a.data.timestamp || 0));
+          const latest = candidates[0];
+          if (!latest) return;
+          await updateDoc(doc(db, "scouting", latest.id), {
+            accuracy: groupRow.accuracy,
+          });
+        } catch {
+          // Best-effort sync only; keep live flow moving even if one row cannot be updated.
+        }
+      })
+    );
+  }
+
   async function handleChooseLiveMatchClick() {
     if (!liveVideoUrl.trim()) {
       alert("Paste a live video URL first.");
@@ -2497,13 +2556,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       }
 
       if (liveLobby?.code && userData?.uid) {
+        const nextSubmissions = {
+          ...(liveSubmissions || {}),
+          [userData.uid]: { ...submissionPayload, submittedAt: Date.now() },
+        };
         setLiveSubmissions((prev) => ({
           ...prev,
           [userData.uid]: { ...submissionPayload, submittedAt: Date.now() },
         }));
         if (liveLobby.id.startsWith("local:")) {
-          const next = { ...(liveSubmissions || {}) };
-          next[userData.uid] = { ...submissionPayload, submittedAt: Date.now() };
+          const next = { ...nextSubmissions };
           const totalPlayers = Object.keys(liveLobby.playersByUid || {}).length;
           const completed = Object.keys(next).length >= totalPlayers;
           const nextLobby: LivePracticeLobby = {
@@ -2513,6 +2575,19 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           };
           setLiveLobby(nextLobby);
           upsertLocalLobby(liveLobby.code, nextLobby);
+          const myAssignment = liveAssignments[userData.uid];
+          if (myAssignment && liveMatchBundle) {
+            await syncLiveGroupAccuracyToScoutingRows({
+              bundle: liveMatchBundle,
+              assignments: liveAssignments,
+              submissions: next,
+              groupIndex: myAssignment.groupIndex,
+              matchKey: String(currentMatch.matchKey || ""),
+              matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
+              matchNumber: String(currentMatch.matchNumber || ""),
+              alliance,
+            });
+          }
         } else {
           const response = await fetch("/api/live-lobbies", {
             method: "POST",
@@ -2529,7 +2604,23 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             setLiveLobbyError(fail.error || "Could not submit live robot.");
           } else {
             const payload = (await response.json()) as { lobby?: LivePracticeLobby };
-            if (payload.lobby) setLiveLobby(payload.lobby);
+            if (payload.lobby) {
+              setLiveLobby(payload.lobby);
+              const myAssignment = liveAssignments[userData.uid];
+              const parsedSubmissions = parseLobbyJson<Record<string, Record<string, unknown>>>(payload.lobby.submissionsJson, nextSubmissions);
+              if (myAssignment && liveMatchBundle) {
+                await syncLiveGroupAccuracyToScoutingRows({
+                  bundle: liveMatchBundle,
+                  assignments: liveAssignments,
+                  submissions: parsedSubmissions,
+                  groupIndex: myAssignment.groupIndex,
+                  matchKey: String(currentMatch.matchKey || ""),
+                  matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
+                  matchNumber: String(currentMatch.matchNumber || ""),
+                  alliance,
+                });
+              }
+            }
           }
         }
       }
