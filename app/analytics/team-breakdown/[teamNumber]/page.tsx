@@ -205,6 +205,17 @@ function isPastEventKey(eventKey: string, options: AnalyticsEventOption[]) {
   return Number.isFinite(end) && Date.now() > end;
 }
 
+function getFirstEventCodeFromTbaKey(key: string): string {
+  const normalized = String(key || "").toLowerCase();
+  const specialMap: Record<string, string> = {
+    "2026labr": "LAKE",
+    "2025lake": "LAKE",
+  };
+  if (specialMap[normalized]) return specialMap[normalized];
+  const suffix = normalized.slice(4).toUpperCase();
+  return suffix || normalized.toUpperCase();
+}
+
 function TeamBreakdownDetailContent() {
   const params = useParams<{ teamNumber: string }>();
   const teamNumber = normalizeTeam(params?.teamNumber);
@@ -216,6 +227,7 @@ function TeamBreakdownDetailContent() {
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [knownTeamEvents, setKnownTeamEvents] = useState<Array<{ key: string; name: string; start_date?: string }>>([]);
+  const [teamDisplayName, setTeamDisplayName] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -281,6 +293,51 @@ function TeamBreakdownDetailContent() {
     void loadTeamEvents();
   }, [teamNumber]);
 
+  useEffect(() => {
+    async function loadTeamName() {
+      if (!teamNumber) {
+        setTeamDisplayName("");
+        return;
+      }
+      const candidateEventKeys: string[] = [];
+      if (selectedEvent !== "all") candidateEventKeys.push(selectedEvent);
+      knownTeamEvents.forEach((event) => {
+        if (!candidateEventKeys.includes(event.key)) candidateEventKeys.push(event.key);
+      });
+      if (candidateEventKeys.length === 0) {
+        setTeamDisplayName("");
+        return;
+      }
+
+      for (const eventKey of candidateEventKeys) {
+        const year = Number(eventKey.slice(0, 4));
+        const eventCode = getFirstEventCodeFromTbaKey(eventKey);
+        if (!Number.isFinite(year) || !eventCode) continue;
+        try {
+          const response = await fetch("/api/first/teams", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ year, eventCode }),
+          });
+          if (!response.ok) continue;
+          const payload = await response.json();
+          const teams = Array.isArray(payload.teams)
+            ? (payload.teams as Array<{ teamNumber?: number; nameShort?: string }>)
+            : [];
+          const found = teams.find((team) => Number(team.teamNumber || 0) === Number(teamNumber));
+          if (found?.nameShort) {
+            setTeamDisplayName(String(found.nameShort));
+            return;
+          }
+        } catch {
+          // Best-effort only.
+        }
+      }
+      setTeamDisplayName("");
+    }
+    void loadTeamName();
+  }, [teamNumber, selectedEvent, knownTeamEvents]);
+
   const teamScoutingAll = useMemo(
     () => scoutingEntries.filter((entry) => normalizeTeam(entry.teamNumber) === teamNumber),
     [scoutingEntries, teamNumber]
@@ -312,29 +369,32 @@ function TeamBreakdownDetailContent() {
   }, [teamScoutingAll, selectedGame, selectedEvent, practiceMatchesOnly, eventOptions]);
 
   const teamPitFiltered = useMemo(() => {
+    if (practiceMatchesOnly) return [] as PitEntry[];
     return pitEntries.filter((entry) => {
       if (normalizeTeam(entry.teamNumber) !== teamNumber) return false;
       if (String(entry.game || "REEFSCAPE") !== selectedGame) return false;
       if (selectedEvent !== "all" && String(entry.eventKey || "") !== selectedEvent) return false;
       return true;
     });
-  }, [pitEntries, teamNumber, selectedGame, selectedEvent]);
+  }, [pitEntries, teamNumber, selectedGame, selectedEvent, practiceMatchesOnly]);
 
   const teamStrategyFiltered = useMemo(() => {
+    if (practiceMatchesOnly) return [] as StrategyPlanEntry[];
     if (isReefscape) return [] as StrategyPlanEntry[];
     return strategyEntries
       .filter((entry) => String(entry.game || "REBUILT") === selectedGame)
       .filter((entry) => selectedEvent === "all" || String(entry.eventKey || "") === selectedEvent)
       .filter((entry) => Array.isArray(entry.robots) && entry.robots.some((robot) => normalizeTeam(robot.teamNumber) === teamNumber));
-  }, [strategyEntries, selectedGame, selectedEvent, teamNumber, isReefscape]);
+  }, [strategyEntries, selectedGame, selectedEvent, teamNumber, isReefscape, practiceMatchesOnly]);
 
   const teamDriveFiltered = useMemo(() => {
+    if (practiceMatchesOnly) return [] as DriveEntry[];
     if (isReefscape) return [] as DriveEntry[];
     return driveEntries
       .filter((entry) => String(entry.game || "REBUILT") === selectedGame)
       .filter((entry) => selectedEvent === "all" || String(entry.eventKey || "") === selectedEvent)
       .filter((entry) => Array.isArray(entry.robots) && entry.robots.some((robot) => normalizeTeam(robot.teamNumber) === teamNumber));
-  }, [driveEntries, selectedGame, selectedEvent, teamNumber, isReefscape]);
+  }, [driveEntries, selectedGame, selectedEvent, teamNumber, isReefscape, practiceMatchesOnly]);
 
   const pitLatest = useMemo(() => {
     if (teamPitFiltered.length === 0) return null;
@@ -484,7 +544,16 @@ function TeamBreakdownDetailContent() {
         <Link href="/analytics/team-breakdown" className="text-sm text-blue-700 hover:underline">
           Back to Team Breakdown list
         </Link>
-        <h1 className="text-3xl font-bold mt-2 mb-1 theme-text">Team {teamNumber || "Unknown"} Breakdown</h1>
+        <h1 className="text-3xl font-bold mt-2 mb-1 theme-text">
+          Team {teamNumber || "Unknown"}{teamDisplayName ? ` - ${teamDisplayName}` : ""} Breakdown
+        </h1>
+        {selectedEvent !== "all" && (
+          <p className="text-sm mb-1">
+            <Link href={`/event-details/${selectedEvent}?tab=teams&team=${teamNumber}`} className="text-blue-700 hover:underline">
+              Open this team in Event Details
+            </Link>
+          </p>
+        )}
         <p className="text-gray-600">
           {isReefscape
             ? "Reefscape summary using match scout and pit scout data."

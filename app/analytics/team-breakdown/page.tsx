@@ -64,7 +64,19 @@ type TeamSummary = {
   avgScore: number | null;
   matches: number;
   lastSeen: number;
+  preferredEventKey: string;
 };
+
+function getFirstEventCodeFromTbaKey(key: string): string {
+  const normalized = String(key || "").toLowerCase();
+  const specialMap: Record<string, string> = {
+    "2026labr": "LAKE",
+    "2025lake": "LAKE",
+  };
+  if (specialMap[normalized]) return specialMap[normalized];
+  const suffix = normalized.slice(4).toUpperCase();
+  return suffix || normalized.toUpperCase();
+}
 
 function normalizeTeamNumber(value: unknown) {
   return String(value || "").replace(/[^\d]/g, "");
@@ -115,6 +127,7 @@ function TeamBreakdownContent() {
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [teamNameByNumber, setTeamNameByNumber] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -158,30 +171,33 @@ function TeamBreakdownContent() {
   }, [scoutingEntries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const filteredPitEntries = useMemo(() => {
+    if (practiceMatchesOnly) return [] as PitEntry[];
     return pitEntries.filter((entry) => {
       if (gameForAuxEntry(entry.game) !== selectedGame) return false;
       if (selectedEvent !== "all" && String(entry.eventKey || "").trim() !== selectedEvent) return false;
       return true;
     });
-  }, [pitEntries, selectedEvent, selectedGame]);
+  }, [pitEntries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const filteredStrategyEntries = useMemo(() => {
+    if (practiceMatchesOnly) return [] as StrategyOrDriveEntry[];
     if (selectedGame === "REEFSCAPE") return [] as StrategyOrDriveEntry[];
     return strategyEntries.filter((entry) => {
       if (gameForAuxEntry(entry.game) !== selectedGame) return false;
       if (selectedEvent !== "all" && String(entry.eventKey || "").trim() !== selectedEvent) return false;
       return true;
     });
-  }, [strategyEntries, selectedEvent, selectedGame]);
+  }, [strategyEntries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const filteredDriveEntries = useMemo(() => {
+    if (practiceMatchesOnly) return [] as StrategyOrDriveEntry[];
     if (selectedGame === "REEFSCAPE") return [] as StrategyOrDriveEntry[];
     return driveEntries.filter((entry) => {
       if (gameForAuxEntry(entry.game) !== selectedGame) return false;
       if (selectedEvent !== "all" && String(entry.eventKey || "").trim() !== selectedEvent) return false;
       return true;
     });
-  }, [driveEntries, selectedEvent, selectedGame]);
+  }, [driveEntries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
   const eventSeedEntries = useMemo(
     () => [
@@ -194,23 +210,25 @@ function TeamBreakdownContent() {
   );
 
   const teamRows = useMemo(() => {
-    const grouped = new Map<string, { scores: number[]; matches: number; lastSeen: number }>();
+    const grouped = new Map<string, { scores: number[]; matches: number; lastSeen: number; preferredEventKey: string }>();
 
     filteredScoutingEntries.forEach((entry) => {
       const teamNumber = normalizeTeamNumber(entry.teamNumber);
       if (!teamNumber) return;
-      const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0 };
+      const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0, preferredEventKey: "" };
       row.scores.push(scoreEntry(entry, selectedGame));
       row.matches += 1;
       row.lastSeen = Math.max(row.lastSeen, Number(entry.submittedAt || entry.timestamp || 0));
+      if (!row.preferredEventKey && entry.eventKey) row.preferredEventKey = String(entry.eventKey).trim();
       grouped.set(teamNumber, row);
     });
 
     filteredPitEntries.forEach((entry) => {
       const teamNumber = normalizeTeamNumber(entry.teamNumber);
       if (!teamNumber) return;
-      const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0 };
+      const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0, preferredEventKey: "" };
       row.lastSeen = Math.max(row.lastSeen, Number(entry.createdAt || 0));
+      if (!row.preferredEventKey && entry.eventKey) row.preferredEventKey = String(entry.eventKey).trim();
       grouped.set(teamNumber, row);
     });
 
@@ -219,8 +237,9 @@ function TeamBreakdownContent() {
         (entry.robots || []).forEach((robot) => {
           const teamNumber = normalizeTeamNumber(robot.teamNumber);
           if (!teamNumber) return;
-          const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0 };
+          const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0, preferredEventKey: "" };
           row.lastSeen = Math.max(row.lastSeen, Number(entry.createdAt || 0));
+          if (!row.preferredEventKey && entry.eventKey) row.preferredEventKey = String(entry.eventKey).trim();
           grouped.set(teamNumber, row);
         });
       });
@@ -233,10 +252,61 @@ function TeamBreakdownContent() {
       avgScore: value.scores.length > 0 ? Math.round(value.scores.reduce((a, b) => a + b, 0) / value.scores.length) : null,
       matches: value.matches,
       lastSeen: value.lastSeen,
+      preferredEventKey: value.preferredEventKey,
     }));
 
     return rows.sort((a, b) => Number(a.teamNumber) - Number(b.teamNumber));
   }, [filteredScoutingEntries, filteredPitEntries, filteredStrategyEntries, filteredDriveEntries, selectedGame]);
+
+  useEffect(() => {
+    async function loadTeamNames() {
+      const eventKeys = new Set<string>();
+      if (selectedEvent !== "all") {
+        eventKeys.add(selectedEvent);
+      } else {
+        teamRows.forEach((row) => {
+          if (row.preferredEventKey) eventKeys.add(row.preferredEventKey);
+        });
+      }
+      if (eventKeys.size === 0) {
+        setTeamNameByNumber({});
+        return;
+      }
+
+      const merged = new Map<string, string>();
+      await Promise.all(
+        Array.from(eventKeys).map(async (eventKey) => {
+          const year = Number(eventKey.slice(0, 4));
+          const eventCode = getFirstEventCodeFromTbaKey(eventKey);
+          if (!Number.isFinite(year) || !eventCode) return;
+          try {
+            const response = await fetch("/api/first/teams", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ year, eventCode }),
+            });
+            if (!response.ok) return;
+            const payload = await response.json();
+            const teams = Array.isArray(payload.teams)
+              ? (payload.teams as Array<{ teamNumber?: number; nameShort?: string }>)
+              : [];
+            teams.forEach((team) => {
+              const num = Number(team.teamNumber || 0);
+              const name = String(team.nameShort || "").trim();
+              if (!num || !name) return;
+              const key = String(num);
+              if (!merged.has(key)) merged.set(key, name);
+            });
+          } catch {
+            // Best-effort names only.
+          }
+        })
+      );
+
+      setTeamNameByNumber(Object.fromEntries(Array.from(merged.entries())));
+    }
+    void loadTeamNames();
+  }, [teamRows, selectedEvent]);
 
   return (
     <AnalyticsShell
@@ -260,9 +330,11 @@ function TeamBreakdownContent() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Score</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scouted Matches</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Seen</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Event</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -277,16 +349,29 @@ function TeamBreakdownContent() {
                       Team {row.teamNumber}
                     </Link>
                   </td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{teamNameByNumber[row.teamNumber] || "-"}</td>
                   <td className="px-6 py-4">{row.avgScore === null ? "-" : row.avgScore}</td>
                   <td className="px-6 py-4">{row.matches}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {row.lastSeen > 0 ? new Date(row.lastSeen).toLocaleString() : "-"}
                   </td>
+                  <td className="px-6 py-4 text-sm">
+                    {row.preferredEventKey ? (
+                      <Link
+                        href={`/event-details/${row.preferredEventKey}?tab=teams&team=${row.teamNumber}`}
+                        className="text-blue-700 hover:underline"
+                      >
+                        Open Team
+                      </Link>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                 </tr>
               ))}
               {teamRows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
                     No teams match the current filters.
                   </td>
                 </tr>
