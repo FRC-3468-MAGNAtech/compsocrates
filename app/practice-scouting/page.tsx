@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, deleteField, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -982,21 +982,24 @@ function PracticeScoutingContent() {
       setLiveLobby(null);
       return;
     }
-    if (liveLobbyId.startsWith("local:")) return;
+    if (liveLobbyId.startsWith("local:") || !liveLobby?.code) return;
 
     let cancelled = false;
     const loadLobby = async () => {
       try {
-        const snap = await getDoc(doc(db, "livePracticeLobbies", liveLobbyId));
-        if (!snap.exists()) {
+        const response = await fetch(`/api/live-lobbies?code=${encodeURIComponent(liveLobby.code)}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
           if (!cancelled) {
             setLiveLobby(null);
             setLiveLobbyId("");
           }
           return;
         }
+        const payload = (await response.json()) as { lobby?: LivePracticeLobby };
         if (!cancelled) {
-          setLiveLobby({ id: snap.id, ...(snap.data() as Omit<LivePracticeLobby, "id">) });
+          if (payload.lobby) setLiveLobby(payload.lobby);
         }
       } catch (error) {
         console.error("Failed to load live practice lobby:", error);
@@ -1011,7 +1014,7 @@ function PracticeScoutingContent() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [liveLobbyId]);
+  }, [liveLobbyId, liveLobby?.code]);
 
   function createLobbyCode() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1041,14 +1044,36 @@ function PracticeScoutingContent() {
       };
 
       try {
+        let createdLobby: LivePracticeLobby | null = null;
         for (let attempt = 0; attempt < 6; attempt += 1) {
-          const existing = await getDocs(query(collection(db, "livePracticeLobbies"), where("code", "==", code), where("status", "==", "waiting")));
-          if (existing.empty) break;
-          code = createLobbyCode();
+          const response = await fetch("/api/live-lobbies", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "create",
+              code,
+              hostId: payload.hostId,
+              hostName: payload.hostName,
+              teamId: payload.teamId,
+              game: payload.game,
+              mode: payload.mode,
+            }),
+          });
+          if (response.status === 409) {
+            code = createLobbyCode();
+            continue;
+          }
+          if (!response.ok) {
+            const fail = (await response.json().catch(() => ({}))) as { error?: string };
+            throw new Error(fail.error || `create_failed_${response.status}`);
+          }
+          const created = (await response.json()) as { lobby?: LivePracticeLobby };
+          createdLobby = created.lobby || null;
+          break;
         }
-        payload.code = code;
-        const lobbyRef = await addDoc(collection(db, "livePracticeLobbies"), payload);
-        setLiveLobbyId(lobbyRef.id);
+        if (!createdLobby) throw new Error("create_failed");
+        setLiveLobbyId(createdLobby.id);
+        setLiveLobby(createdLobby);
       } catch (cloudError) {
         console.warn("Cloud live lobby unavailable; falling back to local lobby.", cloudError);
         const localId = `local:${Date.now()}`;
@@ -1103,42 +1128,31 @@ function PracticeScoutingContent() {
         upsertLocalLobby(code, joinedLobby);
         return;
       }
-      if (liveLobbyId.startsWith("local:") && liveLobby && liveLobby.code === code) {
-        const joined = {
-          ...liveLobby,
-          playersByUid: {
-            ...(liveLobby.playersByUid || {}),
-            [userData.uid]: { name: userData.displayName || "Player", joinedAt: Date.now() },
-          },
-        };
-        setLiveLobby(joined);
-        setActiveMatchGame(joined.game);
-        setSelectedMode(joined.mode);
-        return;
-      }
-      const snap = await getDocs(query(collection(db, "livePracticeLobbies"), where("code", "==", code)));
-      const lobbyDoc = snap.docs
-        .map((row) => ({ id: row.id, ...(row.data() as Omit<LivePracticeLobby, "id">) }))
-        .find((row) => row.status === "waiting" || row.status === "in_progress");
-      if (!lobbyDoc) {
-        alert("Lobby not found.");
-        return;
-      }
-
-      if (userData.teamId && lobbyDoc.teamId && userData.teamId !== lobbyDoc.teamId) {
-        alert("This lobby belongs to another team.");
-        return;
-      }
-
-      await updateDoc(doc(db, "livePracticeLobbies", lobbyDoc.id), {
-        [`playersByUid.${userData.uid}`]: {
+      const response = await fetch("/api/live-lobbies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "join",
+          code,
+          uid: userData.uid,
           name: userData.displayName || "Player",
-          joinedAt: Date.now(),
-        },
+          teamId: userData.teamId || "",
+        }),
       });
-      setActiveMatchGame(lobbyDoc.game);
-      setSelectedMode(lobbyDoc.mode);
-      setLiveLobbyId(lobbyDoc.id);
+      if (!response.ok) {
+        const fail = (await response.json().catch(() => ({}))) as { error?: string };
+        setLiveLobbyError(fail.error || `Could not join lobby (${response.status}).`);
+        return;
+      }
+      const payload = (await response.json()) as { lobby?: LivePracticeLobby };
+      if (!payload.lobby) {
+        setLiveLobbyError("Could not join lobby.");
+        return;
+      }
+      setActiveMatchGame(payload.lobby.game);
+      setSelectedMode(payload.lobby.mode);
+      setLiveLobbyId(payload.lobby.id);
+      setLiveLobby(payload.lobby);
     } catch (error) {
       console.error("Failed joining live lobby:", error);
       const codeValue = (error as { code?: string })?.code || "";
@@ -1170,12 +1184,18 @@ function PracticeScoutingContent() {
         upsertLocalLobby(liveLobby.code, nextLobby);
         return;
       }
-      if (userIsLiveLobbyHost) {
-        await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), { status: "closed" });
-      } else {
-        await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), {
-          [`playersByUid.${userData.uid}`]: deleteField(),
-        });
+      const response = await fetch("/api/live-lobbies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "leave",
+          code: liveLobby.code,
+          uid: userData.uid,
+        }),
+      });
+      if (!response.ok) {
+        const fail = (await response.json().catch(() => ({}))) as { error?: string };
+        setLiveLobbyError(fail.error || "Could not leave lobby.");
       }
       setLiveLobby(null);
       setLiveLobbyId("");
@@ -1199,10 +1219,22 @@ function PracticeScoutingContent() {
         setLiveLobby({ ...liveLobby, status: "in_progress", startedAt: Date.now() });
         return;
       }
-      await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), {
-        status: "in_progress",
-        startedAt: Date.now(),
+      const response = await fetch("/api/live-lobbies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "start",
+          code: liveLobby.code,
+          uid: userData?.uid || "",
+        }),
       });
+      if (!response.ok) {
+        const fail = (await response.json().catch(() => ({}))) as { error?: string };
+        setLiveLobbyError(fail.error || "Could not start lobby.");
+        return;
+      }
+      const payload = (await response.json()) as { lobby?: LivePracticeLobby };
+      if (payload.lobby) setLiveLobby(payload.lobby);
     } catch (error) {
       console.error("Failed starting live lobby:", error);
       alert("Could not start live lobby.");
