@@ -125,45 +125,23 @@ function parseLobbyFromDocument(document: { name?: string; fields?: Record<strin
 }
 
 async function queryLobbyByCode(projectId: string, apiKey: string, idToken: string, code: string) {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) return null;
+  const docId = `liveLobby_${normalizedCode}`;
   const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : "";
-  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:runQuery${keyQuery}`;
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${LIVE_LOBBY_COLLECTION}/${encodeURIComponent(docId)}${keyQuery}`;
   const response = await fetch(url, {
-    method: "POST",
+    method: "GET",
     headers: headersFor(idToken),
     cache: "no-store",
-    body: JSON.stringify({
-      structuredQuery: {
-        from: [{ collectionId: LIVE_LOBBY_COLLECTION }],
-        where: {
-          compositeFilter: {
-            op: "AND",
-            filters: [
-              {
-                fieldFilter: {
-                  field: { fieldPath: "recordType" },
-                  op: "EQUAL",
-                  value: { stringValue: LIVE_LOBBY_RECORD_TYPE },
-                },
-              },
-              {
-                fieldFilter: {
-                  field: { fieldPath: "code" },
-                  op: "EQUAL",
-                  value: { stringValue: String(code || "").trim().toUpperCase() },
-                },
-              },
-            ],
-          },
-        },
-        orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
-        limit: 1,
-      },
-    }),
   });
+  if (response.status === 404) return null;
   if (!response.ok) return null;
-  const rows = (await response.json()) as Array<{ document?: { name?: string; fields?: Record<string, FirestoreValue> } }>;
-  const doc = rows.find((row) => row?.document?.name)?.document;
-  return doc ? parseLobbyFromDocument(doc) : null;
+  const payload = (await response.json()) as { name?: string; fields?: Record<string, FirestoreValue> };
+  const lobby = parseLobbyFromDocument(payload);
+  if (lobby.code !== normalizedCode) return null;
+  if (readStringValue(payload.fields?.recordType) !== LIVE_LOBBY_RECORD_TYPE) return null;
+  return lobby;
 }
 
 async function patchLobby(
@@ -235,8 +213,9 @@ export async function POST(request: NextRequest) {
       }
       const playersByUid: LobbyPlayers = { [hostId]: { name: hostName, joinedAt: Date.now() } };
       const createdAt = Date.now();
-      const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : "";
-      const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${LIVE_LOBBY_COLLECTION}${keyQuery}`;
+      const docId = `liveLobby_${code}`;
+      const keyQuery = apiKey ? `&key=${encodeURIComponent(apiKey)}` : "";
+      const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${LIVE_LOBBY_COLLECTION}?documentId=${encodeURIComponent(docId)}${keyQuery}`;
       const response = await fetch(url, {
         method: "POST",
         headers: headersFor(idToken),
