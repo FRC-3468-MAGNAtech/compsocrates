@@ -7,7 +7,6 @@ import { db } from "@/app/firebase";
 import { auth } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import PracticeDifficultyMatchModal, { type PracticeDifficultyModalOption } from "@/app/components/PracticeDifficultyMatchModal";
 import { useAuth } from "@/app/AuthContext";
@@ -84,56 +83,9 @@ const RebuiltCycleTimer = ({
   );
 };
 
-function TeamPickerModal({
-  open,
-  teams,
-  onClose,
-  onSelect,
-}: {
-  open: boolean;
-  teams: string[];
-  onClose: () => void;
-  onSelect: (team: string) => void;
-}) {
-  return (
-    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
-      <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
-      <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
-        {teams.length === 0 ? (
-          <p className="p-3 text-sm text-gray-600">No robots detected. Client may be offline.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {teams.map((team) => (
-              <button
-                key={team}
-                type="button"
-                onClick={() => {
-                  onSelect(team);
-                  onClose();
-                }}
-                className="rounded-lg border border-red-400 p-3 text-sm text-left hover:bg-gray-50"
-              >
-                {team}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-4 w-full py-2 rounded text-white"
-        style={{ backgroundColor: "var(--primary-color)" }}
-      >
-        Close
-      </button>
-    </ReefscapeStyleModal>
-  );
-}
-
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
-type PracticeStep = 'select' | 'practice' | 'break' | 'results';
+type PracticeStep = 'select' | 'live_reveal' | 'practice' | 'break' | 'results';
 type RebuiltScoutedData = {
   teamNumber: string;
   startingPosition: string;
@@ -881,8 +833,6 @@ function PracticeScoutingContent() {
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
   const [showDifficultyMatchModal, setShowDifficultyMatchModal] = useState(false);
-  const [showLiveTeamPicker, setShowLiveTeamPicker] = useState(false);
-  const [liveTeamPickerTarget, setLiveTeamPickerTarget] = useState<"reefscape" | "rebuilt">("reefscape");
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
   const [liveEventKeyHint, setLiveEventKeyHint] = useState("");
@@ -916,13 +866,6 @@ function PracticeScoutingContent() {
     ? "hard"
     : (selectedDifficulty || "easy");
 
-  const livePickerTeams = useMemo(() => {
-    const detected = liveEventTeamSuggestions.map((team) => String(team).trim()).filter(Boolean);
-    if (detected.length > 0) return Array.from(new Set(detected));
-    const fromMatch = (currentMatch?.allianceTeams || []).map((team) => String(team).trim()).filter(Boolean);
-    return Array.from(new Set(fromMatch));
-  }, [currentMatch?.allianceTeams, liveEventTeamSuggestions]);
-
   const liveLobbyPlayers = useMemo(() => {
     if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
     return Object.entries(liveLobby.playersByUid)
@@ -941,6 +884,19 @@ function PracticeScoutingContent() {
     if (!userData?.uid) return null;
     return liveAssignments[userData.uid] || null;
   }, [liveAssignments, userData?.uid]);
+  const liveSubmittedCount = useMemo(() => Object.keys(liveSubmissions || {}).length, [liveSubmissions]);
+  const myLiveTeamMembers = useMemo(() => {
+    if (!myLiveAssignment) return [] as Array<{ uid: string; name: string; assignment: LiveAssignment }>;
+    return liveLobbyPlayers
+      .map((player) => {
+        const assignment = liveAssignments[player.uid];
+        if (!assignment) return null;
+        if (assignment.groupIndex !== myLiveAssignment.groupIndex) return null;
+        return { uid: player.uid, name: player.name, assignment };
+      })
+      .filter((row): row is { uid: string; name: string; assignment: LiveAssignment } => Boolean(row))
+      .sort((a, b) => a.assignment.robotIndex - b.assignment.robotIndex);
+  }, [liveAssignments, liveLobbyPlayers, myLiveAssignment]);
 
   function getLocalLobbyStore() {
     if (typeof window === "undefined") return {} as Record<string, LivePracticeLobbyStorage>;
@@ -1082,6 +1038,11 @@ function PracticeScoutingContent() {
   useEffect(() => {
     if (!liveLobby || liveLobby.status !== "in_progress") return;
     if (!liveMatchBundle || !myLiveAssignment) return;
+    if (currentStep === "select" && liveRevealCountdown > 0) {
+      setCurrentStep("live_reveal");
+      return;
+    }
+    if (currentStep !== "live_reveal") return;
     const sessionKey = `${liveLobby.code}:${liveLobby.startedAt || 0}`;
     if (liveStartedSessionKey === sessionKey) return;
     if (liveRevealCountdown > 0) return;
@@ -1096,6 +1057,7 @@ function PracticeScoutingContent() {
     myLiveAssignment,
     liveStartedSessionKey,
     liveRevealCountdown,
+    currentStep,
     startPracticeMatch,
   ]);
 
@@ -1367,11 +1329,12 @@ function PracticeScoutingContent() {
           ...liveLobby,
           status: "in_progress",
           startedAt: Date.now(),
-          revealUntil: Date.now() + 5000,
+          revealUntil: Date.now() + 12000,
           matchJson,
           assignmentsJson,
           submissionsJson: "{}",
         });
+        setCurrentStep("live_reveal");
         return;
       }
       const response = await fetch("/api/live-lobbies", {
@@ -1391,7 +1354,10 @@ function PracticeScoutingContent() {
         return;
       }
       const payload = (await response.json()) as { lobby?: LivePracticeLobby };
-      if (payload.lobby) setLiveLobby(payload.lobby);
+      if (payload.lobby) {
+        setLiveLobby(payload.lobby);
+        setCurrentStep("live_reveal");
+      }
     } catch (error) {
       console.error("Failed starting live lobby:", error);
       alert("Could not start live lobby.");
@@ -1598,19 +1564,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       // Best effort only.
       return "";
     }
-  }
-
-  function handleLiveTeamSelect(teamNumber: string, target: "reefscape" | "rebuilt") {
-    if (target === "rebuilt") {
-      setRebuiltFormData((prev) => ({ ...prev, teamNumber }));
-      return;
-    }
-    setFormData((prev) => ({ ...prev, teamNumber }));
-  }
-
-  function openLiveTeamPicker(target: "reefscape" | "rebuilt") {
-    setLiveTeamPickerTarget(target);
-    setShowLiveTeamPicker(true);
   }
 
   useEffect(() => {
@@ -2364,8 +2317,23 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setLiveTeamAccuracy(null);
     setLiveLeaderboard([]);
     setLiveStartedSessionKey("");
+    setLiveMatchBundle(null);
+    setLiveAssignments({});
+    setLiveSubmissions({});
     clearPracticeDraft();
     setPendingDraft(null);
+  }
+
+  async function endCurrentSession() {
+    if (selectedDifficulty === "live" && liveLobby) {
+      try {
+        await leaveLiveLobby();
+      } finally {
+        setLiveLobby(null);
+        setLiveLobbyId("");
+      }
+    }
+    resetPractice();
   }
 
   async function submitLiveRobot() {
@@ -2529,6 +2497,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       }
 
       if (liveLobby?.code && userData?.uid) {
+        setLiveSubmissions((prev) => ({
+          ...prev,
+          [userData.uid]: { ...submissionPayload, submittedAt: Date.now() },
+        }));
         if (liveLobby.id.startsWith("local:")) {
           const next = { ...(liveSubmissions || {}) };
           next[userData.uid] = { ...submissionPayload, submittedAt: Date.now() };
@@ -2963,6 +2935,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                             ) : (
                               <p className="text-sm text-indigo-800 mt-1">Match started. Complete your scout and submit.</p>
                             )}
+                            <p className="text-sm text-indigo-800 mt-1">
+                              Submitted: {liveSubmittedCount}/{liveLobbyPlayerCount}
+                            </p>
                           </div>
                         )}
                         {liveLobby.status === "completed" && (
@@ -2982,51 +2957,37 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     </div>
                   )}
                 </div>
-                {selectedDifficulty === "live" && (
-                  <div className="mt-6 rounded-xl border border-cyan-300 bg-cyan-500/5 shadow-md p-4">
-                    <h3 className="font-semibold mb-1 text-cyan-700">Live Match Setup</h3>
-                    <p className="text-sm text-gray-700 mb-3">
-                      Paste a stream URL, then open match select to pick and start.
-                    </p>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Live Video URL</label>
-                        <input
-                          type="url"
-                          value={liveVideoUrl}
-                          onChange={(event) => {
-                            setLiveVideoUrl(event.target.value);
-                            setShowMatchSelectModal(false);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") event.preventDefault();
-                          }}
-                          className="w-full border rounded p-2"
-                          placeholder="https://www.youtube.com/watch?v=..."
-                        />
-                        {(liveStreamTitle || liveEventKeyHint) && (
-                          <p className="mt-2 text-xs text-gray-700">
-                            {liveStreamTitle ? `Detected stream: ${liveStreamTitle}` : ""}
-                            {liveEventKeyHint ? `${liveStreamTitle ? "  •  " : ""}Event hint: ${liveEventKeyHint.toUpperCase()}` : ""}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={handleChooseLiveMatchClick}
-                          className="px-4 py-2 rounded text-white font-semibold"
-                          style={{ backgroundColor: "var(--primary-color)" }}
-                        >
-                          Choose Live Match
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
               </>
             )}
+          </div>
+        )}
+
+        {currentStep === "live_reveal" && liveLobby && myLiveAssignment && (
+          <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
+            <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8">
+              <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
+                Live Match Assignment
+              </h1>
+              <p className="text-gray-700 text-lg mb-6">
+                Your team will start in {liveRevealCountdown}s.
+              </p>
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 mb-4">
+                <p className="font-semibold text-indigo-900 mb-2">Your Team ({myLiveTeamMembers.length}/3)</p>
+                <div className="space-y-2">
+                  {myLiveTeamMembers.map((row) => (
+                    <div key={row.uid} className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-indigo-900">{row.name}{row.uid === userData?.uid ? " (You)" : ""}</span>
+                      <span className="text-indigo-800">
+                        {row.assignment.alliance.toUpperCase()} • Robot {row.assignment.robotIndex + 1} • Team {row.assignment.teamNumber || "-"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p className="text-sm text-gray-600">
+                One uniform match is assigned for the whole lobby. Submit once for your assigned robot.
+              </p>
+            </div>
           </div>
         )}
 
@@ -3043,7 +3004,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               </p>
               <p className="text-gray-600 mb-8">
                 {selectedDifficulty === "live"
-                  ? `Waiting for all players to submit (${Object.keys(liveSubmissions || {}).length}/${liveLobbyPlayerCount}).`
+                  ? `Waiting for all players to submit (${liveSubmittedCount}/${liveLobbyPlayerCount}).`
                   : "Take a short break before the next robot, just like normal scouting rotations between matches."}
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -3065,7 +3026,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   </button>
                 )}
                 <button
-                  onClick={resetPractice}
+                  onClick={() => void endCurrentSession()}
                   className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
                 >
                   End Session
@@ -3118,18 +3079,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     : `Robot ${currentRobotIndex + 1} of 3 • Team ${currentMatch.allianceTeams[currentRobotIndex]}`}
                 </p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
-                {selectedDifficulty === "live" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMatchSelectModal(true);
-                    }}
-                    className="mt-2 px-3 py-1 rounded text-sm text-white"
-                    style={{ backgroundColor: "var(--primary-color)" }}
-                  >
-                    Change Live Match
-                  </button>
-                )}
                 {selectedDifficulty !== "live" && (
                   <button
                     type="button"
@@ -3150,17 +3099,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
             {/* SCOUTING FORM */}
             <div ref={formPaneRef} className="w-full md:w-[22rem] md:flex-none flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4">
-              {selectedDifficulty === "live" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMatchSelectModal(true);
-                  }}
-                  className="w-full py-2 rounded border border-cyan-300 text-cyan-800 bg-cyan-50 hover:bg-cyan-100 font-semibold"
-                >
-                  Match Select (Live)
-                </button>
-              )}
               {selectedDifficulty !== "live" && (
                 <button
                   type="button"
@@ -3219,36 +3157,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
                     {selectedDifficulty === "live" ? (
-                      <>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-reefscape" : undefined}
-                            value={formData.teamNumber}
-                            onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
-                            className="flex-1 border rounded p-2"
-                            placeholder="Type team number"
-                          />
-                          <button
-                            type="button"
-                            className="px-4 rounded border"
-                            onClick={() => openLiveTeamPicker("reefscape")}
-                          >
-                            Pick
-                          </button>
-                        </div>
-                        {liveEventTeamSuggestions.length > 0 && (
-                          <datalist id="live-team-suggestions-reefscape">
-                            {liveEventTeamSuggestions
-                              .slice()
-                              .sort((a, b) => a - b)
-                              .map((team) => (
-                                <option key={`reef-live-${team}`} value={String(team)} />
-                              ))}
-                          </datalist>
-                        )}
-                      </>
+                      <input type="text" value={formData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                     ) : (
                       <input type="text" value={formData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                     )}
@@ -3373,38 +3282,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
                         {selectedDifficulty === "live" ? (
-                          <>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-rebuilt" : undefined}
-                                value={rebuiltFormData.teamNumber}
-                                onChange={(e) =>
-                                  setRebuiltFormData({ ...rebuiltFormData, teamNumber: e.target.value.replace(/[^\d]/g, "") })
-                                }
-                                className="flex-1 border rounded p-2"
-                                placeholder="Type team number"
-                              />
-                              <button
-                                type="button"
-                                className="px-4 rounded border"
-                                onClick={() => openLiveTeamPicker("rebuilt")}
-                              >
-                                Pick
-                              </button>
-                            </div>
-                            {liveEventTeamSuggestions.length > 0 && (
-                              <datalist id="live-team-suggestions-rebuilt">
-                                {liveEventTeamSuggestions
-                                  .slice()
-                                  .sort((a, b) => a - b)
-                                  .map((team) => (
-                                    <option key={`rebuilt-live-${team}`} value={String(team)} />
-                                  ))}
-                              </datalist>
-                            )}
-                          </>
+                          <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                         ) : (
                           <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                         )}
@@ -3711,7 +3589,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     : `Next Robot (${currentRobotIndex + 2}/3)`}
                 </button>
                 <button
-                  onClick={resetPractice}
+                  onClick={() => void endCurrentSession()}
                   className="w-full py-2 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
                 >
                   {selectedDifficulty === "live" ? "End Session" : "Cancel"}
@@ -3891,12 +3769,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           options={difficultyModalOptions}
           onPick={handleDifficultyModalPick}
           onRandomize={handleDifficultyModalRandomize}
-        />
-        <TeamPickerModal
-          open={showLiveTeamPicker}
-          teams={livePickerTeams}
-          onClose={() => setShowLiveTeamPicker(false)}
-          onSelect={(team) => handleLiveTeamSelect(team, liveTeamPickerTarget)}
         />
       </div>
     </div>

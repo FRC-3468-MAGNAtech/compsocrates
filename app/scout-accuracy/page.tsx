@@ -39,6 +39,7 @@ type ScoutingEntry = {
   scoutId?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  isLivePracticeScouting?: boolean;
   deviceType?: "mobile" | "pc";
   teamNumber?: string;
   leftStartingZone?: boolean;
@@ -381,6 +382,7 @@ function ScoutAccuracyContent() {
         const scoutPracticeEntries = Array.from(scoutEntriesMap.values())
           .filter((row) => {
             if (!row.isPracticeScouting) return false;
+            if (row.isLivePracticeScouting) return false;
             if (String(row.practiceMode || "").toLowerCase() !== selectedMode) return false;
             return getEntryGame(row) === selectedGame;
           });
@@ -409,7 +411,8 @@ function ScoutAccuracyContent() {
           practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
         });
         const practiceRows = Array.from(practiceRowsMap.values())
-          .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame);
+          .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame)
+          .filter((row) => !row.isLivePracticeScouting);
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];
         let lastPracticeDate = 0;

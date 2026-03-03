@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
       const updated = await patchLobby(projectId, apiKey, idToken, lobby.id, {
         status: "in_progress",
         startedAt: now,
-        revealUntil: now + 5000,
+        revealUntil: now + 12000,
         matchJson,
         assignmentsJson,
         submissionsJson: "{}",
