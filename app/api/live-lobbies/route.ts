@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+const LIVE_LOBBY_COLLECTION = "practiceSessions";
+const LIVE_LOBBY_RECORD_TYPE = "live_lobby";
 
 type LobbyPlayer = { name?: string; joinedAt?: number };
 type LobbyPlayers = Record<string, LobbyPlayer>;
@@ -93,6 +95,10 @@ function toDocId(pathOrName: string) {
 
 function parseLobbyFromDocument(document: { name?: string; fields?: Record<string, FirestoreValue> }): LobbyPayload {
   const fields = document.fields || {};
+  const recordType = readStringValue(fields.recordType);
+  if (recordType && recordType !== LIVE_LOBBY_RECORD_TYPE) {
+    throw new Error("Document is not a live lobby record");
+  }
   const playersRaw = readStringValue(fields.playersJson);
   let playersByUid: LobbyPlayers = {};
   try {
@@ -127,12 +133,26 @@ async function queryLobbyByCode(projectId: string, apiKey: string, idToken: stri
     cache: "no-store",
     body: JSON.stringify({
       structuredQuery: {
-        from: [{ collectionId: "livePracticeLobbies" }],
+        from: [{ collectionId: LIVE_LOBBY_COLLECTION }],
         where: {
-          fieldFilter: {
-            field: { fieldPath: "code" },
-            op: "EQUAL",
-            value: { stringValue: String(code || "").trim().toUpperCase() },
+          compositeFilter: {
+            op: "AND",
+            filters: [
+              {
+                fieldFilter: {
+                  field: { fieldPath: "recordType" },
+                  op: "EQUAL",
+                  value: { stringValue: LIVE_LOBBY_RECORD_TYPE },
+                },
+              },
+              {
+                fieldFilter: {
+                  field: { fieldPath: "code" },
+                  op: "EQUAL",
+                  value: { stringValue: String(code || "").trim().toUpperCase() },
+                },
+              },
+            ],
           },
         },
         orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
@@ -157,7 +177,7 @@ async function patchLobby(
   const masks = Object.keys(fields)
     .map((field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`)
     .join("&");
-  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/livePracticeLobbies/${encodeURIComponent(lobbyId)}?${masks}${keyQuery ? `&${keyQuery.slice(1)}` : ""}`;
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${LIVE_LOBBY_COLLECTION}/${encodeURIComponent(lobbyId)}?${masks}${keyQuery ? `&${keyQuery.slice(1)}` : ""}`;
   const response = await fetch(url, {
     method: "PATCH",
     headers: headersFor(idToken),
@@ -216,13 +236,14 @@ export async function POST(request: NextRequest) {
       const playersByUid: LobbyPlayers = { [hostId]: { name: hostName, joinedAt: Date.now() } };
       const createdAt = Date.now();
       const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : "";
-      const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/livePracticeLobbies${keyQuery}`;
+      const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${LIVE_LOBBY_COLLECTION}${keyQuery}`;
       const response = await fetch(url, {
         method: "POST",
         headers: headersFor(idToken),
         cache: "no-store",
         body: JSON.stringify({
           fields: encodeFields({
+            recordType: LIVE_LOBBY_RECORD_TYPE,
             code,
             hostId,
             hostName,
