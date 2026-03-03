@@ -1003,18 +1003,19 @@ function PracticeScoutingContent() {
           cache: "no-store",
         });
         if (!response.ok) {
-          if (!cancelled) {
-            setLiveLobby(null);
-            setLiveLobbyId("");
-          }
+          if (!cancelled) setLiveLobbyError(`Live lobby sync unavailable (${response.status}). Retrying...`);
           return;
         }
         const payload = (await response.json()) as { lobby?: LivePracticeLobby };
         if (!cancelled) {
-          if (payload.lobby) setLiveLobby(payload.lobby);
+          if (payload.lobby) {
+            setLiveLobby(payload.lobby);
+            setLiveLobbyError("");
+          }
         }
       } catch (error) {
         console.error("Failed to load live practice lobby:", error);
+        if (!cancelled) setLiveLobbyError("Live lobby sync temporarily unavailable. Retrying...");
       }
     };
 
