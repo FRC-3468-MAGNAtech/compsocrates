@@ -19,6 +19,10 @@ type LobbyPayload = {
   createdAt: number;
   startedAt?: number;
   playersByUid: LobbyPlayers;
+  revealUntil?: number;
+  matchJson?: string;
+  assignmentsJson?: string;
+  submissionsJson?: string;
 };
 
 type FirestoreValue =
@@ -120,7 +124,11 @@ function parseLobbyFromDocument(document: { name?: string; fields?: Record<strin
       : "waiting") as LobbyPayload["status"],
     createdAt: readNumberValue(fields.createdAt),
     startedAt: readNumberValue(fields.startedAt) || undefined,
+    revealUntil: readNumberValue(fields.revealUntil) || undefined,
     playersByUid,
+    matchJson: readStringValue(fields.matchJson),
+    assignmentsJson: readStringValue(fields.assignmentsJson),
+    submissionsJson: readStringValue(fields.submissionsJson),
   };
 }
 
@@ -251,6 +259,9 @@ export async function POST(request: NextRequest) {
       if (!code || !uid) return NextResponse.json({ error: "Missing join fields" }, { status: 400 });
       const lobby = await queryLobbyByCode(projectId, apiKey, idToken, code);
       if (!lobby) return NextResponse.json({ error: "Lobby not found" }, { status: 404 });
+      if (lobby.status !== "waiting") {
+        return NextResponse.json({ error: "Lobby already started or closed" }, { status: 400 });
+      }
       if (lobby.teamId && joinerTeamId && lobby.teamId !== joinerTeamId) {
         return NextResponse.json({ error: "Lobby belongs to another team" }, { status: 403 });
       }
@@ -267,17 +278,73 @@ export async function POST(request: NextRequest) {
     if (action === "start") {
       const code = String(body.code || "").trim().toUpperCase();
       const uid = String(body.uid || "").trim();
+      const matchJson = String(body.matchJson || "").trim();
+      const assignmentsJson = String(body.assignmentsJson || "").trim();
       if (!code || !uid) return NextResponse.json({ error: "Missing start fields" }, { status: 400 });
       const lobby = await queryLobbyByCode(projectId, apiKey, idToken, code);
       if (!lobby) return NextResponse.json({ error: "Lobby not found" }, { status: 404 });
       if (lobby.hostId !== uid) return NextResponse.json({ error: "Only host can start" }, { status: 403 });
       const count = Object.keys(lobby.playersByUid || {}).length;
       if (count === 0 || count % 3 !== 0) return NextResponse.json({ error: "Player count must be a multiple of 3" }, { status: 400 });
+      if (!matchJson || !assignmentsJson) return NextResponse.json({ error: "Missing match assignments" }, { status: 400 });
+      let parsedAssignments: Record<string, unknown> = {};
+      try {
+        parsedAssignments = JSON.parse(assignmentsJson) as Record<string, unknown>;
+      } catch {
+        return NextResponse.json({ error: "Invalid assignments payload" }, { status: 400 });
+      }
+      const assignedCount = Object.keys(parsedAssignments || {}).length;
+      if (assignedCount < count) return NextResponse.json({ error: "All players must have assignments" }, { status: 400 });
+      const now = Date.now();
       const updated = await patchLobby(projectId, apiKey, idToken, lobby.id, {
         status: "in_progress",
-        startedAt: Date.now(),
+        startedAt: now,
+        revealUntil: now + 5000,
+        matchJson,
+        assignmentsJson,
+        submissionsJson: "{}",
+        updatedAt: now,
       });
       if (!updated) return NextResponse.json({ error: "Start patch failed" }, { status: 500 });
+      return NextResponse.json({ lobby: updated });
+    }
+
+    if (action === "submit") {
+      const code = String(body.code || "").trim().toUpperCase();
+      const uid = String(body.uid || "").trim();
+      const submissionJson = String(body.submissionJson || "").trim();
+      if (!code || !uid || !submissionJson) return NextResponse.json({ error: "Missing submit fields" }, { status: 400 });
+      const lobby = await queryLobbyByCode(projectId, apiKey, idToken, code);
+      if (!lobby) return NextResponse.json({ error: "Lobby not found" }, { status: 404 });
+      if (lobby.status !== "in_progress") return NextResponse.json({ error: "Lobby is not in progress" }, { status: 400 });
+      const players = lobby.playersByUid || {};
+      if (!players[uid]) return NextResponse.json({ error: "Only active players can submit" }, { status: 403 });
+      let existing: Record<string, unknown> = {};
+      try {
+        existing = JSON.parse(lobby.submissionsJson || "{}") as Record<string, unknown>;
+      } catch {
+        existing = {};
+      }
+      let parsedSubmission: Record<string, unknown> = {};
+      try {
+        parsedSubmission = JSON.parse(submissionJson) as Record<string, unknown>;
+      } catch {
+        return NextResponse.json({ error: "Invalid submission payload" }, { status: 400 });
+      }
+      existing[uid] = {
+        ...parsedSubmission,
+        submittedAt: Date.now(),
+      };
+      const playerCount = Object.keys(players).length;
+      const submittedCount = Object.keys(existing).length;
+      const shouldComplete = submittedCount >= playerCount;
+      const updated = await patchLobby(projectId, apiKey, idToken, lobby.id, {
+        submissionsJson: JSON.stringify(existing),
+        status: shouldComplete ? "completed" : "in_progress",
+        completedAt: shouldComplete ? Date.now() : 0,
+        updatedAt: Date.now(),
+      });
+      if (!updated) return NextResponse.json({ error: "Submit patch failed" }, { status: 500 });
       return NextResponse.json({ lobby: updated });
     }
 
