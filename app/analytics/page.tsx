@@ -14,8 +14,10 @@ import {
   getEventsForGame,
   isPracticeScoutedEntry,
   normalizeMatchLabel,
+  type AnalyticsEventOption,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
+import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 
 type Entry = {
@@ -665,12 +667,31 @@ function AnalyticsPageContent() {
     matchLabelUsed: "",
   });
   const [accuracyRobotBreakdown, setAccuracyRobotBreakdown] = useState<AccuracyRobotBreakdown[]>([]);
+  const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
+
+  const rebuiltEventOptions = useMemo(
+    () =>
+      detectedEventOptions.map((event) => ({
+        id: String(event.id || event.key || "").trim(),
+        key: event.key,
+        name: event.name,
+        startDate: event.startDate,
+        endDate: event.endDate,
+      })).filter((event) => Boolean(event.id)),
+    [detectedEventOptions]
+  );
 
   const eventOptions = useMemo(
-    () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(rawData, selectedGame)],
-    [rawData, selectedGame]
+    () => [
+      { id: "all", name: "All Events" },
+      ...getEventOptionsForEntries(rawData, selectedGame, selectedGame === "REBUILT" ? rebuiltEventOptions : []),
+    ],
+    [rawData, selectedGame, rebuiltEventOptions]
   );
-  const importEventOptions = useMemo(() => getEventsForGame(importGame), [importGame]);
+  const importEventOptions = useMemo(() => {
+    if (importGame !== "REBUILT") return getEventsForGame(importGame);
+    return getEventOptionsForEntries([], importGame, rebuiltEventOptions);
+  }, [importGame, rebuiltEventOptions]);
 
   useEffect(() => {
     const savedPractice = localStorage.getItem("analytics-practice-matches-only");
@@ -680,13 +701,53 @@ function AnalyticsPageContent() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    async function loadDetectedEvents() {
+      if (!userData?.teamId) {
+        if (!cancelled) setDetectedEventOptions([]);
+        return;
+      }
+      try {
+        const teamEvents = await getTeamEventOptions(userData.teamId);
+        if (cancelled) return;
+        setDetectedEventOptions(
+          teamEvents.map((event) => ({
+            id: event.key,
+            key: event.key,
+            name: event.name,
+            startDate: event.startDate,
+            endDate: event.endDate,
+          }))
+        );
+      } catch (error) {
+        console.error("Failed to load team event options:", error);
+        if (!cancelled) setDetectedEventOptions([]);
+      }
+    }
+    void loadDetectedEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.teamId]);
+
+  useEffect(() => {
     localStorage.setItem("analytics-selected-game", selectedGame);
     localStorage.setItem("analytics-selected-event", selectedEvent);
     localStorage.setItem("analytics-practice-matches-only", String(practiceMatchesOnly));
   }, [selectedGame, selectedEvent, practiceMatchesOnly]);
 
+  useEffect(() => {
+    const validEvents = new Set(eventOptions.map((option) => option.id));
+    if (!validEvents.has(selectedEvent)) {
+      setSelectedEvent("all");
+    }
+  }, [eventOptions, selectedEvent]);
+
   function handleGameChange(nextGame: AnalyticsGame) {
-    const validEvents = getEventsForGame(nextGame).map((event) => event.id);
+    const validEvents =
+      nextGame === "REBUILT"
+        ? getEventOptionsForEntries(rawData, nextGame, rebuiltEventOptions).map((event) => event.id)
+        : getEventsForGame(nextGame).map((event) => event.id);
     setSelectedGame(nextGame);
     setImportGame(nextGame);
     if (selectedEvent !== "all" && !validEvents.includes(selectedEvent)) {
@@ -762,11 +823,11 @@ function AnalyticsPageContent() {
 
   const filtered = useMemo(() => {
     return rawData.filter((entry) => {
-      if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent)) return false;
+      if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, selectedGame === "REBUILT" ? rebuiltEventOptions : undefined)) return false;
       if (practiceMatchesOnly) return isPracticeScoutingEntry(entry);
       return !isPracticeScoutingEntry(entry);
     });
-  }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly]);
+  }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly, rebuiltEventOptions]);
 
   const data = useMemo(() => {
     const withScore = filtered.map((entry) => {
@@ -1567,7 +1628,11 @@ function AnalyticsPageContent() {
                   onChange={(event) => {
                     const next = event.target.value as AnalyticsGame;
                     setImportGame(next);
-                    setImportEvent(getEventsForGame(next)[0]?.id || "app-testing");
+                    const nextOptions =
+                      next === "REBUILT"
+                        ? getEventOptionsForEntries([], next, rebuiltEventOptions)
+                        : getEventsForGame(next);
+                    setImportEvent(nextOptions[0]?.id || "app-testing");
                   }}
                   className="w-full border rounded p-2"
                 >

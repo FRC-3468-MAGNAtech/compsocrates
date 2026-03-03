@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { UserCheck, UserX, Clock, Mail } from "lucide-react";
 import { getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
+import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 
 interface TeamRequest {
   id: string;
@@ -18,6 +19,11 @@ interface TeamRequest {
   status: "pending" | "approved" | "denied";
   createdAt: number;
 }
+
+type UserLookupRow = {
+  displayName?: string;
+  email?: string;
+};
 
 export default function TeamRequestsPanel() {
   const { userData } = useAuth();
@@ -39,10 +45,43 @@ export default function TeamRequestsPanel() {
       );
       
       const snapshot = await getDocs(q);
-      const reqs = snapshot.docs.map(doc => ({
+      const mapped = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as TeamRequest[];
+      const userIdsNeedingLookup = Array.from(
+        new Set(
+          mapped
+            .filter((request) => request.userId && (!request.userName || request.userName.startsWith("User ")))
+            .map((request) => String(request.userId || ""))
+            .filter(Boolean)
+        )
+      );
+      const lookup = new Map<string, UserLookupRow>();
+      await Promise.all(
+        userIdsNeedingLookup.map(async (uid) => {
+          try {
+            const userDoc = await getDoc(doc(db, "users", uid));
+            if (!userDoc.exists()) return;
+            lookup.set(uid, userDoc.data() as UserLookupRow);
+          } catch {
+            // Best-effort hydration only.
+          }
+        })
+      );
+      const reqs = mapped.map((request) => {
+        const userRow = lookup.get(String(request.userId || ""));
+        const displayName = String(userRow?.displayName || "").trim();
+        const email = String(userRow?.email || "").trim();
+        return {
+          ...request,
+          userName:
+            request.userName && !String(request.userName).startsWith("User ")
+              ? request.userName
+              : displayName || request.userName,
+          userEmail: request.userEmail || email,
+        };
+      });
       
       setRequests(reqs);
     } catch (error) {
@@ -63,7 +102,7 @@ export default function TeamRequestsPanel() {
         return;
       }
       // 1. Add user to team
-      await updateDoc(doc(db, "users", targetUserId), {
+      await updateSecureUserDoc(targetUserId, {
         teamId: userData?.teamId,
         role: resolvedRole,
         roles: [resolvedRole],

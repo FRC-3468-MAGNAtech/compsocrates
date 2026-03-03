@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -74,12 +75,18 @@ async function loadTeamsFromTbaFallback(teamId: string, eventKey: string): Promi
 
 function EventDetailsContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const eventKey = params.eventKey as string;
+  const highlightedTeam = Number(searchParams.get("team") || 0);
   const { userData } = useAuth();
 
   const [event, setEvent] = useState<AppEvent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "teams" | "schedule">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "teams" | "schedule">(() => {
+    const tab = String(searchParams.get("tab") || "").toLowerCase();
+    if (tab === "teams" || tab === "schedule" || tab === "overview") return tab;
+    return "overview";
+  });
   const [teams, setTeams] = useState<FirstEventTeam[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState("");
@@ -167,6 +174,13 @@ function EventDetailsContent() {
   }, [eventKey, userData?.teamId]);
 
   useEffect(() => {
+    const tab = String(searchParams.get("tab") || "").toLowerCase();
+    if (tab === "teams" || tab === "schedule" || tab === "overview") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     async function loadTeams() {
       if (!eventKey || activeTab !== "teams") return;
       const year = Number(eventKey.slice(0, 4));
@@ -219,6 +233,15 @@ function EventDetailsContent() {
 
     void loadTeams();
   }, [activeTab, eventKey, userData?.teamId]);
+
+  useEffect(() => {
+    if (activeTab !== "teams" || !highlightedTeam || teams.length === 0) return;
+    const id = `team-${highlightedTeam}`;
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [activeTab, highlightedTeam, teams]);
 
   if (loading) {
     return (
@@ -403,9 +426,23 @@ function EventDetailsContent() {
                     </thead>
                     <tbody>
                       {teams.map((team) => (
-                        <tr key={team.teamNumber} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 border-b font-semibold">{team.teamNumber}</td>
-                          <td className="px-4 py-2 border-b">{team.nameShort}</td>
+                        <tr
+                          key={team.teamNumber}
+                          id={`team-${team.teamNumber}`}
+                          className={`hover:bg-gray-50 ${
+                            highlightedTeam === team.teamNumber ? "bg-yellow-200 text-gray-900" : ""
+                          }`}
+                        >
+                          <td className="px-4 py-2 border-b font-semibold">
+                            <Link href={`/analytics/team-breakdown/${team.teamNumber}`} className="hover:underline">
+                              {team.teamNumber}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-2 border-b">
+                            <Link href={`/analytics/team-breakdown/${team.teamNumber}`} className="hover:underline">
+                              {team.nameShort}
+                            </Link>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

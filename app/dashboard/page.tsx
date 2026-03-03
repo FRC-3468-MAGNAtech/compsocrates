@@ -196,7 +196,16 @@ async function fetchPendingRequestsForUser(userId: string): Promise<TeamJoinRequ
     },
     {
       userId: input.userId,
+      userName: input.userName,
       role: input.requestedRole,
+      teamId: input.teamId,
+      ...(input.teamDisplayLabel ? { teamDisplayLabel: input.teamDisplayLabel } : {}),
+      status: "pending",
+      createdAt,
+    },
+    {
+      userId: input.userId,
+      userName: input.userName,
       teamId: input.teamId,
       ...(input.teamDisplayLabel ? { teamDisplayLabel: input.teamDisplayLabel } : {}),
       status: "pending",

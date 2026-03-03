@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/app/components/Sidebar";
@@ -29,6 +29,7 @@ const analyticsLinks: Array<{ href: string; label: string } | { divider: true }>
   { href: "/analytics/team-averages", label: "Team Averages" },
   { href: "/analytics/match-breakdown", label: "Match Breakdown" },
   { href: "/analytics/rankings", label: "Rankings" },
+  { href: "/analytics/team-breakdown", label: "Team Breakdown" },
   { href: "/analytics/pick-list", label: "Pick List" },
 ];
 
@@ -46,6 +47,10 @@ export default function AnalyticsShell({
 }: AnalyticsShellProps) {
   const pathname = usePathname();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("analytics-search-term") || "";
+  });
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     const saved = localStorage.getItem("analytics-sidebar-collapsed");
@@ -109,6 +114,47 @@ export default function AnalyticsShell({
     const exists = effectiveEventOptions.some((option) => option.id === selectedEvent);
     if (!exists) onSelectedEventChange(effectiveEventOptions[0].id);
   }, [effectiveEventOptions, onSelectedEventChange, selectedEvent]);
+
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem("analytics-search-term", searchTerm);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+
+    const normalized = searchTerm.trim().toLowerCase();
+    const applySearch = () => {
+      const rows = Array.from(root.querySelectorAll("tbody tr"));
+      rows.forEach((row) => {
+        const target = row as HTMLElement;
+        if (!normalized) {
+          target.style.removeProperty("display");
+          return;
+        }
+        const text = (target.textContent || "").toLowerCase();
+        target.style.display = text.includes(normalized) ? "" : "none";
+      });
+
+      const cards = Array.from(root.querySelectorAll("[data-analytics-search-item='true']"));
+      cards.forEach((node) => {
+        const item = node as HTMLElement;
+        if (!normalized) {
+          item.style.removeProperty("display");
+          return;
+        }
+        const text = (item.textContent || "").toLowerCase();
+        item.style.display = text.includes(normalized) ? "" : "none";
+      });
+    };
+
+    applySearch();
+    const observer = new MutationObserver(() => applySearch());
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [searchTerm]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -247,6 +293,13 @@ export default function AnalyticsShell({
                 {collapsed ? ">" : "<"}
               </button>
               <span className="text-sm text-gray-600">{entriesCount} entries</span>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search this analytics page"
+                className="ml-2 border rounded px-3 py-1.5 text-sm w-64 max-w-[45vw]"
+              />
             </div>
             <div className="flex items-center gap-2">
               {onPracticeMatchesOnlyChange && (
@@ -270,7 +323,7 @@ export default function AnalyticsShell({
               </select>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-6">{children}</div>
+          <div ref={contentRef} className="flex-1 overflow-y-auto p-6">{children}</div>
         </div>
       </div>
     </div>

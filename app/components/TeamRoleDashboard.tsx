@@ -98,6 +98,23 @@ function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
     }));
 }
 
+function isPastEvent(event: UpcomingEvent) {
+  const now = Date.now();
+  const end = new Date(`${event.endDate}T23:59:59`).getTime();
+  return Number.isFinite(end) && now > end;
+}
+
+function sortDashboardEvents(events: UpcomingEvent[]) {
+  return [...events].sort((a, b) => {
+    const aPast = isPastEvent(a);
+    const bPast = isPastEvent(b);
+    if (aPast !== bPast) return aPast ? 1 : -1;
+    const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+    const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+    return aTime - bTime;
+  });
+}
+
 function isEventActive(event: UpcomingEvent) {
   const now = Date.now();
   const start = new Date(`${event.startDate}T00:00:00`).getTime();
@@ -166,17 +183,18 @@ function TeamRoleDashboardContent({
         userData.uid || "",
         userData.displayName || ""
       );
+      const orderedEvents = sortDashboardEvents(visibleEvents);
 
       setStats(teamStats);
-      setUpcomingEvents(visibleEvents);
+      setUpcomingEvents(orderedEvents);
       setActiveEventKey((current) => {
-        if (current && visibleEvents.some((event) => event.key === current)) return current;
-        return visibleEvents[0]?.key || "";
+        if (current && orderedEvents.some((event) => event.key === current)) return current;
+        return orderedEvents[0]?.key || "";
       });
       setPracticeSessionsCount(practiceSnap.size);
 
       const eventMatches = await Promise.all(
-        visibleEvents.map(async (event: UpcomingEvent) => {
+        orderedEvents.map(async (event: UpcomingEvent) => {
           try {
             const matches = await getEventMatches(event.key);
             return [event.key, normalizeMatches(matches)] as const;
@@ -190,7 +208,7 @@ function TeamRoleDashboardContent({
       setEventMatchesByKey(matchMap);
 
       const activeEvent =
-        visibleEvents.find((event: UpcomingEvent) => event.key === (visibleEvents[0]?.key || "")) || visibleEvents[0];
+        orderedEvents.find((event: UpcomingEvent) => event.key === (orderedEvents[0]?.key || "")) || orderedEvents[0];
       if (pitScoutFocus && activeEvent) {
         const eventTeams: number[] = Array.from(
           new Set((matchMap[activeEvent.key] || []).flatMap((match: DashboardMatch) => [...match.redTeams, ...match.blueTeams]))
@@ -469,7 +487,7 @@ function TeamRoleDashboardContent({
                       <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <h2 className="text-xl font-semibold mb-1">Event Data</h2>
+                            <h2 className="text-xl font-semibold mb-1">{isPastEvent(activeEvent) ? "Past Event" : "Event Data"}</h2>
                             <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{activeEvent.name}</p>
                             <p className="text-gray-600 flex flex-wrap items-center gap-2">
                               <CalendarDays size={16} />

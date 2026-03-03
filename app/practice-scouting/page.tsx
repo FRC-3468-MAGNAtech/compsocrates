@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
+import PracticeDifficultyMatchModal, { type PracticeDifficultyModalOption } from "@/app/components/PracticeDifficultyMatchModal";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
@@ -82,56 +83,9 @@ const RebuiltCycleTimer = ({
   );
 };
 
-function TeamPickerModal({
-  open,
-  teams,
-  onClose,
-  onSelect,
-}: {
-  open: boolean;
-  teams: string[];
-  onClose: () => void;
-  onSelect: (team: string) => void;
-}) {
-  return (
-    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
-      <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
-      <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
-        {teams.length === 0 ? (
-          <p className="p-3 text-sm text-gray-600">No robots detected. Client may be offline.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {teams.map((team) => (
-              <button
-                key={team}
-                type="button"
-                onClick={() => {
-                  onSelect(team);
-                  onClose();
-                }}
-                className="rounded-lg border border-red-400 p-3 text-sm text-left hover:bg-gray-50"
-              >
-                {team}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-4 w-full py-2 rounded text-white"
-        style={{ backgroundColor: "var(--primary-color)" }}
-      >
-        Close
-      </button>
-    </ReefscapeStyleModal>
-  );
-}
-
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
-type PracticeStep = 'select' | 'practice' | 'break' | 'results';
+type PracticeStep = 'select' | 'live_reveal' | 'practice' | 'break' | 'results';
 type RebuiltScoutedData = {
   teamNumber: string;
   startingPosition: string;
@@ -204,6 +158,38 @@ type PracticeSessionDraft = {
 
 type CandidatePracticeMatch = PracticeMatch & {
   progress: "fresh" | "partial" | "complete";
+};
+
+type LivePracticeLobby = {
+  id: string;
+  code: string;
+  hostId: string;
+  hostName: string;
+  teamId: string;
+  game: "REEFSCAPE" | "REBUILT";
+  mode: PracticeMode;
+  status: "waiting" | "in_progress" | "completed" | "closed";
+  createdAt: number;
+  startedAt?: number;
+  revealUntil?: number;
+  playersByUid?: Record<string, { name?: string; joinedAt?: number }>;
+  matchJson?: string;
+  assignmentsJson?: string;
+  submissionsJson?: string;
+};
+
+type LivePracticeLobbyStorage = Omit<LivePracticeLobby, "id"> & { id?: string };
+
+type LiveAssignment = {
+  alliance: "red" | "blue";
+  robotIndex: number;
+  teamNumber: string;
+  groupIndex: number;
+};
+
+type LiveMatchBundle = {
+  red: PracticeMatch;
+  blue: PracticeMatch;
 };
 
 type PracticeSelectorOption = ReefscapeMatchOption & {
@@ -846,12 +832,23 @@ function PracticeScoutingContent() {
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
-  const [showLiveTeamPicker, setShowLiveTeamPicker] = useState(false);
-  const [liveTeamPickerTarget, setLiveTeamPickerTarget] = useState<"reefscape" | "rebuilt">("reefscape");
+  const [showDifficultyMatchModal, setShowDifficultyMatchModal] = useState(false);
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
   const [liveEventKeyHint, setLiveEventKeyHint] = useState("");
   const [liveEventTeamSuggestions, setLiveEventTeamSuggestions] = useState<number[]>([]);
+  const [liveLobbyId, setLiveLobbyId] = useState("");
+  const [liveLobbyCodeInput, setLiveLobbyCodeInput] = useState("");
+  const [liveLobby, setLiveLobby] = useState<LivePracticeLobby | null>(null);
+  const [liveLobbyBusy, setLiveLobbyBusy] = useState(false);
+  const [liveLobbyError, setLiveLobbyError] = useState("");
+  const [liveMatchBundle, setLiveMatchBundle] = useState<LiveMatchBundle | null>(null);
+  const [liveAssignments, setLiveAssignments] = useState<Record<string, LiveAssignment>>({});
+  const [liveSubmissions, setLiveSubmissions] = useState<Record<string, Record<string, unknown>>>({});
+  const [liveRevealCountdown, setLiveRevealCountdown] = useState(0);
+  const [liveTeamAccuracy, setLiveTeamAccuracy] = useState<number | null>(null);
+  const [liveLeaderboard, setLiveLeaderboard] = useState<Array<{ team: string; accuracy: number; completed: number }>>([]);
+  const [liveStartedSessionKey, setLiveStartedSessionKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
@@ -869,12 +866,80 @@ function PracticeScoutingContent() {
     ? "hard"
     : (selectedDifficulty || "easy");
 
-  const livePickerTeams = useMemo(() => {
-    const detected = liveEventTeamSuggestions.map((team) => String(team).trim()).filter(Boolean);
-    if (detected.length > 0) return Array.from(new Set(detected));
-    const fromMatch = (currentMatch?.allianceTeams || []).map((team) => String(team).trim()).filter(Boolean);
-    return Array.from(new Set(fromMatch));
-  }, [currentMatch?.allianceTeams, liveEventTeamSuggestions]);
+  const liveLobbyPlayers = useMemo(() => {
+    if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
+    return Object.entries(liveLobby.playersByUid)
+      .map(([uid, player]) => ({
+        uid,
+        name: String(player?.name || `User ${uid.slice(0, 6)}`),
+        joinedAt: Number(player?.joinedAt || 0),
+      }))
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }, [liveLobby]);
+
+  const liveLobbyPlayerCount = liveLobbyPlayers.length;
+  const liveLobbyCanStart = liveLobbyPlayerCount > 0 && liveLobbyPlayerCount % 3 === 0;
+  const userIsLiveLobbyHost = Boolean(liveLobby && userData?.uid && liveLobby.hostId === userData.uid);
+  const myLiveAssignment = useMemo(() => {
+    if (!userData?.uid) return null;
+    return liveAssignments[userData.uid] || null;
+  }, [liveAssignments, userData?.uid]);
+  const liveSubmittedCount = useMemo(() => Object.keys(liveSubmissions || {}).length, [liveSubmissions]);
+  const myLiveTeamMembers = useMemo(() => {
+    if (!myLiveAssignment) return [] as Array<{ uid: string; name: string; assignment: LiveAssignment }>;
+    return liveLobbyPlayers
+      .map((player) => {
+        const assignment = liveAssignments[player.uid];
+        if (!assignment) return null;
+        if (assignment.groupIndex !== myLiveAssignment.groupIndex) return null;
+        return { uid: player.uid, name: player.name, assignment };
+      })
+      .filter((row): row is { uid: string; name: string; assignment: LiveAssignment } => Boolean(row))
+      .sort((a, b) => a.assignment.robotIndex - b.assignment.robotIndex);
+  }, [liveAssignments, liveLobbyPlayers, myLiveAssignment]);
+
+  function getLocalLobbyStore() {
+    if (typeof window === "undefined") return {} as Record<string, LivePracticeLobbyStorage>;
+    try {
+      const raw = localStorage.getItem("practice-live-lobbies");
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, LivePracticeLobbyStorage>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function setLocalLobbyStore(store: Record<string, LivePracticeLobbyStorage>) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("practice-live-lobbies", JSON.stringify(store));
+  }
+
+  function upsertLocalLobby(code: string, lobby: LivePracticeLobbyStorage) {
+    const store = getLocalLobbyStore();
+    store[code] = lobby;
+    setLocalLobbyStore(store);
+  }
+
+  function readLocalLobby(code: string) {
+    const store = getLocalLobbyStore();
+    return store[code] || null;
+  }
+
+  function removeLocalLobby(code: string) {
+    const store = getLocalLobbyStore();
+    delete store[code];
+    setLocalLobbyStore(store);
+  }
+
+  async function authHeaders(extra: HeadersInit = {}) {
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) return extra;
+    return {
+      ...extra,
+      Authorization: `Bearer ${token}`,
+    } as HeadersInit;
+  }
 
   useEffect(() => {
     async function loadTeamEventCatalog() {
@@ -905,6 +970,402 @@ function PracticeScoutingContent() {
     void loadTeamEventCatalog();
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    if (!liveLobbyId) {
+      setLiveLobby(null);
+      return;
+    }
+    if (liveLobbyId.startsWith("local:") || !liveLobby?.code) return;
+
+    let cancelled = false;
+    const loadLobby = async () => {
+      try {
+        const headers = await authHeaders();
+        const response = await fetch(`/api/live-lobbies?code=${encodeURIComponent(liveLobby.code)}`, {
+          headers,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          if (!cancelled) setLiveLobbyError(`Live lobby sync unavailable (${response.status}). Retrying...`);
+          return;
+        }
+        const payload = (await response.json()) as { lobby?: LivePracticeLobby };
+        if (!cancelled) {
+          if (payload.lobby) {
+            setLiveLobby(payload.lobby);
+            setLiveLobbyError("");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load live practice lobby:", error);
+        if (!cancelled) setLiveLobbyError("Live lobby sync temporarily unavailable. Retrying...");
+      }
+    };
+
+    void loadLobby();
+    const timer = window.setInterval(() => {
+      void loadLobby();
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [liveLobbyId, liveLobby?.code]);
+
+  useEffect(() => {
+    const parsedMatch = parseLobbyJson<LiveMatchBundle | null>(liveLobby?.matchJson, null);
+    const parsedAssignments = parseLobbyJson<Record<string, LiveAssignment>>(liveLobby?.assignmentsJson, {});
+    const parsedSubmissions = parseLobbyJson<Record<string, Record<string, unknown>>>(liveLobby?.submissionsJson, {});
+    setLiveMatchBundle(parsedMatch);
+    setLiveAssignments(parsedAssignments);
+    setLiveSubmissions(parsedSubmissions);
+  }, [liveLobby?.assignmentsJson, liveLobby?.matchJson, liveLobby?.submissionsJson]);
+
+  useEffect(() => {
+    if (!liveLobby?.revealUntil || liveLobby.status !== "in_progress") {
+      setLiveRevealCountdown(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((liveLobby.revealUntil! - Date.now()) / 1000));
+      setLiveRevealCountdown(remaining);
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [liveLobby?.revealUntil, liveLobby?.status]);
+
+  useEffect(() => {
+    if (!liveLobby || liveLobby.status !== "in_progress") return;
+    if (!liveMatchBundle || !myLiveAssignment) return;
+    if (currentStep === "select" && liveRevealCountdown > 0) {
+      setCurrentStep("live_reveal");
+      return;
+    }
+    if (currentStep !== "live_reveal") return;
+    const sessionKey = `${liveLobby.code}:${liveLobby.startedAt || 0}`;
+    if (liveStartedSessionKey === sessionKey) return;
+    if (liveRevealCountdown > 0) return;
+    const match = myLiveAssignment.alliance === "blue" ? liveMatchBundle.blue : liveMatchBundle.red;
+    const selected = { ...match, progress: "fresh" as const };
+    setSelectedDifficulty("live");
+    startPracticeMatch(selected, { robotIndex: myLiveAssignment.robotIndex, teamNumber: myLiveAssignment.teamNumber });
+    setLiveStartedSessionKey(sessionKey);
+  }, [
+    liveLobby,
+    liveMatchBundle,
+    myLiveAssignment,
+    liveStartedSessionKey,
+    liveRevealCountdown,
+    currentStep,
+    startPracticeMatch,
+  ]);
+
+  useEffect(() => {
+    if (!liveLobby || liveLobby.status !== "completed") return;
+    if (!liveMatchBundle) return;
+    const board = computeLiveLeaderboardFromLobby(liveMatchBundle, liveAssignments, liveSubmissions);
+    setLiveLeaderboard(board.map((row) => ({ team: row.team, accuracy: row.accuracy, completed: row.completed })));
+    const mine = userData?.uid ? liveAssignments[userData.uid] : null;
+    if (mine) {
+      const myRow = board.find((row) => row.groupIndex === mine.groupIndex);
+      setLiveTeamAccuracy(myRow ? myRow.accuracy : null);
+    } else {
+      setLiveTeamAccuracy(null);
+    }
+    setCurrentStep("results");
+  }, [computeLiveLeaderboardFromLobby, liveAssignments, liveLobby, liveMatchBundle, liveSubmissions, userData?.uid]);
+
+  function createLobbyCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i += 1) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+  }
+
+  async function loadLiveMatchBundleFromPastMatches(): Promise<LiveMatchBundle | null> {
+    let matches: PracticeMatch[] = [];
+    const snapshot = await getDocs(collection(db, "practiceMatches"));
+    matches = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as PracticeMatch[];
+    const gameFiltered = matches.filter((match) => matchBelongsToSelectedGame(match));
+    const normalized = gameFiltered
+      .map((match) => ({ ...match, allianceTeams: getMatchTeams(match as unknown as PracticeMatch & Record<string, unknown>) }))
+      .filter((match) => match.allianceTeams.length >= 3);
+    const deduped = dedupePracticeMatches(normalized);
+    const byBase = new Map<string, { red?: PracticeMatch; blue?: PracticeMatch }>();
+    for (const match of deduped) {
+      const base = getPracticeBaseIdentity(match);
+      const alliance = normalizeAllianceSide((match as unknown as Record<string, unknown>).alliance);
+      if (!alliance) continue;
+      const bucket = byBase.get(base) || {};
+      bucket[alliance] = match;
+      byBase.set(base, bucket);
+    }
+    const bundled = Array.from(byBase.values()).filter((row) => row.red && row.blue) as Array<{ red: PracticeMatch; blue: PracticeMatch }>;
+    if (bundled.length === 0) return null;
+    const picked = bundled[Math.floor(Math.random() * bundled.length)];
+    return { red: picked.red, blue: picked.blue };
+  }
+
+  function buildLiveAssignments(players: Array<{ uid: string }>, bundle: LiveMatchBundle) {
+    const result: Record<string, LiveAssignment> = {};
+    const redTeams = (bundle.red.allianceTeams || []).map((team) => String(team || "").trim());
+    const blueTeams = (bundle.blue.allianceTeams || []).map((team) => String(team || "").trim());
+    players.forEach((player, index) => {
+      const group = Math.floor(index / 3);
+      const robotIndex = index % 3;
+      const alliance: "red" | "blue" = group % 2 === 0 ? "red" : "blue";
+      const teamNumber = alliance === "red" ? redTeams[robotIndex] || "" : blueTeams[robotIndex] || "";
+      result[player.uid] = { alliance, robotIndex, teamNumber, groupIndex: group };
+    });
+    return result;
+  }
+
+  async function createLiveLobby() {
+    if (!userData?.uid || !selectedMode || !activeMatchGame) return;
+    setLiveLobbyBusy(true);
+    setLiveLobbyError("");
+    try {
+      let code = createLobbyCode();
+      const payload: Omit<LivePracticeLobby, "id"> = {
+        code,
+        hostId: userData.uid,
+        hostName: userData.displayName || "Host",
+        teamId: userData.teamId || "",
+        game: activeMatchGame,
+        mode: selectedMode,
+        status: "waiting",
+        createdAt: Date.now(),
+        playersByUid: {
+          [userData.uid]: { name: userData.displayName || "Host", joinedAt: Date.now() },
+        },
+      };
+
+      try {
+        let createdLobby: LivePracticeLobby | null = null;
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const headers = await authHeaders({ "Content-Type": "application/json" });
+          const response = await fetch("/api/live-lobbies", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              action: "create",
+              code,
+              hostId: payload.hostId,
+              hostName: payload.hostName,
+              teamId: payload.teamId,
+              game: payload.game,
+              mode: payload.mode,
+            }),
+          });
+          if (response.status === 409) {
+            code = createLobbyCode();
+            continue;
+          }
+          if (!response.ok) {
+            const fail = (await response.json().catch(() => ({}))) as { error?: string };
+            throw new Error(fail.error || `create_failed_${response.status}`);
+          }
+          const created = (await response.json()) as { lobby?: LivePracticeLobby };
+          createdLobby = created.lobby || null;
+          break;
+        }
+        if (!createdLobby) throw new Error("create_failed");
+        setLiveLobbyId(createdLobby.id);
+        setLiveLobby(createdLobby);
+      } catch (cloudError) {
+        console.warn("Cloud live lobby unavailable; falling back to local lobby.", cloudError);
+        const localId = `local:${Date.now()}`;
+        const localCode = code.startsWith("LOCAL-") ? code : `LOCAL-${code}`;
+        payload.code = localCode;
+        setLiveLobbyId(localId);
+        const localLobby = { id: localId, ...payload };
+        setLiveLobby(localLobby);
+        upsertLocalLobby(localCode, localLobby);
+        setLiveLobbyError("Cloud lobby storage is unavailable. This lobby is local-only (same browser/device).");
+      }
+    } catch (error) {
+      console.error("Failed creating live lobby:", error);
+      alert("Could not create live lobby.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
+
+  async function joinLiveLobby() {
+    if (!userData?.uid) return;
+    const code = liveLobbyCodeInput.trim().toUpperCase();
+    if (!code) {
+      alert("Enter a lobby code.");
+      return;
+    }
+    setLiveLobbyBusy(true);
+    setLiveLobbyError("");
+    try {
+      if (code.startsWith("LOCAL-")) {
+        const localOnly = readLocalLobby(code);
+        if (!localOnly) {
+          setLiveLobbyError("This is a local-only lobby code and can only be joined on the host device/browser.");
+          return;
+        }
+      }
+      const localLobby = readLocalLobby(code);
+      if (localLobby) {
+        const localId = String(localLobby.id || `local:${Date.now()}`);
+        const joinedLobby: LivePracticeLobby = {
+          ...localLobby,
+          id: localId,
+          playersByUid: {
+            ...(localLobby.playersByUid || {}),
+            [userData.uid]: { name: userData.displayName || "Player", joinedAt: Date.now() },
+          },
+        };
+        setLiveLobby(joinedLobby);
+        setLiveLobbyId(localId);
+        setActiveMatchGame(joinedLobby.game);
+        setSelectedMode(joinedLobby.mode);
+        upsertLocalLobby(code, joinedLobby);
+        return;
+      }
+      const response = await fetch("/api/live-lobbies", {
+        method: "POST",
+        headers: await authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          action: "join",
+          code,
+          uid: userData.uid,
+          name: userData.displayName || "Player",
+          teamId: userData.teamId || "",
+        }),
+      });
+      if (!response.ok) {
+        const fail = (await response.json().catch(() => ({}))) as { error?: string };
+        setLiveLobbyError(fail.error || `Could not join lobby (${response.status}).`);
+        return;
+      }
+      const payload = (await response.json()) as { lobby?: LivePracticeLobby };
+      if (!payload.lobby) {
+        setLiveLobbyError("Could not join lobby.");
+        return;
+      }
+      setActiveMatchGame(payload.lobby.game);
+      setSelectedMode(payload.lobby.mode);
+      setLiveLobbyId(payload.lobby.id);
+      setLiveLobby(payload.lobby);
+    } catch (error) {
+      console.error("Failed joining live lobby:", error);
+      const codeValue = (error as { code?: string })?.code || "";
+      if (String(codeValue).toLowerCase().includes("permission")) {
+        setLiveLobbyError("Join blocked by Firestore permissions for live lobbies in this deployment.");
+        return;
+      }
+      setLiveLobbyError(`Could not join lobby${codeValue ? ` (${codeValue})` : ""}.`);
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
+
+  async function leaveLiveLobby() {
+    if (!liveLobby || !userData?.uid) return;
+    setLiveLobbyBusy(true);
+    try {
+      if (liveLobby.id.startsWith("local:")) {
+        if (userIsLiveLobbyHost) {
+          removeLocalLobby(liveLobby.code);
+          setLiveLobby(null);
+          setLiveLobbyId("");
+          return;
+        }
+        const nextPlayers = { ...(liveLobby.playersByUid || {}) };
+        delete nextPlayers[userData.uid];
+        const nextLobby = { ...liveLobby, playersByUid: nextPlayers };
+        setLiveLobby(nextLobby);
+        upsertLocalLobby(liveLobby.code, nextLobby);
+        return;
+      }
+      const response = await fetch("/api/live-lobbies", {
+        method: "POST",
+        headers: await authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          action: "leave",
+          code: liveLobby.code,
+          uid: userData.uid,
+        }),
+      });
+      if (!response.ok) {
+        const fail = (await response.json().catch(() => ({}))) as { error?: string };
+        setLiveLobbyError(fail.error || "Could not leave lobby.");
+      }
+      setLiveLobby(null);
+      setLiveLobbyId("");
+    } catch (error) {
+      console.error("Failed leaving live lobby:", error);
+      alert("Could not leave lobby.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
+
+  async function startLiveLobbySession() {
+    if (!liveLobby || !userIsLiveLobbyHost) return;
+    if (!liveLobbyCanStart) {
+      alert("Live practice requires players in multiples of 3.");
+      return;
+    }
+    setLiveLobbyBusy(true);
+    try {
+      const bundle = await loadLiveMatchBundleFromPastMatches();
+      if (!bundle) {
+        setLiveLobbyError("No past matches available with both alliances for live practice.");
+        return;
+      }
+      const players = [...liveLobbyPlayers];
+      const assignments = buildLiveAssignments(players, bundle);
+      const matchJson = JSON.stringify(bundle);
+      const assignmentsJson = JSON.stringify(assignments);
+
+      if (liveLobby.id.startsWith("local:")) {
+        setLiveLobby({
+          ...liveLobby,
+          status: "in_progress",
+          startedAt: Date.now(),
+          revealUntil: Date.now() + 12000,
+          matchJson,
+          assignmentsJson,
+          submissionsJson: "{}",
+        });
+        setCurrentStep("live_reveal");
+        return;
+      }
+      const response = await fetch("/api/live-lobbies", {
+        method: "POST",
+        headers: await authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          action: "start",
+          code: liveLobby.code,
+          uid: userData?.uid || "",
+          matchJson,
+          assignmentsJson,
+        }),
+      });
+      if (!response.ok) {
+        const fail = (await response.json().catch(() => ({}))) as { error?: string };
+        setLiveLobbyError(fail.error || "Could not start lobby.");
+        return;
+      }
+      const payload = (await response.json()) as { lobby?: LivePracticeLobby };
+      if (payload.lobby) {
+        setLiveLobby(payload.lobby);
+        setCurrentStep("live_reveal");
+      }
+    } catch (error) {
+      console.error("Failed starting live lobby:", error);
+      alert("Could not start live lobby.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
+
   function getPracticeIdentity(match: {
     matchKey?: unknown;
     matchNumber?: unknown;
@@ -918,6 +1379,27 @@ function PracticeScoutingContent() {
     const alliance = normalizeAllianceSide(match.alliance);
     if (!alliance) return baseIdentity;
     return `${baseIdentity}:${alliance}`;
+  }
+
+  function getPracticeBaseIdentity(match: {
+    matchKey?: unknown;
+    matchNumber?: unknown;
+    matchType?: unknown;
+    compLevel?: unknown;
+  }) {
+    const key = String(match.matchKey || "").trim().toLowerCase();
+    const stage = getPracticeStage(match);
+    return key || `${stage}:${Number(match.matchNumber || 0)}`;
+  }
+
+  function parseLobbyJson<T>(raw: string | undefined, fallback: T): T {
+    if (!raw) return fallback;
+    try {
+      const parsed = JSON.parse(raw) as T;
+      return parsed ?? fallback;
+    } catch {
+      return fallback;
+    }
   }
 
 function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber" | "allianceTeams" | "alliance" | "matchKey">) {
@@ -938,7 +1420,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 }
 
   function comparePracticeMatchesInOrder(a: CandidatePracticeMatch, b: CandidatePracticeMatch) {
-    const stageOrder = { practice: 0, qualification: 1, semifinal: 2, finals: 3 } as const;
+    const stageOrder = { qualification: 0, semifinal: 1, finals: 2, practice: 3 } as const;
     const aStage = getPracticeStage(a);
     const bStage = getPracticeStage(b);
     const stageDiff = stageOrder[aStage] - stageOrder[bStage];
@@ -969,10 +1451,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }
 
   function compareCandidateMatches(a: CandidatePracticeMatch, b: CandidatePracticeMatch) {
+    const ordered = comparePracticeMatchesInOrder(a, b);
+    if (ordered !== 0) return ordered;
     const progressRank = { fresh: 0, partial: 1, complete: 2 } as const;
-    const progressDiff = progressRank[a.progress] - progressRank[b.progress];
-    if (progressDiff !== 0) return progressDiff;
-    return comparePracticeMatchesInOrder(a, b);
+    return progressRank[a.progress] - progressRank[b.progress];
   }
 
   function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
@@ -1082,19 +1564,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       // Best effort only.
       return "";
     }
-  }
-
-  function handleLiveTeamSelect(teamNumber: string, target: "reefscape" | "rebuilt") {
-    if (target === "rebuilt") {
-      setRebuiltFormData((prev) => ({ ...prev, teamNumber }));
-      return;
-    }
-    setFormData((prev) => ({ ...prev, teamNumber }));
-  }
-
-  function openLiveTeamPicker(target: "reefscape" | "rebuilt") {
-    setLiveTeamPickerTarget(target);
-    setShowLiveTeamPicker(true);
   }
 
   useEffect(() => {
@@ -1216,6 +1685,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setSelectedDifficulty(difficulty);
     setSelectedMode(mode);
     setCandidateMatches([]);
+    setShowDifficultyMatchModal(false);
 
     try {
       let matches: PracticeMatch[] = [];
@@ -1314,16 +1784,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         .sort(compareCandidateMatches);
 
       setCandidateMatches(rankedMatches);
-      if (rankedMatches.length > 0) {
-        const randomIndex = Math.floor(Math.random() * rankedMatches.length);
-        const randomMatch = rankedMatches[randomIndex];
-        if (randomMatch) {
-          if (difficulty !== "live") {
-            startPracticeMatch(randomMatch);
-          }
-        }
+      if (difficulty === "live") {
+        setShowDifficultyMatchModal(false);
+        setShowMatchSelectModal(false);
+      } else {
+        setShowDifficultyMatchModal(true);
       }
-      setShowMatchSelectModal(false);
     } catch (error) {
       console.error('Error loading practice match:', error);
       const details = (error as { code?: string; message?: string })?.message || "";
@@ -1337,7 +1803,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
   }
 
-  function startPracticeMatch(selected: CandidatePracticeMatch) {
+  function startPracticeMatch(
+    selected: CandidatePracticeMatch,
+    options?: { robotIndex?: number; teamNumber?: string }
+  ) {
     const fallbackTeams = selected.allianceTeams.slice(0, 3);
     const official = readOfficialData(selected.officialData);
     const safeOfficialScore =
@@ -1368,16 +1837,134 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     };
 
     setCurrentMatch(safeMatch);
-    setCurrentRobotIndex(0);
+    const initialRobotIndex = Math.max(0, Math.min(2, Number(options?.robotIndex ?? 0)));
+    setCurrentRobotIndex(initialRobotIndex);
     setBreakCompletedRobotIndex(null);
     setRobotSessions([]);
     setRebuiltRobotSessions([]);
-    const defaultFirstTeam = safeMatch.allianceTeams[0]?.toString() || "";
-    const initialTeamNumber = selectedDifficulty === "live" ? "" : defaultFirstTeam;
+    const defaultTeam = safeMatch.allianceTeams[initialRobotIndex]?.toString() || "";
+    const initialTeamNumber = options?.teamNumber || (selectedDifficulty === "live" ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
     setHumanPlayerRobot(Math.floor(Math.random() * 3));
     setCurrentStep("practice");
+    setShowDifficultyMatchModal(false);
+  }
+
+  function getAllianceOfficialScore(match: PracticeMatch) {
+    const official = readOfficialData(match.officialData);
+    if (typeof official.score === "number" && Number.isFinite(official.score)) return official.score;
+    if (typeof match.actualScore === "number" && Number.isFinite(match.actualScore)) return match.actualScore;
+    return 0;
+  }
+
+  function computeLiveLeaderboardFromLobby(
+    bundle: LiveMatchBundle,
+    assignments: Record<string, LiveAssignment>,
+    submissions: Record<string, Record<string, unknown>>
+  ) {
+    const byGroup = new Map<number, Array<{ assignment: LiveAssignment; submission: Record<string, unknown> }>>();
+    Object.entries(submissions).forEach(([uid, submission]) => {
+      const assignment = assignments[uid];
+      if (!assignment) return;
+      const bucket = byGroup.get(assignment.groupIndex) || [];
+      bucket.push({ assignment, submission });
+      byGroup.set(assignment.groupIndex, bucket);
+    });
+
+    const rows: Array<{ team: string; accuracy: number; completed: number; alliance: "red" | "blue"; groupIndex: number }> = [];
+    for (const [groupIndex, entries] of byGroup.entries()) {
+      if (entries.length === 0) continue;
+      const alliance = entries[0].assignment.alliance;
+      const officialScore = getAllianceOfficialScore(alliance === "blue" ? bundle.blue : bundle.red);
+      const penaltyPoints = Number(readOfficialData((alliance === "blue" ? bundle.blue : bundle.red).officialData).penaltyPoints || 0);
+      let accuracy = 0;
+      if (activeMatchGame === "REBUILT") {
+        const rebuiltRobots = entries
+          .map((entry) => (entry.submission.rebuiltData || null) as RebuiltScoutedData | null)
+          .filter((row): row is RebuiltScoutedData => Boolean(row));
+        if (rebuiltRobots.length > 0) {
+          const baseScore = calculateBestRebuiltSessionBaseScore(rebuiltRobots, officialScore, penaltyPoints);
+          accuracy = calculateAccuracy(baseScore + penaltyPoints, officialScore);
+        }
+      } else {
+        const reefRobots = entries
+          .map((entry) => (entry.submission.scoutedData || null) as ScoutedData | null)
+          .filter((row): row is ScoutedData => Boolean(row));
+        if (reefRobots.length > 0) {
+          const score = reefRobots.reduce((sum, row) => sum + calculateScoutedScore(row), 0) + penaltyPoints;
+          accuracy = calculateAccuracy(score, officialScore);
+        }
+      }
+      rows.push({
+        team: `${alliance.toUpperCase()} Team ${groupIndex + 1}`,
+        accuracy,
+        completed: entries.length,
+        alliance,
+        groupIndex,
+      });
+    }
+    rows.sort((a, b) => b.accuracy - a.accuracy);
+    return rows;
+  }
+
+  async function syncLiveGroupAccuracyToScoutingRows(input: {
+    bundle: LiveMatchBundle;
+    assignments: Record<string, LiveAssignment>;
+    submissions: Record<string, Record<string, unknown>>;
+    groupIndex: number;
+    matchKey: string;
+    matchId: string;
+    matchNumber: string;
+    alliance: "red" | "blue" | "";
+  }) {
+    const { bundle, assignments, submissions, groupIndex, matchKey, matchId, matchNumber, alliance } = input;
+    if (groupIndex < 0) return;
+    if (!matchId && !matchKey) return;
+
+    const groupMembers = Object.entries(assignments)
+      .filter(([, assignment]) => assignment.groupIndex === groupIndex)
+      .map(([uid]) => uid);
+    if (groupMembers.length !== 3) return;
+
+    const board = computeLiveLeaderboardFromLobby(bundle, assignments, submissions);
+    const groupRow = board.find((row) => row.groupIndex === groupIndex);
+    if (!groupRow) return;
+
+    const groupSubmissionCount = Object.entries(submissions).filter(([uid]) => groupMembers.includes(uid)).length;
+    if (groupSubmissionCount < 3) return;
+
+    await Promise.all(
+      groupMembers.map(async (uid) => {
+        try {
+          const scoutRowsSnap = await getDocs(query(collection(db, "scouting"), where("scoutId", "==", uid)));
+          const candidates = scoutRowsSnap.docs
+            .map((docSnap) => ({ id: docSnap.id, data: docSnap.data() as Record<string, unknown> }))
+            .filter((row) => {
+              const data = row.data;
+              if (!data.isLivePracticeScouting) return false;
+              const rowMatchKey = String(data.matchKey || "");
+              const rowMatchId = String(data.matchId || "");
+              const rowMatchNumber = String(data.matchNumber || "");
+              const rowAlliance = normalizeAllianceSide(data.alliance);
+              const matchKeyMatches = Boolean(matchKey) && rowMatchKey === matchKey;
+              const matchIdMatches = Boolean(matchId) && rowMatchId === matchId;
+              const matchNumberMatches = Boolean(matchNumber) && rowMatchNumber === matchNumber;
+              if (!matchKeyMatches && !matchIdMatches && !matchNumberMatches) return false;
+              if (alliance && rowAlliance && rowAlliance !== alliance) return false;
+              return true;
+            })
+            .sort((a, b) => Number(b.data.submittedAt || b.data.timestamp || 0) - Number(a.data.submittedAt || a.data.timestamp || 0));
+          const latest = candidates[0];
+          if (!latest) return;
+          await updateDoc(doc(db, "scouting", latest.id), {
+            accuracy: groupRow.accuracy,
+          });
+        } catch {
+          // Best-effort sync only; keep live flow moving even if one row cannot be updated.
+        }
+      })
+    );
   }
 
   async function handleChooseLiveMatchClick() {
@@ -1774,6 +2361,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setSelectedMode(null);
     setCandidateMatches([]);
     setShowMatchSelectModal(false);
+    setShowDifficultyMatchModal(false);
     setLiveVideoUrl("");
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
@@ -1785,8 +2373,26 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setMobileNotesOpen(false);
     setFormData(createEmptyScoutedData());
     setRebuiltFormData(createEmptyRebuiltScoutedData());
+    setLiveTeamAccuracy(null);
+    setLiveLeaderboard([]);
+    setLiveStartedSessionKey("");
+    setLiveMatchBundle(null);
+    setLiveAssignments({});
+    setLiveSubmissions({});
     clearPracticeDraft();
     setPendingDraft(null);
+  }
+
+  async function endCurrentSession() {
+    if (selectedDifficulty === "live" && liveLobby) {
+      try {
+        await leaveLiveLobby();
+      } finally {
+        setLiveLobby(null);
+        setLiveLobbyId("");
+      }
+    }
+    resetPractice();
   }
 
   async function submitLiveRobot() {
@@ -1804,6 +2410,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const liveEventName = toLiveEventName(eventName);
       const alliance = normalizeAllianceSide(currentMatch.alliance);
       const penaltyPoints = Number(currentMatch.officialData?.penaltyPoints || 0);
+      let submissionPayload: Record<string, unknown> = {};
 
       if (activeMatchGame === "REBUILT") {
         const robotData = { ...rebuiltFormData };
@@ -1908,6 +2515,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           deviceType: device.deviceType,
           deviceDetails: device.details,
         });
+        submissionPayload = {
+          game: "REBUILT",
+          alliance,
+          teamNumber: robotData.teamNumber,
+          rebuiltData: robotData,
+        };
       } else {
         const robotData = { ...formData };
         await addDoc(collection(db, "scouting"), {
@@ -1934,6 +2547,82 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           deviceType: device.deviceType,
           deviceDetails: device.details,
         });
+        submissionPayload = {
+          game: activeMatchGame,
+          alliance,
+          teamNumber: robotData.teamNumber,
+          scoutedData: robotData,
+        };
+      }
+
+      if (liveLobby?.code && userData?.uid) {
+        const nextSubmissions = {
+          ...(liveSubmissions || {}),
+          [userData.uid]: { ...submissionPayload, submittedAt: Date.now() },
+        };
+        setLiveSubmissions((prev) => ({
+          ...prev,
+          [userData.uid]: { ...submissionPayload, submittedAt: Date.now() },
+        }));
+        if (liveLobby.id.startsWith("local:")) {
+          const next = { ...nextSubmissions };
+          const totalPlayers = Object.keys(liveLobby.playersByUid || {}).length;
+          const completed = Object.keys(next).length >= totalPlayers;
+          const nextLobby: LivePracticeLobby = {
+            ...liveLobby,
+            submissionsJson: JSON.stringify(next),
+            status: completed ? "completed" : "in_progress",
+          };
+          setLiveLobby(nextLobby);
+          upsertLocalLobby(liveLobby.code, nextLobby);
+          const myAssignment = liveAssignments[userData.uid];
+          if (myAssignment && liveMatchBundle) {
+            await syncLiveGroupAccuracyToScoutingRows({
+              bundle: liveMatchBundle,
+              assignments: liveAssignments,
+              submissions: next,
+              groupIndex: myAssignment.groupIndex,
+              matchKey: String(currentMatch.matchKey || ""),
+              matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
+              matchNumber: String(currentMatch.matchNumber || ""),
+              alliance,
+            });
+          }
+        } else {
+          const response = await fetch("/api/live-lobbies", {
+            method: "POST",
+            headers: await authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({
+              action: "submit",
+              code: liveLobby.code,
+              uid: userData.uid,
+              submissionJson: JSON.stringify(submissionPayload),
+            }),
+          });
+          if (!response.ok) {
+            const fail = (await response.json().catch(() => ({}))) as { error?: string };
+            setLiveLobbyError(fail.error || "Could not submit live robot.");
+          } else {
+            const payload = (await response.json()) as { lobby?: LivePracticeLobby };
+            if (payload.lobby) {
+              setLiveLobby(payload.lobby);
+              const myAssignment = liveAssignments[userData.uid];
+              const parsedSubmissions = parseLobbyJson<Record<string, Record<string, unknown>>>(payload.lobby.submissionsJson, nextSubmissions);
+              if (myAssignment && liveMatchBundle) {
+                await syncLiveGroupAccuracyToScoutingRows({
+                  bundle: liveMatchBundle,
+                  assignments: liveAssignments,
+                  submissions: parsedSubmissions,
+                  groupIndex: myAssignment.groupIndex,
+                  matchKey: String(currentMatch.matchKey || ""),
+                  matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
+                  matchNumber: String(currentMatch.matchNumber || ""),
+                  alliance,
+                });
+              }
+            }
+          }
+        }
       }
 
       setBreakCompletedRobotIndex(currentRobotIndex);
@@ -1950,6 +2639,37 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     if (!currentMatch) return;
     savePracticeDraft({ currentStep: currentStep === "break" ? "break" : "practice" });
     router.push("/dashboard");
+  }
+
+  const difficultyModalOptions = useMemo<PracticeDifficultyModalOption[]>(() => {
+    if (selectedDifficulty === "live" || !selectedDifficulty) return [];
+    return candidateMatches.map((match) => {
+      const matchLabel = getPracticeLabel(match);
+      const teamLabel = (match.allianceTeams || []).join(", ");
+      return {
+        id: match.id,
+        label: matchLabel,
+        teamLabel: teamLabel ? `Teams: ${teamLabel}` : "Teams: -",
+        progress: match.progress,
+      };
+    });
+  }, [candidateMatches, selectedDifficulty]);
+
+  function handleDifficultyModalPick(matchId: string) {
+    const picked = candidateMatches.find((match) => match.id === matchId);
+    if (!picked) return;
+    setShowDifficultyMatchModal(false);
+    startPracticeMatch(picked);
+  }
+
+  function handleDifficultyModalRandomize(visibleIds: string[]) {
+    const pool = candidateMatches.filter((match) => visibleIds.includes(match.id));
+    if (pool.length === 0) return;
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    const picked = pool[randomIndex];
+    if (!picked) return;
+    setShowDifficultyMatchModal(false);
+    startPracticeMatch(picked);
   }
 
   const sharedModalOptions = useMemo<PracticeSelectorOption[]>(() => {
@@ -1979,7 +2699,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function handleSharedModalPick(option: PracticeSelectorOption) {
     const picked = candidateMatches.find((match) => match.id === option.sourceId);
     if (!picked) return;
-    if (currentStep === "practice" && selectedDifficulty === "live") {
+    if (selectedDifficulty === "live") {
       startPracticeMatch(picked);
     }
   }
@@ -2076,6 +2796,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setCandidateMatches([]);
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
+                      setShowDifficultyMatchModal(false);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
@@ -2137,6 +2858,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setCandidateMatches([]);
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
+                      setShowDifficultyMatchModal(false);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
@@ -2214,51 +2936,149 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     </button>
                   )}
                 </div>
-                {selectedDifficulty === "live" && (
-                  <div className="mt-6 rounded-xl border border-cyan-300 bg-cyan-500/5 shadow-md p-4">
-                    <h3 className="font-semibold mb-1 text-cyan-700">Live Match Setup</h3>
-                    <p className="text-sm text-gray-700 mb-3">
-                      Paste a stream URL, then open match select to pick and start.
-                    </p>
+                <div className="mt-6 rounded-xl border border-indigo-300 bg-indigo-500/5 shadow-md p-4">
+                  <h3 className="font-semibold mb-1 text-indigo-800">Live Practice Lobby (Beta)</h3>
+                  <p className="text-sm text-gray-700 mb-3">
+                    Host or join a live room. Match starts are only allowed when players are in multiples of 3.
+                  </p>
+                  {!liveLobby ? (
                     <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Live Video URL</label>
-                        <input
-                          type="url"
-                          value={liveVideoUrl}
-                          onChange={(event) => {
-                            setLiveVideoUrl(event.target.value);
-                            setShowMatchSelectModal(false);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") event.preventDefault();
-                          }}
-                          className="w-full border rounded p-2"
-                          placeholder="https://www.youtube.com/watch?v=..."
-                        />
-                        {(liveStreamTitle || liveEventKeyHint) && (
-                          <p className="mt-2 text-xs text-gray-700">
-                            {liveStreamTitle ? `Detected stream: ${liveStreamTitle}` : ""}
-                            {liveEventKeyHint ? `${liveStreamTitle ? "  •  " : ""}Event hint: ${liveEventKeyHint.toUpperCase()}` : ""}
-                          </p>
-                        )}
-                      </div>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={handleChooseLiveMatchClick}
-                          className="px-4 py-2 rounded text-white font-semibold"
+                          onClick={() => void createLiveLobby()}
+                          disabled={liveLobbyBusy || !selectedMode || !activeMatchGame}
+                          className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
                           style={{ backgroundColor: "var(--primary-color)" }}
                         >
-                          Choose Live Match
+                          Host Lobby
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          value={liveLobbyCodeInput}
+                          onChange={(event) => setLiveLobbyCodeInput(event.target.value.toUpperCase())}
+                          placeholder="Enter lobby code"
+                          className="border rounded p-2 w-56"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void joinLiveLobby()}
+                          disabled={liveLobbyBusy}
+                          className="px-4 py-2 rounded border border-indigo-400 text-indigo-800 font-semibold disabled:opacity-50"
+                        >
+                          Join Lobby
+                        </button>
+                      </div>
+                      {liveLobbyError && <p className="text-sm text-amber-700">{liveLobbyError}</p>}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm">
+                        <span className="font-semibold">Code:</span> {liveLobby.code} •{" "}
+                        <span className="font-semibold">Game:</span> {liveLobby.game} •{" "}
+                        <span className="font-semibold">Mode:</span> {liveLobby.mode}
+                      </p>
+                      {liveLobby.id.startsWith("local:") && (
+                        <p className="text-xs text-amber-700">Local-only lobby fallback (same browser/device). Share code is disabled across different devices.</p>
+                      )}
+                      <div className="rounded border border-gray-300 p-3 bg-gray-50 text-gray-900">
+                        <p className="text-sm font-semibold mb-2 text-gray-900">Players ({liveLobbyPlayerCount})</p>
+                        <div className="grid sm:grid-cols-2 gap-1 text-sm text-gray-900">
+                          {liveLobbyPlayers.map((player) => (
+                            <p key={player.uid}>
+                              {player.name}
+                              {player.uid === liveLobby.hostId ? " (Host)" : ""}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                      <p className={`text-sm font-semibold ${liveLobbyCanStart ? "text-green-700" : "text-amber-700"}`}>
+                        {liveLobbyCanStart
+                          ? "Ready: player count is a multiple of 3."
+                          : "Need player count in multiples of 3 before starting."}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {userIsLiveLobbyHost && liveLobby.status === "waiting" && (
+                          <button
+                            type="button"
+                            onClick={() => void startLiveLobbySession()}
+                            disabled={liveLobbyBusy || !liveLobbyCanStart}
+                            className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
+                            style={{ backgroundColor: "var(--primary-color)" }}
+                          >
+                            Start Live Session
+                          </button>
+                        )}
+                        {liveLobby.status === "in_progress" && (
+                          <div className="w-full rounded border border-indigo-300 bg-indigo-500/10 p-3">
+                            <p className="text-sm font-semibold text-indigo-900">
+                              Live match started. One shared past match is assigned to all players.
+                            </p>
+                            {myLiveAssignment && (
+                              <p className="text-sm text-indigo-900 mt-1">
+                                Your assignment: {myLiveAssignment.alliance.toUpperCase()} alliance • Robot {myLiveAssignment.robotIndex + 1} • Team {myLiveAssignment.teamNumber || "-"}
+                              </p>
+                            )}
+                            {liveRevealCountdown > 0 ? (
+                              <p className="text-sm text-indigo-800 mt-1">Starting in {liveRevealCountdown}s...</p>
+                            ) : (
+                              <p className="text-sm text-indigo-800 mt-1">Match started. Complete your scout and submit.</p>
+                            )}
+                            <p className="text-sm text-indigo-800 mt-1">
+                              Submitted: {liveSubmittedCount}/{liveLobbyPlayerCount}
+                            </p>
+                          </div>
+                        )}
+                        {liveLobby.status === "completed" && (
+                          <div className="w-full rounded border border-green-300 bg-green-500/10 p-3 text-sm text-green-900">
+                            Live round complete. Opening results...
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void leaveLiveLobby()}
+                          disabled={liveLobbyBusy}
+                          className="px-4 py-2 rounded border border-gray-300 font-semibold disabled:opacity-50"
+                        >
+                          {userIsLiveLobbyHost ? "Close Lobby" : "Leave Lobby"}
                         </button>
                       </div>
                     </div>
-                  </div>
-                )}
-
+                  )}
+                </div>
               </>
             )}
+          </div>
+        )}
+
+        {currentStep === "live_reveal" && liveLobby && myLiveAssignment && (
+          <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
+            <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8">
+              <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
+                Live Match Assignment
+              </h1>
+              <p className="text-gray-700 text-lg mb-6">
+                Your team will start in {liveRevealCountdown}s.
+              </p>
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 mb-4">
+                <p className="font-semibold text-indigo-900 mb-2">Your Team ({myLiveTeamMembers.length}/3)</p>
+                <div className="space-y-2">
+                  {myLiveTeamMembers.map((row) => (
+                    <div key={row.uid} className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-indigo-900">{row.name}{row.uid === userData?.uid ? " (You)" : ""}</span>
+                      <span className="text-indigo-800">
+                        {row.assignment.alliance.toUpperCase()} • Robot {row.assignment.robotIndex + 1} • Team {row.assignment.teamNumber || "-"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p className="text-sm text-gray-600">
+                One uniform match is assigned for the whole lobby. Submit once for your assigned robot.
+              </p>
+            </div>
           </div>
         )}
 
@@ -2266,7 +3086,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
             <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8">
               <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-                Robot {breakCompletedRobotIndex + 1} Complete
+                {selectedDifficulty === "live" ? "Submission Received" : `Robot ${breakCompletedRobotIndex + 1} Complete`}
               </h1>
               <p className="text-gray-700 text-lg mb-3">
                 Team {selectedDifficulty === "live"
@@ -2274,18 +3094,20 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   : currentMatch.allianceTeams[breakCompletedRobotIndex]} scouting is complete.
               </p>
               <p className="text-gray-600 mb-8">
-                Take a short break before the next robot, just like normal scouting rotations between matches.
+                {selectedDifficulty === "live"
+                  ? `Waiting for all players to submit (${liveSubmittedCount}/${liveLobbyPlayerCount}).`
+                  : "Take a short break before the next robot, just like normal scouting rotations between matches."}
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={continueToNextRobot}
-                  className="flex-1 py-3 rounded-lg text-white font-semibold"
-                  style={{ backgroundColor: "var(--primary-color)" }}
-                >
-                  {selectedDifficulty === "live"
-                    ? "Continue To Next Robot"
-                    : `Continue To Robot ${currentRobotIndex + 2} (Team ${currentMatch.allianceTeams[currentRobotIndex + 1]})`}
-                </button>
+                {selectedDifficulty !== "live" && (
+                  <button
+                    onClick={continueToNextRobot}
+                    className="flex-1 py-3 rounded-lg text-white font-semibold"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    {`Continue To Robot ${currentRobotIndex + 2} (Team ${currentMatch.allianceTeams[currentRobotIndex + 1]})`}
+                  </button>
+                )}
                 {selectedDifficulty !== "live" && (
                   <button
                     onClick={pausePracticeSession}
@@ -2295,7 +3117,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   </button>
                 )}
                 <button
-                  onClick={resetPractice}
+                  onClick={() => void endCurrentSession()}
                   className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
                 >
                   End Session
@@ -2348,16 +3170,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     : `Robot ${currentRobotIndex + 1} of 3 • Team ${currentMatch.allianceTeams[currentRobotIndex]}`}
                 </p>
                 <p className="text-sm capitalize">{currentMatch.alliance} Alliance • {selectedMode} Mode</p>
-                {selectedDifficulty === "live" && (
+                {selectedDifficulty !== "live" && (
                   <button
                     type="button"
                     onClick={() => {
-                      setShowMatchSelectModal(true);
+                      setShowDifficultyMatchModal(true);
                     }}
                     className="mt-2 px-3 py-1 rounded text-sm text-white"
                     style={{ backgroundColor: "var(--primary-color)" }}
                   >
-                    Change Live Match
+                    Change Match
                   </button>
                 )}
                 {selectedMode === 'competitive' && (
@@ -2368,15 +3190,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
             {/* SCOUTING FORM */}
             <div ref={formPaneRef} className="w-full md:w-[22rem] md:flex-none flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4">
-              {selectedDifficulty === "live" && (
+              {selectedDifficulty !== "live" && (
                 <button
                   type="button"
                   onClick={() => {
-                    setShowMatchSelectModal(true);
+                    setShowDifficultyMatchModal(true);
                   }}
-                  className="w-full py-2 rounded border border-cyan-300 text-cyan-800 bg-cyan-50 hover:bg-cyan-100 font-semibold"
+                  className="w-full py-2 rounded border border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 font-semibold"
                 >
-                  Match Select (Live)
+                  Match Select ({String(selectedDifficulty).toUpperCase()})
                 </button>
               )}
               {selectedDifficulty !== "live" && (
@@ -2426,36 +3248,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
                     {selectedDifficulty === "live" ? (
-                      <>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-reefscape" : undefined}
-                            value={formData.teamNumber}
-                            onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
-                            className="flex-1 border rounded p-2"
-                            placeholder="Type team number"
-                          />
-                          <button
-                            type="button"
-                            className="px-4 rounded border"
-                            onClick={() => openLiveTeamPicker("reefscape")}
-                          >
-                            Pick
-                          </button>
-                        </div>
-                        {liveEventTeamSuggestions.length > 0 && (
-                          <datalist id="live-team-suggestions-reefscape">
-                            {liveEventTeamSuggestions
-                              .slice()
-                              .sort((a, b) => a - b)
-                              .map((team) => (
-                                <option key={`reef-live-${team}`} value={String(team)} />
-                              ))}
-                          </datalist>
-                        )}
-                      </>
+                      <input type="text" value={formData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                     ) : (
                       <input type="text" value={formData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                     )}
@@ -2580,38 +3373,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
                         {selectedDifficulty === "live" ? (
-                          <>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                list={liveEventTeamSuggestions.length > 0 ? "live-team-suggestions-rebuilt" : undefined}
-                                value={rebuiltFormData.teamNumber}
-                                onChange={(e) =>
-                                  setRebuiltFormData({ ...rebuiltFormData, teamNumber: e.target.value.replace(/[^\d]/g, "") })
-                                }
-                                className="flex-1 border rounded p-2"
-                                placeholder="Type team number"
-                              />
-                              <button
-                                type="button"
-                                className="px-4 rounded border"
-                                onClick={() => openLiveTeamPicker("rebuilt")}
-                              >
-                                Pick
-                              </button>
-                            </div>
-                            {liveEventTeamSuggestions.length > 0 && (
-                              <datalist id="live-team-suggestions-rebuilt">
-                                {liveEventTeamSuggestions
-                                  .slice()
-                                  .sort((a, b) => a - b)
-                                  .map((team) => (
-                                    <option key={`rebuilt-live-${team}`} value={String(team)} />
-                                  ))}
-                              </datalist>
-                            )}
-                          </>
+                          <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                         ) : (
                           <input type="text" value={rebuiltFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
                         )}
@@ -2918,7 +3680,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     : `Next Robot (${currentRobotIndex + 2}/3)`}
                 </button>
                 <button
-                  onClick={resetPractice}
+                  onClick={() => void endCurrentSession()}
                   className="w-full py-2 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
                 >
                   {selectedDifficulty === "live" ? "End Session" : "Cancel"}
@@ -3004,7 +3766,45 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         )}
 
         {/* STEP 3: RESULTS */}
-        {currentStep === 'results' && sessionResults && (
+        {currentStep === 'results' && selectedDifficulty === "live" && (
+          <div className="p-4 md:p-8 max-w-4xl mx-auto">
+            <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
+              Live Round Complete
+            </h1>
+            <p className="text-gray-600 mb-8">All players submitted. Team accuracy and leaderboard are ready.</p>
+
+            <div className="bg-white rounded-xl shadow-md p-8 mb-6 text-center">
+              <h2 className="text-xl font-semibold mb-2">Your Team Accuracy</h2>
+              <div className="text-6xl font-bold mb-4" style={{ color: (liveTeamAccuracy || 0) >= 90 ? "#22c55e" : (liveTeamAccuracy || 0) >= 75 ? "#eab308" : "#ef4444" }}>
+                {liveTeamAccuracy !== null ? `${liveTeamAccuracy}%` : "-"}
+              </div>
+              <p className="text-gray-600">Calculated from your 3-player team on one alliance.</p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-md p-8 mb-6">
+              <h2 className="text-xl font-semibold mb-4">Accuracy Leaderboard</h2>
+              {liveLeaderboard.length === 0 ? (
+                <p className="text-gray-600">No completed teams yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {liveLeaderboard.map((row, index) => (
+                    <div key={`${row.team}-${index}`} className="flex items-center justify-between rounded border border-gray-200 px-4 py-3">
+                      <p className="font-semibold">{index + 1}. {row.team}</p>
+                      <p className="font-bold">{row.accuracy}%</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-4">
+              <button onClick={resetPractice} className="flex-1 py-3 rounded-lg text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
+                Back To Lobby
+              </button>
+            </div>
+          </div>
+        )}
+        {currentStep === 'results' && selectedDifficulty !== "live" && sessionResults && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto">
             <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Practice Complete!
@@ -3053,11 +3853,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           completed={sharedModalCompleted}
           onPick={handleSharedModalPick}
         />
-        <TeamPickerModal
-          open={showLiveTeamPicker}
-          teams={livePickerTeams}
-          onClose={() => setShowLiveTeamPicker(false)}
-          onSelect={(team) => handleLiveTeamSelect(team, liveTeamPickerTarget)}
+        <PracticeDifficultyMatchModal
+          open={showDifficultyMatchModal && selectedDifficulty !== "live" && selectedDifficulty !== null}
+          onClose={() => setShowDifficultyMatchModal(false)}
+          difficulty={(selectedDifficulty && selectedDifficulty !== "live" ? selectedDifficulty : "easy")}
+          options={difficultyModalOptions}
+          onPick={handleDifficultyModalPick}
+          onRandomize={handleDifficultyModalRandomize}
         />
       </div>
     </div>

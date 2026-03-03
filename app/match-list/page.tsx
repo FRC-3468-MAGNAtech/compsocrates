@@ -28,6 +28,23 @@ function matchLabel(match: TBAMatch) {
   return match.key;
 }
 
+function isPastEvent(event: UpcomingEvent) {
+  const now = Date.now();
+  const end = new Date(`${event.endDate}T23:59:59`).getTime();
+  return Number.isFinite(end) && now > end;
+}
+
+function sortDashboardEvents(events: UpcomingEvent[]) {
+  return [...events].sort((a, b) => {
+    const aPast = isPastEvent(a);
+    const bPast = isPastEvent(b);
+    if (aPast !== bPast) return aPast ? 1 : -1;
+    const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
+    const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
+    return aTime - bTime;
+  });
+}
+
 function MatchListContent() {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -56,11 +73,12 @@ function MatchListContent() {
                 return safe === normalizedUid || safe.toLowerCase() === normalizedName;
               });
             });
-        setEvents(visibleEvents);
-        setActiveEventKey(visibleEvents[0]?.key || "");
+        const orderedEvents = sortDashboardEvents(visibleEvents);
+        setEvents(orderedEvents);
+        setActiveEventKey(orderedEvents[0]?.key || "");
 
         const matches = await Promise.all(
-          visibleEvents.map(async (event) => {
+          orderedEvents.map(async (event) => {
             const rows = await getEventMatches(event.key);
             const normalized = rows
               .sort((a, b) => {

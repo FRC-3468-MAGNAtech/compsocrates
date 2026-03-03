@@ -39,7 +39,8 @@ type AnalyticsEntryLike = {
 
 export function getEventOptionsForEntries(
   entries: AnalyticsEntryLike[],
-  game: AnalyticsGame
+  game: AnalyticsGame,
+  extraEvents: AnalyticsEventOption[] = []
 ): AnalyticsEventOption[] {
   if (game === "REEFSCAPE") {
     return LEGACY_REEFSCAPE_EVENTS;
@@ -47,6 +48,11 @@ export function getEventOptionsForEntries(
 
   const base = getEventsForGame(game);
   const byId = new Map<string, AnalyticsEventOption>(base.map((event) => [event.id, event]));
+  extraEvents.forEach((event) => {
+    const id = String(event.id || "").trim();
+    if (!id || byId.has(id)) return;
+    byId.set(id, { ...event, id });
+  });
 
   entries.forEach((entry) => {
     const entryGame = (entry.game || "REEFSCAPE") as AnalyticsGame;
@@ -84,7 +90,14 @@ export function isInEventWindow(timestamp: number, startDate?: string, endDate?:
 }
 
 export function classifyRebuiltEventByTimestamp(timestamp: number): string {
-  const rebuiltEvents = getEventsForGame("REBUILT");
+  return classifyRebuiltEventByTimestampWithOptions(timestamp, getEventsForGame("REBUILT"));
+}
+
+export function classifyRebuiltEventByTimestampWithOptions(
+  timestamp: number,
+  options: AnalyticsEventOption[]
+): string {
+  const rebuiltEvents = options;
   for (const event of rebuiltEvents) {
     if (event.id === "app-testing") continue;
     if (isInEventWindow(timestamp, event.startDate, event.endDate)) return event.id;
@@ -190,12 +203,15 @@ export function isPracticeScoutedEntry(entry: PracticeScoutedLike): boolean {
 export function entryMatchesAnalyticsFilters(
   entry: EventLikeEntry,
   game: AnalyticsGame,
-  eventId: string
+  eventId: string,
+  eventOptions: AnalyticsEventOption[] = getEventsForGame(game)
 ): boolean {
   if ((entry.game || "REEFSCAPE") !== game) return false;
   if (eventId === "all") return true;
 
-  const eventKey = entry.eventKey || classifyRebuiltEventByTimestamp(entry.submittedAt || entry.timestamp || 0);
+  const eventKey =
+    entry.eventKey ||
+    classifyRebuiltEventByTimestampWithOptions(entry.submittedAt || entry.timestamp || 0, eventOptions);
   if (eventId === "app-testing") return eventKey === "app-testing";
   return eventKey === eventId;
 }

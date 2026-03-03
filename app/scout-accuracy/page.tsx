@@ -39,6 +39,7 @@ type ScoutingEntry = {
   scoutId?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  isLivePracticeScouting?: boolean;
   deviceType?: "mobile" | "pc";
   teamNumber?: string;
   leftStartingZone?: boolean;
@@ -381,6 +382,7 @@ function ScoutAccuracyContent() {
         const scoutPracticeEntries = Array.from(scoutEntriesMap.values())
           .filter((row) => {
             if (!row.isPracticeScouting) return false;
+            if (row.isLivePracticeScouting) return false;
             if (String(row.practiceMode || "").toLowerCase() !== selectedMode) return false;
             return getEntryGame(row) === selectedGame;
           });
@@ -409,27 +411,37 @@ function ScoutAccuracyContent() {
           practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
         });
         const practiceRows = Array.from(practiceRowsMap.values())
-          .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame);
+          .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame)
+          .filter((row) => !row.isLivePracticeScouting);
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];
         let lastPracticeDate = 0;
         const practiceDevicePoints: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }> = [];
+        const accuracyTimeline: Array<{ accuracy: number; timestamp: number }> = [];
         practiceRows.forEach((data) => {
           if (typeof data.accuracy === "number") {
             totalAccuracy += data.accuracy;
-            recentAccuracies.push(data.accuracy);
+            const rowTimestamp = Number(data.timestamp || data.completedAt || data.startedAt || 0);
+            accuracyTimeline.push({
+              accuracy: Number(data.accuracy || 0),
+              timestamp: Number.isFinite(rowTimestamp) ? rowTimestamp : 0,
+            });
             practiceDevicePoints.push({
               deviceType: data.deviceType as "mobile" | "pc" | undefined,
               accuracy: Number(data.accuracy || 0),
             });
           }
-          const rowTimestamp = Number(data.timestamp || 0);
+          const rowTimestamp = Number(data.timestamp || data.completedAt || data.startedAt || 0);
           if (rowTimestamp > lastPracticeDate) {
             lastPracticeDate = rowTimestamp;
           }
         });
-        const nonZeroRecentAccuracies = recentAccuracies.filter((value) => value > 0);
-        recentAccuracies = nonZeroRecentAccuracies.sort((a, b) => b - a).slice(0, 5);
+        const nonZeroRecentAccuracies = accuracyTimeline.filter((row) => row.accuracy > 0).map((row) => row.accuracy);
+        recentAccuracies = accuracyTimeline
+          .filter((row) => row.accuracy > 0)
+          .sort((a, b) => a.timestamp - b.timestamp)
+          .slice(-5)
+          .map((row) => row.accuracy);
         const averageAccuracy = nonZeroRecentAccuracies.length > 0
           ? Math.round(totalAccuracy / nonZeroRecentAccuracies.length)
           : 0;
