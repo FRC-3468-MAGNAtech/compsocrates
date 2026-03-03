@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, addDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteField, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
+import PracticeDifficultyMatchModal, { type PracticeDifficultyModalOption } from "@/app/components/PracticeDifficultyMatchModal";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
@@ -204,6 +205,20 @@ type PracticeSessionDraft = {
 
 type CandidatePracticeMatch = PracticeMatch & {
   progress: "fresh" | "partial" | "complete";
+};
+
+type LivePracticeLobby = {
+  id: string;
+  code: string;
+  hostId: string;
+  hostName: string;
+  teamId: string;
+  game: "REEFSCAPE" | "REBUILT";
+  mode: PracticeMode;
+  status: "waiting" | "in_progress" | "completed" | "closed";
+  createdAt: number;
+  startedAt?: number;
+  playersByUid?: Record<string, { name?: string; joinedAt?: number }>;
 };
 
 type PracticeSelectorOption = ReefscapeMatchOption & {
@@ -846,12 +861,17 @@ function PracticeScoutingContent() {
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
+  const [showDifficultyMatchModal, setShowDifficultyMatchModal] = useState(false);
   const [showLiveTeamPicker, setShowLiveTeamPicker] = useState(false);
   const [liveTeamPickerTarget, setLiveTeamPickerTarget] = useState<"reefscape" | "rebuilt">("reefscape");
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
   const [liveEventKeyHint, setLiveEventKeyHint] = useState("");
   const [liveEventTeamSuggestions, setLiveEventTeamSuggestions] = useState<number[]>([]);
+  const [liveLobbyId, setLiveLobbyId] = useState("");
+  const [liveLobbyCodeInput, setLiveLobbyCodeInput] = useState("");
+  const [liveLobby, setLiveLobby] = useState<LivePracticeLobby | null>(null);
+  const [liveLobbyBusy, setLiveLobbyBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
@@ -875,6 +895,21 @@ function PracticeScoutingContent() {
     const fromMatch = (currentMatch?.allianceTeams || []).map((team) => String(team).trim()).filter(Boolean);
     return Array.from(new Set(fromMatch));
   }, [currentMatch?.allianceTeams, liveEventTeamSuggestions]);
+
+  const liveLobbyPlayers = useMemo(() => {
+    if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
+    return Object.entries(liveLobby.playersByUid)
+      .map(([uid, player]) => ({
+        uid,
+        name: String(player?.name || `User ${uid.slice(0, 6)}`),
+        joinedAt: Number(player?.joinedAt || 0),
+      }))
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }, [liveLobby]);
+
+  const liveLobbyPlayerCount = liveLobbyPlayers.length;
+  const liveLobbyCanStart = liveLobbyPlayerCount > 0 && liveLobbyPlayerCount % 3 === 0;
+  const userIsLiveLobbyHost = Boolean(liveLobby && userData?.uid && liveLobby.hostId === userData.uid);
 
   useEffect(() => {
     async function loadTeamEventCatalog() {
@@ -904,6 +939,162 @@ function PracticeScoutingContent() {
     }
     void loadTeamEventCatalog();
   }, [userData?.teamId]);
+
+  useEffect(() => {
+    if (!liveLobbyId) {
+      setLiveLobby(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadLobby = async () => {
+      try {
+        const snap = await getDoc(doc(db, "livePracticeLobbies", liveLobbyId));
+        if (!snap.exists()) {
+          if (!cancelled) {
+            setLiveLobby(null);
+            setLiveLobbyId("");
+          }
+          return;
+        }
+        if (!cancelled) {
+          setLiveLobby({ id: snap.id, ...(snap.data() as Omit<LivePracticeLobby, "id">) });
+        }
+      } catch (error) {
+        console.error("Failed to load live practice lobby:", error);
+      }
+    };
+
+    void loadLobby();
+    const timer = window.setInterval(() => {
+      void loadLobby();
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [liveLobbyId]);
+
+  function createLobbyCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i += 1) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+  }
+
+  async function createLiveLobby() {
+    if (!userData?.uid || !selectedMode || !activeMatchGame) return;
+    setLiveLobbyBusy(true);
+    try {
+      let code = createLobbyCode();
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const existing = await getDocs(query(collection(db, "livePracticeLobbies"), where("code", "==", code), where("status", "==", "waiting")));
+        if (existing.empty) break;
+        code = createLobbyCode();
+      }
+      const payload: Omit<LivePracticeLobby, "id"> = {
+        code,
+        hostId: userData.uid,
+        hostName: userData.displayName || "Host",
+        teamId: userData.teamId || "",
+        game: activeMatchGame,
+        mode: selectedMode,
+        status: "waiting",
+        createdAt: Date.now(),
+        playersByUid: {
+          [userData.uid]: { name: userData.displayName || "Host", joinedAt: Date.now() },
+        },
+      };
+      const lobbyRef = await addDoc(collection(db, "livePracticeLobbies"), payload);
+      setLiveLobbyId(lobbyRef.id);
+    } catch (error) {
+      console.error("Failed creating live lobby:", error);
+      alert("Could not create live lobby.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
+
+  async function joinLiveLobby() {
+    if (!userData?.uid) return;
+    const code = liveLobbyCodeInput.trim().toUpperCase();
+    if (!code) {
+      alert("Enter a lobby code.");
+      return;
+    }
+    setLiveLobbyBusy(true);
+    try {
+      const snap = await getDocs(query(collection(db, "livePracticeLobbies"), where("code", "==", code)));
+      const lobbyDoc = snap.docs
+        .map((row) => ({ id: row.id, ...(row.data() as Omit<LivePracticeLobby, "id">) }))
+        .find((row) => row.status === "waiting" || row.status === "in_progress");
+      if (!lobbyDoc) {
+        alert("Lobby not found.");
+        return;
+      }
+
+      if (userData.teamId && lobbyDoc.teamId && userData.teamId !== lobbyDoc.teamId) {
+        alert("This lobby belongs to another team.");
+        return;
+      }
+
+      await updateDoc(doc(db, "livePracticeLobbies", lobbyDoc.id), {
+        [`playersByUid.${userData.uid}`]: {
+          name: userData.displayName || "Player",
+          joinedAt: Date.now(),
+        },
+      });
+      setActiveMatchGame(lobbyDoc.game);
+      setSelectedMode(lobbyDoc.mode);
+      setLiveLobbyId(lobbyDoc.id);
+    } catch (error) {
+      console.error("Failed joining live lobby:", error);
+      alert("Could not join lobby.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
+
+  async function leaveLiveLobby() {
+    if (!liveLobby || !userData?.uid) return;
+    setLiveLobbyBusy(true);
+    try {
+      if (userIsLiveLobbyHost) {
+        await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), { status: "closed" });
+      } else {
+        await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), {
+          [`playersByUid.${userData.uid}`]: deleteField(),
+        });
+      }
+      setLiveLobby(null);
+      setLiveLobbyId("");
+    } catch (error) {
+      console.error("Failed leaving live lobby:", error);
+      alert("Could not leave lobby.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
+
+  async function startLiveLobbySession() {
+    if (!liveLobby || !userIsLiveLobbyHost) return;
+    if (!liveLobbyCanStart) {
+      alert("Live practice requires players in multiples of 3.");
+      return;
+    }
+    setLiveLobbyBusy(true);
+    try {
+      await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), {
+        status: "in_progress",
+        startedAt: Date.now(),
+      });
+    } catch (error) {
+      console.error("Failed starting live lobby:", error);
+      alert("Could not start live lobby.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
+  }
 
   function getPracticeIdentity(match: {
     matchKey?: unknown;
@@ -1216,6 +1407,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setSelectedDifficulty(difficulty);
     setSelectedMode(mode);
     setCandidateMatches([]);
+    setShowDifficultyMatchModal(false);
 
     try {
       let matches: PracticeMatch[] = [];
@@ -1314,16 +1506,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         .sort(compareCandidateMatches);
 
       setCandidateMatches(rankedMatches);
-      if (rankedMatches.length > 0) {
-        const randomIndex = Math.floor(Math.random() * rankedMatches.length);
-        const randomMatch = rankedMatches[randomIndex];
-        if (randomMatch) {
-          if (difficulty !== "live") {
-            startPracticeMatch(randomMatch);
-          }
-        }
+      if (difficulty === "live") {
+        setShowDifficultyMatchModal(false);
+        setShowMatchSelectModal(false);
+      } else {
+        setShowDifficultyMatchModal(true);
       }
-      setShowMatchSelectModal(false);
     } catch (error) {
       console.error('Error loading practice match:', error);
       const details = (error as { code?: string; message?: string })?.message || "";
@@ -1378,6 +1566,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
     setHumanPlayerRobot(Math.floor(Math.random() * 3));
     setCurrentStep("practice");
+    setShowDifficultyMatchModal(false);
   }
 
   async function handleChooseLiveMatchClick() {
@@ -1774,6 +1963,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setSelectedMode(null);
     setCandidateMatches([]);
     setShowMatchSelectModal(false);
+    setShowDifficultyMatchModal(false);
     setLiveVideoUrl("");
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
@@ -1952,6 +2142,40 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     router.push("/dashboard");
   }
 
+  const difficultyModalOptions = useMemo<PracticeDifficultyModalOption[]>(() => {
+    if (selectedDifficulty === "live" || !selectedDifficulty) return [];
+    return candidateMatches.map((match) => {
+      const score = getPracticeMatchScore(match);
+      const scoreLabel = score === null ? "Unknown" : String(Math.round(score));
+      const matchLabel = getPracticeLabel(match);
+      const teamLabel = (match.allianceTeams || []).join(", ");
+      return {
+        id: match.id,
+        label: matchLabel,
+        teamLabel: teamLabel ? `Teams: ${teamLabel}` : "Teams: -",
+        scoreLabel,
+        progress: match.progress,
+      };
+    });
+  }, [candidateMatches, selectedDifficulty]);
+
+  function handleDifficultyModalPick(matchId: string) {
+    const picked = candidateMatches.find((match) => match.id === matchId);
+    if (!picked) return;
+    setShowDifficultyMatchModal(false);
+    startPracticeMatch(picked);
+  }
+
+  function handleDifficultyModalRandomize(visibleIds: string[]) {
+    const pool = candidateMatches.filter((match) => visibleIds.includes(match.id));
+    if (pool.length === 0) return;
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    const picked = pool[randomIndex];
+    if (!picked) return;
+    setShowDifficultyMatchModal(false);
+    startPracticeMatch(picked);
+  }
+
   const sharedModalOptions = useMemo<PracticeSelectorOption[]>(() => {
     return candidateMatches.map((match) => {
       const stage = getPracticeStage(match);
@@ -1979,7 +2203,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function handleSharedModalPick(option: PracticeSelectorOption) {
     const picked = candidateMatches.find((match) => match.id === option.sourceId);
     if (!picked) return;
-    if (currentStep === "practice" && selectedDifficulty === "live") {
+    if (selectedDifficulty === "live") {
       startPracticeMatch(picked);
     }
   }
@@ -2076,6 +2300,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setCandidateMatches([]);
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
+                      setShowDifficultyMatchModal(false);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
@@ -2137,6 +2362,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setCandidateMatches([]);
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
+                      setShowDifficultyMatchModal(false);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
@@ -2212,6 +2438,100 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       <h3 className="font-semibold text-lg mb-1">Live</h3>
                       <p className="text-sm text-gray-600">Paste stream URL and pick match manually</p>
                     </button>
+                  )}
+                </div>
+                <div className="mt-6 rounded-xl border border-indigo-300 bg-indigo-500/5 shadow-md p-4">
+                  <h3 className="font-semibold mb-1 text-indigo-800">Live Practice Lobby (Beta)</h3>
+                  <p className="text-sm text-gray-700 mb-3">
+                    Host or join a live room. Match starts are only allowed when players are in multiples of 3.
+                  </p>
+                  {!liveLobby ? (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void createLiveLobby()}
+                          disabled={liveLobbyBusy || !selectedMode || !activeMatchGame}
+                          className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
+                          style={{ backgroundColor: "var(--primary-color)" }}
+                        >
+                          Host Lobby
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          value={liveLobbyCodeInput}
+                          onChange={(event) => setLiveLobbyCodeInput(event.target.value.toUpperCase())}
+                          placeholder="Enter lobby code"
+                          className="border rounded p-2 w-56"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void joinLiveLobby()}
+                          disabled={liveLobbyBusy}
+                          className="px-4 py-2 rounded border border-indigo-400 text-indigo-800 font-semibold disabled:opacity-50"
+                        >
+                          Join Lobby
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm">
+                        <span className="font-semibold">Code:</span> {liveLobby.code} •{" "}
+                        <span className="font-semibold">Game:</span> {liveLobby.game} •{" "}
+                        <span className="font-semibold">Mode:</span> {liveLobby.mode}
+                      </p>
+                      <div className="rounded border p-3 bg-white/80">
+                        <p className="text-sm font-semibold mb-2">Players ({liveLobbyPlayerCount})</p>
+                        <div className="grid sm:grid-cols-2 gap-1 text-sm">
+                          {liveLobbyPlayers.map((player) => (
+                            <p key={player.uid}>
+                              {player.name}
+                              {player.uid === liveLobby.hostId ? " (Host)" : ""}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                      <p className={`text-sm font-semibold ${liveLobbyCanStart ? "text-green-700" : "text-amber-700"}`}>
+                        {liveLobbyCanStart
+                          ? "Ready: player count is a multiple of 3."
+                          : "Need player count in multiples of 3 before starting."}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {userIsLiveLobbyHost && liveLobby.status === "waiting" && (
+                          <button
+                            type="button"
+                            onClick={() => void startLiveLobbySession()}
+                            disabled={liveLobbyBusy || !liveLobbyCanStart}
+                            className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
+                            style={{ backgroundColor: "var(--primary-color)" }}
+                          >
+                            Start Live Session
+                          </button>
+                        )}
+                        {liveLobby.status === "in_progress" && (
+                          <button
+                            type="button"
+                            onClick={() => void selectPracticeMatch("live", liveLobby.mode)}
+                            disabled={loading}
+                            className="px-4 py-2 rounded text-white font-semibold"
+                            style={{ backgroundColor: "var(--primary-color)" }}
+                          >
+                            Enter Live Match Setup
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void leaveLiveLobby()}
+                          disabled={liveLobbyBusy}
+                          className="px-4 py-2 rounded border border-gray-300 font-semibold disabled:opacity-50"
+                        >
+                          {userIsLiveLobbyHost ? "Close Lobby" : "Leave Lobby"}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
                 {selectedDifficulty === "live" && (
@@ -2360,6 +2680,18 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     Change Live Match
                   </button>
                 )}
+                {selectedDifficulty !== "live" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDifficultyMatchModal(true);
+                    }}
+                    className="mt-2 px-3 py-1 rounded text-sm text-white"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Change Match
+                  </button>
+                )}
                 {selectedMode === 'competitive' && (
                   <p className="text-xs mt-2 text-yellow-300">Video cannot be paused in competitive mode.</p>
                 )}
@@ -2377,6 +2709,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   className="w-full py-2 rounded border border-cyan-300 text-cyan-800 bg-cyan-50 hover:bg-cyan-100 font-semibold"
                 >
                   Match Select (Live)
+                </button>
+              )}
+              {selectedDifficulty !== "live" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDifficultyMatchModal(true);
+                  }}
+                  className="w-full py-2 rounded border border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 font-semibold"
+                >
+                  Match Select ({selectedDifficulty})
                 </button>
               )}
               {selectedDifficulty !== "live" && (
@@ -3052,6 +3395,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           options={sharedModalOptions}
           completed={sharedModalCompleted}
           onPick={handleSharedModalPick}
+        />
+        <PracticeDifficultyMatchModal
+          open={showDifficultyMatchModal && selectedDifficulty !== "live" && selectedDifficulty !== null}
+          onClose={() => setShowDifficultyMatchModal(false)}
+          difficulty={(selectedDifficulty && selectedDifficulty !== "live" ? selectedDifficulty : "easy")}
+          options={difficultyModalOptions}
+          onPick={handleDifficultyModalPick}
+          onRandomize={handleDifficultyModalRandomize}
         />
         <TeamPickerModal
           open={showLiveTeamPicker}
