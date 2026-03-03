@@ -7,7 +7,6 @@ export type PracticeDifficultyModalOption = {
   id: string;
   label: string;
   teamLabel: string;
-  scoreLabel: string;
   progress: "fresh" | "partial" | "complete";
 };
 
@@ -70,7 +69,7 @@ export default function PracticeDifficultyMatchModal({
                 <p className="font-semibold text-sm">{row.label}</p>
                 <p className="text-xs text-gray-600">{row.teamLabel}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Score: {row.scoreLabel} • Progress: {row.progress}
+                  Progress: {row.progress}
                 </p>
               </button>
             ))}

@@ -945,6 +945,7 @@ function PracticeScoutingContent() {
       setLiveLobby(null);
       return;
     }
+    if (liveLobbyId.startsWith("local:")) return;
 
     let cancelled = false;
     const loadLobby = async () => {
@@ -987,11 +988,6 @@ function PracticeScoutingContent() {
     setLiveLobbyBusy(true);
     try {
       let code = createLobbyCode();
-      for (let attempt = 0; attempt < 6; attempt += 1) {
-        const existing = await getDocs(query(collection(db, "livePracticeLobbies"), where("code", "==", code), where("status", "==", "waiting")));
-        if (existing.empty) break;
-        code = createLobbyCode();
-      }
       const payload: Omit<LivePracticeLobby, "id"> = {
         code,
         hostId: userData.uid,
@@ -1005,8 +1001,22 @@ function PracticeScoutingContent() {
           [userData.uid]: { name: userData.displayName || "Host", joinedAt: Date.now() },
         },
       };
-      const lobbyRef = await addDoc(collection(db, "livePracticeLobbies"), payload);
-      setLiveLobbyId(lobbyRef.id);
+
+      try {
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const existing = await getDocs(query(collection(db, "livePracticeLobbies"), where("code", "==", code), where("status", "==", "waiting")));
+          if (existing.empty) break;
+          code = createLobbyCode();
+        }
+        payload.code = code;
+        const lobbyRef = await addDoc(collection(db, "livePracticeLobbies"), payload);
+        setLiveLobbyId(lobbyRef.id);
+      } catch (cloudError) {
+        console.warn("Cloud live lobby unavailable; falling back to local lobby.", cloudError);
+        const localId = `local:${Date.now()}`;
+        setLiveLobbyId(localId);
+        setLiveLobby({ id: localId, ...payload });
+      }
     } catch (error) {
       console.error("Failed creating live lobby:", error);
       alert("Could not create live lobby.");
@@ -1024,6 +1034,19 @@ function PracticeScoutingContent() {
     }
     setLiveLobbyBusy(true);
     try {
+      if (liveLobbyId.startsWith("local:") && liveLobby && liveLobby.code === code) {
+        const joined = {
+          ...liveLobby,
+          playersByUid: {
+            ...(liveLobby.playersByUid || {}),
+            [userData.uid]: { name: userData.displayName || "Player", joinedAt: Date.now() },
+          },
+        };
+        setLiveLobby(joined);
+        setActiveMatchGame(joined.game);
+        setSelectedMode(joined.mode);
+        return;
+      }
       const snap = await getDocs(query(collection(db, "livePracticeLobbies"), where("code", "==", code)));
       const lobbyDoc = snap.docs
         .map((row) => ({ id: row.id, ...(row.data() as Omit<LivePracticeLobby, "id">) }))
@@ -1059,6 +1082,17 @@ function PracticeScoutingContent() {
     if (!liveLobby || !userData?.uid) return;
     setLiveLobbyBusy(true);
     try {
+      if (liveLobby.id.startsWith("local:")) {
+        if (userIsLiveLobbyHost) {
+          setLiveLobby(null);
+          setLiveLobbyId("");
+          return;
+        }
+        const nextPlayers = { ...(liveLobby.playersByUid || {}) };
+        delete nextPlayers[userData.uid];
+        setLiveLobby({ ...liveLobby, playersByUid: nextPlayers });
+        return;
+      }
       if (userIsLiveLobbyHost) {
         await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), { status: "closed" });
       } else {
@@ -1084,6 +1118,10 @@ function PracticeScoutingContent() {
     }
     setLiveLobbyBusy(true);
     try {
+      if (liveLobby.id.startsWith("local:")) {
+        setLiveLobby({ ...liveLobby, status: "in_progress", startedAt: Date.now() });
+        return;
+      }
       await updateDoc(doc(db, "livePracticeLobbies", liveLobby.id), {
         status: "in_progress",
         startedAt: Date.now(),
@@ -1129,7 +1167,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 }
 
   function comparePracticeMatchesInOrder(a: CandidatePracticeMatch, b: CandidatePracticeMatch) {
-    const stageOrder = { practice: 0, qualification: 1, semifinal: 2, finals: 3 } as const;
+    const stageOrder = { qualification: 0, semifinal: 1, finals: 2, practice: 3 } as const;
     const aStage = getPracticeStage(a);
     const bStage = getPracticeStage(b);
     const stageDiff = stageOrder[aStage] - stageOrder[bStage];
@@ -1160,10 +1198,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }
 
   function compareCandidateMatches(a: CandidatePracticeMatch, b: CandidatePracticeMatch) {
+    const ordered = comparePracticeMatchesInOrder(a, b);
+    if (ordered !== 0) return ordered;
     const progressRank = { fresh: 0, partial: 1, complete: 2 } as const;
-    const progressDiff = progressRank[a.progress] - progressRank[b.progress];
-    if (progressDiff !== 0) return progressDiff;
-    return comparePracticeMatchesInOrder(a, b);
+    return progressRank[a.progress] - progressRank[b.progress];
   }
 
   function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
@@ -2145,15 +2183,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   const difficultyModalOptions = useMemo<PracticeDifficultyModalOption[]>(() => {
     if (selectedDifficulty === "live" || !selectedDifficulty) return [];
     return candidateMatches.map((match) => {
-      const score = getPracticeMatchScore(match);
-      const scoreLabel = score === null ? "Unknown" : String(Math.round(score));
       const matchLabel = getPracticeLabel(match);
       const teamLabel = (match.allianceTeams || []).join(", ");
       return {
         id: match.id,
         label: matchLabel,
         teamLabel: teamLabel ? `Teams: ${teamLabel}` : "Teams: -",
-        scoreLabel,
         progress: match.progress,
       };
     });
@@ -2719,7 +2754,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   }}
                   className="w-full py-2 rounded border border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 font-semibold"
                 >
-                  Match Select ({selectedDifficulty})
+                  Match Select ({String(selectedDifficulty).toUpperCase()})
                 </button>
               )}
               {selectedDifficulty !== "live" && (
