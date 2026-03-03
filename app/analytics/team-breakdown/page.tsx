@@ -33,32 +33,41 @@ type ScoutingEntry = {
   auto?: {
     estimatedFuel?: number;
     successfulClimb?: boolean;
-    preloadScale?: number;
-    bpsScale?: number;
-    carryingScale?: number;
   };
   teleop?: {
     estimatedFuel?: number;
-    bpsScale?: number;
-    carryingScale?: number;
   };
   endgame?: {
     status?: string;
   };
-  matchType?: string;
-  practiceMode?: string;
   isPracticeScouting?: boolean;
+  practiceMode?: string;
+  practiceSessionId?: string;
+};
+
+type PitEntry = {
+  eventKey?: string;
+  game?: string;
+  teamNumber?: string;
+  createdAt?: number;
+};
+
+type StrategyOrDriveEntry = {
+  eventKey?: string;
+  game?: string;
+  createdAt?: number;
+  robots?: Array<{ teamNumber?: string }>;
 };
 
 type TeamSummary = {
   teamNumber: string;
-  avgScore: number;
+  avgScore: number | null;
   matches: number;
   lastSeen: number;
 };
 
-function isPracticeEntry(entry: ScoutingEntry) {
-  return isPracticeScoutedEntry(entry);
+function normalizeTeamNumber(value: unknown) {
+  return String(value || "").replace(/[^\d]/g, "");
 }
 
 function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
@@ -89,8 +98,19 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
   );
 }
 
+function isPracticeEntry(entry: ScoutingEntry) {
+  return isPracticeScoutedEntry(entry);
+}
+
+function gameForAuxEntry(rawGame: unknown): AnalyticsGame {
+  return String(rawGame || "").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+}
+
 function TeamBreakdownContent() {
-  const [entries, setEntries] = useState<ScoutingEntry[]>([]);
+  const [scoutingEntries, setScoutingEntries] = useState<ScoutingEntry[]>([]);
+  const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
+  const [strategyEntries, setStrategyEntries] = useState<StrategyOrDriveEntry[]>([]);
+  const [driveEntries, setDriveEntries] = useState<StrategyOrDriveEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
@@ -115,8 +135,16 @@ function TeamBreakdownContent() {
     async function loadEntries() {
       setLoading(true);
       try {
-        const snap = await getDocs(collection(db, "scouting"));
-        setEntries(snap.docs.map((d) => d.data() as ScoutingEntry));
+        const [scoutingSnap, pitSnap, strategySnap, driveSnap] = await Promise.all([
+          getDocs(collection(db, "scouting")),
+          getDocs(collection(db, "pitScouting")),
+          getDocs(collection(db, "matchStrategyPlans")),
+          getDocs(collection(db, "driveScouting")),
+        ]);
+        setScoutingEntries(scoutingSnap.docs.map((d) => d.data() as ScoutingEntry));
+        setPitEntries(pitSnap.docs.map((d) => d.data() as PitEntry));
+        setStrategyEntries(strategySnap.docs.map((d) => d.data() as StrategyOrDriveEntry));
+        setDriveEntries(driveSnap.docs.map((d) => d.data() as StrategyOrDriveEntry));
       } finally {
         setLoading(false);
       }
@@ -124,40 +152,101 @@ function TeamBreakdownContent() {
     void loadEntries();
   }, []);
 
-  const filteredEntries = useMemo(() => {
-    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+  const filteredScoutingEntries = useMemo(() => {
+    const gameFiltered = scoutingEntries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
-  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
+  }, [scoutingEntries, selectedEvent, selectedGame, practiceMatchesOnly]);
+
+  const filteredPitEntries = useMemo(() => {
+    return pitEntries.filter((entry) => {
+      if (gameForAuxEntry(entry.game) !== selectedGame) return false;
+      if (selectedEvent !== "all" && String(entry.eventKey || "").trim() !== selectedEvent) return false;
+      return true;
+    });
+  }, [pitEntries, selectedEvent, selectedGame]);
+
+  const filteredStrategyEntries = useMemo(() => {
+    if (selectedGame === "REEFSCAPE") return [] as StrategyOrDriveEntry[];
+    return strategyEntries.filter((entry) => {
+      if (gameForAuxEntry(entry.game) !== selectedGame) return false;
+      if (selectedEvent !== "all" && String(entry.eventKey || "").trim() !== selectedEvent) return false;
+      return true;
+    });
+  }, [strategyEntries, selectedEvent, selectedGame]);
+
+  const filteredDriveEntries = useMemo(() => {
+    if (selectedGame === "REEFSCAPE") return [] as StrategyOrDriveEntry[];
+    return driveEntries.filter((entry) => {
+      if (gameForAuxEntry(entry.game) !== selectedGame) return false;
+      if (selectedEvent !== "all" && String(entry.eventKey || "").trim() !== selectedEvent) return false;
+      return true;
+    });
+  }, [driveEntries, selectedEvent, selectedGame]);
+
+  const eventSeedEntries = useMemo(
+    () => [
+      ...scoutingEntries,
+      ...pitEntries.map((entry) => ({ eventKey: entry.eventKey, game: gameForAuxEntry(entry.game) })),
+      ...strategyEntries.map((entry) => ({ eventKey: entry.eventKey, game: gameForAuxEntry(entry.game) })),
+      ...driveEntries.map((entry) => ({ eventKey: entry.eventKey, game: gameForAuxEntry(entry.game) })),
+    ],
+    [scoutingEntries, pitEntries, strategyEntries, driveEntries]
+  );
 
   const teamRows = useMemo(() => {
-    const grouped: Record<string, { scores: number[]; lastSeen: number }> = {};
-    filteredEntries.forEach((entry) => {
-      const teamNumber = String(entry.teamNumber || "").trim();
+    const grouped = new Map<string, { scores: number[]; matches: number; lastSeen: number }>();
+
+    filteredScoutingEntries.forEach((entry) => {
+      const teamNumber = normalizeTeamNumber(entry.teamNumber);
       if (!teamNumber) return;
-      if (!grouped[teamNumber]) grouped[teamNumber] = { scores: [], lastSeen: 0 };
-      grouped[teamNumber].scores.push(scoreEntry(entry, selectedGame));
-      const time = Number(entry.submittedAt || entry.timestamp || 0);
-      grouped[teamNumber].lastSeen = Math.max(grouped[teamNumber].lastSeen, time);
+      const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0 };
+      row.scores.push(scoreEntry(entry, selectedGame));
+      row.matches += 1;
+      row.lastSeen = Math.max(row.lastSeen, Number(entry.submittedAt || entry.timestamp || 0));
+      grouped.set(teamNumber, row);
     });
 
-    const rows: TeamSummary[] = Object.entries(grouped).map(([teamNumber, value]) => ({
+    filteredPitEntries.forEach((entry) => {
+      const teamNumber = normalizeTeamNumber(entry.teamNumber);
+      if (!teamNumber) return;
+      const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0 };
+      row.lastSeen = Math.max(row.lastSeen, Number(entry.createdAt || 0));
+      grouped.set(teamNumber, row);
+    });
+
+    const mergeRobotRows = (entries: StrategyOrDriveEntry[]) => {
+      entries.forEach((entry) => {
+        (entry.robots || []).forEach((robot) => {
+          const teamNumber = normalizeTeamNumber(robot.teamNumber);
+          if (!teamNumber) return;
+          const row = grouped.get(teamNumber) || { scores: [], matches: 0, lastSeen: 0 };
+          row.lastSeen = Math.max(row.lastSeen, Number(entry.createdAt || 0));
+          grouped.set(teamNumber, row);
+        });
+      });
+    };
+    mergeRobotRows(filteredStrategyEntries);
+    mergeRobotRows(filteredDriveEntries);
+
+    const rows: TeamSummary[] = Array.from(grouped.entries()).map(([teamNumber, value]) => ({
       teamNumber,
-      avgScore: value.scores.length > 0 ? Math.round(value.scores.reduce((a, b) => a + b, 0) / value.scores.length) : 0,
-      matches: value.scores.length,
+      avgScore: value.scores.length > 0 ? Math.round(value.scores.reduce((a, b) => a + b, 0) / value.scores.length) : null,
+      matches: value.matches,
       lastSeen: value.lastSeen,
     }));
-    return rows.sort((a, b) => b.avgScore - a.avgScore);
-  }, [filteredEntries, selectedGame]);
+
+    return rows.sort((a, b) => Number(a.teamNumber) - Number(b.teamNumber));
+  }, [filteredScoutingEntries, filteredPitEntries, filteredStrategyEntries, filteredDriveEntries, selectedGame]);
 
   return (
     <AnalyticsShell
-      entriesCount={filteredEntries.length}
+      entriesCount={filteredScoutingEntries.length + filteredPitEntries.length + filteredStrategyEntries.length + filteredDriveEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(entries, selectedGame)]}
+      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(eventSeedEntries, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Team Breakdown</h1>
@@ -180,11 +269,15 @@ function TeamBreakdownContent() {
               {teamRows.map((row) => (
                 <tr key={row.teamNumber} data-analytics-search-item="true" className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-semibold">
-                    <Link href={`/analytics/team-breakdown/${row.teamNumber}`} className="text-blue-700 hover:underline">
+                    <Link
+                      href={`/analytics/team-breakdown/${row.teamNumber}`}
+                      className="text-blue-700 hover:underline"
+                      onClick={() => localStorage.removeItem("analytics-search-term")}
+                    >
                       Team {row.teamNumber}
                     </Link>
                   </td>
-                  <td className="px-6 py-4">{row.avgScore}</td>
+                  <td className="px-6 py-4">{row.avgScore === null ? "-" : row.avgScore}</td>
                   <td className="px-6 py-4">{row.matches}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {row.lastSeen > 0 ? new Date(row.lastSeen).toLocaleString() : "-"}

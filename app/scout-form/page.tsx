@@ -208,6 +208,21 @@ function pitValueFitsScale(kind: "preload" | "bps" | "carry", value: number | nu
   return value >= range.min && value <= range.max;
 }
 
+function parsePitValue(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const range = text.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
+  if (range) {
+    const upper = Number(range[2]);
+    return Number.isFinite(upper) && upper > 0 ? upper : null;
+  }
+  const numeric = text.match(/\d+(?:\.\d+)?/);
+  if (!numeric) return null;
+  const parsed = Number(numeric[0]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number) {
   return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (BPS[bpsScale] || 0) * seconds)));
 }
@@ -692,9 +707,7 @@ function ScoutFormContent() {
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
-        if (!selectedMatch && fallback.length > 0) {
-          setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
-        }
+        setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
         return;
       }
       try {
@@ -704,9 +717,7 @@ function ScoutFormContent() {
           const fallback = buildFallbackScoutOptions();
           setOptions(fallback);
           setTargets({});
-          if (!selectedMatch && fallback.length > 0) {
-            setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
-          }
+          setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
           return;
         }
 
@@ -729,7 +740,7 @@ function ScoutFormContent() {
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
-        if (!selectedMatch && resolved.length > 0) setSelectedMatch(resolved.find((m) => m.type === "qualification") || resolved[0]);
+        setSelectedMatch((current) => current || resolved.find((m) => m.type === "qualification") || resolved[0] || null);
 
         const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
         const assigned: Record<string, string> = {};
@@ -745,13 +756,11 @@ function ScoutFormContent() {
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
-        if (!selectedMatch && fallback.length > 0) {
-          setSelectedMatch(fallback.find((m) => m.type === "qualification") || fallback[0]);
-        }
+        setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
       }
     }
     void loadEventContext();
-  }, [userData?.teamId, userData?.uid, selectedMatch]);
+  }, [userData?.teamId, userData?.uid]);
   useEffect(() => {
     async function loadScouted() {
       if (!eventKey) return;
@@ -848,27 +857,32 @@ function ScoutFormContent() {
         setPitSync({ eventSynced: false, preloadRaw: null, bpsRaw: null, carryRaw: null });
         return;
       }
-      const baseQuery = query(
+      const team = form.teamNumber.trim();
+      const normalizedEventKey = String(eventKey || "").trim().toLowerCase();
+      const strictQuery = query(
         collection(db, "pitScouting"),
         where("teamId", "==", userData.teamId),
-        where("teamNumber", "==", form.teamNumber.trim()),
+        where("teamNumber", "==", team),
         where("game", "==", "REBUILT")
       );
-      const pitSnap = await getDocs(baseQuery);
-      const eventScopedRows = pitSnap.docs
-        .map((r) => r.data() as Record<string, unknown>)
-        .filter((row) => String(row.eventKey || "").trim() === String(eventKey || "").trim());
+      const broadQuery = query(collection(db, "pitScouting"), where("teamNumber", "==", team), where("game", "==", "REBUILT"));
+      const legacyQuery = query(collection(db, "pitScouting"), where("teamNumber", "==", team));
+      let rows = (await getDocs(strictQuery)).docs.map((r) => r.data() as Record<string, unknown>);
+      if (rows.length === 0) {
+        rows = (await getDocs(broadQuery)).docs.map((r) => r.data() as Record<string, unknown>);
+      }
+      if (rows.length === 0) {
+        rows = (await getDocs(legacyQuery)).docs.map((r) => r.data() as Record<string, unknown>);
+      }
+      const eventScopedRows = rows.filter((row) => String(row.eventKey || "").trim().toLowerCase() === normalizedEventKey);
       if (eventScopedRows.length === 0) {
         setPitSync({ eventSynced: false, preloadRaw: null, bpsRaw: null, carryRaw: null });
         return;
       }
       const latest = eventScopedRows.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
-      const preloadRaw = Number(latest.fuelPreloadCapacity || 0);
-      const bpsRaw = Number(latest.fuelBallsPerSecond || 0);
-      const carryRaw = Number(latest.fuelCarryingCapacity || 0);
-      const preload = Number.isFinite(preloadRaw) && preloadRaw > 0 ? preloadRaw : null;
-      const bps = Number.isFinite(bpsRaw) && bpsRaw > 0 ? bpsRaw : null;
-      const carry = Number.isFinite(carryRaw) && carryRaw > 0 ? carryRaw : null;
+      const preload = parsePitValue(latest.fuelPreloadCapacity);
+      const bps = parsePitValue(latest.fuelBallsPerSecond);
+      const carry = parsePitValue(latest.fuelCarryingCapacity);
       setPitSync({ eventSynced: true, preloadRaw: preload, bpsRaw: bps, carryRaw: carry });
       setForm((prev) => ({
         ...prev,

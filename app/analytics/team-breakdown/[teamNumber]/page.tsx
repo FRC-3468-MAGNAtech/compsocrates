@@ -24,6 +24,21 @@ type ScoutingEntry = {
   timestamp?: number;
   game?: string;
   teamNumber?: string;
+  leftStartingZone?: boolean;
+  autoCoralL1?: number;
+  autoCoralL2?: number;
+  autoCoralL3?: number;
+  autoCoralL4?: number;
+  autoAlgaeProcessorScored?: number;
+  autoAlgaeNetScored?: number;
+  teleopCoralL1?: number;
+  teleopCoralL2?: number;
+  teleopCoralL3?: number;
+  teleopCoralL4?: number;
+  teleopProcessorScored?: number;
+  teleopNetRobotScored?: number;
+  teleopNetHumanScored?: number;
+  penaltyPoints?: number;
   auto?: {
     estimatedFuel?: number;
     preloadScale?: number;
@@ -132,6 +147,34 @@ function displayNumber(value: number | null, digits = 1) {
   return value.toFixed(digits);
 }
 
+function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
+  if (game === "REBUILT") {
+    const autoFuel = Number(entry.auto?.estimatedFuel || 0);
+    const teleFuel = Number(entry.teleop?.estimatedFuel || 0);
+    const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
+    const endStatus = String(entry.endgame?.status || "").toLowerCase();
+    const endgameClimb = endStatus === "level-1" ? 10 : endStatus === "level-2" ? 20 : endStatus === "level-3" ? 30 : 0;
+    return autoFuel + teleFuel + autoClimb + endgameClimb;
+  }
+  return (
+    (entry.leftStartingZone ? 3 : 0) +
+    (entry.autoCoralL1 || 0) * 3 +
+    (entry.autoCoralL2 || 0) * 4 +
+    (entry.autoCoralL3 || 0) * 6 +
+    (entry.autoCoralL4 || 0) * 7 +
+    (entry.autoAlgaeProcessorScored || 0) * 6 +
+    (entry.autoAlgaeNetScored || 0) * 4 +
+    (entry.teleopCoralL1 || 0) * 2 +
+    (entry.teleopCoralL2 || 0) * 3 +
+    (entry.teleopCoralL3 || 0) * 4 +
+    (entry.teleopCoralL4 || 0) * 5 +
+    (entry.teleopProcessorScored || 0) * 6 +
+    (entry.teleopNetRobotScored || 0) * 4 +
+    (entry.teleopNetHumanScored || 0) * 4 +
+    Number(entry.penaltyPoints || 0)
+  );
+}
+
 function isPastEventKey(eventKey: string, options: AnalyticsEventOption[]) {
   const option = options.find((row) => row.id === eventKey);
   if (!option?.endDate) return false;
@@ -220,10 +263,25 @@ function TeamBreakdownDetailContent() {
     [scoutingEntries, teamNumber]
   );
 
-  const eventOptions = useMemo(
-    () => getEventOptionsForEntries(teamScoutingAll, selectedGame),
-    [teamScoutingAll, selectedGame]
+  const eventSeedEntries = useMemo(
+    () => [
+      ...teamScoutingAll,
+      ...pitEntries
+        .filter((entry) => normalizeTeam(entry.teamNumber) === teamNumber)
+        .map((entry) => ({ eventKey: entry.eventKey, game: String(entry.game || "REEFSCAPE") })),
+      ...strategyEntries
+        .filter((entry) => Array.isArray(entry.robots) && entry.robots.some((robot) => normalizeTeam(robot.teamNumber) === teamNumber))
+        .map((entry) => ({ eventKey: entry.eventKey, game: String(entry.game || "REBUILT") })),
+      ...driveEntries
+        .filter((entry) => Array.isArray(entry.robots) && entry.robots.some((robot) => normalizeTeam(robot.teamNumber) === teamNumber))
+        .map((entry) => ({ eventKey: entry.eventKey, game: String(entry.game || "REBUILT") })),
+    ],
+    [teamScoutingAll, pitEntries, strategyEntries, driveEntries, teamNumber]
   );
+
+  const eventOptions = useMemo(() => getEventOptionsForEntries(eventSeedEntries, selectedGame), [eventSeedEntries, selectedGame]);
+
+  const isReefscape = selectedGame === "REEFSCAPE";
 
   const teamScoutingFiltered = useMemo(() => {
     const gameFiltered = teamScoutingAll.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions));
@@ -240,18 +298,20 @@ function TeamBreakdownDetailContent() {
   }, [pitEntries, teamNumber, selectedGame, selectedEvent]);
 
   const teamStrategyFiltered = useMemo(() => {
+    if (isReefscape) return [] as StrategyPlanEntry[];
     return strategyEntries
       .filter((entry) => String(entry.game || "REBUILT") === selectedGame)
       .filter((entry) => selectedEvent === "all" || String(entry.eventKey || "") === selectedEvent)
       .filter((entry) => Array.isArray(entry.robots) && entry.robots.some((robot) => normalizeTeam(robot.teamNumber) === teamNumber));
-  }, [strategyEntries, selectedGame, selectedEvent, teamNumber]);
+  }, [strategyEntries, selectedGame, selectedEvent, teamNumber, isReefscape]);
 
   const teamDriveFiltered = useMemo(() => {
+    if (isReefscape) return [] as DriveEntry[];
     return driveEntries
       .filter((entry) => String(entry.game || "REBUILT") === selectedGame)
       .filter((entry) => selectedEvent === "all" || String(entry.eventKey || "") === selectedEvent)
       .filter((entry) => Array.isArray(entry.robots) && entry.robots.some((robot) => normalizeTeam(robot.teamNumber) === teamNumber));
-  }, [driveEntries, selectedGame, selectedEvent, teamNumber]);
+  }, [driveEntries, selectedGame, selectedEvent, teamNumber, isReefscape]);
 
   const pitLatest = useMemo(() => {
     if (teamPitFiltered.length === 0) return null;
@@ -299,6 +359,26 @@ function TeamBreakdownDetailContent() {
       const option = getEventsForGame(selectedGame).find((row) => row.id === key);
       fromData.set(key, option?.name || key);
     });
+    pitEntries.forEach((entry) => {
+      if (normalizeTeam(entry.teamNumber) !== teamNumber) return;
+      const key = String(entry.eventKey || "").trim();
+      if (!key) return;
+      const option = getEventsForGame(selectedGame).find((row) => row.id === key);
+      fromData.set(key, option?.name || key);
+    });
+    const collectRobotEvents = (entries: Array<StrategyPlanEntry | DriveEntry>) => {
+      entries.forEach((entry) => {
+        if (!Array.isArray(entry.robots) || !entry.robots.some((robot) => normalizeTeam(robot.teamNumber) === teamNumber)) return;
+        const key = String(entry.eventKey || "").trim();
+        if (!key) return;
+        const option = getEventsForGame(selectedGame).find((row) => row.id === key);
+        fromData.set(key, option?.name || key);
+      });
+    };
+    if (!isReefscape) {
+      collectRobotEvents(strategyEntries);
+      collectRobotEvents(driveEntries);
+    }
     const merged = new Map<string, string>();
     Array.from(fromData.entries()).forEach(([key, name]) => merged.set(key, name));
     knownTeamEvents.forEach((event) => {
@@ -306,26 +386,25 @@ function TeamBreakdownDetailContent() {
       if (!merged.has(event.key)) merged.set(event.key, event.name || event.key);
     });
     return Array.from(merged.entries()).map(([key, name]) => ({ key, name }));
-  }, [teamScoutingAll, knownTeamEvents, selectedGame]);
+  }, [teamScoutingAll, pitEntries, strategyEntries, driveEntries, teamNumber, knownTeamEvents, selectedGame, isReefscape]);
 
   const pastEvents = useMemo(() => {
-    const byEvent = new Map<string, { count: number; autoFuel: number; teleFuel: number }>();
+    const byEvent = new Map<string, { count: number; totalScore: number }>();
     teamScoutingAll.forEach((entry) => {
       const key = String(entry.eventKey || "").trim();
       if (!key || !isPastEventKey(key, eventOptions)) return;
-      const existing = byEvent.get(key) || { count: 0, autoFuel: 0, teleFuel: 0 };
+      const existing = byEvent.get(key) || { count: 0, totalScore: 0 };
       existing.count += 1;
-      existing.autoFuel += Number(entry.auto?.estimatedFuel || 0);
-      existing.teleFuel += Number(entry.teleop?.estimatedFuel || 0);
+      existing.totalScore += scoreEntry(entry, selectedGame);
       byEvent.set(key, existing);
     });
     return Array.from(byEvent.entries()).map(([key, value]) => ({
       key,
       name: eventOptions.find((option) => option.id === key)?.name || key,
       matches: value.count,
-      avgFuel: value.count > 0 ? (value.autoFuel + value.teleFuel) / value.count : 0,
+      avgScore: value.count > 0 ? value.totalScore / value.count : 0,
     }));
-  }, [teamScoutingAll, eventOptions]);
+  }, [teamScoutingAll, eventOptions, selectedGame]);
 
   const filteredEntryCount = teamScoutingFiltered.length + teamPitFiltered.length + teamStrategyFiltered.length + teamDriveFiltered.length;
 
@@ -345,14 +424,18 @@ function TeamBreakdownDetailContent() {
           Back to Team Breakdown list
         </Link>
         <h1 className="text-3xl font-bold mt-2 mb-1 theme-text">Team {teamNumber || "Unknown"} Breakdown</h1>
-        <p className="text-gray-600">Cross-form summary for this team across scouting, pit, strategy, and drive reflection data.</p>
+        <p className="text-gray-600">
+          {isReefscape
+            ? "Reefscape summary using match scout and pit scout data."
+            : "Cross-form summary for this team across scouting, pit, strategy, and drive reflection data."}
+        </p>
       </div>
 
       {loading ? (
         <LoadingSpinner message="Loading team breakdown..." />
       ) : (
         <div className="space-y-6">
-          <div className="grid md:grid-cols-4 gap-4">
+          <div className={`grid gap-4 ${isReefscape ? "md:grid-cols-3" : "md:grid-cols-4"}`}>
             <div className="bg-white rounded-xl shadow p-4" data-analytics-search-item="true">
               <p className="text-sm text-gray-500">Robot Name</p>
               <p className="text-xl font-semibold">{robotName}</p>
@@ -362,26 +445,50 @@ function TeamBreakdownDetailContent() {
               <p className="text-xl font-semibold">{teamScoutingFiltered.length}</p>
             </div>
             <div className="bg-white rounded-xl shadow p-4" data-analytics-search-item="true">
-              <p className="text-sm text-gray-500">Strategy Plans (Filtered)</p>
-              <p className="text-xl font-semibold">{teamStrategyFiltered.length}</p>
+              <p className="text-sm text-gray-500">Pit Entries (Filtered)</p>
+              <p className="text-xl font-semibold">{teamPitFiltered.length}</p>
             </div>
-            <div className="bg-white rounded-xl shadow p-4" data-analytics-search-item="true">
-              <p className="text-sm text-gray-500">Drive Reflections (Filtered)</p>
-              <p className="text-xl font-semibold">{teamDriveFiltered.length}</p>
-            </div>
+            {!isReefscape && (
+              <div className="bg-white rounded-xl shadow p-4" data-analytics-search-item="true">
+                <p className="text-sm text-gray-500">Strategy Plans (Filtered)</p>
+                <p className="text-xl font-semibold">{teamStrategyFiltered.length}</p>
+              </div>
+            )}
+            {!isReefscape && (
+              <div className="bg-white rounded-xl shadow p-4" data-analytics-search-item="true">
+                <p className="text-sm text-gray-500">Drive Reflections (Filtered)</p>
+                <p className="text-xl font-semibold">{teamDriveFiltered.length}</p>
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl shadow p-5" data-analytics-search-item="true">
             <h2 className="text-xl font-semibold mb-3">Match-Scouted Averages In Event</h2>
-            <div className="grid md:grid-cols-3 gap-3 text-sm">
-              <p>Auto Preload Scale: <span className="font-semibold">{displayNumber(matchAverages.preloadScale)}</span></p>
-              <p>Auto BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.autoBpsScale)}</span></p>
-              <p>Auto Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.autoCarryScale)}</span></p>
-              <p>Teleop BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.teleBpsScale)}</span></p>
-              <p>Teleop Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.teleCarryScale)}</span></p>
-              <p>Avg Auto Fuel: <span className="font-semibold">{displayNumber(matchAverages.autoFuel)}</span></p>
-              <p>Avg Teleop Fuel: <span className="font-semibold">{displayNumber(matchAverages.teleFuel)}</span></p>
-            </div>
+            {isReefscape ? (
+              <div className="grid md:grid-cols-3 gap-3 text-sm">
+                <p>
+                  Avg Match Score:{" "}
+                  <span className="font-semibold">
+                    {displayNumber(avg(teamScoutingFiltered.map((entry) => scoreEntry(entry, selectedGame))), 2)}
+                  </span>
+                </p>
+                <p>Avg Auto L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoCoralL4))))}</span></p>
+                <p>Avg Teleop L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL4))))}</span></p>
+                <p>Avg Auto Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoAlgaeProcessorScored))))}</span></p>
+                <p>Avg Teleop Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopProcessorScored))))}</span></p>
+                <p>Avg Penalty Points: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.penaltyPoints))))}</span></p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-3 gap-3 text-sm">
+                <p>Auto Preload Scale: <span className="font-semibold">{displayNumber(matchAverages.preloadScale)}</span></p>
+                <p>Auto BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.autoBpsScale)}</span></p>
+                <p>Auto Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.autoCarryScale)}</span></p>
+                <p>Teleop BPS Scale: <span className="font-semibold">{displayNumber(matchAverages.teleBpsScale)}</span></p>
+                <p>Teleop Carry Scale: <span className="font-semibold">{displayNumber(matchAverages.teleCarryScale)}</span></p>
+                <p>Avg Auto Fuel: <span className="font-semibold">{displayNumber(matchAverages.autoFuel)}</span></p>
+                <p>Avg Teleop Fuel: <span className="font-semibold">{displayNumber(matchAverages.teleFuel)}</span></p>
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl shadow p-5">
@@ -392,8 +499,8 @@ function TeamBreakdownDetailContent() {
                   <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Capability</th>
                   <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Match Scout</th>
                   <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Pit Scout</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Match Strategy</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Drive Reflection</th>
+                  {!isReefscape && <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Match Strategy</th>}
+                  {!isReefscape && <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Drive Reflection</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -407,37 +514,48 @@ function TeamBreakdownDetailContent() {
                       ? `${pitLatest.fuelPreloadCapacity || "-"} / ${pitLatest.fuelBallsPerSecond || "-"} / ${pitLatest.fuelCarryingCapacity || "-"}`
                       : "-"}
                   </td>
-                  <td className="px-3 py-2 text-sm">-</td>
-                  <td className="px-3 py-2 text-sm">-</td>
+                  {!isReefscape && <td className="px-3 py-2 text-sm">-</td>}
+                  {!isReefscape && <td className="px-3 py-2 text-sm">-</td>}
                 </tr>
-                <tr>
-                  <td className="px-3 py-2 font-medium">Starting Position</td>
-                  <td className="px-3 py-2 text-sm">-</td>
-                  <td className="px-3 py-2 text-sm">-</td>
-                  <td className="px-3 py-2 text-sm">{mode(strategyRobots.map((row) => row.startingPosition))}</td>
-                  <td className="px-3 py-2 text-sm">{mode(driveRobots.map((row) => row.startingPosition))}</td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2 font-medium">Role</td>
-                  <td className="px-3 py-2 text-sm">-</td>
-                  <td className="px-3 py-2 text-sm">-</td>
-                  <td className="px-3 py-2 text-sm">{mode(strategyRobots.map((row) => row.role))}</td>
-                  <td className="px-3 py-2 text-sm">{mode(driveRobots.map((row) => row.role))}</td>
-                </tr>
+                {!isReefscape && (
+                  <tr>
+                    <td className="px-3 py-2 font-medium">Starting Position</td>
+                    <td className="px-3 py-2 text-sm">-</td>
+                    <td className="px-3 py-2 text-sm">-</td>
+                    <td className="px-3 py-2 text-sm">{mode(strategyRobots.map((row) => row.startingPosition))}</td>
+                    <td className="px-3 py-2 text-sm">{mode(driveRobots.map((row) => row.startingPosition))}</td>
+                  </tr>
+                )}
+                {!isReefscape && (
+                  <tr>
+                    <td className="px-3 py-2 font-medium">Role</td>
+                    <td className="px-3 py-2 text-sm">-</td>
+                    <td className="px-3 py-2 text-sm">-</td>
+                    <td className="px-3 py-2 text-sm">{mode(strategyRobots.map((row) => row.role))}</td>
+                    <td className="px-3 py-2 text-sm">{mode(driveRobots.map((row) => row.role))}</td>
+                  </tr>
+                )}
                 <tr>
                   <td className="px-3 py-2 font-medium">Auto Climb</td>
                   <td className="px-3 py-2 text-sm">{percentTrue(teamScoutingFiltered.map((entry) => entry.auto?.successfulClimb))}</td>
                   <td className="px-3 py-2 text-sm">-</td>
-                  <td className="px-3 py-2 text-sm">{percentTrue(strategyRobots.map((row) => row.autoClimb))}</td>
-                  <td className="px-3 py-2 text-sm">{percentTrue(driveRobots.map((row) => row.autoClimb))}</td>
+                  {!isReefscape && <td className="px-3 py-2 text-sm">{percentTrue(strategyRobots.map((row) => row.autoClimb))}</td>}
+                  {!isReefscape && <td className="px-3 py-2 text-sm">{percentTrue(driveRobots.map((row) => row.autoClimb))}</td>}
                 </tr>
                 <tr>
                   <td className="px-3 py-2 font-medium">Endgame Climb</td>
                   <td className="px-3 py-2 text-sm">{mode(teamScoutingFiltered.map((entry) => entry.endgame?.status))}</td>
                   <td className="px-3 py-2 text-sm">-</td>
-                  <td className="px-3 py-2 text-sm">{mode(strategyRobots.map((row) => row.endgameClimb))}</td>
-                  <td className="px-3 py-2 text-sm">{mode(driveRobots.map((row) => row.endgameClimb))}</td>
+                  {!isReefscape && <td className="px-3 py-2 text-sm">{mode(strategyRobots.map((row) => row.endgameClimb))}</td>}
+                  {!isReefscape && <td className="px-3 py-2 text-sm">{mode(driveRobots.map((row) => row.endgameClimb))}</td>}
                 </tr>
+                {isReefscape && (
+                  <tr>
+                    <td className="px-3 py-2 font-medium">Left Starting Zone</td>
+                    <td className="px-3 py-2 text-sm">{percentTrue(teamScoutingFiltered.map((entry) => Boolean(entry.leftStartingZone)))}</td>
+                    <td className="px-3 py-2 text-sm">-</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -452,7 +570,7 @@ function TeamBreakdownDetailContent() {
                   <tr>
                     <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Event</th>
                     <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Matches</th>
-                    <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Avg Fuel (Auto+Tele)</th>
+                    <th className="px-3 py-2 text-left text-xs uppercase text-gray-500">Avg Match Score</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -460,7 +578,7 @@ function TeamBreakdownDetailContent() {
                     <tr key={event.key}>
                       <td className="px-3 py-2">{event.name}</td>
                       <td className="px-3 py-2">{event.matches}</td>
-                      <td className="px-3 py-2">{displayNumber(event.avgFuel, 2)}</td>
+                      <td className="px-3 py-2">{displayNumber(event.avgScore, 2)}</td>
                     </tr>
                   ))}
                 </tbody>
