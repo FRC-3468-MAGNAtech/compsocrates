@@ -9,6 +9,7 @@ import Link from "next/link";
 import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
+import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
 import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
 import { db } from "@/app/firebase";
 
@@ -51,11 +52,16 @@ async function createTeamJoinRequestWithFallback(input: {
 }) {
   const createdAt = Date.now();
   const normalizedEmail = input.userEmail.trim().toLowerCase();
+  const resolvedUserName = deriveJoinRequestName({
+    userName: input.userName,
+    userEmail: input.userEmail,
+    userId: input.userId,
+  });
   const fullPayload = {
     userId: input.userId,
     userEmail: input.userEmail,
     userEmailLower: normalizedEmail,
-    userName: input.userName,
+    userName: resolvedUserName,
     userRole: input.requestedRole,
     requestedRole: input.requestedRole,
     teamId: input.teamId,
@@ -68,7 +74,7 @@ async function createTeamJoinRequestWithFallback(input: {
       userId: input.userId,
       userEmail: input.userEmail,
       userEmailLower: normalizedEmail,
-      userName: input.userName,
+      userName: resolvedUserName,
       requestedRole: input.requestedRole,
       teamId: input.teamId,
       status: "pending",
@@ -76,7 +82,7 @@ async function createTeamJoinRequestWithFallback(input: {
     },
     {
       userId: input.userId,
-      userName: input.userName,
+      userName: resolvedUserName,
       requestedRole: input.requestedRole,
       teamId: input.teamId,
       status: "pending",
@@ -84,7 +90,7 @@ async function createTeamJoinRequestWithFallback(input: {
     },
     {
       userId: input.userId,
-      userName: input.userName,
+      userName: resolvedUserName,
       role: input.requestedRole,
       teamId: input.teamId,
       status: "pending",
@@ -92,7 +98,7 @@ async function createTeamJoinRequestWithFallback(input: {
     },
     {
       userId: input.userId,
-      userName: input.userName,
+      userName: resolvedUserName,
       teamId: input.teamId,
       status: "pending",
       createdAt,

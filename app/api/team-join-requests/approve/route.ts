@@ -74,8 +74,28 @@ async function fetchDocument(docUrl: string, idToken: string): Promise<Firestore
     cache: "no-store",
   });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`Failed to fetch document (${response.status})`);
+  if (!response.ok) {
+    const details = await readResponseError(response);
+    throw new Error(`Failed to fetch document (${response.status}): ${details || "unknown error"}`);
+  }
   return (await response.json()) as FirestoreDocument;
+}
+
+async function readResponseError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as {
+      error?: { message?: string; status?: string };
+    };
+    const message = String(payload?.error?.message || "").trim();
+    const status = String(payload?.error?.status || "").trim();
+    return message || status || "";
+  } catch {
+    try {
+      return String(await response.text()).trim();
+    } catch {
+      return "";
+    }
+  }
 }
 
 function buildNameFromEmail(email: string): string {
@@ -116,12 +136,13 @@ export async function POST(request: NextRequest) {
     const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : "";
 
     const serverToken = await fetchServerToken();
-    if (!serverToken) {
-      return NextResponse.json({ error: "Server Firebase auth is not configured for approvals." }, { status: 500 });
+    const privilegedToken = serverToken || clientIdToken;
+    if (!privilegedToken) {
+      return NextResponse.json({ error: "Missing auth token for approval." }, { status: 500 });
     }
 
     const callerDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(callerUid)}${keyQuery}`;
-    const callerDoc = await fetchDocument(callerDocUrl, serverToken);
+    const callerDoc = await fetchDocument(callerDocUrl, privilegedToken);
     const callerFields = callerDoc?.fields || {};
     const callerTeamId = readStringValue(callerFields.teamId);
     const callerIsTeamAdmin = readBooleanValue(callerFields.isTeamAdmin);
@@ -130,7 +151,7 @@ export async function POST(request: NextRequest) {
     }
 
     const requestDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/teamJoinRequests/${encodeURIComponent(requestId)}${keyQuery}`;
-    const requestDoc = await fetchDocument(requestDocUrl, serverToken);
+    const requestDoc = await fetchDocument(requestDocUrl, privilegedToken);
     if (!requestDoc) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
@@ -156,7 +177,7 @@ export async function POST(request: NextRequest) {
       "match-scout";
 
     const targetUserDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(targetUserId)}${keyQuery}`;
-    const targetUserDoc = await fetchDocument(targetUserDocUrl, serverToken);
+    const targetUserDoc = await fetchDocument(targetUserDocUrl, privilegedToken);
     const targetFields = targetUserDoc?.fields || {};
     const targetDisplayName = readStringValue(targetFields.displayName);
     const targetEmail = readStringValue(targetFields.email);
@@ -165,7 +186,7 @@ export async function POST(request: NextRequest) {
     const userUpdateResponse = await fetch(userUpdateUrl, {
       method: "PATCH",
       headers: {
-        ...authHeaders(serverToken),
+        ...authHeaders(privilegedToken),
         "Content-Type": "application/json",
       },
       cache: "no-store",
@@ -180,7 +201,10 @@ export async function POST(request: NextRequest) {
       }),
     });
     if (!userUpdateResponse.ok) {
-      return NextResponse.json({ error: "Unable to update user for approval." }, { status: 500 });
+      const details = await readResponseError(userUpdateResponse);
+      const message = details || "Unable to update user for approval.";
+      const status = userUpdateResponse.status === 403 ? 403 : 500;
+      return NextResponse.json({ error: message }, { status });
     }
 
     const existingName = readStringValue(requestFields.userName);
@@ -196,7 +220,7 @@ export async function POST(request: NextRequest) {
     const requestUpdateResponse = await fetch(requestUpdateUrl, {
       method: "PATCH",
       headers: {
-        ...authHeaders(serverToken),
+        ...authHeaders(privilegedToken),
         "Content-Type": "application/json",
       },
       cache: "no-store",
@@ -211,7 +235,10 @@ export async function POST(request: NextRequest) {
       }),
     });
     if (!requestUpdateResponse.ok) {
-      return NextResponse.json({ error: "Unable to mark request approved." }, { status: 500 });
+      const details = await readResponseError(requestUpdateResponse);
+      const message = details || "Unable to mark request approved.";
+      const status = requestUpdateResponse.status === 403 ? 403 : 500;
+      return NextResponse.json({ error: message }, { status });
     }
 
     return NextResponse.json({
@@ -222,6 +249,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Approve join request failed:", error);
-    return NextResponse.json({ error: "Unable to approve request right now." }, { status: 500 });
+    const message = error instanceof Error && error.message ? error.message : "Unable to approve request right now.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
