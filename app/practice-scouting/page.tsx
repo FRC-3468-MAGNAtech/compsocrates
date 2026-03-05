@@ -31,10 +31,12 @@ const RebuiltCycleTimer = ({
   title,
   values,
   onAdd,
+  onDelete,
 }: {
   title: string;
   values: number[];
   onAdd: (value: number) => void;
+  onDelete: (index: number) => void;
 }) => {
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -75,8 +77,18 @@ const RebuiltCycleTimer = ({
         {running ? "Stop" : "Start"}
       </button>
       {values.map((v, i) => (
-        <div key={`${title}-${i}-${v}`} className="text-xs text-gray-700">
-          Cycle {i + 1}: {v.toFixed(2)}
+        <div key={`${title}-${i}-${v}`} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+          <span>
+            Cycle {i + 1}: {v.toFixed(2)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onDelete(i)}
+            className="px-2 py-0.5 rounded border border-red-300 text-red-700 hover:bg-red-50"
+            aria-label={`Delete cycle ${i + 1}`}
+          >
+            Delete
+          </button>
         </div>
       ))}
     </div>
@@ -3434,6 +3446,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         title="Auto Cycle Timer"
                         values={rebuiltFormData.autoCycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, autoCycles: [...rebuiltFormData.autoCycles, value] })}
+                        onDelete={(index) =>
+                          setRebuiltFormData({
+                            ...rebuiltFormData,
+                            autoCycles: rebuiltFormData.autoCycles.filter((_, i) => i !== index),
+                          })
+                        }
                       />
                       <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                       <Counter
@@ -3507,6 +3525,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         title="Transition Shift"
                         values={rebuiltFormData.transitionCycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, transitionCycles: [...rebuiltFormData.transitionCycles, value] })}
+                        onDelete={(index) =>
+                          setRebuiltFormData({
+                            ...rebuiltFormData,
+                            transitionCycles: rebuiltFormData.transitionCycles.filter((_, i) => i !== index),
+                          })
+                        }
                       />
                       <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                       <Counter
@@ -3526,6 +3550,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         title={`Shift 1 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
                         values={rebuiltFormData.shift1Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1Cycles: [...rebuiltFormData.shift1Cycles, value] })}
+                        onDelete={(index) =>
+                          setRebuiltFormData({
+                            ...rebuiltFormData,
+                            shift1Cycles: rebuiltFormData.shift1Cycles.filter((_, i) => i !== index),
+                          })
+                        }
                       />
                       <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                       <Counter
@@ -3542,6 +3572,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         title={`Shift 2 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                         values={rebuiltFormData.shift2Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2Cycles: [...rebuiltFormData.shift2Cycles, value] })}
+                        onDelete={(index) =>
+                          setRebuiltFormData({
+                            ...rebuiltFormData,
+                            shift2Cycles: rebuiltFormData.shift2Cycles.filter((_, i) => i !== index),
+                          })
+                        }
                       />
                       <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                       <Counter
@@ -3558,6 +3594,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         title={`Shift 3 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
                         values={rebuiltFormData.shift3Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3Cycles: [...rebuiltFormData.shift3Cycles, value] })}
+                        onDelete={(index) =>
+                          setRebuiltFormData({
+                            ...rebuiltFormData,
+                            shift3Cycles: rebuiltFormData.shift3Cycles.filter((_, i) => i !== index),
+                          })
+                        }
                       />
                       <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                       <Counter
@@ -3574,6 +3616,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         title={`Shift 4 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                         values={rebuiltFormData.shift4Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift4Cycles: [...rebuiltFormData.shift4Cycles, value] })}
+                        onDelete={(index) =>
+                          setRebuiltFormData({
+                            ...rebuiltFormData,
+                            shift4Cycles: rebuiltFormData.shift4Cycles.filter((_, i) => i !== index),
+                          })
+                        }
                       />
                       <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                       <Counter
@@ -3601,6 +3649,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       title="Endgame Cycle Timer"
                       values={rebuiltFormData.endgameCycles}
                       onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameCycles: [...rebuiltFormData.endgameCycles, value] })}
+                      onDelete={(index) =>
+                        setRebuiltFormData({
+                          ...rebuiltFormData,
+                          endgameCycles: rebuiltFormData.endgameCycles.filter((_, i) => i !== index),
+                        })
+                      }
                     />
                     <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                     <Counter

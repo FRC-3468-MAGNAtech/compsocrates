@@ -251,7 +251,17 @@ function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number)
   return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (BPS[bpsScale] || 0) * seconds)));
 }
 
-function CycleTimer({ title, values, onAdd }: { title: string; values: number[]; onAdd: (value: number) => void }) {
+function CycleTimer({
+  title,
+  values,
+  onAdd,
+  onDelete,
+}: {
+  title: string;
+  values: number[];
+  onAdd: (value: number) => void;
+  onDelete: (index: number) => void;
+}) {
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number | null>(null);
@@ -291,7 +301,17 @@ function CycleTimer({ title, values, onAdd }: { title: string; values: number[];
         {running ? "Stop" : "Start"}
       </button>
       {values.map((v, i) => (
-        <div key={`${title}-${i}-${v}`} className="text-xs text-gray-700">Cycle {i + 1}: {v.toFixed(2)}</div>
+        <div key={`${title}-${i}-${v}`} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+          <span>Cycle {i + 1}: {v.toFixed(2)}</span>
+          <button
+            type="button"
+            onClick={() => onDelete(i)}
+            className="px-2 py-0.5 rounded border border-red-300 text-red-700 hover:bg-red-50"
+            aria-label={`Delete cycle ${i + 1}`}
+          >
+            Delete
+          </button>
+        </div>
       ))}
     </div>
   );
@@ -1227,7 +1247,12 @@ function ScoutFormContent() {
                     {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
                   </label>
                   <input type="range" min={0} max={6} value={form.autoCarryScale} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className="w-full" />
-                  <CycleTimer title="Auto Cycle Timer" values={autoCycles} onAdd={(v) => setAutoCycles((p) => [...p, v])} />
+                  <CycleTimer
+                    title="Auto Cycle Timer"
+                    values={autoCycles}
+                    onAdd={(v) => setAutoCycles((p) => [...p, v])}
+                    onDelete={(index) => setAutoCycles((p) => p.filter((_, i) => i !== index))}
+                  />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.autoCounterOverride} onChange={(next) => setForm((p) => ({ ...p, autoCounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.autoCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, autoCounterMissedFuel: next }))} />
@@ -1250,7 +1275,12 @@ function ScoutFormContent() {
                     {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
                   </label>
                   <input type="range" min={0} max={6} value={form.teleCarryScale} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className="w-full" />
-                  <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} />
+                  <CycleTimer
+                    title="Transition Shift"
+                    values={transitionCycles}
+                    onAdd={(v) => setTransitionCycles((p) => [...p, v])}
+                    onDelete={(index) => setTransitionCycles((p) => p.filter((_, i) => i !== index))}
+                  />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.transitionCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, transitionCounterMissedFuel: next }))} />
@@ -1258,19 +1288,39 @@ function ScoutFormContent() {
                     Counted shifts right now: Transition + {form.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
                     Toggle <span className="font-medium">Won Auto</span> to flip counted shifts.
                   </p>
-                  <CycleTimer title={`Shift 1 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} />
+                  <CycleTimer
+                    title={`Shift 1 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                    values={shift1Cycles}
+                    onAdd={(v) => setShift1Cycles((p) => [...p, v])}
+                    onDelete={(index) => setShift1Cycles((p) => p.filter((_, i) => i !== index))}
+                  />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.shift1CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift1CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift1CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift1CounterMissedFuel: next }))} />
-                  <CycleTimer title={`Shift 2 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift2Cycles} onAdd={(v) => setShift2Cycles((p) => [...p, v])} />
+                  <CycleTimer
+                    title={`Shift 2 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                    values={shift2Cycles}
+                    onAdd={(v) => setShift2Cycles((p) => [...p, v])}
+                    onDelete={(index) => setShift2Cycles((p) => p.filter((_, i) => i !== index))}
+                  />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.shift2CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift2CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift2CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift2CounterMissedFuel: next }))} />
-                  <CycleTimer title={`Shift 3 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`} values={shift3Cycles} onAdd={(v) => setShift3Cycles((p) => [...p, v])} />
+                  <CycleTimer
+                    title={`Shift 3 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                    values={shift3Cycles}
+                    onAdd={(v) => setShift3Cycles((p) => [...p, v])}
+                    onDelete={(index) => setShift3Cycles((p) => p.filter((_, i) => i !== index))}
+                  />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.shift3CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift3CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift3CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift3CounterMissedFuel: next }))} />
-                  <CycleTimer title={`Shift 4 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`} values={shift4Cycles} onAdd={(v) => setShift4Cycles((p) => [...p, v])} />
+                  <CycleTimer
+                    title={`Shift 4 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                    values={shift4Cycles}
+                    onAdd={(v) => setShift4Cycles((p) => [...p, v])}
+                    onDelete={(index) => setShift4Cycles((p) => p.filter((_, i) => i !== index))}
+                  />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.shift4CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift4CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift4CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift4CounterMissedFuel: next }))} />
@@ -1280,7 +1330,12 @@ function ScoutFormContent() {
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Endgame</h2>
-                  <CycleTimer title="Endgame Cycle Timer" values={endgameCycles} onAdd={(v) => setEndgameCycles((p) => [...p, v])} />
+                  <CycleTimer
+                    title="Endgame Cycle Timer"
+                    values={endgameCycles}
+                    onAdd={(v) => setEndgameCycles((p) => [...p, v])}
+                    onDelete={(index) => setEndgameCycles((p) => p.filter((_, i) => i !== index))}
+                  />
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.endgameCounterOverride} onChange={(next) => setForm((p) => ({ ...p, endgameCounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.endgameCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, endgameCounterMissedFuel: next }))} />

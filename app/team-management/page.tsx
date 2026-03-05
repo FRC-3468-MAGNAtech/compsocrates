@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, setDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -11,6 +11,7 @@ import { X, Check, Clock } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getTeamName } from "@/app/utils/stats-calculator";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
 import {
   FormAccessOverrides,
   FormKey,
@@ -52,7 +53,7 @@ type UserLookupRow = {
 };
 
 function TeamManagementContent() {
-  const { userData } = useAuth();
+  const { userData, user } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,13 +128,17 @@ function TeamManagementContent() {
         const lookup = userLookup.get(request.userId);
         const displayName = String(lookup?.displayName || "").trim();
         const email = String(lookup?.email || "").trim();
+        const effectiveEmail = request.userEmail || email;
         return {
           ...request,
-          userName:
-            request.userName && !request.userName.startsWith("User ")
-              ? request.userName
-              : displayName || request.userName,
-          userEmail: request.userEmail || email,
+          userName: deriveJoinRequestName({
+            userName: request.userName,
+            fallbackDisplayName: displayName,
+            userEmail: request.userEmail,
+            fallbackEmail: email,
+            userId: request.userId,
+          }),
+          userEmail: effectiveEmail,
         };
       });
       setJoinRequests(requests);
@@ -153,34 +158,91 @@ function TeamManagementContent() {
   }
 
   async function handleApproveRequest(request: JoinRequest) {
+    const resolvedRole = normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout");
+    async function approveViaClientFallback() {
+      const targetUserId = String(request.userId || "").trim();
+      let profileSyncPending = false;
+      try {
+        await updateDoc(doc(db, "users", targetUserId), {
+          teamId: request.teamId,
+          role: resolvedRole,
+          roles: [resolvedRole],
+          specialRole: null,
+          specialRoles: [],
+        });
+      } catch {
+        try {
+          await setDoc(
+            doc(db, "users", targetUserId),
+            {
+              uid: targetUserId,
+              teamId: request.teamId,
+              role: resolvedRole,
+              roles: [resolvedRole],
+              specialRole: null,
+              specialRoles: [],
+              isTeamAdmin: false,
+            },
+            { merge: true }
+          );
+        } catch {
+          profileSyncPending = true;
+        }
+      }
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
+        status: "approved",
+        processedAt: Date.now(),
+        processedBy: userData?.uid || "",
+        profileSyncPending,
+      });
+      return { profileSyncPending };
+    }
+
     try {
-      const resolvedRole = normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout");
       const targetUserId = String(request.userId || "").trim();
 
       if (!targetUserId) {
         alert("This request is missing a user ID. Ask the user to submit a new request.");
         return;
       }
-
-      await updateSecureUserDoc(targetUserId, {
-        teamId: request.teamId,
-        role: resolvedRole,
-        roles: [resolvedRole],
-        specialRole: null,
-        specialRoles: [],
+      const idToken = await user?.getIdToken();
+      if (!idToken) {
+        alert("You must be signed in to approve requests.");
+        return;
+      }
+      const response = await fetch("/api/team-join-requests/approve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ requestId: request.id }),
       });
-
-      await updateDoc(doc(db, "teamJoinRequests", request.id), {
-        status: "approved",
-        processedAt: Date.now(),
-        processedBy: userData?.uid || "",
-      });
-
-      alert(`${request.userName} has been added to the team.`);
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string; profileSyncPending?: boolean };
+      if (!response.ok) {
+        if (response.status === 403) {
+          const fallbackResult = await approveViaClientFallback();
+          if (fallbackResult.profileSyncPending) {
+            alert(`${request.userName} was approved. Their account will finish syncing when they next sign in.`);
+          } else {
+            alert(`${request.userName} has been added to the team.`);
+          }
+          await loadTeamData();
+          return;
+        }
+        throw new Error(payload.error || "Approval failed");
+      }
+      const approvedName = String(payload.userName || request.userName || "User").trim();
+      if (payload.profileSyncPending) {
+        alert(`${approvedName} was approved. Their account will finish syncing when they next sign in.`);
+      } else {
+        alert(`${approvedName} has been added to the team.`);
+      }
       await loadTeamData();
     } catch (error) {
       console.error("Error approving request:", error);
-      alert("Error approving request");
+      const message = error instanceof Error && error.message ? error.message : "Error approving request";
+      alert(message);
     }
   }
 

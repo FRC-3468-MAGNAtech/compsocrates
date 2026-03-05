@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, setDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { CheckCircle, XCircle, Clock, Mail } from "lucide-react";
 import { getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
-import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { useAuth } from "@/app/AuthContext";
+import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
 
 interface TeamRequest {
   id: string;
@@ -23,6 +24,7 @@ type UserLookupRow = {
 };
 
 export default function TeamRequests({ teamId }: { teamId: string }) {
+  const { user } = useAuth();
   const [requests, setRequests] = useState<TeamRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,10 +71,13 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
         const email = String(userRow?.email || "").trim();
         return {
           ...request,
-          userName:
-            request.userName && !String(request.userName).startsWith("User ")
-              ? request.userName
-              : displayName || request.userName,
+          userName: deriveJoinRequestName({
+            userName: request.userName,
+            fallbackDisplayName: displayName,
+            userEmail: request.userEmail,
+            fallbackEmail: email,
+            userId: request.userId,
+          }),
           userEmail: request.userEmail || email,
         };
       });
@@ -91,6 +96,44 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
       return;
     }
 
+    async function approveViaClientFallback() {
+      const targetUserId = String(request.userId || "").trim();
+      let profileSyncPending = false;
+      try {
+        await updateDoc(doc(db, "users", targetUserId), {
+          teamId,
+          role: resolvedRole,
+          roles: [resolvedRole],
+          specialRole: null,
+          specialRoles: [],
+        });
+      } catch {
+        try {
+          await setDoc(
+            doc(db, "users", targetUserId),
+            {
+              uid: targetUserId,
+              teamId,
+              role: resolvedRole,
+              roles: [resolvedRole],
+              specialRole: null,
+              specialRoles: [],
+              isTeamAdmin: false,
+            },
+            { merge: true }
+          );
+        } catch {
+          profileSyncPending = true;
+        }
+      }
+      await updateDoc(doc(db, "teamJoinRequests", request.id), {
+        status: "approved",
+        processedAt: Date.now(),
+        profileSyncPending,
+      });
+      return { profileSyncPending };
+    }
+
     try {
       const targetUserId = String(request.userId || "").trim();
       if (!targetUserId) {
@@ -98,25 +141,44 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
         return;
       }
 
-      // Add user first; only then mark request approved.
-      await updateSecureUserDoc(targetUserId, {
-        teamId,
-        role: resolvedRole,
-        roles: [resolvedRole],
-        specialRole: null,
-        specialRoles: [],
+      const idToken = await user?.getIdToken();
+      if (!idToken) {
+        alert("You must be signed in to approve requests.");
+        return;
+      }
+      const response = await fetch("/api/team-join-requests/approve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ requestId: request.id }),
       });
-
-      await updateDoc(doc(db, "teamJoinRequests", request.id), {
-        status: "approved",
-        processedAt: Date.now(),
-      });
-
-      alert(`${request.userName} has been added to the team!`);
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string; profileSyncPending?: boolean };
+      if (!response.ok) {
+        if (response.status === 403) {
+          const fallbackResult = await approveViaClientFallback();
+          if (fallbackResult.profileSyncPending) {
+            alert(`${request.userName} was approved. Profile sync will complete on next sign-in.`);
+          } else {
+            alert(`${request.userName} has been added to the team!`);
+          }
+          loadRequests();
+          return;
+        }
+        throw new Error(payload.error || "Failed to approve request");
+      }
+      const approvedName = String(payload.userName || request.userName || "User").trim();
+      if (payload.profileSyncPending) {
+        alert(`${approvedName} was approved. Profile sync will complete on next sign-in.`);
+      } else {
+        alert(`${approvedName} has been added to the team!`);
+      }
       loadRequests(); // Reload to remove from pending list
     } catch (error) {
       console.error("Error approving request:", error);
-      alert("Failed to approve request");
+      const message = error instanceof Error && error.message ? error.message : "Failed to approve request";
+      alert(message);
     }
   }
 
