@@ -161,6 +161,7 @@ function TeamManagementContent() {
     const resolvedRole = normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout");
     async function approveViaClientFallback() {
       const targetUserId = String(request.userId || "").trim();
+      let profileSyncPending = false;
       try {
         await updateDoc(doc(db, "users", targetUserId), {
           teamId: request.teamId,
@@ -170,25 +171,31 @@ function TeamManagementContent() {
           specialRoles: [],
         });
       } catch {
-        await setDoc(
-          doc(db, "users", targetUserId),
-          {
-            uid: targetUserId,
-            teamId: request.teamId,
-            role: resolvedRole,
-            roles: [resolvedRole],
-            specialRole: null,
-            specialRoles: [],
-            isTeamAdmin: false,
-          },
-          { merge: true }
-        );
+        try {
+          await setDoc(
+            doc(db, "users", targetUserId),
+            {
+              uid: targetUserId,
+              teamId: request.teamId,
+              role: resolvedRole,
+              roles: [resolvedRole],
+              specialRole: null,
+              specialRoles: [],
+              isTeamAdmin: false,
+            },
+            { merge: true }
+          );
+        } catch {
+          profileSyncPending = true;
+        }
       }
       await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
         processedAt: Date.now(),
         processedBy: userData?.uid || "",
+        profileSyncPending,
       });
+      return { profileSyncPending };
     }
 
     try {
@@ -211,18 +218,26 @@ function TeamManagementContent() {
         },
         body: JSON.stringify({ requestId: request.id }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string; profileSyncPending?: boolean };
       if (!response.ok) {
         if (response.status === 403) {
-          await approveViaClientFallback();
-          alert(`${request.userName} has been added to the team.`);
+          const fallbackResult = await approveViaClientFallback();
+          if (fallbackResult.profileSyncPending) {
+            alert(`${request.userName} was approved. Their account will finish syncing when they next sign in.`);
+          } else {
+            alert(`${request.userName} has been added to the team.`);
+          }
           await loadTeamData();
           return;
         }
         throw new Error(payload.error || "Approval failed");
       }
       const approvedName = String(payload.userName || request.userName || "User").trim();
-      alert(`${approvedName} has been added to the team.`);
+      if (payload.profileSyncPending) {
+        alert(`${approvedName} was approved. Their account will finish syncing when they next sign in.`);
+      } else {
+        alert(`${approvedName} has been added to the team.`);
+      }
       await loadTeamData();
     } catch (error) {
       console.error("Error approving request:", error);

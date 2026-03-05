@@ -206,11 +206,18 @@ export async function POST(request: NextRequest) {
         },
       }),
     });
+    let userProfileUpdated = userUpdateResponse.ok;
     if (!userUpdateResponse.ok) {
       const details = await readResponseError(userUpdateResponse);
-      const message = details || "Unable to update user for approval.";
-      const status = userUpdateResponse.status === 403 ? 403 : 500;
-      return NextResponse.json({ error: message }, { status });
+      const message = String(details || "").toLowerCase();
+      const isPermissionError =
+        userUpdateResponse.status === 403 ||
+        message.includes("permission") ||
+        message.includes("insufficient");
+      if (!isPermissionError) {
+        return NextResponse.json({ error: details || "Unable to update user for approval." }, { status: 500 });
+      }
+      userProfileUpdated = false;
     }
 
     const existingName = readStringValue(requestFields.userName);
@@ -222,7 +229,7 @@ export async function POST(request: NextRequest) {
       existingName ||
       `User ${targetUserId.slice(0, 8)}`;
 
-    const requestUpdateUrl = `${requestDocUrl}${requestDocUrl.includes("?") ? "&" : "?"}updateMask.fieldPaths=status&updateMask.fieldPaths=processedAt&updateMask.fieldPaths=processedBy&updateMask.fieldPaths=userName&updateMask.fieldPaths=userEmail`;
+    const requestUpdateUrl = `${requestDocUrl}${requestDocUrl.includes("?") ? "&" : "?"}updateMask.fieldPaths=status&updateMask.fieldPaths=processedAt&updateMask.fieldPaths=processedBy&updateMask.fieldPaths=userName&updateMask.fieldPaths=userEmail&updateMask.fieldPaths=profileSyncPending`;
     const requestUpdateResponse = await fetch(requestUpdateUrl, {
       method: "PATCH",
       headers: {
@@ -237,6 +244,7 @@ export async function POST(request: NextRequest) {
           processedBy: { stringValue: callerUid },
           userName: { stringValue: hydratedName },
           userEmail: { stringValue: hydratedEmail },
+          profileSyncPending: { booleanValue: !userProfileUpdated },
         },
       }),
     });
@@ -252,6 +260,7 @@ export async function POST(request: NextRequest) {
       approvedUserId: targetUserId,
       userName: hydratedName,
       userEmail: hydratedEmail,
+      profileSyncPending: !userProfileUpdated,
     });
   } catch (error) {
     console.error("Approve join request failed:", error);

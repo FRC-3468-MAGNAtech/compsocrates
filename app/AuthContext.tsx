@@ -11,7 +11,7 @@ import {
   updateProfile,
   sendEmailVerification
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
 import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { TeamRole, normalizeLegacyRole } from "@/app/utils/roles";
@@ -100,6 +100,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       bio: "",
       photoURL: currentUser.photoURL || "",
     };
+  }
+
+  async function syncApprovedJoinRequest(uid: string, current: UserData): Promise<UserData> {
+    if (!uid || current.teamId) return current;
+    try {
+      const requestsQuery = query(collection(db, "teamJoinRequests"), where("userId", "==", uid));
+      const requestsSnap = await getDocs(requestsQuery);
+      const approved = requestsSnap.docs
+        .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
+        .filter((row) => String(row.status || "") === "approved" && String(row.teamId || "").trim())
+        .sort((a, b) => Number(b.processedAt || b.createdAt || 0) - Number(a.processedAt || a.createdAt || 0))[0];
+
+      if (!approved) return current;
+
+      const nextRole = normalizeLegacyRole(String(approved.requestedRole || approved.userRole || approved.role || current.role || "match-scout"));
+      const nextTeamId = String(approved.teamId || "").trim();
+      const updates: Partial<UserData> = {
+        teamId: nextTeamId,
+        role: nextRole,
+        roles: [nextRole],
+        specialRole: null,
+        specialRoles: [],
+      };
+      await setSecureUserDoc(uid, updates as Record<string, unknown>, true);
+      try {
+        await updateDoc(doc(db, "teamJoinRequests", String(approved.id || "")), {
+          profileSyncPending: false,
+          profileSyncedAt: Date.now(),
+        });
+      } catch {
+        // Best-effort marker update only.
+      }
+      return { ...current, ...updates };
+    } catch {
+      return current;
+    }
   }
 
   // Update user data
@@ -191,7 +227,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Load user data
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) {
-          setUserData(withHiddenOwnerPermissions(userDoc.data() as UserData));
+          const hydrated = await syncApprovedJoinRequest(currentUser.uid, userDoc.data() as UserData);
+          setUserData(withHiddenOwnerPermissions(hydrated));
         } else {
           const fallbackUserData = buildDefaultUserData(currentUser);
           try {
@@ -199,7 +236,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (error) {
             console.error("Error creating missing user doc on login:", error);
           }
-          setUserData(withHiddenOwnerPermissions(fallbackUserData));
+          const hydrated = await syncApprovedJoinRequest(currentUser.uid, fallbackUserData);
+          setUserData(withHiddenOwnerPermissions(hydrated));
         }
       } else {
         setUserData(null);

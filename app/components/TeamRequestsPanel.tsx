@@ -100,6 +100,7 @@ export default function TeamRequestsPanel() {
 
     async function approveViaClientFallback() {
       const targetUserId = String(request.userId || "").trim();
+      let profileSyncPending = false;
       try {
         await updateDoc(doc(db, "users", targetUserId), {
           teamId: userData?.teamId || request.teamId,
@@ -109,25 +110,31 @@ export default function TeamRequestsPanel() {
           specialRoles: [],
         });
       } catch {
-        await setDoc(
-          doc(db, "users", targetUserId),
-          {
-            uid: targetUserId,
-            teamId: userData?.teamId || request.teamId,
-            role: resolvedRole,
-            roles: [resolvedRole],
-            specialRole: null,
-            specialRoles: [],
-            isTeamAdmin: false,
-          },
-          { merge: true }
-        );
+        try {
+          await setDoc(
+            doc(db, "users", targetUserId),
+            {
+              uid: targetUserId,
+              teamId: userData?.teamId || request.teamId,
+              role: resolvedRole,
+              roles: [resolvedRole],
+              specialRole: null,
+              specialRoles: [],
+              isTeamAdmin: false,
+            },
+            { merge: true }
+          );
+        } catch {
+          profileSyncPending = true;
+        }
       }
       await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
         processedAt: Date.now(),
         processedBy: userData?.uid,
+        profileSyncPending,
       });
+      return { profileSyncPending };
     }
 
     try {
@@ -149,18 +156,26 @@ export default function TeamRequestsPanel() {
         },
         body: JSON.stringify({ requestId: request.id }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string; profileSyncPending?: boolean };
       if (!response.ok) {
         if (response.status === 403) {
-          await approveViaClientFallback();
-          alert(`${request.userName} has been approved!`);
+          const fallbackResult = await approveViaClientFallback();
+          if (fallbackResult.profileSyncPending) {
+            alert(`${request.userName} was approved. Profile sync will complete on next sign-in.`);
+          } else {
+            alert(`${request.userName} has been approved!`);
+          }
           loadRequests();
           return;
         }
         throw new Error(payload.error || "Failed to approve request");
       }
       const approvedName = String(payload.userName || request.userName || "User").trim();
-      alert(`${approvedName} has been approved!`);
+      if (payload.profileSyncPending) {
+        alert(`${approvedName} was approved. Profile sync will complete on next sign-in.`);
+      } else {
+        alert(`${approvedName} has been approved!`);
+      }
       loadRequests(); // Refresh list
     } catch (error) {
       console.error("Error approving request:", error);
