@@ -68,7 +68,7 @@ async function verifyCallerUid(clientIdToken: string): Promise<string> {
   return String(payload.users?.[0]?.localId || "");
 }
 
-async function fetchDocument(docUrl: string, idToken: string): Promise<FirestoreDocument | null> {
+async function fetchDocument(docUrl: string, idToken: string, label: string): Promise<FirestoreDocument | null> {
   const response = await fetch(docUrl, {
     headers: authHeaders(idToken),
     cache: "no-store",
@@ -76,7 +76,7 @@ async function fetchDocument(docUrl: string, idToken: string): Promise<Firestore
   if (response.status === 404) return null;
   if (!response.ok) {
     const details = await readResponseError(response);
-    throw new Error(`Failed to fetch document (${response.status}): ${details || "unknown error"}`);
+    throw new Error(`Failed to fetch ${label} (${response.status}): ${details || "unknown error"}`);
   }
   return (await response.json()) as FirestoreDocument;
 }
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     }
 
     const callerDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(callerUid)}${keyQuery}`;
-    const callerDoc = await fetchDocument(callerDocUrl, privilegedToken);
+    const callerDoc = await fetchDocument(callerDocUrl, privilegedToken, "caller user");
     const callerFields = callerDoc?.fields || {};
     const callerTeamId = readStringValue(callerFields.teamId);
     const callerIsTeamAdmin = readBooleanValue(callerFields.isTeamAdmin);
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     }
 
     const requestDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/teamJoinRequests/${encodeURIComponent(requestId)}${keyQuery}`;
-    const requestDoc = await fetchDocument(requestDocUrl, privilegedToken);
+    const requestDoc = await fetchDocument(requestDocUrl, privilegedToken, "join request");
     if (!requestDoc) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       "match-scout";
 
     const targetUserDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(targetUserId)}${keyQuery}`;
-    const targetUserDoc = await fetchDocument(targetUserDocUrl, privilegedToken);
+    const targetUserDoc = await fetchDocument(targetUserDocUrl, privilegedToken, "target user");
     const targetFields = targetUserDoc?.fields || {};
     const targetDisplayName = readStringValue(targetFields.displayName);
     const targetEmail = readStringValue(targetFields.email);
