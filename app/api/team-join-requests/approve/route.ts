@@ -177,10 +177,16 @@ export async function POST(request: NextRequest) {
       "match-scout";
 
     const targetUserDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(targetUserId)}${keyQuery}`;
-    const targetUserDoc = await fetchDocument(targetUserDocUrl, privilegedToken, "target user");
-    const targetFields = targetUserDoc?.fields || {};
-    const targetDisplayName = readStringValue(targetFields.displayName);
-    const targetEmail = readStringValue(targetFields.email);
+    let targetDisplayName = "";
+    let targetEmail = "";
+    try {
+      const targetUserDoc = await fetchDocument(targetUserDocUrl, privilegedToken, "target user");
+      const targetFields = targetUserDoc?.fields || {};
+      targetDisplayName = readStringValue(targetFields.displayName);
+      targetEmail = readStringValue(targetFields.email);
+    } catch {
+      // Best-effort only. Missing/inaccessible user doc should not block approval.
+    }
 
     const userUpdateUrl = `${targetUserDocUrl}${targetUserDocUrl.includes("?") ? "&" : "?"}updateMask.fieldPaths=teamId&updateMask.fieldPaths=role&updateMask.fieldPaths=roles&updateMask.fieldPaths=specialRole&updateMask.fieldPaths=specialRoles`;
     const userUpdateResponse = await fetch(userUpdateUrl, {

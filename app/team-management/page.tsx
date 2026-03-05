@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, setDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -161,13 +161,29 @@ function TeamManagementContent() {
     const resolvedRole = normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout");
     async function approveViaClientFallback() {
       const targetUserId = String(request.userId || "").trim();
-      await updateDoc(doc(db, "users", targetUserId), {
-        teamId: request.teamId,
-        role: resolvedRole,
-        roles: [resolvedRole],
-        specialRole: null,
-        specialRoles: [],
-      });
+      try {
+        await updateDoc(doc(db, "users", targetUserId), {
+          teamId: request.teamId,
+          role: resolvedRole,
+          roles: [resolvedRole],
+          specialRole: null,
+          specialRoles: [],
+        });
+      } catch {
+        await setDoc(
+          doc(db, "users", targetUserId),
+          {
+            uid: targetUserId,
+            teamId: request.teamId,
+            role: resolvedRole,
+            roles: [resolvedRole],
+            specialRole: null,
+            specialRoles: [],
+            isTeamAdmin: false,
+          },
+          { merge: true }
+        );
+      }
       await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
         processedAt: Date.now(),

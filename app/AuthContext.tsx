@@ -83,6 +83,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  function buildDefaultUserData(currentUser: User): UserData {
+    const fallbackName =
+      String(currentUser.displayName || "").trim() ||
+      String(currentUser.email || "").split("@")[0] ||
+      "User";
+    return {
+      uid: currentUser.uid,
+      email: currentUser.email || "",
+      displayName: fallbackName,
+      role: "match-scout",
+      roles: ["match-scout"],
+      teamId: "",
+      isTeamAdmin: false,
+      profileVisibility: "team",
+      bio: "",
+      photoURL: currentUser.photoURL || "",
+    };
+  }
+
   // Update user data
   async function updateUserData(updates: Partial<UserData>) {
     if (!user) return;
@@ -173,6 +192,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) {
           setUserData(withHiddenOwnerPermissions(userDoc.data() as UserData));
+        } else {
+          const fallbackUserData = buildDefaultUserData(currentUser);
+          try {
+            await setSecureUserDoc(currentUser.uid, fallbackUserData as unknown as Record<string, unknown>, false);
+          } catch (error) {
+            console.error("Error creating missing user doc on login:", error);
+          }
+          setUserData(withHiddenOwnerPermissions(fallbackUserData));
         }
       } else {
         setUserData(null);

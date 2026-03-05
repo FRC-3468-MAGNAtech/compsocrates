@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, setDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { CheckCircle, XCircle, Clock, Mail } from "lucide-react";
 import { getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
@@ -98,13 +98,29 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
 
     async function approveViaClientFallback() {
       const targetUserId = String(request.userId || "").trim();
-      await updateDoc(doc(db, "users", targetUserId), {
-        teamId,
-        role: resolvedRole,
-        roles: [resolvedRole],
-        specialRole: null,
-        specialRoles: [],
-      });
+      try {
+        await updateDoc(doc(db, "users", targetUserId), {
+          teamId,
+          role: resolvedRole,
+          roles: [resolvedRole],
+          specialRole: null,
+          specialRoles: [],
+        });
+      } catch {
+        await setDoc(
+          doc(db, "users", targetUserId),
+          {
+            uid: targetUserId,
+            teamId,
+            role: resolvedRole,
+            roles: [resolvedRole],
+            specialRole: null,
+            specialRoles: [],
+            isTeamAdmin: false,
+          },
+          { merge: true }
+        );
+      }
       await updateDoc(doc(db, "teamJoinRequests", request.id), {
         status: "approved",
         processedAt: Date.now(),
