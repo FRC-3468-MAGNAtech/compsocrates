@@ -6,7 +6,7 @@ import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import { UserCheck, UserX, Clock, Mail } from "lucide-react";
 import { getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
-import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
 
 interface TeamRequest {
   id: string;
@@ -26,7 +26,7 @@ type UserLookupRow = {
 };
 
 export default function TeamRequestsPanel() {
-  const { userData } = useAuth();
+  const { userData, user } = useAuth();
   const [requests, setRequests] = useState<TeamRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -75,10 +75,13 @@ export default function TeamRequestsPanel() {
         const email = String(userRow?.email || "").trim();
         return {
           ...request,
-          userName:
-            request.userName && !String(request.userName).startsWith("User ")
-              ? request.userName
-              : displayName || request.userName,
+          userName: deriveJoinRequestName({
+            userName: request.userName,
+            fallbackDisplayName: displayName,
+            userEmail: request.userEmail,
+            fallbackEmail: email,
+            userId: request.userId,
+          }),
           userEmail: request.userEmail || email,
         };
       });
@@ -101,27 +104,30 @@ export default function TeamRequestsPanel() {
         alert("Request is missing a user ID. Ask the scout to re-submit.");
         return;
       }
-      // 1. Add user to team
-      await updateSecureUserDoc(targetUserId, {
-        teamId: userData?.teamId,
-        role: resolvedRole,
-        roles: [resolvedRole],
-        specialRole: null,
-        specialRoles: [],
+      const idToken = await user?.getIdToken();
+      if (!idToken) {
+        alert("You must be signed in to approve requests.");
+        return;
+      }
+      const response = await fetch("/api/team-join-requests/approve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ requestId: request.id }),
       });
-
-      // 2. Mark request approved after user update succeeds.
-      await updateDoc(doc(db, "teamJoinRequests", request.id), {
-        status: "approved",
-        processedAt: Date.now(),
-        processedBy: userData?.uid
-      });
-
-      alert(`${request.userName} has been approved!`);
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to approve request");
+      }
+      const approvedName = String(payload.userName || request.userName || "User").trim();
+      alert(`${approvedName} has been approved!`);
       loadRequests(); // Refresh list
     } catch (error) {
       console.error("Error approving request:", error);
-      alert("Failed to approve request");
+      const message = error instanceof Error && error.message ? error.message : "Failed to approve request";
+      alert(message);
     }
   }
 

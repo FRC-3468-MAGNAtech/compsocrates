@@ -3,7 +3,8 @@ import { collection, query, where, getDocs, updateDoc, doc, getDoc } from "fireb
 import { db } from "@/app/firebase";
 import { CheckCircle, XCircle, Clock, Mail } from "lucide-react";
 import { getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
-import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { useAuth } from "@/app/AuthContext";
+import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
 
 interface TeamRequest {
   id: string;
@@ -23,6 +24,7 @@ type UserLookupRow = {
 };
 
 export default function TeamRequests({ teamId }: { teamId: string }) {
+  const { user } = useAuth();
   const [requests, setRequests] = useState<TeamRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,10 +71,13 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
         const email = String(userRow?.email || "").trim();
         return {
           ...request,
-          userName:
-            request.userName && !String(request.userName).startsWith("User ")
-              ? request.userName
-              : displayName || request.userName,
+          userName: deriveJoinRequestName({
+            userName: request.userName,
+            fallbackDisplayName: displayName,
+            userEmail: request.userEmail,
+            fallbackEmail: email,
+            userId: request.userId,
+          }),
           userEmail: request.userEmail || email,
         };
       });
@@ -98,25 +103,30 @@ export default function TeamRequests({ teamId }: { teamId: string }) {
         return;
       }
 
-      // Add user first; only then mark request approved.
-      await updateSecureUserDoc(targetUserId, {
-        teamId,
-        role: resolvedRole,
-        roles: [resolvedRole],
-        specialRole: null,
-        specialRoles: [],
+      const idToken = await user?.getIdToken();
+      if (!idToken) {
+        alert("You must be signed in to approve requests.");
+        return;
+      }
+      const response = await fetch("/api/team-join-requests/approve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ requestId: request.id }),
       });
-
-      await updateDoc(doc(db, "teamJoinRequests", request.id), {
-        status: "approved",
-        processedAt: Date.now(),
-      });
-
-      alert(`${request.userName} has been added to the team!`);
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; userName?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to approve request");
+      }
+      const approvedName = String(payload.userName || request.userName || "User").trim();
+      alert(`${approvedName} has been added to the team!`);
       loadRequests(); // Reload to remove from pending list
     } catch (error) {
       console.error("Error approving request:", error);
-      alert("Failed to approve request");
+      const message = error instanceof Error && error.message ? error.message : "Failed to approve request";
+      alert(message);
     }
   }
 
