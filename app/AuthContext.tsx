@@ -107,8 +107,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const requestsQuery = query(collection(db, "teamJoinRequests"), where("userId", "==", uid));
       const requestsSnap = await getDocs(requestsQuery);
+      type ApprovedJoinRow = {
+        id: string;
+        status?: unknown;
+        teamId?: unknown;
+        requestedRole?: unknown;
+        userRole?: unknown;
+        role?: unknown;
+        processedAt?: unknown;
+        createdAt?: unknown;
+      };
       const approved = requestsSnap.docs
-        .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
+        .map((docSnap): ApprovedJoinRow => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
         .filter((row) => String(row.status || "") === "approved" && String(row.teamId || "").trim())
         .sort((a, b) => Number(b.processedAt || b.createdAt || 0) - Number(a.processedAt || a.createdAt || 0))[0];
 
