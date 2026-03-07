@@ -925,6 +925,7 @@ function PracticeScoutingContent() {
   const [pendingDraft, setPendingDraft] = useState<PracticeSessionDraft | null>(null);
   const [teamEventCatalog, setTeamEventCatalog] = useState<DetectedEventOption[]>([]);
   const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({ encryptedKey: "", plainKey: "" });
+  const [liveTbaCompletedMatchKeys, setLiveTbaCompletedMatchKeys] = useState<Set<string>>(new Set());
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const formPaneRef = useRef<HTMLDivElement | null>(null);
 
@@ -1039,6 +1040,57 @@ function PracticeScoutingContent() {
     }
     void loadTeamEventCatalog();
   }, [userData?.teamId]);
+
+  useEffect(() => {
+    async function loadLiveTbaStatuses() {
+      if (selectedDifficulty !== "live") {
+        setLiveTbaCompletedMatchKeys(new Set());
+        return;
+      }
+      const eventKey =
+        String(liveEventKeyHint || "").trim().toLowerCase()
+        || String(currentMatch ? getPracticeEventKey(currentMatch) : "").trim().toLowerCase();
+      if (!eventKey) {
+        setLiveTbaCompletedMatchKeys(new Set());
+        return;
+      }
+
+      try {
+        let matches: TBAMatch[] = [];
+        if (tbaAuth.encryptedKey || tbaAuth.plainKey) {
+          const response = await fetch("/api/tba/matches", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventKey,
+              encryptedKey: tbaAuth.encryptedKey,
+              plainKey: tbaAuth.plainKey,
+            }),
+          });
+          if (response.ok) {
+            const payload = (await response.json()) as { matches?: TBAMatch[] };
+            if (Array.isArray(payload.matches)) matches = payload.matches;
+          }
+        }
+        if (matches.length === 0) {
+          matches = await getEventMatches(eventKey);
+        }
+
+        const completedKeys = new Set<string>();
+        matches.forEach((match) => {
+          const redScore = Number(match.alliances?.red?.score);
+          const blueScore = Number(match.alliances?.blue?.score);
+          if (redScore < 0 || blueScore < 0) return;
+          completedKeys.add(String(match.key || "").trim().toLowerCase());
+        });
+        setLiveTbaCompletedMatchKeys(completedKeys);
+      } catch (error) {
+        console.error("Failed loading FIRST/TBA live match statuses:", error);
+        setLiveTbaCompletedMatchKeys(new Set());
+      }
+    }
+    void loadLiveTbaStatuses();
+  }, [currentMatch, liveEventKeyHint, selectedDifficulty, tbaAuth.encryptedKey, tbaAuth.plainKey]);
 
   useEffect(() => {
     if (!liveLobbyId) {
@@ -2904,6 +2956,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     sharedModalOptions.forEach((option) => {
       const source = bySourceId.get(option.sourceId);
       if (!source) return;
+      const sourceMatchKey = String((source as unknown as Record<string, unknown>).matchKey || "").trim().toLowerCase();
+      if (sourceMatchKey && liveTbaCompletedMatchKeys.has(sourceMatchKey)) {
+        completed.add(option.id);
+        return;
+      }
       const official = readOfficialData(source.officialData);
       const hasOfficialScore =
         typeof official.score === "number" && Number.isFinite(official.score) && official.score > 0;
@@ -2917,7 +2974,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     });
 
     return completed;
-  }, [liveScopedCandidateMatches, selectedDifficulty, sharedModalOptions]);
+  }, [liveScopedCandidateMatches, liveTbaCompletedMatchKeys, selectedDifficulty, sharedModalOptions]);
 
   function handleSharedModalPick(option: PracticeSelectorOption) {
     const picked = liveScopedCandidateMatches.find((match) => match.id === option.sourceId);

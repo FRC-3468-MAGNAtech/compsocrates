@@ -128,6 +128,29 @@ function mapTbaMatchToScoutOptionId(match: Pick<TBAMatch, "comp_level" | "match_
   return "";
 }
 
+function mapPlayoffToBracketSlot(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number">): number | null {
+  if (match.comp_level === "qf") {
+    if (match.match_number === 1 && match.set_number >= 1 && match.set_number <= 4) return match.set_number;
+    if (match.match_number === 2 && match.set_number === 1) return 7;
+    if (match.match_number === 2 && match.set_number === 2) return 8;
+    return null;
+  }
+  if (match.comp_level === "sf") {
+    if (match.match_number === 1 && match.set_number === 1) return 5;
+    if (match.match_number === 1 && match.set_number === 2) return 6;
+    if (match.match_number === 2 && match.set_number === 1) return 9;
+    if (match.match_number === 2 && match.set_number === 2) return 10;
+    if (match.match_number === 3 && match.set_number === 1) return 11;
+    if (match.match_number === 3 && match.set_number === 2) return 12;
+    return null;
+  }
+  if (match.comp_level === "f") {
+    if (match.match_number === 1) return 13;
+    return 14;
+  }
+  return null;
+}
+
 function isTbaMatchCompleted(match: Pick<TBAMatch, "alliances">): boolean {
   const redScore = Number(match.alliances?.red?.score);
   const blueScore = Number(match.alliances?.blue?.score);
@@ -706,10 +729,34 @@ function mapAssignmentToMatchId(labelOrKey: string) {
   if (qm) return `q${qm[1]}`;
   const practice = raw.match(/practice\s+(\d+)/);
   if (practice) return `p${practice[1]}`;
-  const sf = raw.match(/(?:_sf\d+m|semifinal\s+\d+-)(\d+)/);
-  if (sf) return `sf${sf[1]}`;
-  const qf = raw.match(/(?:_qf\d+m|quarterfinal\s+\d+-)(\d+)/);
-  if (qf) return `qf${qf[1]}`;
+  const sfKey = raw.match(/_sf(\d+)m(\d+)/);
+  if (sfKey) {
+    const setNumber = Number(sfKey[1] || 0);
+    const matchNumber = Number(sfKey[2] || 0);
+    const slot = mapPlayoffToBracketSlot({ comp_level: "sf", set_number: setNumber, match_number: matchNumber });
+    if (slot) return `f${slot}`;
+  }
+  const sfLabel = raw.match(/semifinal\s+(\d+)-(\d+)/);
+  if (sfLabel) {
+    const setNumber = Number(sfLabel[1] || 0);
+    const matchNumber = Number(sfLabel[2] || 0);
+    const slot = mapPlayoffToBracketSlot({ comp_level: "sf", set_number: setNumber, match_number: matchNumber });
+    if (slot) return `f${slot}`;
+  }
+  const qfKey = raw.match(/_qf(\d+)m(\d+)/);
+  if (qfKey) {
+    const setNumber = Number(qfKey[1] || 0);
+    const matchNumber = Number(qfKey[2] || 0);
+    const slot = mapPlayoffToBracketSlot({ comp_level: "qf", set_number: setNumber, match_number: matchNumber });
+    if (slot) return `f${slot}`;
+  }
+  const qfLabel = raw.match(/quarterfinal\s+(\d+)-(\d+)/);
+  if (qfLabel) {
+    const setNumber = Number(qfLabel[1] || 0);
+    const matchNumber = Number(qfLabel[2] || 0);
+    const slot = mapPlayoffToBracketSlot({ comp_level: "qf", set_number: setNumber, match_number: matchNumber });
+    if (slot) return `f${slot}`;
+  }
   const finals = raw.match(/(?:_f\d+m|finals\s+)(\d+)/);
   if (finals) return `f${finals[1]}`;
   return "";
@@ -725,9 +772,11 @@ function ScoutFormContent() {
   const [options, setOptions] = useState<MatchOption[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
+  const [assignedMatchIds, setAssignedMatchIds] = useState<Set<string>>(new Set());
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
   const [targets, setTargets] = useState<Record<string, number>>({});
+  const [tbaCompletedMatchIds, setTbaCompletedMatchIds] = useState<Set<string>>(new Set());
   const [pitSync, setPitSync] = useState<{
     eventSynced: boolean;
     preloadRaw: number | null;
@@ -795,6 +844,8 @@ function ScoutFormContent() {
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
+        setAssignedMatchIds(new Set());
+        setTbaCompletedMatchIds(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
         return;
       }
@@ -805,6 +856,8 @@ function ScoutFormContent() {
           const fallback = buildFallbackScoutOptions();
           setOptions(fallback);
           setTargets({});
+          setAssignedMatchIds(new Set());
+          setTbaCompletedMatchIds(new Set());
           setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
           return;
         }
@@ -821,13 +874,23 @@ function ScoutFormContent() {
         matches.filter((m) => ["qf", "sf", "f"].includes(m.comp_level)).forEach((m) => {
           const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
           const time = m.actual_time || m.predicted_time || m.time || 0;
-          const id = m.comp_level === "f" ? `f${m.match_number}` : m.comp_level === "sf" ? `sf${m.match_number}` : `qf${m.match_number}`;
-          next.push({ id, label: m.comp_level === "f" ? `Finals ${m.match_number}` : m.comp_level === "sf" ? `Semifinal ${m.set_number}-${m.match_number}` : `Quarterfinal ${m.set_number}-${m.match_number}`, type: "finals", matchNumber: m.match_number, scheduleTime: time, teams });
+          const slot = mapPlayoffToBracketSlot(m);
+          const id = slot ? `f${slot}` : m.comp_level === "f" ? `f${m.match_number}` : m.comp_level === "sf" ? `sf${m.match_number}` : `qf${m.match_number}`;
+          next.push({ id, label: m.comp_level === "f" ? `Finals ${m.match_number}` : m.comp_level === "sf" ? `Semifinal ${m.set_number}-${m.match_number}` : `Quarterfinal ${m.set_number}-${m.match_number}`, type: "finals", matchNumber: slot || m.match_number, scheduleTime: time, teams });
           nextTargets[id] = teams.length || 6;
         });
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
+        const completedFromTba = new Set<string>();
+        matches.forEach((m) => {
+          if (!isTbaMatchCompleted(m)) return;
+          const base = mapTbaMatchToScoutOptionId(m);
+          if (base) completedFromTba.add(base);
+          const slot = mapPlayoffToBracketSlot(m);
+          if (slot) completedFromTba.add(`f${slot}`);
+        });
+        setTbaCompletedMatchIds(completedFromTba);
 
         const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
         const assigned: Record<string, string> = {};
@@ -840,6 +903,7 @@ function ScoutFormContent() {
           if (matchId && team) assigned[matchId] = team;
         });
         setAssignedTeams(assigned);
+        setAssignedMatchIds(assignedMatchIds);
         const assignedOption = resolved.find((option) => assignedMatchIds.has(option.id));
         const eventDefault = next.length > 0 ? pickCurrentOrNextEventMatch(matches, resolved) : null;
         setSelectedMatch((current) => current || assignedOption || eventDefault || resolved.find((m) => m.type === "qualification") || resolved[0] || null);
@@ -848,6 +912,8 @@ function ScoutFormContent() {
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
+        setAssignedMatchIds(new Set());
+        setTbaCompletedMatchIds(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
       }
     }
@@ -996,6 +1062,7 @@ function ScoutFormContent() {
   }, [userData?.teamId, form.teamNumber, eventKey]);
 
   const completedMatches = useMemo(() => {
+    if (tbaCompletedMatchIds.size > 0) return tbaCompletedMatchIds;
     return new Set(
       Object.keys(scoutedCounts).filter((id) => {
         const target = targets[id];
@@ -1003,7 +1070,12 @@ function ScoutFormContent() {
         return (scoutedCounts[id] || 0) >= target;
       })
     );
-  }, [scoutedCounts, targets]);
+  }, [scoutedCounts, targets, tbaCompletedMatchIds]);
+  const modalOptions = useMemo(() => {
+    if (assignedMatchIds.size === 0) return options;
+    const filtered = options.filter((option) => assignedMatchIds.has(option.id));
+    return filtered.length > 0 ? filtered : options;
+  }, [assignedMatchIds, options]);
 
   function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {
     if (scoredOverride > 0) return scoredOverride;
@@ -1430,7 +1502,7 @@ function ScoutFormContent() {
             </div>
           )}
 
-          <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
+          <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={modalOptions} completed={completedMatches} onPick={setSelectedMatch} />
           <TeamPickerModal
             open={showTeamPicker}
             teams={selectedTeams}

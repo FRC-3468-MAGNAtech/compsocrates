@@ -1978,7 +1978,7 @@ function AssignmentsContent() {
           )}
           {showRandomizeModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[58] p-4">
-              <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+              <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[86vh] overflow-y-auto p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-semibold theme-text">
                     Randomize {randomizeTarget === "practice" ? "Practice" : "Match"} Assignments
@@ -2003,7 +2003,7 @@ function AssignmentsContent() {
                         className="w-full border rounded p-2 mb-2"
                         placeholder="Search competition by name or key..."
                       />
-                      <div className="max-h-36 overflow-y-auto border rounded p-2 space-y-1">
+                      <div className="max-h-28 overflow-y-auto border rounded p-2 space-y-1">
                         {filteredRandomizePracticeEvents.length === 0 ? (
                           <p className="text-sm text-gray-500 text-center py-4">No matching competitions found.</p>
                         ) : (
@@ -2081,7 +2081,7 @@ function AssignmentsContent() {
                         </button>
                       ))}
                     </div>
-                    <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-1">
+                    <div className="max-h-28 overflow-y-auto border rounded p-2 space-y-1">
                       {randomizeEligibleMembers.length === 0 ? (
                         <p className="text-sm text-gray-500">No eligible scout-role members found.</p>
                       ) : (
@@ -2124,7 +2124,7 @@ function AssignmentsContent() {
                         Clear
                       </button>
                     </div>
-                    <div className="max-h-28 overflow-y-auto border rounded p-2 space-y-1">
+                    <div className="max-h-24 overflow-y-auto border rounded p-2 space-y-1">
                       {filteredRandomizePriorityCandidates.length === 0 ? (
                         <p className="text-sm text-gray-500">
                           No teams found for this schedule.
