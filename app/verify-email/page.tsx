@@ -16,12 +16,14 @@ export default function VerifyEmailPage() {
 
   useEffect(() => {
     async function routeVerifiedUser() {
-      if (!user?.emailVerified) return;
+      if (!user?.uid) return;
       const userDoc = await getDoc(doc(db, "users", user.uid));
       const userData = userDoc.exists() ? userDoc.data() : null;
+      const exempt = Boolean((userData as { emailVerificationExempt?: boolean } | null)?.emailVerificationExempt);
+      if (!user.emailVerified && !exempt) return;
       router.push(getDashboardRoute(userData as { role?: string; roles?: string[]; teamId?: string } | null));
     }
-    routeVerifiedUser();
+    void routeVerifiedUser();
   }, [user?.emailVerified, user?.uid, router]);
 
   useEffect(() => {
@@ -50,9 +52,10 @@ export default function VerifyEmailPage() {
     if (!user) return;
 
     await user.reload();
-    if (user.emailVerified) {
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const userData = userDoc.exists() ? userDoc.data() : null;
+    const userDoc = await getDoc(doc(db, "users", user.uid));
+    const userData = userDoc.exists() ? userDoc.data() : null;
+    const exempt = Boolean((userData as { emailVerificationExempt?: boolean } | null)?.emailVerificationExempt);
+    if (user.emailVerified || exempt) {
       router.push(getDashboardRoute(userData as { role?: string; roles?: string[]; teamId?: string } | null));
     } else {
       alert("Email not verified yet. Please check your inbox.");

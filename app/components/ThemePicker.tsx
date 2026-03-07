@@ -6,11 +6,17 @@ import { useAuth } from "@/app/AuthContext";
 import {
   applyFontPreset,
   applyTheme,
+  clearFontPresetOverride,
+  clearThemeOverride,
   fontPresets,
   getFontPreset,
   getTheme,
-  loadFontPreset,
-  loadTheme,
+  loadAccountFontCache,
+  loadAccountThemeCache,
+  loadFontPresetOverride,
+  loadThemeOverride,
+  saveAccountFontCache,
+  saveAccountThemeCache,
   saveFontPreset,
   saveTheme,
   themes,
@@ -54,16 +60,29 @@ function ThemeCard({
 }
 
 export default function ThemePicker({ compact = false }: { compact?: boolean }) {
-  const { userData } = useAuth();
+  const { userData, updateUserData } = useAuth();
   const [open, setOpen] = useState(false);
   const [selectedThemeId, setSelectedThemeId] = useState<string>("light-compsocrates");
   const [selectedFontId, setSelectedFontId] = useState<string>("compsocrates");
+  const [useDeviceOverride, setUseDeviceOverride] = useState(false);
 
   useEffect(() => {
     if (!userData?.uid) return;
-    setSelectedThemeId(loadTheme(userData.uid));
-    setSelectedFontId(loadFontPreset(userData.uid));
-  }, [userData?.uid]);
+    const themeOverride = loadThemeOverride(userData.uid);
+    const fontOverride = loadFontPresetOverride(userData.uid);
+    const accountTheme =
+      String(userData.accountThemeId || "").trim() ||
+      loadAccountThemeCache(userData.uid) ||
+      "light-compsocrates";
+    const accountFont =
+      String(userData.accountFontId || "").trim() ||
+      loadAccountFontCache(userData.uid) ||
+      "compsocrates";
+
+    setUseDeviceOverride(Boolean(themeOverride || fontOverride));
+    setSelectedThemeId(themeOverride || accountTheme);
+    setSelectedFontId(fontOverride || accountFont);
+  }, [userData?.uid, userData?.accountThemeId, userData?.accountFontId]);
 
   const groupedThemes = useMemo(
     () => ({
@@ -76,22 +95,49 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
 
   const activeTheme = getTheme(selectedThemeId, userData?.uid);
 
-  function handleSelectTheme(themeId: string) {
+  async function handleSelectTheme(themeId: string) {
     setSelectedThemeId(themeId);
     const chosenTheme = getTheme(themeId, userData?.uid);
     applyTheme(chosenTheme);
     applyFontPreset(getFontPreset(selectedFontId));
     if (userData?.uid) {
-      saveTheme(userData.uid, themeId);
+      if (useDeviceOverride) {
+        saveTheme(userData.uid, themeId);
+      } else {
+        clearThemeOverride(userData.uid);
+        saveAccountThemeCache(userData.uid, themeId);
+        await updateUserData({ accountThemeId: themeId });
+      }
     }
   }
 
-  function handleSelectFont(fontId: string) {
+  async function handleSelectFont(fontId: string) {
     setSelectedFontId(fontId);
     applyFontPreset(getFontPreset(fontId));
     if (userData?.uid) {
-      saveFontPreset(userData.uid, fontId);
+      if (useDeviceOverride) {
+        saveFontPreset(userData.uid, fontId);
+      } else {
+        clearFontPresetOverride(userData.uid);
+        saveAccountFontCache(userData.uid, fontId);
+        await updateUserData({ accountFontId: fontId });
+      }
     }
+  }
+
+  async function handleDeviceOverrideToggle(nextValue: boolean) {
+    if (!userData?.uid) return;
+    setUseDeviceOverride(nextValue);
+    if (nextValue) {
+      saveTheme(userData.uid, selectedThemeId);
+      saveFontPreset(userData.uid, selectedFontId);
+      return;
+    }
+    clearThemeOverride(userData.uid);
+    clearFontPresetOverride(userData.uid);
+    saveAccountThemeCache(userData.uid, selectedThemeId);
+    saveAccountFontCache(userData.uid, selectedFontId);
+    await updateUserData({ accountThemeId: selectedThemeId, accountFontId: selectedFontId });
   }
 
   return (
@@ -149,6 +195,20 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
             </div>
 
             <div className="max-h-[calc(85vh-74px)] space-y-6 overflow-y-auto p-5">
+              <section className="rounded-lg border p-3" style={{ borderColor: "var(--theme-border)" }}>
+                <label className="flex items-center gap-2 text-sm" style={{ color: "var(--theme-body-text)" }}>
+                  <input
+                    type="checkbox"
+                    checked={useDeviceOverride}
+                    onChange={(event) => void handleDeviceOverrideToggle(event.target.checked)}
+                  />
+                  Use device-specific override
+                </label>
+                <p className="mt-1 text-xs" style={{ color: "var(--theme-subtle-text)" }}>
+                  Off = account-wide theme on all devices. On = this device can use a different theme.
+                </p>
+              </section>
+
               <section>
                 <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--theme-subtle-text)" }}>
                   Font

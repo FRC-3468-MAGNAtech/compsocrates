@@ -170,7 +170,6 @@ function VersionReleasesContent() {
         title,
         body,
         createdAt: now,
-        updatedAt: now,
         authorUid: userData?.uid || "",
         authorName: userData?.displayName || "",
         teamId: userData?.teamId || "",
@@ -348,7 +347,10 @@ function VersionReleasesContent() {
                   <div>
                     <h3 className="text-xl font-semibold">{note.title}</h3>
                     <p className="text-xs text-gray-500 mt-1">
-                      {new Date(note.updatedAt || note.createdAt).toLocaleString()}
+                      {new Date(note.createdAt).toLocaleString()}
+                      {note.updatedAt && note.updatedAt > note.createdAt
+                        ? ` (edited ${new Date(note.updatedAt).toLocaleString()})`
+                        : ""}
                       {note.authorName ? ` • ${note.authorName}` : ""}
                     </p>
                   </div>

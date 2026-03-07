@@ -381,8 +381,8 @@ function readOfficialData(value: unknown): { score: number; penaltyPoints: numbe
 }
 
 function scoreToDifficulty(score: number): "easy" | "medium" | "hard" {
-  if (!Number.isFinite(score) || score <= 100) return "easy";
-  if (score <= 200) return "medium";
+  if (!Number.isFinite(score) || score <= 200) return "easy";
+  if (score <= 400) return "medium";
   return "hard";
 }
 

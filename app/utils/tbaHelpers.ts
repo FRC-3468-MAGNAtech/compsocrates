@@ -76,8 +76,8 @@ export function getYouTubeUrl(match: TBAMatch): string | null {
 }
 
 export function categorizeMatchDifficulty(allianceScore: number): 'easy' | 'medium' | 'hard' {
-  if (allianceScore <= 100) return 'easy';
-  if (allianceScore <= 200) return 'medium';
+  if (allianceScore <= 200) return 'easy';
+  if (allianceScore <= 400) return 'medium';
   return 'hard';
 }
 

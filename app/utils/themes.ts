@@ -25,6 +25,10 @@ export const DEFAULT_THEME_ID = "light-compsocrates";
 export const DEFAULT_FONT_ID = "compsocrates";
 const LAST_THEME_KEY = "theme-last-id";
 const LAST_FONT_KEY = "font-last-id";
+const THEME_OVERRIDE_KEY = (userId: string) => `theme-${userId}`;
+const FONT_OVERRIDE_KEY = (userId: string) => `font-${userId}`;
+const ACCOUNT_THEME_CACHE_KEY = (userId: string) => `theme-account-${userId}`;
+const ACCOUNT_FONT_CACHE_KEY = (userId: string) => `font-account-${userId}`;
 
 function hexToRgbTuple(hex: string): [number, number, number] {
   const normalized = hex.replace("#", "");
@@ -516,13 +520,13 @@ export function applyFontPreset(fontPreset: FontPreset) {
 
 export function saveTheme(userId: string, themeId: string) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(`theme-${userId}`, themeId);
+  localStorage.setItem(THEME_OVERRIDE_KEY(userId), themeId);
   localStorage.setItem(LAST_THEME_KEY, themeId);
 }
 
 export function loadTheme(userId: string): string {
   if (typeof localStorage === 'undefined') return DEFAULT_THEME_ID;
-  return localStorage.getItem(`theme-${userId}`) || DEFAULT_THEME_ID;
+  return localStorage.getItem(THEME_OVERRIDE_KEY(userId)) || DEFAULT_THEME_ID;
 }
 
 export function loadLastTheme(): string {
@@ -532,18 +536,58 @@ export function loadLastTheme(): string {
 
 export function saveFontPreset(userId: string, fontId: string) {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(`font-${userId}`, fontId);
+  localStorage.setItem(FONT_OVERRIDE_KEY(userId), fontId);
   localStorage.setItem(LAST_FONT_KEY, fontId);
 }
 
 export function loadFontPreset(userId: string): string {
   if (typeof localStorage === "undefined") return DEFAULT_FONT_ID;
-  return localStorage.getItem(`font-${userId}`) || DEFAULT_FONT_ID;
+  return localStorage.getItem(FONT_OVERRIDE_KEY(userId)) || DEFAULT_FONT_ID;
 }
 
 export function loadLastFontPreset(): string {
   if (typeof localStorage === "undefined") return DEFAULT_FONT_ID;
   return localStorage.getItem(LAST_FONT_KEY) || DEFAULT_FONT_ID;
+}
+
+export function loadThemeOverride(userId: string): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(THEME_OVERRIDE_KEY(userId));
+}
+
+export function clearThemeOverride(userId: string) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(THEME_OVERRIDE_KEY(userId));
+}
+
+export function loadFontPresetOverride(userId: string): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(FONT_OVERRIDE_KEY(userId));
+}
+
+export function clearFontPresetOverride(userId: string) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(FONT_OVERRIDE_KEY(userId));
+}
+
+export function saveAccountThemeCache(userId: string, themeId: string) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(ACCOUNT_THEME_CACHE_KEY(userId), themeId);
+}
+
+export function loadAccountThemeCache(userId: string): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(ACCOUNT_THEME_CACHE_KEY(userId));
+}
+
+export function saveAccountFontCache(userId: string, fontId: string) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(ACCOUNT_FONT_CACHE_KEY(userId), fontId);
+}
+
+export function loadAccountFontCache(userId: string): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(ACCOUNT_FONT_CACHE_KEY(userId));
 }
 
 

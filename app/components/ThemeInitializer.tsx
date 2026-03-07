@@ -5,16 +5,20 @@ import { useAuth } from "@/app/AuthContext";
 import {
   applyFontPreset,
   applyTheme,
+  clearFontPresetOverride,
+  clearThemeOverride,
   DEFAULT_FONT_ID,
   DEFAULT_THEME_ID,
   getFontPreset,
   getTheme,
+  loadAccountFontCache,
+  loadAccountThemeCache,
+  loadFontPresetOverride,
   loadLastFontPreset,
   loadLastTheme,
-  loadFontPreset,
-  loadTheme,
-  saveFontPreset,
-  saveTheme,
+  loadThemeOverride,
+  saveAccountFontCache,
+  saveAccountThemeCache,
 } from "@/app/utils/themes";
 
 export default function ThemeInitializer() {
@@ -30,13 +34,30 @@ export default function ThemeInitializer() {
       applyFontPreset(getFontPreset(lastFontId || DEFAULT_FONT_ID));
       return;
     }
-    const selectedThemeId = loadTheme(userData.uid);
-    const selectedFontId = loadFontPreset(userData.uid);
+
+    const accountThemeId =
+      String(userData.accountThemeId || "").trim() ||
+      loadAccountThemeCache(userData.uid) ||
+      DEFAULT_THEME_ID;
+    const accountFontId =
+      String(userData.accountFontId || "").trim() ||
+      loadAccountFontCache(userData.uid) ||
+      DEFAULT_FONT_ID;
+
+    const themeOverrideId = loadThemeOverride(userData.uid);
+    const fontOverrideId = loadFontPresetOverride(userData.uid);
+    const selectedThemeId = themeOverrideId || accountThemeId;
+    const selectedFontId = fontOverrideId || accountFontId;
+
     applyTheme(getTheme(selectedThemeId, userData.uid));
     applyFontPreset(getFontPreset(selectedFontId));
-    saveTheme(userData.uid, selectedThemeId || DEFAULT_THEME_ID);
-    saveFontPreset(userData.uid, selectedFontId || DEFAULT_FONT_ID);
-  }, [userData?.uid, loading]);
+
+    saveAccountThemeCache(userData.uid, accountThemeId || DEFAULT_THEME_ID);
+    saveAccountFontCache(userData.uid, accountFontId || DEFAULT_FONT_ID);
+
+    if (!themeOverrideId) clearThemeOverride(userData.uid);
+    if (!fontOverrideId) clearFontPresetOverride(userData.uid);
+  }, [userData?.uid, userData?.accountThemeId, userData?.accountFontId, loading]);
 
   return null;
 }

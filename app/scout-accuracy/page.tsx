@@ -478,7 +478,8 @@ function ScoutAccuracyContent() {
   function getAccuracyColor(accuracy: number): string {
     if (accuracy >= 95) return "text-green-600";
     if (accuracy >= 85) return "text-yellow-600";
-    return "text-red-600";
+    if (accuracy >= 75) return "text-orange-600";
+    return "text-[#ff0000]";
   }
 
   function getAccuracyBadge(
@@ -495,13 +496,11 @@ function ScoutAccuracyContent() {
       };
     }
     
-    // New status thresholds per your requirements:
-    // 0 = Undetermined (handled above)
-    // 1-49 = Mentor Intervention
-    // 50-79 = Student Intervention  
-    // 80-89 = Good
-    // 90-99 = Excellent
-    // 100 = Perfect (implied)
+    // Status thresholds:
+    // 0-50 = Mentor Intervention
+    // 51-74 = Student Intervention
+    // 75-89 = Good
+    // 90-100 = Excellent
     
     if (accuracy >= 90) {
       return {
@@ -511,15 +510,15 @@ function ScoutAccuracyContent() {
         showWarning: false
       };
     }
-    if (accuracy >= 80) {
+    if (accuracy >= 75) {
       return {
-        bg: "bg-green-700",
-        text: "text-white",
+        bg: "bg-blue-100",
+        text: "text-blue-700",
         label: "Good",
         showWarning: false
       };
     }
-    if (accuracy >= 50) {
+    if (accuracy >= 51) {
       return {
         bg: "bg-orange-100",
         text: "text-orange-800",
@@ -527,7 +526,7 @@ function ScoutAccuracyContent() {
         showWarning: true
       };
     }
-    // 1-49
+    // 0-50
     return {
       bg: "bg-red-100",
       text: "text-red-800",

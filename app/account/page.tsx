@@ -11,6 +11,7 @@ import ThemePicker from "@/app/components/ThemePicker";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
 import { db } from "@/app/firebase";
+import { clearCookieConsent, readCookieConsent, writeCookieConsent, type CookieConsentValue } from "@/app/utils/cookieConsent";
 
 function AccountContent() {
   const router = useRouter();
@@ -32,6 +33,7 @@ function AccountContent() {
   const [teamDisplayLabel, setTeamDisplayLabel] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [cookieConsent, setCookieConsent] = useState<CookieConsentValue | null>(null);
 
   useEffect(() => {
     setProfileBio(userData?.bio || "");
@@ -60,6 +62,15 @@ function AccountContent() {
     }
     void loadTeamDisplayLabel();
   }, [userData?.teamId]);
+
+  useEffect(() => {
+    setCookieConsent(readCookieConsent());
+    function onConsentChanged() {
+      setCookieConsent(readCookieConsent());
+    }
+    window.addEventListener("cookie-consent-changed", onConsentChanged as EventListener);
+    return () => window.removeEventListener("cookie-consent-changed", onConsentChanged as EventListener);
+  }, []);
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -390,6 +401,40 @@ function AccountContent() {
             <h2 className="text-xl font-semibold mb-2">Appearance</h2>
             <p className="text-sm text-gray-600 mb-4">Pick a light, dark, or pride theme.</p>
             <ThemePicker />
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-2">Cookie Preferences</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Essential auth/session storage is always enabled. Optional preference cookies can be managed here.
+            </p>
+            <p className="text-sm text-gray-700 mb-3">
+              Current: <span className="font-semibold">{cookieConsent || "not set"}</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => writeCookieConsent("accepted")}
+                className="px-4 py-2 rounded text-white font-semibold"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Accept Optional
+              </button>
+              <button
+                type="button"
+                onClick={() => writeCookieConsent("rejected")}
+                className="px-4 py-2 rounded border font-semibold"
+              >
+                Reject Optional
+              </button>
+              <button
+                type="button"
+                onClick={() => clearCookieConsent()}
+                className="px-4 py-2 rounded border font-semibold"
+              >
+                Reset Prompt
+              </button>
+            </div>
           </div>
 
           {/* CHANGE EMAIL */}

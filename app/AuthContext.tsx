@@ -4,10 +4,12 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { 
   User,
+  browserLocalPersistence,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  setPersistence,
   updateProfile,
   sendEmailVerification
 } from "firebase/auth";
@@ -35,6 +37,9 @@ export type UserData = {
   profileVisibility?: "team" | "public" | "private";
   preferredDashboard?: string;
   canManageVersionReleases?: boolean;
+  emailVerificationExempt?: boolean;
+  accountThemeId?: string;
+  accountFontId?: string;
 };
 
 type AuthContextType = {
@@ -99,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profileVisibility: "team",
       bio: "",
       photoURL: currentUser.photoURL || "",
+      emailVerificationExempt: false,
     };
   }
 
@@ -202,6 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isTeamAdmin: isTeamAdmin,
       profileVisibility: "team",
       bio: "",
+      emailVerificationExempt: false,
     };
     
     await setSecureUserDoc(userCredential.user.uid, userData as unknown as Record<string, unknown>, false);
@@ -222,24 +229,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Listen for auth state changes
   useEffect(() => {
+    void setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.error("Failed to set auth persistence:", error);
+    });
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
       if (currentUser) {
-        // Check if email is verified
-        if (!currentUser.emailVerified) {
-          // Redirect to verification page
-          router.push("/verify-email");
-          setLoading(false);
-          return;
-        }
-
-        // Load user data
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) {
-          const hydrated = await syncApprovedJoinRequest(currentUser.uid, userDoc.data() as UserData);
+          const loaded = userDoc.data() as UserData;
+          const isEmailExempt = loaded.emailVerificationExempt === true;
+          if (!currentUser.emailVerified && !isEmailExempt) {
+            router.push("/verify-email");
+            setLoading(false);
+            return;
+          }
+
+          const hydrated = await syncApprovedJoinRequest(currentUser.uid, loaded);
           setUserData(withHiddenOwnerPermissions(hydrated));
         } else {
+          if (!currentUser.emailVerified) {
+            router.push("/verify-email");
+            setLoading(false);
+            return;
+          }
+
           const fallbackUserData = buildDefaultUserData(currentUser);
           try {
             await setSecureUserDoc(currentUser.uid, fallbackUserData as unknown as Record<string, unknown>, false);
