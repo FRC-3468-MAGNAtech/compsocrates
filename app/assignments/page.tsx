@@ -113,6 +113,7 @@ type RandomizeConfig = {
   pattern: RandomizePattern;
   scoutIds: string[];
   practiceEventKey?: string;
+  priorityTeams?: number[];
 };
 
 function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
@@ -217,6 +218,12 @@ function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string
   return key.includes("_pm") || /^p\d+$/.test(key) || label.includes("practice ");
 }
 
+function upsertEventOption(options: EventOption[], candidate: EventOption): EventOption[] {
+  const map = new Map(options.map((option) => [option.key, option]));
+  map.set(candidate.key, candidate);
+  return sortEventOptions(Array.from(map.values()));
+}
+
 function scoreScoutingRecord(record: Record<string, unknown>): number {
   let score = 0;
   if (Boolean(record.leftStartingZone)) score += 3;
@@ -318,6 +325,13 @@ function AssignmentsContent() {
   const [randomizeMatchCount, setRandomizeMatchCount] = useState("");
   const [randomizePattern, setRandomizePattern] = useState<RandomizePattern>("rotate-each-match");
   const [randomizeScoutIds, setRandomizeScoutIds] = useState<string[]>([]);
+  const [randomizePriorityTeamSearch, setRandomizePriorityTeamSearch] = useState("");
+  const [randomizePriorityTeams, setRandomizePriorityTeams] = useState<number[]>([]);
+  const [randomizePriorityManualInput, setRandomizePriorityManualInput] = useState("");
+  const [practiceScheduleEventOptions, setPracticeScheduleEventOptions] = useState<EventOption[]>([]);
+  const [practiceScheduleEventKey, setPracticeScheduleEventKey] = useState("");
+  const [practiceScheduleMatchesByEvent, setPracticeScheduleMatchesByEvent] = useState<Record<string, PracticeMatchOption[]>>({});
+  const [practiceScheduleAssignmentsByEvent, setPracticeScheduleAssignmentsByEvent] = useState<Record<string, Assignment[]>>({});
 
   useEffect(() => {
     void loadData();
@@ -440,11 +454,16 @@ function AssignmentsContent() {
         dedupeEventOptionsByName(practiceUniverse.filter((event) => !signedEventKeys.includes(event.key)))
       );
       setPracticeEventOptions(availablePracticeEvents);
+      const scheduleOptions = sortEventOptions(dedupeEventOptionsByName([...resolvedEvents, ...availablePracticeEvents]));
+      setPracticeScheduleEventOptions(scheduleOptions);
       const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
         : (resolvedEvents[0]?.key || "");
       if (!selectedEvent || effectiveEvent !== selectedEvent) {
         setSelectedEvent(effectiveEvent);
+      }
+      if (!practiceScheduleEventKey || !scheduleOptions.some((event) => event.key === practiceScheduleEventKey)) {
+        setPracticeScheduleEventKey(effectiveEvent || scheduleOptions[0]?.key || "");
       }
       if (!selectedPracticeEventKey || !availablePracticeEvents.some((event) => event.key === selectedPracticeEventKey)) {
         setSelectedPracticeEventKey(availablePracticeEvents[0]?.key || "");
@@ -483,6 +502,13 @@ function AssignmentsContent() {
           ...assignmentDoc.data(),
         })) as Assignment[]
       );
+      const eventPracticeAssignments = assignmentsSnap.docs
+        .map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...(assignmentDoc.data() as Record<string, unknown>),
+        }))
+        .filter((row) => isEventPracticeAssignment({ matchKey: String(row.matchKey || ""), matchLabel: String(row.matchLabel || "") })) as Assignment[];
+      setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [effectiveEvent]: eventPracticeAssignments }));
       setPitAssignments(
         pitAssignmentsSnap.docs.map((assignmentDoc) => ({
           id: assignmentDoc.id,
@@ -527,6 +553,10 @@ function AssignmentsContent() {
           return a.id.localeCompare(b.id);
         });
       setPracticeMatchOptions(practiceOptions);
+      setPracticeScheduleMatchesByEvent((prev) => ({
+        ...prev,
+        [effectiveEvent]: practiceOptions.filter((row) => row.stage === "practice"),
+      }));
       const priorityByEventRaw = (
         teamData.priorityTeamsByEvent ||
         teamData.assignmentPriorityTeamsByEvent ||
@@ -641,12 +671,19 @@ function AssignmentsContent() {
   }, [randomizeEligibleMembers]);
 
   function openRandomizeConfig(target: RandomizeTarget) {
+    const sourceEventKey = target === "practice" ? (selectedPracticeEventKey || selectedEvent) : selectedEvent;
+    const seededPriorityTeams = Array.from(
+      new Set([...(manualPriorityTeamsByEvent[sourceEventKey] || []), ...manualPriorityTeamsGlobal])
+    );
     setRandomizeTarget(target);
-    setRandomizePracticeEventKey(target === "practice" ? (selectedPracticeEventKey || selectedEvent) : "");
+    setRandomizePracticeEventKey(target === "practice" ? sourceEventKey : "");
     setRandomizePracticeEventSearch("");
     setRandomizeMatchCount("");
     setRandomizePattern("rotate-each-match");
     setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid));
+    setRandomizePriorityTeamSearch("");
+    setRandomizePriorityManualInput("");
+    setRandomizePriorityTeams(seededPriorityTeams);
     setShowRandomizeModal(true);
   }
 
@@ -664,6 +701,66 @@ function AssignmentsContent() {
       })
       .map((member) => member.uid);
     setRandomizeScoutIds(next);
+  }
+
+  function toggleRandomizePriorityTeam(teamNumber: number) {
+    if (!Number.isFinite(teamNumber) || teamNumber <= 0) return;
+    setRandomizePriorityTeams((prev) =>
+      prev.includes(teamNumber) ? prev.filter((team) => team !== teamNumber) : [...prev, teamNumber]
+    );
+  }
+
+  function addManualRandomizePriorityTeam() {
+    const parsed = parseInt(randomizePriorityManualInput.replace(/[^\d]/g, ""), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    setRandomizePriorityTeams((prev) => (prev.includes(parsed) ? prev : [...prev, parsed]));
+    setRandomizePriorityManualInput("");
+  }
+
+  async function loadPracticeScheduleEvent(eventKey: string) {
+    const safeEventKey = String(eventKey || "").trim();
+    if (!safeEventKey) return;
+    if (practiceScheduleMatchesByEvent[safeEventKey] && practiceScheduleAssignmentsByEvent[safeEventKey]) return;
+    try {
+      const [matchesSnap, assignmentsSnap] = await Promise.all([
+        getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", safeEventKey))),
+        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", safeEventKey))),
+      ]);
+      const practiceRows = matchesSnap.docs
+        .map((practiceDoc) => {
+          const data = practiceDoc.data() as Record<string, unknown>;
+          const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+          const matchNumber = Number(data.matchNumber || 0);
+          const scheduleTime = Number(data.scheduleTime || data.time || 0);
+          const alliance = String(data.alliance || "").trim().toLowerCase();
+          const teams = parseTeamNumbers(
+            data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+          ).slice(0, 3);
+          return {
+            id: practiceDoc.id,
+            eventKey: safeEventKey,
+            matchKey: String(data.matchKey || practiceDoc.id),
+            label: practiceMatchLabel(stage, matchNumber, alliance),
+            teams,
+            stage,
+            matchNumber,
+            scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+            isManual: Boolean(data.manualGenerated),
+          } as PracticeMatchOption;
+        })
+        .filter((row) => row.teams.length >= 3 && row.matchNumber > 0 && row.stage === "practice")
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+      const practiceAssignmentRows = assignmentsSnap.docs
+        .map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...(assignmentDoc.data() as Record<string, unknown>),
+        }))
+        .filter((row) => isEventPracticeAssignment({ matchKey: String(row.matchKey || ""), matchLabel: String(row.matchLabel || "") })) as Assignment[];
+      setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: practiceRows }));
+      setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [safeEventKey]: practiceAssignmentRows }));
+    } catch (error) {
+      console.error("Failed to load practice schedule event data:", error);
+    }
   }
 
   function computeTeamPriorityOrder(
@@ -972,7 +1069,7 @@ function AssignmentsContent() {
       );
       const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
       const manualPriorityTeams = Array.from(
-        new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+        new Set([...(config?.priorityTeams || []), ...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
       );
       const { historyMap, statboticsMap } = lowScoutMode
         ? await buildPerformanceMapsForTeams(allQualificationTeams, yearFromEvent, selectedEvent)
@@ -1070,7 +1167,11 @@ function AssignmentsContent() {
       await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
 
       const manualPriorityTeams = Array.from(
-        new Set([...(manualPriorityTeamsByEvent[practiceEventKey] || []), ...manualPriorityTeamsGlobal])
+        new Set([
+          ...(config?.priorityTeams || []),
+          ...(manualPriorityTeamsByEvent[practiceEventKey] || []),
+          ...manualPriorityTeamsGlobal,
+        ])
       );
 
       const lowScoutMode = eligibleMembers.length < 6;
@@ -1105,6 +1206,20 @@ function AssignmentsContent() {
       });
 
       await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "matchAssignments"), assignment)));
+      const selectedOption =
+        practiceScheduleEventOptions.find((event) => event.key === practiceEventKey) ||
+        practiceEventOptions.find((event) => event.key === practiceEventKey) ||
+        events.find((event) => event.key === practiceEventKey) ||
+        {
+          key: practiceEventKey,
+          name: practiceEventKey,
+          startDate: `${new Date().getFullYear()}-01-01`,
+          endDate: `${new Date().getFullYear()}-01-01`,
+        };
+      setPracticeScheduleEventOptions((prev) => upsertEventOption(prev, selectedOption));
+      setPracticeScheduleEventKey(practiceEventKey);
+      setScheduleView("practice");
+      await loadPracticeScheduleEvent(practiceEventKey);
       await loadData();
       alert(`Randomized ${newAssignments.length} event-practice match assignments across ${targetMatches.length} practice matches.`);
     } catch (error) {
@@ -1145,6 +1260,7 @@ function AssignmentsContent() {
       pattern: randomizePattern,
       scoutIds: randomizeScoutIds,
       practiceEventKey: randomizeTarget === "practice" ? randomizePracticeEventKey : undefined,
+      priorityTeams: randomizePriorityTeams,
     };
     setShowRandomizeModal(false);
     if (config.target === "practice") {
@@ -1199,10 +1315,6 @@ function AssignmentsContent() {
         }),
     [assignments]
   );
-  const eventPracticeMatchAssignments = useMemo(
-    () => assignments.filter((assignment) => isEventPracticeAssignment(assignment)),
-    [assignments]
-  );
   const practiceAssignmentsSorted = useMemo(
     () =>
       practiceAssignments
@@ -1237,6 +1349,56 @@ function AssignmentsContent() {
     if (!needle) return practiceEventOptions;
     return practiceEventOptions.filter((event) => `${event.name} ${event.key}`.toLowerCase().includes(needle));
   }, [practiceEventOptions, randomizePracticeEventSearch]);
+  const randomizePriorityCandidates = useMemo(() => {
+    if (randomizeTarget === "practice") {
+      const eventKey = String(randomizePracticeEventKey || "").trim();
+      if (!eventKey) return [];
+      return Array.from(
+        new Set(
+          (practiceScheduleMatchesByEvent[eventKey] || [])
+            .flatMap((match) => match.teams)
+            .filter((team) => Number.isFinite(team) && team > 0)
+        )
+      ).sort((a, b) => a - b);
+    }
+    return Array.from(
+      new Set(
+        matchOptions
+          .filter((match) => match.compLevel === "qm")
+          .flatMap((match) => match.teams)
+          .filter((team) => Number.isFinite(team) && team > 0)
+      )
+    ).sort((a, b) => a - b);
+  }, [matchOptions, practiceScheduleMatchesByEvent, randomizePracticeEventKey, randomizeTarget]);
+  const filteredRandomizePriorityCandidates = useMemo(() => {
+    const needle = randomizePriorityTeamSearch.trim().toLowerCase();
+    if (!needle) return randomizePriorityCandidates;
+    return randomizePriorityCandidates.filter((teamNumber) => String(teamNumber).includes(needle));
+  }, [randomizePriorityCandidates, randomizePriorityTeamSearch]);
+  const activePracticeScheduleEvent = useMemo(
+    () => practiceScheduleEventOptions.find((event) => event.key === practiceScheduleEventKey) || null,
+    [practiceScheduleEventKey, practiceScheduleEventOptions]
+  );
+  const practiceScheduleMatches = useMemo(
+    () => practiceScheduleMatchesByEvent[practiceScheduleEventKey] || [],
+    [practiceScheduleEventKey, practiceScheduleMatchesByEvent]
+  );
+  const practiceScheduleAssignments = useMemo(
+    () => practiceScheduleAssignmentsByEvent[practiceScheduleEventKey] || [],
+    [practiceScheduleAssignmentsByEvent, practiceScheduleEventKey]
+  );
+
+  useEffect(() => {
+    if (scheduleView !== "practice") return;
+    if (!practiceScheduleEventKey) return;
+    void loadPracticeScheduleEvent(practiceScheduleEventKey);
+  }, [practiceScheduleEventKey, scheduleView]);
+
+  useEffect(() => {
+    if (!showRandomizeModal || randomizeTarget !== "practice") return;
+    if (!randomizePracticeEventKey) return;
+    void loadPracticeScheduleEvent(randomizePracticeEventKey);
+  }, [randomizePracticeEventKey, randomizeTarget, showRandomizeModal]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -1461,6 +1623,26 @@ function AssignmentsContent() {
                     </button>
                   </div>
                 </div>
+                {scheduleView === "practice" && (
+                  <div className="px-6 pt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Practice Schedule Event</label>
+                    <select
+                      value={practiceScheduleEventKey}
+                      onChange={(e) => setPracticeScheduleEventKey(e.target.value)}
+                      className="w-full max-w-lg border rounded p-2"
+                    >
+                      {practiceScheduleEventOptions.map((event) => (
+                        <option key={`practice-schedule-event-${event.key}`} value={event.key}>
+                          {event.name}
+                        </option>
+                      ))}
+                      {practiceScheduleEventOptions.length === 0 && <option value="">No events available</option>}
+                    </select>
+                    {activePracticeScheduleEvent && (
+                      <p className="text-xs text-gray-500 mt-1">{activePracticeScheduleEvent.key}</p>
+                    )}
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
@@ -1472,11 +1654,11 @@ function AssignmentsContent() {
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {scheduleView === "practice" &&
-                        eventPracticeMatches
+                        practiceScheduleMatches
                           .slice()
                           .sort((a, b) => a.matchNumber - b.matchNumber)
                           .map((match) => {
-                            const perMatch = eventPracticeMatchAssignments.filter(
+                            const perMatch = practiceScheduleAssignments.filter(
                               (assignment) => assignment.matchKey === `p${match.matchNumber}`
                             );
                             return (
@@ -1518,7 +1700,7 @@ function AssignmentsContent() {
                             </tr>
                           );
                         })}
-                      {scheduleView === "practice" && eventPracticeMatches.length === 0 && (
+                      {scheduleView === "practice" && practiceScheduleMatches.length === 0 && (
                         <tr>
                           <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
                             No event practice matches found. Open New Assignment and click Practice to generate manual practice matches.
@@ -1789,7 +1971,14 @@ function AssignmentsContent() {
                             <button
                               key={`randomize-practice-event-${event.key}`}
                               type="button"
-                              onClick={() => setRandomizePracticeEventKey(event.key)}
+                              onClick={() => {
+                                setRandomizePracticeEventKey(event.key);
+                                setRandomizePriorityTeams(
+                                  Array.from(
+                                    new Set([...(manualPriorityTeamsByEvent[event.key] || []), ...manualPriorityTeamsGlobal])
+                                  )
+                                );
+                              }}
                               className={`w-full text-left px-2 py-2 rounded border ${
                                 randomizePracticeEventKey === event.key
                                   ? "border-indigo-500 bg-indigo-50"
@@ -1872,6 +2061,61 @@ function AssignmentsContent() {
                     <p className="text-xs text-gray-500 mt-2">
                       If fewer than 6 scouts are selected, randomize prioritizes manual priority teams, then highest-performing teams.
                     </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700">Prioritized Teams (Optional)</label>
+                      <span className="text-xs text-gray-500">{randomizePriorityTeams.length} selected</span>
+                    </div>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={randomizePriorityManualInput}
+                        onChange={(e) => setRandomizePriorityManualInput(e.target.value)}
+                        className="flex-1 border rounded p-2"
+                        placeholder="Add team number..."
+                      />
+                      <button
+                        type="button"
+                        onClick={addManualRandomizePriorityTeam}
+                        className="px-3 py-2 rounded border text-sm"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRandomizePriorityTeams([])}
+                        className="px-3 py-2 rounded border text-sm"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={randomizePriorityTeamSearch}
+                      onChange={(e) => setRandomizePriorityTeamSearch(e.target.value)}
+                      className="w-full border rounded p-2 mb-2"
+                      placeholder="Search teams in this schedule..."
+                    />
+                    <div className="max-h-44 overflow-y-auto border rounded p-2 space-y-1">
+                      {filteredRandomizePriorityCandidates.length === 0 ? (
+                        <p className="text-sm text-gray-500">
+                          No teams loaded yet for this event. You can still add teams manually.
+                        </p>
+                      ) : (
+                        filteredRandomizePriorityCandidates.map((teamNumber) => (
+                          <label key={`randomize-priority-team-${teamNumber}`} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={randomizePriorityTeams.includes(teamNumber)}
+                              onChange={() => toggleRandomizePriorityTeam(teamNumber)}
+                            />
+                            <span>Team {teamNumber}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
 
