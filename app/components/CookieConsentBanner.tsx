@@ -65,8 +65,12 @@ export default function CookieConsentBanner() {
             onClick={() => {
               dismissCookieBannerInSession();
               dismissedInMemory = true;
-              writeCookieConsent("rejected");
               setVisible(false);
+              try {
+                writeCookieConsent("rejected");
+              } catch {
+                // Keep banner dismissed for this runtime even if persistence APIs fail.
+              }
             }}
           >
             Reject Optional
@@ -78,8 +82,12 @@ export default function CookieConsentBanner() {
             onClick={() => {
               dismissCookieBannerInSession();
               dismissedInMemory = true;
-              writeCookieConsent("accepted");
               setVisible(false);
+              try {
+                writeCookieConsent("accepted");
+              } catch {
+                // Keep banner dismissed for this runtime even if persistence APIs fail.
+              }
             }}
           >
             Accept All

@@ -2073,6 +2073,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowMatchSelectModal(true);
   }
 
+  function handleOpenCurrentLiveRobotPicker() {
+    if (!currentMatch) return;
+    if (liveLobby) {
+      alert("Robot/team overrides are disabled during live lobby sessions.");
+      return;
+    }
+    const picked = { ...currentMatch, progress: "fresh" as const } as CandidatePracticeMatch;
+    openLiveRobotPicker(picked);
+  }
+
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
     if (selectedDifficulty === "live") {
@@ -3295,6 +3305,31 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 >
                   Match Select ({String(selectedDifficulty).toUpperCase()})
                 </button>
+              )}
+              {selectedDifficulty === "live" && !liveLobby && (
+                <div className="bg-white rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Live Controls</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleOpenLiveCorrection();
+                      }}
+                      className="py-2 rounded border border-cyan-300 text-cyan-800 bg-cyan-50 hover:bg-cyan-100 font-semibold text-sm"
+                    >
+                      Correct Match
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenCurrentLiveRobotPicker();
+                      }}
+                      className="py-2 rounded border border-indigo-300 text-indigo-800 bg-indigo-50 hover:bg-indigo-100 font-semibold text-sm"
+                    >
+                      Select Robot/Team
+                    </button>
+                  </div>
+                </div>
               )}
               {selectedDifficulty !== "live" && (
                 <div className="bg-white rounded-lg p-4">

@@ -114,7 +114,11 @@ export function writeCookieConsent(value: CookieConsentValue) {
     } catch {
       // Best-effort write.
     }
-    window.dispatchEvent(new CustomEvent("cookie-consent-changed", { detail: value }));
+    try {
+      window.dispatchEvent(new CustomEvent("cookie-consent-changed", { detail: value }));
+    } catch {
+      // Best-effort notify.
+    }
   }
 }
 
@@ -157,6 +161,10 @@ export function clearCookieConsent() {
     } catch {
       // Best-effort clear.
     }
-    window.dispatchEvent(new CustomEvent("cookie-consent-changed", { detail: null }));
+    try {
+      window.dispatchEvent(new CustomEvent("cookie-consent-changed", { detail: null }));
+    } catch {
+      // Best-effort notify.
+    }
   }
 }
