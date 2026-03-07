@@ -104,6 +104,16 @@ type AssignmentMatchChoice = {
   teams: number[];
 };
 
+type RandomizeTarget = "match" | "practice";
+type RandomizePattern = "rotate-each-match" | "block-5" | "constant";
+
+type RandomizeConfig = {
+  target: RandomizeTarget;
+  matchCount: number;
+  pattern: RandomizePattern;
+  scoutIds: string[];
+};
+
 function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
   const byName = new Map<string, EventOption>();
   options.forEach((option) => {
@@ -300,6 +310,11 @@ function AssignmentsContent() {
   const [selectedPracticeTeamNumber, setSelectedPracticeTeamNumber] = useState("");
   const [scheduleView, setScheduleView] = useState<"practice" | "match">("match");
   const [assignmentView, setAssignmentView] = useState<"practice" | "match" | "pit">("match");
+  const [showRandomizeModal, setShowRandomizeModal] = useState(false);
+  const [randomizeTarget, setRandomizeTarget] = useState<RandomizeTarget>("match");
+  const [randomizeMatchCount, setRandomizeMatchCount] = useState("");
+  const [randomizePattern, setRandomizePattern] = useState<RandomizePattern>("rotate-each-match");
+  const [randomizeScoutIds, setRandomizeScoutIds] = useState<string[]>([]);
 
   useEffect(() => {
     void loadData();
@@ -605,6 +620,108 @@ function AssignmentsContent() {
     return teams.filter((teamNumber) => !assigned.has(teamNumber));
   }, [eventTeamOptions, pitAssignments]);
 
+  const randomizeEligibleMembers = useMemo(() => {
+    const attendeeKeys = eventAttendees[selectedEvent] || [];
+    const attendeeMembers = members.filter(
+      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
+    );
+    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
+    return sourceMembers.filter((member) => {
+      if (!member.displayName.trim()) return false;
+      const roles = getUserRoles({ role: member.role });
+      return roles.includes("match-scout") || roles.includes("media") || roles.includes("lead-scout");
+    });
+  }, [eventAttendees, members, selectedEvent]);
+
+  function openRandomizeConfig(target: RandomizeTarget) {
+    setRandomizeTarget(target);
+    setRandomizeMatchCount("");
+    setRandomizePattern("rotate-each-match");
+    setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid));
+    setShowRandomizeModal(true);
+  }
+
+  function toggleRandomizeScout(uid: string) {
+    setRandomizeScoutIds((prev) => (prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]));
+  }
+
+  function presetRandomizeScoutsByRoles(roleKeys: Array<"match-scout" | "media" | "lead-scout">) {
+    const next = randomizeEligibleMembers
+      .filter((member) => {
+        const roles = getUserRoles({ role: member.role });
+        return roleKeys.some((role) => roles.includes(role));
+      })
+      .map((member) => member.uid);
+    setRandomizeScoutIds(next);
+  }
+
+  function computeTeamPriorityOrder(
+    teams: number[],
+    manualPriorityTeams: number[],
+    historyMap: Map<number, { total: number; count: number }>,
+    statboticsMap: Map<number, number>
+  ): number[] {
+    const manualTeams = teams.filter((teamNumber) => manualPriorityTeams.includes(teamNumber));
+    const remainingAfterManual = teams.filter((teamNumber) => !manualTeams.includes(teamNumber));
+    const withHistory = [...remainingAfterManual].filter((teamNumber) => historyMap.has(teamNumber));
+    withHistory.sort((a, b) => {
+      const aRow = historyMap.get(a)!;
+      const bRow = historyMap.get(b)!;
+      return bRow.total / Math.max(1, bRow.count) - aRow.total / Math.max(1, aRow.count);
+    });
+    const remainingAfterHistory = remainingAfterManual.filter((teamNumber) => !withHistory.includes(teamNumber));
+    const withStatbotics = [...remainingAfterHistory].filter((teamNumber) => statboticsMap.has(teamNumber));
+    withStatbotics.sort((a, b) => (statboticsMap.get(b) || 0) - (statboticsMap.get(a) || 0));
+    const finalRemaining = remainingAfterHistory.filter((teamNumber) => !withStatbotics.includes(teamNumber));
+    return [...manualTeams, ...withHistory, ...withStatbotics, ...finalRemaining];
+  }
+
+  async function buildPerformanceMapsForTeams(allTeams: number[], year: number, eventKey: string) {
+    const historyMap = new Map<number, { total: number; count: number }>();
+    const statboticsMap = new Map<number, number>();
+    if (allTeams.length === 0) return { historyMap, statboticsMap };
+
+    const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)));
+    scoutingSnap.forEach((entryDoc) => {
+      const row = entryDoc.data() as Record<string, unknown>;
+      const parsedTeamNumber = parseInt(String(row.teamNumber || "").replace(/[^\d]/g, ""), 10);
+      if (!Number.isFinite(parsedTeamNumber) || !allTeams.includes(parsedTeamNumber)) return;
+      const matchType = String(row.matchType || "").toLowerCase();
+      const practiceMode = String(row.practiceMode || "").toLowerCase();
+      if (matchType === "practice" || Boolean(row.isPracticeScouting) || practiceMode === "trial" || practiceMode === "competitive") {
+        return;
+      }
+      const score = scoreScoutingRecord(row);
+      if (!historyMap.has(parsedTeamNumber)) {
+        historyMap.set(parsedTeamNumber, { total: 0, count: 0 });
+      }
+      const existing = historyMap.get(parsedTeamNumber)!;
+      existing.total += score;
+      existing.count += 1;
+    });
+
+    const missingHistoryTeams = allTeams.filter((team) => !historyMap.has(team));
+    const statboticsEntries = await Promise.all(
+      missingHistoryTeams.map(async (teamNumber) => [teamNumber, await fetchStatboticsEpa(teamNumber, year)] as const)
+    );
+    statboticsEntries.forEach(([teamNumber, epa]) => {
+      statboticsMap.set(teamNumber, epa);
+    });
+    return { historyMap, statboticsMap };
+  }
+
+  function pickScoutForSlot(
+    scouts: TeamMember[],
+    matchIndex: number,
+    teamIndex: number,
+    pattern: RandomizePattern
+  ): TeamMember | null {
+    if (scouts.length === 0) return null;
+    const offset =
+      pattern === "constant" ? 0 : pattern === "block-5" ? Math.floor(matchIndex / 5) : matchIndex;
+    return scouts[(offset + teamIndex) % scouts.length] || null;
+  }
+
   async function generateManualPracticeMatches() {
     if (!userData || !selectedEvent) return;
     const response = window.prompt(
@@ -754,30 +871,32 @@ function AssignmentsContent() {
     }
   }
 
-  async function randomizeAllAssignments() {
+  async function randomizeAllAssignments(config?: RandomizeConfig) {
     if (!userData || !selectedEvent) return;
-    const qualificationMatches = matchOptions.filter((match) => match.compLevel === "qm");
+    const nowSec = Math.floor(Date.now() / 1000);
+    const allQualificationMatches = matchOptions.filter((match) => match.compLevel === "qm");
+    const upcomingQualificationMatches = allQualificationMatches.filter(
+      (match) => match.scheduleTime <= 0 || match.scheduleTime + 8 * 60 >= nowSec
+    );
+    const qualificationMatchesBase = upcomingQualificationMatches.length > 0 ? upcomingQualificationMatches : allQualificationMatches;
+    const requestedMatchCount = Math.max(0, Number(config?.matchCount || 0));
+    const qualificationMatches =
+      requestedMatchCount > 0 ? qualificationMatchesBase.slice(0, requestedMatchCount) : qualificationMatchesBase;
     if (qualificationMatches.length === 0) {
       alert("No qualification matches available to randomize.");
       return;
     }
 
-    const attendeeKeys = eventAttendees[selectedEvent] || [];
-    const attendeeMembers = members.filter(
-      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
+    const selectedScoutIds = new Set(config?.scoutIds || []);
+    const eligibleMembers = randomizeEligibleMembers.filter(
+      (member) => selectedScoutIds.size === 0 || selectedScoutIds.has(member.uid)
     );
-    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
-    const eligibleMembers = sourceMembers.filter((member) => {
-      if (!member.displayName.trim()) return false;
-      const roles = getUserRoles({ role: member.role });
-      return roles.includes("match-scout") || roles.includes("media") || roles.includes("lead-scout");
-    });
     if (eligibleMembers.length === 0) {
       alert("No eligible scout-role members available to assign.");
       return;
     }
 
-    if (!confirm("Randomize all qualification assignments for this event? Existing assignments will be replaced.")) return;
+    if (!confirm("Randomize selected qualification assignments for this event? Existing assignments will be replaced.")) return;
 
     try {
       const existing = assignments.filter((assignment) => assignment.eventKey === selectedEvent);
@@ -836,69 +955,25 @@ function AssignmentsContent() {
       const scoutsByAccuracy = [...scoutWeights]
         .sort((a, b) => b.weightedAccuracy - a.weightedAccuracy)
         .map((row) => row.member);
-      const fallbackScoutOrder = [...eligibleMembers].sort(() => Math.random() - 0.5);
-      let fallbackScoutPointer = 0;
-
+      const scoutOrder = lowScoutMode ? scoutsByAccuracy : [...eligibleMembers];
       const allQualificationTeams = Array.from(
         new Set(qualificationMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
       );
       const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
-      const teamHistoryScore = new Map<number, { total: number; count: number }>();
-      const statboticsScore = new Map<number, number>();
       const manualPriorityTeams = Array.from(
         new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
       );
+      const { historyMap, statboticsMap } = lowScoutMode
+        ? await buildPerformanceMapsForTeams(allQualificationTeams, yearFromEvent, selectedEvent)
+        : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
 
-      if (lowScoutMode) {
-        const scoutingSnap = await getDocs(collection(db, "scouting"));
-        scoutingSnap.forEach((entryDoc) => {
-          const row = entryDoc.data() as Record<string, unknown>;
-          const parsedTeamNumber = parseInt(String(row.teamNumber || "").replace(/[^\d]/g, ""), 10);
-          if (!Number.isFinite(parsedTeamNumber) || !allQualificationTeams.includes(parsedTeamNumber)) return;
-          const matchType = String(row.matchType || "").toLowerCase();
-          const practiceMode = String(row.practiceMode || "").toLowerCase();
-          if (matchType === "practice" || Boolean(row.isPracticeScouting) || practiceMode === "trial" || practiceMode === "competitive") {
-            return;
-          }
-          const score = scoreScoutingRecord(row);
-          if (!teamHistoryScore.has(parsedTeamNumber)) {
-            teamHistoryScore.set(parsedTeamNumber, { total: 0, count: 0 });
-          }
-          const existing = teamHistoryScore.get(parsedTeamNumber)!;
-          existing.total += score;
-          existing.count += 1;
-        });
-
-        const missingHistoryTeams = allQualificationTeams.filter((team) => !teamHistoryScore.has(team));
-        const statboticsEntries = await Promise.all(
-          missingHistoryTeams.map(async (teamNumber) => [teamNumber, await fetchStatboticsEpa(teamNumber, yearFromEvent)] as const)
-        );
-        statboticsEntries.forEach(([teamNumber, epa]) => {
-          statboticsScore.set(teamNumber, epa);
-        });
-      }
-
-      qualificationMatches.forEach((match) => {
-        const manualTeams = match.teams.filter((teamNumber) => manualPriorityTeams.includes(teamNumber));
-        const remainingAfterManual = match.teams.filter((teamNumber) => !manualTeams.includes(teamNumber));
-        const withHistory = [...remainingAfterManual].filter((teamNumber) => teamHistoryScore.has(teamNumber));
-        withHistory.sort((a, b) => {
-          const aRow = teamHistoryScore.get(a)!;
-          const bRow = teamHistoryScore.get(b)!;
-          return bRow.total / Math.max(1, bRow.count) - aRow.total / Math.max(1, aRow.count);
-        });
-        const remainingAfterHistory = remainingAfterManual.filter((teamNumber) => !withHistory.includes(teamNumber));
-        const withStatbotics = [...remainingAfterHistory].filter((teamNumber) => statboticsScore.has(teamNumber));
-        withStatbotics.sort((a, b) => (statboticsScore.get(b) || 0) - (statboticsScore.get(a) || 0));
-        const finalRemaining = remainingAfterHistory.filter((teamNumber) => !withStatbotics.includes(teamNumber));
-
-        const teamOrder = lowScoutMode
-          ? [...manualTeams, ...withHistory, ...withStatbotics, ...finalRemaining]
-          : [...match.teams].sort(() => Math.random() - 0.5);
-        teamOrder.forEach((teamNumber, teamIndex) => {
-          const scout = lowScoutMode
-            ? scoutsByAccuracy[teamIndex % scoutsByAccuracy.length]
-            : fallbackScoutOrder[(fallbackScoutPointer++) % fallbackScoutOrder.length];
+      qualificationMatches.forEach((match, matchIndex) => {
+        const rankedTeams = lowScoutMode
+          ? computeTeamPriorityOrder(match.teams, manualPriorityTeams, historyMap, statboticsMap)
+          : [...match.teams];
+        const teamsToAssign = lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
+        teamsToAssign.forEach((teamNumber, teamIndex) => {
+          const scout = pickScoutForSlot(scoutOrder, matchIndex, teamIndex, config?.pattern || "rotate-each-match");
           if (!scout) return;
           newAssignments.push({
             eventKey: selectedEvent,
@@ -922,24 +997,20 @@ function AssignmentsContent() {
     }
   }
 
-  async function randomizePracticeAssignments() {
+  async function randomizePracticeAssignments(config?: RandomizeConfig) {
     if (!userData || !selectedEvent) return;
-    const targetMatches = practiceMatchOptions.filter((match) => match.stage === "practice");
+    const allPracticeMatches = practiceMatchOptions.filter((match) => match.stage === "practice");
+    const requestedMatchCount = Math.max(0, Number(config?.matchCount || 0));
+    const targetMatches = requestedMatchCount > 0 ? allPracticeMatches.slice(0, requestedMatchCount) : allPracticeMatches;
     if (targetMatches.length === 0) {
       alert("No practice matches available to randomize.");
       return;
     }
 
-    const attendeeKeys = eventAttendees[selectedEvent] || [];
-    const attendeeMembers = members.filter(
-      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
+    const selectedScoutIds = new Set(config?.scoutIds || []);
+    const eligibleMembers = randomizeEligibleMembers.filter(
+      (member) => selectedScoutIds.size === 0 || selectedScoutIds.has(member.uid)
     );
-    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
-    const eligibleMembers = sourceMembers.filter((member) => {
-      if (!member.displayName.trim()) return false;
-      const roles = getUserRoles({ role: member.role });
-      return roles.includes("match-scout") || roles.includes("media") || roles.includes("lead-scout");
-    });
     if (eligibleMembers.length === 0) {
       alert("No eligible scout-role members available to assign.");
       return;
@@ -957,41 +1028,23 @@ function AssignmentsContent() {
         new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
       );
 
-      const practiceTeamCounts = new Map<number, number>();
-      const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", selectedEvent)));
-      scoutingSnap.docs.forEach((docSnap) => {
-        const row = docSnap.data() as Record<string, unknown>;
-        const team = parseInt(String(row.teamNumber || "").replace(/[^\d]/g, ""), 10);
-        if (!Number.isFinite(team) || team <= 0) return;
-        const isPractice =
-          Boolean(row.isPracticeScouting) ||
-          String(row.matchType || "").toLowerCase() === "practice" ||
-          String(row.practiceMode || "").length > 0;
-        if (!isPractice) return;
-        practiceTeamCounts.set(team, (practiceTeamCounts.get(team) || 0) + 1);
-      });
-
-      const shuffledScouts = [...eligibleMembers].sort(() => Math.random() - 0.5);
-      let scoutPointer = 0;
+      const lowScoutMode = eligibleMembers.length < 6;
+      const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
+      const allPracticeTeams = Array.from(new Set(targetMatches.flatMap((match) => match.teams))).filter((team) => Number.isFinite(team));
+      const { historyMap, statboticsMap } = lowScoutMode
+        ? await buildPerformanceMapsForTeams(allPracticeTeams, yearFromEvent, selectedEvent)
+        : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
+      const scoutOrder = [...eligibleMembers];
       const now = Date.now();
       const newAssignments: Array<Omit<Assignment, "id">> = [];
 
       targetMatches.forEach((match, matchIndex) => {
         const sourceTeams = match.teams.length > 0 ? match.teams : eventTeamOptions;
-        const teamOrder = [...sourceTeams].sort((a, b) => {
-          const aPriority = manualPriorityTeams.includes(a) ? 0 : 1;
-          const bPriority = manualPriorityTeams.includes(b) ? 0 : 1;
-          if (aPriority !== bPriority) return aPriority - bPriority;
+        const teamOrder = computeTeamPriorityOrder(sourceTeams, manualPriorityTeams, historyMap, statboticsMap);
+        const teamsToAssign = lowScoutMode ? teamOrder.slice(0, scoutOrder.length) : teamOrder;
 
-          const aCount = practiceTeamCounts.get(a) || 0;
-          const bCount = practiceTeamCounts.get(b) || 0;
-          if (aCount !== bCount) return aCount - bCount;
-          return Math.random() - 0.5;
-        });
-
-        teamOrder.forEach((teamNumber) => {
-          const scout = shuffledScouts[scoutPointer % shuffledScouts.length];
-          scoutPointer += 1;
+        teamsToAssign.forEach((teamNumber, teamIndex) => {
+          const scout = pickScoutForSlot(scoutOrder, matchIndex, teamIndex, config?.pattern || "rotate-each-match");
           if (!scout) return;
           newAssignments.push({
             eventKey: selectedEvent,
@@ -1032,6 +1085,27 @@ function AssignmentsContent() {
       console.error("Error saving attendees:", error);
       alert("Could not save attendees.");
     }
+  }
+
+  async function runRandomizeFromConfig() {
+    const selectedCount = randomizeScoutIds.length;
+    if (selectedCount === 0) {
+      alert("Select at least one scout.");
+      return;
+    }
+    const matchCount = Math.max(0, parseInt(randomizeMatchCount.replace(/[^\d]/g, ""), 10) || 0);
+    const config: RandomizeConfig = {
+      target: randomizeTarget,
+      matchCount,
+      pattern: randomizePattern,
+      scoutIds: randomizeScoutIds,
+    };
+    setShowRandomizeModal(false);
+    if (config.target === "practice") {
+      await randomizePracticeAssignments(config);
+      return;
+    }
+    await randomizeAllAssignments(config);
   }
 
   async function createPracticeScoutAssignment() {
@@ -1328,7 +1402,7 @@ function AssignmentsContent() {
                       Practice
                     </button>
                     <button
-                      onClick={scheduleView === "practice" ? randomizePracticeAssignments : randomizeAllAssignments}
+                      onClick={() => openRandomizeConfig(scheduleView === "practice" ? "practice" : "match")}
                       className="px-4 py-2 rounded text-white text-sm font-semibold"
                       style={{ backgroundColor: "var(--primary-color)" }}
                     >
@@ -1621,6 +1695,114 @@ function AssignmentsContent() {
                   </button>
                   <button
                     onClick={() => setShowAssignModal(false)}
+                    className="flex-1 py-2 rounded border-2 border-gray-300 text-gray-700 font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {showRandomizeModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[58] p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold theme-text">
+                    Randomize {randomizeTarget === "practice" ? "Practice" : "Match"} Assignments
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowRandomizeModal(false)}
+                    className="px-3 py-1 rounded border border-gray-300 text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Matches To Randomize</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={randomizeMatchCount}
+                      onChange={(e) => setRandomizeMatchCount(e.target.value.replace(/[^\d]/g, ""))}
+                      className="w-full border rounded p-2"
+                      placeholder="Leave blank for all upcoming matches"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Match Pattern</label>
+                    <select
+                      value={randomizePattern}
+                      onChange={(e) => setRandomizePattern(e.target.value as RandomizePattern)}
+                      className="w-full border rounded p-2"
+                    >
+                      <option value="rotate-each-match">Rotate each match</option>
+                      <option value="block-5">Intervals of 5 then swap</option>
+                      <option value="constant">Constant same order</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700">Scouts To Factor In</label>
+                      <span className="text-xs text-gray-500">{randomizeScoutIds.length} selected</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <button type="button" onClick={() => setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid))} className="px-2 py-1 rounded border text-xs">
+                        Select All
+                      </button>
+                      <button type="button" onClick={() => setRandomizeScoutIds([])} className="px-2 py-1 rounded border text-xs">
+                        Clear
+                      </button>
+                      <button type="button" onClick={() => presetRandomizeScoutsByRoles(["match-scout"])} className="px-2 py-1 rounded border text-xs">
+                        Match Scout
+                      </button>
+                      <button type="button" onClick={() => presetRandomizeScoutsByRoles(["lead-scout"])} className="px-2 py-1 rounded border text-xs">
+                        Lead Scout
+                      </button>
+                      <button type="button" onClick={() => presetRandomizeScoutsByRoles(["media"])} className="px-2 py-1 rounded border text-xs">
+                        Media
+                      </button>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto border rounded p-2 space-y-1">
+                      {randomizeEligibleMembers.length === 0 ? (
+                        <p className="text-sm text-gray-500">No eligible scout-role members found.</p>
+                      ) : (
+                        randomizeEligibleMembers.map((member) => (
+                          <label key={`randomize-scout-${member.uid}`} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={randomizeScoutIds.includes(member.uid)}
+                              onChange={() => toggleRandomizeScout(member.uid)}
+                            />
+                            <span>{member.displayName}</span>
+                            <span className="text-xs text-gray-500">{getRoleLabel(normalizeLegacyRole(member.role))}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      If fewer than 6 scouts are selected, randomize prioritizes manual priority teams, then highest-performing teams.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => void runRandomizeFromConfig()}
+                    className="flex-1 py-2 rounded text-white font-semibold"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                    disabled={randomizeScoutIds.length === 0}
+                  >
+                    Run Randomize
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRandomizeModal(false)}
                     className="flex-1 py-2 rounded border-2 border-gray-300 text-gray-700 font-medium"
                   >
                     Cancel

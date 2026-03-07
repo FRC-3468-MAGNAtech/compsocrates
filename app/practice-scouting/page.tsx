@@ -2830,14 +2830,38 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }, [candidateMatches]);
 
   const sharedModalCompleted = useMemo(() => {
-    return new Set(sharedModalOptions.filter((option) => option.progress === "complete").map((option) => option.id));
-  }, [sharedModalOptions]);
+    if (selectedDifficulty !== "live") {
+      return new Set(sharedModalOptions.filter((option) => option.progress === "complete").map((option) => option.id));
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const bySourceId = new Map(candidateMatches.map((match) => [String(match.id || ""), match] as const));
+    const completed = new Set<string>();
+
+    sharedModalOptions.forEach((option) => {
+      const source = bySourceId.get(option.sourceId);
+      if (!source) return;
+      const official = readOfficialData(source.officialData);
+      const hasOfficialScore =
+        typeof official.score === "number" && Number.isFinite(official.score) && official.score > 0;
+      const fallbackScore = Number(source.actualScore || 0);
+      const hasFallbackScore = Number.isFinite(fallbackScore) && fallbackScore > 0;
+      const scheduleTime = Number(option.scheduleTime || 0);
+      const likelyCompletedByTime = scheduleTime > 0 && nowSeconds > scheduleTime + 8 * 60;
+      if (hasOfficialScore || hasFallbackScore || likelyCompletedByTime) {
+        completed.add(option.id);
+      }
+    });
+
+    return completed;
+  }, [candidateMatches, selectedDifficulty, sharedModalOptions]);
 
   function handleSharedModalPick(option: PracticeSelectorOption) {
     const picked = candidateMatches.find((match) => match.id === option.sourceId);
     if (!picked) return;
     if (selectedDifficulty === "live") {
       setShowMatchSelectModal(false);
+      setCurrentMatch(picked);
       openLiveRobotPicker(picked);
     }
   }
