@@ -4,10 +4,27 @@ export const COOKIE_CONSENT_SESSION_STORAGE = "compsocrates_cookie_consent_sessi
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 const WINDOW_NAME_KEY = "__compsocrates_cookie_consent__";
 const DOC_DATA_KEY = "cookieConsent";
+const WINDOW_RUNTIME_KEY = "__compsocratesCookieConsent";
+const WINDOW_BANNER_DISMISSED_KEY = "__compsocratesCookieBannerDismissed";
 
 export type CookieConsentValue = "accepted" | "rejected";
 
+type CookieWindow = Window & {
+  [WINDOW_RUNTIME_KEY]?: CookieConsentValue | null;
+  [WINDOW_BANNER_DISMISSED_KEY]?: boolean;
+};
+
+export function isCookieBannerDismissed(): boolean {
+  if (typeof window === "undefined") return false;
+  return (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] === true;
+}
+
 export function readCookieConsent(): CookieConsentValue | null {
+  if (typeof window !== "undefined") {
+    const runtime = (window as CookieWindow)[WINDOW_RUNTIME_KEY];
+    if (runtime === "accepted" || runtime === "rejected") return runtime;
+  }
+
   if (typeof document !== "undefined") {
     const marker = String(document.documentElement.dataset[DOC_DATA_KEY] || "").trim();
     if (marker === "accepted" || marker === "rejected") return marker;
@@ -54,6 +71,10 @@ export function readCookieConsent(): CookieConsentValue | null {
 }
 
 export function writeCookieConsent(value: CookieConsentValue) {
+  if (typeof window !== "undefined") {
+    (window as CookieWindow)[WINDOW_RUNTIME_KEY] = value;
+    (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] = true;
+  }
   if (typeof document !== "undefined") {
     document.documentElement.dataset[DOC_DATA_KEY] = value;
   }
@@ -93,6 +114,10 @@ export function writeCookieConsent(value: CookieConsentValue) {
 }
 
 export function clearCookieConsent() {
+  if (typeof window !== "undefined") {
+    (window as CookieWindow)[WINDOW_RUNTIME_KEY] = null;
+    (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] = false;
+  }
   if (typeof document !== "undefined") {
     delete document.documentElement.dataset[DOC_DATA_KEY];
   }

@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { readCookieConsent, writeCookieConsent } from "@/app/utils/cookieConsent";
+import { isCookieBannerDismissed, readCookieConsent, writeCookieConsent } from "@/app/utils/cookieConsent";
 
 let dismissedInMemory = false;
 
 export default function CookieConsentBanner() {
-  const [visible, setVisible] = useState(() => !dismissedInMemory && readCookieConsent() === null);
+  const [visible, setVisible] = useState(() => !dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null);
 
   useEffect(() => {
     function onConsentChanged(event: Event) {
@@ -20,9 +20,10 @@ export default function CookieConsentBanner() {
       if (detail === null) {
         dismissedInMemory = false;
       }
-      setVisible(readCookieConsent() === null);
+      setVisible(!dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null);
     }
     window.addEventListener("cookie-consent-changed", onConsentChanged as EventListener);
+    setVisible(!dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null);
     return () => window.removeEventListener("cookie-consent-changed", onConsentChanged as EventListener);
   }, []);
 
