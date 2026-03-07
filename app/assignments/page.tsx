@@ -506,8 +506,13 @@ function AssignmentsContent() {
         .map((assignmentDoc) => ({
           id: assignmentDoc.id,
           ...(assignmentDoc.data() as Record<string, unknown>),
-        }))
-        .filter((row) => isEventPracticeAssignment({ matchKey: String(row.matchKey || ""), matchLabel: String(row.matchLabel || "") })) as Assignment[];
+        }) as Record<string, unknown>)
+        .filter((row) =>
+          isEventPracticeAssignment({
+            matchKey: String(row.matchKey || ""),
+            matchLabel: String(row.matchLabel || ""),
+          })
+        ) as Assignment[];
       setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [effectiveEvent]: eventPracticeAssignments }));
       setPitAssignments(
         pitAssignmentsSnap.docs.map((assignmentDoc) => ({
@@ -754,8 +759,13 @@ function AssignmentsContent() {
         .map((assignmentDoc) => ({
           id: assignmentDoc.id,
           ...(assignmentDoc.data() as Record<string, unknown>),
-        }))
-        .filter((row) => isEventPracticeAssignment({ matchKey: String(row.matchKey || ""), matchLabel: String(row.matchLabel || "") })) as Assignment[];
+        }) as Record<string, unknown>)
+        .filter((row) =>
+          isEventPracticeAssignment({
+            matchKey: String(row.matchKey || ""),
+            matchLabel: String(row.matchLabel || ""),
+          })
+        ) as Assignment[];
       setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: practiceRows }));
       setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [safeEventKey]: practiceAssignmentRows }));
     } catch (error) {
