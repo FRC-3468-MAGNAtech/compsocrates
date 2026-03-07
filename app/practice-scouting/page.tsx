@@ -762,7 +762,47 @@ function parseBracketNumbers(match: { matchKey?: unknown; setNumber?: unknown; m
   return { setNumber, matchNumber };
 }
 
-function parsePracticeMatchNumber(match: { matchKey?: unknown; matchNumber?: unknown }): number {
+function mapPlayoffToBracketSlot(match: {
+  matchKey?: unknown;
+  setNumber?: unknown;
+  matchNumber?: unknown;
+  compLevel?: unknown;
+}): number | null {
+  const compLevel = String(match.compLevel || "").trim().toLowerCase();
+  const { setNumber, matchNumber } = parseBracketNumbers(match);
+  const key = String(match.matchKey || "").trim().toLowerCase();
+
+  const inferredLevel = compLevel
+    || (/_qf\d+m\d+/.test(key) ? "qf" : "")
+    || (/_sf\d+m\d+/.test(key) ? "sf" : "")
+    || (/_f\d+m\d+/.test(key) ? "f" : "");
+
+  if (inferredLevel === "qf") {
+    if (matchNumber === 1 && setNumber >= 1 && setNumber <= 4) return setNumber; // 1-4
+    if (matchNumber === 2 && setNumber === 1) return 7;
+    if (matchNumber === 2 && setNumber === 2) return 8;
+    return null;
+  }
+  if (inferredLevel === "sf") {
+    if (matchNumber === 1 && setNumber === 1) return 5;
+    if (matchNumber === 1 && setNumber === 2) return 6;
+    if (matchNumber === 2 && setNumber === 1) return 9;
+    if (matchNumber === 2 && setNumber === 2) return 10;
+    if (matchNumber === 3 && setNumber === 1) return 11;
+    if (matchNumber === 3 && setNumber === 2) return 12;
+    return null;
+  }
+  if (inferredLevel === "f") {
+    if (matchNumber === 1) return 13;
+    return 14;
+  }
+  return null;
+}
+
+function parsePracticeMatchNumber(match: { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown }): number {
+  const playoffSlot = mapPlayoffToBracketSlot(match);
+  if (playoffSlot !== null) return playoffSlot;
+
   const key = String(match.matchKey || "").toLowerCase();
   const fromKey =
     key.match(/_qm(\d+)$/)?.[1] ||
@@ -2814,14 +2854,21 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const stage = getPracticeStage(match);
       const modalType: ReefscapeMatchOption["type"] =
         stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
-      const rawScheduleTime = Number((match as unknown as Record<string, unknown>).scheduleTime || 0);
+      const matchData = match as unknown as Record<string, unknown>;
+      const rawScheduleTime =
+        Number(matchData.scheduleTime || 0)
+        || Number(matchData.time || 0)
+        || Number(matchData.predictedTime || 0)
+        || Number(matchData.predicted_time || 0)
+        || Number(matchData.actualTime || 0)
+        || Number(matchData.actual_time || 0);
       const scheduleTime = Number.isFinite(rawScheduleTime) ? rawScheduleTime : 0;
 
       return {
         id: `${modalType}-${match.matchNumber}-${match.id}`,
         label: getPracticeLabel(match),
         type: modalType,
-        matchNumber: parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown }),
+        matchNumber: parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown }),
         scheduleTime,
         sourceId: match.id,
         progress: match.progress,
