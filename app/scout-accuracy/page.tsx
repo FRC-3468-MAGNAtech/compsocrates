@@ -436,14 +436,12 @@ function ScoutAccuracyContent() {
             lastPracticeDate = rowTimestamp;
           }
         });
-        const nonZeroRecentAccuracies = accuracyTimeline.filter((row) => row.accuracy > 0).map((row) => row.accuracy);
         recentAccuracies = accuracyTimeline
-          .filter((row) => row.accuracy > 0)
           .sort((a, b) => a.timestamp - b.timestamp)
           .slice(-5)
           .map((row) => row.accuracy);
-        const averageAccuracy = nonZeroRecentAccuracies.length > 0
-          ? Math.round(totalAccuracy / nonZeroRecentAccuracies.length)
+        const averageAccuracy = accuracyTimeline.length > 0
+          ? Math.round(totalAccuracy / accuracyTimeline.length)
           : 0;
 
         return {
