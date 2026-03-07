@@ -2138,6 +2138,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
 
+    const inferredEventKey = await hydrateLiveStreamContext(liveVideoUrl.trim());
+    if (inferredEventKey) {
+      setLiveEventKeyHint(inferredEventKey);
+    }
     setShowLiveLinkModal(false);
     const matches = await selectPracticeMatch("live", selectedMode);
     if (matches.length === 0) return;
@@ -2849,8 +2853,20 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     startPracticeMatch(picked);
   }
 
+  const liveScopedCandidateMatches = useMemo(() => {
+    if (selectedDifficulty !== "live") return candidateMatches;
+    const scopedEventKey =
+      String(liveEventKeyHint || "").trim().toLowerCase()
+      || String(currentMatch ? getPracticeEventKey(currentMatch) : "").trim().toLowerCase();
+    if (!scopedEventKey) return candidateMatches;
+    const filtered = candidateMatches.filter(
+      (match) => String(getPracticeEventKey(match) || "").trim().toLowerCase() === scopedEventKey
+    );
+    return filtered.length > 0 ? filtered : candidateMatches;
+  }, [candidateMatches, currentMatch, liveEventKeyHint, selectedDifficulty]);
+
   const sharedModalOptions = useMemo<PracticeSelectorOption[]>(() => {
-    return candidateMatches.map((match) => {
+    return liveScopedCandidateMatches.map((match) => {
       const stage = getPracticeStage(match);
       const modalType: ReefscapeMatchOption["type"] =
         stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
@@ -2874,7 +2890,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         progress: match.progress,
       };
     });
-  }, [candidateMatches]);
+  }, [liveScopedCandidateMatches]);
 
   const sharedModalCompleted = useMemo(() => {
     if (selectedDifficulty !== "live") {
@@ -2882,7 +2898,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
 
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const bySourceId = new Map(candidateMatches.map((match) => [String(match.id || ""), match] as const));
+    const bySourceId = new Map(liveScopedCandidateMatches.map((match) => [String(match.id || ""), match] as const));
     const completed = new Set<string>();
 
     sharedModalOptions.forEach((option) => {
@@ -2901,10 +2917,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     });
 
     return completed;
-  }, [candidateMatches, selectedDifficulty, sharedModalOptions]);
+  }, [liveScopedCandidateMatches, selectedDifficulty, sharedModalOptions]);
 
   function handleSharedModalPick(option: PracticeSelectorOption) {
-    const picked = candidateMatches.find((match) => match.id === option.sourceId);
+    const picked = liveScopedCandidateMatches.find((match) => match.id === option.sourceId);
     if (!picked) return;
     if (selectedDifficulty === "live") {
       setShowMatchSelectModal(false);

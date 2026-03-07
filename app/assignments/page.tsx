@@ -331,6 +331,8 @@ function AssignmentsContent() {
   const [practiceScheduleEventKey, setPracticeScheduleEventKey] = useState("");
   const [practiceScheduleMatchesByEvent, setPracticeScheduleMatchesByEvent] = useState<Record<string, PracticeMatchOption[]>>({});
   const [practiceScheduleAssignmentsByEvent, setPracticeScheduleAssignmentsByEvent] = useState<Record<string, Assignment[]>>({});
+  const [teamTbaAuth, setTeamTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({ encryptedKey: "", plainKey: "" });
+  const [practicePriorityTeamsByEvent, setPracticePriorityTeamsByEvent] = useState<Record<string, number[]>>({});
 
   useEffect(() => {
     void loadData();
@@ -408,6 +410,7 @@ function AssignmentsContent() {
       setEventAttendees(teamData.eventAttendees || {});
       const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
       const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
+      setTeamTbaAuth({ encryptedKey, plainKey });
       const signedEventKeys = Array.isArray(teamData.selectedEvents)
         ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
         : [];
@@ -749,6 +752,59 @@ function AssignmentsContent() {
       setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [safeEventKey]: practiceAssignmentRows }));
     } catch (error) {
       console.error("Failed to load practice schedule event data:", error);
+    }
+  }
+
+  async function loadPracticePriorityTeams(eventKey: string) {
+    const safeEventKey = String(eventKey || "").trim().toLowerCase();
+    if (!safeEventKey) return;
+    if (practicePriorityTeamsByEvent[safeEventKey]?.length) return;
+
+    const fromSchedule = Array.from(
+      new Set(
+        (practiceScheduleMatchesByEvent[safeEventKey] || [])
+          .flatMap((match) => match.teams)
+          .filter((team) => Number.isFinite(team) && team > 0)
+      )
+    ).sort((a, b) => a - b);
+    if (fromSchedule.length > 0) {
+      setPracticePriorityTeamsByEvent((prev) => ({ ...prev, [safeEventKey]: fromSchedule }));
+      return;
+    }
+
+    if (!(teamTbaAuth.encryptedKey || teamTbaAuth.plainKey)) {
+      setPracticePriorityTeamsByEvent((prev) => ({ ...prev, [safeEventKey]: [] }));
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/tba/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventKey: safeEventKey,
+          encryptedKey: teamTbaAuth.encryptedKey,
+          plainKey: teamTbaAuth.plainKey,
+        }),
+      });
+      if (!response.ok) {
+        setPracticePriorityTeamsByEvent((prev) => ({ ...prev, [safeEventKey]: [] }));
+        return;
+      }
+      const payload = (await response.json()) as { teams?: Array<{ teamNumber?: number }> };
+      const teams = Array.isArray(payload.teams)
+        ? Array.from(
+            new Set(
+              payload.teams
+                .map((row) => Number(row.teamNumber || 0))
+                .filter((teamNumber) => Number.isFinite(teamNumber) && teamNumber > 0)
+            )
+          ).sort((a, b) => a - b)
+        : [];
+      setPracticePriorityTeamsByEvent((prev) => ({ ...prev, [safeEventKey]: teams }));
+    } catch (error) {
+      console.error("Failed loading practice priority teams:", error);
+      setPracticePriorityTeamsByEvent((prev) => ({ ...prev, [safeEventKey]: [] }));
     }
   }
 
@@ -1340,15 +1396,9 @@ function AssignmentsContent() {
   }, [practiceEventOptions, randomizePracticeEventSearch]);
   const randomizePriorityCandidates = useMemo(() => {
     if (randomizeTarget === "practice") {
-      const eventKey = String(randomizePracticeEventKey || "").trim();
+      const eventKey = String(randomizePracticeEventKey || "").trim().toLowerCase();
       if (!eventKey) return [];
-      return Array.from(
-        new Set(
-          (practiceScheduleMatchesByEvent[eventKey] || [])
-            .flatMap((match) => match.teams)
-            .filter((team) => Number.isFinite(team) && team > 0)
-        )
-      ).sort((a, b) => a - b);
+      return practicePriorityTeamsByEvent[eventKey] || [];
     }
     return Array.from(
       new Set(
@@ -1358,7 +1408,7 @@ function AssignmentsContent() {
           .filter((team) => Number.isFinite(team) && team > 0)
       )
     ).sort((a, b) => a - b);
-  }, [matchOptions, practiceScheduleMatchesByEvent, randomizePracticeEventKey, randomizeTarget]);
+  }, [matchOptions, practicePriorityTeamsByEvent, randomizePracticeEventKey, randomizeTarget]);
   const filteredRandomizePriorityCandidates = useMemo(() => {
     const needle = randomizePriorityTeamSearch.trim().toLowerCase();
     if (!needle) return randomizePriorityCandidates;
@@ -1387,7 +1437,8 @@ function AssignmentsContent() {
     if (!showRandomizeModal || randomizeTarget !== "practice") return;
     if (!randomizePracticeEventKey) return;
     void loadPracticeScheduleEvent(randomizePracticeEventKey);
-  }, [randomizePracticeEventKey, randomizeTarget, showRandomizeModal]);
+    void loadPracticePriorityTeams(randomizePracticeEventKey);
+  }, [randomizePracticeEventKey, randomizeTarget, showRandomizeModal, teamTbaAuth.encryptedKey, teamTbaAuth.plainKey]);
 
   return (
     <div className="flex h-screen bg-gray-100">
