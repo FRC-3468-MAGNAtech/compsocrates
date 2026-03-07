@@ -10,7 +10,7 @@ import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
-import { getEventMatches } from "@/app/utils/tba-api";
+import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 
@@ -118,6 +118,50 @@ function buildFallbackScoutOptions(): MatchOption[] {
     });
   }
   return rows;
+}
+
+function mapTbaMatchToScoutOptionId(match: Pick<TBAMatch, "comp_level" | "match_number">): string {
+  if (match.comp_level === "qm") return `q${match.match_number}`;
+  if (match.comp_level === "f") return `f${match.match_number}`;
+  if (match.comp_level === "sf") return `sf${match.match_number}`;
+  if (match.comp_level === "qf") return `qf${match.match_number}`;
+  return "";
+}
+
+function isTbaMatchCompleted(match: Pick<TBAMatch, "alliances">): boolean {
+  const redScore = Number(match.alliances?.red?.score);
+  const blueScore = Number(match.alliances?.blue?.score);
+  return redScore >= 0 && blueScore >= 0;
+}
+
+function pickCurrentOrNextEventMatch(matches: TBAMatch[], options: MatchOption[]): MatchOption | null {
+  if (matches.length === 0 || options.length === 0) return null;
+
+  const optionById = new Map(options.map((option) => [option.id, option] as const));
+  const compOrder: Record<string, number> = { qm: 0, qf: 1, sf: 2, f: 3 };
+  const ordered = [...matches].sort((a, b) => {
+    const levelDiff = (compOrder[a.comp_level] ?? 9) - (compOrder[b.comp_level] ?? 9);
+    if (levelDiff !== 0) return levelDiff;
+    if (a.set_number !== b.set_number) return a.set_number - b.set_number;
+    return a.match_number - b.match_number;
+  });
+
+  const firstUnplayed = ordered.find((match) => !isTbaMatchCompleted(match));
+  if (firstUnplayed) {
+    const picked = optionById.get(mapTbaMatchToScoutOptionId(firstUnplayed));
+    if (picked) return picked;
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const timedOptions = options
+    .filter((option) => Number(option.scheduleTime) > 0)
+    .sort((a, b) => Number(a.scheduleTime) - Number(b.scheduleTime));
+  if (timedOptions.length === 0) return options[0] || null;
+
+  const currentOrNext =
+    timedOptions.find((option) => Number(option.scheduleTime) >= nowSec - 8 * 60)
+    || timedOptions[timedOptions.length - 1];
+  return currentOrNext || null;
 }
 
 type FormState = {
@@ -784,17 +828,21 @@ function ScoutFormContent() {
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
-        setSelectedMatch((current) => current || resolved.find((m) => m.type === "qualification") || resolved[0] || null);
 
         const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
         const assigned: Record<string, string> = {};
+        const assignedMatchIds = new Set<string>();
         assignmentSnap.docs.forEach((row) => {
           const data = row.data() as AssignmentRow;
           const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
+          if (matchId) assignedMatchIds.add(matchId);
           const team = String(data.teamNumber || "").trim();
           if (matchId && team) assigned[matchId] = team;
         });
         setAssignedTeams(assigned);
+        const assignedOption = resolved.find((option) => assignedMatchIds.has(option.id));
+        const eventDefault = next.length > 0 ? pickCurrentOrNextEventMatch(matches, resolved) : null;
+        setSelectedMatch((current) => current || assignedOption || eventDefault || resolved.find((m) => m.type === "qualification") || resolved[0] || null);
       } catch (error) {
         console.error("Failed to load match context:", error);
         const fallback = buildFallbackScoutOptions();
