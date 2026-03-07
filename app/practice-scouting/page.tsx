@@ -1901,6 +1901,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   .filter((team) => Number.isFinite(team) && team > 0);
                 if (teams.length < 3) return null;
                 const allianceScore = Number(match.alliances?.[alliance]?.score);
+                const normalizedAllianceScore = Number.isFinite(allianceScore) && allianceScore >= 0 ? allianceScore : 0;
+                const normalizedDifficulty = scoreToDifficulty(normalizedAllianceScore);
                 return {
                   id: `${matchKey}:${alliance}`,
                   eventKey: hintedEventKey,
@@ -1910,21 +1912,24 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   setNumber: Number(match.set_number || 0),
                   compLevel: String(match.comp_level || "").trim().toLowerCase(),
                   matchType: stageMatchType,
+                  difficulty: normalizedDifficulty,
                   alliance,
+                  allianceScore: normalizedAllianceScore,
                   allianceTeams: teams.slice(0, 3),
                   scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
                   time: Number.isFinite(scheduleTime) ? scheduleTime : 0,
                   videoUrl: liveVideoUrl.trim(),
                   officialData: {
-                    score: Number.isFinite(allianceScore) && allianceScore >= 0 ? allianceScore : 0,
+                    score: normalizedAllianceScore,
                     penaltyPoints: 0,
                     breakdown: {},
                   },
-                  actualScore: Number.isFinite(allianceScore) && allianceScore >= 0 ? allianceScore : 0,
+                  actualScore: normalizedAllianceScore,
+                  createdAt: Number.isFinite(scheduleTime) && scheduleTime > 0 ? scheduleTime * 1000 : Date.now(),
                   isCompleted,
-                } as CandidatePracticeMatch;
+                } as PracticeMatch & { scheduleTime: number; time: number; setNumber: number; compLevel: string; isCompleted: boolean };
               });
-              return perAlliance.filter((row): row is CandidatePracticeMatch => Boolean(row));
+              return perAlliance.filter((row): row is PracticeMatch & { scheduleTime: number; time: number; setNumber: number; compLevel: string; isCompleted: boolean } => Boolean(row));
             });
 
             if (tbaCandidates.length > 0) {
