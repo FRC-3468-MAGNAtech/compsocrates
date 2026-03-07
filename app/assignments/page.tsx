@@ -502,17 +502,11 @@ function AssignmentsContent() {
           ...assignmentDoc.data(),
         })) as Assignment[]
       );
-      const eventPracticeAssignments = assignmentsSnap.docs
-        .map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          ...(assignmentDoc.data() as Record<string, unknown>),
-        }) as Record<string, unknown>)
-        .filter((row) =>
-          isEventPracticeAssignment({
-            matchKey: String(row.matchKey || ""),
-            matchLabel: String(row.matchLabel || ""),
-          })
-        ) as Assignment[];
+      const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
+        id: assignmentDoc.id,
+        ...assignmentDoc.data(),
+      })) as Assignment[];
+      const eventPracticeAssignments = assignmentRows.filter((row) => isEventPracticeAssignment(row));
       setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [effectiveEvent]: eventPracticeAssignments }));
       setPitAssignments(
         pitAssignmentsSnap.docs.map((assignmentDoc) => ({
@@ -755,17 +749,11 @@ function AssignmentsContent() {
         })
         .filter((row) => row.teams.length >= 3 && row.matchNumber > 0 && row.stage === "practice")
         .sort((a, b) => a.matchNumber - b.matchNumber);
-      const practiceAssignmentRows = assignmentsSnap.docs
-        .map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          ...(assignmentDoc.data() as Record<string, unknown>),
-        }) as Record<string, unknown>)
-        .filter((row) =>
-          isEventPracticeAssignment({
-            matchKey: String(row.matchKey || ""),
-            matchLabel: String(row.matchLabel || ""),
-          })
-        ) as Assignment[];
+      const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
+        id: assignmentDoc.id,
+        ...assignmentDoc.data(),
+      })) as Assignment[];
+      const practiceAssignmentRows = assignmentRows.filter((row) => isEventPracticeAssignment(row));
       setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: practiceRows }));
       setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [safeEventKey]: practiceAssignmentRows }));
     } catch (error) {
