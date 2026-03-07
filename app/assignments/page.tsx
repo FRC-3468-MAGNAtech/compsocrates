@@ -276,6 +276,9 @@ function AssignmentsContent() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [selectedEvent, setSelectedEvent] = useState("");
   const [events, setEvents] = useState<EventOption[]>([]);
+  const [practiceEventOptions, setPracticeEventOptions] = useState<EventOption[]>([]);
+  const [showPracticeEventPicker, setShowPracticeEventPicker] = useState(false);
+  const [practiceEventSearch, setPracticeEventSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
@@ -374,16 +377,29 @@ function AssignmentsContent() {
       setEventAttendees(teamData.eventAttendees || {});
       const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
       const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
+      const signedEventKeys = Array.isArray(teamData.selectedEvents)
+        ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
+        : [];
       const resolvedEvents = await resolveEventOptions(teamData);
       setEvents(resolvedEvents);
+      const fallbackFromApp = APP_EVENTS.map((event) => ({
+        key: event.key,
+        name: event.name,
+        startDate: event.startDate,
+        endDate: event.endDate,
+      }));
+      const availablePracticeEvents = sortEventOptions(
+        dedupeEventOptionsByName(fallbackFromApp.filter((event) => !signedEventKeys.includes(event.key)))
+      );
+      setPracticeEventOptions(availablePracticeEvents);
       const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
         : (resolvedEvents[0]?.key || "");
       if (!selectedEvent || effectiveEvent !== selectedEvent) {
         setSelectedEvent(effectiveEvent);
       }
-      if (!selectedPracticeEventKey) {
-        setSelectedPracticeEventKey(effectiveEvent);
+      if (!selectedPracticeEventKey || !availablePracticeEvents.some((event) => event.key === selectedPracticeEventKey)) {
+        setSelectedPracticeEventKey(availablePracticeEvents[0]?.key || "");
       }
       if (!effectiveEvent) {
         setAssignments([]);
@@ -1054,6 +1070,18 @@ function AssignmentsContent() {
     () => pitAssignments.slice().sort((a, b) => a.teamNumber - b.teamNumber),
     [pitAssignments]
   );
+  const filteredPracticeEventOptions = useMemo(() => {
+    const needle = practiceEventSearch.trim().toLowerCase();
+    if (!needle) return practiceEventOptions;
+    return practiceEventOptions.filter((event) => {
+      const haystack = `${event.name} ${event.key}`.toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [practiceEventOptions, practiceEventSearch]);
+  const selectedPracticeEventOption = useMemo(
+    () => practiceEventOptions.find((event) => event.key === selectedPracticeEventKey) || null,
+    [practiceEventOptions, selectedPracticeEventKey]
+  );
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -1148,19 +1176,19 @@ function AssignmentsContent() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setAssignmentView("practice")}
-                      className={`px-3 py-2 rounded text-sm font-medium ${assignmentView === "practice" ? "text-white" : "bg-gray-100 text-gray-700"}`}
-                      style={assignmentView === "practice" ? { backgroundColor: "var(--primary-color)" } : undefined}
-                    >
-                      Practice
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setAssignmentView("pit")}
                       className={`px-3 py-2 rounded text-sm font-medium ${assignmentView === "pit" ? "text-white" : "bg-gray-100 text-gray-700"}`}
                       style={assignmentView === "pit" ? { backgroundColor: "var(--primary-color)" } : undefined}
                     >
                       Pit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignmentView("practice")}
+                      className={`px-3 py-2 rounded text-sm font-medium ${assignmentView === "practice" ? "text-white" : "bg-gray-100 text-gray-700"}`}
+                      style={assignmentView === "practice" ? { backgroundColor: "var(--primary-color)" } : undefined}
+                    >
+                      Practice
                     </button>
                   </div>
                 </div>
@@ -1255,19 +1283,19 @@ function AssignmentsContent() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setScheduleView("practice")}
-                      className={`px-3 py-2 rounded text-sm font-medium ${scheduleView === "practice" ? "text-white" : "bg-gray-100 text-gray-700"}`}
-                      style={scheduleView === "practice" ? { backgroundColor: "var(--primary-color)" } : undefined}
-                    >
-                      Practice
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setScheduleView("match")}
                       className={`px-3 py-2 rounded text-sm font-medium ${scheduleView === "match" ? "text-white" : "bg-gray-100 text-gray-700"}`}
                       style={scheduleView === "match" ? { backgroundColor: "var(--primary-color)" } : undefined}
                     >
                       Match
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScheduleView("practice")}
+                      className={`px-3 py-2 rounded text-sm font-medium ${scheduleView === "practice" ? "text-white" : "bg-gray-100 text-gray-700"}`}
+                      style={scheduleView === "practice" ? { backgroundColor: "var(--primary-color)" } : undefined}
+                    >
+                      Practice
                     </button>
                     <button
                       onClick={scheduleView === "practice" ? randomizePracticeAssignments : randomizeAllAssignments}
@@ -1438,18 +1466,19 @@ function AssignmentsContent() {
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Practice Event</label>
-                        <select
-                          className="w-full border rounded p-2"
-                          value={selectedPracticeEventKey}
-                          onChange={(e) => setSelectedPracticeEventKey(e.target.value)}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPracticeEventSearch("");
+                            setShowPracticeEventPicker(true);
+                          }}
+                          className="w-full border rounded p-2 text-left hover:bg-gray-50"
                         >
-                          <option value="">Select Event</option>
-                          {events.map((event) => (
-                            <option key={event.key} value={event.key}>
-                              {event.name}
-                            </option>
-                          ))}
-                        </select>
+                          {selectedPracticeEventOption ? selectedPracticeEventOption.name : "Select Event"}
+                        </button>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Practice Scout excludes your team&apos;s signed-up events.
+                        </p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Practice Match Number</label>
@@ -1566,6 +1595,54 @@ function AssignmentsContent() {
                   >
                     Cancel
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {showPracticeEventPicker && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold theme-text">Select Practice Event</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowPracticeEventPicker(false)}
+                    className="px-3 py-1 rounded border border-gray-300 text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={practiceEventSearch}
+                  onChange={(e) => setPracticeEventSearch(e.target.value)}
+                  className="w-full border rounded p-2 mb-3"
+                  placeholder="Search by event name or key..."
+                  autoFocus
+                />
+                <div className="max-h-80 overflow-y-auto border rounded">
+                  {filteredPracticeEventOptions.length === 0 ? (
+                    <p className="px-3 py-6 text-sm text-gray-500 text-center">No matching events found.</p>
+                  ) : (
+                    <div className="divide-y divide-gray-200">
+                      {filteredPracticeEventOptions.map((event) => (
+                        <button
+                          key={event.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPracticeEventKey(event.key);
+                            setShowPracticeEventPicker(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
+                            selectedPracticeEventKey === event.key ? "bg-indigo-50" : ""
+                          }`}
+                        >
+                          <p className="font-medium">{event.name}</p>
+                          <p className="text-xs text-gray-500">{event.key}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
