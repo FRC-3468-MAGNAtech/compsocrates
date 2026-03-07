@@ -12,6 +12,7 @@ import {
 let dismissedInMemory = false;
 
 function shouldShowCookieBanner() {
+  if (typeof window === "undefined") return false;
   return !dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null;
 }
 
