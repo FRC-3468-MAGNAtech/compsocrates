@@ -657,7 +657,8 @@ function AssignmentsContent() {
       .filter((member) => {
         const roles = getUserRoles({ role: member.role });
         const normalizedFallback = normalizeLegacyRole(member.role);
-        return roleKeys.some((role) => roles.includes(role) || normalizedFallback === role);
+        const roleSet = new Set(roles.map((role) => String(role)));
+        return roleKeys.some((role) => roleSet.has(role) || normalizedFallback === role);
       })
       .map((member) => member.uid);
     setRandomizeScoutIds(next);
