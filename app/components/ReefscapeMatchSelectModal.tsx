@@ -77,11 +77,13 @@ function FinalsBracket({
   completed,
   onPick,
   timesByNumber,
+  labelsByNumber,
   availableNumbers,
 }: {
   completed: Set<string>;
   onPick: (matchNumber: number) => void;
   timesByNumber: Map<number, number>;
+  labelsByNumber: Map<number, string>;
   availableNumbers: number[];
 }) {
   const B = { w: 104, h: 58, colGap: 52, row: 84 };
@@ -151,18 +153,19 @@ function FinalsBracket({
             </g>
           </svg>
           <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} timeLabel={timeFor(1)} />
-          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} timeLabel={timeFor(2)} />
-          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} timeLabel={timeFor(3)} />
-          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} timeLabel={timeFor(4)} />
-          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} timeLabel={timeFor(5)} />
-          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} timeLabel={timeFor(6)} />
-          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} timeLabel={timeFor(7)} />
-          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} timeLabel={timeFor(8)} />
-          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} />
-          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} />
-          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} timeLabel={timeFor(11)} />
-          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} timeLabel={timeFor(12)} />
-          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} timeLabel={timeFor(13)} />
+          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} label={labelsByNumber.get(1)} timeLabel={timeFor(1)} />
+          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} label={labelsByNumber.get(2)} timeLabel={timeFor(2)} />
+          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} label={labelsByNumber.get(3)} timeLabel={timeFor(3)} />
+          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} label={labelsByNumber.get(4)} timeLabel={timeFor(4)} />
+          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} label={labelsByNumber.get(5)} timeLabel={timeFor(5)} />
+          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} label={labelsByNumber.get(6)} timeLabel={timeFor(6)} />
+          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} label={labelsByNumber.get(7)} timeLabel={timeFor(7)} />
+          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} label={labelsByNumber.get(8)} timeLabel={timeFor(8)} />
+          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} label={labelsByNumber.get(10)} timeLabel={timeFor(10)} />
+          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} label={labelsByNumber.get(9)} timeLabel={timeFor(9)} />
+          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} label={labelsByNumber.get(11)} timeLabel={timeFor(11)} />
+          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} label={labelsByNumber.get(12)} timeLabel={timeFor(12)} />
+          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} label={labelsByNumber.get(13)} timeLabel={timeFor(13)} />
           <FinalsMatchBox
             number={14}
             row={yFinals}
@@ -414,6 +417,11 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                     options
                       .filter((match) => match.type === "finals")
                       .map((match) => [match.matchNumber, Number(match.scheduleTime || 0)] as const)
+                  )}
+                  labelsByNumber={new Map(
+                    options
+                      .filter((match) => match.type === "finals")
+                      .map((match) => [match.matchNumber, String(match.label || `Match ${match.matchNumber}`)] as const)
                   )}
                   availableNumbers={availableFinalNumbers.length > 0 ? availableFinalNumbers : Array.from({ length: 14 }, (_, i) => i + 1)}
                   onPick={(matchNumber) => {

@@ -623,7 +623,7 @@ function AssignmentsContent() {
   }, [eventTeamOptions, pitAssignments]);
 
   const randomizeEligibleMembers = useMemo(
-    () => members.filter((member) => Boolean(member.displayName || "").trim().length > 0),
+    () => members.filter((member) => String(member.displayName || "").trim().length > 0),
     [members]
   );
   const randomizeRoleKeys = useMemo(() => {
@@ -1824,7 +1824,7 @@ function AssignmentsContent() {
                           onClick={() => presetRandomizeScoutsByRoles([roleKey])}
                           className="px-2 py-1 rounded border text-xs"
                         >
-                          {getRoleLabel(roleKey)}
+                          {getRoleLabel(normalizeLegacyRole(roleKey))}
                         </button>
                       ))}
                     </div>
