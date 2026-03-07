@@ -460,7 +460,16 @@ function ScoutAccuracyContent() {
       });
 
       const stats = await Promise.all(statsPromises);
-      setScoutStats(stats.sort((a, b) => b.averageAccuracy - a.averageAccuracy));
+      setScoutStats(
+        stats.sort((a, b) => {
+          const aHasSessions = a.practiceSessionsCompleted > 0 ? 1 : 0;
+          const bHasSessions = b.practiceSessionsCompleted > 0 ? 1 : 0;
+          if (aHasSessions !== bHasSessions) return bHasSessions - aHasSessions;
+          if (b.averageAccuracy !== a.averageAccuracy) return b.averageAccuracy - a.averageAccuracy;
+          if (b.totalEntries !== a.totalEntries) return b.totalEntries - a.totalEntries;
+          return a.scoutName.localeCompare(b.scoutName);
+        })
+      );
     } catch (error) {
       console.error("Error loading scout stats:", error);
     } finally {
@@ -474,6 +483,18 @@ function ScoutAccuracyContent() {
     return roles.includes("match-scout") || roles.includes("media");
   }).length;
   const membersWithPracticeAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
+  const rankedScoutStats = (() => {
+    let currentRank = 0;
+    let previousKey = "";
+    return scoutStats.map((scout, index) => {
+      const key = `${scout.practiceSessionsCompleted > 0 ? "sessions" : "nosessions"}:${scout.averageAccuracy}`;
+      if (key !== previousKey) {
+        currentRank = index + 1;
+        previousKey = key;
+      }
+      return { scout, rank: currentRank };
+    });
+  })();
 
   function getAccuracyColor(accuracy: number): string {
     if (accuracy >= 95) return "text-green-600";
@@ -861,14 +882,14 @@ function ScoutAccuracyContent() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {scoutStats.map((scout, index) => {
+                      {rankedScoutStats.map(({ scout, rank }) => {
                         const badge = getAccuracyBadge(scout.averageAccuracy, scout.practiceSessionsCompleted);
                         const roleBadge = getTeamRoleBadge(scout.role, scout.roles);
                         return (
                           <tr key={scout.scoutName} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="text-2xl">
-                                #{index + 1}
+                                #{rank}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">

@@ -8,7 +8,12 @@ export default function CookieConsentBanner() {
   const [visible, setVisible] = useState(() => readCookieConsent() === null);
 
   useEffect(() => {
-    function onConsentChanged() {
+    function onConsentChanged(event: Event) {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (detail === "accepted" || detail === "rejected") {
+        setVisible(false);
+        return;
+      }
       setVisible(readCookieConsent() === null);
     }
     window.addEventListener("cookie-consent-changed", onConsentChanged as EventListener);
@@ -31,7 +36,10 @@ export default function CookieConsentBanner() {
           <button
             type="button"
             className="rounded border border-gray-300 px-3 py-2 text-sm"
-            onClick={() => writeCookieConsent("rejected")}
+            onClick={() => {
+              setVisible(false);
+              writeCookieConsent("rejected");
+            }}
           >
             Reject Optional
           </button>
@@ -39,7 +47,10 @@ export default function CookieConsentBanner() {
             type="button"
             className="rounded px-3 py-2 text-sm text-white"
             style={{ backgroundColor: "var(--primary-color)" }}
-            onClick={() => writeCookieConsent("accepted")}
+            onClick={() => {
+              setVisible(false);
+              writeCookieConsent("accepted");
+            }}
           >
             Accept All
           </button>
@@ -48,4 +59,3 @@ export default function CookieConsentBanner() {
     </div>
   );
 }
-
