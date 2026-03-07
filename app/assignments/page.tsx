@@ -760,6 +760,23 @@ function AssignmentsContent() {
     if (!safeEventKey) return;
     if (practicePriorityTeamsByEvent[safeEventKey]?.length) return;
 
+    try {
+      const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", safeEventKey)));
+      const assignedTeams = Array.from(
+        new Set(
+          assignmentSnap.docs
+            .map((row) => Number((row.data() as Record<string, unknown>).teamNumber || 0))
+            .filter((teamNumber) => Number.isFinite(teamNumber) && teamNumber > 0)
+        )
+      ).sort((a, b) => a - b);
+      if (assignedTeams.length > 0) {
+        setPracticePriorityTeamsByEvent((prev) => ({ ...prev, [safeEventKey]: assignedTeams }));
+        return;
+      }
+    } catch (error) {
+      console.error("Failed loading assignment teams for practice priority:", error);
+    }
+
     const fromSchedule = Array.from(
       new Set(
         (practiceScheduleMatchesByEvent[safeEventKey] || [])
@@ -1978,7 +1995,7 @@ function AssignmentsContent() {
           )}
           {showRandomizeModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[58] p-4">
-              <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[86vh] overflow-y-auto p-5">
+              <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[76vh] overflow-y-auto p-4">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-semibold theme-text">
                     Randomize {randomizeTarget === "practice" ? "Practice" : "Match"} Assignments
@@ -2003,7 +2020,7 @@ function AssignmentsContent() {
                         className="w-full border rounded p-2 mb-2"
                         placeholder="Search competition by name or key..."
                       />
-                      <div className="max-h-28 overflow-y-auto border rounded p-2 space-y-1">
+                      <div className="max-h-24 overflow-y-auto border rounded p-2 space-y-1">
                         {filteredRandomizePracticeEvents.length === 0 ? (
                           <p className="text-sm text-gray-500 text-center py-4">No matching competitions found.</p>
                         ) : (
@@ -2081,7 +2098,7 @@ function AssignmentsContent() {
                         </button>
                       ))}
                     </div>
-                    <div className="max-h-28 overflow-y-auto border rounded p-2 space-y-1">
+                    <div className="max-h-24 overflow-y-auto border rounded p-2 space-y-1">
                       {randomizeEligibleMembers.length === 0 ? (
                         <p className="text-sm text-gray-500">No eligible scout-role members found.</p>
                       ) : (
@@ -2124,7 +2141,7 @@ function AssignmentsContent() {
                         Clear
                       </button>
                     </div>
-                    <div className="max-h-24 overflow-y-auto border rounded p-2 space-y-1">
+                    <div className="max-h-20 overflow-y-auto border rounded p-2 space-y-1">
                       {filteredRandomizePriorityCandidates.length === 0 ? (
                         <p className="text-sm text-gray-500">
                           No teams found for this schedule.

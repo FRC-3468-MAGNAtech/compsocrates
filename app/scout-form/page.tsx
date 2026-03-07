@@ -1072,9 +1072,7 @@ function ScoutFormContent() {
     );
   }, [scoutedCounts, targets, tbaCompletedMatchIds]);
   const modalOptions = useMemo(() => {
-    if (assignedMatchIds.size === 0) return options;
-    const filtered = options.filter((option) => assignedMatchIds.has(option.id));
-    return filtered.length > 0 ? filtered : options;
+    return options.filter((option) => assignedMatchIds.has(option.id));
   }, [assignedMatchIds, options]);
 
   function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {

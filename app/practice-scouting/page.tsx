@@ -1866,6 +1866,75 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         return [];
       }
       candidateMatches = dedupePracticeMatches(candidateMatches);
+      if (difficulty === "live") {
+        const hintedEventKey = String(liveEventKeyHint || "").trim().toLowerCase();
+        if (hintedEventKey) {
+          try {
+            let tbaMatches: TBAMatch[] = [];
+            if (tbaAuth.encryptedKey || tbaAuth.plainKey) {
+              const response = await fetch("/api/tba/matches", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  eventKey: hintedEventKey,
+                  encryptedKey: tbaAuth.encryptedKey,
+                  plainKey: tbaAuth.plainKey,
+                }),
+              });
+              if (response.ok) {
+                const payload = (await response.json()) as { matches?: TBAMatch[] };
+                if (Array.isArray(payload.matches)) tbaMatches = payload.matches;
+              }
+            }
+            if (tbaMatches.length === 0) {
+              tbaMatches = await getEventMatches(hintedEventKey);
+            }
+
+            const tbaCandidates = tbaMatches.flatMap((match) => {
+              const matchKey = String(match.key || "").trim();
+              const scheduleTime = Number(match.actual_time || match.predicted_time || match.time || 0);
+              const isCompleted = Number(match.alliances?.red?.score) >= 0 && Number(match.alliances?.blue?.score) >= 0;
+              const stageMatchType = match.comp_level === "qm" ? "qualification" : "playoff";
+              const perAlliance = (["red", "blue"] as const).map((alliance) => {
+                const teams = (match.alliances?.[alliance]?.team_keys || [])
+                  .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
+                  .filter((team) => Number.isFinite(team) && team > 0);
+                if (teams.length < 3) return null;
+                const allianceScore = Number(match.alliances?.[alliance]?.score);
+                return {
+                  id: `${matchKey}:${alliance}`,
+                  eventKey: hintedEventKey,
+                  eventName: liveStreamTitle || hintedEventKey,
+                  matchKey,
+                  matchNumber: Number(match.match_number || 0),
+                  setNumber: Number(match.set_number || 0),
+                  compLevel: String(match.comp_level || "").trim().toLowerCase(),
+                  matchType: stageMatchType,
+                  alliance,
+                  allianceTeams: teams.slice(0, 3),
+                  scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+                  time: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+                  videoUrl: liveVideoUrl.trim(),
+                  officialData: {
+                    score: Number.isFinite(allianceScore) && allianceScore >= 0 ? allianceScore : 0,
+                    penaltyPoints: 0,
+                    breakdown: {},
+                  },
+                  actualScore: Number.isFinite(allianceScore) && allianceScore >= 0 ? allianceScore : 0,
+                  isCompleted,
+                } as CandidatePracticeMatch;
+              });
+              return perAlliance.filter((row): row is CandidatePracticeMatch => Boolean(row));
+            });
+
+            if (tbaCandidates.length > 0) {
+              candidateMatches = dedupePracticeMatches(tbaCandidates);
+            }
+          } catch (error) {
+            console.error("Failed loading live candidates from FIRST/TBA:", error);
+          }
+        }
+      }
       if (difficulty !== "live") {
         candidateMatches = candidateMatches.filter((match) => matchMatchesDifficulty(match, difficulty));
       }
@@ -2167,21 +2236,42 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         : [];
 
     const pool = hintedMatches.length > 0 ? hintedMatches : pickFrom;
-    const randomIndex = Math.floor(Math.random() * pool.length);
-    const chosen = pool[randomIndex];
+    const sortedPool = [...pool].sort((a, b) => {
+      const aTime = Number((a as unknown as Record<string, unknown>).scheduleTime || 0);
+      const bTime = Number((b as unknown as Record<string, unknown>).scheduleTime || 0);
+      const aCompleted = Boolean((a as unknown as Record<string, unknown>).isCompleted);
+      const bCompleted = Boolean((b as unknown as Record<string, unknown>).isCompleted);
+      if (aCompleted !== bCompleted) return aCompleted ? 1 : -1;
+      if (aTime > 0 && bTime > 0) return aTime - bTime;
+      if (aTime > 0 && bTime <= 0) return -1;
+      if (aTime <= 0 && bTime > 0) return 1;
+      return Number(a.matchNumber || 0) - Number(b.matchNumber || 0);
+    });
+    const nowSec = Math.floor(Date.now() / 1000);
+    const active = sortedPool.find((match) => {
+      const time = Number((match as unknown as Record<string, unknown>).scheduleTime || 0);
+      const done = Boolean((match as unknown as Record<string, unknown>).isCompleted);
+      return !done && time > 0 && nowSec >= time && nowSec <= time + 8 * 60;
+    });
+    const next = sortedPool.find((match) => {
+      const time = Number((match as unknown as Record<string, unknown>).scheduleTime || 0);
+      const done = Boolean((match as unknown as Record<string, unknown>).isCompleted);
+      return !done && time > 0 && time >= nowSec;
+    });
+    const chosen = active || next || sortedPool.find((match) => !Boolean((match as unknown as Record<string, unknown>).isCompleted)) || sortedPool[0];
     if (!chosen) {
       alert("Could not pick a live match.");
       return;
     }
 
-    openLiveRobotPicker(chosen);
+    startPracticeMatch(chosen, { liveMode: true });
   }
 
   async function handleLiveCardClick() {
     setShowLiveLinkModal(true);
   }
 
-  async function handleStartLiveFromLink(openSelector = false) {
+  async function handleStartLiveFromLink() {
     if (!selectedMode) {
       alert("Select a practice mode first.");
       return;
@@ -2198,10 +2288,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowLiveLinkModal(false);
     const matches = await selectPracticeMatch("live", selectedMode);
     if (matches.length === 0) return;
-    if (openSelector) {
-      setShowMatchSelectModal(true);
-      return;
-    }
     await handleChooseLiveMatchClick(matches);
   }
 
@@ -2950,7 +3036,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return new Set(sharedModalOptions.filter((option) => option.progress === "complete").map((option) => option.id));
     }
 
-    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (liveTbaCompletedMatchKeys.size === 0) {
+      return new Set<string>();
+    }
+
     const bySourceId = new Map(liveScopedCandidateMatches.map((match) => [String(match.id || ""), match] as const));
     const completed = new Set<string>();
 
@@ -2959,17 +3048,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (!source) return;
       const sourceMatchKey = String((source as unknown as Record<string, unknown>).matchKey || "").trim().toLowerCase();
       if (sourceMatchKey && liveTbaCompletedMatchKeys.has(sourceMatchKey)) {
-        completed.add(option.id);
-        return;
-      }
-      const official = readOfficialData(source.officialData);
-      const hasOfficialScore =
-        typeof official.score === "number" && Number.isFinite(official.score) && official.score > 0;
-      const fallbackScore = Number(source.actualScore || 0);
-      const hasFallbackScore = Number.isFinite(fallbackScore) && fallbackScore > 0;
-      const scheduleTime = Number(option.scheduleTime || 0);
-      const likelyCompletedByTime = scheduleTime > 0 && nowSeconds > scheduleTime + 8 * 60;
-      if (hasOfficialScore || hasFallbackScore || likelyCompletedByTime) {
         completed.add(option.id);
       }
     });
@@ -4247,14 +4325,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     className="px-4 py-2 rounded border border-gray-300 font-semibold"
                   >
                     Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleStartLiveFromLink(true)}
-                    disabled={loading}
-                    className="px-4 py-2 rounded border border-indigo-300 text-indigo-800 font-semibold disabled:opacity-50"
-                  >
-                    Pick Match + Robot
                   </button>
                   <button
                     type="submit"
