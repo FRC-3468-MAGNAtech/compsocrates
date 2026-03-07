@@ -14,6 +14,7 @@ import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccurac
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
+import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
