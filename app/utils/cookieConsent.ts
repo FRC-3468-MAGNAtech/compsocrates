@@ -6,6 +6,7 @@ const WINDOW_NAME_KEY = "__compsocrates_cookie_consent__";
 const DOC_DATA_KEY = "cookieConsent";
 const WINDOW_RUNTIME_KEY = "__compsocratesCookieConsent";
 const WINDOW_BANNER_DISMISSED_KEY = "__compsocratesCookieBannerDismissed";
+const BANNER_DISMISSED_SESSION_KEY = "__compsocrates_cookie_banner_dismissed__";
 
 export type CookieConsentValue = "accepted" | "rejected";
 
@@ -16,12 +17,22 @@ type CookieWindow = Window & {
 
 export function isCookieBannerDismissed(): boolean {
   if (typeof window === "undefined") return false;
-  return (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] === true;
+  if ((window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] === true) return true;
+  try {
+    return window.sessionStorage.getItem(BANNER_DISMISSED_SESSION_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function dismissCookieBannerInSession() {
   if (typeof window === "undefined") return;
   (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] = true;
+  try {
+    window.sessionStorage.setItem(BANNER_DISMISSED_SESSION_KEY, "1");
+  } catch {
+    // Best-effort persist.
+  }
 }
 
 export function readCookieConsent(): CookieConsentValue | null {
@@ -126,6 +137,11 @@ export function clearCookieConsent() {
   if (typeof window !== "undefined") {
     (window as CookieWindow)[WINDOW_RUNTIME_KEY] = null;
     (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] = false;
+    try {
+      window.sessionStorage.removeItem(BANNER_DISMISSED_SESSION_KEY);
+    } catch {
+      // Best-effort clear.
+    }
   }
   if (typeof document !== "undefined") {
     delete document.documentElement.dataset[DOC_DATA_KEY];

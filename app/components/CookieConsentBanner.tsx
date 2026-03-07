@@ -32,17 +32,9 @@ export default function CookieConsentBanner() {
       setVisible(shouldShowCookieBanner());
     }
 
-    function onVisibilityRefresh() {
-      setVisible(shouldShowCookieBanner());
-    }
-
     window.addEventListener("cookie-consent-changed", onConsentChanged as EventListener);
-    window.addEventListener("focus", onVisibilityRefresh);
-    document.addEventListener("visibilitychange", onVisibilityRefresh);
     return () => {
       window.removeEventListener("cookie-consent-changed", onConsentChanged as EventListener);
-      window.removeEventListener("focus", onVisibilityRefresh);
-      document.removeEventListener("visibilitychange", onVisibilityRefresh);
     };
   }, []);
 
