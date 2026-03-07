@@ -1595,14 +1595,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }, [selectedMode, currentMatch?.id]);
 
   useEffect(() => {
-    if (!currentMatch || selectedDifficulty === "live") return;
+    if (!currentMatch) return;
+    if (selectedDifficulty === "live" && liveLobby) return;
     const expectedTeam = currentMatch.allianceTeams[currentRobotIndex]?.toString() || "";
     if (activeMatchGame === "REBUILT") {
       setRebuiltFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
       return;
     }
     setFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
-  }, [activeMatchGame, currentMatch, currentRobotIndex, selectedDifficulty]);
+  }, [activeMatchGame, currentMatch, currentRobotIndex, selectedDifficulty, liveLobby]);
 
   function clearPracticeDraft() {
     if (typeof window === "undefined" || !userData?.uid) return;
@@ -1862,7 +1863,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setRobotSessions([]);
     setRebuiltRobotSessions([]);
     const defaultTeam = safeMatch.allianceTeams[initialRobotIndex]?.toString() || "";
-    const initialTeamNumber = options?.teamNumber || (isLiveSession ? "" : defaultTeam);
+    const initialTeamNumber = options?.teamNumber || (isLiveSession && liveLobby ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
     setHumanPlayerRobot(Math.floor(Math.random() * 3));
@@ -2092,7 +2093,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
     setCurrentRobotIndex(nextRobotIndex);
     const defaultTeam = currentMatch.allianceTeams[nextRobotIndex]?.toString() || "";
-    const nextTeamNumber = selectedDifficulty === "live" ? "" : defaultTeam;
+    const nextTeamNumber = selectedDifficulty === "live" && liveLobby ? "" : defaultTeam;
     setFormData(createEmptyScoutedData(nextTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(nextTeamNumber));
     setCurrentStep('practice');
