@@ -388,8 +388,38 @@ function AssignmentsContent() {
         startDate: event.startDate,
         endDate: event.endDate,
       }));
+      let practiceUniverse = [...fallbackFromApp];
+      if (encryptedKey || plainKey) {
+        const years = new Set<number>();
+        years.add(new Date().getFullYear());
+        signedEventKeys.forEach((eventKey) => {
+          const year = Number(String(eventKey || "").slice(0, 4));
+          if (Number.isFinite(year)) years.add(year);
+        });
+        const tbaResponses = await Promise.all(
+          Array.from(years).map(async (year) => {
+            const response = await fetch("/api/tba/events", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ year, encryptedKey, plainKey }),
+            });
+            if (!response.ok) return [] as Array<Record<string, unknown>>;
+            const payload = (await response.json()) as { events?: Array<Record<string, unknown>> };
+            return Array.isArray(payload.events) ? payload.events : [];
+          })
+        );
+        const tbaOptions = tbaResponses.flat().map((event) => ({
+          key: String(event.key || "").trim(),
+          name: String(event.name || event.key || "").trim(),
+          startDate: String(event.start_date || `${new Date().getFullYear()}-01-01`),
+          endDate: String(event.end_date || event.start_date || `${new Date().getFullYear()}-01-01`),
+        })).filter((event) => Boolean(event.key));
+        if (tbaOptions.length > 0) {
+          practiceUniverse = dedupeEventOptionsByName([...practiceUniverse, ...tbaOptions]);
+        }
+      }
       const availablePracticeEvents = sortEventOptions(
-        dedupeEventOptionsByName(fallbackFromApp.filter((event) => !signedEventKeys.includes(event.key)))
+        dedupeEventOptionsByName(practiceUniverse.filter((event) => !signedEventKeys.includes(event.key)))
       );
       setPracticeEventOptions(availablePracticeEvents);
       const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
