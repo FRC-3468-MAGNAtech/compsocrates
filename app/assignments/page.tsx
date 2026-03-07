@@ -112,6 +112,7 @@ type RandomizeConfig = {
   matchCount: number;
   pattern: RandomizePattern;
   scoutIds: string[];
+  practiceEventKey?: string;
 };
 
 function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
@@ -312,6 +313,7 @@ function AssignmentsContent() {
   const [assignmentView, setAssignmentView] = useState<"practice" | "match" | "pit">("match");
   const [showRandomizeModal, setShowRandomizeModal] = useState(false);
   const [randomizeTarget, setRandomizeTarget] = useState<RandomizeTarget>("match");
+  const [randomizePracticeEventKey, setRandomizePracticeEventKey] = useState("");
   const [randomizeMatchCount, setRandomizeMatchCount] = useState("");
   const [randomizePattern, setRandomizePattern] = useState<RandomizePattern>("rotate-each-match");
   const [randomizeScoutIds, setRandomizeScoutIds] = useState<string[]>([]);
@@ -620,21 +622,26 @@ function AssignmentsContent() {
     return teams.filter((teamNumber) => !assigned.has(teamNumber));
   }, [eventTeamOptions, pitAssignments]);
 
-  const randomizeEligibleMembers = useMemo(() => {
-    const attendeeKeys = eventAttendees[selectedEvent] || [];
-    const attendeeMembers = members.filter(
-      (member) => attendeeKeys.includes(member.uid) || attendeeKeys.includes(member.displayName)
-    );
-    const sourceMembers = attendeeMembers.length > 0 ? attendeeMembers : members;
-    return sourceMembers.filter((member) => {
-      if (!member.displayName.trim()) return false;
+  const randomizeEligibleMembers = useMemo(
+    () => members.filter((member) => Boolean(member.displayName || "").trim().length > 0),
+    [members]
+  );
+  const randomizeRoleKeys = useMemo(() => {
+    const set = new Set<string>();
+    randomizeEligibleMembers.forEach((member) => {
       const roles = getUserRoles({ role: member.role });
-      return roles.includes("match-scout") || roles.includes("media") || roles.includes("lead-scout");
+      if (roles.length === 0) {
+        set.add(normalizeLegacyRole(member.role));
+        return;
+      }
+      roles.forEach((role) => set.add(role));
     });
-  }, [eventAttendees, members, selectedEvent]);
+    return Array.from(set);
+  }, [randomizeEligibleMembers]);
 
   function openRandomizeConfig(target: RandomizeTarget) {
     setRandomizeTarget(target);
+    setRandomizePracticeEventKey(target === "practice" ? (selectedPracticeEventKey || selectedEvent) : "");
     setRandomizeMatchCount("");
     setRandomizePattern("rotate-each-match");
     setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid));
@@ -645,11 +652,12 @@ function AssignmentsContent() {
     setRandomizeScoutIds((prev) => (prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]));
   }
 
-  function presetRandomizeScoutsByRoles(roleKeys: Array<"match-scout" | "media" | "lead-scout">) {
+  function presetRandomizeScoutsByRoles(roleKeys: string[]) {
     const next = randomizeEligibleMembers
       .filter((member) => {
         const roles = getUserRoles({ role: member.role });
-        return roleKeys.some((role) => roles.includes(role));
+        const normalizedFallback = normalizeLegacyRole(member.role);
+        return roleKeys.some((role) => roles.includes(role) || normalizedFallback === role);
       })
       .map((member) => member.uid);
     setRandomizeScoutIds(next);
@@ -999,7 +1007,41 @@ function AssignmentsContent() {
 
   async function randomizePracticeAssignments(config?: RandomizeConfig) {
     if (!userData || !selectedEvent) return;
-    const allPracticeMatches = practiceMatchOptions.filter((match) => match.stage === "practice");
+    const practiceEventKey = String(config?.practiceEventKey || selectedEvent).trim();
+    if (!practiceEventKey) {
+      alert("Select a practice event first.");
+      return;
+    }
+    let allPracticeMatches = practiceMatchOptions.filter(
+      (match) => match.stage === "practice" && match.eventKey === practiceEventKey
+    );
+    if (allPracticeMatches.length === 0) {
+      const practiceMatchesSnap = await getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", practiceEventKey)));
+      allPracticeMatches = practiceMatchesSnap.docs
+        .map((practiceDoc) => {
+          const data = practiceDoc.data() as Record<string, unknown>;
+          const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+          const matchNumber = Number(data.matchNumber || 0);
+          const scheduleTime = Number(data.scheduleTime || data.time || 0);
+          const alliance = String(data.alliance || "").trim().toLowerCase();
+          const teams = parseTeamNumbers(
+            data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+          ).slice(0, 3);
+          return {
+            id: practiceDoc.id,
+            eventKey: practiceEventKey,
+            matchKey: String(data.matchKey || practiceDoc.id),
+            label: practiceMatchLabel(stage, matchNumber, alliance),
+            teams,
+            stage,
+            matchNumber,
+            scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+            isManual: Boolean(data.manualGenerated),
+          } as PracticeMatchOption;
+        })
+        .filter((row) => row.teams.length >= 3 && row.matchNumber > 0 && row.stage === "practice")
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+    }
     const requestedMatchCount = Math.max(0, Number(config?.matchCount || 0));
     const targetMatches = requestedMatchCount > 0 ? allPracticeMatches.slice(0, requestedMatchCount) : allPracticeMatches;
     if (targetMatches.length === 0) {
@@ -1020,19 +1062,19 @@ function AssignmentsContent() {
 
     try {
       const existing = assignments.filter(
-        (assignment) => assignment.eventKey === selectedEvent && isEventPracticeAssignment(assignment)
+        (assignment) => assignment.eventKey === practiceEventKey && isEventPracticeAssignment(assignment)
       );
       await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
 
       const manualPriorityTeams = Array.from(
-        new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+        new Set([...(manualPriorityTeamsByEvent[practiceEventKey] || []), ...manualPriorityTeamsGlobal])
       );
 
       const lowScoutMode = eligibleMembers.length < 6;
-      const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
+      const yearFromEvent = parseInt(practiceEventKey.slice(0, 4), 10) || new Date().getFullYear();
       const allPracticeTeams = Array.from(new Set(targetMatches.flatMap((match) => match.teams))).filter((team) => Number.isFinite(team));
       const { historyMap, statboticsMap } = lowScoutMode
-        ? await buildPerformanceMapsForTeams(allPracticeTeams, yearFromEvent, selectedEvent)
+        ? await buildPerformanceMapsForTeams(allPracticeTeams, yearFromEvent, practiceEventKey)
         : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
       const scoutOrder = [...eligibleMembers];
       const now = Date.now();
@@ -1047,7 +1089,7 @@ function AssignmentsContent() {
           const scout = pickScoutForSlot(scoutOrder, matchIndex, teamIndex, config?.pattern || "rotate-each-match");
           if (!scout) return;
           newAssignments.push({
-            eventKey: selectedEvent,
+            eventKey: practiceEventKey,
             matchKey: `p${match.matchNumber}`,
             matchLabel: `Practice ${match.matchNumber}`,
             scoutId: scout.uid,
@@ -1099,6 +1141,7 @@ function AssignmentsContent() {
       matchCount,
       pattern: randomizePattern,
       scoutIds: randomizeScoutIds,
+      practiceEventKey: randomizeTarget === "practice" ? randomizePracticeEventKey : undefined,
     };
     setShowRandomizeModal(false);
     if (config.target === "practice") {
@@ -1720,6 +1763,23 @@ function AssignmentsContent() {
                 </div>
 
                 <div className="space-y-4">
+                  {randomizeTarget === "practice" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Competition To Practice Scout</label>
+                      <select
+                        value={randomizePracticeEventKey}
+                        onChange={(e) => setRandomizePracticeEventKey(e.target.value)}
+                        className="w-full border rounded p-2"
+                      >
+                        <option value="">Select Competition</option>
+                        {practiceEventOptions.map((event) => (
+                          <option key={event.key} value={event.key}>
+                            {event.name} ({event.key})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Matches To Randomize</label>
                     <input
@@ -1757,15 +1817,16 @@ function AssignmentsContent() {
                       <button type="button" onClick={() => setRandomizeScoutIds([])} className="px-2 py-1 rounded border text-xs">
                         Clear
                       </button>
-                      <button type="button" onClick={() => presetRandomizeScoutsByRoles(["match-scout"])} className="px-2 py-1 rounded border text-xs">
-                        Match Scout
-                      </button>
-                      <button type="button" onClick={() => presetRandomizeScoutsByRoles(["lead-scout"])} className="px-2 py-1 rounded border text-xs">
-                        Lead Scout
-                      </button>
-                      <button type="button" onClick={() => presetRandomizeScoutsByRoles(["media"])} className="px-2 py-1 rounded border text-xs">
-                        Media
-                      </button>
+                      {randomizeRoleKeys.map((roleKey) => (
+                        <button
+                          key={`randomize-role-${roleKey}`}
+                          type="button"
+                          onClick={() => presetRandomizeScoutsByRoles([roleKey])}
+                          className="px-2 py-1 rounded border text-xs"
+                        >
+                          {getRoleLabel(roleKey)}
+                        </button>
+                      ))}
                     </div>
                     <div className="max-h-52 overflow-y-auto border rounded p-2 space-y-1">
                       {randomizeEligibleMembers.length === 0 ? (
@@ -1796,7 +1857,7 @@ function AssignmentsContent() {
                     onClick={() => void runRandomizeFromConfig()}
                     className="flex-1 py-2 rounded text-white font-semibold"
                     style={{ backgroundColor: "var(--primary-color)" }}
-                    disabled={randomizeScoutIds.length === 0}
+                    disabled={randomizeScoutIds.length === 0 || (randomizeTarget === "practice" && !randomizePracticeEventKey)}
                   >
                     Run Randomize
                   </button>
