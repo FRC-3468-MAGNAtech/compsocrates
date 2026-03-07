@@ -2,12 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { isCookieBannerDismissed, readCookieConsent, writeCookieConsent } from "@/app/utils/cookieConsent";
+import {
+  dismissCookieBannerInSession,
+  isCookieBannerDismissed,
+  readCookieConsent,
+  writeCookieConsent,
+} from "@/app/utils/cookieConsent";
 
 let dismissedInMemory = false;
 
+function shouldShowCookieBanner() {
+  return !dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null;
+}
+
 export default function CookieConsentBanner() {
-  const [visible, setVisible] = useState(() => !dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null);
+  const [visible, setVisible] = useState(() => shouldShowCookieBanner());
 
   useEffect(() => {
     function onConsentChanged(event: Event) {
@@ -20,11 +29,21 @@ export default function CookieConsentBanner() {
       if (detail === null) {
         dismissedInMemory = false;
       }
-      setVisible(!dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null);
+      setVisible(shouldShowCookieBanner());
     }
+
+    function onVisibilityRefresh() {
+      setVisible(shouldShowCookieBanner());
+    }
+
     window.addEventListener("cookie-consent-changed", onConsentChanged as EventListener);
-    setVisible(!dismissedInMemory && !isCookieBannerDismissed() && readCookieConsent() === null);
-    return () => window.removeEventListener("cookie-consent-changed", onConsentChanged as EventListener);
+    window.addEventListener("focus", onVisibilityRefresh);
+    document.addEventListener("visibilitychange", onVisibilityRefresh);
+    return () => {
+      window.removeEventListener("cookie-consent-changed", onConsentChanged as EventListener);
+      window.removeEventListener("focus", onVisibilityRefresh);
+      document.removeEventListener("visibilitychange", onVisibilityRefresh);
+    };
   }, []);
 
   if (!visible) return null;
@@ -44,9 +63,10 @@ export default function CookieConsentBanner() {
             type="button"
             className="rounded border border-gray-300 px-3 py-2 text-sm"
             onClick={() => {
+              dismissCookieBannerInSession();
               dismissedInMemory = true;
-              setVisible(false);
               writeCookieConsent("rejected");
+              setVisible(false);
             }}
           >
             Reject Optional
@@ -56,9 +76,10 @@ export default function CookieConsentBanner() {
             className="rounded px-3 py-2 text-sm text-white"
             style={{ backgroundColor: "var(--primary-color)" }}
             onClick={() => {
+              dismissCookieBannerInSession();
               dismissedInMemory = true;
-              setVisible(false);
               writeCookieConsent("accepted");
+              setVisible(false);
             }}
           >
             Accept All

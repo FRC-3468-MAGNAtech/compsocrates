@@ -16,7 +16,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
-import { Calendar, Users, Trash2, Plus, ClipboardCheck } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
@@ -95,6 +95,13 @@ type PracticeMatchOption = {
   stage: "practice" | "qualification" | "playoff";
   matchNumber: number;
   scheduleTime: number;
+  isManual: boolean;
+};
+
+type AssignmentMatchChoice = {
+  key: string;
+  label: string;
+  teams: number[];
 };
 
 function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
@@ -193,6 +200,12 @@ function practiceMatchLabel(stage: "practice" | "qualification" | "playoff", mat
   return `${prefix} ${matchNumber} • ${allianceLabel}`;
 }
 
+function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string }) {
+  const key = String(row.matchKey || "").toLowerCase();
+  const label = String(row.matchLabel || "").toLowerCase();
+  return key.includes("_pm") || /^p\d+$/.test(key) || label.includes("practice ");
+}
+
 function scoreScoutingRecord(record: Record<string, unknown>): number {
   let score = 0;
   if (Boolean(record.leftStartingZone)) score += 3;
@@ -277,7 +290,13 @@ function AssignmentsContent() {
   const [selectedPitScoutId, setSelectedPitScoutId] = useState("");
   const [selectedPitTeamNumber, setSelectedPitTeamNumber] = useState("");
   const [selectedMatchType, setSelectedMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
-  const [assignmentModalMode, setAssignmentModalMode] = useState<"match" | "pit">("match");
+  const [assignmentModalMode, setAssignmentModalMode] = useState<"match" | "pit" | "practice">("match");
+  const [selectedPracticeEventKey, setSelectedPracticeEventKey] = useState("");
+  const [selectedPracticeMatchNumber, setSelectedPracticeMatchNumber] = useState("");
+  const [selectedPracticeScoutId, setSelectedPracticeScoutId] = useState("");
+  const [selectedPracticeTeamNumber, setSelectedPracticeTeamNumber] = useState("");
+  const [scheduleView, setScheduleView] = useState<"practice" | "match">("match");
+  const [assignmentView, setAssignmentView] = useState<"practice" | "match" | "pit">("match");
 
   useEffect(() => {
     void loadData();
@@ -363,6 +382,9 @@ function AssignmentsContent() {
       if (!selectedEvent || effectiveEvent !== selectedEvent) {
         setSelectedEvent(effectiveEvent);
       }
+      if (!selectedPracticeEventKey) {
+        setSelectedPracticeEventKey(effectiveEvent);
+      }
       if (!effectiveEvent) {
         setAssignments([]);
         setPitAssignments([]);
@@ -372,12 +394,25 @@ function AssignmentsContent() {
         return;
       }
 
-      const [assignmentsSnap, pitAssignmentsSnap, practiceAssignmentsSnap, practiceMatchesSnap] = await Promise.all([
+      const [assignmentsSnap, pitAssignmentsSnap, practiceMatchesSnap] = await Promise.all([
         getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", effectiveEvent))),
         getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", effectiveEvent))),
-        getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", effectiveEvent))),
         getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", effectiveEvent))),
       ]);
+      let practiceAssignmentsDocs = [] as Array<{ id: string; data: Record<string, unknown> }>;
+      try {
+        const byTeamSnap = await getDocs(query(collection(db, "practiceAssignments"), where("teamId", "==", userData.teamId)));
+        practiceAssignmentsDocs = byTeamSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          data: assignmentDoc.data() as Record<string, unknown>,
+        }));
+      } catch {
+        const byEventSnap = await getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", effectiveEvent)));
+        practiceAssignmentsDocs = byEventSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          data: assignmentDoc.data() as Record<string, unknown>,
+        }));
+      }
       setAssignments(
         assignmentsSnap.docs.map((assignmentDoc) => ({
           id: assignmentDoc.id,
@@ -391,9 +426,9 @@ function AssignmentsContent() {
         })) as PitAssignment[]
       );
       setPracticeAssignments(
-        practiceAssignmentsSnap.docs.map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          ...assignmentDoc.data(),
+        practiceAssignmentsDocs.map((row) => ({
+          id: row.id,
+          ...row.data,
         })) as PracticeAssignment[]
       );
 
@@ -416,6 +451,7 @@ function AssignmentsContent() {
             stage,
             matchNumber,
             scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+            isManual: Boolean(data.manualGenerated),
           } as PracticeMatchOption;
         })
         .filter((row) => row.teams.length >= 3 && row.matchNumber > 0)
@@ -474,9 +510,37 @@ function AssignmentsContent() {
     }
   }
 
+  const eventTeamOptions = useMemo(
+    () => Array.from(new Set(matchOptions.flatMap((match) => match.teams))).sort((a, b) => a - b),
+    [matchOptions]
+  );
+  const eventPracticeMatches = useMemo(
+    () => practiceMatchOptions.filter((match) => match.stage === "practice"),
+    [practiceMatchOptions]
+  );
+  const typeFilteredMatches = useMemo<AssignmentMatchChoice[]>(() => {
+    if (selectedMatchType === "practice") {
+      return eventPracticeMatches
+        .slice()
+        .sort((a, b) => a.matchNumber - b.matchNumber)
+        .map((match) => ({
+          key: `p${match.matchNumber}`,
+          label: `Practice ${match.matchNumber}`,
+          teams: match.teams.length > 0 ? match.teams : eventTeamOptions,
+        }));
+    }
+    if (selectedMatchType === "qualification") {
+      return matchOptions
+        .filter((match) => match.compLevel === "qm")
+        .map((match) => ({ key: match.key, label: match.label, teams: match.teams }));
+    }
+    return matchOptions
+      .filter((match) => match.compLevel !== "qm")
+      .map((match) => ({ key: match.key, label: match.label, teams: match.teams }));
+  }, [eventPracticeMatches, eventTeamOptions, matchOptions, selectedMatchType]);
   const selectedMatch = useMemo(
-    () => matchOptions.find((match) => match.key === selectedMatchKey) || null,
-    [matchOptions, selectedMatchKey]
+    () => typeFilteredMatches.find((match) => match.key === selectedMatchKey) || null,
+    [typeFilteredMatches, selectedMatchKey]
   );
   const activeOrNextMatchKey = useMemo(() => {
     const now = Date.now() / 1000;
@@ -489,32 +553,69 @@ function AssignmentsContent() {
     const next = timedMatches.find((match) => match.scheduleTime >= now);
     return next?.key || timedMatches[timedMatches.length - 1].key;
   }, [matchOptions]);
-  const activeOrNextPracticeMatchId = useMemo(() => {
-    const now = Date.now() / 1000;
-    const timedMatches = [...practiceMatchOptions]
-      .filter((match) => match.scheduleTime > 0)
-      .sort((a, b) => a.scheduleTime - b.scheduleTime);
-    if (timedMatches.length === 0) return "";
-    const active = timedMatches.find((match) => now >= match.scheduleTime && now <= match.scheduleTime + 8 * 60);
-    if (active) return active.id;
-    const next = timedMatches.find((match) => match.scheduleTime >= now);
-    return next?.id || timedMatches[timedMatches.length - 1].id;
-  }, [practiceMatchOptions]);
-
-  const typeFilteredMatches = useMemo(() => {
-    if (selectedMatchType === "practice") {
-      return matchOptions.filter((match) => match.compLevel === "qm").slice(0, 20);
-    }
-    if (selectedMatchType === "qualification") {
-      return matchOptions.filter((match) => match.compLevel === "qm");
-    }
-    return matchOptions.filter((match) => match.compLevel !== "qm");
-  }, [matchOptions, selectedMatchType]);
   const pitTeamOptions = useMemo(() => {
-    const teams = Array.from(new Set(matchOptions.flatMap((match) => match.teams))).sort((a, b) => a - b);
+    const teams = [...eventTeamOptions];
     const assigned = new Set(pitAssignments.map((assignment) => assignment.teamNumber));
     return teams.filter((teamNumber) => !assigned.has(teamNumber));
-  }, [matchOptions, pitAssignments]);
+  }, [eventTeamOptions, pitAssignments]);
+
+  async function generateManualPracticeMatches() {
+    if (!userData || !selectedEvent) return;
+    const response = window.prompt(
+      "No event practice matches were detected. How many event practice matches should be created?",
+      "20"
+    );
+    if (response === null) return;
+    const count = Math.max(1, Math.min(150, parseInt(response.replace(/[^\d]/g, ""), 10) || 0));
+    if (!count) {
+      alert("Enter a valid number of practice matches.");
+      return;
+    }
+
+    try {
+      const now = Date.now();
+      await Promise.all(
+        Array.from({ length: count }, (_, index) => {
+          const matchNumber = index + 1;
+          const docId = `manual_${selectedEvent}_practice_${matchNumber}`;
+          return setDoc(
+            doc(db, "practiceMatches", docId),
+            {
+              eventKey: selectedEvent,
+              matchNumber,
+              matchType: "practice",
+              matchKey: `${selectedEvent}_pm${matchNumber}`,
+              alliance: "",
+              allianceTeams: [],
+              teams: [],
+              scheduleTime: 0,
+              manualGenerated: true,
+              generatedBy: userData.uid,
+              generatedAt: now,
+            },
+            { merge: true }
+          );
+        })
+      );
+      await loadData();
+      setSelectedMatchType("practice");
+      setSelectedMatchKey("");
+      setSelectedTeamNumber("");
+    } catch (error) {
+      console.error("Error generating manual event practice matches:", error);
+      alert("Could not generate manual practice matches.");
+    }
+  }
+
+  async function selectMatchType(type: "practice" | "qualification" | "finals") {
+    if (type === "practice" && eventPracticeMatches.length === 0) {
+      await generateManualPracticeMatches();
+      return;
+    }
+    setSelectedMatchType(type);
+    setSelectedMatchKey("");
+    setSelectedTeamNumber("");
+  }
 
   async function createAssignment() {
     if (!userData || !selectedMatch || !selectedScoutId || !selectedTeamNumber) return;
@@ -777,7 +878,8 @@ function AssignmentsContent() {
 
   async function randomizePracticeAssignments() {
     if (!userData || !selectedEvent) return;
-    if (practiceMatchOptions.length === 0) {
+    const targetMatches = practiceMatchOptions.filter((match) => match.stage === "practice");
+    if (targetMatches.length === 0) {
       alert("No practice matches available to randomize.");
       return;
     }
@@ -797,11 +899,13 @@ function AssignmentsContent() {
       return;
     }
 
-    if (!confirm("Randomize practice scouting assignments for this event? Existing practice assignments will be replaced.")) return;
+    if (!confirm("Randomize event practice match assignments for this event? Existing event-practice match assignments will be replaced.")) return;
 
     try {
-      const existing = practiceAssignments.filter((assignment) => assignment.eventKey === selectedEvent);
-      await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "practiceAssignments", assignment.id))));
+      const existing = assignments.filter(
+        (assignment) => assignment.eventKey === selectedEvent && isEventPracticeAssignment(assignment)
+      );
+      await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
 
       const manualPriorityTeams = Array.from(
         new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
@@ -824,10 +928,11 @@ function AssignmentsContent() {
       const shuffledScouts = [...eligibleMembers].sort(() => Math.random() - 0.5);
       let scoutPointer = 0;
       const now = Date.now();
-      const newAssignments: Array<Omit<PracticeAssignment, "id">> = [];
+      const newAssignments: Array<Omit<Assignment, "id">> = [];
 
-      practiceMatchOptions.forEach((match, matchIndex) => {
-        const teamOrder = [...match.teams].sort((a, b) => {
+      targetMatches.forEach((match, matchIndex) => {
+        const sourceTeams = match.teams.length > 0 ? match.teams : eventTeamOptions;
+        const teamOrder = [...sourceTeams].sort((a, b) => {
           const aPriority = manualPriorityTeams.includes(a) ? 0 : 1;
           const bPriority = manualPriorityTeams.includes(b) ? 0 : 1;
           if (aPriority !== bPriority) return aPriority - bPriority;
@@ -844,9 +949,8 @@ function AssignmentsContent() {
           if (!scout) return;
           newAssignments.push({
             eventKey: selectedEvent,
-            practiceMatchId: match.id,
-            matchKey: match.matchKey,
-            matchLabel: match.label,
+            matchKey: `p${match.matchNumber}`,
+            matchLabel: `Practice ${match.matchNumber}`,
             scoutId: scout.uid,
             scoutName: scout.displayName,
             teamNumber,
@@ -856,9 +960,9 @@ function AssignmentsContent() {
         });
       });
 
-      await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "practiceAssignments"), assignment)));
+      await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "matchAssignments"), assignment)));
       await loadData();
-      alert(`Randomized ${newAssignments.length} practice assignments across ${practiceMatchOptions.length} practice matches.`);
+      alert(`Randomized ${newAssignments.length} event-practice match assignments across ${targetMatches.length} practice matches.`);
     } catch (error) {
       console.error("Error randomizing practice assignments:", error);
       alert("Error randomizing practice assignments.");
@@ -883,6 +987,73 @@ function AssignmentsContent() {
       alert("Could not save attendees.");
     }
   }
+
+  async function createPracticeScoutAssignment() {
+    if (!userData || !selectedPracticeScoutId || !selectedPracticeEventKey || !selectedPracticeMatchNumber || !selectedPracticeTeamNumber) return;
+    const scout = members.find((member) => member.uid === selectedPracticeScoutId);
+    if (!scout) return;
+    const matchNumber = parseInt(selectedPracticeMatchNumber, 10);
+    const teamNumber = parseInt(selectedPracticeTeamNumber, 10);
+    if (!Number.isFinite(matchNumber) || matchNumber <= 0) return;
+    if (!Number.isFinite(teamNumber) || teamNumber <= 0) return;
+
+    try {
+      await addDoc(collection(db, "practiceAssignments"), {
+        teamId: userData.teamId || "",
+        eventKey: selectedPracticeEventKey,
+        practiceMatchId: `practice_${selectedPracticeEventKey}_${matchNumber}`,
+        matchKey: `p${matchNumber}`,
+        matchLabel: `Practice ${matchNumber}`,
+        scoutId: selectedPracticeScoutId,
+        scoutName: scout.displayName,
+        teamNumber,
+        assignedBy: userData.uid,
+        assignedAt: Date.now(),
+      });
+      setSelectedPracticeMatchNumber("");
+      setSelectedPracticeTeamNumber("");
+      setSelectedPracticeScoutId("");
+      setShowAssignModal(false);
+      await loadData();
+    } catch (error) {
+      console.error("Error creating practice assignment:", error);
+      alert("Error creating practice assignment");
+    }
+  }
+
+  const matchAssignmentsSorted = useMemo(
+    () =>
+      assignments
+        .filter((assignment) => !isEventPracticeAssignment(assignment))
+        .slice()
+        .sort((a, b) => {
+          const labelDiff = String(a.matchLabel || a.matchKey || "").localeCompare(String(b.matchLabel || b.matchKey || ""));
+          if (labelDiff !== 0) return labelDiff;
+          return a.teamNumber - b.teamNumber;
+        }),
+    [assignments]
+  );
+  const eventPracticeMatchAssignments = useMemo(
+    () => assignments.filter((assignment) => isEventPracticeAssignment(assignment)),
+    [assignments]
+  );
+  const practiceAssignmentsSorted = useMemo(
+    () =>
+      practiceAssignments
+        .slice()
+        .sort((a, b) => {
+          const eventDiff = String(a.eventKey || "").localeCompare(String(b.eventKey || ""));
+          if (eventDiff !== 0) return eventDiff;
+          const labelDiff = String(a.matchLabel || a.matchKey || "").localeCompare(String(b.matchLabel || b.matchKey || ""));
+          if (labelDiff !== 0) return labelDiff;
+          return a.teamNumber - b.teamNumber;
+        }),
+    [practiceAssignments]
+  );
+  const pitAssignmentsSorted = useMemo(
+    () => pitAssignments.slice().sort((a, b) => a.teamNumber - b.teamNumber),
+    [pitAssignments]
+  );
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -956,266 +1127,240 @@ function AssignmentsContent() {
               <LoadingSpinner />
               <p className="text-gray-600">Loading assignments...</p>
             </div>
-          ) : assignments.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-md p-12 text-center">
-              <ClipboardCheck size={56} className="mx-auto mb-4 text-gray-400" />
-              <h2 className="text-2xl font-semibold mb-2">No Assignments Yet</h2>
-              <p className="text-gray-600 mb-6">Create assignments to organize your scouting team for this event.</p>
-              <button
-                onClick={() => setShowAssignModal(true)}
-                className="px-6 py-3 rounded text-white font-semibold"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                Create First Assignment
-              </button>
-            </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {assignments.map((assignment) => (
-                    <tr key={assignment.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <Calendar size={16} className="text-gray-400" />
-                          <span className="font-medium">{assignment.matchLabel || assignment.matchKey}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <Users size={16} className="text-gray-400" />
-                          <span>{assignment.scoutName}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                          Team {assignment.teamNumber}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {new Date(assignment.assignedAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button onClick={() => deleteAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                <div className="p-6 border-b border-gray-200 flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold">Assignments</h2>
+                    <p className="text-sm text-gray-600">
+                      Sort by assignment type. Practice here means practice-scouted assignments; event practice matches stay under match schedule.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAssignmentView("match")}
+                      className={`px-3 py-2 rounded text-sm font-medium ${assignmentView === "match" ? "text-white" : "bg-gray-100 text-gray-700"}`}
+                      style={assignmentView === "match" ? { backgroundColor: "var(--primary-color)" } : undefined}
+                    >
+                      Match
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignmentView("practice")}
+                      className={`px-3 py-2 rounded text-sm font-medium ${assignmentView === "practice" ? "text-white" : "bg-gray-100 text-gray-700"}`}
+                      style={assignmentView === "practice" ? { backgroundColor: "var(--primary-color)" } : undefined}
+                    >
+                      Practice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignmentView("pit")}
+                      className={`px-3 py-2 rounded text-sm font-medium ${assignmentView === "pit" ? "text-white" : "bg-gray-100 text-gray-700"}`}
+                      style={assignmentView === "pit" ? { backgroundColor: "var(--primary-color)" } : undefined}
+                    >
+                      Pit
+                    </button>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      {assignmentView === "pit" ? (
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Event</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {assignmentView === "pit" &&
+                        pitAssignmentsSorted.map((assignment) => (
+                          <tr key={assignment.id}>
+                            <td className="px-6 py-4 whitespace-nowrap font-medium">Team {assignment.teamNumber}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <button onClick={() => void deletePitAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                <Trash2 size={18} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      {assignmentView === "match" &&
+                        matchAssignmentsSorted.map((assignment) => (
+                          <tr key={assignment.id}>
+                            <td className="px-6 py-4 whitespace-nowrap font-medium">{assignment.matchLabel || assignment.matchKey}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">{assignment.eventKey}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">Team {assignment.teamNumber}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <button onClick={() => void deleteAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                <Trash2 size={18} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      {assignmentView === "practice" &&
+                        practiceAssignmentsSorted.map((assignment) => (
+                          <tr key={assignment.id}>
+                            <td className="px-6 py-4 whitespace-nowrap font-medium">{assignment.matchLabel || assignment.matchKey}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">{assignment.eventKey}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">Team {assignment.teamNumber}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                <Trash2 size={18} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      {assignmentView === "pit" && pitAssignmentsSorted.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">No pit assignments yet.</td>
+                        </tr>
+                      )}
+                      {assignmentView === "match" && matchAssignmentsSorted.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">No match assignments yet.</td>
+                        </tr>
+                      )}
+                      {assignmentView === "practice" && practiceAssignmentsSorted.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">No practice assignments yet.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
+                <div className="p-6 border-b border-gray-200 flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold">Match Schedule</h2>
+                    <p className="text-sm text-gray-600">
+                      Sort between event practice matches and regular match schedule.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setScheduleView("practice")}
+                      className={`px-3 py-2 rounded text-sm font-medium ${scheduleView === "practice" ? "text-white" : "bg-gray-100 text-gray-700"}`}
+                      style={scheduleView === "practice" ? { backgroundColor: "var(--primary-color)" } : undefined}
+                    >
+                      Practice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScheduleView("match")}
+                      className={`px-3 py-2 rounded text-sm font-medium ${scheduleView === "match" ? "text-white" : "bg-gray-100 text-gray-700"}`}
+                      style={scheduleView === "match" ? { backgroundColor: "var(--primary-color)" } : undefined}
+                    >
+                      Match
+                    </button>
+                    <button
+                      onClick={scheduleView === "practice" ? randomizePracticeAssignments : randomizeAllAssignments}
+                      className="px-4 py-2 rounded text-white text-sm font-semibold"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      {scheduleView === "practice" ? "Randomize Practice" : "Randomize Match"}
+                    </button>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {scheduleView === "practice" &&
+                        eventPracticeMatches
+                          .slice()
+                          .sort((a, b) => a.matchNumber - b.matchNumber)
+                          .map((match) => {
+                            const perMatch = eventPracticeMatchAssignments.filter(
+                              (assignment) => assignment.matchKey === `p${match.matchNumber}`
+                            );
+                            return (
+                              <tr key={match.id}>
+                                <td className="px-6 py-4 whitespace-nowrap font-medium">{`Practice ${match.matchNumber}`}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                  {match.scheduleTime > 0
+                                    ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                                    : (match.isManual ? "Manual" : "TBD")}
+                                </td>
+                                <td className="px-6 py-4 text-sm">
+                                  {perMatch.length === 0
+                                    ? "Unassigned"
+                                    : perMatch.map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`).join(" | ")}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      {scheduleView === "match" &&
+                        matchOptions.map((match) => {
+                          const perMatch = matchAssignmentsSorted.filter((assignment) => assignment.matchKey === match.key);
+                          const isActive = activeOrNextMatchKey === match.key;
+                          return (
+                            <tr key={match.key} className={isActive ? "bg-yellow-50" : ""}>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="font-medium">{match.label}</span>
+                                {isActive && <span className="ml-2 text-xs font-semibold text-yellow-700">ACTIVE/NEXT</span>}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                {match.scheduleTime > 0
+                                  ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                                  : "TBD"}
+                              </td>
+                              <td className="px-6 py-4 text-sm">
+                                {perMatch.length === 0
+                                  ? "Unassigned"
+                                  : perMatch.map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`).join(" | ")}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {scheduleView === "practice" && eventPracticeMatches.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
+                            No event practice matches found. Open New Assignment and click Practice to generate manual practice matches.
+                          </td>
+                        </tr>
+                      )}
+                      {scheduleView === "match" && matchOptions.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
+                            No match schedule found for this event.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
-
-          <div className="bg-white rounded-xl shadow-md p-6 mt-6">
-            <h2 className="text-xl font-semibold mb-1">Pit Scouting Assignments</h2>
-            <p className="text-sm text-gray-600 mb-4">Use New Assignment modal to add pit assignments.</p>
-
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {pitAssignments
-                    .slice()
-                    .sort((a, b) => a.teamNumber - b.teamNumber)
-                    .map((assignment) => (
-                      <tr key={assignment.id}>
-                        <td className="px-4 py-2 font-medium">Team {assignment.teamNumber}</td>
-                        <td className="px-4 py-2">{assignment.scoutName}</td>
-                        <td className="px-4 py-2">
-                          <button onClick={() => void deletePitAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
-                            <Trash2 size={18} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  {pitAssignments.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-500">
-                        No pit assignments yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6 mt-6">
-            <h2 className="text-xl font-semibold mb-1">Practice Scouting Assignments</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Separate from comp match assignments. Priority teams and low-data teams are assigned first.
-            </p>
-
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Practice Match</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {practiceAssignments
-                    .slice()
-                    .sort((a, b) => String(a.matchLabel || "").localeCompare(String(b.matchLabel || "")))
-                    .map((assignment) => (
-                      <tr key={assignment.id}>
-                        <td className="px-4 py-2 font-medium">{assignment.matchLabel || assignment.matchKey}</td>
-                        <td className="px-4 py-2">{assignment.scoutName}</td>
-                        <td className="px-4 py-2">Team {assignment.teamNumber}</td>
-                        <td className="px-4 py-2">
-                          <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
-                            <Trash2 size={18} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  {practiceAssignments.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-500">
-                        No practice assignments yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold">Practice Match Schedule</h2>
-                <p className="text-sm text-gray-600">Practice scouting queue with prioritized team coverage.</p>
-              </div>
-              <button
-                onClick={randomizePracticeAssignments}
-                className="px-4 py-2 rounded text-white text-sm font-semibold"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                Randomize Practice
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {practiceMatchOptions.map((match) => {
-                    const perMatch = practiceAssignments.filter((assignment) => assignment.practiceMatchId === match.id);
-                    const isActive = activeOrNextPracticeMatchId === match.id;
-                    return (
-                      <tr key={match.id} className={isActive ? "bg-yellow-50" : ""}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-medium">{match.label}</span>
-                          {isActive && <span className="ml-2 text-xs font-semibold text-yellow-700">ACTIVE/NEXT</span>}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {match.scheduleTime > 0
-                            ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-                            : "TBD"}
-                        </td>
-                        <td className="px-6 py-4 text-sm">
-                          {perMatch.length === 0
-                            ? "Unassigned"
-                            : perMatch.map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`).join(" | ")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {practiceMatchOptions.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-6 text-center text-sm text-gray-500">
-                        No practice matches found for this event.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md overflow-hidden mt-6">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold">Match Schedule</h2>
-                <p className="text-sm text-gray-600">Live schedule with assigned scouts for each team.</p>
-              </div>
-              <button
-                onClick={randomizeAllAssignments}
-                className="px-4 py-2 rounded text-white text-sm font-semibold"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                Randomize All
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {matchOptions.map((match) => {
-                    const matchAssignments = assignments.filter((assignment) => assignment.matchKey === match.key);
-                    const isActive = activeOrNextMatchKey === match.key;
-                    return (
-                      <tr key={match.key} className={isActive ? "bg-yellow-50" : ""}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-medium">{match.label}</span>
-                          {isActive && <span className="ml-2 text-xs font-semibold text-yellow-700">ACTIVE/NEXT</span>}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {match.scheduleTime > 0
-                            ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-                            : "TBD"}
-                        </td>
-                        <td className="px-6 py-4 text-sm">
-                          {matchAssignments.length === 0
-                            ? "Unassigned"
-                            : matchAssignments
-                                .map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`)
-                                .join(" | ")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
 
           {showAssignModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
                 <h2 className="text-2xl font-bold mb-4 theme-text">New Assignment</h2>
-                <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="grid grid-cols-3 gap-2 mb-4">
                   <button
                     onClick={() => setAssignmentModalMode("match")}
                     className={`py-2 rounded text-sm font-medium ${assignmentModalMode === "match" ? "bg-red-600 text-white" : "bg-gray-100"}`}
@@ -1228,6 +1373,12 @@ function AssignmentsContent() {
                   >
                     Pit Scout
                   </button>
+                  <button
+                    onClick={() => setAssignmentModalMode("practice")}
+                    className={`py-2 rounded text-sm font-medium ${assignmentModalMode === "practice" ? "bg-red-600 text-white" : "bg-gray-100"}`}
+                  >
+                    Practice Scout
+                  </button>
                 </div>
                 <div className="space-y-4">
                   {assignmentModalMode === "match" ? (
@@ -1236,9 +1387,7 @@ function AssignmentsContent() {
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       <button
                         onClick={() => {
-                          setSelectedMatchType("practice");
-                          setSelectedMatchKey("");
-                          setSelectedTeamNumber("");
+                          void selectMatchType("practice");
                         }}
                         className={`py-2 rounded text-sm font-medium ${selectedMatchType === "practice" ? "bg-red-600 text-white" : "bg-gray-100"}`}
                       >
@@ -1246,9 +1395,7 @@ function AssignmentsContent() {
                       </button>
                       <button
                         onClick={() => {
-                          setSelectedMatchType("qualification");
-                          setSelectedMatchKey("");
-                          setSelectedTeamNumber("");
+                          void selectMatchType("qualification");
                         }}
                         className={`py-2 rounded text-sm font-medium ${selectedMatchType === "qualification" ? "bg-red-600 text-white" : "bg-gray-100"}`}
                       >
@@ -1256,9 +1403,7 @@ function AssignmentsContent() {
                       </button>
                       <button
                         onClick={() => {
-                          setSelectedMatchType("finals");
-                          setSelectedMatchKey("");
-                          setSelectedTeamNumber("");
+                          void selectMatchType("finals");
                         }}
                         className={`py-2 rounded text-sm font-medium ${selectedMatchType === "finals" ? "bg-red-600 text-white" : "bg-gray-100"}`}
                       >
@@ -1281,9 +1426,53 @@ function AssignmentsContent() {
                         </button>
                       ))}
                       {typeFilteredMatches.length === 0 && (
-                        <p className="text-sm text-gray-500 text-center py-4">No matches found for this type.</p>
+                        <p className="text-sm text-gray-500 text-center py-4">
+                          {selectedMatchType === "practice"
+                            ? "No event practice matches found. Click Practice again to generate manual practice matches."
+                            : "No matches found for this type."}
+                        </p>
                       )}
                     </div>
+                    </div>
+                  ) : assignmentModalMode === "practice" ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Practice Event</label>
+                        <select
+                          className="w-full border rounded p-2"
+                          value={selectedPracticeEventKey}
+                          onChange={(e) => setSelectedPracticeEventKey(e.target.value)}
+                        >
+                          <option value="">Select Event</option>
+                          {events.map((event) => (
+                            <option key={event.key} value={event.key}>
+                              {event.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Practice Match Number</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="w-full border rounded p-2"
+                          value={selectedPracticeMatchNumber}
+                          onChange={(e) => setSelectedPracticeMatchNumber(e.target.value.replace(/[^\d]/g, ""))}
+                          placeholder="e.g. 7"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="w-full border rounded p-2"
+                          value={selectedPracticeTeamNumber}
+                          onChange={(e) => setSelectedPracticeTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
+                          placeholder="e.g. 148"
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div>
@@ -1306,9 +1495,16 @@ function AssignmentsContent() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Member</label>
                     <select
                       className="w-full border rounded p-2"
-                      value={assignmentModalMode === "match" ? selectedScoutId : selectedPitScoutId}
+                      value={
+                        assignmentModalMode === "match"
+                          ? selectedScoutId
+                          : assignmentModalMode === "practice"
+                          ? selectedPracticeScoutId
+                          : selectedPitScoutId
+                      }
                       onChange={(e) => {
                         if (assignmentModalMode === "match") setSelectedScoutId(e.target.value);
+                        else if (assignmentModalMode === "practice") setSelectedPracticeScoutId(e.target.value);
                         else setSelectedPitScoutId(e.target.value);
                       }}
                     >
@@ -1341,12 +1537,24 @@ function AssignmentsContent() {
                 </div>
                 <div className="flex gap-3 mt-6">
                   <button
-                    onClick={assignmentModalMode === "match" ? createAssignment : () => void createPitAssignment()}
+                    onClick={() => {
+                      if (assignmentModalMode === "match") {
+                        void createAssignment();
+                        return;
+                      }
+                      if (assignmentModalMode === "practice") {
+                        void createPracticeScoutAssignment();
+                        return;
+                      }
+                      void createPitAssignment();
+                    }}
                     className="flex-1 py-2 rounded text-white font-semibold disabled:opacity-50"
                     style={{ backgroundColor: "var(--primary-color)" }}
                     disabled={
                       assignmentModalMode === "match"
                         ? (!selectedMatchKey || !selectedScoutId || !selectedTeamNumber)
+                        : assignmentModalMode === "practice"
+                        ? (!selectedPracticeEventKey || !selectedPracticeMatchNumber || !selectedPracticeScoutId || !selectedPracticeTeamNumber)
                         : (!selectedPitScoutId || !selectedPitTeamNumber)
                     }
                   >

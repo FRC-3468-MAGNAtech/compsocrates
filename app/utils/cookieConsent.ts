@@ -19,6 +19,11 @@ export function isCookieBannerDismissed(): boolean {
   return (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] === true;
 }
 
+export function dismissCookieBannerInSession() {
+  if (typeof window === "undefined") return;
+  (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] = true;
+}
+
 export function readCookieConsent(): CookieConsentValue | null {
   if (typeof window !== "undefined") {
     const runtime = (window as CookieWindow)[WINDOW_RUNTIME_KEY];
@@ -73,7 +78,7 @@ export function readCookieConsent(): CookieConsentValue | null {
 export function writeCookieConsent(value: CookieConsentValue) {
   if (typeof window !== "undefined") {
     (window as CookieWindow)[WINDOW_RUNTIME_KEY] = value;
-    (window as CookieWindow)[WINDOW_BANNER_DISMISSED_KEY] = true;
+    dismissCookieBannerInSession();
   }
   if (typeof document !== "undefined") {
     document.documentElement.dataset[DOC_DATA_KEY] = value;
