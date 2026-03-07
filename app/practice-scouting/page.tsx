@@ -846,6 +846,8 @@ function PracticeScoutingContent() {
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
   const [showDifficultyMatchModal, setShowDifficultyMatchModal] = useState(false);
   const [showLiveLinkModal, setShowLiveLinkModal] = useState(false);
+  const [showLiveRobotModal, setShowLiveRobotModal] = useState(false);
+  const [pendingLiveMatchPick, setPendingLiveMatchPick] = useState<CandidatePracticeMatch | null>(null);
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
   const [liveEventKeyHint, setLiveEventKeyHint] = useState("");
@@ -1987,6 +1989,21 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     );
   }
 
+  function openLiveRobotPicker(match: CandidatePracticeMatch) {
+    setPendingLiveMatchPick(match);
+    setShowLiveRobotModal(true);
+  }
+
+  function handleSelectLiveRobot(robotIndex: number) {
+    const pickedMatch = pendingLiveMatchPick;
+    if (!pickedMatch) return;
+    const safeRobotIndex = Math.max(0, Math.min(2, robotIndex));
+    const teamNumber = pickedMatch.allianceTeams[safeRobotIndex]?.toString() || "";
+    setShowLiveRobotModal(false);
+    setPendingLiveMatchPick(null);
+    startPracticeMatch(pickedMatch, { liveMode: true, robotIndex: safeRobotIndex, teamNumber });
+  }
+
   async function handleChooseLiveMatchClick(overrideMatches?: CandidatePracticeMatch[]) {
     if (!liveVideoUrl.trim()) {
       alert("Paste a live video URL first.");
@@ -2015,14 +2032,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
 
-    startPracticeMatch(chosen, { liveMode: true });
+    openLiveRobotPicker(chosen);
   }
 
   async function handleLiveCardClick() {
     setShowLiveLinkModal(true);
   }
 
-  async function handleStartLiveFromLink() {
+  async function handleStartLiveFromLink(openSelector = false) {
     if (!selectedMode) {
       alert("Select a practice mode first.");
       return;
@@ -2035,7 +2052,25 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowLiveLinkModal(false);
     const matches = await selectPracticeMatch("live", selectedMode);
     if (matches.length === 0) return;
+    if (openSelector) {
+      setShowMatchSelectModal(true);
+      return;
+    }
     await handleChooseLiveMatchClick(matches);
+  }
+
+  async function handleOpenLiveCorrection() {
+    if (liveLobby) {
+      alert("Match/robot corrections are disabled during live lobby sessions.");
+      return;
+    }
+    if (!selectedMode) return;
+    let matches = candidateMatches;
+    if (matches.length === 0) {
+      matches = await selectPracticeMatch("live", selectedMode);
+    }
+    if (matches.length === 0) return;
+    setShowMatchSelectModal(true);
   }
 
   async function submitCurrentRobot() {
@@ -2403,6 +2438,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowMatchSelectModal(false);
     setShowDifficultyMatchModal(false);
     setShowLiveLinkModal(false);
+    setShowLiveRobotModal(false);
+    setPendingLiveMatchPick(null);
     setLiveVideoUrl("");
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
@@ -2741,7 +2778,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const picked = candidateMatches.find((match) => match.id === option.sourceId);
     if (!picked) return;
     if (selectedDifficulty === "live") {
-      startPracticeMatch(picked);
+      setShowMatchSelectModal(false);
+      openLiveRobotPicker(picked);
     }
   }
 
@@ -2838,6 +2876,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
                       setShowDifficultyMatchModal(false);
+                      setShowLiveRobotModal(false);
+                      setPendingLiveMatchPick(null);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
@@ -2900,6 +2940,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       setLiveVideoUrl("");
                       setShowMatchSelectModal(false);
                       setShowDifficultyMatchModal(false);
+                      setShowLiveRobotModal(false);
+                      setPendingLiveMatchPick(null);
                     }}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
@@ -3221,6 +3263,18 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     style={{ backgroundColor: "var(--primary-color)" }}
                   >
                     Change Match
+                  </button>
+                )}
+                {selectedDifficulty === "live" && !liveLobby && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleOpenLiveCorrection();
+                    }}
+                    className="mt-2 px-3 py-1 rounded text-sm text-white"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Correct Match / Robot
                   </button>
                 )}
                 {selectedMode === 'competitive' && (
@@ -3966,6 +4020,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     Cancel
                   </button>
                   <button
+                    type="button"
+                    onClick={() => void handleStartLiveFromLink(true)}
+                    disabled={loading}
+                    className="px-4 py-2 rounded border border-indigo-300 text-indigo-800 font-semibold disabled:opacity-50"
+                  >
+                    Pick Match + Robot
+                  </button>
+                  <button
                     type="submit"
                     disabled={loading}
                     className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
@@ -3975,6 +4037,53 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+        {showLiveRobotModal && pendingLiveMatchPick && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => {
+                setShowLiveRobotModal(false);
+                setPendingLiveMatchPick(null);
+              }}
+            />
+            <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl p-6">
+              <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>
+                Select Robot To Scout
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                {getPracticeStageLabel(getPracticeStage(pendingLiveMatchPick))} Match {pendingLiveMatchPick.matchNumber}
+              </p>
+              <div className="space-y-2">
+                {[0, 1, 2].map((robotIndex) => {
+                  const teamNumber = pendingLiveMatchPick.allianceTeams[robotIndex]?.toString() || "-";
+                  return (
+                    <button
+                      key={`live-robot-${robotIndex}`}
+                      type="button"
+                      onClick={() => handleSelectLiveRobot(robotIndex)}
+                      className="w-full text-left px-4 py-3 rounded border border-gray-300 hover:bg-gray-50"
+                    >
+                      <span className="font-semibold">Robot {robotIndex + 1}</span>
+                      <span className="text-gray-600"> • Team {teamNumber}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-end mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLiveRobotModal(false);
+                    setPendingLiveMatchPick(null);
+                  }}
+                  className="px-4 py-2 rounded border border-gray-300 font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         )}
