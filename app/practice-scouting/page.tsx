@@ -845,6 +845,7 @@ function PracticeScoutingContent() {
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
   const [showMatchSelectModal, setShowMatchSelectModal] = useState(false);
   const [showDifficultyMatchModal, setShowDifficultyMatchModal] = useState(false);
+  const [showLiveLinkModal, setShowLiveLinkModal] = useState(false);
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
   const [liveEventKeyHint, setLiveEventKeyHint] = useState("");
@@ -1690,7 +1691,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
   }, [userData?.uid]);
 
-  async function selectPracticeMatch(difficulty: 'easy' | 'medium' | 'hard' | 'live', mode: PracticeMode) {
+  async function selectPracticeMatch(
+    difficulty: 'easy' | 'medium' | 'hard' | 'live',
+    mode: PracticeMode
+  ): Promise<CandidatePracticeMatch[]> {
     clearPracticeDraft();
     setPendingDraft(null);
     setLoading(true);
@@ -1713,14 +1717,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (matches.length === 0) {
         alert('No matches exist to scout yet for this game/difficulty.');
         setLoading(false);
-        return;
+        return [];
       }
 
       const gameFilteredMatches = matches.filter((match) => matchBelongsToSelectedGame(match));
       if (gameFilteredMatches.length === 0) {
         alert("No matches exist to scout yet for the selected game.");
         setLoading(false);
-        return;
+        return [];
       }
 
       const normalizedMatches = gameFilteredMatches
@@ -1736,7 +1740,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       }
       if (candidateMatches.length === 0) {
         alert("No practice matches have valid alliance team data. Please add team numbers to practice match docs.");
-        return;
+        return [];
       }
       candidateMatches = dedupePracticeMatches(candidateMatches);
       if (difficulty !== "live") {
@@ -1744,7 +1748,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       }
       if (candidateMatches.length === 0) {
         alert(`No ${difficulty} matches found for the selected game.`);
-        return;
+        return [];
       }
 
       const userCompletedIdentities = new Set<string>();
@@ -1802,6 +1806,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       } else {
         setShowDifficultyMatchModal(true);
       }
+      return rankedMatches;
     } catch (error) {
       console.error('Error loading practice match:', error);
       const details = (error as { code?: string; message?: string })?.message || "";
@@ -1810,6 +1815,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       } else {
         alert('Error loading practice match.');
       }
+      return [];
     } finally {
       setLoading(false);
     }
@@ -1817,7 +1823,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
   function startPracticeMatch(
     selected: CandidatePracticeMatch,
-    options?: { robotIndex?: number; teamNumber?: string }
+    options?: { robotIndex?: number; teamNumber?: string; liveMode?: boolean }
   ) {
     const fallbackTeams = selected.allianceTeams.slice(0, 3);
     const official = readOfficialData(selected.officialData);
@@ -1836,10 +1842,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       (selected as unknown as Record<string, unknown>).compLevel
     );
 
+    const isLiveSession = options?.liveMode || selectedDifficulty === "live";
     const safeMatch: PracticeMatch = {
       ...selected,
       matchType: normalizedMatchType,
-      videoUrl: selectedDifficulty === "live" && liveVideoUrl.trim() ? liveVideoUrl.trim() : selected.videoUrl,
+      videoUrl: isLiveSession && liveVideoUrl.trim() ? liveVideoUrl.trim() : selected.videoUrl,
       allianceTeams: fallbackTeams,
       officialData: {
         score: safeOfficialScore,
@@ -1855,7 +1862,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setRobotSessions([]);
     setRebuiltRobotSessions([]);
     const defaultTeam = safeMatch.allianceTeams[initialRobotIndex]?.toString() || "";
-    const initialTeamNumber = options?.teamNumber || (selectedDifficulty === "live" ? "" : defaultTeam);
+    const initialTeamNumber = options?.teamNumber || (isLiveSession ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
     setHumanPlayerRobot(Math.floor(Math.random() * 3));
@@ -1979,7 +1986,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     );
   }
 
-  async function handleChooseLiveMatchClick() {
+  async function handleChooseLiveMatchClick(overrideMatches?: CandidatePracticeMatch[]) {
     if (!liveVideoUrl.trim()) {
       alert("Paste a live video URL first.");
       return;
@@ -1987,7 +1994,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowMatchSelectModal(false);
     const inferredEventKey = await hydrateLiveStreamContext(liveVideoUrl.trim());
 
-    const pickFrom = candidateMatches;
+    const pickFrom = overrideMatches || candidateMatches;
     if (pickFrom.length === 0) {
       alert("No live matches loaded yet. Select Live difficulty first.");
       return;
@@ -2007,7 +2014,27 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
 
-    startPracticeMatch(chosen);
+    startPracticeMatch(chosen, { liveMode: true });
+  }
+
+  async function handleLiveCardClick() {
+    setShowLiveLinkModal(true);
+  }
+
+  async function handleStartLiveFromLink() {
+    if (!selectedMode) {
+      alert("Select a practice mode first.");
+      return;
+    }
+    if (!liveVideoUrl.trim()) {
+      alert("Paste a live video URL first.");
+      return;
+    }
+
+    setShowLiveLinkModal(false);
+    const matches = await selectPracticeMatch("live", selectedMode);
+    if (matches.length === 0) return;
+    await handleChooseLiveMatchClick(matches);
   }
 
   async function submitCurrentRobot() {
@@ -2374,6 +2401,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setCandidateMatches([]);
     setShowMatchSelectModal(false);
     setShowDifficultyMatchModal(false);
+    setShowLiveLinkModal(false);
     setLiveVideoUrl("");
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
@@ -2931,7 +2959,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
                   {activeMatchGame === "REBUILT" && (
                     <button
-                      onClick={() => selectPracticeMatch('live', selectedMode)}
+                      onClick={() => void handleLiveCardClick()}
                       disabled={loading}
                       className="p-6 border-2 border-cyan-300 rounded-lg text-left transition-colors disabled:opacity-50"
                       style={{ backgroundColor: "transparent" }}
@@ -3897,6 +3925,55 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               <button onClick={() => router.push("/match-scout-dashboard")} className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50">
                 Dashboard
               </button>
+            </div>
+          </div>
+        )}
+        {showLiveLinkModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setShowLiveLinkModal(false)}
+            />
+            <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl p-6">
+              <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>
+                Start Live Practice
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Paste a live stream URL to load a live practice match.
+              </p>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleStartLiveFromLink();
+                }}
+                className="space-y-4"
+              >
+                <input
+                  type="url"
+                  value={liveVideoUrl}
+                  onChange={(event) => setLiveVideoUrl(event.target.value)}
+                  placeholder="https://youtube.com/live/..."
+                  className="w-full border rounded p-2"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLiveLinkModal(false)}
+                    className="px-4 py-2 rounded border border-gray-300 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
