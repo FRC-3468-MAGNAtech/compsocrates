@@ -8,6 +8,8 @@ import {
   applyTheme,
   clearFontPresetOverride,
   clearThemeOverride,
+  DEFAULT_FONT_ID,
+  DEFAULT_THEME_ID,
   fontPresets,
   getFontPreset,
   getTheme,
@@ -133,11 +135,25 @@ export default function ThemePicker({ compact = false }: { compact?: boolean }) 
       saveFontPreset(userData.uid, selectedFontId);
       return;
     }
+
+    const accountThemeId =
+      String(userData.accountThemeId || "").trim() ||
+      loadAccountThemeCache(userData.uid) ||
+      DEFAULT_THEME_ID;
+    const accountFontId =
+      String(userData.accountFontId || "").trim() ||
+      loadAccountFontCache(userData.uid) ||
+      DEFAULT_FONT_ID;
+
     clearThemeOverride(userData.uid);
     clearFontPresetOverride(userData.uid);
-    saveAccountThemeCache(userData.uid, selectedThemeId);
-    saveAccountFontCache(userData.uid, selectedFontId);
-    await updateUserData({ accountThemeId: selectedThemeId, accountFontId: selectedFontId });
+    setSelectedThemeId(accountThemeId);
+    setSelectedFontId(accountFontId);
+    applyTheme(getTheme(accountThemeId, userData.uid));
+    applyFontPreset(getFontPreset(accountFontId));
+    saveAccountThemeCache(userData.uid, accountThemeId);
+    saveAccountFontCache(userData.uid, accountFontId);
+    await updateUserData({ accountThemeId: accountThemeId, accountFontId: accountFontId });
   }
 
   return (
