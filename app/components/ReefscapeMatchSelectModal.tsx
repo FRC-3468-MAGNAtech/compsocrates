@@ -205,8 +205,6 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
     }
   }, [open]);
 
-  const current = useMemo(() => options.filter((m) => m.type === step), [options, step]);
-  const firstOpen = current.find((m) => !completed.has(m.id))?.id || "";
   const finalsById = useMemo(() => new Map(options.filter((m) => m.type === "finals").map((m) => [m.id, m] as const)), [options]);
   const finalsByNumber = useMemo(() => {
     const map = new Map<number, T>();
@@ -256,6 +254,30 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
     return byType;
   }, [options]);
 
+  const completedByTypeNumber = useMemo(() => {
+    const byType = {
+      practice: new Set<number>(),
+      qualification: new Set<number>(),
+      finals: new Set<number>(),
+    };
+    options.forEach((option) => {
+      if (completed.has(option.id) && Number.isFinite(option.matchNumber) && option.matchNumber > 0) {
+        byType[option.type].add(option.matchNumber);
+      }
+    });
+    completed.forEach((id) => {
+      const normalized = String(id || "").trim().toLowerCase();
+      const parsed = normalized.match(/^([pqf])(\d+)$/);
+      if (!parsed) return;
+      const matchNumber = Number(parsed[2]);
+      if (!Number.isFinite(matchNumber) || matchNumber <= 0) return;
+      if (parsed[1] === "p") byType.practice.add(matchNumber);
+      if (parsed[1] === "q") byType.qualification.add(matchNumber);
+      if (parsed[1] === "f") byType.finals.add(matchNumber);
+    });
+    return byType;
+  }, [completed, options]);
+
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
       {step === "type" ? (
@@ -269,6 +291,21 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
         </>
       ) : (
         <>
+          <div className="flex items-center justify-between mb-4">
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+              onClick={() => {
+                setStep("type");
+                setFinalsStep("bracket");
+              }}
+            >
+              Back to Match Types
+            </button>
+            <button type="button" onClick={onClose} className="px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
           {(step === "practice" || step === "qualification") && (
             <>
               <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
@@ -323,9 +360,14 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         timeString: timeStringFromEpoch(m.scheduleTime),
                         matchId: m.id,
                       }));
-                    const firstOpenNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
+                    const firstOpenNum =
+                      rows.find((row) => {
+                        const doneById = completed.has(row.matchId);
+                        const doneByNumber = completedByTypeNumber[step].has(row.matchNum);
+                        return !doneById && !doneByNumber;
+                      })?.matchNum ?? -1;
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
-                      const done = completed.has(matchId);
+                      const done = completed.has(matchId) || completedByTypeNumber[step].has(matchNum);
                       const status: MatchStatus = done ? "completed" : matchNum === firstOpenNum ? "next" : "upcoming";
                       const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
                       const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;

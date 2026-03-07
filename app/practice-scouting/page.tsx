@@ -172,6 +172,20 @@ type CandidatePracticeMatch = PracticeMatch & {
   progress: "fresh" | "partial" | "complete";
 };
 
+type LiveRobotPickOption = {
+  match: CandidatePracticeMatch;
+  alliance: "red" | "blue";
+  robotIndex: number;
+  teamNumber: string;
+};
+
+type PendingLiveRobotPick = {
+  stageLabel: string;
+  matchNumber: number;
+  red: LiveRobotPickOption[];
+  blue: LiveRobotPickOption[];
+};
+
 type LivePracticeLobby = {
   id: string;
   code: string;
@@ -847,11 +861,12 @@ function PracticeScoutingContent() {
   const [showDifficultyMatchModal, setShowDifficultyMatchModal] = useState(false);
   const [showLiveLinkModal, setShowLiveLinkModal] = useState(false);
   const [showLiveRobotModal, setShowLiveRobotModal] = useState(false);
-  const [pendingLiveMatchPick, setPendingLiveMatchPick] = useState<CandidatePracticeMatch | null>(null);
+  const [pendingLiveMatchPick, setPendingLiveMatchPick] = useState<PendingLiveRobotPick | null>(null);
   const [liveVideoUrl, setLiveVideoUrl] = useState("");
   const [liveStreamTitle, setLiveStreamTitle] = useState("");
   const [liveEventKeyHint, setLiveEventKeyHint] = useState("");
   const [liveEventTeamSuggestions, setLiveEventTeamSuggestions] = useState<number[]>([]);
+  const [liveEventTeamNameMap, setLiveEventTeamNameMap] = useState<Record<string, string>>({});
   const [liveLobbyId, setLiveLobbyId] = useState("");
   const [liveLobbyCodeInput, setLiveLobbyCodeInput] = useState("");
   const [liveLobby, setLiveLobby] = useState<LivePracticeLobby | null>(null);
@@ -1539,6 +1554,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setLiveStreamTitle("");
     setLiveEventKeyHint("");
     setLiveEventTeamSuggestions([]);
+    setLiveEventTeamNameMap({});
 
     try {
       const titleResponse = await fetch("/api/live-stream/title", {
@@ -1567,13 +1583,24 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         }),
       });
       if (!teamResponse.ok) return "";
-      const teamPayload = (await teamResponse.json()) as { teams?: Array<{ teamNumber?: number }> };
+      const teamPayload = (await teamResponse.json()) as { teams?: Array<{ teamNumber?: number; nameShort?: string }> };
       const teams = Array.isArray(teamPayload.teams)
         ? teamPayload.teams
             .map((row) => Number(row.teamNumber || 0))
             .filter((n) => Number.isFinite(n) && n > 0)
         : [];
+      const nextNameMap: Record<string, string> = {};
+      if (Array.isArray(teamPayload.teams)) {
+        teamPayload.teams.forEach((row) => {
+          const teamNumber = Number(row.teamNumber || 0);
+          if (!Number.isFinite(teamNumber) || teamNumber <= 0) return;
+          const nameShort = String(row.nameShort || "").trim();
+          if (!nameShort) return;
+          nextNameMap[String(teamNumber)] = nameShort;
+        });
+      }
       setLiveEventTeamSuggestions(Array.from(new Set(teams)).sort((a, b) => a - b));
+      setLiveEventTeamNameMap(nextNameMap);
       return inferredEventKey;
     } catch {
       // Best effort only.
@@ -1990,18 +2017,40 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }
 
   function openLiveRobotPicker(match: CandidatePracticeMatch) {
-    setPendingLiveMatchPick(match);
+    const baseIdentity = getPracticeBaseIdentity(match);
+    const siblings = candidateMatches.filter((candidate) => getPracticeBaseIdentity(candidate) === baseIdentity);
+    const pool = siblings.length > 0 ? siblings : [match];
+
+    const redMatch = pool.find((candidate) => normalizeAllianceSide(candidate.alliance) === "red");
+    const blueMatch = pool.find((candidate) => normalizeAllianceSide(candidate.alliance) === "blue");
+    const fallbackAlliance = normalizeAllianceSide(match.alliance);
+
+    const buildOptions = (source: CandidatePracticeMatch | undefined, alliance: "red" | "blue") => {
+      if (!source) return [] as LiveRobotPickOption[];
+      return [0, 1, 2].map((robotIndex) => ({
+        match: source,
+        alliance,
+        robotIndex,
+        teamNumber: source.allianceTeams[robotIndex]?.toString() || "",
+      }));
+    };
+
+    const pending: PendingLiveRobotPick = {
+      stageLabel: getPracticeStageLabel(getPracticeStage(match)),
+      matchNumber: match.matchNumber,
+      red: buildOptions(redMatch || (fallbackAlliance === "red" ? match : undefined), "red"),
+      blue: buildOptions(blueMatch || (fallbackAlliance === "blue" ? match : undefined), "blue"),
+    };
+    setPendingLiveMatchPick(pending);
     setShowLiveRobotModal(true);
   }
 
-  function handleSelectLiveRobot(robotIndex: number) {
-    const pickedMatch = pendingLiveMatchPick;
-    if (!pickedMatch) return;
-    const safeRobotIndex = Math.max(0, Math.min(2, robotIndex));
-    const teamNumber = pickedMatch.allianceTeams[safeRobotIndex]?.toString() || "";
+  function handleSelectLiveRobot(option: LiveRobotPickOption) {
+    const safeRobotIndex = Math.max(0, Math.min(2, option.robotIndex));
+    const teamNumber = option.teamNumber || "";
     setShowLiveRobotModal(false);
     setPendingLiveMatchPick(null);
-    startPracticeMatch(pickedMatch, { liveMode: true, robotIndex: safeRobotIndex, teamNumber });
+    startPracticeMatch(option.match, { liveMode: true, robotIndex: safeRobotIndex, teamNumber });
   }
 
   async function handleChooseLiveMatchClick(overrideMatches?: CandidatePracticeMatch[]) {
@@ -4089,21 +4138,37 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 Select Robot To Scout
               </h2>
               <p className="text-sm text-gray-600 mb-4">
-                {getPracticeStageLabel(getPracticeStage(pendingLiveMatchPick))} Match {pendingLiveMatchPick.matchNumber}
+                {pendingLiveMatchPick.stageLabel} Match {pendingLiveMatchPick.matchNumber}
               </p>
-              <div className="space-y-2">
-                {[0, 1, 2].map((robotIndex) => {
-                  const teamNumber = pendingLiveMatchPick.allianceTeams[robotIndex]?.toString() || "-";
+              <div className="space-y-4">
+                {([
+                  { key: "red", label: "Red Alliance", options: pendingLiveMatchPick.red },
+                  { key: "blue", label: "Blue Alliance", options: pendingLiveMatchPick.blue },
+                ] as const).map((section) => {
+                  if (section.options.length === 0) return null;
                   return (
-                    <button
-                      key={`live-robot-${robotIndex}`}
-                      type="button"
-                      onClick={() => handleSelectLiveRobot(robotIndex)}
-                      className="w-full text-left px-4 py-3 rounded border border-gray-300 hover:bg-gray-50"
-                    >
-                      <span className="font-semibold">Robot {robotIndex + 1}</span>
-                      <span className="text-gray-600"> • Team {teamNumber}</span>
-                    </button>
+                    <div key={section.key}>
+                      <p className={`text-xs font-semibold uppercase tracking-wide mb-2 ${section.key === "red" ? "text-red-700" : "text-blue-700"}`}>
+                        {section.label}
+                      </p>
+                      <div className="space-y-2">
+                        {section.options.map((option) => {
+                          const teamNumber = option.teamNumber || "-";
+                          const teamName = liveEventTeamNameMap[teamNumber] || "";
+                          return (
+                            <button
+                              key={`live-robot-${section.key}-${option.robotIndex}-${teamNumber}`}
+                              type="button"
+                              onClick={() => handleSelectLiveRobot(option)}
+                              className="w-full text-left px-4 py-3 rounded border border-gray-300 hover:bg-gray-50"
+                            >
+                              <span className="font-semibold">Robot {option.robotIndex + 1}</span>
+                              <span className="text-gray-600"> - Team {teamNumber}{teamName ? ` (${teamName})` : ""}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
