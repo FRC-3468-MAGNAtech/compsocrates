@@ -314,6 +314,7 @@ function AssignmentsContent() {
   const [showRandomizeModal, setShowRandomizeModal] = useState(false);
   const [randomizeTarget, setRandomizeTarget] = useState<RandomizeTarget>("match");
   const [randomizePracticeEventKey, setRandomizePracticeEventKey] = useState("");
+  const [randomizePracticeEventSearch, setRandomizePracticeEventSearch] = useState("");
   const [randomizeMatchCount, setRandomizeMatchCount] = useState("");
   const [randomizePattern, setRandomizePattern] = useState<RandomizePattern>("rotate-each-match");
   const [randomizeScoutIds, setRandomizeScoutIds] = useState<string[]>([]);
@@ -642,6 +643,7 @@ function AssignmentsContent() {
   function openRandomizeConfig(target: RandomizeTarget) {
     setRandomizeTarget(target);
     setRandomizePracticeEventKey(target === "practice" ? (selectedPracticeEventKey || selectedEvent) : "");
+    setRandomizePracticeEventSearch("");
     setRandomizeMatchCount("");
     setRandomizePattern("rotate-each-match");
     setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid));
@@ -1230,6 +1232,11 @@ function AssignmentsContent() {
     () => practiceEventOptions.find((event) => event.key === selectedPracticeEventKey) || null,
     [practiceEventOptions, selectedPracticeEventKey]
   );
+  const filteredRandomizePracticeEvents = useMemo(() => {
+    const needle = randomizePracticeEventSearch.trim().toLowerCase();
+    if (!needle) return practiceEventOptions;
+    return practiceEventOptions.filter((event) => `${event.name} ${event.key}`.toLowerCase().includes(needle));
+  }, [practiceEventOptions, randomizePracticeEventSearch]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -1767,18 +1774,34 @@ function AssignmentsContent() {
                   {randomizeTarget === "practice" && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Competition To Practice Scout</label>
-                      <select
-                        value={randomizePracticeEventKey}
-                        onChange={(e) => setRandomizePracticeEventKey(e.target.value)}
-                        className="w-full border rounded p-2"
-                      >
-                        <option value="">Select Competition</option>
-                        {practiceEventOptions.map((event) => (
-                          <option key={event.key} value={event.key}>
-                            {event.name} ({event.key})
-                          </option>
-                        ))}
-                      </select>
+                      <input
+                        type="text"
+                        value={randomizePracticeEventSearch}
+                        onChange={(e) => setRandomizePracticeEventSearch(e.target.value)}
+                        className="w-full border rounded p-2 mb-2"
+                        placeholder="Search competition by name or key..."
+                      />
+                      <div className="max-h-44 overflow-y-auto border rounded p-2 space-y-1">
+                        {filteredRandomizePracticeEvents.length === 0 ? (
+                          <p className="text-sm text-gray-500 text-center py-4">No matching competitions found.</p>
+                        ) : (
+                          filteredRandomizePracticeEvents.map((event) => (
+                            <button
+                              key={`randomize-practice-event-${event.key}`}
+                              type="button"
+                              onClick={() => setRandomizePracticeEventKey(event.key)}
+                              className={`w-full text-left px-2 py-2 rounded border ${
+                                randomizePracticeEventKey === event.key
+                                  ? "border-indigo-500 bg-indigo-50"
+                                  : "border-gray-200 hover:bg-gray-50"
+                              }`}
+                            >
+                              <p className="text-sm font-medium">{event.name}</p>
+                              <p className="text-xs text-gray-500">{event.key}</p>
+                            </button>
+                          ))
+                        )}
+                      </div>
                     </div>
                   )}
                   <div>
