@@ -327,7 +327,6 @@ function AssignmentsContent() {
   const [randomizeScoutIds, setRandomizeScoutIds] = useState<string[]>([]);
   const [randomizePriorityTeamSearch, setRandomizePriorityTeamSearch] = useState("");
   const [randomizePriorityTeams, setRandomizePriorityTeams] = useState<number[]>([]);
-  const [randomizePriorityManualInput, setRandomizePriorityManualInput] = useState("");
   const [practiceScheduleEventOptions, setPracticeScheduleEventOptions] = useState<EventOption[]>([]);
   const [practiceScheduleEventKey, setPracticeScheduleEventKey] = useState("");
   const [practiceScheduleMatchesByEvent, setPracticeScheduleMatchesByEvent] = useState<Record<string, PracticeMatchOption[]>>({});
@@ -681,7 +680,6 @@ function AssignmentsContent() {
     setRandomizePattern("rotate-each-match");
     setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid));
     setRandomizePriorityTeamSearch("");
-    setRandomizePriorityManualInput("");
     setRandomizePriorityTeams(seededPriorityTeams);
     setShowRandomizeModal(true);
   }
@@ -707,13 +705,6 @@ function AssignmentsContent() {
     setRandomizePriorityTeams((prev) =>
       prev.includes(teamNumber) ? prev.filter((team) => team !== teamNumber) : [...prev, teamNumber]
     );
-  }
-
-  function addManualRandomizePriorityTeam() {
-    const parsed = parseInt(randomizePriorityManualInput.replace(/[^\d]/g, ""), 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
-    setRandomizePriorityTeams((prev) => (prev.includes(parsed) ? prev : [...prev, parsed]));
-    setRandomizePriorityManualInput("");
   }
 
   async function loadPracticeScheduleEvent(eventKey: string) {
@@ -1961,7 +1952,7 @@ function AssignmentsContent() {
                         className="w-full border rounded p-2 mb-2"
                         placeholder="Search competition by name or key..."
                       />
-                      <div className="max-h-44 overflow-y-auto border rounded p-2 space-y-1">
+                      <div className="max-h-36 overflow-y-auto border rounded p-2 space-y-1">
                         {filteredRandomizePracticeEvents.length === 0 ? (
                           <p className="text-sm text-gray-500 text-center py-4">No matching competitions found.</p>
                         ) : (
@@ -2039,7 +2030,7 @@ function AssignmentsContent() {
                         </button>
                       ))}
                     </div>
-                    <div className="max-h-52 overflow-y-auto border rounded p-2 space-y-1">
+                    <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-1">
                       {randomizeEligibleMembers.length === 0 ? (
                         <p className="text-sm text-gray-500">No eligible scout-role members found.</p>
                       ) : (
@@ -2069,18 +2060,11 @@ function AssignmentsContent() {
                     <div className="flex gap-2 mb-2">
                       <input
                         type="text"
-                        value={randomizePriorityManualInput}
-                        onChange={(e) => setRandomizePriorityManualInput(e.target.value)}
+                        value={randomizePriorityTeamSearch}
+                        onChange={(e) => setRandomizePriorityTeamSearch(e.target.value)}
                         className="flex-1 border rounded p-2"
-                        placeholder="Add team number..."
+                        placeholder="Search teams in this schedule..."
                       />
-                      <button
-                        type="button"
-                        onClick={addManualRandomizePriorityTeam}
-                        className="px-3 py-2 rounded border text-sm"
-                      >
-                        Add
-                      </button>
                       <button
                         type="button"
                         onClick={() => setRandomizePriorityTeams([])}
@@ -2089,17 +2073,10 @@ function AssignmentsContent() {
                         Clear
                       </button>
                     </div>
-                    <input
-                      type="text"
-                      value={randomizePriorityTeamSearch}
-                      onChange={(e) => setRandomizePriorityTeamSearch(e.target.value)}
-                      className="w-full border rounded p-2 mb-2"
-                      placeholder="Search teams in this schedule..."
-                    />
-                    <div className="max-h-44 overflow-y-auto border rounded p-2 space-y-1">
+                    <div className="max-h-28 overflow-y-auto border rounded p-2 space-y-1">
                       {filteredRandomizePriorityCandidates.length === 0 ? (
                         <p className="text-sm text-gray-500">
-                          No teams loaded yet for this event. You can still add teams manually.
+                          No teams found for this schedule.
                         </p>
                       ) : (
                         filteredRandomizePriorityCandidates.map((teamNumber) => (

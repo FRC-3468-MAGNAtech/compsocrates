@@ -15,6 +15,7 @@ export type ReefscapeMatchOption = {
 };
 
 type MatchStatus = "completed" | "next" | "upcoming";
+type MatchVisualStatus = MatchStatus | "unavailable";
 
 function FinalsMatchBox({
   number,
@@ -28,40 +29,43 @@ function FinalsMatchBox({
   number: number;
   row: number;
   col: number;
-  status: MatchStatus;
+  status: MatchVisualStatus;
   onPick: (matchNumber: number) => void;
   label?: string;
   timeLabel?: string;
 }) {
-  const borderStyles: Record<MatchStatus, React.CSSProperties> = {
+  const borderStyles: Record<MatchVisualStatus, React.CSSProperties> = {
     completed: { borderColor: "#16a34a" },
     next: { borderColor: "#ca8a04" },
     upcoming: { borderColor: "#ef4444" },
+    unavailable: { borderColor: "#9ca3af" },
   };
-  const badgeBg: Record<MatchStatus, string> = {
+  const badgeBg: Record<MatchVisualStatus, string> = {
     completed: "#16a34a",
     next: "#ca8a04",
     upcoming: "#ef4444",
+    unavailable: "#9ca3af",
   };
+  const isDisabled = status === "completed" || status === "unavailable";
 
   return (
     <button
       type="button"
       onClick={() => {
-        if (status === "completed") return;
+        if (isDisabled) return;
         onPick(number);
       }}
-      disabled={status === "completed"}
+      disabled={isDisabled}
       className={`absolute w-[104px] min-h-[58px] text-xs rounded border text-left bg-white ${
-        status === "completed" ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"
+        isDisabled ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"
       }`}
-      style={{ left: col, top: row, ...(status === "completed" ? {} : borderStyles[status]) }}
+      style={{ left: col, top: row, ...(isDisabled ? {} : borderStyles[status]) }}
     >
       <div
         className="absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center"
         style={{ backgroundColor: badgeBg[status] }}
       >
-        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
+        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : status === "upcoming" ? <XIcon size={10} /> : "-"}
       </div>
       <div className="pt-1.5 pb-1 px-1.5">
         <div className="font-semibold text-[11px] leading-tight">{label || `Match ${number}`}</div>
@@ -114,8 +118,13 @@ function FinalsBracket({
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
+  const availableSet = new Set(availableNumbers);
   const firstOpen = availableNumbers.find((n) => !completed.has(`f${n}`)) || -1;
-  const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
+  const statusOf = (n: number): MatchVisualStatus => {
+    if (completed.has(`f${n}`)) return "completed";
+    if (!availableSet.has(n)) return "unavailable";
+    return n === firstOpen ? "next" : "upcoming";
+  };
   const timeFor = (matchId: number) => {
     const epoch = Number(timesByNumber.get(matchId) || 0);
     if (epoch > 0) {
@@ -152,7 +161,6 @@ function FinalsBracket({
               <path d={`M ${c4 + B.w} ${y13 + B.h / 2} H ${join5} V ${yFinals + B.h / 2}`} />
             </g>
           </svg>
-          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} timeLabel={timeFor(1)} />
           <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} label={labelsByNumber.get(1)} timeLabel={timeFor(1)} />
           <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} label={labelsByNumber.get(2)} timeLabel={timeFor(2)} />
           <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} label={labelsByNumber.get(3)} timeLabel={timeFor(3)} />
@@ -172,7 +180,7 @@ function FinalsBracket({
             col={c5}
             label="FINALS"
             timeLabel={timeFor(14)}
-            status={completed.has("f1") && completed.has("f2") && completed.has("f3") ? "completed" : "upcoming"}
+            status={statusOf(14)}
             onPick={onPick}
           />
         </div>
