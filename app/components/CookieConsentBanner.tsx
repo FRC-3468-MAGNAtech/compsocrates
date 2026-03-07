@@ -4,15 +4,21 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { readCookieConsent, writeCookieConsent } from "@/app/utils/cookieConsent";
 
+let dismissedInMemory = false;
+
 export default function CookieConsentBanner() {
-  const [visible, setVisible] = useState(() => readCookieConsent() === null);
+  const [visible, setVisible] = useState(() => !dismissedInMemory && readCookieConsent() === null);
 
   useEffect(() => {
     function onConsentChanged(event: Event) {
       const detail = (event as CustomEvent<unknown>).detail;
       if (detail === "accepted" || detail === "rejected") {
+        dismissedInMemory = true;
         setVisible(false);
         return;
+      }
+      if (detail === null) {
+        dismissedInMemory = false;
       }
       setVisible(readCookieConsent() === null);
     }
@@ -37,6 +43,7 @@ export default function CookieConsentBanner() {
             type="button"
             className="rounded border border-gray-300 px-3 py-2 text-sm"
             onClick={() => {
+              dismissedInMemory = true;
               setVisible(false);
               writeCookieConsent("rejected");
             }}
@@ -48,6 +55,7 @@ export default function CookieConsentBanner() {
             className="rounded px-3 py-2 text-sm text-white"
             style={{ backgroundColor: "var(--primary-color)" }}
             onClick={() => {
+              dismissedInMemory = true;
               setVisible(false);
               writeCookieConsent("accepted");
             }}

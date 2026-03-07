@@ -885,11 +885,12 @@ function ScoutAccuracyContent() {
                       {rankedScoutStats.map(({ scout, rank }) => {
                         const badge = getAccuracyBadge(scout.averageAccuracy, scout.practiceSessionsCompleted);
                         const roleBadge = getTeamRoleBadge(scout.role, scout.roles);
+                        const displayRank = scout.practiceSessionsCompleted === 0 ? "?" : `#${rank}`;
                         return (
                           <tr key={scout.scoutName} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="text-2xl">
-                                #{rank}
+                                {displayRank}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">

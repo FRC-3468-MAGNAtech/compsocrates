@@ -1,5 +1,6 @@
 export const COOKIE_CONSENT_COOKIE = "compsocrates_cookie_consent";
 export const COOKIE_CONSENT_STORAGE = "compsocrates_cookie_consent";
+export const COOKIE_CONSENT_SESSION_STORAGE = "compsocrates_cookie_consent_session";
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 export type CookieConsentValue = "accepted" | "rejected";
@@ -25,6 +26,12 @@ export function readCookieConsent(): CookieConsentValue | null {
     } catch {
       // Best-effort read.
     }
+    try {
+      const stored = window.sessionStorage.getItem(COOKIE_CONSENT_SESSION_STORAGE);
+      if (stored === "accepted" || stored === "rejected") return stored;
+    } catch {
+      // Best-effort read.
+    }
   }
   return null;
 }
@@ -43,6 +50,11 @@ export function writeCookieConsent(value: CookieConsentValue) {
     } catch {
       // Best-effort write.
     }
+    try {
+      window.sessionStorage.setItem(COOKIE_CONSENT_SESSION_STORAGE, value);
+    } catch {
+      // Best-effort write.
+    }
     window.dispatchEvent(new CustomEvent("cookie-consent-changed", { detail: value }));
   }
 }
@@ -58,6 +70,11 @@ export function clearCookieConsent() {
   if (typeof window !== "undefined") {
     try {
       window.localStorage.removeItem(COOKIE_CONSENT_STORAGE);
+    } catch {
+      // Best-effort clear.
+    }
+    try {
+      window.sessionStorage.removeItem(COOKIE_CONSENT_SESSION_STORAGE);
     } catch {
       // Best-effort clear.
     }
