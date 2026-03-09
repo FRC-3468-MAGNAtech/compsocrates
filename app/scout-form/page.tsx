@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -10,9 +10,10 @@ import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
-import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
+import { fetchEventMatchesWithTeamAuth } from "@/app/utils/reefscapeMatchSync";
 
 type MatchType = "practice" | "qualification" | "finals";
 type MatchStatus = "completed" | "next" | "upcoming";
@@ -862,7 +863,10 @@ function ScoutFormContent() {
           return;
         }
 
-        const matches = await getEventMatches(currentEvent);
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+        const matches = await fetchEventMatchesWithTeamAuth(currentEvent, { encryptedKey, plainKey });
         const next: MatchOption[] = [];
         const nextTargets: Record<string, number> = {};
         matches.filter((m) => m.comp_level === "qm").sort((a, b) => a.match_number - b.match_number).forEach((m) => {

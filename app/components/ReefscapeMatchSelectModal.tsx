@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Hourglass, X as XIcon } from "lucide-react";
+import { Check, HelpCircle, Hourglass, X as XIcon } from "lucide-react";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 
 export type MatchType = "practice" | "qualification" | "finals";
@@ -65,7 +65,7 @@ function FinalsMatchBox({
         className="absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center"
         style={{ backgroundColor: badgeBg[status] }}
       >
-        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : status === "upcoming" ? <XIcon size={10} /> : "-"}
+        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : status === "upcoming" ? <XIcon size={10} /> : <HelpCircle size={10} />}
       </div>
       <div className="pt-1.5 pb-1 px-1.5">
         <div className="font-semibold text-[11px] leading-tight">{label || `Match ${number}`}</div>
@@ -325,7 +325,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   <p className="text-sm text-gray-700">
                     No {step} matches were found for this event.
                   </p>
-                  {allowManualOverride && (
+                  {allowManualOverride && step === "practice" && (
                     <div className="flex items-center gap-2">
                       <input
                         type="number"
@@ -459,50 +459,76 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                 <>
                   <div className="flex items-center justify-between mb-6">
                     <button type="button" onClick={() => setFinalsStep("bracket")} className="text-gray-600 hover:text-gray-900 flex items-center gap-2">
-                      ← Back to Bracket
+                      {"<-"} Back to Bracket
                     </button>
                     <h2 className="text-xl font-semibold">Select Finals Match Number</h2>
                     <div className="w-32" />
                   </div>
                   <p className="text-gray-600 mb-6 text-center">Which finals match are you scouting?</p>
                   <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
-                    {[1, 2, 3].map((matchNum) => (
-                      <button
-                        key={matchNum}
-                        type="button"
-                        onClick={() => {
-                          const picked = finalsByNumber.get(matchNum) || finalsById.get(`f${matchNum}`);
-                          if (picked) {
-                            onPick(picked);
+                    {[1, 2, 3].map((matchNum) => {
+                      const status: MatchVisualStatus = isFinalDone(matchNum)
+                        ? "completed"
+                        : availableFinalNumbers.length > 0 && !availableFinalNumbers.includes(matchNum)
+                        ? "unavailable"
+                        : !isFinalDone(1)
+                        ? matchNum === 1
+                          ? "next"
+                          : "upcoming"
+                        : !isFinalDone(2)
+                        ? matchNum === 2
+                          ? "next"
+                          : "upcoming"
+                        : matchNum === 3
+                        ? "next"
+                        : "upcoming";
+                      const disabled = status === "completed" || status === "unavailable";
+                      const icon =
+                        status === "completed" ? <Check size={12} /> : status === "next" ? <Hourglass size={12} /> : status === "upcoming" ? <XIcon size={12} /> : <HelpCircle size={12} />;
+                      const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : status === "upcoming" ? "#ef4444" : "#9ca3af";
+
+                      return (
+                        <button
+                          key={matchNum}
+                          type="button"
+                          onClick={() => {
+                            const picked = finalsByNumber.get(matchNum) || finalsById.get(`f${matchNum}`);
+                            if (picked) {
+                              onPick(picked);
+                              onClose();
+                              return;
+                            }
+                            const fallback = {
+                              id: `f${matchNum}`,
+                              label: `Finals ${matchNum}`,
+                              type: "finals",
+                              matchNumber: matchNum,
+                              scheduleTime: 0,
+                            } as T;
+                            onPick(fallback);
                             onClose();
-                            return;
-                          }
-                          const fallback = {
-                            id: `f${matchNum}`,
-                            label: `Finals ${matchNum}`,
-                            type: "finals",
-                            matchNumber: matchNum,
-                            scheduleTime: 0,
-                          } as T;
-                          onPick(fallback);
-                          onClose();
-                        }}
-                        disabled={isFinalDone(matchNum)}
-                        className={`group relative p-8 border-2 border-gray-300 rounded-2xl transition-all ${isFinalDone(matchNum) ? "opacity-45 cursor-not-allowed bg-gray-100" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
-                      >
-                        <div className="text-center">
-                          <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
-                            F{matchNum}
+                          }}
+                          disabled={disabled}
+                          className={`group relative p-8 border-2 rounded-2xl transition-all ${disabled ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
+                          style={disabled ? undefined : { borderColor: color }}
+                        >
+                          <span className="absolute top-2 left-2 inline-flex h-5 w-5 items-center justify-center rounded-full text-white" style={{ backgroundColor: color }}>
+                            {icon}
+                          </span>
+                          <div className="text-center">
+                            <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
+                              F{matchNum}
+                            </div>
+                            <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">{`Finals ${matchNum}`}</div>
+                            <div className="text-xs text-gray-500 mt-2">
+                              {matchNum === 1 && "First Finals"}
+                              {matchNum === 2 && "Second Finals"}
+                              {matchNum === 3 && "Third Finals (if needed)"}
+                            </div>
                           </div>
-                          <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">{`Finals ${matchNum}`}</div>
-                          <div className="text-xs text-gray-500 mt-2">
-                            {matchNum === 1 && "First Finals"}
-                            {matchNum === 2 && "Second Finals"}
-                            {matchNum === 3 && "Third Finals (if needed)"}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                   <p className="text-center text-sm text-gray-500 mt-6">
                     Select the specific finals match you&apos;re scouting

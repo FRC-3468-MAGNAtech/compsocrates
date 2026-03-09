@@ -2293,7 +2293,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowLiveLinkModal(false);
     const matches = await selectPracticeMatch("live", selectedMode);
     if (matches.length === 0) return;
-    await handleChooseLiveMatchClick(matches);
+    setShowMatchSelectModal(true);
   }
 
   async function handleOpenLiveCorrection() {
@@ -3010,10 +3010,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }, [candidateMatches, currentMatch, liveEventKeyHint, selectedDifficulty]);
 
   const sharedModalOptions = useMemo<PracticeSelectorOption[]>(() => {
-    return liveScopedCandidateMatches.map((match) => {
+    const byModalId = new Map<string, { match: CandidatePracticeMatch; scheduleTime: number }>();
+
+    liveScopedCandidateMatches.forEach((match) => {
       const stage = getPracticeStage(match);
       const modalType: ReefscapeMatchOption["type"] =
         stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
+      const parsedNumber = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+      const modalId = modalType === "practice" ? `p${parsedNumber}` : modalType === "qualification" ? `q${parsedNumber}` : `f${parsedNumber}`;
       const matchData = match as unknown as Record<string, unknown>;
       const rawScheduleTime =
         Number(matchData.scheduleTime || 0)
@@ -3023,17 +3027,52 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         || Number(matchData.actualTime || 0)
         || Number(matchData.actual_time || 0);
       const scheduleTime = Number.isFinite(rawScheduleTime) ? rawScheduleTime : 0;
-
-      return {
-        id: `${modalType}-${match.matchNumber}-${match.id}`,
-        label: getPracticeLabel(match),
-        type: modalType,
-        matchNumber: parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown }),
-        scheduleTime,
-        sourceId: match.id,
-        progress: match.progress,
-      };
+      const existing = byModalId.get(modalId);
+      if (!existing) {
+        byModalId.set(modalId, { match, scheduleTime });
+        return;
+      }
+      const existingTime = Number(existing.scheduleTime || 0);
+      if (existingTime <= 0 && scheduleTime > 0) {
+        byModalId.set(modalId, { match, scheduleTime });
+        return;
+      }
+      if (existingTime > 0 && scheduleTime > 0 && scheduleTime < existingTime) {
+        byModalId.set(modalId, { match, scheduleTime });
+      }
     });
+
+    return Array.from(byModalId.entries())
+      .map(([id, row]) => {
+        const match = row.match;
+        const stage = getPracticeStage(match);
+        const modalType: ReefscapeMatchOption["type"] =
+          stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
+        const number = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+        const label =
+          modalType === "practice"
+            ? `Practice ${number}`
+            : modalType === "qualification"
+            ? `Qualification ${number}`
+            : number === 14
+            ? "FINALS"
+            : `Match ${number}`;
+        return {
+          id,
+          label,
+          type: modalType,
+          matchNumber: number,
+          scheduleTime: row.scheduleTime,
+          sourceId: match.id,
+          progress: match.progress,
+        };
+      })
+      .sort((a, b) => {
+        const typeOrder: Record<ReefscapeMatchOption["type"], number> = { practice: 0, qualification: 1, finals: 2 };
+        const typeDiff = typeOrder[a.type] - typeOrder[b.type];
+        if (typeDiff !== 0) return typeDiff;
+        return a.matchNumber - b.matchNumber;
+      });
   }, [liveScopedCandidateMatches]);
 
   const sharedModalCompleted = useMemo(() => {
@@ -3065,8 +3104,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     if (!picked) return;
     if (selectedDifficulty === "live") {
       setShowMatchSelectModal(false);
-      setCurrentMatch(picked);
-      openLiveRobotPicker(picked);
+      startPracticeMatch(picked, { liveMode: true });
     }
   }
 

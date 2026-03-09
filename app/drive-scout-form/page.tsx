@@ -7,8 +7,14 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
-import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
+import {
+  buildCompletedModalIdsFromTba,
+  buildReefscapeModalOptions,
+  fetchEventMatchesWithTeamAuth,
+  mapTbaMatchToModalId,
+} from "@/app/utils/reefscapeMatchSync";
 
 type RobotReflection = {
   teamNumber: string;
@@ -137,11 +143,13 @@ function MatchPickerModal({
   open,
   onClose,
   matches,
+  completed,
   onSelect,
 }: {
   open: boolean;
   onClose: () => void;
   matches: ModalMatchOption[];
+  completed: Set<string>;
   onSelect: (key: string) => void;
 }) {
   return (
@@ -149,6 +157,7 @@ function MatchPickerModal({
       open={open}
       onClose={onClose}
       options={matches}
+      completed={completed}
       onPick={(match) => onSelect(match.sourceKey || match.id)}
     />
   );
@@ -163,6 +172,8 @@ function DriveReflectionFormContent() {
   const [ourTeamNumber, setOurTeamNumber] = useState("");
   const [showMatchPicker, setShowMatchPicker] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
+  const [eventTbaMatches, setEventTbaMatches] = useState<TBAMatch[]>([]);
+  const [modalCompleted, setModalCompleted] = useState<Set<string>>(new Set());
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [robot1, setRobot1] = useState<RobotReflection>({
     teamNumber: "",
@@ -213,7 +224,11 @@ function DriveReflectionFormContent() {
         const ourTeamStr = ourTeam > 0 ? String(ourTeam) : "";
         setOurTeamNumber(ourTeamStr);
 
-        const matches = await getEventMatches(resolvedEvent);
+        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+        const matches = await fetchEventMatchesWithTeamAuth(resolvedEvent, { encryptedKey, plainKey });
+        setEventTbaMatches(matches);
+        setModalCompleted(buildCompletedModalIdsFromTba(matches));
         const options: MatchOption[] = matches
           .map((match) => {
             const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
@@ -226,12 +241,16 @@ function DriveReflectionFormContent() {
               teams,
             };
           })
-          .filter((match) => (ourTeamStr ? match.teams.includes(ourTeamStr) : true))
           .sort((a, b) => a.scheduleTime - b.scheduleTime);
-        const resolvedOptions = options.length > 0 ? options : [];
+        const resolvedOptions = options.length > 0 ? options : buildFallbackDriveMatches();
         setMatchOptions(resolvedOptions);
         const now = Date.now() / 1000;
-        const next = resolvedOptions.find((match) => match.scheduleTime >= now) || resolvedOptions[0];
+        const teamFirst =
+          ourTeamStr
+            ? resolvedOptions.find((match) => match.scheduleTime >= now && match.teams.includes(ourTeamStr))
+              || resolvedOptions.find((match) => match.teams.includes(ourTeamStr))
+            : null;
+        const next = teamFirst || resolvedOptions.find((match) => match.scheduleTime >= now) || resolvedOptions[0];
         if (next) {
           setSelectedMatchKey(next.key);
           setRobotTeamDefaults(next, ourTeamStr);
@@ -245,6 +264,8 @@ function DriveReflectionFormContent() {
         console.error("Failed to load drive reflection context:", error);
         const fallback = buildFallbackDriveMatches();
         setMatchOptions(fallback);
+        setEventTbaMatches([]);
+        setModalCompleted(new Set());
         setSelectedMatchKey(fallback[0]?.key || "");
       }
     }
@@ -336,6 +357,26 @@ function DriveReflectionFormContent() {
     [plannedByTeam, robot1, robot2, robot3]
   );
   const modalMatchOptions = useMemo<ModalMatchOption[]>(() => {
+    if (eventTbaMatches.length > 0) {
+      const sourceById = new Map<string, string>();
+      [...eventTbaMatches]
+        .sort((a, b) => {
+          const aTime = Number(a.actual_time || a.predicted_time || a.time || 0);
+          const bTime = Number(b.actual_time || b.predicted_time || b.time || 0);
+          if (aTime !== bTime) return aTime - bTime;
+          return a.match_number - b.match_number;
+        })
+        .forEach((match) => {
+          const id = mapTbaMatchToModalId(match);
+          if (!id || sourceById.has(id)) return;
+          sourceById.set(id, String(match.key || id));
+        });
+      return buildReefscapeModalOptions(eventTbaMatches).map((option) => ({
+        ...option,
+        sourceKey: sourceById.get(option.id) || option.id,
+      }));
+    }
+
     const mapped: ModalMatchOption[] = [];
     let finalsIndex = 1;
     for (const match of matchOptions) {
@@ -376,7 +417,7 @@ function DriveReflectionFormContent() {
       }
     }
     return mapped;
-  }, [matchOptions]);
+  }, [eventTbaMatches, matchOptions]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -595,6 +636,7 @@ function DriveReflectionFormContent() {
         open={showMatchPicker}
         onClose={() => setShowMatchPicker(false)}
         matches={modalMatchOptions}
+        completed={modalCompleted}
         onSelect={(key) => {
           setSelectedMatchKey(key);
           let target = matchOptions.find((match) => match.key === key);
