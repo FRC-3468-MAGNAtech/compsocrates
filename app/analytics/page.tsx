@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -19,6 +19,7 @@ import {
 } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
+import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
 
 type Entry = {
   id: string;
@@ -29,6 +30,7 @@ type Entry = {
   scoutId?: string;
   practiceMode?: "trial" | "competitive";
   isPracticeScouting?: boolean;
+  deviceType?: "mobile" | "pc";
   practiceSessionId?: string;
   eventKey?: string;
   eventName?: string;
@@ -633,6 +635,7 @@ function AnalyticsPageContent() {
   const canExportCsv = isTeamMember;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canDeleteEntries = isCoach || isTeamAdmin;
+  const canManageFlags = isCoach || isTeamAdmin;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -668,6 +671,8 @@ function AnalyticsPageContent() {
   });
   const [accuracyRobotBreakdown, setAccuracyRobotBreakdown] = useState<AccuracyRobotBreakdown[]>([]);
   const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
+  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
+  const [flagSavingKey, setFlagSavingKey] = useState("");
 
   const rebuiltEventOptions = useMemo(
     () =>
@@ -814,6 +819,20 @@ function AnalyticsPageContent() {
     });
 
     setRawData(enriched);
+    if (userData?.teamId) {
+      const flagSnap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
+      const nextFlagStates: Record<string, StoredFlagState> = {};
+      flagSnap.docs.forEach((flagDoc) => {
+        const row = flagDoc.data() as StoredFlagState;
+        const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+        const entityId = String(row.entityId || "").trim();
+        if (!entityId) return;
+        nextFlagStates[flagStateDocId(entityType, entityId)] = row;
+      });
+      setFlagStates(nextFlagStates);
+    } else {
+      setFlagStates({});
+    }
   }
 
   useEffect(() => {

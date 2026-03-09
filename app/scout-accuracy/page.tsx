@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where, deleteDoc, doc, updateDoc, getDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, deleteDoc, doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -11,6 +11,7 @@ import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { Users, Target, ClipboardList } from "lucide-react";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles } from "@/app/utils/roles";
+import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
 
 interface ScoutStats {
   scoutName: string;
@@ -21,6 +22,14 @@ interface ScoutStats {
   averageAccuracy: number;
   lastPracticeDate: number;
   recentAccuracies: number[];
+  recentSessions: Array<{
+    sessionId: string;
+    accuracy: number;
+    timestamp: number;
+    deviceType?: "mobile" | "pc";
+    flags: string[];
+    dismissed: boolean;
+  }>;
   deviceBreakdown?: {
     mobileCount: number;
     pcCount: number;
@@ -332,6 +341,11 @@ function ScoutAccuracyContent() {
     userRoles.includes("team-coach") ||
     userRoles.includes("lead-scout") ||
     userRoles.includes("lead-strategist");
+  const canManageFlags =
+    Boolean(userData?.isTeamAdmin) ||
+    userData?.role === "coach" ||
+    userRoles.includes("team-coach");
+  const [flagSaveKey, setFlagSaveKey] = useState("");
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
@@ -410,21 +424,50 @@ function ScoutAccuracyContent() {
         practiceByUidSnap.docs.forEach((docSnap) => {
           practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
         });
-        const practiceRows = Array.from(practiceRowsMap.values())
-          .filter((row) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame)
-          .filter((row) => !row.isLivePracticeScouting);
+        const flagStateById = new Map<string, StoredFlagState>();
+        if (userData?.teamId) {
+          const flagSnap = await getDocs(
+            query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId))
+          );
+          flagSnap.docs.forEach((docSnap) => {
+            const row = docSnap.data() as StoredFlagState & { entityId?: string; entityType?: "scoutingEntry" | "practiceSession" };
+            const entityId = String(row.entityId || "");
+            const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+            if (!entityId) return;
+            flagStateById.set(flagStateDocId(entityType, entityId), row);
+          });
+        }
+        const practiceRows = Array.from(practiceRowsMap.entries())
+          .map(([id, row]) => ({ id, row }))
+          .filter(({ row }) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame)
+          .filter(({ row }) => !row.isLivePracticeScouting);
+        const scoutEntriesBySession = new Map<string, ScoutingEntry[]>();
+        scoutPracticeEntries.forEach((entry) => {
+          const sessionId = String(entry.practiceSessionId || "").trim();
+          if (!sessionId) return;
+          if (!scoutEntriesBySession.has(sessionId)) scoutEntriesBySession.set(sessionId, []);
+          scoutEntriesBySession.get(sessionId)?.push(entry);
+        });
         let totalAccuracy = 0;
         let recentAccuracies: number[] = [];
+        let recentSessions: ScoutStats["recentSessions"] = [];
         let lastPracticeDate = 0;
         const practiceDevicePoints: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }> = [];
-        const accuracyTimeline: Array<{ accuracy: number; timestamp: number }> = [];
-        practiceRows.forEach((data) => {
+        const accuracyTimeline: Array<{ accuracy: number; timestamp: number; sessionId: string; deviceType?: "mobile" | "pc"; flags: string[]; dismissed: boolean }> = [];
+        practiceRows.forEach(({ id, row: data }) => {
           if (typeof data.accuracy === "number") {
             totalAccuracy += data.accuracy;
             const rowTimestamp = Number(data.timestamp || data.completedAt || data.startedAt || 0);
+            const linkedEntries = scoutEntriesBySession.get(id) || [];
+            const flags = Array.from(new Set(linkedEntries.flatMap((entry) => evaluateScoutingFlags(entry).map((flag) => flag.label))));
+            const dismissed = Boolean(flagStateById.get(flagStateDocId("practiceSession", id))?.dismissed);
             accuracyTimeline.push({
               accuracy: Number(data.accuracy || 0),
               timestamp: Number.isFinite(rowTimestamp) ? rowTimestamp : 0,
+              sessionId: id,
+              deviceType: data.deviceType as "mobile" | "pc" | undefined,
+              flags,
+              dismissed,
             });
             practiceDevicePoints.push({
               deviceType: data.deviceType as "mobile" | "pc" | undefined,
@@ -436,10 +479,10 @@ function ScoutAccuracyContent() {
             lastPracticeDate = rowTimestamp;
           }
         });
-        recentAccuracies = accuracyTimeline
+        recentSessions = accuracyTimeline
           .sort((a, b) => a.timestamp - b.timestamp)
-          .slice(-5)
-          .map((row) => row.accuracy);
+          .slice(-5);
+        recentAccuracies = recentSessions.map((row) => row.accuracy);
         const averageAccuracy = accuracyTimeline.length > 0
           ? Math.round(totalAccuracy / accuracyTimeline.length)
           : 0;
@@ -453,6 +496,7 @@ function ScoutAccuracyContent() {
           averageAccuracy,
           lastPracticeDate: lastPracticeDate || Date.now(),
           recentAccuracies,
+          recentSessions,
           deviceBreakdown: getDeviceBreakdown(practiceDevicePoints),
         };
       });
@@ -691,6 +735,32 @@ function ScoutAccuracyContent() {
       alert("Failed to rerun session accuracy.");
     } finally {
       setRerunningAccuracy(false);
+    }
+  }
+
+  async function setPracticeSessionFlagDismissed(sessionId: string, dismissed: boolean) {
+    if (!canManageFlags || !userData?.teamId) return;
+    const key = flagStateDocId("practiceSession", sessionId);
+    setFlagSaveKey(key);
+    try {
+      await setDoc(
+        doc(db, "scoutingFlagStates", key),
+        {
+          teamId: userData.teamId,
+          entityType: "practiceSession",
+          entityId: sessionId,
+          dismissed,
+          dismissedAt: Date.now(),
+          dismissedBy: userData.uid || "",
+        },
+        { merge: true }
+      );
+      await loadScoutStats();
+    } catch (error) {
+      console.error("Failed updating practice session flag state:", error);
+      alert("Could not update flag state.");
+    } finally {
+      setFlagSaveKey("");
     }
   }
 
@@ -976,24 +1046,40 @@ function ScoutAccuracyContent() {
                         <h3 className="text-lg font-semibold mb-4">Recent Practice Scores</h3>
                         {selectedScoutData.recentAccuracies.length > 0 ? (
                           <div className="space-y-2">
-                            {selectedScoutData.recentAccuracies.map((accuracy, i) => (
+                            {selectedScoutData.recentSessions.map((session, i) => (
                               <div key={i} className="flex items-center gap-4">
-                                <span className="text-sm text-gray-600 w-24">Session {i + 1}</span>
+                                <div className="text-sm text-gray-600 w-40">
+                                  <div>{`Session ${i + 1}`}</div>
+                                  <div className="text-xs">
+                                    {session.deviceType === "mobile" ? "Mobile" : "PC"}
+                                    {session.flags.length > 0 && canManageFlags && !session.dismissed ? " • Flagged" : ""}
+                                  </div>
+                                </div>
                                 <div className="flex-1 bg-gray-200 rounded-full h-8 overflow-hidden">
                                   <div
                                     className="h-full flex items-center justify-end pr-3 text-white text-sm font-semibold transition-all"
                                     style={{
-                                      width: `${accuracy}%`,
+                                      width: `${session.accuracy}%`,
                                       backgroundColor: 
-                                        accuracy === 100 ? "#9333ea" :
-                                        accuracy >= 90 ? "#10b981" : 
-                                        accuracy >= 80 ? "#15803d" :
-                                        accuracy >= 50 ? "#f97316" : "#ef4444"
+                                        session.accuracy === 100 ? "#9333ea" :
+                                        session.accuracy >= 90 ? "#10b981" : 
+                                        session.accuracy >= 80 ? "#15803d" :
+                                        session.accuracy >= 50 ? "#f97316" : "#ef4444"
                                     }}
                                   >
-                                    {accuracy}%
+                                    {session.accuracy}%
                                   </div>
                                 </div>
+                                {canManageFlags && session.flags.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void setPracticeSessionFlagDismissed(session.sessionId, !session.dismissed)}
+                                    disabled={flagSaveKey === flagStateDocId("practiceSession", session.sessionId)}
+                                    className="px-2 py-1 rounded text-xs border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    {session.dismissed ? "Restore Flag" : "Dismiss Flag"}
+                                  </button>
+                                )}
                               </div>
                             ))}
                           </div>
