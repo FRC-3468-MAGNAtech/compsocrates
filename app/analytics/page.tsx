@@ -629,13 +629,14 @@ type SortKey =
 function AnalyticsPageContent() {
   const { userData } = useAuth();
   const isCoach = userData?.role === "coach";
+  const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach";
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
   const isTeamMember = Boolean(userData?.teamId);
   const canImportCsv = isCoach || isTeamAdmin;
   const canExportCsv = isTeamMember;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canDeleteEntries = isCoach || isTeamAdmin;
-  const canManageFlags = isCoach || isTeamAdmin;
+  const canManageFlags = isCoach || isTeamCoach || isTeamAdmin;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -947,6 +948,41 @@ function AnalyticsPageContent() {
     if (!ok) return;
     await deleteDoc(doc(db, "scouting", entry.id));
     await loadData();
+  }
+
+  async function setScoutingEntryFlagDismissed(entryId: string, dismissed: boolean) {
+    if (!canManageFlags || !userData?.teamId) return;
+    const stateId = flagStateDocId("scoutingEntry", entryId);
+    setFlagSavingKey(stateId);
+    try {
+      await setDoc(
+        doc(db, "scoutingFlagStates", stateId),
+        {
+          teamId: userData.teamId,
+          entityType: "scoutingEntry",
+          entityId: entryId,
+          dismissed,
+          dismissedAt: Date.now(),
+          dismissedBy: userData.uid || "",
+        },
+        { merge: true }
+      );
+      setFlagStates((prev) => ({
+        ...prev,
+        [stateId]: {
+          entityType: "scoutingEntry",
+          entityId: entryId,
+          dismissed,
+          dismissedAt: Date.now(),
+          dismissedBy: userData.uid || "",
+        },
+      }));
+    } catch (error) {
+      console.error("Failed updating scouting entry flag state:", error);
+      alert("Could not update flag state.");
+    } finally {
+      setFlagSavingKey("");
+    }
   }
 
   async function loadAccuracyDetails(entry: Entry) {
@@ -1862,6 +1898,10 @@ function AnalyticsPageContent() {
                 const end = String(entry.endgame?.status || "").toLowerCase();
                 const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
                 const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
+                const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
+                const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
+                const isFlagDismissed = Boolean(flagState?.dismissed);
+                const visibleFlags = isFlagDismissed ? [] : entryFlags;
                 return (
                 <tr key={entry.id}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
@@ -1920,6 +1960,19 @@ function AnalyticsPageContent() {
                   </td>
                   <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                   <td className="text-center">
+                    {canManageFlags && entryFlags.length > 0 && (
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() => void setScoutingEntryFlagDismissed(entry.id, !isFlagDismissed)}
+                          disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
+                          className="px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs disabled:opacity-50"
+                          title={visibleFlags.map((flag) => flag.detail).join("\n")}
+                        >
+                          {isFlagDismissed ? "Restore Flag" : `Flagged (${visibleFlags.length})`}
+                        </button>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => void handleDeleteEntry(entry)}
@@ -2070,7 +2123,12 @@ function AnalyticsPageContent() {
             </tr>
           </thead>
           <tbody>
-            {data.map((entry) => (
+            {data.map((entry) => {
+              const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
+              const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
+              const isFlagDismissed = Boolean(flagState?.dismissed);
+              const visibleFlags = isFlagDismissed ? [] : entryFlags;
+              return (
               <tr key={entry.id}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                 <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
@@ -2125,6 +2183,19 @@ function AnalyticsPageContent() {
                 </td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                 <td className="text-center">
+                  {canManageFlags && entryFlags.length > 0 && (
+                    <div className="mb-2">
+                      <button
+                        type="button"
+                        onClick={() => void setScoutingEntryFlagDismissed(entry.id, !isFlagDismissed)}
+                        disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
+                        className="px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs disabled:opacity-50"
+                        title={visibleFlags.map((flag) => flag.detail).join("\n")}
+                      >
+                        {isFlagDismissed ? "Restore Flag" : `Flagged (${visibleFlags.length})`}
+                      </button>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => void handleDeleteEntry(entry)}
@@ -2137,7 +2208,8 @@ function AnalyticsPageContent() {
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         )}

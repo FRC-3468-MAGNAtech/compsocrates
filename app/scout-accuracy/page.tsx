@@ -40,6 +40,7 @@ interface ScoutStats {
 }
 
 type ScoutingEntry = {
+  practiceSessionId?: string;
   scoutName?: string;
   eventKey?: string;
   matchType?: string;
@@ -381,6 +382,19 @@ function ScoutAccuracyContent() {
           roles: (data.roles || []) as string[],
         };
       });
+      const teamFlagStateById = new Map<string, StoredFlagState>();
+      if (userData?.teamId) {
+        const flagSnap = await getDocs(
+          query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId))
+        );
+        flagSnap.docs.forEach((docSnap) => {
+          const row = docSnap.data() as StoredFlagState & { entityId?: string; entityType?: "scoutingEntry" | "practiceSession" };
+          const entityId = String(row.entityId || "");
+          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+          if (!entityId) return;
+          teamFlagStateById.set(flagStateDocId(entityType, entityId), row);
+        });
+      }
       const statsPromises = memberData.map(async (member) => {
         const [scoutEntriesByNameSnap, scoutEntriesByUidSnap] = await Promise.all([
           getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.scoutName))),
@@ -424,19 +438,6 @@ function ScoutAccuracyContent() {
         practiceByUidSnap.docs.forEach((docSnap) => {
           practiceRowsMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
         });
-        const flagStateById = new Map<string, StoredFlagState>();
-        if (userData?.teamId) {
-          const flagSnap = await getDocs(
-            query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId))
-          );
-          flagSnap.docs.forEach((docSnap) => {
-            const row = docSnap.data() as StoredFlagState & { entityId?: string; entityType?: "scoutingEntry" | "practiceSession" };
-            const entityId = String(row.entityId || "");
-            const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-            if (!entityId) return;
-            flagStateById.set(flagStateDocId(entityType, entityId), row);
-          });
-        }
         const practiceRows = Array.from(practiceRowsMap.entries())
           .map(([id, row]) => ({ id, row }))
           .filter(({ row }) => String(row.game || "REEFSCAPE").toUpperCase() === selectedGame)
@@ -459,18 +460,19 @@ function ScoutAccuracyContent() {
             totalAccuracy += data.accuracy;
             const rowTimestamp = Number(data.timestamp || data.completedAt || data.startedAt || 0);
             const linkedEntries = scoutEntriesBySession.get(id) || [];
+            const sessionDeviceType = (data.deviceType as "mobile" | "pc" | undefined) ?? linkedEntries.find((entry) => entry.deviceType)?.deviceType;
             const flags = Array.from(new Set(linkedEntries.flatMap((entry) => evaluateScoutingFlags(entry).map((flag) => flag.label))));
-            const dismissed = Boolean(flagStateById.get(flagStateDocId("practiceSession", id))?.dismissed);
+            const dismissed = Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", id))?.dismissed);
             accuracyTimeline.push({
               accuracy: Number(data.accuracy || 0),
               timestamp: Number.isFinite(rowTimestamp) ? rowTimestamp : 0,
               sessionId: id,
-              deviceType: data.deviceType as "mobile" | "pc" | undefined,
+              deviceType: sessionDeviceType,
               flags,
               dismissed,
             });
             practiceDevicePoints.push({
-              deviceType: data.deviceType as "mobile" | "pc" | undefined,
+              deviceType: sessionDeviceType,
               accuracy: Number(data.accuracy || 0),
             });
           }
@@ -1044,6 +1046,18 @@ function ScoutAccuracyContent() {
                       {/* RECENT ACCURACY SCORES */}
                       <div>
                         <h3 className="text-lg font-semibold mb-4">Recent Practice Scores</h3>
+                        {selectedScoutData.deviceBreakdown &&
+                          selectedScoutData.deviceBreakdown.mobileCount > 0 &&
+                          selectedScoutData.deviceBreakdown.pcCount > 0 && (
+                            <p className="text-xs text-gray-500 mb-2">
+                              Device trend:{" "}
+                              {selectedScoutData.deviceBreakdown.betterDevice === "tie"
+                                ? "equal on mobile and PC"
+                                : selectedScoutData.deviceBreakdown.betterDevice === "mobile"
+                                ? "better on mobile"
+                                : "better on PC"}
+                            </p>
+                          )}
                         {selectedScoutData.recentAccuracies.length > 0 ? (
                           <div className="space-y-2">
                             {selectedScoutData.recentSessions.map((session, i) => (
@@ -1051,7 +1065,11 @@ function ScoutAccuracyContent() {
                                 <div className="text-sm text-gray-600 w-40">
                                   <div>{`Session ${i + 1}`}</div>
                                   <div className="text-xs">
-                                    {session.deviceType === "mobile" ? "Mobile" : "PC"}
+                                    {session.deviceType === "mobile"
+                                      ? "Mobile"
+                                      : session.deviceType === "pc"
+                                      ? "PC"
+                                      : "Unknown Device"}
                                     {session.flags.length > 0 && canManageFlags && !session.dismissed ? " • Flagged" : ""}
                                   </div>
                                 </div>
