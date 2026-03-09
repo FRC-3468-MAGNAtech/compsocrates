@@ -950,32 +950,35 @@ function AnalyticsPageContent() {
     await loadData();
   }
 
-  async function setScoutingEntryFlagDismissed(entryId: string, dismissed: boolean) {
+  async function updateScoutingEntryFlagState(
+    entryId: string,
+    patch: Partial<StoredFlagState>
+  ) {
     if (!canManageFlags || !userData?.teamId) return;
     const stateId = flagStateDocId("scoutingEntry", entryId);
     setFlagSavingKey(stateId);
     try {
+      const nextState: StoredFlagState = {
+        entityType: "scoutingEntry",
+        entityId: entryId,
+        dismissed: patch.dismissed ?? flagStates[stateId]?.dismissed ?? false,
+        manualFlagged: patch.manualFlagged ?? flagStates[stateId]?.manualFlagged ?? false,
+        dismissedAt: patch.dismissedAt ?? flagStates[stateId]?.dismissedAt,
+        dismissedBy: patch.dismissedBy ?? flagStates[stateId]?.dismissedBy,
+        manualFlaggedAt: patch.manualFlaggedAt ?? flagStates[stateId]?.manualFlaggedAt,
+        manualFlaggedBy: patch.manualFlaggedBy ?? flagStates[stateId]?.manualFlaggedBy,
+      };
       await setDoc(
         doc(db, "scoutingFlagStates", stateId),
         {
           teamId: userData.teamId,
-          entityType: "scoutingEntry",
-          entityId: entryId,
-          dismissed,
-          dismissedAt: Date.now(),
-          dismissedBy: userData.uid || "",
+          ...nextState,
         },
         { merge: true }
       );
       setFlagStates((prev) => ({
         ...prev,
-        [stateId]: {
-          entityType: "scoutingEntry",
-          entityId: entryId,
-          dismissed,
-          dismissedAt: Date.now(),
-          dismissedBy: userData.uid || "",
-        },
+        [stateId]: nextState,
       }));
     } catch (error) {
       console.error("Failed updating scouting entry flag state:", error);
@@ -983,6 +986,22 @@ function AnalyticsPageContent() {
     } finally {
       setFlagSavingKey("");
     }
+  }
+
+  async function setScoutingEntryFlagDismissed(entryId: string, dismissed: boolean) {
+    await updateScoutingEntryFlagState(entryId, {
+      dismissed,
+      dismissedAt: Date.now(),
+      dismissedBy: userData?.uid || "",
+    });
+  }
+
+  async function setScoutingEntryManualFlag(entryId: string, manualFlagged: boolean) {
+    await updateScoutingEntryFlagState(entryId, {
+      manualFlagged,
+      manualFlaggedAt: Date.now(),
+      manualFlaggedBy: userData?.uid || "",
+    });
   }
 
   async function loadAccuracyDetails(entry: Entry) {
@@ -1901,6 +1920,7 @@ function AnalyticsPageContent() {
                 const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
                 const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
                 const isFlagDismissed = Boolean(flagState?.dismissed);
+                const isManualFlagged = Boolean(flagState?.manualFlagged);
                 const visibleFlags = isFlagDismissed ? [] : entryFlags;
                 return (
                 <tr key={entry.id}>
@@ -1970,6 +1990,22 @@ function AnalyticsPageContent() {
                           title={visibleFlags.map((flag) => flag.detail).join("\n")}
                         >
                           {isFlagDismissed ? "Restore Flag" : `Flagged (${visibleFlags.length})`}
+                        </button>
+                      </div>
+                    )}
+                    {canManageFlags && (
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() => void setScoutingEntryManualFlag(entry.id, !isManualFlagged)}
+                          disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
+                          className={`px-2 py-1 rounded border text-xs disabled:opacity-50 ${
+                            isManualFlagged
+                              ? "border-red-300 bg-red-50 text-red-900"
+                              : "border-gray-300 bg-gray-50 text-gray-800"
+                          }`}
+                        >
+                          {isManualFlagged ? "Unflag Manual" : "Manual Flag"}
                         </button>
                       </div>
                     )}
@@ -2127,6 +2163,7 @@ function AnalyticsPageContent() {
               const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
               const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
               const isFlagDismissed = Boolean(flagState?.dismissed);
+              const isManualFlagged = Boolean(flagState?.manualFlagged);
               const visibleFlags = isFlagDismissed ? [] : entryFlags;
               return (
               <tr key={entry.id}>
@@ -2193,6 +2230,22 @@ function AnalyticsPageContent() {
                         title={visibleFlags.map((flag) => flag.detail).join("\n")}
                       >
                         {isFlagDismissed ? "Restore Flag" : `Flagged (${visibleFlags.length})`}
+                      </button>
+                    </div>
+                  )}
+                  {canManageFlags && (
+                    <div className="mb-2">
+                      <button
+                        type="button"
+                        onClick={() => void setScoutingEntryManualFlag(entry.id, !isManualFlagged)}
+                        disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
+                        className={`px-2 py-1 rounded border text-xs disabled:opacity-50 ${
+                          isManualFlagged
+                            ? "border-red-300 bg-red-50 text-red-900"
+                            : "border-gray-300 bg-gray-50 text-gray-800"
+                        }`}
+                      >
+                        {isManualFlagged ? "Unflag Manual" : "Manual Flag"}
                       </button>
                     </div>
                   )}

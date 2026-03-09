@@ -40,6 +40,7 @@ interface ScoutStats {
 }
 
 type ScoutingEntry = {
+  id?: string;
   practiceSessionId?: string;
   scoutName?: string;
   eventKey?: string;
@@ -402,10 +403,10 @@ function ScoutAccuracyContent() {
         ]);
         const scoutEntriesMap = new Map<string, ScoutingEntry>();
         scoutEntriesByNameSnap.docs.forEach((docSnap) => {
-          scoutEntriesMap.set(docSnap.id, docSnap.data() as ScoutingEntry);
+          scoutEntriesMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as ScoutingEntry) });
         });
         scoutEntriesByUidSnap.docs.forEach((docSnap) => {
-          scoutEntriesMap.set(docSnap.id, docSnap.data() as ScoutingEntry);
+          scoutEntriesMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as ScoutingEntry) });
         });
         const scoutPracticeEntries = Array.from(scoutEntriesMap.values())
           .filter((row) => {
@@ -461,7 +462,16 @@ function ScoutAccuracyContent() {
             const rowTimestamp = Number(data.timestamp || data.completedAt || data.startedAt || 0);
             const linkedEntries = scoutEntriesBySession.get(id) || [];
             const sessionDeviceType = (data.deviceType as "mobile" | "pc" | undefined) ?? linkedEntries.find((entry) => entry.deviceType)?.deviceType;
-            const flags = Array.from(new Set(linkedEntries.flatMap((entry) => evaluateScoutingFlags(entry).map((flag) => flag.label))));
+            const hasManualFlaggedEntry = linkedEntries.some((entry) => {
+              const entryId = String(entry.id || "").trim();
+              return entryId ? Boolean(teamFlagStateById.get(flagStateDocId("scoutingEntry", entryId))?.manualFlagged) : false;
+            });
+            const flags = Array.from(
+              new Set([
+                ...linkedEntries.flatMap((entry) => evaluateScoutingFlags(entry).map((flag) => flag.label)),
+                ...(hasManualFlaggedEntry ? ["Manual Flagged Entry"] : []),
+              ])
+            );
             const dismissed = Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", id))?.dismissed);
             accuracyTimeline.push({
               accuracy: Number(data.accuracy || 0),

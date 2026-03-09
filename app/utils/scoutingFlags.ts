@@ -127,10 +127,38 @@ export type StoredFlagState = {
   entityType: "scoutingEntry" | "practiceSession";
   entityId: string;
   dismissed: boolean;
+  manualFlagged?: boolean;
+  manualFlaggedAt?: number;
+  manualFlaggedBy?: string;
   dismissedAt?: number;
   dismissedBy?: string;
 };
 
 export function flagStateDocId(entityType: "scoutingEntry" | "practiceSession", entityId: string): string {
   return `${entityType}:${String(entityId || "").trim()}`;
+}
+
+export function getEntryAccuracyPercent(entry: Record<string, unknown>): number | null {
+  const numeric = Number(entry.accuracy);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric;
+}
+
+export function isEntryFlaggedForStats(
+  entry: AnyEntry,
+  state?: Pick<StoredFlagState, "dismissed" | "manualFlagged"> | null
+): boolean {
+  if (Boolean(state?.manualFlagged)) return true;
+  const autoFlags = evaluateScoutingFlags(entry);
+  return autoFlags.length > 0 && !Boolean(state?.dismissed);
+}
+
+export function shouldExcludeEntryFromStats(
+  entry: AnyEntry,
+  state?: Pick<StoredFlagState, "dismissed" | "manualFlagged"> | null,
+  minimumAccuracy = 75
+): boolean {
+  if (isEntryFlaggedForStats(entry, state)) return true;
+  const accuracy = getEntryAccuracyPercent(entry);
+  return accuracy !== null && accuracy < minimumAccuracy;
 }

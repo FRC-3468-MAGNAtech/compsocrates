@@ -2,18 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { flagStateDocId, shouldExcludeEntryFromStats, type StoredFlagState } from "@/app/utils/scoutingFlags";
 
 type ScoutingEntry = {
+  id?: string;
   eventKey?: string;
   submittedAt?: number;
   timestamp?: number;
   game?: string;
+  accuracy?: number;
   teamNumber?: string;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
@@ -119,7 +123,9 @@ function gameForAuxEntry(rawGame: unknown): AnalyticsGame {
 }
 
 function TeamBreakdownContent() {
+  const { userData } = useAuth();
   const [scoutingEntries, setScoutingEntries] = useState<ScoutingEntry[]>([]);
+  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
   const [strategyEntries, setStrategyEntries] = useState<StrategyOrDriveEntry[]>([]);
   const [driveEntries, setDriveEntries] = useState<StrategyOrDriveEntry[]>([]);
@@ -154,7 +160,7 @@ function TeamBreakdownContent() {
           getDocs(collection(db, "matchStrategyPlans")),
           getDocs(collection(db, "driveScouting")),
         ]);
-        setScoutingEntries(scoutingSnap.docs.map((d) => d.data() as ScoutingEntry));
+        setScoutingEntries(scoutingSnap.docs.map((d) => ({ id: d.id, ...(d.data() as ScoutingEntry) })));
         setPitEntries(pitSnap.docs.map((d) => d.data() as PitEntry));
         setStrategyEntries(strategySnap.docs.map((d) => d.data() as StrategyOrDriveEntry));
         setDriveEntries(driveSnap.docs.map((d) => d.data() as StrategyOrDriveEntry));
@@ -165,10 +171,36 @@ function TeamBreakdownContent() {
     void loadEntries();
   }, []);
 
+  useEffect(() => {
+    async function loadFlagStates() {
+      if (!userData?.teamId) {
+        setFlagStates({});
+        return;
+      }
+      const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
+      const next: Record<string, StoredFlagState> = {};
+      snap.docs.forEach((d) => {
+        const row = d.data() as StoredFlagState;
+        const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+        const entityId = String(row.entityId || "").trim();
+        if (!entityId) return;
+        next[flagStateDocId(entityType, entityId)] = row;
+      });
+      setFlagStates(next);
+    }
+    void loadFlagStates();
+  }, [userData?.teamId]);
+
   const filteredScoutingEntries = useMemo(() => {
     const gameFiltered = scoutingEntries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
-    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
-  }, [scoutingEntries, selectedEvent, selectedGame, practiceMatchesOnly]);
+    return gameFiltered
+      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
+      .filter((entry) => {
+        const entryId = String(entry.id || "").trim();
+        const state = entryId ? flagStates[flagStateDocId("scoutingEntry", entryId)] : undefined;
+        return !shouldExcludeEntryFromStats(entry as Record<string, unknown>, state);
+      });
+  }, [scoutingEntries, selectedEvent, selectedGame, practiceMatchesOnly, flagStates]);
 
   const filteredPitEntries = useMemo(() => {
     if (practiceMatchesOnly) return [] as PitEntry[];

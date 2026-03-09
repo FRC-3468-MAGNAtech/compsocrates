@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { flagStateDocId, shouldExcludeEntryFromStats, type StoredFlagState } from "@/app/utils/scoutingFlags";
 
 type TeamAverage = {
   teamNumber: string;
@@ -18,9 +20,11 @@ type TeamAverage = {
 };
 
 type ScoutingEntry = {
+  id?: string;
   eventKey?: string;
   submittedAt?: number;
   timestamp?: number;
+  accuracy?: number;
   game?: string;
   teamNumber?: string;
   leftStartingZone?: boolean;
@@ -93,7 +97,9 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
 }
 
 function TeamAveragesContent() {
+  const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
+  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
@@ -119,7 +125,7 @@ function TeamAveragesContent() {
       setLoading(true);
       try {
         const snap = await getDocs(collection(db, "scouting"));
-        setEntries(snap.docs.map((d) => d.data()));
+        setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } finally {
         setLoading(false);
       }
@@ -127,10 +133,36 @@ function TeamAveragesContent() {
     loadEntries();
   }, []);
 
+  useEffect(() => {
+    async function loadFlagStates() {
+      if (!userData?.teamId) {
+        setFlagStates({});
+        return;
+      }
+      const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
+      const next: Record<string, StoredFlagState> = {};
+      snap.docs.forEach((d) => {
+        const row = d.data() as StoredFlagState;
+        const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+        const entityId = String(row.entityId || "").trim();
+        if (!entityId) return;
+        next[flagStateDocId(entityType, entityId)] = row;
+      });
+      setFlagStates(next);
+    }
+    void loadFlagStates();
+  }, [userData?.teamId]);
+
   const filteredEntries = useMemo(() => {
     const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
-    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
-  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
+    return gameFiltered
+      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
+      .filter((entry) => {
+        const entryId = String(entry.id || "").trim();
+        const state = entryId ? flagStates[flagStateDocId("scoutingEntry", entryId)] : undefined;
+        return !shouldExcludeEntryFromStats(entry as Record<string, unknown>, state);
+      });
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, flagStates]);
 
   const averages = useMemo(() => {
     const teamData: Record<string, number[]> = {};

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -19,12 +19,15 @@ import {
 } from "@/app/utils/analyticsEvents";
 import { getTeamEvents } from "@/app/utils/tba-api";
 import { dedupeEventKeys } from "@/app/utils/events";
+import { flagStateDocId, shouldExcludeEntryFromStats, type StoredFlagState } from "@/app/utils/scoutingFlags";
 
 type ScoutingEntry = {
+  id?: string;
   eventKey?: string;
   submittedAt?: number;
   timestamp?: number;
   game?: string;
+  accuracy?: number;
   teamNumber?: string;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
@@ -284,6 +287,7 @@ function TeamBreakdownDetailContent() {
   const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
   const [strategyEntries, setStrategyEntries] = useState<StrategyPlanEntry[]>([]);
   const [driveEntries, setDriveEntries] = useState<DriveEntry[]>([]);
+  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
@@ -323,7 +327,7 @@ function TeamBreakdownDetailContent() {
           getDocs(collection(db, "matchStrategyPlans")),
           getDocs(collection(db, "driveScouting")),
         ]);
-        setScoutingEntries(scoutingSnap.docs.map((d) => d.data() as ScoutingEntry));
+        setScoutingEntries(scoutingSnap.docs.map((d) => ({ id: d.id, ...(d.data() as ScoutingEntry) })));
         setPitEntries(pitSnap.docs.map((d) => d.data() as PitEntry));
         setStrategyEntries(strategySnap.docs.map((d) => d.data() as StrategyPlanEntry));
         setDriveEntries(driveSnap.docs.map((d) => d.data() as DriveEntry));
@@ -333,6 +337,26 @@ function TeamBreakdownDetailContent() {
     }
     void load();
   }, []);
+
+  useEffect(() => {
+    async function loadFlagStates() {
+      if (!userData?.teamId) {
+        setFlagStates({});
+        return;
+      }
+      const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
+      const next: Record<string, StoredFlagState> = {};
+      snap.docs.forEach((d) => {
+        const row = d.data() as StoredFlagState;
+        const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+        const entityId = String(row.entityId || "").trim();
+        if (!entityId) return;
+        next[flagStateDocId(entityType, entityId)] = row;
+      });
+      setFlagStates(next);
+    }
+    void loadFlagStates();
+  }, [userData?.teamId]);
 
   useEffect(() => {
     async function loadTeamEvents() {
@@ -435,6 +459,16 @@ function TeamBreakdownDetailContent() {
     [scoutingEntries, teamNumber]
   );
 
+  const teamScoutingAllForStats = useMemo(
+    () =>
+      teamScoutingAll.filter((entry) => {
+        const entryId = String(entry.id || "").trim();
+        const state = entryId ? flagStates[flagStateDocId("scoutingEntry", entryId)] : undefined;
+        return !shouldExcludeEntryFromStats(entry as Record<string, unknown>, state);
+      }),
+    [teamScoutingAll, flagStates]
+  );
+
   const eventSeedEntries = useMemo(
     () => [
       ...teamScoutingAll,
@@ -456,9 +490,11 @@ function TeamBreakdownDetailContent() {
   const isReefscape = selectedGame === "REEFSCAPE";
 
   const teamScoutingFiltered = useMemo(() => {
-    const gameFiltered = teamScoutingAll.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions));
+    const gameFiltered = teamScoutingAllForStats.filter((entry) =>
+      entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
+    );
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
-  }, [teamScoutingAll, selectedGame, selectedEvent, practiceMatchesOnly, eventOptions]);
+  }, [teamScoutingAllForStats, selectedGame, selectedEvent, practiceMatchesOnly, eventOptions]);
 
   const teamPitFiltered = useMemo(() => {
     if (practiceMatchesOnly) return [] as PitEntry[];
@@ -673,7 +709,7 @@ function TeamBreakdownDetailContent() {
 
   const pastEvents = useMemo(() => {
     const byEvent = new Map<string, { count: number; totalScore: number }>();
-    teamScoutingAll.forEach((entry) => {
+    teamScoutingAllForStats.forEach((entry) => {
       const key = String(entry.eventKey || "").trim();
       if (!key || !isPastEventKey(key, eventOptions)) return;
       const existing = byEvent.get(key) || { count: 0, totalScore: 0 };
@@ -687,7 +723,7 @@ function TeamBreakdownDetailContent() {
       matches: value.count,
       avgScore: value.count > 0 ? value.totalScore / value.count : 0,
     }));
-  }, [teamScoutingAll, eventOptions, selectedGame]);
+  }, [teamScoutingAllForStats, eventOptions, selectedGame]);
 
   const filteredEntryCount = teamScoutingFiltered.length + teamPitFiltered.length + teamStrategyFiltered.length + teamDriveFiltered.length;
 
