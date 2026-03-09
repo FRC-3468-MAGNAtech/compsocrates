@@ -1076,7 +1076,9 @@ function ScoutFormContent() {
     );
   }, [scoutedCounts, targets, tbaCompletedMatchIds]);
   const modalOptions = useMemo(() => {
-    return options.filter((option) => assignedMatchIds.has(option.id));
+    if (assignedMatchIds.size === 0) return options;
+    const assignedOnly = options.filter((option) => assignedMatchIds.has(option.id));
+    return assignedOnly.length > 0 ? assignedOnly : options;
   }, [assignedMatchIds, options]);
 
   function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {
