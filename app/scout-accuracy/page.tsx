@@ -385,16 +385,20 @@ function ScoutAccuracyContent() {
       });
       const teamFlagStateById = new Map<string, StoredFlagState>();
       if (userData?.teamId) {
-        const flagSnap = await getDocs(
-          query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId))
-        );
-        flagSnap.docs.forEach((docSnap) => {
-          const row = docSnap.data() as StoredFlagState & { entityId?: string; entityType?: "scoutingEntry" | "practiceSession" };
-          const entityId = String(row.entityId || "");
-          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-          if (!entityId) return;
-          teamFlagStateById.set(flagStateDocId(entityType, entityId), row);
-        });
+        try {
+          const flagSnap = await getDocs(
+            query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId))
+          );
+          flagSnap.docs.forEach((docSnap) => {
+            const row = docSnap.data() as StoredFlagState & { entityId?: string; entityType?: "scoutingEntry" | "practiceSession" };
+            const entityId = String(row.entityId || "");
+            const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+            if (!entityId) return;
+            teamFlagStateById.set(flagStateDocId(entityType, entityId), row);
+          });
+        } catch (error) {
+          console.warn("Unable to load scouting flag states for scout accuracy. Continuing without flag states.", error);
+        }
       }
       const statsPromises = memberData.map(async (member) => {
         const [scoutEntriesByNameSnap, scoutEntriesByUidSnap] = await Promise.all([

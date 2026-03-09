@@ -139,16 +139,21 @@ function TeamAveragesContent() {
         setFlagStates({});
         return;
       }
-      const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
-      const next: Record<string, StoredFlagState> = {};
-      snap.docs.forEach((d) => {
-        const row = d.data() as StoredFlagState;
-        const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-        const entityId = String(row.entityId || "").trim();
-        if (!entityId) return;
-        next[flagStateDocId(entityType, entityId)] = row;
-      });
-      setFlagStates(next);
+      try {
+        const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
+        const next: Record<string, StoredFlagState> = {};
+        snap.docs.forEach((d) => {
+          const row = d.data() as StoredFlagState;
+          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+          const entityId = String(row.entityId || "").trim();
+          if (!entityId) return;
+          next[flagStateDocId(entityType, entityId)] = row;
+        });
+        setFlagStates(next);
+      } catch (error) {
+        console.warn("Unable to load scouting flag states for team averages. Continuing without flag states.", error);
+        setFlagStates({});
+      }
     }
     void loadFlagStates();
   }, [userData?.teamId]);

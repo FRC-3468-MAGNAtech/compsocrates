@@ -821,16 +821,21 @@ function AnalyticsPageContent() {
 
     setRawData(enriched);
     if (userData?.teamId) {
-      const flagSnap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
-      const nextFlagStates: Record<string, StoredFlagState> = {};
-      flagSnap.docs.forEach((flagDoc) => {
-        const row = flagDoc.data() as StoredFlagState;
-        const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-        const entityId = String(row.entityId || "").trim();
-        if (!entityId) return;
-        nextFlagStates[flagStateDocId(entityType, entityId)] = row;
-      });
-      setFlagStates(nextFlagStates);
+      try {
+        const flagSnap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
+        const nextFlagStates: Record<string, StoredFlagState> = {};
+        flagSnap.docs.forEach((flagDoc) => {
+          const row = flagDoc.data() as StoredFlagState;
+          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
+          const entityId = String(row.entityId || "").trim();
+          if (!entityId) return;
+          nextFlagStates[flagStateDocId(entityType, entityId)] = row;
+        });
+        setFlagStates(nextFlagStates);
+      } catch (error) {
+        console.warn("Unable to load scouting flag states for analytics. Continuing without flag states.", error);
+        setFlagStates({});
+      }
     } else {
       setFlagStates({});
     }
