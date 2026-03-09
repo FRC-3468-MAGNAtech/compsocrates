@@ -778,6 +778,10 @@ function mapPlayoffToBracketSlot(match: {
     || (/_sf\d+m\d+/.test(key) ? "sf" : "")
     || (/_f\d+m\d+/.test(key) ? "f" : "");
 
+  // 2026+ double-elim feeds often encode bracket slot as SF{slot}M1.
+  if (inferredLevel === "sf" && matchNumber === 1 && setNumber >= 1 && setNumber <= 13) {
+    return setNumber;
+  }
   if (inferredLevel === "qf") {
     if (matchNumber === 1 && setNumber >= 1 && setNumber <= 4) return setNumber; // 1-4
     if (matchNumber === 2 && setNumber === 1) return 7;
@@ -794,7 +798,7 @@ function mapPlayoffToBracketSlot(match: {
     return null;
   }
   if (inferredLevel === "f") {
-    if (matchNumber === 1) return 13;
+    if (matchNumber >= 1 && matchNumber <= 3) return 13 + matchNumber; // 14, 15, 16
     return 14;
   }
   return null;

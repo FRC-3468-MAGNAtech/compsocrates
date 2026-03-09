@@ -18,6 +18,10 @@ export function isTbaMatchCompleted(match: Pick<TBAMatch, "alliances">): boolean
 }
 
 export function mapPlayoffToBracketSlot(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number">): number | null {
+  // 2026+ double-elim feeds often encode bracket slot as SF{slot}M1.
+  if (match.comp_level === "sf" && match.match_number === 1 && match.set_number >= 1 && match.set_number <= 13) {
+    return match.set_number;
+  }
   if (match.comp_level === "qf") {
     if (match.match_number === 1 && match.set_number >= 1 && match.set_number <= 4) return match.set_number;
     if (match.match_number === 2 && match.set_number === 1) return 7;
@@ -33,7 +37,10 @@ export function mapPlayoffToBracketSlot(match: Pick<TBAMatch, "comp_level" | "se
     if (match.match_number === 3 && match.set_number === 2) return 12;
     return null;
   }
-  if (match.comp_level === "f") return match.match_number === 1 ? 13 : 14;
+  if (match.comp_level === "f") {
+    if (match.match_number >= 1 && match.match_number <= 3) return 13 + match.match_number; // 14, 15, 16
+    return 14;
+  }
   return null;
 }
 
@@ -77,7 +84,7 @@ export function buildReefscapeModalOptions(matches: TBAMatch[]): ReefscapeMatchO
 
     const slot = mapPlayoffToBracketSlot(match);
     if (!slot) return;
-    const label = slot === 14 ? "FINALS" : `Match ${slot}`;
+    const label = slot <= 13 ? `Match ${slot}` : slot === 14 ? "FINALS" : `Finals ${slot - 13}`;
     const existing = byId.get(id);
     if (!existing || scheduleTime < existing.scheduleTime || existing.scheduleTime <= 0) {
       byId.set(id, {

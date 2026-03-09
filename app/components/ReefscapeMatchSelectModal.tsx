@@ -81,13 +81,11 @@ function FinalsBracket({
   completed,
   onPick,
   timesByNumber,
-  labelsByNumber,
   availableNumbers,
 }: {
   completed: Set<string>;
   onPick: (matchNumber: number) => void;
   timesByNumber: Map<number, number>;
-  labelsByNumber: Map<number, string>;
   availableNumbers: number[];
 }) {
   const B = { w: 104, h: 58, colGap: 52, row: 84 };
@@ -119,10 +117,12 @@ function FinalsBracket({
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
   const availableSet = new Set(availableNumbers);
-  const firstOpen = availableNumbers.find((n) => !completed.has(`f${n}`)) || -1;
+  const ordered = Array.from({ length: 16 }, (_, i) => i + 1).filter((n) => n < 16 || availableSet.has(16));
+  const firstOpen = ordered.find((n) => !completed.has(`f${n}`)) || -1;
   const statusOf = (n: number): MatchVisualStatus => {
     if (completed.has(`f${n}`)) return "completed";
-    if (!availableSet.has(n)) return "unavailable";
+    // Only F3 (slot 16) should show unknown/unavailable before it is needed/posted.
+    if (n === 16 && !availableSet.has(16)) return "unavailable";
     return n === firstOpen ? "next" : "upcoming";
   };
   const timeFor = (matchId: number) => {
@@ -161,19 +161,19 @@ function FinalsBracket({
               <path d={`M ${c4 + B.w} ${y13 + B.h / 2} H ${join5} V ${yFinals + B.h / 2}`} />
             </g>
           </svg>
-          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} label={labelsByNumber.get(1)} timeLabel={timeFor(1)} />
-          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} label={labelsByNumber.get(2)} timeLabel={timeFor(2)} />
-          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} label={labelsByNumber.get(3)} timeLabel={timeFor(3)} />
-          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} label={labelsByNumber.get(4)} timeLabel={timeFor(4)} />
-          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} label={labelsByNumber.get(5)} timeLabel={timeFor(5)} />
-          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} label={labelsByNumber.get(6)} timeLabel={timeFor(6)} />
-          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} label={labelsByNumber.get(7)} timeLabel={timeFor(7)} />
-          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} label={labelsByNumber.get(8)} timeLabel={timeFor(8)} />
-          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} label={labelsByNumber.get(10)} timeLabel={timeFor(10)} />
-          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} label={labelsByNumber.get(9)} timeLabel={timeFor(9)} />
-          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} label={labelsByNumber.get(11)} timeLabel={timeFor(11)} />
-          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} label={labelsByNumber.get(12)} timeLabel={timeFor(12)} />
-          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} label={labelsByNumber.get(13)} timeLabel={timeFor(13)} />
+          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} timeLabel={timeFor(1)} />
+          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} timeLabel={timeFor(2)} />
+          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} timeLabel={timeFor(3)} />
+          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} timeLabel={timeFor(4)} />
+          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} timeLabel={timeFor(5)} />
+          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} timeLabel={timeFor(6)} />
+          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} timeLabel={timeFor(7)} />
+          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} timeLabel={timeFor(8)} />
+          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} />
+          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} />
+          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} timeLabel={timeFor(11)} />
+          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} timeLabel={timeFor(12)} />
+          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} timeLabel={timeFor(13)} />
           <FinalsMatchBox
             number={14}
             row={yFinals}
@@ -417,7 +417,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
               {finalsStep === "bracket" && (
                 <FinalsBracket
                   completed={new Set(
-                    Array.from(new Set([...availableFinalNumbers, ...Array.from({ length: 14 }, (_, i) => i + 1)]))
+                    Array.from(new Set([...availableFinalNumbers, ...Array.from({ length: 16 }, (_, i) => i + 1)]))
                       .filter((n) => isFinalDone(n))
                       .map((n) => `f${n}`)
                   )}
@@ -426,12 +426,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                       .filter((match) => match.type === "finals")
                       .map((match) => [match.matchNumber, Number(match.scheduleTime || 0)] as const)
                   )}
-                  labelsByNumber={new Map(
-                    options
-                      .filter((match) => match.type === "finals")
-                      .map((match) => [match.matchNumber, String(match.label || `Match ${match.matchNumber}`)] as const)
-                  )}
-                  availableNumbers={availableFinalNumbers.length > 0 ? availableFinalNumbers : Array.from({ length: 14 }, (_, i) => i + 1)}
+                  availableNumbers={availableFinalNumbers.length > 0 ? availableFinalNumbers : Array.from({ length: 15 }, (_, i) => i + 1)}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
                       setFinalsStep("number");
@@ -467,15 +462,16 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   <p className="text-gray-600 mb-6 text-center">Which finals match are you scouting?</p>
                   <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
                     {[1, 2, 3].map((matchNum) => {
-                      const status: MatchVisualStatus = isFinalDone(matchNum)
+                      const slot = matchNum + 13;
+                      const status: MatchVisualStatus = isFinalDone(slot)
                         ? "completed"
-                        : availableFinalNumbers.length > 0 && !availableFinalNumbers.includes(matchNum)
+                        : matchNum === 3 && availableFinalNumbers.length > 0 && !availableFinalNumbers.includes(16)
                         ? "unavailable"
-                        : !isFinalDone(1)
+                        : !isFinalDone(14)
                         ? matchNum === 1
                           ? "next"
                           : "upcoming"
-                        : !isFinalDone(2)
+                        : !isFinalDone(15)
                         ? matchNum === 2
                           ? "next"
                           : "upcoming"
@@ -492,17 +488,17 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                           key={matchNum}
                           type="button"
                           onClick={() => {
-                            const picked = finalsByNumber.get(matchNum) || finalsById.get(`f${matchNum}`);
+                            const picked = finalsByNumber.get(slot) || finalsById.get(`f${slot}`);
                             if (picked) {
                               onPick(picked);
                               onClose();
                               return;
                             }
                             const fallback = {
-                              id: `f${matchNum}`,
+                              id: `f${slot}`,
                               label: `Finals ${matchNum}`,
                               type: "finals",
-                              matchNumber: matchNum,
+                              matchNumber: slot,
                               scheduleTime: 0,
                             } as T;
                             onPick(fallback);

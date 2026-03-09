@@ -123,6 +123,8 @@ function buildFallbackScoutOptions(): MatchOption[] {
 
 function mapTbaMatchToScoutOptionId(match: Pick<TBAMatch, "comp_level" | "match_number">): string {
   if (match.comp_level === "qm") return `q${match.match_number}`;
+  const slot = mapPlayoffToBracketSlot(match as Pick<TBAMatch, "comp_level" | "set_number" | "match_number">);
+  if (slot) return `f${slot}`;
   if (match.comp_level === "f") return `f${match.match_number}`;
   if (match.comp_level === "sf") return `sf${match.match_number}`;
   if (match.comp_level === "qf") return `qf${match.match_number}`;
@@ -130,6 +132,10 @@ function mapTbaMatchToScoutOptionId(match: Pick<TBAMatch, "comp_level" | "match_
 }
 
 function mapPlayoffToBracketSlot(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number">): number | null {
+  // 2026+ double-elim feeds often encode bracket slot as SF{slot}M1.
+  if (match.comp_level === "sf" && match.match_number === 1 && match.set_number >= 1 && match.set_number <= 13) {
+    return match.set_number;
+  }
   if (match.comp_level === "qf") {
     if (match.match_number === 1 && match.set_number >= 1 && match.set_number <= 4) return match.set_number;
     if (match.match_number === 2 && match.set_number === 1) return 7;
@@ -146,7 +152,7 @@ function mapPlayoffToBracketSlot(match: Pick<TBAMatch, "comp_level" | "set_numbe
     return null;
   }
   if (match.comp_level === "f") {
-    if (match.match_number === 1) return 13;
+    if (match.match_number >= 1 && match.match_number <= 3) return 13 + match.match_number; // 14, 15, 16
     return 14;
   }
   return null;
@@ -880,7 +886,24 @@ function ScoutFormContent() {
           const time = m.actual_time || m.predicted_time || m.time || 0;
           const slot = mapPlayoffToBracketSlot(m);
           const id = slot ? `f${slot}` : m.comp_level === "f" ? `f${m.match_number}` : m.comp_level === "sf" ? `sf${m.match_number}` : `qf${m.match_number}`;
-          next.push({ id, label: m.comp_level === "f" ? `Finals ${m.match_number}` : m.comp_level === "sf" ? `Semifinal ${m.set_number}-${m.match_number}` : `Quarterfinal ${m.set_number}-${m.match_number}`, type: "finals", matchNumber: slot || m.match_number, scheduleTime: time, teams });
+          next.push({
+            id,
+            label: slot
+              ? slot <= 13
+                ? `Match ${slot}`
+                : slot === 14
+                ? "FINALS"
+                : `Finals ${slot - 13}`
+              : m.comp_level === "f"
+              ? `Finals ${m.match_number}`
+              : m.comp_level === "sf"
+              ? `Semifinal ${m.set_number}-${m.match_number}`
+              : `Quarterfinal ${m.set_number}-${m.match_number}`,
+            type: "finals",
+            matchNumber: slot || m.match_number,
+            scheduleTime: time,
+            teams,
+          });
           nextTargets[id] = teams.length || 6;
         });
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
