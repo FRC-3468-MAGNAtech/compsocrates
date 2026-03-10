@@ -118,6 +118,7 @@ function CoachDashboardContent() {
   const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
   const [teamData, setTeamData] = useState<TeamData | null>(null);
   const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
+  const [readyScoutIds, setReadyScoutIds] = useState<string[]>([]);
   const [readyCompetitiveScoutIds, setReadyCompetitiveScoutIds] = useState<string[]>([]);
   const [readyCompetitiveScoutNames, setReadyCompetitiveScoutNames] = useState<string[]>([]);
   const [eventAverageAccuracyByKey, setEventAverageAccuracyByKey] = useState<Record<string, number>>({});
@@ -234,6 +235,7 @@ function CoachDashboardContent() {
         .filter((row) => readyCompetitiveUidSet.has(row.uid))
         .map((row) => row.displayName);
       setReadyScoutNames(computedReadyScouts);
+      setReadyScoutIds(computedReadyScoutUids);
       setReadyCompetitiveScoutIds(computedReadyCompetitiveScoutUids);
       setReadyCompetitiveScoutNames(computedReadyCompetitiveScouts);
 
@@ -360,14 +362,14 @@ function CoachDashboardContent() {
                     if (!event) return null;
                     const expected = teamData?.eventScoutCounts?.[event.key] || teamData?.scoutCount || 6;
                     const attendees = Array.isArray(teamData?.eventAttendees?.[event.key]) ? teamData.eventAttendees[event.key] : [];
-                    const readyNameLookup = new Set(readyCompetitiveScoutNames.map((name) => name.trim().toLowerCase()));
-                    const readyIdLookup = new Set(readyCompetitiveScoutIds.map((id) => id.trim()));
+                    const readyNameLookup = new Set(readyScoutNames.map((name) => name.trim().toLowerCase()));
+                    const readyIdLookup = new Set(readyScoutIds.map((id) => id.trim()));
                     const readyAttendees = attendees.length > 0
                       ? attendees.filter((value: string) => {
                           const safe = String(value || "").trim();
                           return readyIdLookup.has(safe) || readyNameLookup.has(safe.toLowerCase());
                         }).length
-                      : readyCompetitiveScoutIds.length;
+                      : readyScoutNames.length;
                     const eventMatches = eventMatchesByKey[event.key] || [];
                     const eventIsPast = isPastEvent(event);
                     return (
@@ -394,7 +396,7 @@ function CoachDashboardContent() {
                                   <p className="text-2xl font-bold">{eventIsPast ? "Ended" : event.daysUntil}</p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-gray-600">Scouts Ready (Comp)</p>
+                                  <p className="text-sm text-gray-600">{`Scouts Ready (${accuracyMode})`}</p>
                                   <p className="text-2xl font-bold">{readyAttendees}/{expected}</p>
                                 </div>
                                 <div>
