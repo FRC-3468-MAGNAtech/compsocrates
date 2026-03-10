@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { buildCompletedModalIdsFromTba } from "@/app/utils/reefscapeMatchSync";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -930,7 +931,7 @@ function PracticeScoutingContent() {
   const [pendingDraft, setPendingDraft] = useState<PracticeSessionDraft | null>(null);
   const [teamEventCatalog, setTeamEventCatalog] = useState<DetectedEventOption[]>([]);
   const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({ encryptedKey: "", plainKey: "" });
-  const [liveTbaCompletedMatchKeys, setLiveTbaCompletedMatchKeys] = useState<Set<string>>(new Set());
+  const [liveTbaMatches, setLiveTbaMatches] = useState<TBAMatch[]>([]);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const formPaneRef = useRef<HTMLDivElement | null>(null);
 
@@ -1049,14 +1050,14 @@ function PracticeScoutingContent() {
   useEffect(() => {
     async function loadLiveTbaStatuses() {
       if (selectedDifficulty !== "live") {
-        setLiveTbaCompletedMatchKeys(new Set());
+        setLiveTbaMatches([]);
         return;
       }
       const eventKey =
         String(liveEventKeyHint || "").trim().toLowerCase()
         || String(currentMatch ? getPracticeEventKey(currentMatch) : "").trim().toLowerCase();
       if (!eventKey) {
-        setLiveTbaCompletedMatchKeys(new Set());
+        setLiveTbaMatches([]);
         return;
       }
 
@@ -1080,18 +1081,10 @@ function PracticeScoutingContent() {
         if (matches.length === 0) {
           matches = await getEventMatches(eventKey);
         }
-
-        const completedKeys = new Set<string>();
-        matches.forEach((match) => {
-          const redScore = Number(match.alliances?.red?.score);
-          const blueScore = Number(match.alliances?.blue?.score);
-          if (redScore < 0 || blueScore < 0) return;
-          completedKeys.add(String(match.key || "").trim().toLowerCase());
-        });
-        setLiveTbaCompletedMatchKeys(completedKeys);
+        setLiveTbaMatches(matches);
       } catch (error) {
         console.error("Failed loading FIRST/TBA live match statuses:", error);
-        setLiveTbaCompletedMatchKeys(new Set());
+        setLiveTbaMatches([]);
       }
     }
     void loadLiveTbaStatuses();
@@ -2297,7 +2290,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowLiveLinkModal(false);
     const matches = await selectPracticeMatch("live", selectedMode);
     if (matches.length === 0) return;
-    setShowMatchSelectModal(true);
+    await handleChooseLiveMatchClick(matches);
   }
 
   async function handleOpenLiveCorrection() {
@@ -2306,6 +2299,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
     if (!selectedMode) return;
+    if (liveVideoUrl.trim()) {
+      await hydrateLiveStreamContext(liveVideoUrl.trim());
+    }
     let matches = candidateMatches;
     if (matches.length === 0) {
       matches = await selectPracticeMatch("live", selectedMode);
@@ -3084,24 +3080,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return new Set(sharedModalOptions.filter((option) => option.progress === "complete").map((option) => option.id));
     }
 
-    if (liveTbaCompletedMatchKeys.size === 0) {
+    if (liveTbaMatches.length === 0) {
       return new Set<string>();
     }
 
-    const bySourceId = new Map(liveScopedCandidateMatches.map((match) => [String(match.id || ""), match] as const));
-    const completed = new Set<string>();
-
-    sharedModalOptions.forEach((option) => {
-      const source = bySourceId.get(option.sourceId);
-      if (!source) return;
-      const sourceMatchKey = String((source as unknown as Record<string, unknown>).matchKey || "").trim().toLowerCase();
-      if (sourceMatchKey && liveTbaCompletedMatchKeys.has(sourceMatchKey)) {
-        completed.add(option.id);
-      }
-    });
-
-    return completed;
-  }, [liveScopedCandidateMatches, liveTbaCompletedMatchKeys, selectedDifficulty, sharedModalOptions]);
+    return buildCompletedModalIdsFromTba(liveTbaMatches);
+  }, [liveTbaMatches, selectedDifficulty, sharedModalOptions]);
 
   function handleSharedModalPick(option: PracticeSelectorOption) {
     const picked = liveScopedCandidateMatches.find((match) => match.id === option.sourceId);

@@ -9,7 +9,7 @@ import { APP_EVENT_BY_KEY } from "@/app/utils/events";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
-import { getEventMatches } from "@/app/utils/tba-api";
+import { buildCompletedModalIdsFromTba, fetchEventMatchesWithTeamAuth } from "@/app/utils/reefscapeMatchSync";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -374,6 +374,7 @@ function ScoutFormContent() {
   const [apiPracticeMatches, setApiPracticeMatches] = useState<Array<{ matchNum: number; timeString: string }>>([]);
   const [apiTeamsByMatchId, setApiTeamsByMatchId] = useState<Record<string, string[]>>({});
   const [apiTargetByMatchId, setApiTargetByMatchId] = useState<Record<string, number>>({});
+  const [tbaCompletedMatches, setTbaCompletedMatches] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState({
     scoutName: userData?.displayName || "",
@@ -436,10 +437,14 @@ function ScoutFormContent() {
           setApiPracticeMatches([]);
           setApiTeamsByMatchId({});
           setApiTargetByMatchId({});
+          setTbaCompletedMatches(new Set());
           return;
         }
 
-        const matches = await getEventMatches(resolvedEventKey);
+        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+        const matches = await fetchEventMatchesWithTeamAuth(resolvedEventKey, { encryptedKey, plainKey });
+        setTbaCompletedMatches(matches.length > 0 ? buildCompletedModalIdsFromTba(matches) : new Set());
         const qualification = matches
           .filter((match) => match.comp_level === "qm")
           .sort((a, b) => a.match_number - b.match_number);
@@ -474,6 +479,7 @@ function ScoutFormContent() {
         setApiTargetByMatchId(targetByMatchId);
       } catch (error) {
         console.error("Unable to load API match schedule:", error);
+        setTbaCompletedMatches(new Set());
       }
     }
     void loadEventSchedule();
@@ -508,6 +514,17 @@ function ScoutFormContent() {
     void loadScoutedProgress();
   }, [eventKey]);
 
+  const completedMatchSet = useMemo(() => {
+    const completed = new Set<string>();
+    Object.keys(scoutedMatchCounts).forEach((key) => {
+      if (isMatchCompletedByScouts(key)) completed.add(key);
+    });
+    if (tbaCompletedMatches.size > 0) {
+      tbaCompletedMatches.forEach((key) => completed.add(key));
+    }
+    return completed;
+  }, [apiTargetByMatchId, scoutedMatchCounts, tbaCompletedMatches]);
+
   function getSelectedMatchId(match: { id: number; type?: "qualification" | "practice" | "finals"; bracket?: "upper" | "lower" }) {
     if (!match.type || match.id <= 0) return "";
     if (match.type === "practice") return `p${match.id}`;
@@ -515,9 +532,16 @@ function ScoutFormContent() {
     return match.bracket ? `sf${match.id}` : `f${match.id}`;
   }
 
-  function isMatchCompleted(matchId: string) {
+  function isMatchCompletedByScouts(matchId: string) {
     const target = apiTargetByMatchId[matchId] || 6;
     return (scoutedMatchCounts[matchId] || 0) >= target;
+  }
+
+  function isMatchCompleted(matchId: string) {
+    if (tbaCompletedMatches.size > 0 && (matchId.startsWith("q") || matchId.startsWith("f"))) {
+      return tbaCompletedMatches.has(matchId);
+    }
+    return isMatchCompletedByScouts(matchId);
   }
 
   function handleMatchSelect(id: number, bracket?: "upper" | "lower") {
@@ -1182,11 +1206,7 @@ function ScoutFormContent() {
         {modalStep === "finals" && finalsStep === "bracket" && (
           <FinalsBracket
             setSelectedMatch={handleMatchSelect}
-            completedMatches={new Set(Object.keys(scoutedMatchCounts).filter((key) => {
-              if (key.startsWith("sf")) return isMatchCompleted(key);
-              if (key.startsWith("f")) return isMatchCompleted(key);
-              return false;
-            }))}
+            completedMatches={completedMatchSet}
           />
         )}
         

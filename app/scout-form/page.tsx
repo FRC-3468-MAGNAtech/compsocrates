@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -10,9 +10,16 @@ import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
-import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
+import {
+  buildCompletedModalIdsFromTba,
+  buildReefscapeModalOptions,
+  fetchEventMatchesWithTeamAuth,
+  getTbaScheduleTime,
+  mapTbaMatchToModalId,
+} from "@/app/utils/reefscapeMatchSync";
 
 type MatchType = "practice" | "qualification" | "finals";
 type MatchStatus = "completed" | "next" | "upcoming";
@@ -763,6 +770,7 @@ function ScoutFormContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [options, setOptions] = useState<MatchOption[]>([]);
+  const [modalCompleted, setModalCompleted] = useState<Set<string>>(new Set());
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
@@ -835,6 +843,7 @@ function ScoutFormContent() {
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
+        setModalCompleted(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
         return;
       }
@@ -845,38 +854,57 @@ function ScoutFormContent() {
           const fallback = buildFallbackScoutOptions();
           setOptions(fallback);
           setTargets({});
+          setModalCompleted(new Set());
           setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
           return;
         }
 
-        const matches = await getEventMatches(currentEvent);
-        const next: MatchOption[] = [];
-        const nextTargets: Record<string, number> = {};
-        matches.filter((m) => m.comp_level === "qm").sort((a, b) => a.match_number - b.match_number).forEach((m) => {
-          const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
-          const time = m.actual_time || m.predicted_time || m.time || 0;
-          next.push({ id: `q${m.match_number}`, label: `Qualification ${m.match_number}`, type: "qualification", matchNumber: m.match_number, scheduleTime: time, teams });
-          nextTargets[`q${m.match_number}`] = teams.length || 6;
-        });
-        matches.filter((m) => ["qf", "sf", "f"].includes(m.comp_level)).forEach((m) => {
-          const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
-          const time = m.actual_time || m.predicted_time || m.time || 0;
-          if (m.comp_level === "f") {
-            const finalsNumber = getFinalsSeriesNumber(m);
-            const id = `f${finalsNumber}`;
-            next.push({ id, label: `Finals ${finalsNumber}`, type: "finals", matchNumber: finalsNumber, scheduleTime: time, teams });
-            nextTargets[id] = teams.length || 6;
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+        const matches = await fetchEventMatchesWithTeamAuth(currentEvent, { encryptedKey, plainKey });
+
+        const modalOptions = buildReefscapeModalOptions(matches);
+        const teamsById = new Map<string, { teams: string[]; scheduleTime: number }>();
+        matches.forEach((match) => {
+          const modalId = mapTbaMatchToModalId(match);
+          if (!modalId) return;
+          const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+            .map((k) => k.replace("frc", "").trim())
+            .filter(Boolean);
+          const scheduleTime = getTbaScheduleTime(match);
+          const existing = teamsById.get(modalId);
+          if (!existing) {
+            teamsById.set(modalId, { teams, scheduleTime });
             return;
           }
-          const slot = getPlayoffSlot(m);
-          const id = m.comp_level === "sf" ? `sf${slot}` : `qf${slot}`;
-          next.push({ id, label: `Match ${slot}`, type: "finals", matchNumber: slot, scheduleTime: time, teams });
-          nextTargets[id] = teams.length || 6;
+          if ((existing.scheduleTime <= 0 && scheduleTime > 0) || (scheduleTime > 0 && scheduleTime < existing.scheduleTime)) {
+            teamsById.set(modalId, { teams, scheduleTime });
+          }
+        });
+
+        const nextTargets: Record<string, number> = {};
+        const next = modalOptions.map((opt) => {
+          const teams = teamsById.get(opt.id)?.teams || [];
+          nextTargets[opt.id] = teams.length || 6;
+          return { ...opt, teams };
         });
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
-        setSelectedMatch((current) => current || resolved.find((m) => m.type === "qualification") || resolved[0] || null);
+        setModalCompleted(matches.length > 0 ? buildCompletedModalIdsFromTba(matches) : new Set());
+
+        const now = Date.now() / 1000;
+        const ordered = resolved.slice().sort((a, b) => {
+          const aTime = Number(a.scheduleTime || 0);
+          const bTime = Number(b.scheduleTime || 0);
+          if (aTime > 0 && bTime > 0) return aTime - bTime;
+          if (aTime > 0 && bTime <= 0) return -1;
+          if (aTime <= 0 && bTime > 0) return 1;
+          return a.matchNumber - b.matchNumber;
+        });
+        const nextMatch = ordered.find((match) => Number(match.scheduleTime || 0) >= now) || ordered[0] || null;
+        setSelectedMatch((current) => current || nextMatch);
 
         const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
         const assigned: Record<string, string> = {};
@@ -892,6 +920,7 @@ function ScoutFormContent() {
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
+        setModalCompleted(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
       }
     }
@@ -1039,15 +1068,7 @@ function ScoutFormContent() {
     void loadPitDefaults();
   }, [userData?.teamId, form.teamNumber, eventKey]);
 
-  const completedMatches = useMemo(() => {
-    return new Set(
-      Object.keys(scoutedCounts).filter((id) => {
-        const target = targets[id];
-        if (typeof target !== "number" || target <= 0) return false;
-        return (scoutedCounts[id] || 0) >= target;
-      })
-    );
-  }, [scoutedCounts, targets]);
+  const completedMatches = modalCompleted;
 
   function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {
     if (scoredOverride > 0) return scoredOverride;
