@@ -130,6 +130,7 @@ export type StoredFlagState = {
   manualFlagged?: boolean;
   manualFlaggedAt?: number;
   manualFlaggedBy?: string;
+  manualReason?: string;
   dismissedAt?: number;
   dismissedBy?: string;
 };

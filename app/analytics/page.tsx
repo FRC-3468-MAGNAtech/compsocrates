@@ -130,6 +130,13 @@ const INCIDENT_LABELS: Record<string, string> = {
   "red-card": "Red Card",
 };
 
+const MANUAL_FLAG_REASONS = [
+  { value: "no-teleop-score", label: "No teleop score" },
+  { value: "excessive-auto-score", label: "Excessive auto score" },
+  { value: "excessive-human-player-score", label: "Excessive human player score" },
+  { value: "other", label: "Other / coach review" },
+];
+
 const PTS = {
   LEAVE: 3,
   AUTO_CORAL_L1: 3,
@@ -675,6 +682,8 @@ function AnalyticsPageContent() {
   const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
   const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [flagSavingKey, setFlagSavingKey] = useState("");
+  const [flagMenuEntry, setFlagMenuEntry] = useState<Entry | null>(null);
+  const [manualFlagReason, setManualFlagReason] = useState<string>(MANUAL_FLAG_REASONS[0].value);
 
   const rebuiltEventOptions = useMemo(
     () =>
@@ -742,6 +751,17 @@ function AnalyticsPageContent() {
     localStorage.setItem("analytics-selected-event", selectedEvent);
     localStorage.setItem("analytics-practice-matches-only", String(practiceMatchesOnly));
   }, [selectedGame, selectedEvent, practiceMatchesOnly]);
+
+  useEffect(() => {
+    if (!flagMenuEntry) return;
+    const stateId = flagStateDocId("scoutingEntry", flagMenuEntry.id);
+    const savedReason = flagStates[stateId]?.manualReason;
+    if (savedReason) {
+      setManualFlagReason(savedReason);
+    } else {
+      setManualFlagReason(MANUAL_FLAG_REASONS[0].value);
+    }
+  }, [flagMenuEntry, flagStates]);
 
   useEffect(() => {
     const validEvents = new Set(eventOptions.map((option) => option.id));
@@ -973,6 +993,7 @@ function AnalyticsPageContent() {
         dismissedBy: patch.dismissedBy ?? flagStates[stateId]?.dismissedBy,
         manualFlaggedAt: patch.manualFlaggedAt ?? flagStates[stateId]?.manualFlaggedAt,
         manualFlaggedBy: patch.manualFlaggedBy ?? flagStates[stateId]?.manualFlaggedBy,
+        manualReason: patch.manualReason ?? flagStates[stateId]?.manualReason,
       };
       await setDoc(
         doc(db, "scoutingFlagStates", stateId),
@@ -1002,11 +1023,12 @@ function AnalyticsPageContent() {
     });
   }
 
-  async function setScoutingEntryManualFlag(entryId: string, manualFlagged: boolean) {
+  async function setScoutingEntryManualFlag(entryId: string, manualFlagged: boolean, reason?: string) {
     await updateScoutingEntryFlagState(entryId, {
       manualFlagged,
       manualFlaggedAt: Date.now(),
       manualFlaggedBy: userData?.uid || "",
+      manualReason: manualFlagged ? reason ?? manualFlagReason : undefined,
     });
   }
 
@@ -1927,7 +1949,8 @@ function AnalyticsPageContent() {
                 const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
                 const isFlagDismissed = Boolean(flagState?.dismissed);
                 const isManualFlagged = Boolean(flagState?.manualFlagged);
-                const visibleFlags = isFlagDismissed ? [] : entryFlags;
+                const autoFlags = isFlagDismissed ? [] : entryFlags;
+                const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
                 return (
                 <tr key={entry.id}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
@@ -1986,32 +2009,15 @@ function AnalyticsPageContent() {
                   </td>
                   <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                   <td className="text-center">
-                    {canManageFlags && entryFlags.length > 0 && (
-                      <div className="mb-2">
-                        <button
-                          type="button"
-                          onClick={() => void setScoutingEntryFlagDismissed(entry.id, !isFlagDismissed)}
-                          disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                          className="px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs disabled:opacity-50"
-                          title={visibleFlags.map((flag) => flag.detail).join("\n")}
-                        >
-                          {isFlagDismissed ? "Restore Flag" : `Flagged (${visibleFlags.length})`}
-                        </button>
-                      </div>
-                    )}
                     {canManageFlags && (
                       <div className="mb-2">
                         <button
                           type="button"
-                          onClick={() => void setScoutingEntryManualFlag(entry.id, !isManualFlagged)}
+                          onClick={() => setFlagMenuEntry(entry)}
                           disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                          className={`px-2 py-1 rounded border text-xs disabled:opacity-50 ${
-                            isManualFlagged
-                              ? "border-red-300 bg-red-50 text-red-900"
-                              : "border-gray-300 bg-gray-50 text-gray-800"
-                          }`}
+                          className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                         >
-                          {isManualFlagged ? "Unflag Manual" : "Manual Flag"}
+                          {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
                         </button>
                       </div>
                     )}
@@ -2170,7 +2176,8 @@ function AnalyticsPageContent() {
               const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
               const isFlagDismissed = Boolean(flagState?.dismissed);
               const isManualFlagged = Boolean(flagState?.manualFlagged);
-              const visibleFlags = isFlagDismissed ? [] : entryFlags;
+              const autoFlags = isFlagDismissed ? [] : entryFlags;
+              const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
               return (
               <tr key={entry.id}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
@@ -2226,32 +2233,15 @@ function AnalyticsPageContent() {
                 </td>
                 <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
                 <td className="text-center">
-                  {canManageFlags && entryFlags.length > 0 && (
-                    <div className="mb-2">
-                      <button
-                        type="button"
-                        onClick={() => void setScoutingEntryFlagDismissed(entry.id, !isFlagDismissed)}
-                        disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                        className="px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs disabled:opacity-50"
-                        title={visibleFlags.map((flag) => flag.detail).join("\n")}
-                      >
-                        {isFlagDismissed ? "Restore Flag" : `Flagged (${visibleFlags.length})`}
-                      </button>
-                    </div>
-                  )}
                   {canManageFlags && (
                     <div className="mb-2">
                       <button
                         type="button"
-                        onClick={() => void setScoutingEntryManualFlag(entry.id, !isManualFlagged)}
+                        onClick={() => setFlagMenuEntry(entry)}
                         disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                        className={`px-2 py-1 rounded border text-xs disabled:opacity-50 ${
-                          isManualFlagged
-                            ? "border-red-300 bg-red-50 text-red-900"
-                            : "border-gray-300 bg-gray-50 text-gray-800"
-                        }`}
+                        className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                       >
-                        {isManualFlagged ? "Unflag Manual" : "Manual Flag"}
+                        {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
                       </button>
                     </div>
                   )}
@@ -2317,6 +2307,116 @@ function AnalyticsPageContent() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {flagMenuEntry && canManageFlags && (
+        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+            {(() => {
+              const stateId = flagStateDocId("scoutingEntry", flagMenuEntry.id);
+              const flagState = flagStates[stateId];
+              const entryFlags = evaluateScoutingFlags(flagMenuEntry as unknown as Record<string, unknown>);
+              const isDismissed = Boolean(flagState?.dismissed);
+              const isManualFlagged = Boolean(flagState?.manualFlagged);
+              const manualReasonValue = flagState?.manualReason || manualFlagReason;
+              const reasonLabel =
+                MANUAL_FLAG_REASONS.find((reason) => reason.value === manualReasonValue)?.label ||
+                manualReasonValue ||
+                "Manual flag";
+
+              return (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-semibold">Flags</h2>
+                    <p className="text-sm text-gray-600">
+                      Match {matchLabel(flagMenuEntry)} • Team {displayEntryText(flagMenuEntry.teamNumber)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="font-semibold">Auto Flags</div>
+                    {entryFlags.length === 0 && <p className="text-sm text-gray-600">No auto flags detected.</p>}
+                    {entryFlags.length > 0 && (
+                      <div className="space-y-2">
+                        {entryFlags.map((flag) => (
+                          <div key={flag.code} className="rounded border border-amber-200 bg-amber-50 p-2 text-sm">
+                            <div className="font-semibold text-amber-900">{flag.label}</div>
+                            <div className="text-amber-800">{flag.detail}</div>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void setScoutingEntryFlagDismissed(flagMenuEntry.id, !isDismissed)}
+                            disabled={flagSavingKey === stateId}
+                            className="px-3 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 text-sm disabled:opacity-50"
+                          >
+                            {isDismissed ? "Restore Auto Flags" : "Dismiss Auto Flags"}
+                          </button>
+                          {isDismissed && <span className="text-xs text-gray-600">Auto flags are dismissed.</span>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="font-semibold">Manual Flag</div>
+                    {isManualFlagged && (
+                      <p className="text-sm text-gray-700">
+                        Current reason: <span className="font-semibold">{reasonLabel}</span>
+                      </p>
+                    )}
+                    <label className="block text-sm font-medium text-gray-700">
+                      Reason
+                      <select
+                        value={manualReason}
+                        onChange={(event) => setManualFlagReason(event.target.value)}
+                        className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                      >
+                        {MANUAL_FLAG_REASONS.map((reason) => (
+                          <option key={reason.value} value={reason.value}>
+                            {reason.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void setScoutingEntryManualFlag(flagMenuEntry.id, true, manualFlagReason)}
+                        disabled={flagSavingKey === stateId}
+                        className="px-3 py-1 rounded border border-red-300 bg-red-50 text-red-900 text-sm disabled:opacity-50"
+                      >
+                        {isManualFlagged ? "Update Manual Flag" : "Add Manual Flag"}
+                      </button>
+                      {isManualFlagged && (
+                        <button
+                          type="button"
+                          onClick={() => void setScoutingEntryManualFlag(flagMenuEntry.id, false)}
+                          disabled={flagSavingKey === stateId}
+                          className="px-3 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-sm disabled:opacity-50"
+                        >
+                          Remove Manual Flag
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setFlagMenuEntry(null)}
+                      className="w-full py-2 rounded text-white font-semibold"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
