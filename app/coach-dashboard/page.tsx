@@ -126,6 +126,19 @@ function CoachDashboardContent() {
   const [accuracyMode, setAccuracyMode] = useState<PracticeAccuracyMode>("competitive");
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem("coach-dashboard-accuracy-mode");
+    if (saved === "trial" || saved === "competitive") {
+      setAccuracyMode(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("coach-dashboard-accuracy-mode", accuracyMode);
+  }, [accuracyMode]);
+
+  useEffect(() => {
     if (userData && !userData.teamId) {
       setLoading(false);
       router.push(getDashboardRoute(userData));
