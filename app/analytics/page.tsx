@@ -2371,7 +2371,7 @@ function AnalyticsPageContent() {
                     <label className="block text-sm font-medium text-gray-700">
                       Reason
                       <select
-                        value={manualReason}
+                        value={manualFlagReason}
                         onChange={(event) => setManualFlagReason(event.target.value)}
                         className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
                       >
