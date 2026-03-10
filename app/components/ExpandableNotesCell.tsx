@@ -48,13 +48,19 @@ export default function ExpandableNotesCell({
   const clampStyles: React.CSSProperties =
     expanded || autoExpandNotes
       ? { whiteSpace: "pre-wrap" }
-      : {
-          display: "-webkit-box",
-          WebkitLineClamp: maxLines,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-          whiteSpace: "pre-wrap",
-        };
+      : maxLines <= 1
+        ? {
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }
+        : {
+            display: "-webkit-box",
+            WebkitLineClamp: maxLines,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+            whiteSpace: "pre-wrap",
+          };
 
   return (
     <button
