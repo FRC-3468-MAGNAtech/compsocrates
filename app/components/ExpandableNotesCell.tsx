@@ -13,7 +13,7 @@ type ExpandableNotesCellProps = {
 export default function ExpandableNotesCell({
   text,
   placeholder = "-",
-  maxLines = 2,
+  maxLines = 1,
   className,
 }: ExpandableNotesCellProps) {
   const { autoExpandNotes } = useAnalyticsNotesSettings();
@@ -70,9 +70,6 @@ export default function ExpandableNotesCell({
       <div ref={containerRef} style={clampStyles}>
         {content}
       </div>
-      {!autoExpandNotes && isOverflowing && !expanded && (
-        <span className="block text-xs text-gray-500 mt-1">Click to expand</span>
-      )}
     </button>
   );
 }
