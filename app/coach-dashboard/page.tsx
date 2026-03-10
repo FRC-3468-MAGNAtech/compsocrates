@@ -20,6 +20,7 @@ interface TeamData {
   eventScoutCounts?: Record<string, number>;
   eventAttendees?: Record<string, string[]>;
 }
+type PracticeAccuracyMode = "trial" | "competitive";
 
 type DashboardMatch = {
   key: string;
@@ -117,9 +118,11 @@ function CoachDashboardContent() {
   const [eventScoutCountInputs, setEventScoutCountInputs] = useState<Record<string, string>>({});
   const [teamData, setTeamData] = useState<TeamData | null>(null);
   const [readyScoutNames, setReadyScoutNames] = useState<string[]>([]);
-  const [readyScoutIds, setReadyScoutIds] = useState<string[]>([]);
-  const [totalAssignableScouts, setTotalAssignableScouts] = useState(0);
+  const [readyCompetitiveScoutIds, setReadyCompetitiveScoutIds] = useState<string[]>([]);
+  const [readyCompetitiveScoutNames, setReadyCompetitiveScoutNames] = useState<string[]>([]);
   const [eventAverageAccuracyByKey, setEventAverageAccuracyByKey] = useState<Record<string, number>>({});
+  const [overallAverageAccuracy, setOverallAverageAccuracy] = useState(0);
+  const [accuracyMode, setAccuracyMode] = useState<PracticeAccuracyMode>("competitive");
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -128,7 +131,7 @@ function CoachDashboardContent() {
       return;
     }
     loadDashboardData();
-  }, [userData?.teamId, userData, router]);
+  }, [userData?.teamId, userData, router, accuracyMode]);
 
   async function loadDashboardData() {
     if (!userData?.teamId) return;
@@ -178,48 +181,78 @@ function CoachDashboardContent() {
       const scouts = usersSnap.docs.filter((userDoc) => {
         const data = userDoc.data();
         const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
-        return roles.includes("match-scout") || roles.includes("media");
+        return roles.includes("match-scout") || roles.includes("lead-scout");
       });
       const scoutDocs = scouts.map((docSnap) => ({ uid: docSnap.id, displayName: String(docSnap.data().displayName || "") }));
-      const scoutNames = scoutDocs.map((row) => row.displayName);
-      setTotalAssignableScouts(scoutDocs.length);
+      const scoutUidSet = new Set(scoutDocs.map((row) => row.uid));
+      const scoutByName = new Map<string, { uid: string; displayName: string }>();
+      scoutDocs.forEach((row) => {
+        const nameKey = row.displayName.trim().toLowerCase();
+        if (!nameKey || scoutByName.has(nameKey)) return;
+        scoutByName.set(nameKey, row);
+      });
 
-      const accuracyMapByScout: Record<string, { total: number; count: number }> = {};
+      const accuracyMapByScoutUidByMode: Record<PracticeAccuracyMode, Map<string, { total: number; count: number }>> = {
+        trial: new Map<string, { total: number; count: number }>(),
+        competitive: new Map<string, { total: number; count: number }>(),
+      };
       scoutingSnap.forEach((scoutingDoc) => {
         const data = scoutingDoc.data() as Record<string, unknown>;
         const isRebuilt = String(data.game || "").toUpperCase() === "REBUILT";
         const isPracticeScouted = Boolean(data.isPracticeScouting) || Boolean(data.practiceMode) || Boolean(data.practiceSessionId);
-        if (!isRebuilt || !isPracticeScouted || typeof data.accuracy !== "number") return;
-        if (!scoutNames.includes(String(data.scoutName || ""))) return;
-        const scoutName = String(data.scoutName || "");
-        if (!accuracyMapByScout[scoutName]) {
-          accuracyMapByScout[scoutName] = { total: 0, count: 0 };
-        }
-        accuracyMapByScout[scoutName].total += Number(data.accuracy || 0);
-        accuracyMapByScout[scoutName].count += 1;
+        const mode = String(data.practiceMode || "trial").toLowerCase();
+        if (!isRebuilt || !isPracticeScouted || (mode !== "trial" && mode !== "competitive") || typeof data.accuracy !== "number") return;
+        const scoutId = String(data.scoutId || "").trim();
+        const scoutNameKey = String(data.scoutName || "").trim().toLowerCase();
+        const resolvedUid = scoutUidSet.has(scoutId) ? scoutId : scoutByName.get(scoutNameKey)?.uid || "";
+        if (!resolvedUid) return;
+        const mapForMode = accuracyMapByScoutUidByMode[mode as PracticeAccuracyMode];
+        const existing = mapForMode.get(resolvedUid) || { total: 0, count: 0 };
+        existing.total += Number(data.accuracy || 0);
+        existing.count += 1;
+        mapForMode.set(resolvedUid, existing);
       });
+      const accuracyMapByScoutUid = accuracyMapByScoutUidByMode[accuracyMode];
+      const accuracyMapByScoutUidCompetitive = accuracyMapByScoutUidByMode.competitive;
 
-      const computedReadyScouts = scoutNames.filter((name) => {
-        const entry = accuracyMapByScout[name];
-        return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 80);
-      });
+      const computedReadyScoutUids = scoutDocs
+        .filter((row) => {
+          const entry = accuracyMapByScoutUid.get(row.uid);
+          return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 75);
+        })
+        .map((row) => row.uid);
+      const computedReadyCompetitiveScoutUids = scoutDocs
+        .filter((row) => {
+          const entry = accuracyMapByScoutUidCompetitive.get(row.uid);
+          return Boolean(entry && entry.count > 0 && (entry.total / entry.count) >= 75);
+        })
+        .map((row) => row.uid);
+      const readyUidSet = new Set(computedReadyScoutUids);
+      const computedReadyScouts = scoutDocs.filter((row) => readyUidSet.has(row.uid)).map((row) => row.displayName);
+      const readyCompetitiveUidSet = new Set(computedReadyCompetitiveScoutUids);
+      const computedReadyCompetitiveScouts = scoutDocs
+        .filter((row) => readyCompetitiveUidSet.has(row.uid))
+        .map((row) => row.displayName);
       setReadyScoutNames(computedReadyScouts);
-      setReadyScoutIds(
-        scoutDocs
-          .filter((docSnap) => computedReadyScouts.includes(docSnap.displayName))
-          .map((docSnap) => docSnap.uid)
-      );
+      setReadyCompetitiveScoutIds(computedReadyCompetitiveScoutUids);
+      setReadyCompetitiveScoutNames(computedReadyCompetitiveScouts);
 
       const avgByEvent: Record<string, number> = {};
       const scoutAccuracyByUid = new Map<string, number>();
       const scoutAccuracyByName = new Map<string, number>();
       scoutDocs.forEach((docSnap) => {
-        const byName = accuracyMapByScout[docSnap.displayName];
-        if (!byName || byName.count <= 0) return;
-        const avg = byName.total / byName.count;
+        const byUid = accuracyMapByScoutUid.get(docSnap.uid);
+        if (!byUid || byUid.count <= 0) return;
+        const avg = byUid.total / byUid.count;
         scoutAccuracyByUid.set(docSnap.uid, avg);
         scoutAccuracyByName.set(docSnap.displayName.trim().toLowerCase(), avg);
       });
+      const allAccuracies = Array.from(scoutAccuracyByUid.values()).filter((value) => Number.isFinite(value) && value > 0);
+      setOverallAverageAccuracy(
+        allAccuracies.length > 0
+          ? Math.round(allAccuracies.reduce((sum, value) => sum + value, 0) / allAccuracies.length)
+          : 0
+      );
       orderedEvents.forEach((event) => {
         const attendees = Array.isArray(attendanceByEvent[event.key]) ? attendanceByEvent[event.key] : [];
         const attendeeAccuracies = attendees
@@ -327,14 +360,14 @@ function CoachDashboardContent() {
                     if (!event) return null;
                     const expected = teamData?.eventScoutCounts?.[event.key] || teamData?.scoutCount || 6;
                     const attendees = Array.isArray(teamData?.eventAttendees?.[event.key]) ? teamData.eventAttendees[event.key] : [];
-                    const readyNameLookup = new Set(readyScoutNames.map((name) => name.trim().toLowerCase()));
-                    const readyIdLookup = new Set(readyScoutIds.map((id) => id.trim()));
+                    const readyNameLookup = new Set(readyCompetitiveScoutNames.map((name) => name.trim().toLowerCase()));
+                    const readyIdLookup = new Set(readyCompetitiveScoutIds.map((id) => id.trim()));
                     const readyAttendees = attendees.length > 0
                       ? attendees.filter((value: string) => {
                           const safe = String(value || "").trim();
                           return readyIdLookup.has(safe) || readyNameLookup.has(safe.toLowerCase());
                         }).length
-                      : readyScoutNames.length;
+                      : readyCompetitiveScoutIds.length;
                     const eventMatches = eventMatchesByKey[event.key] || [];
                     const eventIsPast = isPastEvent(event);
                     return (
@@ -361,7 +394,7 @@ function CoachDashboardContent() {
                                   <p className="text-2xl font-bold">{eventIsPast ? "Ended" : event.daysUntil}</p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-gray-600">Scouts Ready</p>
+                                  <p className="text-sm text-gray-600">Scouts Ready (Comp)</p>
                                   <p className="text-2xl font-bold">{readyAttendees}/{expected}</p>
                                 </div>
                                 <div>
@@ -425,6 +458,37 @@ function CoachDashboardContent() {
                 </div>
               )}
 
+              <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h3 className="font-semibold text-gray-700">Accuracy Source</h3>
+                    <p className="text-sm text-gray-600">Active scout and average % cards use this mode.</p>
+                  </div>
+                  <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setAccuracyMode("trial")}
+                      className={`px-4 py-2 text-sm font-medium ${
+                        accuracyMode === "trial" ? "text-white" : "bg-white text-gray-700 hover:bg-gray-100"
+                      }`}
+                      style={accuracyMode === "trial" ? { backgroundColor: "var(--primary-color)" } : {}}
+                    >
+                      Trial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccuracyMode("competitive")}
+                      className={`px-4 py-2 text-sm font-medium ${
+                        accuracyMode === "competitive" ? "text-white" : "bg-white text-gray-700 hover:bg-gray-100"
+                      }`}
+                      style={accuracyMode === "competitive" ? { backgroundColor: "var(--primary-color)" } : {}}
+                    >
+                      Competitive
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* STATS GRID */}
               <div className="grid md:grid-cols-3 gap-6 mb-6">
                 <div className="bg-white rounded-xl shadow-md p-6">
@@ -447,7 +511,7 @@ function CoachDashboardContent() {
                     {readyScoutNames.length}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
-                    Ready scouts ({totalAssignableScouts} total)
+                    {`All scouts >=75% (${accuracyMode})`}
                   </p>
                 </div>
 
@@ -459,12 +523,12 @@ function CoachDashboardContent() {
                   <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
                     {typeof eventAverageAccuracyByKey[activeEventKey] === "number"
                       ? eventAverageAccuracyByKey[activeEventKey]
-                      : stats?.averageAccuracy || 0}%
+                      : overallAverageAccuracy}%
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
                     {typeof eventAverageAccuracyByKey[activeEventKey] === "number"
-                      ? "Average practice accuracy for attending scouts"
-                      : "REBUILT scouted-match reliability"}
+                      ? `Average ${accuracyMode} practice accuracy for attending scouts`
+                      : `Average ${accuracyMode} practice accuracy for all scouts`}
                   </p>
                 </div>
               </div>

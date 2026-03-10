@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -10,10 +10,9 @@ import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
-import { type TBAMatch } from "@/app/utils/tba-api";
+import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
-import { fetchEventMatchesWithTeamAuth } from "@/app/utils/reefscapeMatchSync";
 
 type MatchType = "practice" | "qualification" | "finals";
 type MatchStatus = "completed" | "next" | "upcoming";
@@ -119,79 +118,6 @@ function buildFallbackScoutOptions(): MatchOption[] {
     });
   }
   return rows;
-}
-
-function mapTbaMatchToScoutOptionId(match: Pick<TBAMatch, "comp_level" | "match_number">): string {
-  if (match.comp_level === "qm") return `q${match.match_number}`;
-  const slot = mapPlayoffToBracketSlot(match as Pick<TBAMatch, "comp_level" | "set_number" | "match_number">);
-  if (slot) return `f${slot}`;
-  if (match.comp_level === "f") return `f${match.match_number}`;
-  if (match.comp_level === "sf") return `sf${match.match_number}`;
-  if (match.comp_level === "qf") return `qf${match.match_number}`;
-  return "";
-}
-
-function mapPlayoffToBracketSlot(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number">): number | null {
-  // 2026+ double-elim feeds often encode bracket slot as SF{slot}M1.
-  if (match.comp_level === "sf" && match.match_number === 1 && match.set_number >= 1 && match.set_number <= 13) {
-    return match.set_number;
-  }
-  if (match.comp_level === "qf") {
-    if (match.match_number === 1 && match.set_number >= 1 && match.set_number <= 4) return match.set_number;
-    if (match.match_number === 2 && match.set_number === 1) return 7;
-    if (match.match_number === 2 && match.set_number === 2) return 8;
-    return null;
-  }
-  if (match.comp_level === "sf") {
-    if (match.match_number === 1 && match.set_number === 1) return 5;
-    if (match.match_number === 1 && match.set_number === 2) return 6;
-    if (match.match_number === 2 && match.set_number === 1) return 9;
-    if (match.match_number === 2 && match.set_number === 2) return 10;
-    if (match.match_number === 3 && match.set_number === 1) return 11;
-    if (match.match_number === 3 && match.set_number === 2) return 12;
-    return null;
-  }
-  if (match.comp_level === "f") {
-    if (match.match_number >= 1 && match.match_number <= 3) return 13 + match.match_number; // 14, 15, 16
-    return 14;
-  }
-  return null;
-}
-
-function isTbaMatchCompleted(match: Pick<TBAMatch, "alliances">): boolean {
-  const redScore = Number(match.alliances?.red?.score);
-  const blueScore = Number(match.alliances?.blue?.score);
-  return redScore >= 0 && blueScore >= 0;
-}
-
-function pickCurrentOrNextEventMatch(matches: TBAMatch[], options: MatchOption[]): MatchOption | null {
-  if (matches.length === 0 || options.length === 0) return null;
-
-  const optionById = new Map(options.map((option) => [option.id, option] as const));
-  const compOrder: Record<string, number> = { qm: 0, qf: 1, sf: 2, f: 3 };
-  const ordered = [...matches].sort((a, b) => {
-    const levelDiff = (compOrder[a.comp_level] ?? 9) - (compOrder[b.comp_level] ?? 9);
-    if (levelDiff !== 0) return levelDiff;
-    if (a.set_number !== b.set_number) return a.set_number - b.set_number;
-    return a.match_number - b.match_number;
-  });
-
-  const firstUnplayed = ordered.find((match) => !isTbaMatchCompleted(match));
-  if (firstUnplayed) {
-    const picked = optionById.get(mapTbaMatchToScoutOptionId(firstUnplayed));
-    if (picked) return picked;
-  }
-
-  const nowSec = Math.floor(Date.now() / 1000);
-  const timedOptions = options
-    .filter((option) => Number(option.scheduleTime) > 0)
-    .sort((a, b) => Number(a.scheduleTime) - Number(b.scheduleTime));
-  if (timedOptions.length === 0) return options[0] || null;
-
-  const currentOrNext =
-    timedOptions.find((option) => Number(option.scheduleTime) >= nowSec - 8 * 60)
-    || timedOptions[timedOptions.length - 1];
-  return currentOrNext || null;
 }
 
 type FormState = {
@@ -422,6 +348,7 @@ function FinalsMatchBox({
   status,
   onPick,
   label,
+  allowCompletedPick = false,
 }: {
   number: number;
   row: number;
@@ -429,6 +356,7 @@ function FinalsMatchBox({
   status: MatchStatus;
   onPick: (matchNumber: number) => void;
   label?: string;
+  allowCompletedPick?: boolean;
 }) {
   const borderStyles: Record<MatchStatus, React.CSSProperties> = {
     completed: { borderColor: "#16a34a" },
@@ -445,14 +373,14 @@ function FinalsMatchBox({
     <button
       type="button"
       onClick={() => {
-        if (status === "completed") return;
+        if (status === "completed" && !allowCompletedPick) return;
         onPick(number);
       }}
-      disabled={status === "completed"}
+      disabled={status === "completed" && !allowCompletedPick}
       className={`absolute w-[120px] min-h-[62px] text-xs rounded border text-left bg-white ${
-        status === "completed" ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"
+        status === "completed" && !allowCompletedPick ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"
       }`}
-      style={{ left: col, top: row, ...(status === "completed" ? {} : borderStyles[status]) }}
+      style={{ left: col, top: row, ...(status === "completed" && !allowCompletedPick ? {} : borderStyles[status]) }}
     >
       <div
         className="absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center"
@@ -554,6 +482,7 @@ function FinalsBracket({
             col={c5}
             label="FINALS"
             status={completed.has("f1") && completed.has("f2") && completed.has("f3") ? "completed" : "upcoming"}
+            allowCompletedPick
             onPick={onPick}
           />
         </div>
@@ -730,42 +659,99 @@ function MatchModal({
   );
 }
 
+function parsePlayoffSlotFromKey(rawValue: string, compLevel: "sf" | "qf"): number | null {
+  const match = rawValue.match(new RegExp(`_${compLevel}(\\d+)m(\\d+)`, "i"));
+  if (!match) return null;
+  const slot = Number(match[1]);
+  return Number.isFinite(slot) && slot > 0 ? slot : null;
+}
+
+function parseFinalsSeriesNumberFromKey(rawValue: string): number | null {
+  const match = rawValue.match(/_f(\d+)m(\d+)/i);
+  if (!match) return null;
+  const setNum = Number(match[1]);
+  const matchNum = Number(match[2]);
+  if (setNum >= 14 && setNum <= 16) return setNum - 13;
+  if (setNum === 1 && matchNum >= 1 && matchNum <= 3) return matchNum;
+  if (setNum >= 1 && setNum <= 3 && matchNum === 1) return setNum;
+  return null;
+}
+
+function getPlayoffSlot(match: TBAMatch): number {
+  const fromKey = parsePlayoffSlotFromKey(String(match.key || ""), "sf");
+  if (fromKey !== null) return fromKey;
+  const fromSet = Number(match.set_number || 0);
+  if (fromSet > 0) return fromSet;
+  const fromMatch = Number(match.match_number || 0);
+  if (fromMatch > 0) return fromMatch;
+  return 1;
+}
+
+function getFinalsSeriesNumber(match: TBAMatch): number {
+  const fromKey = parseFinalsSeriesNumberFromKey(String(match.key || ""));
+  if (fromKey !== null) return fromKey;
+  const fromMatch = Number(match.match_number || 0);
+  if (fromMatch >= 1 && fromMatch <= 3) return fromMatch;
+  const fromSet = Number(match.set_number || 0);
+  if (fromSet >= 14 && fromSet <= 16) return fromSet - 13;
+  if (fromSet >= 1 && fromSet <= 3) return fromSet;
+  return 1;
+}
+
+function normalizeScoutedMatchId(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
+  if (direct) return `${direct[1]}${Number(direct[2])}`;
+
+  const fromQmKey = raw.match(/_qm(\d+)/);
+  if (fromQmKey) return `q${Number(fromQmKey[1])}`;
+  const fromPractice = raw.match(/practice\s+(\d+)/);
+  if (fromPractice) return `p${Number(fromPractice[1])}`;
+  const fromQual = raw.match(/qualification\s+(\d+)/);
+  if (fromQual) return `q${Number(fromQual[1])}`;
+
+  const sfSlot = parsePlayoffSlotFromKey(raw, "sf");
+  if (sfSlot !== null) return `sf${sfSlot}`;
+  const sfLabel = raw.match(/semifinal\s+(\d+)(?:-(\d+))?/);
+  if (sfLabel) return `sf${Number(sfLabel[1])}`;
+
+  const qfSlot = parsePlayoffSlotFromKey(raw, "qf");
+  if (qfSlot !== null) return `qf${qfSlot}`;
+  const qfLabel = raw.match(/quarterfinal\s+(\d+)(?:-(\d+))?/);
+  if (qfLabel) return `qf${Number(qfLabel[1])}`;
+
+  const finalsSeries = parseFinalsSeriesNumberFromKey(raw);
+  if (finalsSeries !== null) return `f${finalsSeries}`;
+  const finalsLabel = raw.match(/finals\s+(\d+)/);
+  if (finalsLabel) {
+    const n = Number(finalsLabel[1]);
+    return `f${n >= 14 && n <= 16 ? n - 13 : n}`;
+  }
+  return raw.replace(/\s+/g, "");
+}
+
 function mapAssignmentToMatchId(labelOrKey: string) {
   const raw = String(labelOrKey || "").toLowerCase();
   const qm = raw.match(/(?:_qm|qualification\s+)(\d+)/);
   if (qm) return `q${qm[1]}`;
   const practice = raw.match(/practice\s+(\d+)/);
   if (practice) return `p${practice[1]}`;
-  const sfKey = raw.match(/_sf(\d+)m(\d+)/);
-  if (sfKey) {
-    const setNumber = Number(sfKey[1] || 0);
-    const matchNumber = Number(sfKey[2] || 0);
-    const slot = mapPlayoffToBracketSlot({ comp_level: "sf", set_number: setNumber, match_number: matchNumber });
-    if (slot) return `f${slot}`;
+  const sfFromKey = parsePlayoffSlotFromKey(raw, "sf");
+  if (sfFromKey !== null) return `sf${sfFromKey}`;
+  const sfFromLabel = raw.match(/semifinal\s+(\d+)(?:-\d+)?/);
+  if (sfFromLabel) return `sf${sfFromLabel[1]}`;
+  const qfFromKey = parsePlayoffSlotFromKey(raw, "qf");
+  if (qfFromKey !== null) return `qf${qfFromKey}`;
+  const qfFromLabel = raw.match(/quarterfinal\s+(\d+)(?:-\d+)?/);
+  if (qfFromLabel) return `qf${qfFromLabel[1]}`;
+  const finalsFromKey = parseFinalsSeriesNumberFromKey(raw);
+  if (finalsFromKey !== null) return `f${finalsFromKey}`;
+  const finals = raw.match(/finals\s+(\d+)/);
+  if (finals) {
+    const number = Number(finals[1]);
+    return `f${number >= 14 && number <= 16 ? number - 13 : number}`;
   }
-  const sfLabel = raw.match(/semifinal\s+(\d+)-(\d+)/);
-  if (sfLabel) {
-    const setNumber = Number(sfLabel[1] || 0);
-    const matchNumber = Number(sfLabel[2] || 0);
-    const slot = mapPlayoffToBracketSlot({ comp_level: "sf", set_number: setNumber, match_number: matchNumber });
-    if (slot) return `f${slot}`;
-  }
-  const qfKey = raw.match(/_qf(\d+)m(\d+)/);
-  if (qfKey) {
-    const setNumber = Number(qfKey[1] || 0);
-    const matchNumber = Number(qfKey[2] || 0);
-    const slot = mapPlayoffToBracketSlot({ comp_level: "qf", set_number: setNumber, match_number: matchNumber });
-    if (slot) return `f${slot}`;
-  }
-  const qfLabel = raw.match(/quarterfinal\s+(\d+)-(\d+)/);
-  if (qfLabel) {
-    const setNumber = Number(qfLabel[1] || 0);
-    const matchNumber = Number(qfLabel[2] || 0);
-    const slot = mapPlayoffToBracketSlot({ comp_level: "qf", set_number: setNumber, match_number: matchNumber });
-    if (slot) return `f${slot}`;
-  }
-  const finals = raw.match(/(?:_f\d+m|finals\s+)(\d+)/);
-  if (finals) return `f${finals[1]}`;
   return "";
 }
 function ScoutFormContent() {
@@ -779,11 +765,9 @@ function ScoutFormContent() {
   const [options, setOptions] = useState<MatchOption[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
-  const [assignedMatchIds, setAssignedMatchIds] = useState<Set<string>>(new Set());
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
   const [targets, setTargets] = useState<Record<string, number>>({});
-  const [tbaCompletedMatchIds, setTbaCompletedMatchIds] = useState<Set<string>>(new Set());
   const [pitSync, setPitSync] = useState<{
     eventSynced: boolean;
     preloadRaw: number | null;
@@ -851,8 +835,6 @@ function ScoutFormContent() {
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
-        setAssignedMatchIds(new Set());
-        setTbaCompletedMatchIds(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
         return;
       }
@@ -863,16 +845,11 @@ function ScoutFormContent() {
           const fallback = buildFallbackScoutOptions();
           setOptions(fallback);
           setTargets({});
-          setAssignedMatchIds(new Set());
-          setTbaCompletedMatchIds(new Set());
           setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
           return;
         }
 
-        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
-        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
-        const matches = await fetchEventMatchesWithTeamAuth(currentEvent, { encryptedKey, plainKey });
+        const matches = await getEventMatches(currentEvent);
         const next: MatchOption[] = [];
         const nextTargets: Record<string, number> = {};
         matches.filter((m) => m.comp_level === "qm").sort((a, b) => a.match_number - b.match_number).forEach((m) => {
@@ -884,63 +861,37 @@ function ScoutFormContent() {
         matches.filter((m) => ["qf", "sf", "f"].includes(m.comp_level)).forEach((m) => {
           const teams = [...m.alliances.red.team_keys, ...m.alliances.blue.team_keys].map((k) => k.replace("frc", "").trim()).filter(Boolean);
           const time = m.actual_time || m.predicted_time || m.time || 0;
-          const slot = mapPlayoffToBracketSlot(m);
-          const id = slot ? `f${slot}` : m.comp_level === "f" ? `f${m.match_number}` : m.comp_level === "sf" ? `sf${m.match_number}` : `qf${m.match_number}`;
-          next.push({
-            id,
-            label: slot
-              ? slot <= 13
-                ? `Match ${slot}`
-                : slot === 14
-                ? "FINALS"
-                : `Finals ${slot - 13}`
-              : m.comp_level === "f"
-              ? `Finals ${m.match_number}`
-              : m.comp_level === "sf"
-              ? `Semifinal ${m.set_number}-${m.match_number}`
-              : `Quarterfinal ${m.set_number}-${m.match_number}`,
-            type: "finals",
-            matchNumber: slot || m.match_number,
-            scheduleTime: time,
-            teams,
-          });
+          if (m.comp_level === "f") {
+            const finalsNumber = getFinalsSeriesNumber(m);
+            const id = `f${finalsNumber}`;
+            next.push({ id, label: `Finals ${finalsNumber}`, type: "finals", matchNumber: finalsNumber, scheduleTime: time, teams });
+            nextTargets[id] = teams.length || 6;
+            return;
+          }
+          const slot = getPlayoffSlot(m);
+          const id = m.comp_level === "sf" ? `sf${slot}` : `qf${slot}`;
+          next.push({ id, label: `Match ${slot}`, type: "finals", matchNumber: slot, scheduleTime: time, teams });
           nextTargets[id] = teams.length || 6;
         });
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
-        const completedFromTba = new Set<string>();
-        matches.forEach((m) => {
-          if (!isTbaMatchCompleted(m)) return;
-          const base = mapTbaMatchToScoutOptionId(m);
-          if (base) completedFromTba.add(base);
-          const slot = mapPlayoffToBracketSlot(m);
-          if (slot) completedFromTba.add(`f${slot}`);
-        });
-        setTbaCompletedMatchIds(completedFromTba);
+        setSelectedMatch((current) => current || resolved.find((m) => m.type === "qualification") || resolved[0] || null);
 
         const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
         const assigned: Record<string, string> = {};
-        const assignedMatchIds = new Set<string>();
         assignmentSnap.docs.forEach((row) => {
           const data = row.data() as AssignmentRow;
           const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
-          if (matchId) assignedMatchIds.add(matchId);
           const team = String(data.teamNumber || "").trim();
           if (matchId && team) assigned[matchId] = team;
         });
         setAssignedTeams(assigned);
-        setAssignedMatchIds(assignedMatchIds);
-        const assignedOption = resolved.find((option) => assignedMatchIds.has(option.id));
-        const eventDefault = next.length > 0 ? pickCurrentOrNextEventMatch(matches, resolved) : null;
-        setSelectedMatch((current) => current || assignedOption || eventDefault || resolved.find((m) => m.type === "qualification") || resolved[0] || null);
       } catch (error) {
         console.error("Failed to load match context:", error);
         const fallback = buildFallbackScoutOptions();
         setOptions(fallback);
         setTargets({});
-        setAssignedMatchIds(new Set());
-        setTbaCompletedMatchIds(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
       }
     }
@@ -954,7 +905,7 @@ function ScoutFormContent() {
       const teamsMap = new Map<string, Set<string>>();
       snap.docs.forEach((d) => {
         const row = d.data() as Record<string, unknown>;
-        const matchId = String(row.matchId || "").toLowerCase().trim();
+        const matchId = normalizeScoutedMatchId(row.matchId);
         const team = String(row.teamNumber || "").trim();
         if (!matchId) return;
         counts[matchId] = (counts[matchId] || 0) + 1;
@@ -1089,7 +1040,6 @@ function ScoutFormContent() {
   }, [userData?.teamId, form.teamNumber, eventKey]);
 
   const completedMatches = useMemo(() => {
-    if (tbaCompletedMatchIds.size > 0) return tbaCompletedMatchIds;
     return new Set(
       Object.keys(scoutedCounts).filter((id) => {
         const target = targets[id];
@@ -1097,12 +1047,7 @@ function ScoutFormContent() {
         return (scoutedCounts[id] || 0) >= target;
       })
     );
-  }, [scoutedCounts, targets, tbaCompletedMatchIds]);
-  const modalOptions = useMemo(() => {
-    if (assignedMatchIds.size === 0) return options;
-    const assignedOnly = options.filter((option) => assignedMatchIds.has(option.id));
-    return assignedOnly.length > 0 ? assignedOnly : options;
-  }, [assignedMatchIds, options]);
+  }, [scoutedCounts, targets]);
 
   function resolveSectionFuel(estimated: number, scoredOverride: number, missedFuel: number) {
     if (scoredOverride > 0) return scoredOverride;
@@ -1529,7 +1474,7 @@ function ScoutFormContent() {
             </div>
           )}
 
-          <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={modalOptions} completed={completedMatches} onPick={setSelectedMatch} />
+          <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
           <TeamPickerModal
             open={showTeamPicker}
             teams={selectedTeams}

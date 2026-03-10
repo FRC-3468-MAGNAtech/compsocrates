@@ -122,6 +122,7 @@ interface Match {
   status: MatchStatus;
   bracket?: "upper" | "lower";
   disabled?: boolean;
+  forceSelectable?: boolean;
 }
 
 type ActivePresetField = {
@@ -137,6 +138,7 @@ function MatchBox({
   match: Match;
   setSelectedMatch: (id: number, bracket?: "upper" | "lower") => void;
 }) {
+  const isDisabled = Boolean(match.disabled) && !match.forceSelectable;
   const borderStyles: Record<MatchStatus, React.CSSProperties> = {
     completed: { borderColor: "#16a34a" },
     next: { borderColor: "#ca8a04" },
@@ -155,17 +157,18 @@ function MatchBox({
 
   return (
     <button
+      type="button"
       onClick={() => {
-        if (match.disabled) return;
+        if (isDisabled) return;
         setSelectedMatch(match.id, match.bracket);
       }}
-      disabled={match.disabled}
+      disabled={isDisabled}
       className={`
         relative w-[120px] min-h-[62px] text-xs rounded border text-left bg-white
         border-t border-b border-l border-r
-        ${match.disabled ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}
+        ${isDisabled ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}
       `}
-      style={match.disabled ? undefined : borderStyles[match.status]}
+      style={isDisabled ? undefined : borderStyles[match.status]}
     >
       <div
         className={`
@@ -330,7 +333,15 @@ function FinalsBracket({
           </div>
 
           <div className="absolute" style={{ left: c5, top: yFinals }}>
-            <MatchBox match={{ id: 14, label: "FINALS", status: completedMatches.has("f1") && completedMatches.has("f2") && completedMatches.has("f3") ? "completed" : "upcoming" }} setSelectedMatch={setSelectedMatch} />
+            <MatchBox
+              match={{
+                id: 14,
+                label: "FINALS",
+                status: completedMatches.has("f1") && completedMatches.has("f2") && completedMatches.has("f3") ? "completed" : "upcoming",
+                forceSelectable: true,
+              }}
+              setSelectedMatch={setSelectedMatch}
+            />
           </div>
         </div>
       </div>

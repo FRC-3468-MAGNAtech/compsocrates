@@ -606,6 +606,7 @@ function TeamBreakdownDetailContent() {
   );
 
   const knownEvents = useMemo(() => {
+    const currentSeasonYear = 2026;
     const fromData = new Map<string, string>();
     teamScoutingAll.forEach((entry) => {
       const key = String(entry.eventKey || "").trim();
@@ -641,6 +642,7 @@ function TeamBreakdownDetailContent() {
     });
     const selectedEventSet = new Set(selectedTeamEvents.map((value) => String(value || "").trim()).filter(Boolean));
     return Array.from(merged.entries())
+      .filter(([key]) => Number(String(key || "").slice(0, 4)) === currentSeasonYear)
       .map(([key, name]) => ({ key, name, isCommon: selectedEventSet.has(key) }))
       .sort((a, b) => {
         if (a.isCommon !== b.isCommon) return a.isCommon ? -1 : 1;
