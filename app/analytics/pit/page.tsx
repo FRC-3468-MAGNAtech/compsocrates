@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, getEventsForGame, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
@@ -665,7 +666,7 @@ function PitAnalyticsContent() {
                     <td>{formatAnalyticsText(entry.typicalFuelCycleTime)}</td>
                     <td>{formatAnalyticsText(entry.typicalClimbTime)}</td>
                     <td>{formatAnalyticsText(entry.autoCycleDescription)}</td>
-                    <td>{entry.notes || "-"}</td>
+                    <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
                     <td className="text-center">
                       <button
                         type="button"
@@ -781,7 +782,7 @@ function PitAnalyticsContent() {
                     <td>{[entry.startingOpposite && "Opposite", entry.startingMiddle && "Middle", entry.startingProcessor && "Processor"].filter(Boolean).join(", ") || "-"}</td>
                     <td>{formatAnalyticsText(entry.betterAt)}</td>
                     <td>{entry.rating || "-"}</td>
-                    <td>{entry.notes || "-"}</td>
+                    <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
                     <td className="text-center">
                       <button
                         type="button"

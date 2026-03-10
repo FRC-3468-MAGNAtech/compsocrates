@@ -20,6 +20,7 @@ import {
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 
 type Entry = {
   id: string;
@@ -1963,8 +1964,8 @@ function AnalyticsPageContent() {
                     {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                   </td>
                   <td className="text-center font-semibold">{totalUsed}</td>
-                  <td className="text-left align-top" style={{ minWidth: "260px", whiteSpace: "normal", overflowWrap: "anywhere" }}>
-                    {entry.notes || "-"}
+                  <td className="text-left align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
+                    <ExpandableNotesCell text={entry.notes} />
                   </td>
                   <td className="text-center">
                     {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
@@ -2203,8 +2204,8 @@ function AnalyticsPageContent() {
                 <td className="text-center">
                   {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
                 </td>
-                <td className="text-left align-top" style={{ minWidth: "260px", whiteSpace: "normal", overflowWrap: "anywhere" }}>
-                  {entry.notes || "-"}
+                <td className="text-left align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
+                  <ExpandableNotesCell text={entry.notes} />
                 </td>
                 <td className="text-center">
                   {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (

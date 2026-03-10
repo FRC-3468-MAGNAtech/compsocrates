@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
@@ -342,7 +343,9 @@ function TeamStrategyAnalyticsContent() {
                   <td>{entry.clearsTrench ? "Y" : "N"}</td>
                   <td>{entry.canShootWhileIntaking ? "Y" : "N"}</td>
                   <td>{entry.canMoveAndShootSimultaneously ? "Y" : "N"}</td>
-                  <td>{entry.notes || "-"}</td>
+                  <td className="align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
+                    <ExpandableNotesCell text={entry.notes} />
+                  </td>
                   <td className="text-center">
                     <button
                       type="button"

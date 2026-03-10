@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/app/components/Sidebar";
+import { AnalyticsNotesProvider, useAnalyticsNotesSettings } from "@/app/components/AnalyticsNotesContext";
 
 type AnalyticsShellProps = {
   children: React.ReactNode;
@@ -33,7 +34,7 @@ const analyticsLinks: Array<{ href: string; label: string } | { divider: true }>
   { href: "/analytics/pick-list", label: "Pick List" },
 ];
 
-export default function AnalyticsShell({
+function AnalyticsShellInner({
   children,
   entriesCount,
   selectedGame,
@@ -302,6 +303,7 @@ export default function AnalyticsShell({
               />
             </div>
             <div className="flex items-center gap-2">
+              <NotesToggle />
               {onPracticeMatchesOnlyChange && (
                 <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
                   <input
@@ -327,6 +329,28 @@ export default function AnalyticsShell({
         </div>
       </div>
     </div>
+  );
+}
+
+function NotesToggle() {
+  const { autoExpandNotes, setAutoExpandNotes } = useAnalyticsNotesSettings();
+  return (
+    <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+      <input
+        type="checkbox"
+        checked={autoExpandNotes}
+        onChange={(event) => setAutoExpandNotes(event.target.checked)}
+      />
+      Auto-expand notes
+    </label>
+  );
+}
+
+export default function AnalyticsShell(props: AnalyticsShellProps) {
+  return (
+    <AnalyticsNotesProvider>
+      <AnalyticsShellInner {...props} />
+    </AnalyticsNotesProvider>
   );
 }
 
