@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { useRouter } from "next/navigation";
-import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from "firebase/auth";
+import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential, deleteUser, linkWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ThemePicker from "@/app/components/ThemePicker";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
-import { db } from "@/app/firebase";
+import { auth, db } from "@/app/firebase";
 import { clearCookieConsent, readCookieConsent, writeCookieConsent, type CookieConsentValue } from "@/app/utils/cookieConsent";
 
 function AccountContent() {
@@ -171,6 +171,32 @@ function AccountContent() {
     : "match-scout";
   const displayRole = String(displayRoleRaw).replace(/-/g, " ");
   const hasUserDoc = Boolean(userData);
+  const hasGoogleProvider = Boolean(user?.providerData?.some((provider) => provider.providerId === "google.com"));
+
+  async function handleLinkGoogle() {
+    if (!user) return;
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await linkWithPopup(user, provider);
+      setSuccess("Google account linked.");
+    } catch (err: unknown) {
+      console.error("Link Google error:", err);
+      const code = (err as { code?: string })?.code;
+      if (code === "auth/provider-already-linked") {
+        setSuccess("Google account already linked.");
+      } else if (code === "auth/credential-already-in-use") {
+        setError("That Google account is already linked to another user.");
+      } else {
+        setError("Failed to link Google account.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleSaveProfilePreferences() {
     if (!user?.uid || !hasUserDoc) return;
@@ -327,6 +353,25 @@ function AccountContent() {
                   <p className="text-xs text-gray-500 mt-1">You are the team admin</p>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Linked Sign-In Methods</h2>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-sm text-gray-700">Google</p>
+                <p className="text-xs text-gray-500">{hasGoogleProvider ? "Linked" : "Not linked"}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleLinkGoogle}
+                disabled={loading || hasGoogleProvider || !auth.currentUser}
+                className="px-4 py-2 rounded border text-sm font-semibold disabled:opacity-50"
+                style={hasGoogleProvider ? { borderColor: "#cbd5f5", color: "#64748b" } : { borderColor: "var(--primary-color)", color: "var(--primary-color)" }}
+              >
+                {hasGoogleProvider ? "Google Linked" : "Link Google"}
+              </button>
             </div>
           </div>
 

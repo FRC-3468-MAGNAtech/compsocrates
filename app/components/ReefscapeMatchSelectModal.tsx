@@ -282,7 +282,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
               }}
               className="text-sm text-gray-600 hover:text-gray-900"
             >
-              <- Back to Match Types
+              {"\u2190 Back to Match Types"}
             </button>
           </div>
           {(step === "practice" || step === "qualification") && (
@@ -419,7 +419,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                 <>
                   <div className="flex items-center justify-between mb-6">
                     <button type="button" onClick={() => setFinalsStep("bracket")} className="text-gray-600 hover:text-gray-900 flex items-center gap-2">
-                      <- Back to Bracket
+                      {"\u2190 Back to Bracket"}
                     </button>
                     <h2 className="text-xl font-semibold">Select Finals Match Number</h2>
                     <div className="w-32" />

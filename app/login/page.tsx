@@ -10,7 +10,6 @@ import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
-import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 export default function LoginPage() {
@@ -21,7 +20,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const googleAuthAvailable = false;
+  const googleAuthAvailable = true;
 
   function toFriendlyAuthError(message: string) {
     const lower = message.toLowerCase();
@@ -72,23 +71,26 @@ export default function LoginPage() {
       const userDoc = await getDoc(doc(db, "users", user.uid));
       
       if (!userDoc.exists()) {
-        // New user - redirect to complete profile
-        await setSecureUserDoc(user.uid, {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || user.email?.split('@')[0] || "User",
-          photoURL: user.photoURL || "",
-          role: "match-scout",
-          roles: ["match-scout"],
-          teamId: "",
-          isTeamAdmin: false,
-          createdAt: Date.now()
-        });
-
-        router.push("/dashboard");
+        if (typeof window !== "undefined") {
+          localStorage.setItem(
+            "pending-google-signup",
+            JSON.stringify({
+              uid: user.uid,
+              email: user.email || "",
+              displayName: user.displayName || "",
+              photoURL: user.photoURL || "",
+              createdAt: Date.now(),
+            })
+          );
+        }
+        router.push("/signup?google=1");
       } else {
         // Existing user - check if they have a team
         const userData = userDoc.data();
+        if (userData?.profileComplete === false) {
+          router.push("/signup?google=1");
+          return;
+        }
         router.push(getDashboardRoute(userData));
       }
     } catch (error: unknown) {
@@ -173,7 +175,7 @@ export default function LoginPage() {
             <path fill="#FBBC05" d="M3.99 10c0-.69.12-1.35.32-1.97V5.51H1.07A9.973 9.973 0 000 10c0 1.61.39 3.14 1.07 4.49l3.24-2.52c-.2-.62-.32-1.28-.32-1.97z"/>
             <path fill="#EA4335" d="M10 3.88c1.88 0 3.13.81 3.85 1.48l2.84-2.76C14.96.99 12.7 0 10 0 6.09 0 2.72 2.25 1.07 5.51l3.24 2.52C5.12 5.62 7.36 3.88 10 3.88z"/>
           </svg>
-          Continue with Google (Unavailable)
+          Continue with Google
         </button>
 
         <p className="text-center text-sm text-gray-600 mt-6">

@@ -4,13 +4,12 @@ import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth, db } from "@/app/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { normalizeLegacyRole } from "@/app/utils/roles";
 
 export default function GoogleSignInButton() {
   const router = useRouter();
-  const googleAuthAvailable = false;
+  const googleAuthAvailable = true;
 
   async function handleGoogleSignIn() {
     try {
@@ -23,22 +22,25 @@ export default function GoogleSignInButton() {
       const userDoc = await getDoc(doc(db, "users", user.uid));
 
       if (!userDoc.exists()) {
-        // New user - create basic document
-        // They'll need to select team/role after
-        await setSecureUserDoc(user.uid, {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || user.email?.split("@")[0] || "User",
-          role: "match-scout",
-          roles: ["match-scout"],
-          teamId: "", // Empty - they need to join a team
-          isTeamAdmin: false,
-          createdAt: Date.now(),
-        });
-
-        router.push("/dashboard");
+        if (typeof window !== "undefined") {
+          localStorage.setItem(
+            "pending-google-signup",
+            JSON.stringify({
+              uid: user.uid,
+              email: user.email || "",
+              displayName: user.displayName || "",
+              photoURL: user.photoURL || "",
+              createdAt: Date.now(),
+            })
+          );
+        }
+        router.push("/signup?google=1");
       } else {
         const userData = userDoc.data() as { role?: string; roles?: string[]; teamId?: string };
+        if (userData?.profileComplete === false) {
+          router.push("/signup?google=1");
+          return;
+        }
         router.push(getDashboardRoute({ ...userData, role: normalizeLegacyRole(userData.role) }));
       }
     } catch (error: unknown) {
@@ -75,7 +77,7 @@ export default function GoogleSignInButton() {
           d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
         />
       </svg>
-      Continue with Google (Unavailable)
+      Continue with Google
     </button>
   );
 }

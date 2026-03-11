@@ -35,6 +35,7 @@ export type UserData = {
   photoURL?: string;
   bio?: string;
   profileVisibility?: "team" | "public" | "private";
+  profileComplete?: boolean;
   preferredDashboard?: string;
   canManageVersionReleases?: boolean;
   emailVerificationExempt?: boolean;
@@ -105,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       bio: "",
       photoURL: currentUser.photoURL || "",
       emailVerificationExempt: false,
+      profileComplete: true,
     };
   }
 
@@ -209,6 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profileVisibility: "team",
       bio: "",
       emailVerificationExempt: false,
+      profileComplete: true,
     };
     
     await setSecureUserDoc(userCredential.user.uid, userData as unknown as Record<string, unknown>, false);
@@ -242,6 +245,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) {
           const loaded = userDoc.data() as UserData;
+          if (loaded.profileComplete === false) {
+            setUserData(withHiddenOwnerPermissions(loaded));
+            setLoading(false);
+            return;
+          }
           const isEmailExempt = loaded.emailVerificationExempt === true;
           if (!currentUser.emailVerified && !isEmailExempt) {
             router.push("/verify-email");
@@ -252,8 +260,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const hydrated = await syncApprovedJoinRequest(currentUser.uid, loaded);
           setUserData(withHiddenOwnerPermissions(hydrated));
         } else {
-          if (!currentUser.emailVerified) {
+          const isGoogleUser = currentUser.providerData.some((provider) => provider.providerId === "google.com");
+          if (!currentUser.emailVerified && !isGoogleUser) {
             router.push("/verify-email");
+            setLoading(false);
+            return;
+          }
+          if (isGoogleUser) {
+            setUserData(withHiddenOwnerPermissions({ ...buildDefaultUserData(currentUser), profileComplete: false }));
             setLoading(false);
             return;
           }

@@ -3,15 +3,18 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { useAuth } from "@/app/AuthContext";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
 import { TEAM_ROLES, TeamRole, getRoleLabel } from "@/app/utils/roles";
-import { db } from "@/app/firebase";
+import { auth, db } from "@/app/firebase";
+import { updateProfile } from "firebase/auth";
+import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 
 async function teamCodeExists(teamCode: string): Promise<"exists" | "missing" | "unknown"> {
   const normalizedCode = teamCode.trim().toUpperCase();
@@ -131,7 +134,7 @@ async function createTeamJoinRequestWithFallback(input: {
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, user } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -143,6 +146,41 @@ export default function SignupPage() {
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isGoogleSignup, setIsGoogleSignup] = useState(false);
+  const [googleUserReady, setGoogleUserReady] = useState(false);
+
+  useEffect(() => {
+    const currentUser = user || auth.currentUser;
+    if (!currentUser) {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("google") === "1") {
+          setError("Please sign in with Google again to complete your profile.");
+        }
+      }
+      return;
+    }
+    const isGoogleUser = currentUser.providerData.some((provider) => provider.providerId === "google.com");
+    if (!isGoogleUser) return;
+    setIsGoogleSignup(true);
+    setGoogleUserReady(true);
+    setEmail(currentUser.email || "");
+    const displayName = currentUser.displayName || "";
+    if (displayName && !firstName && !lastName) {
+      const parts = displayName.trim().split(/\s+/);
+      setFirstName(parts[0] || "");
+      setLastName(parts.slice(1).join(" "));
+    }
+    void (async () => {
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data() as { profileComplete?: boolean };
+        if (data.profileComplete !== false) {
+          router.push(getDashboardRoute(userDoc.data() as { role?: string; roles?: string[]; teamId?: string } | null));
+        }
+      }
+    })();
+  }, [firstName, lastName, router, user]);
 
   function savePendingJoinDraft(teamId: string, requestedRole: TeamRole, emailValue: string, displayName: string) {
     if (typeof window === "undefined") return;
@@ -178,19 +216,21 @@ export default function SignupPage() {
       return;
     }
 
-    const passwordStrong =
-      password.length >= 8 &&
-      /[A-Z]/.test(password) &&
-      /[0-9]/.test(password) &&
-      /[^A-Za-z0-9]/.test(password);
-    if (!passwordStrong) {
-      setError("Password must be 8+ chars and include a capital letter, number, and symbol.");
-      return;
-    }
+    if (!isGoogleSignup) {
+      const passwordStrong =
+        password.length >= 8 &&
+        /[A-Z]/.test(password) &&
+        /[0-9]/.test(password) &&
+        /[^A-Za-z0-9]/.test(password);
+      if (!passwordStrong) {
+        setError("Password must be 8+ chars and include a capital letter, number, and symbol.");
+        return;
+      }
 
-    if (password !== confirmPassword) {
-      setError("Passwords don't match");
-      return;
+      if (password !== confirmPassword) {
+        setError("Passwords don't match");
+        return;
+      }
     }
 
     if (!isCreatingTeam && !joinCode) {
@@ -201,6 +241,80 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
+      if (isGoogleSignup) {
+        if (!googleUserReady || !auth.currentUser) {
+          setError("Please sign in with Google again.");
+          setLoading(false);
+          return;
+        }
+        if (isCreatingTeam) {
+          setError("Creating a team with Google sign-in is not supported. Use email/password for team creation.");
+          setLoading(false);
+          return;
+        }
+        const requestedTeamCode = joinCode.trim().toUpperCase();
+        if (!requestedTeamCode) {
+          setError("Please enter a team join code.");
+          setLoading(false);
+          return;
+        }
+        const exists = await teamCodeExists(requestedTeamCode);
+        if (exists === "missing") {
+          setError(`Team code "${requestedTeamCode}" does not exist. Please check with your team admin.`);
+          setLoading(false);
+          return;
+        }
+        if (exists === "unknown") {
+          setError("Unable to verify that team code right now. Please try again in a moment.");
+          setLoading(false);
+          return;
+        }
+
+        await updateProfile(auth.currentUser, { displayName });
+        await setSecureUserDoc(
+          auth.currentUser.uid,
+          {
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email || email,
+            displayName,
+            role,
+            roles: [role],
+            teamId: "",
+            isTeamAdmin: false,
+            profileVisibility: "team",
+            bio: "",
+            photoURL: auth.currentUser.photoURL || "",
+            profileComplete: true,
+            createdAt: Date.now(),
+          },
+          false
+        );
+
+        const alreadyPending = await hasPendingJoinRequest(auth.currentUser.uid, requestedTeamCode);
+        if (alreadyPending) {
+          alert("You already asked to join that team and your request is still pending.");
+          router.push(`/dashboard?requestSubmitted=1&team=${encodeURIComponent(requestedTeamCode)}`);
+          return;
+        }
+        try {
+          await createTeamJoinRequestWithFallback({
+            userId: auth.currentUser.uid,
+            userEmail: auth.currentUser.email || email,
+            userName: displayName,
+            requestedRole: role,
+            teamId: requestedTeamCode,
+          });
+          alert("Profile saved! Join request sent.");
+          router.push(`/dashboard?requestSubmitted=1&team=${encodeURIComponent(requestedTeamCode)}`);
+          return;
+        } catch {
+          savePendingJoinDraft(requestedTeamCode, role, auth.currentUser.email || email, displayName);
+          alert("Profile saved! Your join request will be sent automatically after login.");
+          router.push(`/dashboard?autoJoin=1&team=${encodeURIComponent(requestedTeamCode)}&role=${encodeURIComponent(role)}`);
+          return;
+        }
+      }
+
       if (isCreatingTeam) {
         // Create new team
         await signUp(email, password, displayName, role, joinCode.trim().toUpperCase(), true);
@@ -310,39 +424,44 @@ export default function SignupPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={isGoogleSignup}
               className="w-full border rounded-lg p-3"
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border rounded-lg p-3"
-              minLength={8}
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">Must be 8+ chars with a capital letter, number, and symbol.</p>
-          </div>
+          {!isGoogleSignup && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full border rounded-lg p-3"
+                  minLength={8}
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">Must be 8+ chars with a capital letter, number, and symbol.</p>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Confirm Password
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full border rounded-lg p-3"
-              minLength={8}
-              required
-            />
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full border rounded-lg p-3"
+                  minLength={8}
+                  required
+                />
+              </div>
+            </>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -53,8 +53,16 @@ export default function ProtectedRoute({
       return;
     }
 
+    if (requireAuth && userData?.profileComplete === false && pathname !== "/signup") {
+      router.push("/signup?google=1");
+      return;
+    }
+
     // If user is logged in but trying to access login/signup
     if (!requireAuth && user) {
+      if (pathname === "/signup" && userData?.profileComplete === false) {
+        return;
+      }
       router.push(getDashboardRoute(userData));
       return;
     }
@@ -65,6 +73,7 @@ export default function ProtectedRoute({
         pathname === "/dashboard" ||
         pathname === "/account" ||
         pathname === "/verify-email" ||
+        pathname === "/signup" ||
         pathname === "/changelog" ||
         pathname === "/update-lot" ||
         pathname === "/version-releases";
