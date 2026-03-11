@@ -987,7 +987,12 @@ function ScoutFormContent() {
     pitCarryFitsTele,
   ]);
 
-  function getFinalsDisplayLabel(matchNum: number) {
+  function getFinalsDisplayLabel(match: MatchOption) {
+    const id = String(match.id || "").toLowerCase();
+    if (!id.startsWith("sf") && !id.startsWith("qf")) {
+      return `Finals ${match.matchNumber}`;
+    }
+    const matchNum = match.matchNumber;
     if (matchNum === 1) return "Upper Bracket Match 1";
     if (matchNum === 2) return "Upper Bracket Match 2";
     if (matchNum === 3) return "Upper Bracket Match 3";
@@ -1001,14 +1006,14 @@ function ScoutFormContent() {
     if (matchNum === 11) return "Upper Bracket Match 11";
     if (matchNum === 12) return "Lower Bracket Match 12";
     if (matchNum === 13) return "Lower Bracket Match 13";
-    return `Finals ${matchNum}`;
+    return `Match ${matchNum}`;
   }
 
   function getSelectedMatchDisplay() {
     if (!selectedMatch) return "No match is set";
     if (selectedMatch.type === "practice") return `Practice Match ${selectedMatch.matchNumber}`;
     if (selectedMatch.type === "qualification") return `Qualification Match ${selectedMatch.matchNumber}`;
-    if (selectedMatch.type === "finals") return getFinalsDisplayLabel(selectedMatch.matchNumber);
+    if (selectedMatch.type === "finals") return getFinalsDisplayLabel(selectedMatch);
     return selectedMatch.label || "No match is set";
   }
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthContext";
 import { useRouter } from "next/navigation";
-import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential, deleteUser, linkWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential, deleteUser, linkWithRedirect, GoogleAuthProvider, getRedirectResult } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -71,6 +71,20 @@ function AccountContent() {
     window.addEventListener("cookie-consent-changed", onConsentChanged as EventListener);
     return () => window.removeEventListener("cookie-consent-changed", onConsentChanged as EventListener);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (!result) return;
+        await refreshUserData();
+        setSuccess("Google account linked.");
+      })
+      .catch((err) => {
+        console.error("Google redirect link error:", err);
+        setError("Failed to link Google account.");
+      });
+  }, [user, refreshUserData]);
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -181,8 +195,8 @@ function AccountContent() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      await linkWithPopup(user, provider);
-      setSuccess("Google account linked.");
+      await linkWithRedirect(user, provider);
+      return;
     } catch (err: unknown) {
       console.error("Link Google error:", err);
       const code = (err as { code?: string })?.code;

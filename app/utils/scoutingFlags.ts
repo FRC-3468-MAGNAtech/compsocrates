@@ -131,6 +131,10 @@ export type StoredFlagState = {
   manualFlaggedAt?: number;
   manualFlaggedBy?: string;
   manualReason?: string;
+  excludeFromAccuracy?: boolean;
+  excludeReason?: string;
+  excludedAt?: number;
+  excludedBy?: string;
   dismissedAt?: number;
   dismissedBy?: string;
 };

@@ -12,10 +12,18 @@ export type ReefscapeMatchOption = {
   type: MatchType;
   matchNumber: number;
   scheduleTime: number;
+  finalsKind?: "bracket" | "series";
 };
 
 type MatchStatus = "completed" | "next" | "upcoming";
 type FinalsSeriesStatus = MatchStatus | "unknown";
+
+function inferFinalsKind(match: ReefscapeMatchOption): "bracket" | "series" | null {
+  if (match.finalsKind === "bracket" || match.finalsKind === "series") return match.finalsKind;
+  if (match.id.startsWith("sf") || match.id.startsWith("qf")) return "bracket";
+  if (match.id.startsWith("f")) return "series";
+  return null;
+}
 
 function FinalsMatchBox({
   number,
@@ -77,13 +85,13 @@ function FinalsMatchBox({
 }
 
 function FinalsBracket({
-  completed,
+  completedNumbers,
   onPick,
   timesByNumber,
   availableNumbers,
   finalsSummaryDone,
 }: {
-  completed: Set<string>;
+  completedNumbers: Set<number>;
   onPick: (matchNumber: number) => void;
   timesByNumber: Map<number, number>;
   availableNumbers: number[];
@@ -117,8 +125,8 @@ function FinalsBracket({
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
-  const firstOpen = availableNumbers.find((n) => !completed.has(`f${n}`)) || -1;
-  const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
+  const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
+  const statusOf = (n: number): MatchStatus => (completedNumbers.has(n) ? "completed" : n === firstOpen ? "next" : "upcoming");
   const timeFor = (matchId: number) => {
     const epoch = Number(timesByNumber.get(matchId) || 0);
     if (epoch > 0) {
@@ -212,30 +220,33 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   }, [open]);
 
   const finalsById = useMemo(() => new Map(options.filter((m) => m.type === "finals").map((m) => [m.id, m] as const)), [options]);
+  const bracketOptions = useMemo(
+    () => options.filter((m) => m.type === "finals" && inferFinalsKind(m) === "bracket"),
+    [options]
+  );
+  const finalsSeriesOptions = useMemo(
+    () => options.filter((m) => m.type === "finals" && inferFinalsKind(m) === "series"),
+    [options]
+  );
   const playoffByNumber = useMemo(() => {
     const map = new Map<number, T>();
-    options
-      .filter((m) => m.type === "finals")
-      .forEach((m) => {
-        if (m.id === "f1" || m.id === "f2" || m.id === "f3") return;
-        if (!map.has(m.matchNumber)) map.set(m.matchNumber, m);
-      });
+    bracketOptions.forEach((m) => {
+      if (!map.has(m.matchNumber)) map.set(m.matchNumber, m as T);
+    });
     return map;
-  }, [options]);
+  }, [bracketOptions]);
   const finalsSeriesByNumber = useMemo(() => {
     const map = new Map<number, T>();
-    options
-      .filter((m) => m.type === "finals")
-      .forEach((m) => {
-        if (![1, 2, 3].includes(m.matchNumber) && !/^f[1-3]$/i.test(m.id)) return;
-        if (!map.has(m.matchNumber)) map.set(m.matchNumber, m);
-      });
+    finalsSeriesOptions.forEach((m) => {
+      if (![1, 2, 3].includes(m.matchNumber) && !/^f[1-3]$/i.test(m.id)) return;
+      if (!map.has(m.matchNumber)) map.set(m.matchNumber, m as T);
+    });
     return map;
-  }, [options]);
+  }, [finalsSeriesOptions]);
   function isFinalDone(matchNumber: number) {
-    if (completed.has(`f${matchNumber}`)) return true;
     const opt = finalsSeriesByNumber.get(matchNumber);
-    return !!opt && completed.has(opt.id);
+    if (opt && completed.has(opt.id)) return true;
+    return completed.has(`f${matchNumber}`);
   }
   function timeStringFromEpoch(epoch: number) {
     if (epoch > 0) {
@@ -381,15 +392,23 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
             <>
               {finalsStep === "bracket" && (
                 <FinalsBracket
-                  completed={new Set(Array.from({ length: 13 }, (_, i) => i + 1).filter((n) => {
-                    const playoffOpt = playoffByNumber.get(n);
-                    return !!playoffOpt && completed.has(playoffOpt.id);
-                  }).map((n) => `f${n}`))}
-                  timesByNumber={new Map(
-                    options
-                      .filter((match) => match.type === "finals")
-                      .map((match) => [match.matchNumber, Number(match.scheduleTime || 0)] as const)
+                  completedNumbers={new Set(
+                    Array.from({ length: 13 }, (_, i) => i + 1).filter((n) => {
+                      const playoffOpt = playoffByNumber.get(n);
+                      return !!playoffOpt && completed.has(playoffOpt.id);
+                    })
                   )}
+                  timesByNumber={(() => {
+                    const map = new Map<number, number>();
+                    bracketOptions.forEach((match) => {
+                      const existing = Number(map.get(match.matchNumber) || 0);
+                      const nextTime = Number(match.scheduleTime || 0);
+                      if (existing <= 0 || (nextTime > 0 && nextTime < existing)) {
+                        map.set(match.matchNumber, nextTime);
+                      }
+                    });
+                    return map;
+                  })()}
                   availableNumbers={Array.from({ length: 13 }, (_, i) => i + 1)}
                   finalsSummaryDone={isFinalDone(1) && isFinalDone(2)}
                   onPick={(matchNumber) => {
@@ -397,18 +416,19 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                       setFinalsStep("number");
                       return;
                     }
-                    const picked = playoffByNumber.get(matchNumber) || finalsById.get(`sf${matchNumber}`) || finalsById.get(`qf${matchNumber}`);
+                    const picked = playoffByNumber.get(matchNumber);
                     if (picked) {
                       onPick(picked);
                       onClose();
                       return;
                     }
                     const fallback = {
-                      id: `f${matchNumber}`,
-                      label: `Finals ${matchNumber}`,
+                      id: `sf${matchNumber}`,
+                      label: `Match ${matchNumber}`,
                       type: "finals",
                       matchNumber,
                       scheduleTime: 0,
+                      finalsKind: "bracket",
                     } as T;
                     onPick(fallback);
                     onClose();
@@ -467,6 +487,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                                 type: "finals",
                                 matchNumber: matchNum,
                                 scheduleTime: 0,
+                                finalsKind: "series",
                               } as T;
                               onPick(fallback);
                               onClose();

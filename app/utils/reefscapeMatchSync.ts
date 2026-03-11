@@ -17,38 +17,63 @@ export function isTbaMatchCompleted(match: Pick<TBAMatch, "alliances">): boolean
   return red >= 0 && blue >= 0;
 }
 
-export function mapPlayoffToBracketSlot(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number">): number | null {
-  // 2026+ double-elim feeds often encode bracket slot as SF{slot}M1.
-  if (match.comp_level === "sf" && match.match_number === 1 && match.set_number >= 1 && match.set_number <= 13) {
-    return match.set_number;
+export function mapPlayoffToBracketSlot(
+  match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number" | "key">
+): number | null {
+  const key = String(match.key || "").toLowerCase();
+  const inferredLevel =
+    String(match.comp_level || "").toLowerCase() ||
+    (/_qf\d+m\d+/.test(key) ? "qf" : "") ||
+    (/_sf\d+m\d+/.test(key) ? "sf" : "") ||
+    (/_f\d+m\d+/.test(key) ? "f" : "");
+  const setNumber = Number(match.set_number || 0);
+  const matchNumber = Number(match.match_number || 0);
+
+  // 2026+ double-elim feeds often encode bracket slot as SF{slot}M{n}.
+  if (inferredLevel === "sf" && setNumber >= 1 && setNumber <= 13) {
+    return setNumber;
   }
-  if (match.comp_level === "qf") {
-    if (match.match_number === 1 && match.set_number >= 1 && match.set_number <= 4) return match.set_number;
-    if (match.match_number === 2 && match.set_number === 1) return 7;
-    if (match.match_number === 2 && match.set_number === 2) return 8;
+  if (inferredLevel === "qf") {
+    if (setNumber >= 1 && setNumber <= 4) return setNumber;
+    if (matchNumber >= 2 && setNumber === 1) return 7;
+    if (matchNumber >= 2 && setNumber === 2) return 8;
     return null;
   }
-  if (match.comp_level === "sf") {
-    if (match.match_number === 1 && match.set_number === 1) return 5;
-    if (match.match_number === 1 && match.set_number === 2) return 6;
-    if (match.match_number === 2 && match.set_number === 1) return 9;
-    if (match.match_number === 2 && match.set_number === 2) return 10;
-    if (match.match_number === 3 && match.set_number === 1) return 11;
-    if (match.match_number === 3 && match.set_number === 2) return 12;
+  if (inferredLevel === "sf") {
+    if (matchNumber === 1 && setNumber === 1) return 5;
+    if (matchNumber === 1 && setNumber === 2) return 6;
+    if (matchNumber === 2 && setNumber === 1) return 9;
+    if (matchNumber === 2 && setNumber === 2) return 10;
+    if (matchNumber === 3 && setNumber === 1) return 11;
+    if (matchNumber === 3 && setNumber === 2) return 12;
     return null;
-  }
-  if (match.comp_level === "f") {
-    if (match.match_number >= 1 && match.match_number <= 3) return 13 + match.match_number; // 14, 15, 16
-    return 14;
   }
   return null;
 }
 
-export function mapTbaMatchToModalId(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number">): string {
+function parseFinalsSeriesNumber(match: Pick<TBAMatch, "key" | "set_number" | "match_number">): number {
+  const key = String(match.key || "");
+  const matchKey = key.match(/_f(\d+)m(\d+)/i);
+  if (matchKey) {
+    const setNum = Number(matchKey[1]);
+    const matchNum = Number(matchKey[2]);
+    if (setNum >= 14 && setNum <= 16) return setNum - 13;
+    if (setNum === 1 && matchNum >= 1 && matchNum <= 3) return matchNum;
+    if (setNum >= 1 && setNum <= 3 && matchNum === 1) return setNum;
+  }
+  const setNum = Number(match.set_number || 0);
+  const matchNum = Number(match.match_number || 0);
+  if (setNum >= 14 && setNum <= 16) return setNum - 13;
+  if (setNum >= 1 && setNum <= 3 && matchNum === 1) return setNum;
+  if (matchNum >= 1 && matchNum <= 3) return matchNum;
+  return matchNum || 1;
+}
+
+export function mapTbaMatchToModalId(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number" | "key">): string {
   if (match.comp_level === "qm") return `q${match.match_number}`;
+  if (match.comp_level === "f") return `f${parseFinalsSeriesNumber(match)}`;
   const slot = mapPlayoffToBracketSlot(match);
-  if (slot) return `f${slot}`;
-  if (match.comp_level === "f") return `f${match.match_number}`;
+  if (slot) return `sf${slot}`;
   return "";
 }
 
@@ -82,14 +107,31 @@ export function buildReefscapeModalOptions(matches: TBAMatch[]): ReefscapeMatchO
       return;
     }
 
+    if (match.comp_level === "f") {
+      const seriesNumber = parseFinalsSeriesNumber(match);
+      const existing = byId.get(id);
+      if (!existing || scheduleTime < existing.scheduleTime || existing.scheduleTime <= 0) {
+        byId.set(id, {
+          id,
+          type: "finals",
+          finalsKind: "series",
+          label: `Finals ${seriesNumber}`,
+          matchNumber: seriesNumber,
+          scheduleTime,
+        });
+      }
+      return;
+    }
+
     const slot = mapPlayoffToBracketSlot(match);
     if (!slot) return;
-    const label = slot <= 13 ? `Match ${slot}` : slot === 14 ? "FINALS" : `Finals ${slot - 13}`;
+    const label = `Match ${slot}`;
     const existing = byId.get(id);
     if (!existing || scheduleTime < existing.scheduleTime || existing.scheduleTime <= 0) {
       byId.set(id, {
         id,
         type: "finals",
+        finalsKind: "bracket",
         label,
         matchNumber: slot,
         scheduleTime,

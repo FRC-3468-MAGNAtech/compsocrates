@@ -29,6 +29,16 @@ interface ScoutStats {
     deviceType?: "mobile" | "pc";
     flags: string[];
     dismissed: boolean;
+    excluded: boolean;
+  }>;
+  allSessions: Array<{
+    sessionId: string;
+    accuracy: number;
+    timestamp: number;
+    deviceType?: "mobile" | "pc";
+    flags: string[];
+    dismissed: boolean;
+    excluded: boolean;
   }>;
   deviceBreakdown?: {
     mobileCount: number;
@@ -362,6 +372,7 @@ function ScoutAccuracyContent() {
     scoutedScore: number;
     officialScore: number;
   } | null>(null);
+  const [showAllSessionsModal, setShowAllSessionsModal] = useState(false);
 
   useEffect(() => {
     loadScoutStats();
@@ -455,14 +466,23 @@ function ScoutAccuracyContent() {
           scoutEntriesBySession.get(sessionId)?.push(entry);
         });
         let totalAccuracy = 0;
+        let includedAccuracyCount = 0;
         let recentAccuracies: number[] = [];
         let recentSessions: ScoutStats["recentSessions"] = [];
+        let allSessions: ScoutStats["allSessions"] = [];
         let lastPracticeDate = 0;
         const practiceDevicePoints: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }> = [];
-        const accuracyTimeline: Array<{ accuracy: number; timestamp: number; sessionId: string; deviceType?: "mobile" | "pc"; flags: string[]; dismissed: boolean }> = [];
+        const accuracyTimeline: Array<{
+          accuracy: number;
+          timestamp: number;
+          sessionId: string;
+          deviceType?: "mobile" | "pc";
+          flags: string[];
+          dismissed: boolean;
+          excluded: boolean;
+        }> = [];
         practiceRows.forEach(({ id, row: data }) => {
           if (typeof data.accuracy === "number") {
-            totalAccuracy += data.accuracy;
             const rowTimestamp = Number(data.timestamp || data.completedAt || data.startedAt || 0);
             const linkedEntries = scoutEntriesBySession.get(id) || [];
             const sessionDeviceType = (data.deviceType as "mobile" | "pc" | undefined) ?? linkedEntries.find((entry) => entry.deviceType)?.deviceType;
@@ -477,6 +497,7 @@ function ScoutAccuracyContent() {
               ])
             );
             const dismissed = Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", id))?.dismissed);
+            const excluded = Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", id))?.excludeFromAccuracy);
             accuracyTimeline.push({
               accuracy: Number(data.accuracy || 0),
               timestamp: Number.isFinite(rowTimestamp) ? rowTimestamp : 0,
@@ -484,23 +505,30 @@ function ScoutAccuracyContent() {
               deviceType: sessionDeviceType,
               flags,
               dismissed,
+              excluded,
             });
-            practiceDevicePoints.push({
-              deviceType: sessionDeviceType,
-              accuracy: Number(data.accuracy || 0),
-            });
+            if (!excluded) {
+              totalAccuracy += Number(data.accuracy || 0);
+              includedAccuracyCount += 1;
+              practiceDevicePoints.push({
+                deviceType: sessionDeviceType,
+                accuracy: Number(data.accuracy || 0),
+              });
+            }
           }
           const rowTimestamp = Number(data.timestamp || data.completedAt || data.startedAt || 0);
           if (rowTimestamp > lastPracticeDate) {
             lastPracticeDate = rowTimestamp;
           }
         });
-        recentSessions = accuracyTimeline
-          .sort((a, b) => a.timestamp - b.timestamp)
-          .slice(-5);
+        const sortedTimeline = accuracyTimeline
+          .slice()
+          .sort((a, b) => b.timestamp - a.timestamp);
+        recentSessions = sortedTimeline.slice(0, 5);
+        allSessions = sortedTimeline;
         recentAccuracies = recentSessions.map((row) => row.accuracy);
-        const averageAccuracy = accuracyTimeline.length > 0
-          ? Math.round(totalAccuracy / accuracyTimeline.length)
+        const averageAccuracy = includedAccuracyCount > 0
+          ? Math.round(totalAccuracy / includedAccuracyCount)
           : 0;
 
         return {
@@ -513,6 +541,7 @@ function ScoutAccuracyContent() {
           lastPracticeDate: lastPracticeDate || Date.now(),
           recentAccuracies,
           recentSessions,
+          allSessions,
           deviceBreakdown: getDeviceBreakdown(practiceDevicePoints),
         };
       });
@@ -615,6 +644,10 @@ function ScoutAccuracyContent() {
   }
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
+
+  useEffect(() => {
+    setShowAllSessionsModal(false);
+  }, [selectedScout]);
   const canResetScoutData = Boolean(userData?.isTeamAdmin);
 
   async function resetScoutSessions(scoutName: string) {
@@ -775,6 +808,32 @@ function ScoutAccuracyContent() {
     } catch (error) {
       console.error("Failed updating practice session flag state:", error);
       alert("Could not update flag state.");
+    } finally {
+      setFlagSaveKey("");
+    }
+  }
+
+  async function setPracticeSessionExcluded(sessionId: string, excluded: boolean) {
+    if (!canManageFlags || !userData?.teamId) return;
+    const key = flagStateDocId("practiceSession", sessionId);
+    setFlagSaveKey(key);
+    try {
+      await setDoc(
+        doc(db, "scoutingFlagStates", key),
+        {
+          teamId: userData.teamId,
+          entityType: "practiceSession",
+          entityId: sessionId,
+          excludeFromAccuracy: excluded,
+          excludedAt: Date.now(),
+          excludedBy: userData.uid || "",
+        },
+        { merge: true }
+      );
+      await loadScoutStats();
+    } catch (error) {
+      console.error("Failed updating practice session exclusion state:", error);
+      alert("Could not update accuracy exclusion.");
     } finally {
       setFlagSaveKey("");
     }
@@ -1085,6 +1144,7 @@ function ScoutAccuracyContent() {
                                       ? "PC"
                                       : "Unknown Device"}
                                     {session.flags.length > 0 && canManageFlags && !session.dismissed ? " • Flagged" : ""}
+                                    {session.excluded ? " • Excluded" : ""}
                                   </div>
                                 </div>
                                 <div className="flex-1 bg-gray-200 rounded-full h-8 overflow-hidden">
@@ -1112,8 +1172,30 @@ function ScoutAccuracyContent() {
                                     {session.dismissed ? "Restore Flag" : "Dismiss Flag"}
                                   </button>
                                 )}
+                                {canManageFlags && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void setPracticeSessionExcluded(session.sessionId, !session.excluded)}
+                                    disabled={flagSaveKey === flagStateDocId("practiceSession", session.sessionId)}
+                                    className="px-2 py-1 rounded text-xs border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    {session.excluded ? "Include In Avg" : "Exclude From Avg"}
+                                  </button>
+                                )}
                               </div>
                             ))}
+                            {selectedScoutData.allSessions.length > 5 && (
+                              <div className="pt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAllSessionsModal(true)}
+                                  className="text-sm font-medium hover:underline"
+                                  style={{ color: "var(--primary-color)" }}
+                                >
+                                  View All Sessions
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <p className="text-gray-500 text-center py-4">No sessions completed yet</p>
@@ -1204,6 +1286,77 @@ function ScoutAccuracyContent() {
                           </div>
                         );
                       })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {selectedScoutData && showAllSessionsModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+                      <div>
+                        <h2 className="text-xl font-bold">All Practice Sessions</h2>
+                        <p className="text-sm text-gray-600">{selectedScoutData.scoutName}</p>
+                      </div>
+                      <button
+                        onClick={() => setShowAllSessionsModal(false)}
+                        className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-medium"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <div className="p-6 space-y-3">
+                      {selectedScoutData.allSessions.map((session, i) => (
+                        <div key={session.sessionId} className="flex items-center gap-4">
+                          <div className="text-sm text-gray-600 w-40">
+                            <div>{`Session ${i + 1}`}</div>
+                            <div className="text-xs">
+                              {session.deviceType === "mobile"
+                                ? "Mobile"
+                                : session.deviceType === "pc"
+                                ? "PC"
+                                : "Unknown Device"}
+                              {session.flags.length > 0 && canManageFlags && !session.dismissed ? " • Flagged" : ""}
+                              {session.excluded ? " • Excluded" : ""}
+                            </div>
+                          </div>
+                          <div className="flex-1 bg-gray-200 rounded-full h-8 overflow-hidden">
+                            <div
+                              className="h-full flex items-center justify-end pr-3 text-white text-sm font-semibold transition-all"
+                              style={{
+                                width: `${session.accuracy}%`,
+                                backgroundColor:
+                                  session.accuracy === 100 ? "#9333ea" :
+                                  session.accuracy >= 90 ? "#10b981" :
+                                  session.accuracy >= 80 ? "#15803d" :
+                                  session.accuracy >= 50 ? "#f97316" : "#ef4444"
+                              }}
+                            >
+                              {session.accuracy}%
+                            </div>
+                          </div>
+                          {canManageFlags && session.flags.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => void setPracticeSessionFlagDismissed(session.sessionId, !session.dismissed)}
+                              disabled={flagSaveKey === flagStateDocId("practiceSession", session.sessionId)}
+                              className="px-2 py-1 rounded text-xs border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {session.dismissed ? "Restore Flag" : "Dismiss Flag"}
+                            </button>
+                          )}
+                          {canManageFlags && (
+                            <button
+                              type="button"
+                              onClick={() => void setPracticeSessionExcluded(session.sessionId, !session.excluded)}
+                              disabled={flagSaveKey === flagStateDocId("practiceSession", session.sessionId)}
+                              className="px-2 py-1 rounded text-xs border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {session.excluded ? "Include In Avg" : "Exclude From Avg"}
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

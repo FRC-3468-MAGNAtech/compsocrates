@@ -194,6 +194,31 @@ function scoreEntry(e: Entry, game: AnalyticsGame) {
   return s;
 }
 
+function scoreEntryBase(e: Entry, game: AnalyticsGame) {
+  if (game === "REBUILT") return scoreRebuiltEntry(e);
+
+  let s = 0;
+  if (e.leftStartingZone) s += PTS.LEAVE;
+  s += e.autoCoralL1 * PTS.AUTO_CORAL_L1;
+  s += e.autoCoralL2 * PTS.AUTO_CORAL_L2;
+  s += e.autoCoralL3 * PTS.AUTO_CORAL_L3;
+  s += e.autoCoralL4 * PTS.AUTO_CORAL_L4;
+  s += e.autoAlgaeProcessorScored * PTS.AUTO_ALGAE_PROC;
+  s += e.autoAlgaeNetScored * PTS.AUTO_ALGAE_NET;
+  s += e.teleopCoralL1 * PTS.TELE_CORAL_L1;
+  s += e.teleopCoralL2 * PTS.TELE_CORAL_L2;
+  s += e.teleopCoralL3 * PTS.TELE_CORAL_L3;
+  s += e.teleopCoralL4 * PTS.TELE_CORAL_L4;
+  s += e.teleopProcessorScored * PTS.TELE_ALGAE_PROC;
+  s += e.teleopNetRobotScored * PTS.TELE_ALGAE_NET_R;
+  s += e.teleopNetHumanScored * PTS.TELE_ALGAE_NET_H;
+  const end = e.stageStatus.toLowerCase();
+  if (end.includes("deep")) s += PTS.CLIMB_DEEP;
+  else if (end.includes("shallow")) s += PTS.CLIMB_SHALLOW;
+  else if (end.includes("park") || end.includes("barge")) s += PTS.CLIMB_PARK;
+  return s;
+}
+
 function matchLabel(entry: Entry) {
   function remapLegacyFinalLabel(rawLabel: string) {
     const parsed = String(rawLabel || "").trim().toUpperCase().match(/^F(\d+)$/);
@@ -305,10 +330,20 @@ function parseMatchIdentity(entry: Pick<Entry, "matchId" | "matchType" | "matchN
     const compLevel = playoff[1] as "qf" | "sf" | "f";
     const first = Number(playoff[2]);
     const second = playoff[3] ? Number(playoff[3]) : null;
+    if (compLevel === "f") {
+      return {
+        compLevel,
+        setNumber: second === null ? null : first,
+        matchNumber: second === null ? first : second,
+      };
+    }
+    if (second === null) {
+      return { compLevel, setNumber: first, matchNumber: 1 };
+    }
     return {
       compLevel,
-      setNumber: second === null ? null : first,
-      matchNumber: second === null ? first : second,
+      setNumber: first,
+      matchNumber: second,
     };
   }
 
@@ -527,6 +562,18 @@ function toDisplayTitle(value: unknown) {
     .join(" ");
 }
 
+function formatScriptStatus(value: unknown) {
+  const cleaned = String(value || "").trim().toLowerCase();
+  if (!cleaned) return "-";
+  if (cleaned === "complete") return "Complete";
+  if (cleaned === "missing robots") return "Needs Robots";
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = "";
@@ -680,6 +727,8 @@ function AnalyticsPageContent() {
   });
   const [accuracyRobotBreakdown, setAccuracyRobotBreakdown] = useState<AccuracyRobotBreakdown[]>([]);
   const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
+  const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({ encryptedKey: "", plainKey: "" });
+  const [tbaMatchesByEvent, setTbaMatchesByEvent] = useState<Record<string, TbaMatchRow[]>>({});
   const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [flagSavingKey, setFlagSavingKey] = useState("");
   const [flagMenuEntry, setFlagMenuEntry] = useState<Entry | null>(null);
@@ -741,6 +790,31 @@ function AnalyticsPageContent() {
       }
     }
     void loadDetectedEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.teamId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTeamTbaAuth() {
+      if (!userData?.teamId) {
+        if (!cancelled) setTbaAuth({ encryptedKey: "", plainKey: "" });
+        return;
+      }
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (cancelled) return;
+        setTbaAuth({
+          encryptedKey: String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim(),
+          plainKey: String(teamDoc.data()?.tbaApiKey || "").trim(),
+        });
+      } catch (error) {
+        console.warn("Failed loading team TBA auth for analytics:", error);
+        if (!cancelled) setTbaAuth({ encryptedKey: "", plainKey: "" });
+      }
+    }
+    void loadTeamTbaAuth();
     return () => {
       cancelled = true;
     };
@@ -875,6 +949,125 @@ function AnalyticsPageContent() {
     });
   }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly, rebuiltEventOptions]);
 
+  const allianceAccuracyByEntryId = useMemo(() => {
+    const result: Record<string, { accuracy: number | null; scriptStatus: string }> = {};
+    const grouped = new Map<string, Entry[]>();
+
+    filtered.forEach((entry) => {
+      if (isPracticeScoutingEntry(entry)) return;
+      const eventKey = selectedEvent !== "all" ? selectedEvent : String(entry.eventKey || "").trim();
+      if (!eventKey) return;
+      const identity = parseMatchIdentity(entry) || parseMatchIdentityFromLabel(matchLabel(entry));
+      if (!identity) return;
+      const key = `${eventKey}:${identity.compLevel}:${identity.setNumber ?? ""}:${identity.matchNumber}`;
+      const bucket = grouped.get(key) || [];
+      bucket.push(entry);
+      grouped.set(key, bucket);
+    });
+
+    grouped.forEach((entries, key) => {
+      const [eventKey] = key.split(":");
+      const matches = tbaMatchesByEvent[eventKey] || [];
+      if (matches.length === 0) {
+        entries.forEach((entry) => {
+          result[entry.id] = { accuracy: null, scriptStatus: "" };
+        });
+        return;
+      }
+
+      const identity = parseMatchIdentity(entries[0]) || parseMatchIdentityFromLabel(matchLabel(entries[0]));
+      const matching = identity
+        ? matches.find((row) => {
+            const level = String(row.comp_level || "").toLowerCase();
+            if (level !== identity.compLevel) return false;
+            if (Number(row.match_number || 0) !== identity.matchNumber) return false;
+            if (identity.setNumber !== null && Number(row.set_number || 0) !== identity.setNumber) return false;
+            return true;
+          })
+        : null;
+
+      if (!matching) {
+        entries.forEach((entry) => {
+          result[entry.id] = { accuracy: null, scriptStatus: "" };
+        });
+        return;
+      }
+
+      const redTeams = (matching.alliances?.red?.team_keys || [])
+        .map((key) => String(key).replace("frc", "").trim())
+        .filter(Boolean);
+      const blueTeams = (matching.alliances?.blue?.team_keys || [])
+        .map((key) => String(key).replace("frc", "").trim())
+        .filter(Boolean);
+
+      const latest = chooseLatestEntryPerTeam(entries);
+      const byAlliance: Record<"red" | "blue", Entry[]> = { red: [], blue: [] };
+      latest.forEach((entry) => {
+        const team = String(entry.teamNumber || "").trim();
+        if (team && redTeams.includes(team)) {
+          byAlliance.red.push(entry);
+          return;
+        }
+        if (team && blueTeams.includes(team)) {
+          byAlliance.blue.push(entry);
+          return;
+        }
+        const inferred = inferAllianceColor(entry);
+        if (inferred) byAlliance[inferred].push(entry);
+      });
+
+      (["red", "blue"] as const).forEach((alliance) => {
+        const entriesForAlliance = byAlliance[alliance];
+        if (entriesForAlliance.length === 0) return;
+        const foulPoints = Number(matching.score_breakdown?.[alliance]?.foulPoints || 0);
+        const baseScouted = entriesForAlliance.reduce((sum, row) => sum + scoreEntryBase(row, selectedGame), 0);
+        const scoutedTotal = baseScouted + foulPoints;
+        const official = Number(matching.alliances?.[alliance]?.score || 0);
+        const accuracy = official > 0 ? Math.max(0, 1 - Math.abs(official - scoutedTotal) / official) * 100 : 0;
+        const scriptStatus = entriesForAlliance.length >= 3 ? "complete" : "missing robots";
+        entriesForAlliance.forEach((entry) => {
+          result[entry.id] = { accuracy, scriptStatus };
+        });
+      });
+    });
+
+    return result;
+  }, [filtered, selectedEvent, selectedGame, tbaMatchesByEvent]);
+
+  useEffect(() => {
+    if (!userData?.teamId) return;
+    const eventKeys = new Set(
+      filtered
+        .map((entry) => (selectedEvent !== "all" ? selectedEvent : String(entry.eventKey || "").trim()))
+        .filter((key) => Boolean(key))
+    );
+    if (eventKeys.size === 0) return;
+
+    eventKeys.forEach((eventKey) => {
+      if (!eventKey || tbaMatchesByEvent[eventKey]) return;
+      if (!tbaAuth.encryptedKey && !tbaAuth.plainKey) return;
+      (async () => {
+        try {
+          const response = await fetch("/api/tba/matches", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventKey,
+              encryptedKey: tbaAuth.encryptedKey,
+              plainKey: tbaAuth.plainKey,
+            }),
+          });
+          if (!response.ok) return;
+          const payload = (await response.json()) as { matches?: TbaMatchRow[] };
+          if (!Array.isArray(payload.matches)) return;
+          setTbaMatchesByEvent((prev) => (prev[eventKey] ? prev : { ...prev, [eventKey]: payload.matches as TbaMatchRow[] }));
+        } catch (error) {
+          console.warn("Failed loading TBA matches for analytics:", error);
+        }
+      })();
+    });
+  }, [filtered, selectedEvent, tbaAuth.encryptedKey, tbaAuth.plainKey, tbaMatchesByEvent, userData?.teamId]);
+
   const data = useMemo(() => {
     const withScore = filtered.map((entry) => {
       const fuel = getRebuiltFuelBreakdown(entry);
@@ -885,16 +1078,24 @@ function AnalyticsPageContent() {
       const end = String(entry.endgame?.status || "").toLowerCase();
       const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
       const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
+      const computedAccuracy = allianceAccuracyByEntryId[entry.id];
       const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? Number((entry as Entry & { accuracy?: number }).accuracy)
-        : null;
+        : computedAccuracy?.accuracy ?? null;
+      const scriptStatus = computedAccuracy?.scriptStatus
+        ? computedAccuracy.scriptStatus === "complete"
+          ? "complete"
+          : computedAccuracy.scriptStatus
+        : accuracyValue === null
+        ? ""
+        : "complete";
 
       return {
         ...entry,
         score: scoreEntry(entry, selectedGame),
         matchLabel: matchLabel(entry),
         accuracy: accuracyValue ?? "",
-        scriptStatus: accuracyValue === null ? "" : "complete",
+        scriptStatus,
         autoPreloadScale: entry.auto?.preloadScale ?? 0,
         autoBpsScale: entry.auto?.bpsScale ?? 0,
         autoCarryScale: entry.auto?.carryingScale ?? 0,
@@ -2007,7 +2208,7 @@ function AnalyticsPageContent() {
                       "-"
                     )}
                   </td>
-                  <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
+                  <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>
                   <td className="text-center">
                     {canManageFlags && (
                       <div className="mb-2">
@@ -2231,7 +2432,7 @@ function AnalyticsPageContent() {
                     "-"
                   )}
                 </td>
-                <td className="text-center">{typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "-"}</td>
+                <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>
                 <td className="text-center">
                   {canManageFlags && (
                     <div className="mb-2">

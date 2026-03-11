@@ -538,7 +538,7 @@ function ScoutFormContent() {
   }
 
   function isMatchCompleted(matchId: string) {
-    if (tbaCompletedMatches.size > 0 && (matchId.startsWith("q") || matchId.startsWith("f"))) {
+    if (tbaCompletedMatches.size > 0 && (matchId.startsWith("q") || matchId.startsWith("f") || matchId.startsWith("sf"))) {
       return tbaCompletedMatches.has(matchId);
     }
     return isMatchCompletedByScouts(matchId);

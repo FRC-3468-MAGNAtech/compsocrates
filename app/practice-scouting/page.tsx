@@ -780,13 +780,13 @@ function mapPlayoffToBracketSlot(match: {
     || (/_f\d+m\d+/.test(key) ? "f" : "");
 
   // 2026+ double-elim feeds often encode bracket slot as SF{slot}M1.
-  if (inferredLevel === "sf" && matchNumber === 1 && setNumber >= 1 && setNumber <= 13) {
+  if (inferredLevel === "sf" && setNumber >= 1 && setNumber <= 13) {
     return setNumber;
   }
   if (inferredLevel === "qf") {
-    if (matchNumber === 1 && setNumber >= 1 && setNumber <= 4) return setNumber; // 1-4
-    if (matchNumber === 2 && setNumber === 1) return 7;
-    if (matchNumber === 2 && setNumber === 2) return 8;
+    if (setNumber >= 1 && setNumber <= 4) return setNumber; // 1-4
+    if (matchNumber >= 2 && setNumber === 1) return 7;
+    if (matchNumber >= 2 && setNumber === 2) return 8;
     return null;
   }
   if (inferredLevel === "sf") {
@@ -798,10 +798,6 @@ function mapPlayoffToBracketSlot(match: {
     if (matchNumber === 3 && setNumber === 2) return 12;
     return null;
   }
-  if (inferredLevel === "f") {
-    if (matchNumber >= 1 && matchNumber <= 3) return 13 + matchNumber; // 14, 15, 16
-    return 14;
-  }
   return null;
 }
 
@@ -810,6 +806,15 @@ function parsePracticeMatchNumber(match: { matchKey?: unknown; matchNumber?: unk
   if (playoffSlot !== null) return playoffSlot;
 
   const key = String(match.matchKey || "").toLowerCase();
+  const compLevel = String(match.compLevel || "").trim().toLowerCase();
+  const finalsKey = key.match(/_f(\d+)m(\d+)$/i);
+  if (finalsKey && compLevel === "f") {
+    const setNum = Number(finalsKey[1]);
+    const matchNum = Number(finalsKey[2]);
+    if (setNum >= 14 && setNum <= 16) return setNum - 13;
+    if (setNum === 1 && matchNum >= 1 && matchNum <= 3) return matchNum;
+    if (setNum >= 1 && setNum <= 3 && matchNum === 1) return setNum;
+  }
   const fromKey =
     key.match(/_qm(\d+)$/)?.[1] ||
     key.match(/_pm(\d+)$/)?.[1] ||
@@ -817,6 +822,11 @@ function parsePracticeMatchNumber(match: { matchKey?: unknown; matchNumber?: unk
     key.match(/_m(\d+)$/)?.[1];
   if (fromKey) return Number(fromKey);
   const number = Number(match.matchNumber || 0);
+  if (compLevel === "f") {
+    const setNum = Number(match.setNumber || 0);
+    if (setNum >= 14 && setNum <= 16) return setNum - 13;
+    if (setNum >= 1 && setNum <= 3 && number === 1) return setNum;
+  }
   if (Number.isFinite(number) && number > 0) return number;
   return 1;
 }
@@ -1615,10 +1625,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=${muted}&controls=${controls}&disablekb=${controls === 0 ? 1 : 0}&modestbranding=1&rel=0&fs=0&enablejsapi=1&playsinline=1`;
   }
 
-  function inferEventKeyFromStreamTitle(title: string, game: AnalyticsGame): string {
+  function inferEventKeyFromStreamTitle(title: string, game?: AnalyticsGame | null): string {
     const normalizedTitle = normalizeEventValue(title);
     if (!normalizedTitle) return "";
-    const staticEvents = getEventsForGame(game).filter((event) => event.id !== "app-testing");
+    const gamesToCheck: AnalyticsGame[] = game ? [game] : ["REEFSCAPE", "REBUILT"];
+    const staticEvents = gamesToCheck.flatMap((entryGame) =>
+      getEventsForGame(entryGame).filter((event) => event.id !== "app-testing")
+    );
     const dynamicEvents = teamEventCatalog.map((event) => ({ id: event.key, name: event.name }));
     const byId = new Map<string, { id: string; name: string }>();
     [...staticEvents, ...dynamicEvents].forEach((event) => {
@@ -1638,9 +1651,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return "";
   }
 
+  function inferGameFromEventKey(eventKey: string): AnalyticsGame | null {
+    const normalizedKey = String(eventKey || "").trim().toLowerCase();
+    if (!normalizedKey) return null;
+    if (getEventsForGame("REEFSCAPE").some((event) => event.id.toLowerCase() === normalizedKey)) return "REEFSCAPE";
+    if (getEventsForGame("REBUILT").some((event) => event.id.toLowerCase() === normalizedKey)) return "REBUILT";
+    return null;
+  }
+
   async function hydrateLiveStreamContext(url: string): Promise<string> {
     const trimmed = String(url || "").trim();
-    if (!trimmed || !activeMatchGame) return "";
+    if (!trimmed) return "";
     setLiveStreamTitle("");
     setLiveEventKeyHint("");
     setLiveEventTeamSuggestions([]);
@@ -1654,13 +1675,55 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       });
       const titlePayload = (await titleResponse.json().catch(() => ({}))) as { title?: string };
       const title = String(titlePayload.title || "").trim();
-      if (!title) return "";
-      setLiveStreamTitle(title);
+      if (title) {
+        setLiveStreamTitle(title);
+      }
 
-      const inferredFromTitle = inferEventKeyFromStreamTitle(title, activeMatchGame);
-      const fallbackEventKey = teamEventCatalog.length > 0 ? pickDetectedEventKey(teamEventCatalog) : "";
-      const inferredEventKey = inferredFromTitle || fallbackEventKey;
-      if (!inferredEventKey) return "";
+    const inferredFromTitle = title ? inferEventKeyFromStreamTitle(title, activeMatchGame) : "";
+    let inferredEventKey = inferredFromTitle;
+    if (!inferredEventKey && title && (tbaAuth.encryptedKey || tbaAuth.plainKey)) {
+      const normalizedTitle = normalizeEventValue(title);
+      const years = Array.from(new Set([new Date().getFullYear(), new Date().getFullYear() - 1]));
+      for (const year of years) {
+        try {
+          const response = await fetch("/api/tba/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ year, encryptedKey: tbaAuth.encryptedKey, plainKey: tbaAuth.plainKey }),
+          });
+          if (!response.ok) continue;
+          const payload = (await response.json()) as { events?: Array<Record<string, unknown>> };
+          const events = Array.isArray(payload.events) ? payload.events : [];
+          const matched = events.find((event) => {
+            const key = String(event.key || "").trim();
+            if (!key) return false;
+            const nameCandidates = [
+              String(event.name || ""),
+              String(event.short_name || ""),
+              String(event.event_code || ""),
+              key.slice(4),
+            ];
+            return nameCandidates.some((candidate) => {
+              const normalized = normalizeEventValue(candidate);
+              return normalized && normalizedTitle.includes(normalized);
+            });
+          });
+          if (matched?.key) {
+            inferredEventKey = String(matched.key || "").trim();
+            break;
+          }
+        } catch {
+          // Ignore and continue.
+        }
+      }
+    }
+    const fallbackEventKey = teamEventCatalog.length > 0 ? pickDetectedEventKey(teamEventCatalog) : "";
+    if (!inferredEventKey) inferredEventKey = fallbackEventKey;
+    if (!inferredEventKey) return "";
+      if (!activeMatchGame) {
+        const inferredGame = inferGameFromEventKey(inferredEventKey);
+        if (inferredGame) setActiveMatchGame(inferredGame);
+      }
       setLiveEventKeyHint(inferredEventKey);
 
       const teamResponse = await fetch("/api/tba/teams", {
@@ -2056,7 +2119,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setRobotSessions([]);
     setRebuiltRobotSessions([]);
     const defaultTeam = safeMatch.allianceTeams[initialRobotIndex]?.toString() || "";
-    const initialTeamNumber = options?.teamNumber || (isLiveSession && liveLobby ? "" : defaultTeam);
+    const hasExplicitTeam = typeof options?.teamNumber === "string";
+    const initialTeamNumber = hasExplicitTeam ? String(options?.teamNumber) : (isLiveSession && liveLobby ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
     setHumanPlayerRobot(Math.floor(Math.random() * 3));
@@ -2283,6 +2347,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
 
+    setLiveLobby(null);
+    setLiveLobbyId("");
+    setLiveLobbyError("");
+    setShowMatchSelectModal(false);
     const inferredEventKey = await hydrateLiveStreamContext(liveVideoUrl.trim());
     if (inferredEventKey) {
       setLiveEventKeyHint(inferredEventKey);
@@ -2980,6 +3048,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     });
   }, [candidateMatches, selectedDifficulty]);
 
+  function continueLiveSoloSession() {
+    if (!currentMatch) return;
+    const selected = { ...currentMatch, progress: "fresh" as const } as CandidatePracticeMatch;
+    startPracticeMatch(selected, { liveMode: true, robotIndex: 0, teamNumber: "" });
+  }
+
   function handleDifficultyModalPick(matchId: string) {
     const picked = candidateMatches.find((match) => match.id === matchId);
     if (!picked) return;
@@ -3016,8 +3090,22 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const stage = getPracticeStage(match);
       const modalType: ReefscapeMatchOption["type"] =
         stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
-      const parsedNumber = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
-      const modalId = modalType === "practice" ? `p${parsedNumber}` : modalType === "qualification" ? `q${parsedNumber}` : `f${parsedNumber}`;
+      const bracketSlot = modalType === "finals"
+        ? mapPlayoffToBracketSlot(match as { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown; compLevel?: unknown })
+        : null;
+      const parsedNumber =
+        bracketSlot !== null
+          ? bracketSlot
+          : parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+      const finalsKind = modalType === "finals" ? (bracketSlot !== null ? "bracket" : "series") : undefined;
+      const modalId =
+        modalType === "practice"
+          ? `p${parsedNumber}`
+          : modalType === "qualification"
+          ? `q${parsedNumber}`
+          : finalsKind === "bracket"
+          ? `sf${parsedNumber}`
+          : `f${parsedNumber}`;
       const matchData = match as unknown as Record<string, unknown>;
       const rawScheduleTime =
         Number(matchData.scheduleTime || 0)
@@ -3054,8 +3142,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             ? `Practice ${number}`
             : modalType === "qualification"
             ? `Qualification ${number}`
-            : number === 14
-            ? "FINALS"
+            : finalsKind === "series"
+            ? `Finals ${number}`
             : `Match ${number}`;
         return {
           id,
@@ -3063,6 +3151,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           type: modalType,
           matchNumber: number,
           scheduleTime: row.scheduleTime,
+          finalsKind,
           sourceId: match.id,
           progress: match.progress,
         };
@@ -3491,7 +3580,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               </p>
               <p className="text-gray-600 mb-8">
                 {selectedDifficulty === "live"
-                  ? `Waiting for all players to submit (${liveSubmittedCount}/${liveLobbyPlayerCount}).`
+                  ? liveLobby
+                    ? `Waiting for all players to submit (${liveSubmittedCount}/${liveLobbyPlayerCount}).`
+                    : "Ready for the next team. You can keep scouting or end the session."
                   : "Take a short break before the next robot, just like normal scouting rotations between matches."}
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -3502,6 +3593,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     style={{ backgroundColor: "var(--primary-color)" }}
                   >
                     {`Continue To Robot ${currentRobotIndex + 2} (Team ${currentMatch.allianceTeams[currentRobotIndex + 1]})`}
+                  </button>
+                )}
+                {selectedDifficulty === "live" && !liveLobby && (
+                  <button
+                    onClick={continueLiveSoloSession}
+                    className="flex-1 py-3 rounded-lg text-white font-semibold"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Next Team
                   </button>
                 )}
                 {selectedDifficulty !== "live" && (
