@@ -36,7 +36,12 @@ export default function GoogleSignInButton() {
         }
         router.push("/signup?google=1");
       } else {
-        const userData = userDoc.data() as { role?: string; roles?: string[]; teamId?: string };
+        const userData = userDoc.data() as {
+          role?: string;
+          roles?: string[];
+          teamId?: string;
+          profileComplete?: boolean;
+        };
         if (userData?.profileComplete === false) {
           router.push("/signup?google=1");
           return;
