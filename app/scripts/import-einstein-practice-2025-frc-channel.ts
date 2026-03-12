@@ -11,9 +11,9 @@
 //   --manual=path/to/video-overrides.json
 //
 // Difficulty rules:
-//   easy: <= 100
-//   medium: 101-200
-//   hard: >= 201
+//   easy: <= 200
+//   medium: 201-400
+//   hard: >= 401
 
 import { config } from "dotenv";
 import { readFileSync } from "fs";
@@ -73,9 +73,9 @@ function parseArgs() {
 }
 
 function classifyDifficulty(score: number): "easy" | "medium" | "hard" {
-  if (score <= 100) return "easy";
-  if (score >= 201) return "hard";
-  return "medium";
+  if (score <= 200) return "easy";
+  if (score <= 400) return "medium";
+  return "hard";
 }
 
 function extractTeamNumber(teamKey: string): number {

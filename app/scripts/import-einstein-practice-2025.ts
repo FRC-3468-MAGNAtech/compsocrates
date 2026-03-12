@@ -65,9 +65,9 @@ function youtubeUrl(match: TbaMatch): string | null {
 }
 
 function classifyDifficulty(score: number): "easy" | "medium" | "hard" {
-  if (score <= 100) return "easy";
-  if (score >= 201) return "hard";
-  return "medium";
+  if (score <= 200) return "easy";
+  if (score <= 400) return "medium";
+  return "hard";
 }
 
 function toFirestoreFields(data: Record<string, unknown>): Record<string, FirestoreField> {
@@ -259,7 +259,7 @@ async function run() {
   }
 
   console.log(`Eligible matches: ${eligible.length}`);
-  console.log("Difficulty thresholds: easy<=100, medium=101-200, hard>=201");
+  console.log("Difficulty thresholds: easy<=200, medium=201-400, hard>=401");
 
   const authContext = await resolveAuthContext(projectId);
   const authHeaders = authContext.headers;

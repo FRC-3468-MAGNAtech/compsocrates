@@ -29,15 +29,22 @@ type TbaMatch = {
   score_breakdown?: Record<string, Record<string, unknown>>;
 };
 
+const FRC_CHANNEL_NAME = "FIRST Robotics Competition";
+const ACCEPTED_CHANNEL_MARKERS = ["first robotics competition", "firstinspires", "first"];
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
   const eventArg = args.find((arg) => arg.startsWith("--event="));
   const eventNameArg = args.find((arg) => arg.startsWith("--event-name="));
+  const fromQmArg = args.find((arg) => arg.startsWith("--from-qm="));
+  const maxSfArg = args.find((arg) => arg.startsWith("--max-sf="));
   return {
     apply,
     eventKey: (eventArg?.slice("--event=".length).trim() || "2026week0").toLowerCase(),
     eventName: eventNameArg?.slice("--event-name=".length).trim() || "Week 0",
+    fromQm: Number(fromQmArg?.slice("--from-qm=".length) || 4),
+    maxSf: Number(maxSfArg?.slice("--max-sf=".length) || 13),
   };
 }
 
@@ -47,6 +54,12 @@ function readString(field: FirestoreField | undefined): string {
   if (typeof field.integerValue === "string") return field.integerValue;
   if (typeof field.doubleValue === "number") return String(field.doubleValue);
   return "";
+}
+
+function toTeamNumbers(teamKeys: string[]): number[] {
+  return teamKeys
+    .map((key) => Number(String(key).replace("frc", "").trim()))
+    .filter((value) => Number.isFinite(value));
 }
 
 async function getFirebaseIdToken(): Promise<string> {
@@ -68,15 +81,12 @@ async function getFirebaseIdToken(): Promise<string> {
   return payload.idToken || "";
 }
 
-async function fetchTbaQuals(eventKey: string, tbaKey: string): Promise<TbaMatch[]> {
+async function fetchTbaMatches(eventKey: string, tbaKey: string): Promise<TbaMatch[]> {
   const response = await fetch(`https://www.thebluealliance.com/api/v3/event/${eventKey}/matches`, {
     headers: { "X-TBA-Auth-Key": tbaKey },
   });
   if (!response.ok) throw new Error(`TBA fetch failed (${response.status}): ${await response.text()}`);
-  const all = (await response.json()) as TbaMatch[];
-  return all
-    .filter((m) => m.comp_level === "qm" && [1, 2, 3].includes(m.match_number))
-    .sort((a, b) => a.match_number - b.match_number);
+  return response.json() as Promise<TbaMatch[]>;
 }
 
 async function listPracticeDocs(projectId: string, authHeaders: Record<string, string>): Promise<FirestoreDoc[]> {
@@ -137,7 +147,7 @@ async function createPracticeDoc(
           },
         },
       },
-      migrationVersion: { stringValue: "week0-qm1-3-sync-v1" },
+      migrationVersion: { stringValue: "week0-rest-sync-v1" },
       migratedAt: { integerValue: String(Date.now()) },
       createdAt: { integerValue: String(Date.now()) },
     },
@@ -161,8 +171,8 @@ async function patchPracticeDoc(
     eventName: string;
     matchKey: string;
     matchNumber: number;
-    matchType: "qualification";
-    compLevel: "qm";
+    matchType: "qualification" | "playoff";
+    compLevel: "qm" | "sf";
     setNumber: number;
     videoUrl: string;
     difficulty: "easy" | "medium" | "hard";
@@ -235,7 +245,7 @@ async function patchPracticeDoc(
           },
         },
       },
-      migrationVersion: { stringValue: "week0-qm1-3-sync-v1" },
+      migrationVersion: { stringValue: "week0-rest-sync-v1" },
       migratedAt: { integerValue: String(Date.now()) },
     },
   };
@@ -248,18 +258,58 @@ async function patchPracticeDoc(
   if (!response.ok) throw new Error(`Failed patching ${docName} (${response.status}): ${await response.text()}`);
 }
 
-function toTeamNumbers(teamKeys: string[]): number[] {
-  return teamKeys.map((key) => Number(String(key).replace("frc", "").trim())).filter((n) => Number.isFinite(n));
-}
-
 function toDifficulty(score: number): "easy" | "medium" | "hard" {
   if (score <= 200) return "easy";
   if (score <= 400) return "medium";
   return "hard";
 }
 
+function readPenaltyPoints(breakdown: Record<string, unknown> | undefined): number {
+  if (!breakdown) return 0;
+  const candidates = [
+    breakdown.foulPoints,
+    breakdown.foul_points,
+    breakdown.techFoulPoints,
+    breakdown.tech_foul_points,
+    breakdown.penaltyPoints,
+    breakdown.penalty_points,
+  ];
+  for (const value of candidates) {
+    const num = Number(value || 0);
+    if (Number.isFinite(num)) return num;
+  }
+  return 0;
+}
+
+async function isOfficialFrcChannel(youtubeKey: string): Promise<boolean> {
+  const url = encodeURIComponent(`https://www.youtube.com/watch?v=${youtubeKey}`);
+  const oembed = `https://www.youtube.com/oembed?url=${url}&format=json`;
+  let response: Response;
+  try {
+    response = await fetch(oembed);
+  } catch {
+    return false;
+  }
+  if (!response.ok) return false;
+  const payload = (await response.json()) as { author_name?: string; author_url?: string };
+  const author = String(payload.author_name || "").trim().toLowerCase();
+  const authorUrl = String(payload.author_url || "").trim().toLowerCase();
+  const combined = `${author} ${authorUrl}`.trim();
+  if (!combined) return false;
+  if (author === FRC_CHANNEL_NAME.toLowerCase()) return true;
+  return ACCEPTED_CHANNEL_MARKERS.some((marker) => combined.includes(marker));
+}
+
+async function getFrcYouTubeUrl(match: TbaMatch): Promise<string | null> {
+  const video = (match.videos || []).find((entry) => entry.type === "youtube" && entry.key);
+  const key = String(video?.key || "").trim();
+  if (!key) return null;
+  const ok = await isOfficialFrcChannel(key);
+  return ok ? `https://youtu.be/${key}` : null;
+}
+
 async function run() {
-  const { apply, eventKey, eventName } = parseArgs();
+  const { apply, eventKey, eventName, fromQm, maxSf } = parseArgs();
   const projectId = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
   const tbaKey = String(process.env.TBA_API_KEY || process.env.NEXT_PUBLIC_TBA_API_KEY || "").trim();
   if (!projectId) throw new Error("Missing NEXT_PUBLIC_FIREBASE_PROJECT_ID in .env.local");
@@ -269,11 +319,12 @@ async function run() {
   if (!idToken) throw new Error("No Firebase ID token resolved. Check MIGRATION_EMAIL/MIGRATION_PASSWORD.");
   const authHeaders = { Authorization: `Bearer ${idToken}` };
 
-  const quals = await fetchTbaQuals(eventKey, tbaKey);
-  if (quals.length === 0) {
-    console.log("No TBA qualification matches found for qm1-3.");
-    return;
-  }
+  const matches = await fetchTbaMatches(eventKey, tbaKey);
+  const filtered = matches.filter((match) => {
+    if (match.comp_level === "qm") return match.match_number >= fromQm;
+    if (match.comp_level === "sf" && match.match_number === 1) return match.set_number <= maxSf;
+    return false;
+  });
 
   const existingDocs = await listPracticeDocs(projectId, authHeaders);
   const existingByMatchAlliance = new Map<string, FirestoreDoc>();
@@ -292,20 +343,20 @@ async function run() {
     summary: string;
   }> = [];
 
-  for (const match of quals) {
-    const youtubeKey = (match.videos || []).find((video) => video.type === "youtube")?.key || "";
-    const videoUrl = youtubeKey ? `https://youtu.be/${youtubeKey}` : "";
+  for (const match of filtered) {
+    const videoUrl = await getFrcYouTubeUrl(match);
+    if (!videoUrl) continue;
     for (const alliance of ["red", "blue"] as const) {
       const allianceData = match.alliances[alliance];
       const scoreBreakdown = (match.score_breakdown?.[alliance] || {}) as Record<string, unknown>;
-      const penaltyPoints = Number(scoreBreakdown.foulPoints || 0);
+      const penaltyPoints = readPenaltyPoints(scoreBreakdown);
       const payload = {
         eventKey,
         eventName,
         matchKey: match.key,
         matchNumber: match.match_number,
-        matchType: "qualification" as const,
-        compLevel: "qm" as const,
+        matchType: match.comp_level === "qm" ? "qualification" : "playoff",
+        compLevel: match.comp_level as "qm" | "sf",
         setNumber: Number(match.set_number || 1),
         videoUrl,
         difficulty: toDifficulty(Number(allianceData.score || 0)),
@@ -329,7 +380,8 @@ async function run() {
 
   console.log(`Mode: ${apply ? "APPLY" : "DRY RUN"}`);
   console.log(`Event: ${eventKey} (${eventName})`);
-  console.log(`Qualification matches fetched: ${quals.length}`);
+  console.log(`Match filter: qm>=${fromQm}, sf<=${maxSf} (match 1)`);
+  console.log(`Matches scanned: ${filtered.length}`);
   console.log(`Docs to sync: ${targets.length}`);
   targets.forEach((target) => console.log(`  - ${target.summary}`));
 
@@ -347,7 +399,6 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error("Week 0 qualification import failed:", error);
+  console.error("Week 0 rest import failed:", error);
   process.exit(1);
 });
-

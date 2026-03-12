@@ -37,6 +37,7 @@ type TbaAlliance = {
 type TbaMatch = {
   key?: string;
   comp_level?: string;
+  set_number?: number;
   match_number?: number;
   videos?: Array<{ type?: string; key?: string }>;
   alliances?: {
@@ -47,10 +48,13 @@ type TbaMatch = {
 };
 
 const EVENTS: EventConfig[] = [
-  { key: "2025alhu", name: "Rocket City Regional" },
-  { key: "2025lake", name: "Bayou Regional" },
   { key: "2026tuis", name: "Istanbul Regional" },
+  { key: "2026okok", name: "Oklahoma Regional" },
+  { key: "2026cosp", name: "Pikes Peak Regional" },
 ];
+
+const FRC_CHANNEL_NAME = "FIRST Robotics Competition";
+const ACCEPTED_CHANNEL_MARKERS = ["first robotics competition", "firstinspires", "first"];
 
 function hasFlag(flag: string) {
   return process.argv.some((arg) => arg === flag);
@@ -61,10 +65,31 @@ function extractTeamNumber(teamKey: string): number {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-function getYouTubeUrl(match: TbaMatch): string | null {
+async function isOfficialFrcChannel(youtubeKey: string): Promise<boolean> {
+  const url = encodeURIComponent(`https://www.youtube.com/watch?v=${youtubeKey}`);
+  const oembed = `https://www.youtube.com/oembed?url=${url}&format=json`;
+  let response: Response;
+  try {
+    response = await fetch(oembed);
+  } catch {
+    return false;
+  }
+  if (!response.ok) return false;
+  const payload = (await response.json()) as { author_name?: string; author_url?: string };
+  const author = String(payload.author_name || "").trim().toLowerCase();
+  const authorUrl = String(payload.author_url || "").trim().toLowerCase();
+  const combined = `${author} ${authorUrl}`.trim();
+  if (!combined) return false;
+  if (author === FRC_CHANNEL_NAME.toLowerCase()) return true;
+  return ACCEPTED_CHANNEL_MARKERS.some((marker) => combined.includes(marker));
+}
+
+async function getFrcYouTubeUrl(match: TbaMatch): Promise<string | null> {
   const video = (match.videos || []).find((entry) => String(entry?.type || "").toLowerCase() === "youtube");
   const key = String(video?.key || "").trim();
-  return key ? `https://www.youtube.com/watch?v=${key}` : null;
+  if (!key) return null;
+  const ok = await isOfficialFrcChannel(key);
+  return ok ? `https://www.youtube.com/watch?v=${key}` : null;
 }
 
 function scoreToDifficulty(score: number): "easy" | "medium" | "hard" {
@@ -91,6 +116,24 @@ function toFirestoreValue(value: unknown): Record<string, unknown> {
   }
   // Keep parity with current app import expectations.
   return { stringValue: JSON.stringify(value) };
+}
+
+function readPenaltyPoints(scoreBreakdown: Record<string, unknown> | undefined, alliance: "red" | "blue"): number {
+  const breakdown = scoreBreakdown?.[alliance] as Record<string, unknown> | undefined;
+  if (!breakdown) return 0;
+  const candidates = [
+    breakdown.foulPoints,
+    breakdown.foul_points,
+    breakdown.techFoulPoints,
+    breakdown.tech_foul_points,
+    breakdown.penaltyPoints,
+    breakdown.penalty_points,
+  ];
+  for (const candidate of candidates) {
+    const value = Number(candidate || 0);
+    if (Number.isFinite(value)) return value;
+  }
+  return 0;
 }
 
 function toFirestoreDocument(data: Record<string, unknown>): { fields: Record<string, Record<string, unknown>> } {
@@ -177,18 +220,21 @@ async function run() {
   for (const event of selectedEvents) {
     console.log(`\nFetching ${event.name} (${event.key})...`);
     const allMatches = await fetchEventMatches(event.key);
-    const qualificationMatches = allMatches.filter(
-      (match) => String(match.comp_level || "").toLowerCase() === "qm" && Array.isArray(match.videos) && match.videos.length > 0
-    );
-    console.log(`Found ${allMatches.length} matches, ${qualificationMatches.length} qualification matches with video.`);
+    const practiceMatches = allMatches.filter((match) => {
+      const compLevel = String(match.comp_level || "").toLowerCase();
+      const isEligibleLevel = compLevel === "qm" || compLevel === "qf" || compLevel === "sf" || compLevel === "f";
+      return isEligibleLevel && Array.isArray(match.videos) && match.videos.length > 0;
+    });
+    console.log(`Found ${allMatches.length} matches, ${practiceMatches.length} qual/playoff matches with video.`);
 
-    for (const match of qualificationMatches) {
-      const videoUrl = getYouTubeUrl(match);
+    for (const match of practiceMatches) {
+      const videoUrl = await getFrcYouTubeUrl(match);
       if (!videoUrl) continue;
       const scoreBreakdown = (match.score_breakdown || {}) as Record<string, unknown>;
       for (const alliance of ["red", "blue"] as const) {
         const allianceData = match.alliances?.[alliance];
         const allianceScore = Number(allianceData?.score || 0);
+        const penaltyPoints = readPenaltyPoints(scoreBreakdown, alliance);
         const allianceTeams = (allianceData?.team_keys || [])
           .map((teamKey) => extractTeamNumber(teamKey))
           .filter((teamNumber) => teamNumber > 0);
@@ -200,15 +246,19 @@ async function run() {
           eventKey: event.key,
           matchNumber: Number(match.match_number || 0),
           matchType: getMatchType(String(match.comp_level || "")),
+          compLevel: String(match.comp_level || ""),
+          setNumber: Number(match.set_number || 1),
           videoUrl,
           difficulty: scoreToDifficulty(allianceScore),
           alliance,
           allianceScore,
           allianceTeams: allianceTeams.slice(0, 3),
           actualScore: allianceScore,
+          officialScore: allianceScore,
+          penaltyPoints,
           officialData: {
             score: allianceScore,
-            penaltyPoints: Number((scoreBreakdown?.[alliance] as Record<string, unknown> | undefined)?.foulPoints || 0),
+            penaltyPoints,
             breakdown: (scoreBreakdown?.[alliance] as Record<string, unknown>) || {},
           },
           createdAt: Date.now(),
