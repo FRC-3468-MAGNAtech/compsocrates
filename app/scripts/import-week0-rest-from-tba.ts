@@ -355,7 +355,7 @@ async function run() {
         eventName,
         matchKey: match.key,
         matchNumber: match.match_number,
-        matchType: match.comp_level === "qm" ? "qualification" : "playoff",
+        matchType: (match.comp_level === "qm" ? "qualification" : "playoff") as "qualification" | "playoff",
         compLevel: match.comp_level as "qm" | "sf",
         setNumber: Number(match.set_number || 1),
         videoUrl,
