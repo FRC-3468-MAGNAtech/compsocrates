@@ -8,6 +8,9 @@ export type PracticeDifficultyModalOption = {
   label: string;
   teamLabel: string;
   eventName: string;
+  stage: "qualification" | "semifinal" | "finals" | "practice";
+  stageNumber: number;
+  alliance: "red" | "blue" | "";
   progress: "fresh" | "partial" | "complete";
 };
 
@@ -41,11 +44,28 @@ export default function PracticeDifficultyMatchModal({
       partial: 1,
       complete: 2,
     };
+    const stageOrder: Record<PracticeDifficultyModalOption["stage"], number> = {
+      qualification: 0,
+      semifinal: 1,
+      finals: 2,
+      practice: 3,
+    };
+    const allianceOrder: Record<NonNullable<PracticeDifficultyModalOption["alliance"]>, number> = {
+      red: 0,
+      blue: 1,
+      "": 2,
+    };
     return [...filtered].sort((a, b) => {
       const diff = progressOrder[a.progress] - progressOrder[b.progress];
       if (diff !== 0) return diff;
       const eventDiff = a.eventName.localeCompare(b.eventName);
       if (eventDiff !== 0) return eventDiff;
+      const stageDiff = stageOrder[a.stage] - stageOrder[b.stage];
+      if (stageDiff !== 0) return stageDiff;
+      const numberDiff = a.stageNumber - b.stageNumber;
+      if (numberDiff !== 0) return numberDiff;
+      const allianceDiff = allianceOrder[a.alliance] - allianceOrder[b.alliance];
+      if (allianceDiff !== 0) return allianceDiff;
       return a.label.localeCompare(b.label);
     });
   }, [options, searchTerm]);

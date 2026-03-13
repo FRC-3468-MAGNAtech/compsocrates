@@ -137,7 +137,7 @@ function FinalsBracket({
       .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
   const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
   const nextSlot = nextByTime > 0 ? nextByTime : firstOpen;
-  const nextAllowed = nextOverallId ? nextOverallId === `sf${nextSlot}` : true;
+  const nextAllowed = Boolean(nextOverallId) && nextOverallId === `sf${nextSlot}`;
   const statusOf = (n: number): MatchStatus => (completedNumbers.has(n) ? "completed" : n === nextSlot ? "next" : "upcoming");
   const resolvedStatusOf = (n: number): MatchStatus => {
     if (completedNumbers.has(n)) return "completed";
@@ -383,11 +383,9 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         matchId: m.id,
                       }));
                     const now = Date.now() / 1000;
-                    const nextNum = nextOverallId
+                    const resolvedNextNum = nextOverallId
                       ? rows.find((row) => row.matchId === nextOverallId)?.matchNum ?? -1
                       : -1;
-                    const firstOpenNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
-                    const resolvedNextNum = nextNum > 0 ? nextNum : firstOpenNum;
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
                       const status: MatchStatus = done ? "completed" : matchNum === resolvedNextNum ? "next" : "upcoming";
@@ -496,12 +494,10 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         const done = isFinalDone(matchNum);
                         const hasRealSchedule = !!picked && Number(picked.scheduleTime || 0) > 0;
                         const unknownF3 = matchNum === 3 && !done && !hasRealSchedule;
-                        const nextFinal =
+                        const resolvedNextFinal =
                           nextOverallId && /^f[1-3]$/i.test(nextOverallId)
                             ? Number(nextOverallId.replace(/[^\d]/g, "")) || -1
                             : -1;
-                        const firstOpenFinal = [1, 2].find((n) => !isFinalDone(n)) || -1;
-                        const resolvedNextFinal = nextFinal > 0 ? nextFinal : firstOpenFinal;
                         const status: FinalsSeriesStatus = done
                           ? "completed"
                           : unknownF3

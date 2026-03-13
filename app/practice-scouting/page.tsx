@@ -1590,6 +1590,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const eventKey = String((match as unknown as Record<string, unknown>).eventKey || "").toLowerCase();
 
     if (activeMatchGame === "REBUILT") {
+      if (!matchGame) return true;
       return eventKey === REBUILT_WEEK0_EVENT_KEY;
     }
 
@@ -3037,11 +3038,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const teamLabel = (match.allianceTeams || []).join(", ");
       const { eventKey, eventName } = resolvePracticeEvent(match, activeMatchGame || "REEFSCAPE", teamEventCatalog);
       const resolvedEventName = eventName || eventKey || "Unknown Event";
+      const stage = getPracticeStage(match);
+      const stageNumber = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+      const alliance = normalizeAllianceSide(match.alliance);
       return {
         id: match.id,
         label: matchLabel,
         eventName: resolvedEventName,
         teamLabel: teamLabel ? `Teams: ${teamLabel}` : "Teams: -",
+        stage,
+        stageNumber,
+        alliance,
         progress: match.progress,
       };
     });
@@ -3654,7 +3661,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     matchType: currentMatch.matchType,
                     matchKey: currentMatch.matchKey,
                     compLevel: (currentMatch as unknown as Record<string, unknown>).compLevel,
-                  }))} Match {currentMatch.matchNumber}
+                  }))} Match {parsePracticeMatchNumber({
+                    matchKey: currentMatch.matchKey,
+                    matchNumber: currentMatch.matchNumber,
+                    setNumber: currentMatch.setNumber,
+                    compLevel: (currentMatch as unknown as Record<string, unknown>).compLevel,
+                  })}
                 </h3>
                 <p className="text-sm">
                   {selectedDifficulty === "live"
