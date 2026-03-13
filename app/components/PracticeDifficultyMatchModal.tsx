@@ -8,6 +8,7 @@ export type PracticeDifficultyModalOption = {
   label: string;
   teamLabel: string;
   eventName: string;
+  eventKey: string;
   stage: "qualification" | "semifinal" | "finals" | "practice";
   stageNumber: number;
   alliance: "red" | "blue" | "";
@@ -55,17 +56,23 @@ export default function PracticeDifficultyMatchModal({
       blue: 1,
       "": 2,
     };
+    const yearFromKey = (key: string) => {
+      const year = Number(String(key || "").trim().slice(0, 4));
+      return Number.isFinite(year) ? year : 0;
+    };
     return [...filtered].sort((a, b) => {
       const diff = progressOrder[a.progress] - progressOrder[b.progress];
       if (diff !== 0) return diff;
-      const eventDiff = a.eventName.localeCompare(b.eventName);
-      if (eventDiff !== 0) return eventDiff;
+      const yearDiff = yearFromKey(a.eventKey) - yearFromKey(b.eventKey);
+      if (yearDiff !== 0) return yearDiff;
       const stageDiff = stageOrder[a.stage] - stageOrder[b.stage];
       if (stageDiff !== 0) return stageDiff;
       const numberDiff = a.stageNumber - b.stageNumber;
       if (numberDiff !== 0) return numberDiff;
       const allianceDiff = allianceOrder[a.alliance] - allianceOrder[b.alliance];
       if (allianceDiff !== 0) return allianceDiff;
+      const eventDiff = a.eventName.localeCompare(b.eventName);
+      if (eventDiff !== 0) return eventDiff;
       return a.label.localeCompare(b.label);
     });
   }, [options, searchTerm]);

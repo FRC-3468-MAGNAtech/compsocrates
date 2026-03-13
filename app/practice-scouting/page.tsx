@@ -3038,6 +3038,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const teamLabel = (match.allianceTeams || []).join(", ");
       const { eventKey, eventName } = resolvePracticeEvent(match, activeMatchGame || "REEFSCAPE", teamEventCatalog);
       const resolvedEventName = eventName || eventKey || "Unknown Event";
+      const resolvedEventKey = eventKey || "";
       const stage = getPracticeStage(match);
       const stageNumber = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
       const alliance = normalizeAllianceSide(match.alliance);
@@ -3045,6 +3046,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         id: match.id,
         label: matchLabel,
         eventName: resolvedEventName,
+        eventKey: resolvedEventKey,
         teamLabel: teamLabel ? `Teams: ${teamLabel}` : "Teams: -",
         stage,
         stageNumber,
