@@ -209,9 +209,29 @@ function DriveReflectionFormContent() {
       }
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+        const assignedEventCounts = new Map<string, number>();
+        assignmentSnap.docs.forEach((row) => {
+          const data = row.data() as Record<string, unknown>;
+          const key = String(data.eventKey || "").trim().toLowerCase();
+          if (!key) return;
+          assignedEventCounts.set(key, (assignedEventCounts.get(key) || 0) + 1);
+        });
+        if (assignedEventCounts.size === 0) {
+          setEventKey("app-testing");
+          const fallback = buildFallbackDriveMatches();
+          setMatchOptions(fallback);
+          setSelectedMatchKey(fallback[0]?.key || "");
+          return;
+        }
         const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
-        setEventKey(resolvedEvent);
-        if (resolvedEvent === "app-testing") {
+        const normalizedResolved = String(resolvedEvent || "").trim().toLowerCase();
+        const assignedEvent =
+          (normalizedResolved && assignedEventCounts.has(normalizedResolved))
+            ? normalizedResolved
+            : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
+        setEventKey(assignedEvent);
+        if (assignedEvent === "app-testing") {
           const fallback = buildFallbackDriveMatches();
           setMatchOptions(fallback);
           setSelectedMatchKey(fallback[0]?.key || "");
@@ -226,7 +246,7 @@ function DriveReflectionFormContent() {
 
         const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
         const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
-        const matches = await fetchEventMatchesWithTeamAuth(resolvedEvent, { encryptedKey, plainKey });
+        const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
         setEventTbaMatches(matches);
         setModalCompleted(buildCompletedModalIdsFromTba(matches));
         const options: MatchOption[] = matches

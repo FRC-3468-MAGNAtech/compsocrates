@@ -848,9 +848,32 @@ function ScoutFormContent() {
         return;
       }
       try {
+        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+        const assignedEventCounts = new Map<string, number>();
+        assignmentSnap.docs.forEach((row) => {
+          const data = row.data() as AssignmentRow;
+          const key = String(data.eventKey || "").trim().toLowerCase();
+          if (!key) return;
+          assignedEventCounts.set(key, (assignedEventCounts.get(key) || 0) + 1);
+        });
+        if (assignedEventCounts.size === 0) {
+          setEventKey("app-testing");
+          const fallback = buildFallbackScoutOptions();
+          setOptions(fallback);
+          setTargets({});
+          setModalCompleted(new Set());
+          setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
+          return;
+        }
+
         const currentEvent = await resolveDetectedTeamEventKey(userData.teamId);
-        setEventKey(currentEvent);
-        if (currentEvent === "app-testing") {
+        const normalizedCurrent = String(currentEvent || "").trim().toLowerCase();
+        const assignedEvent =
+          (normalizedCurrent && assignedEventCounts.has(normalizedCurrent))
+            ? normalizedCurrent
+            : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
+        setEventKey(assignedEvent);
+        if (assignedEvent === "app-testing") {
           const fallback = buildFallbackScoutOptions();
           setOptions(fallback);
           setTargets({});
@@ -862,7 +885,7 @@ function ScoutFormContent() {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
         const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
-        const matches = await fetchEventMatchesWithTeamAuth(currentEvent, { encryptedKey, plainKey });
+        const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
 
         const modalOptions = buildReefscapeModalOptions(matches);
         const teamsById = new Map<string, { teams: string[]; scheduleTime: number }>();
@@ -906,9 +929,11 @@ function ScoutFormContent() {
         const nextMatch = ordered.find((match) => Number(match.scheduleTime || 0) >= now) || ordered[0] || null;
         setSelectedMatch((current) => current || nextMatch);
 
-        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", currentEvent), where("scoutId", "==", userData.uid)));
+        const assignmentSnapByEvent = await getDocs(
+          query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent), where("scoutId", "==", userData.uid))
+        );
         const assigned: Record<string, string> = {};
-        assignmentSnap.docs.forEach((row) => {
+        assignmentSnapByEvent.docs.forEach((row) => {
           const data = row.data() as AssignmentRow;
           const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
           const team = String(data.teamNumber || "").trim();
