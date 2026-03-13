@@ -15,7 +15,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
-import { buildCompletedModalIdsFromTba } from "@/app/utils/reefscapeMatchSync";
+import { buildCompletedModalIdsFromTba, buildReefscapeModalOptions } from "@/app/utils/reefscapeMatchSync";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -3091,6 +3091,20 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return filtered.length > 0 ? filtered : candidateMatches;
   }, [candidateMatches, currentMatch, liveEventKeyHint, selectedDifficulty]);
 
+  const liveTbaScheduleById = useMemo(() => {
+    if (selectedDifficulty !== "live" || liveTbaMatches.length === 0) return new Map<string, number>();
+    const map = new Map<string, number>();
+    buildReefscapeModalOptions(liveTbaMatches).forEach((option) => {
+      const scheduleTime = Number(option.scheduleTime || 0);
+      if (!Number.isFinite(scheduleTime) || scheduleTime <= 0) return;
+      const existing = Number(map.get(option.id) || 0);
+      if (existing <= 0 || scheduleTime < existing) {
+        map.set(option.id, scheduleTime);
+      }
+    });
+    return map;
+  }, [liveTbaMatches, selectedDifficulty]);
+
   const sharedModalOptions = useMemo<PracticeSelectorOption[]>(() => {
     const byModalId = new Map<string, { match: CandidatePracticeMatch; scheduleTime: number }>();
 
@@ -3158,12 +3172,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             : finalsKind === "series"
             ? `Finals ${number}`
             : `Match ${number}`;
+        const liveOverride = selectedDifficulty === "live" ? Number(liveTbaScheduleById.get(id) || 0) : 0;
+        const scheduleTime = liveOverride > 0 ? liveOverride : row.scheduleTime;
         return {
           id,
           label,
           type: modalType,
           matchNumber: number,
-          scheduleTime: row.scheduleTime,
+          scheduleTime,
           finalsKind,
           sourceId: match.id,
           progress: match.progress,
@@ -3175,7 +3191,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         if (typeDiff !== 0) return typeDiff;
         return a.matchNumber - b.matchNumber;
       });
-  }, [liveScopedCandidateMatches]);
+  }, [liveScopedCandidateMatches, liveTbaScheduleById, selectedDifficulty]);
 
   const sharedModalCompleted = useMemo(() => {
     if (selectedDifficulty !== "live") {
