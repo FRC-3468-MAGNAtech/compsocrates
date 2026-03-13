@@ -47,6 +47,9 @@ export interface TBAMatch {
   time: number; // Unix timestamp
   predicted_time: number;
   actual_time: number;
+  post_result_time?: number;
+  winning_alliance?: "red" | "blue" | "";
+  score_breakdown?: Record<string, { foulPoints?: number }>;
 }
 
 // Helper to make TBA API calls

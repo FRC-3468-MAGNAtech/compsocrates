@@ -90,12 +90,14 @@ function FinalsBracket({
   timesByNumber,
   availableNumbers,
   finalsSummaryDone,
+  allowCompletedPick = false,
 }: {
   completedNumbers: Set<number>;
   onPick: (matchNumber: number) => void;
   timesByNumber: Map<number, number>;
   availableNumbers: number[];
   finalsSummaryDone: boolean;
+  allowCompletedPick?: boolean;
 }) {
   const B = { w: 104, h: 58, colGap: 52, row: 84 };
   const col = (c: number) => (B.w + B.colGap) * c;
@@ -163,19 +165,19 @@ function FinalsBracket({
               <path d={`M ${c4 + B.w} ${y13 + B.h / 2} H ${join5} V ${yFinals + B.h / 2}`} />
             </g>
           </svg>
-          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} timeLabel={timeFor(1)} />
-          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} timeLabel={timeFor(2)} />
-          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} timeLabel={timeFor(3)} />
-          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} timeLabel={timeFor(4)} />
-          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} timeLabel={timeFor(5)} />
-          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} timeLabel={timeFor(6)} />
-          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} timeLabel={timeFor(7)} />
-          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} timeLabel={timeFor(8)} />
-          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} />
-          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} />
-          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} timeLabel={timeFor(11)} />
-          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} timeLabel={timeFor(12)} />
-          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} timeLabel={timeFor(13)} />
+          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} timeLabel={timeFor(1)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} timeLabel={timeFor(2)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} timeLabel={timeFor(3)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} timeLabel={timeFor(4)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} timeLabel={timeFor(5)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} timeLabel={timeFor(6)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} timeLabel={timeFor(7)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} timeLabel={timeFor(8)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} timeLabel={timeFor(11)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} timeLabel={timeFor(12)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} timeLabel={timeFor(13)} allowCompletedPick={allowCompletedPick} />
           <FinalsMatchBox
             number={14}
             row={yFinals}
@@ -199,6 +201,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   completed = new Set<string>(),
   onPick,
   allowManualOverride = true,
+  allowCompletedPick = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -206,6 +209,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   completed?: Set<string>;
   onPick: (option: T) => void;
   allowManualOverride?: boolean;
+  allowCompletedPick?: boolean;
 }) {
   const [step, setStep] = useState<"type" | MatchType>("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
@@ -360,14 +364,19 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         <button
                           key={`${step}-${matchNum}`}
                           type="button"
-                          disabled={done}
                           onClick={() => {
-                            if (done) return;
+                            if (done && !allowCompletedPick) return;
                             onPick(option);
                             onClose();
                           }}
-                          className={`relative h-[86px] p-2 rounded-lg border text-left ${done ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
-                          style={done ? undefined : { borderColor: color }}
+                          className={`relative h-[86px] p-2 rounded-lg border text-left ${
+                            done && !allowCompletedPick
+                              ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300"
+                              : done
+                                ? "opacity-70 hover:bg-gray-50"
+                                : "hover:bg-gray-50"
+                          }`}
+                          style={done && !allowCompletedPick ? undefined : { borderColor: color }}
                         >
                           <div className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: color }}>
                             {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
@@ -411,6 +420,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   })()}
                   availableNumbers={Array.from({ length: 13 }, (_, i) => i + 1)}
                   finalsSummaryDone={isFinalDone(1) && isFinalDone(2)}
+                  allowCompletedPick={allowCompletedPick}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
                       setFinalsStep("number");
@@ -474,7 +484,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                             key={matchNum}
                             type="button"
                             onClick={() => {
-                              if (unknownF3 || done) return;
+                              if (unknownF3 || (done && !allowCompletedPick)) return;
                               const pickedFinal = finalsSeriesByNumber.get(matchNum) || finalsById.get(`f${matchNum}`);
                               if (pickedFinal) {
                                 onPick(pickedFinal);
@@ -492,9 +502,9 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                               onPick(fallback);
                               onClose();
                             }}
-                            disabled={unknownF3 || done}
+                            disabled={unknownF3 || (done && !allowCompletedPick)}
                             className={`group relative p-8 border-2 rounded-2xl transition-all ${
-                              unknownF3 || done
+                              unknownF3 || (done && !allowCompletedPick)
                                 ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300"
                                 : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"
                             }`}

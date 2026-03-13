@@ -11,10 +11,16 @@ export function getTbaScheduleTime(match: TBAMatch): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-export function isTbaMatchCompleted(match: Pick<TBAMatch, "alliances">): boolean {
+export function isTbaMatchCompleted(
+  match: Pick<TBAMatch, "alliances" | "actual_time" | "post_result_time" | "score_breakdown" | "winning_alliance">
+): boolean {
   const red = Number(match.alliances?.red?.score);
   const blue = Number(match.alliances?.blue?.score);
-  return red >= 0 && blue >= 0;
+  if (Number.isFinite(red) && Number.isFinite(blue) && red >= 0 && blue >= 0) return true;
+  if (Number(match.actual_time || 0) > 0) return true;
+  if (Number(match.post_result_time || 0) > 0) return true;
+  if (match.winning_alliance === "red" || match.winning_alliance === "blue") return true;
+  return Boolean(match.score_breakdown && Object.keys(match.score_breakdown || {}).length > 0);
 }
 
 export function mapPlayoffToBracketSlot(
