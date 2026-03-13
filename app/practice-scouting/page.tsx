@@ -3035,14 +3035,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return candidateMatches.map((match) => {
       const matchLabel = getPracticeLabel(match);
       const teamLabel = (match.allianceTeams || []).join(", ");
+      const { eventKey, eventName } = resolvePracticeEvent(match, activeMatchGame || "REEFSCAPE", teamEventCatalog);
+      const resolvedEventName = eventName || eventKey || "Unknown Event";
       return {
         id: match.id,
         label: matchLabel,
+        eventName: resolvedEventName,
         teamLabel: teamLabel ? `Teams: ${teamLabel}` : "Teams: -",
         progress: match.progress,
       };
     });
-  }, [candidateMatches, selectedDifficulty]);
+  }, [activeMatchGame, candidateMatches, selectedDifficulty, teamEventCatalog]);
 
   function continueLiveSoloSession() {
     if (!currentMatch) return;

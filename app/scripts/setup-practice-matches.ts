@@ -19,6 +19,7 @@ const TBA_API_KEY = String(process.env.NEXT_PUBLIC_TBA_API_KEY || "").trim();
 const FIREBASE_PROJECT_ID = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
 const FIREBASE_WEB_API_KEY = String(process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "").trim();
 const FIREBASE_ACCESS_TOKEN = String(process.env.FIREBASE_ACCESS_TOKEN || "").trim();
+const GOOGLE_OAUTH_ACCESS_TOKEN = String(process.env.GOOGLE_OAUTH_ACCESS_TOKEN || "").trim();
 const MIGRATION_EMAIL = String(process.env.MIGRATION_EMAIL || "").trim();
 const MIGRATION_PASSWORD = String(process.env.MIGRATION_PASSWORD || "").trim();
 
@@ -157,8 +158,15 @@ async function fetchEventMatches(eventKey: string): Promise<TbaMatch[]> {
   return Array.isArray(payload) ? (payload as TbaMatch[]) : [];
 }
 
+type AuthSource = "env" | "firebase" | "none";
+
+function getEnvAccessToken(): string {
+  return FIREBASE_ACCESS_TOKEN || GOOGLE_OAUTH_ACCESS_TOKEN;
+}
+
 async function signInForAccessToken(): Promise<string> {
-  if (FIREBASE_ACCESS_TOKEN) return FIREBASE_ACCESS_TOKEN;
+  const envToken = getEnvAccessToken();
+  if (envToken) return envToken;
   if (!MIGRATION_EMAIL || !MIGRATION_PASSWORD || !FIREBASE_WEB_API_KEY) {
     throw new Error(
       "Missing Firestore auth. Provide FIREBASE_ACCESS_TOKEN or MIGRATION_EMAIL + MIGRATION_PASSWORD + NEXT_PUBLIC_FIREBASE_API_KEY."
@@ -189,17 +197,42 @@ async function signInForAccessToken(): Promise<string> {
   return token;
 }
 
-async function createPracticeMatch(accessToken: string, data: Record<string, unknown>) {
-  const response = await fetch(`${FIRESTORE_BASE_URL}/practiceMatches`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(toFirestoreDocument(data)),
-  });
-  if (!response.ok) {
+function createAccessTokenProvider() {
+  let cached: { token: string; source: AuthSource } | null = null;
+  return async (forceRefresh = false): Promise<{ token: string; source: AuthSource }> => {
+    if (cached && !forceRefresh) return cached;
+    const envToken = getEnvAccessToken();
+    if (envToken) {
+      cached = { token: envToken, source: "env" };
+      return cached;
+    }
+    cached = { token: await signInForAccessToken(), source: "firebase" };
+    return cached;
+  };
+}
+
+async function createPracticeMatch(
+  getToken: (forceRefresh?: boolean) => Promise<{ token: string; source: AuthSource }>,
+  data: Record<string, unknown>
+) {
+  let attempt = 0;
+  let auth = await getToken();
+  while (attempt < 2) {
+    const response = await fetch(`${FIRESTORE_BASE_URL}/practiceMatches`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(toFirestoreDocument(data)),
+    });
+    if (response.ok) return;
     const text = await response.text();
+    if ((response.status === 401 || response.status === 403) && auth.source === "firebase" && attempt === 0) {
+      auth = await getToken(true);
+      attempt += 1;
+      continue;
+    }
     throw new Error(`Firestore write failed (${response.status}): ${text}`);
   }
 }
@@ -213,12 +246,15 @@ async function run() {
   const selectedEvents = istanbulOnly ? EVENTS.filter((event) => event.key === "2026tuis") : EVENTS;
   if (!selectedEvents.length) throw new Error("No events selected for import.");
 
-  const accessToken = dryRun ? "" : await signInForAccessToken();
+  const getToken = createAccessTokenProvider();
 
   console.log("Starting practice match import...");
   console.log(`Selected events: ${selectedEvents.map((event) => `${event.name} (${event.key})`).join(", ")}`);
   if (dryRun) {
     console.log("Dry run enabled: no Firestore writes will be performed.");
+  } else {
+    const authPreview = await getToken();
+    console.log(`Auth mode: ${authPreview.source === "env" ? "env access token" : "firebase id token"}`);
   }
 
   let written = 0;
@@ -271,7 +307,7 @@ async function run() {
         };
 
         if (!dryRun) {
-          await createPracticeMatch(accessToken, payload);
+          await createPracticeMatch(getToken, payload);
           written += 1;
           if (written % 25 === 0) {
             console.log(`Written ${written} practiceMatches rows...`);

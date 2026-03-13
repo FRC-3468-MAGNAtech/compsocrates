@@ -90,6 +90,7 @@ function FinalsBracket({
   timesByNumber,
   availableNumbers,
   finalsSummaryDone,
+  nextOverallId,
   allowCompletedPick = false,
 }: {
   completedNumbers: Set<number>;
@@ -97,6 +98,7 @@ function FinalsBracket({
   timesByNumber: Map<number, number>;
   availableNumbers: number[];
   finalsSummaryDone: boolean;
+  nextOverallId?: string;
   allowCompletedPick?: boolean;
 }) {
   const B = { w: 104, h: 58, colGap: 52, row: 84 };
@@ -135,7 +137,13 @@ function FinalsBracket({
       .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
   const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
   const nextSlot = nextByTime > 0 ? nextByTime : firstOpen;
+  const nextAllowed = nextOverallId ? nextOverallId === `sf${nextSlot}` : true;
   const statusOf = (n: number): MatchStatus => (completedNumbers.has(n) ? "completed" : n === nextSlot ? "next" : "upcoming");
+  const resolvedStatusOf = (n: number): MatchStatus => {
+    if (completedNumbers.has(n)) return "completed";
+    if (n === nextSlot && nextAllowed) return "next";
+    return "upcoming";
+  };
   const timeFor = (matchId: number) => {
     const epoch = Number(timesByNumber.get(matchId) || 0);
     if (epoch > 0) {
@@ -172,19 +180,19 @@ function FinalsBracket({
               <path d={`M ${c4 + B.w} ${y13 + B.h / 2} H ${join5} V ${yFinals + B.h / 2}`} />
             </g>
           </svg>
-          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} timeLabel={timeFor(1)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} timeLabel={timeFor(2)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} timeLabel={timeFor(3)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} timeLabel={timeFor(4)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} timeLabel={timeFor(5)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} timeLabel={timeFor(6)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} timeLabel={timeFor(7)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} timeLabel={timeFor(8)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={10} row={lower_9} col={c2} status={statusOf(10)} onPick={onPick} timeLabel={timeFor(10)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={9} row={lower_10} col={c2} status={statusOf(9)} onPick={onPick} timeLabel={timeFor(9)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} timeLabel={timeFor(11)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} timeLabel={timeFor(12)} allowCompletedPick={allowCompletedPick} />
-          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} timeLabel={timeFor(13)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={1} row={r1_1} col={c0} status={resolvedStatusOf(1)} onPick={onPick} timeLabel={timeFor(1)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={2} row={r1_2} col={c0} status={resolvedStatusOf(2)} onPick={onPick} timeLabel={timeFor(2)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={3} row={r1_3} col={c0} status={resolvedStatusOf(3)} onPick={onPick} timeLabel={timeFor(3)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={4} row={r1_4} col={c0} status={resolvedStatusOf(4)} onPick={onPick} timeLabel={timeFor(4)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={5} row={lower_5} col={c1} status={resolvedStatusOf(5)} onPick={onPick} timeLabel={timeFor(5)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={6} row={lower_6} col={c1} status={resolvedStatusOf(6)} onPick={onPick} timeLabel={timeFor(6)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={7} row={r2_7} col={c1} status={resolvedStatusOf(7)} onPick={onPick} timeLabel={timeFor(7)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={8} row={r2_8} col={c1} status={resolvedStatusOf(8)} onPick={onPick} timeLabel={timeFor(8)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={10} row={lower_9} col={c2} status={resolvedStatusOf(10)} onPick={onPick} timeLabel={timeFor(10)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={9} row={lower_10} col={c2} status={resolvedStatusOf(9)} onPick={onPick} timeLabel={timeFor(9)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={11} row={r3_11} col={c3} status={resolvedStatusOf(11)} onPick={onPick} timeLabel={timeFor(11)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={12} row={lower_12} col={c3} status={resolvedStatusOf(12)} onPick={onPick} timeLabel={timeFor(12)} allowCompletedPick={allowCompletedPick} />
+          <FinalsMatchBox number={13} row={y13} col={c4} status={resolvedStatusOf(13)} onPick={onPick} timeLabel={timeFor(13)} allowCompletedPick={allowCompletedPick} />
           <FinalsMatchBox
             number={14}
             row={yFinals}
@@ -280,6 +288,19 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
     });
     return byType;
   }, [options]);
+  const nextOverallId = useMemo(() => {
+    const now = Date.now() / 1000;
+    const sorted = [...options]
+      .filter((opt) => !completed.has(opt.id))
+      .map((opt) => ({ id: opt.id, time: Number(opt.scheduleTime || 0), matchNumber: opt.matchNumber }))
+      .filter((row) => row.time > 0);
+    if (sorted.length === 0) return "";
+    sorted.sort((a, b) => {
+      if (a.time !== b.time) return a.time - b.time;
+      return a.matchNumber - b.matchNumber;
+    });
+    return sorted.find((row) => row.time >= now)?.id || "";
+  }, [options, completed]);
 
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
@@ -362,16 +383,14 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         matchId: m.id,
                       }));
                     const now = Date.now() / 1000;
-                    const nextByTime =
-                      rows
-                        .map((row) => ({ matchNum: row.matchNum, time: Number(row.option.scheduleTime || 0) }))
-                        .filter((row) => row.time > 0 && row.time >= now)
-                        .sort((a, b) => a.time - b.time)[0]?.matchNum ?? -1;
+                    const nextNum = nextOverallId
+                      ? rows.find((row) => row.matchId === nextOverallId)?.matchNum ?? -1
+                      : -1;
                     const firstOpenNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
-                    const nextNum = nextByTime > 0 ? nextByTime : firstOpenNum;
+                    const resolvedNextNum = nextNum > 0 ? nextNum : firstOpenNum;
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
-                      const status: MatchStatus = done ? "completed" : matchNum === nextNum ? "next" : "upcoming";
+                      const status: MatchStatus = done ? "completed" : matchNum === resolvedNextNum ? "next" : "upcoming";
                       const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
                       const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
                       return (
@@ -434,6 +453,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   })()}
                   availableNumbers={Array.from({ length: 13 }, (_, i) => i + 1)}
                   finalsSummaryDone={isFinalDone(1) && isFinalDone(2)}
+                  nextOverallId={nextOverallId}
                   allowCompletedPick={allowCompletedPick}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
@@ -476,22 +496,17 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         const done = isFinalDone(matchNum);
                         const hasRealSchedule = !!picked && Number(picked.scheduleTime || 0) > 0;
                         const unknownF3 = matchNum === 3 && !done && !hasRealSchedule;
-                        const now = Date.now() / 1000;
-                        const finalsWithTimes = [1, 2, 3]
-                          .map((n) => {
-                            const pick = finalsSeriesByNumber.get(n) || finalsById.get(`f${n}`);
-                            return { n, t: Number(pick?.scheduleTime || 0) };
-                          })
-                          .filter((row) => row.t > 0 && row.t >= now)
-                          .sort((a, b) => a.t - b.t);
-                        const nextFinalByTime = finalsWithTimes[0]?.n ?? -1;
+                        const nextFinal =
+                          nextOverallId && /^f[1-3]$/i.test(nextOverallId)
+                            ? Number(nextOverallId.replace(/[^\d]/g, "")) || -1
+                            : -1;
                         const firstOpenFinal = [1, 2].find((n) => !isFinalDone(n)) || -1;
-                        const nextFinal = nextFinalByTime > 0 ? nextFinalByTime : firstOpenFinal;
+                        const resolvedNextFinal = nextFinal > 0 ? nextFinal : firstOpenFinal;
                         const status: FinalsSeriesStatus = done
                           ? "completed"
                           : unknownF3
                             ? "unknown"
-                            : matchNum === nextFinal
+                            : matchNum === resolvedNextFinal
                               ? "next"
                               : "upcoming";
                         const color =

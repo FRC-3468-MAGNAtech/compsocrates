@@ -7,6 +7,7 @@ export type PracticeDifficultyModalOption = {
   id: string;
   label: string;
   teamLabel: string;
+  eventName: string;
   progress: "fresh" | "partial" | "complete";
 };
 
@@ -29,10 +30,23 @@ export default function PracticeDifficultyMatchModal({
 
   const visible = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) return options;
-    return options.filter((row) => {
-      const hay = `${row.label} ${row.teamLabel}`.toLowerCase();
-      return hay.includes(term);
+    const filtered = term
+      ? options.filter((row) => {
+          const hay = `${row.label} ${row.teamLabel} ${row.eventName}`.toLowerCase();
+          return hay.includes(term);
+        })
+      : options;
+    const progressOrder: Record<PracticeDifficultyModalOption["progress"], number> = {
+      fresh: 0,
+      partial: 1,
+      complete: 2,
+    };
+    return [...filtered].sort((a, b) => {
+      const diff = progressOrder[a.progress] - progressOrder[b.progress];
+      if (diff !== 0) return diff;
+      const eventDiff = a.eventName.localeCompare(b.eventName);
+      if (eventDiff !== 0) return eventDiff;
+      return a.label.localeCompare(b.label);
     });
   }, [options, searchTerm]);
 
@@ -67,6 +81,7 @@ export default function PracticeDifficultyMatchModal({
                 className="w-full p-3 text-left hover:bg-gray-50"
               >
                 <p className="font-semibold text-sm">{row.label}</p>
+                <p className="text-xs text-gray-600">Event: {row.eventName || "Unknown"}</p>
                 <p className="text-xs text-gray-600">{row.teamLabel}</p>
                 <p className="text-xs text-gray-500 mt-1">
                   Progress: {row.progress}

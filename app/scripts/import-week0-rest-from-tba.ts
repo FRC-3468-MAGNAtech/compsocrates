@@ -39,12 +39,14 @@ function parseArgs() {
   const eventNameArg = args.find((arg) => arg.startsWith("--event-name="));
   const fromQmArg = args.find((arg) => arg.startsWith("--from-qm="));
   const maxSfArg = args.find((arg) => arg.startsWith("--max-sf="));
+  const frcOnly = args.includes("--frc-only") || args.includes("--strict-frc");
   return {
     apply,
     eventKey: (eventArg?.slice("--event=".length).trim() || "2026week0").toLowerCase(),
     eventName: eventNameArg?.slice("--event-name=".length).trim() || "Week 0",
     fromQm: Number(fromQmArg?.slice("--from-qm=".length) || 4),
     maxSf: Number(maxSfArg?.slice("--max-sf=".length) || 13),
+    frcOnly,
   };
 }
 
@@ -81,6 +83,28 @@ async function getFirebaseIdToken(): Promise<string> {
   return payload.idToken || "";
 }
 
+type AuthSource = "env" | "firebase" | "none";
+
+function getEnvAccessToken(): string {
+  return String(process.env.FIREBASE_ACCESS_TOKEN || process.env.GOOGLE_OAUTH_ACCESS_TOKEN || "").trim();
+}
+
+function createAccessTokenProvider() {
+  let cached: { token: string; source: AuthSource } | null = null;
+  return async (forceRefresh = false): Promise<{ token: string; source: AuthSource }> => {
+    if (cached && !forceRefresh) return cached;
+    const envToken = getEnvAccessToken();
+    if (envToken) {
+      cached = { token: envToken, source: "env" };
+      return cached;
+    }
+    const firebaseToken = await getFirebaseIdToken();
+    if (!firebaseToken) return { token: "", source: "none" };
+    cached = { token: firebaseToken, source: "firebase" };
+    return cached;
+  };
+}
+
 async function fetchTbaMatches(eventKey: string, tbaKey: string): Promise<TbaMatch[]> {
   const response = await fetch(`https://www.thebluealliance.com/api/v3/event/${eventKey}/matches`, {
     headers: { "X-TBA-Auth-Key": tbaKey },
@@ -99,7 +123,13 @@ async function listPracticeDocs(projectId: string, authHeaders: Record<string, s
       `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/practiceMatches?${query.toString()}`,
       { headers: authHeaders }
     );
-    if (!response.ok) throw new Error(`Failed listing practiceMatches (${response.status}): ${await response.text()}`);
+    if (!response.ok) {
+      if (response.status === 403) {
+        console.warn("Warning: cannot list practiceMatches (403). Continuing without duplicate pre-check.");
+        return [];
+      }
+      throw new Error(`Failed listing practiceMatches (${response.status}): ${await response.text()}`);
+    }
     const payload = (await response.json()) as { documents?: FirestoreDoc[]; nextPageToken?: string };
     docs.push(...(payload.documents || []));
     pageToken = payload.nextPageToken || "";
@@ -153,13 +183,14 @@ async function createPracticeDoc(
     },
   };
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/practiceMatches`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify(body),
-    }
+    },
+    "create practice match"
   );
   if (!response.ok) throw new Error(`Failed creating practice match (${response.status}): ${await response.text()}`);
 }
@@ -250,11 +281,15 @@ async function patchPracticeDoc(
     },
   };
 
-  const response = await fetch(`https://firestore.googleapis.com/v1/${docName}?${params.toString()}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...authHeaders },
-    body: JSON.stringify(body),
-  });
+  const response = await fetchWithRetry(
+    `https://firestore.googleapis.com/v1/${docName}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: JSON.stringify(body),
+    },
+    `patch ${docName}`
+  );
   if (!response.ok) throw new Error(`Failed patching ${docName} (${response.status}): ${await response.text()}`);
 }
 
@@ -308,21 +343,65 @@ async function getFrcYouTubeUrl(match: TbaMatch): Promise<string | null> {
   return ok ? `https://youtu.be/${key}` : null;
 }
 
+function getAnyYouTubeUrl(match: TbaMatch): string | null {
+  const video = (match.videos || []).find((entry) => entry.type === "youtube" && entry.key);
+  const key = String(video?.key || "").trim();
+  return key ? `https://youtu.be/${key}` : null;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function isRetryableError(error: unknown): boolean {
+  const message = String((error as Error)?.message || error || "");
+  return message.includes("fetch failed") || message.includes("UND_ERR_CONNECT_TIMEOUT") || message.includes("timeout");
+}
+
+async function fetchWithRetry(url: string, options: RequestInit, label: string): Promise<Response> {
+  const maxAttempts = 4;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok && isRetryableStatus(response.status) && attempt < maxAttempts) {
+        const delay = Math.min(2000 * attempt, 8000);
+        console.warn(`Retrying ${label} (status ${response.status}) in ${delay}ms...`);
+        await sleep(delay);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (attempt >= maxAttempts || !isRetryableError(error)) {
+        throw error;
+      }
+      const delay = Math.min(2000 * attempt, 8000);
+      console.warn(`Retrying ${label} (network error) in ${delay}ms...`);
+      await sleep(delay);
+    }
+  }
+  throw new Error(`Failed ${label} after retries.`);
+}
+
 async function run() {
-  const { apply, eventKey, eventName, fromQm, maxSf } = parseArgs();
+  const { apply, eventKey, eventName, fromQm, maxSf, frcOnly } = parseArgs();
   const projectId = String(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "").trim();
   const tbaKey = String(process.env.TBA_API_KEY || process.env.NEXT_PUBLIC_TBA_API_KEY || "").trim();
   if (!projectId) throw new Error("Missing NEXT_PUBLIC_FIREBASE_PROJECT_ID in .env.local");
   if (!tbaKey) throw new Error("Missing TBA_API_KEY or NEXT_PUBLIC_TBA_API_KEY in .env.local");
 
-  const idToken = await getFirebaseIdToken();
-  if (!idToken) throw new Error("No Firebase ID token resolved. Check MIGRATION_EMAIL/MIGRATION_PASSWORD.");
-  const authHeaders = { Authorization: `Bearer ${idToken}` };
+  const getToken = createAccessTokenProvider();
+  const auth = await getToken();
+  if (!auth.token) throw new Error("No Firebase ID token resolved. Check MIGRATION_EMAIL/MIGRATION_PASSWORD.");
+  let authHeaders = { Authorization: `Bearer ${auth.token}` };
 
   const matches = await fetchTbaMatches(eventKey, tbaKey);
   const filtered = matches.filter((match) => {
     if (match.comp_level === "qm") return match.match_number >= fromQm;
-    if (match.comp_level === "sf" && match.match_number === 1) return match.set_number <= maxSf;
+    if (match.comp_level === "sf") return match.set_number <= maxSf;
     return false;
   });
 
@@ -344,7 +423,7 @@ async function run() {
   }> = [];
 
   for (const match of filtered) {
-    const videoUrl = await getFrcYouTubeUrl(match);
+    const videoUrl = frcOnly ? await getFrcYouTubeUrl(match) : getAnyYouTubeUrl(match);
     if (!videoUrl) continue;
     for (const alliance of ["red", "blue"] as const) {
       const allianceData = match.alliances[alliance];
@@ -380,19 +459,46 @@ async function run() {
 
   console.log(`Mode: ${apply ? "APPLY" : "DRY RUN"}`);
   console.log(`Event: ${eventKey} (${eventName})`);
-  console.log(`Match filter: qm>=${fromQm}, sf<=${maxSf} (match 1)`);
+  console.log(`Match filter: qm>=${fromQm}, sf<=${maxSf} (all sf matches)`);
+  console.log(`Video filter: ${frcOnly ? "FRC-only" : "any youtube"}`);
+  console.log(`Auth mode: ${auth.source === "env" ? "env access token" : "firebase id token"}`);
   console.log(`Matches scanned: ${filtered.length}`);
   console.log(`Docs to sync: ${targets.length}`);
   targets.forEach((target) => console.log(`  - ${target.summary}`));
 
   if (!apply) return;
 
+  const shouldRetryAuth = (error: unknown) => {
+    const message = String(error || "");
+    return message.includes("(401)") || message.includes("(403)");
+  };
+
   for (const target of targets) {
     if (target.mode === "patch" && target.docName) {
-      await patchPracticeDoc(target.docName, target.payload, authHeaders);
+      try {
+        await patchPracticeDoc(target.docName, target.payload, authHeaders);
+      } catch (error) {
+        if (auth.source === "firebase" && shouldRetryAuth(error)) {
+          const refreshed = await getToken(true);
+          authHeaders = { Authorization: `Bearer ${refreshed.token}` };
+          await patchPracticeDoc(target.docName, target.payload, authHeaders);
+        } else {
+          throw error;
+        }
+      }
       continue;
     }
-    await createPracticeDoc(projectId, target.payload, authHeaders);
+    try {
+      await createPracticeDoc(projectId, target.payload, authHeaders);
+    } catch (error) {
+      if (auth.source === "firebase" && shouldRetryAuth(error)) {
+        const refreshed = await getToken(true);
+        authHeaders = { Authorization: `Bearer ${refreshed.token}` };
+        await createPracticeDoc(projectId, target.payload, authHeaders);
+      } else {
+        throw error;
+      }
+    }
   }
 
   console.log(`Synced: ${targets.length}`);
