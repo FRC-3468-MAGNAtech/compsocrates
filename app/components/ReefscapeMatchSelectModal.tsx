@@ -127,8 +127,15 @@ function FinalsBracket({
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
+  const now = Date.now() / 1000;
+  const nextByTime =
+    availableNumbers
+      .map((n) => ({ n, t: Number(timesByNumber.get(n) || 0) }))
+      .filter((row) => row.t > 0 && row.t >= now)
+      .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
   const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
-  const statusOf = (n: number): MatchStatus => (completedNumbers.has(n) ? "completed" : n === firstOpen ? "next" : "upcoming");
+  const nextSlot = nextByTime > 0 ? nextByTime : firstOpen;
+  const statusOf = (n: number): MatchStatus => (completedNumbers.has(n) ? "completed" : n === nextSlot ? "next" : "upcoming");
   const timeFor = (matchId: number) => {
     const epoch = Number(timesByNumber.get(matchId) || 0);
     if (epoch > 0) {
@@ -354,10 +361,17 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         timeString: timeStringFromEpoch(m.scheduleTime),
                         matchId: m.id,
                       }));
+                    const now = Date.now() / 1000;
+                    const nextByTime =
+                      rows
+                        .map((row) => ({ matchNum: row.matchNum, time: Number(row.option.scheduleTime || 0) }))
+                        .filter((row) => row.time > 0 && row.time >= now)
+                        .sort((a, b) => a.time - b.time)[0]?.matchNum ?? -1;
                     const firstOpenNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
+                    const nextNum = nextByTime > 0 ? nextByTime : firstOpenNum;
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
-                      const status: MatchStatus = done ? "completed" : matchNum === firstOpenNum ? "next" : "upcoming";
+                      const status: MatchStatus = done ? "completed" : matchNum === nextNum ? "next" : "upcoming";
                       const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
                       const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
                       return (
@@ -462,12 +476,22 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         const done = isFinalDone(matchNum);
                         const hasRealSchedule = !!picked && Number(picked.scheduleTime || 0) > 0;
                         const unknownF3 = matchNum === 3 && !done && !hasRealSchedule;
+                        const now = Date.now() / 1000;
+                        const finalsWithTimes = [1, 2, 3]
+                          .map((n) => {
+                            const pick = finalsSeriesByNumber.get(n) || finalsById.get(`f${n}`);
+                            return { n, t: Number(pick?.scheduleTime || 0) };
+                          })
+                          .filter((row) => row.t > 0 && row.t >= now)
+                          .sort((a, b) => a.t - b.t);
+                        const nextFinalByTime = finalsWithTimes[0]?.n ?? -1;
                         const firstOpenFinal = [1, 2].find((n) => !isFinalDone(n)) || -1;
+                        const nextFinal = nextFinalByTime > 0 ? nextFinalByTime : firstOpenFinal;
                         const status: FinalsSeriesStatus = done
                           ? "completed"
                           : unknownF3
                             ? "unknown"
-                            : matchNum === firstOpenFinal
+                            : matchNum === nextFinal
                               ? "next"
                               : "upcoming";
                         const color =
