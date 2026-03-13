@@ -3664,7 +3664,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   }))} Match {parsePracticeMatchNumber({
                     matchKey: currentMatch.matchKey,
                     matchNumber: currentMatch.matchNumber,
-                    setNumber: currentMatch.setNumber,
+                    setNumber: (currentMatch as unknown as Record<string, unknown>).setNumber,
                     compLevel: (currentMatch as unknown as Record<string, unknown>).compLevel,
                   })}
                 </h3>
