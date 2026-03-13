@@ -9,11 +9,12 @@ export async function POST(request: NextRequest) {
     const eventKey = String(body?.eventKey || "").trim();
     const encryptedKey = typeof body?.encryptedKey === "string" ? body.encryptedKey : "";
     const plainKey = typeof body?.plainKey === "string" ? body.plainKey.trim() : "";
-    if (!eventKey || (!encryptedKey && !plainKey)) {
+    const fallbackKey = String(process.env.NEXT_PUBLIC_TBA_API_KEY || process.env.TBA_API_KEY || "").trim();
+    if (!eventKey || (!encryptedKey && !plainKey && !fallbackKey)) {
       return NextResponse.json({ error: "Missing event key or API key" }, { status: 400 });
     }
 
-    const key = encryptedKey ? decryptTbaKey(encryptedKey) : plainKey;
+    const key = encryptedKey ? decryptTbaKey(encryptedKey) : plainKey || fallbackKey;
     const tbaResponse = await fetch(`https://www.thebluealliance.com/api/v3/event/${eventKey}/matches`, {
       headers: {
         "X-TBA-Auth-Key": key,

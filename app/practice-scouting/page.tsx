@@ -1073,20 +1073,18 @@ function PracticeScoutingContent() {
 
       try {
         let matches: TBAMatch[] = [];
-        if (tbaAuth.encryptedKey || tbaAuth.plainKey) {
-          const response = await fetch("/api/tba/matches", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              eventKey,
-              encryptedKey: tbaAuth.encryptedKey,
-              plainKey: tbaAuth.plainKey,
-            }),
-          });
-          if (response.ok) {
-            const payload = (await response.json()) as { matches?: TBAMatch[] };
-            if (Array.isArray(payload.matches)) matches = payload.matches;
-          }
+        const response = await fetch("/api/tba/matches", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventKey,
+            encryptedKey: tbaAuth.encryptedKey,
+            plainKey: tbaAuth.plainKey,
+          }),
+        });
+        if (response.ok) {
+          const payload = (await response.json()) as { matches?: TBAMatch[] };
+          if (Array.isArray(payload.matches)) matches = payload.matches;
         }
         if (matches.length === 0) {
           matches = await getEventMatches(eventKey);
@@ -1681,7 +1679,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
     const inferredFromTitle = title ? inferEventKeyFromStreamTitle(title, activeMatchGame) : "";
     let inferredEventKey = inferredFromTitle;
-    if (!inferredEventKey && title && (tbaAuth.encryptedKey || tbaAuth.plainKey)) {
+    if (!inferredEventKey && title) {
       const normalizedTitle = normalizeEventValue(title);
       const years = Array.from(new Set([new Date().getFullYear(), new Date().getFullYear() - 1]));
       for (const year of years) {
@@ -1931,20 +1929,18 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         if (hintedEventKey) {
           try {
             let tbaMatches: TBAMatch[] = [];
-            if (tbaAuth.encryptedKey || tbaAuth.plainKey) {
-              const response = await fetch("/api/tba/matches", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  eventKey: hintedEventKey,
-                  encryptedKey: tbaAuth.encryptedKey,
-                  plainKey: tbaAuth.plainKey,
-                }),
-              });
-              if (response.ok) {
-                const payload = (await response.json()) as { matches?: TBAMatch[] };
-                if (Array.isArray(payload.matches)) tbaMatches = payload.matches;
-              }
+            const response = await fetch("/api/tba/matches", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                eventKey: hintedEventKey,
+                encryptedKey: tbaAuth.encryptedKey,
+                plainKey: tbaAuth.plainKey,
+              }),
+            });
+            if (response.ok) {
+              const payload = (await response.json()) as { matches?: TBAMatch[] };
+              if (Array.isArray(payload.matches)) tbaMatches = payload.matches;
             }
             if (tbaMatches.length === 0) {
               tbaMatches = await getEventMatches(hintedEventKey);
