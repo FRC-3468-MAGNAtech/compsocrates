@@ -3137,6 +3137,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         const modalType: ReefscapeMatchOption["type"] =
           stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
         const number = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+        const bracketSlot = modalType === "finals"
+          ? mapPlayoffToBracketSlot(match as { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown; compLevel?: unknown })
+          : null;
+        const finalsKind = modalType === "finals" ? (bracketSlot !== null ? "bracket" : "series") : undefined;
         const label =
           modalType === "practice"
             ? `Practice ${number}`
