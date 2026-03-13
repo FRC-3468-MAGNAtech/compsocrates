@@ -484,7 +484,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                             key={matchNum}
                             type="button"
                             onClick={() => {
-                              if (unknownF3 || (done && !allowCompletedPick)) return;
+                              if (done && !allowCompletedPick) return;
                               const pickedFinal = finalsSeriesByNumber.get(matchNum) || finalsById.get(`f${matchNum}`);
                               if (pickedFinal) {
                                 onPick(pickedFinal);
@@ -502,9 +502,9 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                               onPick(fallback);
                               onClose();
                             }}
-                            disabled={unknownF3 || (done && !allowCompletedPick)}
+                            disabled={done && !allowCompletedPick}
                             className={`group relative p-8 border-2 rounded-2xl transition-all ${
-                              unknownF3 || (done && !allowCompletedPick)
+                              done && !allowCompletedPick
                                 ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300"
                                 : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"
                             }`}
