@@ -2,6 +2,7 @@
 // Usage:
 //   npx tsx app/scripts/setup-practice-matches.ts
 //   npx tsx app/scripts/setup-practice-matches.ts --istanbul-only
+//   npx tsx app/scripts/setup-practice-matches.ts --dry-run
 // Env required:
 //   NEXT_PUBLIC_TBA_API_KEY
 //   NEXT_PUBLIC_FIREBASE_PROJECT_ID
@@ -208,13 +209,17 @@ async function run() {
   if (!FIREBASE_PROJECT_ID) throw new Error("NEXT_PUBLIC_FIREBASE_PROJECT_ID is required.");
 
   const istanbulOnly = hasFlag("--istanbul-only");
+  const dryRun = hasFlag("--dry-run");
   const selectedEvents = istanbulOnly ? EVENTS.filter((event) => event.key === "2026tuis") : EVENTS;
   if (!selectedEvents.length) throw new Error("No events selected for import.");
 
-  const accessToken = await signInForAccessToken();
+  const accessToken = dryRun ? "" : await signInForAccessToken();
 
   console.log("Starting practice match import...");
   console.log(`Selected events: ${selectedEvents.map((event) => `${event.name} (${event.key})`).join(", ")}`);
+  if (dryRun) {
+    console.log("Dry run enabled: no Firestore writes will be performed.");
+  }
 
   let written = 0;
   for (const event of selectedEvents) {
@@ -265,16 +270,23 @@ async function run() {
           importedByScript: "setup-practice-matches.ts",
         };
 
-        await createPracticeMatch(accessToken, payload);
-        written += 1;
-        if (written % 25 === 0) {
-          console.log(`Written ${written} practiceMatches rows...`);
+        if (!dryRun) {
+          await createPracticeMatch(accessToken, payload);
+          written += 1;
+          if (written % 25 === 0) {
+            console.log(`Written ${written} practiceMatches rows...`);
+          }
+        } else {
+          written += 1;
+          if (written % 25 === 0) {
+            console.log(`Dry-run: would write ${written} practiceMatches rows...`);
+          }
         }
       }
     }
   }
 
-  console.log(`\nDone. Wrote ${written} practiceMatches rows.`);
+  console.log(`\nDone. ${dryRun ? "Would write" : "Wrote"} ${written} practiceMatches rows.`);
 }
 
 run().catch((error) => {
