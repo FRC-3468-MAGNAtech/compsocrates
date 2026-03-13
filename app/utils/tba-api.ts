@@ -110,7 +110,16 @@ export function formatMatchType(compLevel: string, setNumber: number, matchNumbe
     f: "Finals",
   };
 
-  const typeLabel = types[compLevel] || "Match";
+  let typeLabel = types[compLevel] || "Match";
+  if (compLevel === "sf") {
+    const upperSlots = new Set([1, 2, 3, 4, 7, 8, 11]);
+    const lowerSlots = new Set([5, 6, 9, 10, 12, 13]);
+    if (upperSlots.has(setNumber)) {
+      typeLabel = "Upper Semifinals";
+    } else if (lowerSlots.has(setNumber)) {
+      typeLabel = "Lower Semifinals";
+    }
+  }
   
   if (compLevel === "qm") {
     return `${typeLabel} ${matchNumber}`;
