@@ -850,6 +850,8 @@ function ScoutFormContent() {
       }
       try {
         const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+        const currentEvent = await resolveDetectedTeamEventKey(userData.teamId);
+        const normalizedCurrent = String(currentEvent || "").trim().toLowerCase();
         const assignedEventCounts = new Map<string, number>();
         assignmentSnap.docs.forEach((row) => {
           const data = row.data() as AssignmentRow;
@@ -858,21 +860,25 @@ function ScoutFormContent() {
           assignedEventCounts.set(key, (assignedEventCounts.get(key) || 0) + 1);
         });
         if (assignedEventCounts.size === 0) {
-          setEventKey("app-testing");
-          const fallback = buildFallbackScoutOptions();
-          setOptions(fallback);
-          setTargets({});
-          setModalCompleted(new Set());
-          setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
-          return;
+          const detectedEvent = normalizedCurrent || "app-testing";
+          setEventKey(detectedEvent);
+          if (detectedEvent === "app-testing") {
+            const fallback = buildFallbackScoutOptions();
+            setOptions(fallback);
+            setTargets({});
+            setModalCompleted(new Set());
+            setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
+            return;
+          }
+          // Fall through to load matches for the detected event even without assignments.
         }
 
-        const currentEvent = await resolveDetectedTeamEventKey(userData.teamId);
-        const normalizedCurrent = String(currentEvent || "").trim().toLowerCase();
         const assignedEvent =
-          (normalizedCurrent && assignedEventCounts.has(normalizedCurrent))
-            ? normalizedCurrent
-            : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
+          assignedEventCounts.size === 0
+            ? (normalizedCurrent || "app-testing")
+            : (normalizedCurrent && assignedEventCounts.has(normalizedCurrent))
+              ? normalizedCurrent
+              : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
         setEventKey(assignedEvent);
         if (assignedEvent === "app-testing") {
           const fallback = buildFallbackScoutOptions();
