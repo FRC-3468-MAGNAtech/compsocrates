@@ -57,6 +57,22 @@ function strategyDocTime(doc: StrategyPlanDoc) {
   return Number(doc.createdAt || 0);
 }
 
+function isUserAttendingEvent(
+  attendeesByEvent: Record<string, string[]> | undefined,
+  eventKey: string,
+  user: { uid?: string | null; displayName?: string | null }
+) {
+  if (!attendeesByEvent) return false;
+  const attendees = attendeesByEvent[eventKey] || [];
+  const normalizedUid = String(user.uid || "").trim();
+  const normalizedName = String(user.displayName || "").trim().toLowerCase();
+  return attendees.some((value) => {
+    const safe = String(value || "").trim();
+    if (!safe) return false;
+    return safe === normalizedUid || safe.toLowerCase() === normalizedName;
+  });
+}
+
 function buildFallbackDriveMatches(): MatchOption[] {
   const rows: MatchOption[] = [];
   for (let n = 1; n <= 20; n += 1) {
@@ -209,6 +225,7 @@ function DriveReflectionFormContent() {
       }
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const teamData = teamDoc.data() as Record<string, unknown> | undefined;
         const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
         const assignedEventCounts = new Map<string, number>();
         assignmentSnap.docs.forEach((row) => {
@@ -217,19 +234,14 @@ function DriveReflectionFormContent() {
           if (!key) return;
           assignedEventCounts.set(key, (assignedEventCounts.get(key) || 0) + 1);
         });
-        if (assignedEventCounts.size === 0) {
-          setEventKey("app-testing");
-          const fallback = buildFallbackDriveMatches();
-          setMatchOptions(fallback);
-          setSelectedMatchKey(fallback[0]?.key || "");
-          return;
-        }
         const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
         const normalizedResolved = String(resolvedEvent || "").trim().toLowerCase();
         const assignedEvent =
-          (normalizedResolved && assignedEventCounts.has(normalizedResolved))
-            ? normalizedResolved
-            : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
+          assignedEventCounts.size === 0
+            ? (normalizedResolved || "app-testing")
+            : (normalizedResolved && assignedEventCounts.has(normalizedResolved))
+              ? normalizedResolved
+              : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
         setEventKey(assignedEvent);
         if (assignedEvent === "app-testing") {
           const fallback = buildFallbackDriveMatches();
@@ -239,13 +251,14 @@ function DriveReflectionFormContent() {
         }
 
         const ourTeam = parseTeamNumber(
-          String(teamDoc.data()?.teamNumber || teamDoc.data()?.teamName || userData.teamId)
+          String(teamData?.teamNumber || teamData?.teamName || userData.teamId)
         );
         const ourTeamStr = ourTeam > 0 ? String(ourTeam) : "";
         setOurTeamNumber(ourTeamStr);
 
-        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
-        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+        const encryptedKey = String(teamData?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamData?.tbaApiKey || "").trim();
+        const attendeesByEvent = (teamData?.eventAttendees || {}) as Record<string, string[]>;
         const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
         setEventTbaMatches(matches);
         setModalCompleted(buildCompletedModalIdsFromTba(matches));
@@ -264,13 +277,43 @@ function DriveReflectionFormContent() {
           .sort((a, b) => a.scheduleTime - b.scheduleTime);
         const resolvedOptions = options.length > 0 ? options : buildFallbackDriveMatches();
         setMatchOptions(resolvedOptions);
+        const assignedMatchKeys = new Set(
+          assignmentSnap.docs
+            .map((row) => row.data() as Record<string, unknown>)
+            .filter((row) => String(row.eventKey || "").trim().toLowerCase() === assignedEvent)
+            .map((row) => String(row.matchKey || row.matchLabel || "").trim())
+            .filter(Boolean)
+        );
+        const assignedMatches = resolvedOptions.filter(
+          (match) => assignedMatchKeys.has(match.key) || assignedMatchKeys.has(match.label)
+        );
+
         const now = Date.now() / 1000;
-        const teamFirst =
-          ourTeamStr
-            ? resolvedOptions.find((match) => match.scheduleTime >= now && match.teams.includes(ourTeamStr))
-              || resolvedOptions.find((match) => match.teams.includes(ourTeamStr))
-            : null;
-        const next = teamFirst || resolvedOptions.find((match) => match.scheduleTime >= now) || resolvedOptions[0];
+        const graceSeconds = 10 * 60;
+        const pickNextBySchedule = (rows: MatchOption[]) => {
+          const scheduled = rows
+            .map((match) => ({ match, time: Number(match.scheduleTime || 0) }))
+            .filter((row) => row.time > 0 && row.time >= now - graceSeconds)
+            .sort((a, b) => a.time - b.time);
+          if (scheduled.length > 0) return scheduled[0]?.match || null;
+          return rows.slice().sort((a, b) => a.scheduleTime - b.scheduleTime)[0] || null;
+        };
+
+        const isAttending = assignedMatchKeys.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
+        let next: MatchOption | null = null;
+        if (assignedMatches.length > 0) {
+          next = pickNextBySchedule(assignedMatches);
+        } else if (!isAttending) {
+          next =
+            resolvedOptions.find((match) => /_qm1$/i.test(match.key) || /^Q1$/i.test(match.label)) ||
+            resolvedOptions.find((match) => /_qm\d+$/i.test(match.key) || /^Q\d+/i.test(match.label)) ||
+            resolvedOptions[0] ||
+            null;
+        } else {
+          const teamMatches = ourTeamStr ? resolvedOptions.filter((match) => match.teams.includes(ourTeamStr)) : [];
+          const teamNext = teamMatches.length > 0 ? pickNextBySchedule(teamMatches) : null;
+          next = teamNext || pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
+        }
         if (next) {
           setSelectedMatchKey(next.key);
           setRobotTeamDefaults(next, ourTeamStr);

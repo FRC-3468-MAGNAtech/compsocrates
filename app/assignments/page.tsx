@@ -428,7 +428,7 @@ function AssignmentsContent() {
           })
         )
       ).filter((event): event is EventOption => Boolean(event));
-      setEvents(eventsWithAssignments);
+      setEvents(resolvedEvents);
       const fallbackFromApp = APP_EVENTS.map((event) => ({
         key: event.key,
         name: event.name,
@@ -467,16 +467,22 @@ function AssignmentsContent() {
       }
       const availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse));
       setPracticeEventOptions(availablePracticeEvents);
-      const scheduleOptions = sortEventOptions(dedupeEventOptionsByName([...resolvedEvents, ...availablePracticeEvents]));
+      const scheduleOptions =
+        eventsWithAssignments.length > 0
+          ? sortEventOptions(dedupeEventOptionsByName(eventsWithAssignments))
+          : sortEventOptions(dedupeEventOptionsByName(resolvedEvents));
       setPracticeScheduleEventOptions(scheduleOptions);
-      const effectiveEvent = eventsWithAssignments.some((event) => event.key === selectedEvent)
+      const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
-        : (eventsWithAssignments[0]?.key || "");
+        : (resolvedEvents[0]?.key || "");
       if (!selectedEvent || effectiveEvent !== selectedEvent) {
         setSelectedEvent(effectiveEvent);
       }
       if (!practiceScheduleEventKey || !scheduleOptions.some((event) => event.key === practiceScheduleEventKey)) {
-        setPracticeScheduleEventKey(effectiveEvent || scheduleOptions[0]?.key || "");
+        const fallbackScheduleKey = scheduleOptions[0]?.key || "";
+        setPracticeScheduleEventKey(
+          scheduleOptions.some((event) => event.key === effectiveEvent) ? effectiveEvent : fallbackScheduleKey
+        );
       }
       if (!selectedPracticeEventKey || !availablePracticeEvents.some((event) => event.key === selectedPracticeEventKey)) {
         setSelectedPracticeEventKey(availablePracticeEvents[0]?.key || "");

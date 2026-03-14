@@ -131,6 +131,7 @@ function FinalsBracket({
   const graceSeconds = 10 * 60;
   const nextByTime =
     availableNumbers
+      .filter((n) => !completedNumbers.has(n))
       .map((n) => ({ n, t: Number(timesByNumber.get(n) || 0) }))
       .filter((row) => row.t > 0 && row.t >= now - graceSeconds)
       .sort((a, b) => a.t - b.t)[0]?.n ?? -1;

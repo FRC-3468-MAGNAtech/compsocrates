@@ -9,8 +9,7 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
-import { type TBAMatch } from "@/app/utils/tba-api";
-import { fetchEventMatchesWithTeamAuth } from "@/app/utils/reefscapeMatchSync";
+import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 
 type MatchRow = {
   key: string;
@@ -27,6 +26,29 @@ function matchLabel(match: TBAMatch) {
   if (match.comp_level === "qf") return `Quarterfinal ${match.set_number}-${match.match_number}`;
   if (match.comp_level === "ef") return `Octofinal ${match.set_number}-${match.match_number}`;
   return match.key;
+}
+
+async function fetchMatchesForEvent(eventKey: string, encryptedKey: string, plainKey: string): Promise<TBAMatch[]> {
+  try {
+    const response = await fetch("/api/tba/matches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventKey, encryptedKey, plainKey }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { matches?: TBAMatch[] };
+      if (Array.isArray(payload.matches)) return payload.matches;
+    }
+  } catch (error) {
+    console.warn("Match list TBA proxy failed:", error);
+  }
+
+  try {
+    return await getEventMatches(eventKey, plainKey || undefined);
+  } catch (error) {
+    console.warn("Match list direct TBA fetch failed:", error);
+    return [];
+  }
 }
 
 function isPastEvent(event: UpcomingEvent) {
@@ -70,24 +92,32 @@ function MatchListContent() {
         const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
         const matches = await Promise.all(
           orderedEvents.map(async (event) => {
-            const rows = await fetchEventMatchesWithTeamAuth(event.key, { encryptedKey, plainKey });
-            const normalized = rows
-              .sort((a, b) => {
-                if (a.comp_level !== b.comp_level) return a.comp_level.localeCompare(b.comp_level);
-                if (a.set_number !== b.set_number) return a.set_number - b.set_number;
-                return a.match_number - b.match_number;
-              })
-              .map((match) => ({
-                key: match.key,
-                label: matchLabel(match),
-                time: match.actual_time || match.predicted_time || match.time || 0,
-                red: match.alliances.red.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
-                blue: match.alliances.blue.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
-              }));
-            return [event.key, normalized] as const;
+            try {
+              const rows = await fetchMatchesForEvent(event.key, encryptedKey, plainKey);
+              const normalized = rows
+                .sort((a, b) => {
+                  if (a.comp_level !== b.comp_level) return a.comp_level.localeCompare(b.comp_level);
+                  if (a.set_number !== b.set_number) return a.set_number - b.set_number;
+                  return a.match_number - b.match_number;
+                })
+                .map((match) => ({
+                  key: match.key,
+                  label: matchLabel(match),
+                  time: match.actual_time || match.predicted_time || match.time || 0,
+                  red: match.alliances.red.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
+                  blue: match.alliances.blue.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
+                }));
+              return [event.key, normalized] as const;
+            } catch (error) {
+              console.warn(`Match list failed for ${event.key}:`, error);
+              return [event.key, []] as const;
+            }
           })
         );
-        setMatchesByEvent(Object.fromEntries(matches));
+        const byEvent = Object.fromEntries(matches);
+        setMatchesByEvent(byEvent);
+        const firstWithMatches = orderedEvents.find((event) => (byEvent[event.key] || []).length > 0);
+        setActiveEventKey(firstWithMatches?.key || orderedEvents[0]?.key || "");
       } catch (error) {
         console.error("Failed to load match list:", error);
       } finally {
