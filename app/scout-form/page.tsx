@@ -757,6 +757,8 @@ function normalizeScoutedMatchId(value: unknown): string {
 
 function mapAssignmentToMatchId(labelOrKey: string) {
   const raw = String(labelOrKey || "").toLowerCase();
+  const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
+  if (direct) return `${direct[1]}${direct[2]}`;
   const qm = raw.match(/(?:_qm|qualification\s+)(\d+)/);
   if (qm) return `q${qm[1]}`;
   const practice = raw.match(/practice\s+(\d+)/);

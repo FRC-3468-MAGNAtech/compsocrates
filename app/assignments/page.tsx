@@ -467,10 +467,7 @@ function AssignmentsContent() {
       }
       const availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse));
       setPracticeEventOptions(availablePracticeEvents);
-      const scheduleOptions =
-        eventsWithAssignments.length > 0
-          ? sortEventOptions(dedupeEventOptionsByName(eventsWithAssignments))
-          : sortEventOptions(dedupeEventOptionsByName(resolvedEvents));
+      const scheduleOptions = sortEventOptions(dedupeEventOptionsByName(eventsWithAssignments));
       setPracticeScheduleEventOptions(scheduleOptions);
       const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
@@ -479,10 +476,7 @@ function AssignmentsContent() {
         setSelectedEvent(effectiveEvent);
       }
       if (!practiceScheduleEventKey || !scheduleOptions.some((event) => event.key === practiceScheduleEventKey)) {
-        const fallbackScheduleKey = scheduleOptions[0]?.key || "";
-        setPracticeScheduleEventKey(
-          scheduleOptions.some((event) => event.key === effectiveEvent) ? effectiveEvent : fallbackScheduleKey
-        );
+        setPracticeScheduleEventKey(scheduleOptions[0]?.key || "");
       }
       if (!selectedPracticeEventKey || !availablePracticeEvents.some((event) => event.key === selectedPracticeEventKey)) {
         setSelectedPracticeEventKey(availablePracticeEvents[0]?.key || "");
@@ -610,7 +604,27 @@ function AssignmentsContent() {
           setNumber: match.set_number,
           scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
         }));
-        setMatchOptions(options);
+        const hasFinals = options.some((match) => match.compLevel === "f");
+        if (!hasFinals) {
+          for (let n = 1; n <= 3; n += 1) {
+            options.push({
+              key: `f${n}`,
+              label: `Finals ${n}`,
+              teams: [],
+              compLevel: "f",
+              matchNumber: n,
+              setNumber: 1,
+              scheduleTime: 0,
+            });
+          }
+        }
+        const normalizedOptions = options.slice().sort((a, b) => {
+          const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
+          if (priorityDiff !== 0) return priorityDiff;
+          if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
+          return a.matchNumber - b.matchNumber;
+        });
+        setMatchOptions(normalizedOptions);
       } catch (error) {
         console.error("Unable to fetch TBA matches for assignments:", error);
         setMatchOptions([]);
@@ -909,8 +923,9 @@ function AssignmentsContent() {
     return scouts[(offset + teamIndex) % scouts.length] || null;
   }
 
-  async function generateManualPracticeMatches() {
-    if (!userData || !selectedEvent) return;
+  async function generateManualPracticeMatches(targetEventKey?: string) {
+    const eventKey = String(targetEventKey || selectedEvent || "").trim();
+    if (!userData || !eventKey) return;
     const response = window.prompt(
       "No event practice matches were detected. How many event practice matches should be created?",
       "20"
@@ -927,14 +942,14 @@ function AssignmentsContent() {
       await Promise.all(
         Array.from({ length: count }, (_, index) => {
           const matchNumber = index + 1;
-          const docId = `manual_${selectedEvent}_practice_${matchNumber}`;
+          const docId = `manual_${eventKey}_practice_${matchNumber}`;
           return setDoc(
             doc(db, "practiceMatches", docId),
             {
-              eventKey: selectedEvent,
+              eventKey,
               matchNumber,
               matchType: "practice",
-              matchKey: `${selectedEvent}_pm${matchNumber}`,
+              matchKey: `${eventKey}_pm${matchNumber}`,
               alliance: "",
               allianceTeams: [],
               teams: [],
@@ -1222,7 +1237,36 @@ function AssignmentsContent() {
         .sort((a, b) => a.matchNumber - b.matchNumber);
     }
     const requestedMatchCount = Math.max(0, Number(config?.matchCount || 0));
-    const targetMatches = requestedMatchCount > 0 ? allPracticeMatches.slice(0, requestedMatchCount) : allPracticeMatches;
+    let targetMatches = requestedMatchCount > 0 ? allPracticeMatches.slice(0, requestedMatchCount) : allPracticeMatches;
+    if (targetMatches.length === 0) {
+      await generateManualPracticeMatches(practiceEventKey);
+      const practiceMatchesSnap = await getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", practiceEventKey)));
+      allPracticeMatches = practiceMatchesSnap.docs
+        .map((practiceDoc) => {
+          const data = practiceDoc.data() as Record<string, unknown>;
+          const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+          const matchNumber = Number(data.matchNumber || 0);
+          const scheduleTime = Number(data.scheduleTime || data.time || 0);
+          const alliance = String(data.alliance || "").trim().toLowerCase();
+          const teams = parseTeamNumbers(
+            data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+          ).slice(0, 3);
+          return {
+            id: practiceDoc.id,
+            eventKey: practiceEventKey,
+            matchKey: String(data.matchKey || practiceDoc.id),
+            label: practiceMatchLabel(stage, matchNumber, alliance),
+            teams,
+            stage,
+            matchNumber,
+            scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+            isManual: Boolean(data.manualGenerated),
+          } as PracticeMatchOption;
+        })
+        .filter((row) => row.teams.length >= 3 && row.matchNumber > 0 && row.stage === "practice")
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+      targetMatches = requestedMatchCount > 0 ? allPracticeMatches.slice(0, requestedMatchCount) : allPracticeMatches;
+    }
     if (targetMatches.length === 0) {
       alert("No practice matches available to randomize.");
       return;
@@ -1959,19 +2003,28 @@ function AssignmentsContent() {
                   {assignmentModalMode === "match" && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
-                    <select
-                      className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
-                      value={selectedTeamNumber}
-                      onChange={(e) => setSelectedTeamNumber(e.target.value)}
-                      disabled={!selectedMatch}
-                    >
-                      <option value="">{selectedMatch ? "Select Team" : "Select Match First"}</option>
-                      {selectedMatch?.teams.map((team) => (
-                        <option key={team} value={team}>
-                          Team {team}
-                        </option>
-                      ))}
-                    </select>
+                    {selectedMatch && selectedMatch.teams.length > 0 ? (
+                      <select
+                        className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
+                        value={selectedTeamNumber}
+                        onChange={(e) => setSelectedTeamNumber(e.target.value)}
+                      >
+                        <option value="">Select Team</option>
+                        {selectedMatch.teams.map((team) => (
+                          <option key={team} value={team}>
+                            Team {team}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
+                        value={selectedTeamNumber}
+                        onChange={(e) => setSelectedTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
+                        placeholder={selectedMatch ? "Enter team number" : "Select Match First"}
+                        disabled={!selectedMatch}
+                      />
+                    )}
                   </div>
                   )}
                 </div>
