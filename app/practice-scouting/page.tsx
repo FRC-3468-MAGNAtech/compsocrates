@@ -15,7 +15,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
-import { buildCompletedModalIdsFromTba, buildReefscapeModalOptions } from "@/app/utils/reefscapeMatchSync";
+import { buildCompletedModalIdsFromTba, buildReefscapeModalOptions, isTbaMatchCompleted } from "@/app/utils/reefscapeMatchSync";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -829,6 +829,128 @@ function parsePracticeMatchNumber(match: { matchKey?: unknown; matchNumber?: unk
   }
   if (Number.isFinite(number) && number > 0) return number;
   return 1;
+}
+
+function getModalIdForMatch(match: CandidatePracticeMatch): string {
+  const stage = getPracticeStage(match);
+  const modalType: ReefscapeMatchOption["type"] =
+    stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
+  const bracketSlot = modalType === "finals"
+    ? mapPlayoffToBracketSlot(match as { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown; compLevel?: unknown })
+    : null;
+  const parsedNumber =
+    bracketSlot !== null
+      ? bracketSlot
+      : parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+  const finalsKind = modalType === "finals" ? (bracketSlot !== null ? "bracket" : "series") : undefined;
+  if (modalType === "practice") return `p${parsedNumber}`;
+  if (modalType === "qualification") return `q${parsedNumber}`;
+  return finalsKind === "bracket" ? `sf${parsedNumber}` : `f${parsedNumber}`;
+}
+
+function pickNextModalIdFromOptions(options: ReefscapeMatchOption[], completed: Set<string>): string {
+  if (options.length === 0) return "";
+  const now = Date.now() / 1000;
+
+  const bracketOptions = options.filter((opt) => opt.type === "finals" && opt.id.startsWith("sf"));
+  if (bracketOptions.length > 0) {
+    const timesByNumber = new Map<number, number>();
+    bracketOptions.forEach((opt) => {
+      const existing = Number(timesByNumber.get(opt.matchNumber) || 0);
+      const nextTime = Number(opt.scheduleTime || 0);
+      if (existing <= 0 || (nextTime > 0 && nextTime < existing)) {
+        timesByNumber.set(opt.matchNumber, nextTime);
+      }
+    });
+    const availableNumbers = Array.from(new Set(bracketOptions.map((opt) => opt.matchNumber))).sort((a, b) => a - b);
+    const completedNumbers = new Set(
+      availableNumbers.filter((n) => completed.has(`sf${n}`))
+    );
+    const hasScheduleTimes = availableNumbers.some((n) => Number(timesByNumber.get(n) || 0) > 0);
+    const hasCompleted = completedNumbers.size > 0;
+    const graceSeconds = 10 * 60;
+    const nextByTime =
+      availableNumbers
+        .filter((n) => !completedNumbers.has(n))
+        .map((n) => ({ n, t: Number(timesByNumber.get(n) || 0) }))
+        .filter((row) => row.t > 0 && row.t >= now - graceSeconds)
+        .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
+    const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
+    const nextSlot = hasScheduleTimes ? (nextByTime > 0 ? nextByTime : firstOpen) : hasCompleted ? firstOpen : -1;
+    if (nextSlot > 0) return `sf${nextSlot}`;
+  }
+
+  const scheduled = options
+    .filter((opt) => !completed.has(opt.id))
+    .map((opt) => ({ id: opt.id, time: Number(opt.scheduleTime || 0), matchNumber: opt.matchNumber }))
+    .filter((row) => row.time > 0)
+    .sort((a, b) => {
+      if (a.time !== b.time) return a.time - b.time;
+      return a.matchNumber - b.matchNumber;
+    });
+  if (scheduled.length > 0) {
+    const upcoming = scheduled.find((row) => row.time >= now);
+    return (upcoming || scheduled[0]).id;
+  }
+
+  const firstIncomplete = options.find((opt) => !completed.has(opt.id));
+  return firstIncomplete?.id || "";
+}
+
+function pickNextModalIdFromTba(matches: TBAMatch[]): string {
+  if (!matches.length) return "";
+  const options = buildReefscapeModalOptions(matches);
+  if (options.length === 0) return "";
+  const completed = buildCompletedModalIdsFromTba(matches);
+  return pickNextModalIdFromOptions(options, completed);
+}
+
+function buildModalOptionsFromCandidates(matches: CandidatePracticeMatch[]): {
+  options: ReefscapeMatchOption[];
+  completed: Set<string>;
+} {
+  const byId = new Map<string, ReefscapeMatchOption>();
+  const completed = new Set<string>();
+
+  matches.forEach((match) => {
+    const id = getModalIdForMatch(match);
+    if (!id) return;
+    const stage = getPracticeStage(match);
+    const modalType: ReefscapeMatchOption["type"] =
+      stage === "practice" ? "practice" : stage === "qualification" ? "qualification" : "finals";
+    const bracketSlot = modalType === "finals"
+      ? mapPlayoffToBracketSlot(match as { matchKey?: unknown; setNumber?: unknown; matchNumber?: unknown; compLevel?: unknown })
+      : null;
+    const matchNumber =
+      bracketSlot !== null
+        ? bracketSlot
+        : parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+    const finalsKind = modalType === "finals" ? (bracketSlot !== null ? "bracket" : "series") : undefined;
+    const matchData = match as unknown as Record<string, unknown>;
+    const rawScheduleTime =
+      Number(matchData.scheduleTime || 0)
+      || Number(matchData.time || 0)
+      || Number(matchData.predictedTime || 0)
+      || Number(matchData.predicted_time || 0)
+      || Number(matchData.actualTime || 0)
+      || Number(matchData.actual_time || 0);
+    const scheduleTime = Number.isFinite(rawScheduleTime) ? rawScheduleTime : 0;
+    if (Boolean(matchData.isCompleted)) completed.add(id);
+
+    const existing = byId.get(id);
+    if (!existing || (scheduleTime > 0 && (existing.scheduleTime <= 0 || scheduleTime < existing.scheduleTime))) {
+      byId.set(id, {
+        id,
+        label: "",
+        type: modalType,
+        matchNumber,
+        scheduleTime,
+        finalsKind,
+      });
+    }
+  });
+
+  return { options: Array.from(byId.values()), completed };
 }
 
 function normalizeEventValue(value: string): string {
@@ -1875,7 +1997,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
   async function selectPracticeMatch(
     difficulty: 'easy' | 'medium' | 'hard' | 'live',
-    mode: PracticeMode
+    mode: PracticeMode,
+    liveEventOverride?: string
   ): Promise<CandidatePracticeMatch[]> {
     clearPracticeDraft();
     setPendingDraft(null);
@@ -1926,7 +2049,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       }
       candidateMatches = dedupePracticeMatches(candidateMatches);
       if (difficulty === "live") {
-        const hintedEventKey = String(liveEventKeyHint || "").trim().toLowerCase();
+        const hintedEventKey = String(liveEventOverride || liveEventKeyHint || "").trim().toLowerCase();
         if (hintedEventKey) {
           try {
             let tbaMatches: TBAMatch[] = [];
@@ -1950,7 +2073,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             const tbaCandidates = tbaMatches.flatMap((match) => {
               const matchKey = String(match.key || "").trim();
               const scheduleTime = Number(match.actual_time || match.predicted_time || match.time || 0);
-              const isCompleted = Number(match.alliances?.red?.score) >= 0 && Number(match.alliances?.blue?.score) >= 0;
+                const isCompleted = isTbaMatchCompleted(match);
               const stageMatchType = match.comp_level === "qm" ? "qualification" : "playoff";
               const perAlliance = (["red", "blue"] as const).map((alliance) => {
                 const teams = (match.alliances?.[alliance]?.team_keys || [])
@@ -2321,7 +2444,25 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const done = Boolean((match as unknown as Record<string, unknown>).isCompleted);
       return !done && time > 0 && time >= nowSec;
     });
-    const chosen = active || next || sortedPool.find((match) => !Boolean((match as unknown as Record<string, unknown>).isCompleted)) || sortedPool[0];
+    let preferred = active;
+    if (!preferred) {
+      const preferredModalId = liveTbaMatches.length > 0
+        ? pickNextModalIdFromTba(liveTbaMatches)
+        : (() => {
+            const { options, completed } = buildModalOptionsFromCandidates(pool);
+            return pickNextModalIdFromOptions(options, completed);
+          })();
+      if (preferredModalId) {
+        preferred =
+          sortedPool.find((match) => getModalIdForMatch(match) === preferredModalId && !Boolean((match as unknown as Record<string, unknown>).isCompleted))
+          || sortedPool.find((match) => getModalIdForMatch(match) === preferredModalId);
+      }
+    }
+    const chosen =
+      preferred
+      || next
+      || sortedPool.find((match) => !Boolean((match as unknown as Record<string, unknown>).isCompleted))
+      || sortedPool[0];
     if (!chosen) {
       alert("Could not pick a live match.");
       return;
@@ -2353,7 +2494,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       setLiveEventKeyHint(inferredEventKey);
     }
     setShowLiveLinkModal(false);
-    const matches = await selectPracticeMatch("live", selectedMode);
+    const matches = await selectPracticeMatch("live", selectedMode, inferredEventKey);
     if (matches.length === 0) return;
     await handleChooseLiveMatchClick(matches);
   }
@@ -2364,12 +2505,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
     if (!selectedMode) return;
+    let inferredEventKey = "";
     if (liveVideoUrl.trim()) {
-      await hydrateLiveStreamContext(liveVideoUrl.trim());
+      inferredEventKey = await hydrateLiveStreamContext(liveVideoUrl.trim());
     }
     let matches = candidateMatches;
     if (matches.length === 0) {
-      matches = await selectPracticeMatch("live", selectedMode);
+      matches = await selectPracticeMatch("live", selectedMode, inferredEventKey);
     }
     if (matches.length === 0) return;
     setShowMatchSelectModal(true);
