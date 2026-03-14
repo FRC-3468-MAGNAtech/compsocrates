@@ -90,7 +90,6 @@ function FinalsBracket({
   timesByNumber,
   availableNumbers,
   finalsSummaryDone,
-  nextOverallId,
   allowCompletedPick = false,
 }: {
   completedNumbers: Set<number>;
@@ -98,7 +97,6 @@ function FinalsBracket({
   timesByNumber: Map<number, number>;
   availableNumbers: number[];
   finalsSummaryDone: boolean;
-  nextOverallId?: string;
   allowCompletedPick?: boolean;
 }) {
   const B = { w: 104, h: 58, colGap: 52, row: 84 };
@@ -136,12 +134,11 @@ function FinalsBracket({
       .filter((row) => row.t > 0 && row.t >= now)
       .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
   const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
-  const nextSlot = nextByTime > 0 ? nextByTime : firstOpen;
-  const nextAllowed = Boolean(nextOverallId) && nextOverallId === `sf${nextSlot}`;
-  const statusOf = (n: number): MatchStatus => (completedNumbers.has(n) ? "completed" : n === nextSlot ? "next" : "upcoming");
+  // Prefer the earliest incomplete bracket slot to avoid jumping ahead.
+  const nextSlot = firstOpen > 0 ? firstOpen : nextByTime;
   const resolvedStatusOf = (n: number): MatchStatus => {
     if (completedNumbers.has(n)) return "completed";
-    if (n === nextSlot && nextAllowed) return "next";
+    if (n === nextSlot) return "next";
     return "upcoming";
   };
   const timeFor = (matchId: number) => {
@@ -451,7 +448,6 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   })()}
                   availableNumbers={Array.from({ length: 13 }, (_, i) => i + 1)}
                   finalsSummaryDone={isFinalDone(1) && isFinalDone(2)}
-                  nextOverallId={nextOverallId}
                   allowCompletedPick={allowCompletedPick}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
