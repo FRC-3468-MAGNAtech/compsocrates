@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, getDocs, query, where, deleteDoc, doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -12,8 +12,10 @@ import { Users, Target, ClipboardList } from "lucide-react";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles } from "@/app/utils/roles";
 import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
 
 interface ScoutStats {
+  scoutId: string;
   scoutName: string;
   role: string;
   roles?: string[];
@@ -373,10 +375,41 @@ function ScoutAccuracyContent() {
     officialScore: number;
   } | null>(null);
   const [showAllSessionsModal, setShowAllSessionsModal] = useState(false);
+  const [eventOptions, setEventOptions] = useState<UpcomingEvent[]>([]);
+  const [eventAttendees, setEventAttendees] = useState<Record<string, string[]>>({});
+  const [attendanceFilter, setAttendanceFilter] = useState<string>("all");
+  const [rankMode, setRankMode] = useState<"preserve" | "event">("preserve");
 
   useEffect(() => {
     loadScoutStats();
   }, [selectedMode, selectedGame, userData?.teamId]);
+
+  useEffect(() => {
+    async function loadEventFilters() {
+      if (!userData?.teamId) {
+        setEventOptions([]);
+        setEventAttendees({});
+        setAttendanceFilter("all");
+        return;
+      }
+      try {
+        const [events, teamDoc] = await Promise.all([
+          getUpcomingEvents(userData.teamId),
+          getDoc(doc(db, "teams", userData.teamId)),
+        ]);
+        setEventOptions(events);
+        const attendees = (teamDoc.exists()
+          ? (teamDoc.data().eventAttendees as Record<string, string[]> | undefined)
+          : {}) || {};
+        setEventAttendees(attendees);
+      } catch (error) {
+        console.error("Failed loading event attendance for scout accuracy:", error);
+        setEventOptions([]);
+        setEventAttendees({});
+      }
+    }
+    void loadEventFilters();
+  }, [userData?.teamId]);
 
   async function loadScoutStats() {
     setLoading(true);
@@ -532,6 +565,7 @@ function ScoutAccuracyContent() {
           : 0;
 
         return {
+          scoutId: member.uid,
           scoutName: member.scoutName,
           role: member.role,
           roles: member.roles,
@@ -570,18 +604,36 @@ function ScoutAccuracyContent() {
     return roles.includes("match-scout") || roles.includes("media");
   }).length;
   const membersWithPracticeAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
-  const rankedScoutStats = (() => {
-    let currentRank = 0;
-    let previousKey = "";
-    return scoutStats.map((scout, index) => {
-      const key = `${scout.practiceSessionsCompleted > 0 ? "sessions" : "nosessions"}:${scout.averageAccuracy}`;
-      if (key !== previousKey) {
-        currentRank = index + 1;
-        previousKey = key;
-      }
-      return { scout, rank: currentRank };
+  const selectedEventLabel = useMemo(() => {
+    if (attendanceFilter === "all") return "";
+    return eventOptions.find((event) => event.key === attendanceFilter)?.name || attendanceFilter;
+  }, [attendanceFilter, eventOptions]);
+  const rankedScoutStats = useMemo(() => {
+    const rankScouts = (rows: ScoutStats[]) => {
+      let currentRank = 0;
+      let previousKey = "";
+      return rows.map((scout, index) => {
+        const key = `${scout.practiceSessionsCompleted > 0 ? "sessions" : "nosessions"}:${scout.averageAccuracy}`;
+        if (key !== previousKey) {
+          currentRank = index + 1;
+          previousKey = key;
+        }
+        return { scout, rank: currentRank };
+      });
+    };
+
+    const baseRanks = rankScouts(scoutStats);
+    if (attendanceFilter === "all") return baseRanks;
+
+    const attendees = eventAttendees[attendanceFilter] || [];
+    const filtered = baseRanks.filter(({ scout }) => {
+      if (attendees.includes(scout.scoutId)) return true;
+      if (attendees.includes(scout.scoutName)) return true;
+      return attendees.some((value) => String(value || "").trim().toLowerCase() === scout.scoutName.trim().toLowerCase());
     });
-  })();
+    if (rankMode === "preserve") return filtered;
+    return rankScouts(filtered.map((row) => row.scout));
+  }, [attendanceFilter, eventAttendees, rankMode, scoutStats]);
 
   function getAccuracyColor(accuracy: number): string {
     if (accuracy >= 95) return "text-green-600";
@@ -991,8 +1043,45 @@ function ScoutAccuracyContent() {
               {/* LEADERBOARD */}
               <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
                 <div className="p-6 border-b border-gray-200">
-                  <h2 className="text-xl font-semibold">Team Member Accuracy Rankings</h2>
-                  <p className="text-sm text-gray-500 mt-1">All team members ranked by practice accuracy</p>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl font-semibold">Team Member Accuracy Rankings</h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {attendanceFilter === "all"
+                          ? "All team members ranked by practice accuracy"
+                          : `Members attending ${selectedEventLabel || "this event"} ranked by practice accuracy`}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] font-semibold uppercase text-gray-500">Members</label>
+                        <select
+                          value={attendanceFilter}
+                          onChange={(event) => setAttendanceFilter(event.target.value)}
+                          className="border rounded px-2 py-1.5 text-sm min-w-[220px]"
+                        >
+                          <option value="all">All members</option>
+                          {eventOptions.map((event) => (
+                            <option key={event.key} value={event.key}>
+                              {event.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] font-semibold uppercase text-gray-500">Rank</label>
+                        <select
+                          value={rankMode}
+                          onChange={(event) => setRankMode(event.target.value === "event" ? "event" : "preserve")}
+                          className="border rounded px-2 py-1.5 text-sm min-w-[200px]"
+                          disabled={attendanceFilter === "all"}
+                        >
+                          <option value="preserve">Preserve original ranks</option>
+                          <option value="event">Event leaderboard</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
