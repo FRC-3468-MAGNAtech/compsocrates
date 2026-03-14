@@ -641,7 +641,7 @@ function ScoutAccuracyContent() {
   }, [attendanceFilter, eventAttendees, rankMode, scoutStats]);
   const visibleRankedScoutStats = useMemo(() => {
     if (canViewFullAccuracy) return rankedScoutStats;
-    return rankedScoutStats.filter(({ rank }) => rank <= 5);
+    return rankedScoutStats.filter(({ scout, rank }) => scout.practiceSessionsCompleted > 0 && rank <= 5);
   }, [canViewFullAccuracy, rankedScoutStats]);
 
   function getAccuracyColor(accuracy: number): string {

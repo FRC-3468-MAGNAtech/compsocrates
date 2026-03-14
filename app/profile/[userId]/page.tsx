@@ -100,11 +100,23 @@ function ProfileContent() {
 
         if (!visible) return;
 
+        let attendeeEventsCount = 0;
         if (mergedProfile.teamId) {
           const teamSnap = await getDoc(doc(db, "teams", mergedProfile.teamId));
           if (teamSnap.exists()) {
             const teamData = teamSnap.data() as TeamDoc;
-          setTeamLabel(teamData.teamNumber || teamData.teamName || mergedProfile.teamId);
+            setTeamLabel(teamData.teamNumber || teamData.teamName || mergedProfile.teamId);
+            const attendeeMap = (teamData as TeamDoc & { eventAttendees?: Record<string, string[]> }).eventAttendees || {};
+            const currentYear = new Date().getFullYear();
+            attendeeEventsCount = Object.entries(attendeeMap).filter(([eventKey, attendees]) => {
+              const year = parseInt(String(eventKey || "").slice(0, 4), 10);
+              if (Number.isFinite(year) && year !== currentYear) return false;
+              const list = Array.isArray(attendees) ? attendees : [];
+              if (mergedProfile.uid && list.includes(mergedProfile.uid)) return true;
+              if (mergedProfile.displayName && list.includes(mergedProfile.displayName)) return true;
+              const normalizedName = mergedProfile.displayName ? mergedProfile.displayName.trim().toLowerCase() : "";
+              return normalizedName.length > 0 && list.some((value) => String(value || "").trim().toLowerCase() === normalizedName);
+            }).length;
           } else {
             setTeamLabel(mergedProfile.teamId);
           }
@@ -224,7 +236,7 @@ function ProfileContent() {
           practiceEntries,
           practiceSessions: practiceDocs.size,
           avgAccuracy: accuracyCount > 0 ? Math.round(accuracyTotal / accuracyCount) : 0,
-          eventsScouted: eventKeys.size,
+          eventsScouted: attendeeEventsCount,
         });
       } finally {
         setLoading(false);

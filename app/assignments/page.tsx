@@ -107,6 +107,7 @@ type AssignmentMatchChoice = {
 
 type RandomizeTarget = "match" | "practice";
 type RandomizePattern = "rotate-each-match" | "block-5" | "constant";
+type RandomizeCategory = "practice" | "qualification" | "finals";
 
 type RandomizeConfig = {
   target: RandomizeTarget;
@@ -115,6 +116,7 @@ type RandomizeConfig = {
   scoutIds: string[];
   practiceEventKey?: string;
   priorityTeams?: number[];
+  categories?: RandomizeCategory[];
 };
 
 function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
@@ -159,7 +161,79 @@ function compLevelPriority(compLevel: string) {
   if (compLevel === "qf") return 2;
   if (compLevel === "sf") return 3;
   if (compLevel === "f") return 4;
+  if (compLevel === "pm") return 5;
   return 999;
+}
+
+function parseMatchKeyParts(matchKey: string) {
+  const normalized = String(matchKey || "").toLowerCase();
+  if (!normalized) return null;
+  const practiceMatch = normalized.match(/^p(\d+)$/);
+  if (practiceMatch) {
+    return { compLevel: "pm", setNumber: 1, matchNumber: parseInt(practiceMatch[1], 10) || 0 };
+  }
+  const keyMatch = normalized.match(/_(qm|ef|qf|sf|f)(\d+)(?:m(\d+))?/);
+  if (!keyMatch) return null;
+  const compLevel = keyMatch[1];
+  const firstNumber = parseInt(keyMatch[2], 10) || 0;
+  const secondNumber = keyMatch[3] ? parseInt(keyMatch[3], 10) || 0 : 0;
+  if (keyMatch[3]) {
+    return { compLevel, setNumber: firstNumber, matchNumber: secondNumber };
+  }
+  return { compLevel, setNumber: 1, matchNumber: firstNumber };
+}
+
+function parseMatchLabelParts(label: string) {
+  const normalized = String(label || "").toLowerCase();
+  if (!normalized) return null;
+  const practice = normalized.match(/practice\s+(\d+)/);
+  if (practice) {
+    return { compLevel: "pm", setNumber: 1, matchNumber: parseInt(practice[1], 10) || 0 };
+  }
+  const qualification = normalized.match(/qualification\s+(\d+)/);
+  if (qualification) {
+    return { compLevel: "qm", setNumber: 1, matchNumber: parseInt(qualification[1], 10) || 0 };
+  }
+  const finals = normalized.match(/finals\s+(\d+)/);
+  if (finals) {
+    return { compLevel: "f", setNumber: 1, matchNumber: parseInt(finals[1], 10) || 0 };
+  }
+  const semifinal = normalized.match(/semifinal\s+(\d+)[^\d]+(\d+)/);
+  if (semifinal) {
+    return { compLevel: "sf", setNumber: parseInt(semifinal[1], 10) || 0, matchNumber: parseInt(semifinal[2], 10) || 0 };
+  }
+  const quarterfinal = normalized.match(/quarterfinal\s+(\d+)[^\d]+(\d+)/);
+  if (quarterfinal) {
+    return { compLevel: "qf", setNumber: parseInt(quarterfinal[1], 10) || 0, matchNumber: parseInt(quarterfinal[2], 10) || 0 };
+  }
+  const octofinal = normalized.match(/octofinal\s+(\d+)[^\d]+(\d+)/);
+  if (octofinal) {
+    return { compLevel: "ef", setNumber: parseInt(octofinal[1], 10) || 0, matchNumber: parseInt(octofinal[2], 10) || 0 };
+  }
+  return null;
+}
+
+function getAssignmentMatchSortKey(assignment: Assignment) {
+  const fromKey = parseMatchKeyParts(assignment.matchKey);
+  const fromLabel = parseMatchLabelParts(assignment.matchLabel);
+  const matchParts = fromKey || fromLabel || { compLevel: "", setNumber: 0, matchNumber: 0 };
+  const priority = compLevelPriority(matchParts.compLevel || "");
+  return {
+    priority,
+    setNumber: matchParts.setNumber || 0,
+    matchNumber: matchParts.matchNumber || 0,
+    label: String(assignment.matchLabel || assignment.matchKey || ""),
+  };
+}
+
+function getAssignmentCategory(assignment: { matchKey?: string; matchLabel?: string }): RandomizeCategory | null {
+  const fromKey = parseMatchKeyParts(String(assignment.matchKey || ""));
+  const fromLabel = parseMatchLabelParts(String(assignment.matchLabel || ""));
+  const matchParts = fromKey || fromLabel;
+  if (!matchParts) return null;
+  if (matchParts.compLevel === "pm") return "practice";
+  if (matchParts.compLevel === "qm") return "qualification";
+  return "finals";
 }
 
 function matchLabel(match: TBAMatch) {
@@ -327,6 +401,7 @@ function AssignmentsContent() {
   const [randomizeMatchCount, setRandomizeMatchCount] = useState("");
   const [randomizePattern, setRandomizePattern] = useState<RandomizePattern>("rotate-each-match");
   const [randomizeScoutIds, setRandomizeScoutIds] = useState<string[]>([]);
+  const [randomizeCategories, setRandomizeCategories] = useState<RandomizeCategory[]>(["qualification"]);
   const [randomizePriorityTeamSearch, setRandomizePriorityTeamSearch] = useState("");
   const [randomizePriorityTeams, setRandomizePriorityTeams] = useState<number[]>([]);
   const [practiceScheduleEventOptions, setPracticeScheduleEventOptions] = useState<EventOption[]>([]);
@@ -729,6 +804,7 @@ function AssignmentsContent() {
     setRandomizeMatchCount("");
     setRandomizePattern("rotate-each-match");
     setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid));
+    setRandomizeCategories(target === "practice" ? ["practice"] : ["qualification"]);
     setRandomizePriorityTeamSearch("");
     setRandomizePriorityTeams(seededPriorityTeams);
     setShowRandomizeModal(true);
@@ -736,6 +812,12 @@ function AssignmentsContent() {
 
   function toggleRandomizeScout(uid: string) {
     setRandomizeScoutIds((prev) => (prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]));
+  }
+
+  function toggleRandomizeCategory(category: RandomizeCategory) {
+    setRandomizeCategories((prev) =>
+      prev.includes(category) ? prev.filter((entry) => entry !== category) : [...prev, category]
+    );
   }
 
   function presetRandomizeScoutsByRoles(roleKeys: string[]) {
@@ -934,8 +1016,15 @@ function AssignmentsContent() {
     pattern: RandomizePattern
   ): TeamMember | null {
     if (scouts.length === 0) return null;
-    const offset =
-      pattern === "constant" ? 0 : pattern === "block-5" ? Math.floor(matchIndex / 5) : matchIndex;
+    if (pattern === "block-5") {
+      const half = Math.ceil(scouts.length / 2);
+      const blockIndex = Math.floor(matchIndex / 5);
+      const useFirst = blockIndex % 2 === 0;
+      const group = useFirst ? scouts.slice(0, half) : scouts.slice(half);
+      const pool = group.length > 0 ? group : scouts;
+      return pool[teamIndex % pool.length] || null;
+    }
+    const offset = pattern === "constant" ? 0 : matchIndex;
     return scouts[(offset + teamIndex) % scouts.length] || null;
   }
 
@@ -990,7 +1079,10 @@ function AssignmentsContent() {
 
   async function selectMatchType(type: "practice" | "qualification" | "finals") {
     if (type === "practice" && eventPracticeMatches.length === 0) {
-      await generateManualPracticeMatches();
+      alert("No event practice matches detected. Use Quals/Finals to assign event scouting, or generate manual practice matches from the Match Schedule view.");
+      setSelectedMatchType("qualification");
+      setSelectedMatchKey("");
+      setSelectedTeamNumber("");
       return;
     }
     setSelectedMatchType(type);
@@ -1137,16 +1229,83 @@ function AssignmentsContent() {
   async function randomizeAllAssignments(config?: RandomizeConfig) {
     if (!userData || !selectedEvent) return;
     const nowSec = Math.floor(Date.now() / 1000);
-    const allQualificationMatches = matchOptions.filter((match) => match.compLevel === "qm");
-    const upcomingQualificationMatches = allQualificationMatches.filter(
-      (match) => match.scheduleTime <= 0 || match.scheduleTime + 8 * 60 >= nowSec
-    );
-    const qualificationMatchesBase = upcomingQualificationMatches.length > 0 ? upcomingQualificationMatches : allQualificationMatches;
+    const selectedCategories = config?.categories && config.categories.length > 0
+      ? config.categories
+      : (["qualification"] as RandomizeCategory[]);
+    const includePractice = selectedCategories.includes("practice");
+    const includeQualification = selectedCategories.includes("qualification");
+    const includeFinals = selectedCategories.includes("finals");
+
+    let practiceMatchChoices: MatchOption[] = [];
+    if (includePractice) {
+      let practiceMatches = eventPracticeMatches;
+      if (practiceMatches.length === 0) {
+        await generateManualPracticeMatches(selectedEvent);
+        const practiceMatchesSnap = await getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", selectedEvent)));
+        practiceMatches = practiceMatchesSnap.docs
+          .map((practiceDoc) => {
+            const data = practiceDoc.data() as Record<string, unknown>;
+            const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+            const matchNumber = Number(data.matchNumber || 0);
+            const scheduleTime = Number(data.scheduleTime || data.time || 0);
+            const alliance = String(data.alliance || "").trim().toLowerCase();
+            const teams = parseTeamNumbers(
+              data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+            ).slice(0, 3);
+            return {
+              id: practiceDoc.id,
+              eventKey: selectedEvent,
+              matchKey: String(data.matchKey || practiceDoc.id),
+              label: practiceMatchLabel(stage, matchNumber, alliance),
+              teams,
+              stage,
+              matchNumber,
+              scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+              isManual: Boolean(data.manualGenerated),
+            } as PracticeMatchOption;
+          })
+          .filter((row) => row.teams.length >= 3 && row.matchNumber > 0 && row.stage === "practice")
+          .sort((a, b) => a.matchNumber - b.matchNumber);
+      }
+      practiceMatchChoices = practiceMatches.map((match) => ({
+        key: `p${match.matchNumber}`,
+        label: `Practice ${match.matchNumber}`,
+        teams: match.teams.length > 0 ? match.teams : eventTeamOptions,
+        compLevel: "pm",
+        matchNumber: match.matchNumber,
+        setNumber: 1,
+        scheduleTime: match.scheduleTime,
+      }));
+    }
+
+    const qualificationMatches = includeQualification
+      ? matchOptions.filter((match) => match.compLevel === "qm")
+      : [];
+    const finalsMatches = includeFinals
+      ? matchOptions.filter((match) => match.compLevel !== "qm")
+      : [];
+
+    const allMatches = [...practiceMatchChoices, ...qualificationMatches, ...finalsMatches]
+      .filter((match) => match.scheduleTime <= 0 || match.scheduleTime + 8 * 60 >= nowSec)
+      .sort((a, b) => {
+        const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
+        if (priorityDiff !== 0) return priorityDiff;
+        if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
+        return a.matchNumber - b.matchNumber;
+      });
+    const matchPool = allMatches.length > 0
+      ? allMatches
+      : [...practiceMatchChoices, ...qualificationMatches, ...finalsMatches].sort((a, b) => {
+          const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
+          if (priorityDiff !== 0) return priorityDiff;
+          if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
+          return a.matchNumber - b.matchNumber;
+        });
+
     const requestedMatchCount = Math.max(0, Number(config?.matchCount || 0));
-    const qualificationMatches =
-      requestedMatchCount > 0 ? qualificationMatchesBase.slice(0, requestedMatchCount) : qualificationMatchesBase;
-    if (qualificationMatches.length === 0) {
-      alert("No qualification matches available to randomize.");
+    const targetMatches = requestedMatchCount > 0 ? matchPool.slice(0, requestedMatchCount) : matchPool;
+    if (targetMatches.length === 0) {
+      alert("No matches available to randomize.");
       return;
     }
 
@@ -1159,10 +1318,15 @@ function AssignmentsContent() {
       return;
     }
 
-    if (!confirm("Randomize selected qualification assignments for this event? Existing assignments will be replaced.")) return;
+    if (!confirm("Randomize assignments for the selected match categories? Existing assignments for those categories will be replaced.")) return;
 
     try {
-      const existing = assignments.filter((assignment) => assignment.eventKey === selectedEvent);
+      const existing = assignments.filter((assignment) => {
+        if (assignment.eventKey !== selectedEvent) return false;
+        const category = getAssignmentCategory(assignment);
+        if (!category) return false;
+        return selectedCategories.includes(category);
+      });
       await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
 
       const newAssignments: Array<Omit<Assignment, "id">> = [];
@@ -1219,18 +1383,18 @@ function AssignmentsContent() {
         .sort((a, b) => b.weightedAccuracy - a.weightedAccuracy)
         .map((row) => row.member);
       const scoutOrder = lowScoutMode ? scoutsByAccuracy : [...eligibleMembers];
-      const allQualificationTeams = Array.from(
-        new Set(qualificationMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
+      const allTeams = Array.from(
+        new Set(targetMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
       );
       const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
       const manualPriorityTeams = Array.from(
         new Set([...(config?.priorityTeams || []), ...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
       );
       const { historyMap, statboticsMap } = lowScoutMode
-        ? await buildPerformanceMapsForTeams(allQualificationTeams, yearFromEvent, selectedEvent)
+        ? await buildPerformanceMapsForTeams(allTeams, yearFromEvent, selectedEvent)
         : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
 
-      qualificationMatches.forEach((match, matchIndex) => {
+      targetMatches.forEach((match, matchIndex) => {
         const rankedTeams = lowScoutMode
           ? computeTeamPriorityOrder(match.teams, manualPriorityTeams, historyMap, statboticsMap)
           : [...match.teams];
@@ -1253,7 +1417,7 @@ function AssignmentsContent() {
 
       await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "matchAssignments"), assignment)));
       await loadData();
-      alert(`Randomized ${newAssignments.length} assignments across ${qualificationMatches.length} matches.`);
+      alert(`Randomized ${newAssignments.length} assignments across ${targetMatches.length} matches.`);
     } catch (error) {
       console.error("Error randomizing assignments:", error);
       alert("Error randomizing assignments.");
@@ -1437,6 +1601,10 @@ function AssignmentsContent() {
       alert("Select at least one scout.");
       return;
     }
+    if (randomizeTarget === "match" && randomizeCategories.length === 0) {
+      alert("Select at least one match category.");
+      return;
+    }
     const matchCount = Math.max(0, parseInt(randomizeMatchCount.replace(/[^\d]/g, ""), 10) || 0);
     const config: RandomizeConfig = {
       target: randomizeTarget,
@@ -1445,6 +1613,7 @@ function AssignmentsContent() {
       scoutIds: randomizeScoutIds,
       practiceEventKey: randomizeTarget === "practice" ? randomizePracticeEventKey : undefined,
       priorityTeams: randomizePriorityTeams,
+      categories: randomizeCategories,
     };
     setShowRandomizeModal(false);
     if (config.target === "practice") {
@@ -1493,7 +1662,12 @@ function AssignmentsContent() {
         .filter((assignment) => !isEventPracticeAssignment(assignment))
         .slice()
         .sort((a, b) => {
-          const labelDiff = String(a.matchLabel || a.matchKey || "").localeCompare(String(b.matchLabel || b.matchKey || ""));
+          const aKey = getAssignmentMatchSortKey(a);
+          const bKey = getAssignmentMatchSortKey(b);
+          if (aKey.priority !== bKey.priority) return aKey.priority - bKey.priority;
+          if (aKey.setNumber !== bKey.setNumber) return aKey.setNumber - bKey.setNumber;
+          if (aKey.matchNumber !== bKey.matchNumber) return aKey.matchNumber - bKey.matchNumber;
+          const labelDiff = aKey.label.localeCompare(bKey.label);
           if (labelDiff !== 0) return labelDiff;
           return a.teamNumber - b.teamNumber;
         }),
@@ -1982,7 +2156,7 @@ function AssignmentsContent() {
                       {typeFilteredMatches.length === 0 && (
                         <p className="text-sm text-gray-500 text-center py-4">
                           {selectedMatchType === "practice"
-                            ? "No event practice matches found. Click Practice again to generate manual practice matches."
+                            ? "No event practice matches found. Use Quals/Finals or generate manual practice matches in Match Schedule."
                             : "No matches found for this type."}
                         </p>
                       )}
@@ -2202,6 +2376,31 @@ function AssignmentsContent() {
                       placeholder="Leave blank for all upcoming matches"
                     />
                   </div>
+                  {randomizeTarget === "match" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Match Categories</label>
+                      <div className="flex flex-wrap gap-3">
+                        {([
+                          { key: "practice", label: "Practice" },
+                          { key: "qualification", label: "Quals" },
+                          { key: "finals", label: "Finals" },
+                        ] as Array<{ key: RandomizeCategory; label: string }>).map((option) => (
+                          <label key={option.key} className="inline-flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={randomizeCategories.includes(option.key)}
+                              onChange={() => toggleRandomizeCategory(option.key)}
+                              className="h-4 w-4"
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Practice matches require manual entries if no event practice matches exist.
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Match Pattern</label>

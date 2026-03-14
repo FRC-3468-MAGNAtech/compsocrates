@@ -28,6 +28,15 @@ function matchLabel(match: TBAMatch) {
   return match.key;
 }
 
+function compLevelPriority(compLevel: string) {
+  if (compLevel === "qm") return 0;
+  if (compLevel === "ef") return 1;
+  if (compLevel === "qf") return 2;
+  if (compLevel === "sf") return 3;
+  if (compLevel === "f") return 4;
+  return 99;
+}
+
 async function fetchMatchesForEvent(eventKey: string, encryptedKey: string, plainKey: string): Promise<TBAMatch[]> {
   try {
     const response = await fetch("/api/tba/matches", {
@@ -96,7 +105,8 @@ function MatchListContent() {
               const rows = await fetchMatchesForEvent(event.key, encryptedKey, plainKey);
               const normalized = rows
                 .sort((a, b) => {
-                  if (a.comp_level !== b.comp_level) return a.comp_level.localeCompare(b.comp_level);
+                  const levelDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
+                  if (levelDiff !== 0) return levelDiff;
                   if (a.set_number !== b.set_number) return a.set_number - b.set_number;
                   return a.match_number - b.match_number;
                 })

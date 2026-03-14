@@ -1707,20 +1707,39 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     return progressRank[a.progress] - progressRank[b.progress];
   }
 
+  function inferGameFromEventYear(eventKey: string): AnalyticsGame | null {
+    const year = parseInt(eventKey.slice(0, 4), 10);
+    if (year === 2026) return "REBUILT";
+    if (year === 2025) return "REEFSCAPE";
+    return null;
+  }
+
+  function resolveMatchEventKey(match: PracticeMatch): string {
+    const rawEventKey = String((match as unknown as Record<string, unknown>).eventKey || "").trim().toLowerCase();
+    if (rawEventKey) return rawEventKey;
+    const matchKey = String((match as unknown as Record<string, unknown>).matchKey || "").trim().toLowerCase();
+    if (matchKey.includes("_")) return matchKey.split("_")[0] || "";
+    return "";
+  }
+
   function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
     const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
-    const eventKey = String((match as unknown as Record<string, unknown>).eventKey || "").toLowerCase();
+    const eventKey = resolveMatchEventKey(match);
+    const eventGame = eventKey ? inferGameFromEventYear(eventKey) : null;
 
     if (activeMatchGame === "REBUILT") {
-      if (!matchGame) return true;
-      return eventKey === REBUILT_WEEK0_EVENT_KEY;
+      if (matchGame === "REEFSCAPE") return false;
+      if (eventKey === REBUILT_WEEK0_EVENT_KEY) return true;
+      if (eventGame) return eventGame === "REBUILT";
+      if (matchGame) return matchGame === "REBUILT";
+      return true;
     }
 
-    if (eventKey === REBUILT_WEEK0_EVENT_KEY) {
-      return false;
-    }
-    if (!matchGame) return true;
-    return matchGame === "REEFSCAPE";
+    if (matchGame === "REBUILT") return false;
+    if (eventKey === REBUILT_WEEK0_EVENT_KEY) return false;
+    if (eventGame) return eventGame === "REEFSCAPE";
+    if (matchGame) return matchGame === "REEFSCAPE";
+    return true;
   }
 
   function getYouTubeEmbedUrl(url: string): string {
