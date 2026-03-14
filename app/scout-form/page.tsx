@@ -36,6 +36,7 @@ type MatchOption = {
 type AssignmentRow = {
   matchKey?: string;
   matchLabel?: string;
+  eventKey?: string;
   teamNumber?: number;
 };
 
