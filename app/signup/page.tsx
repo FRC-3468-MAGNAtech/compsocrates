@@ -135,6 +135,7 @@ async function createTeamJoinRequestWithFallback(input: {
 export default function SignupPage() {
   const router = useRouter();
   const { signUp, user } = useAuth();
+  const allowCreateTeam = false;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -181,6 +182,11 @@ export default function SignupPage() {
       }
     })();
   }, [firstName, lastName, router, user]);
+  useEffect(() => {
+    if (!allowCreateTeam && isCreatingTeam) {
+      setIsCreatingTeam(false);
+    }
+  }, [allowCreateTeam, isCreatingTeam]);
 
   function savePendingJoinDraft(teamId: string, requestedRole: TeamRole, emailValue: string, displayName: string) {
     if (typeof window === "undefined") return;
@@ -235,6 +241,10 @@ export default function SignupPage() {
 
     if (!isCreatingTeam && !joinCode) {
       setError("Please enter a team join code");
+      return;
+    }
+    if (isCreatingTeam && !allowCreateTeam) {
+      setError("Creating new teams is temporarily disabled. Please use your team join code.");
       return;
     }
 
@@ -481,35 +491,21 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label className="flex items-center gap-2 cursor-pointer mb-4">
-              <input
-                type="checkbox"
-                checked={isCreatingTeam}
-                onChange={(e) => setIsCreatingTeam(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <span className="text-sm font-medium text-gray-700">
-                Create a new team
-              </span>
-            </label>
-
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isCreatingTeam ? "Team ID (your choice)" : "Team Join Code"}
+              Team Join Code
             </label>
             <input
               type="text"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               className="w-full border rounded-lg p-3"
-              placeholder={isCreatingTeam ? "e.g., team3468" : "Ask your team admin"}
+              placeholder="Ask your team admin"
               autoCapitalize="characters"
               required
             />
-            {!isCreatingTeam && (
-              <p className="text-xs text-gray-500 mt-1">
-                You&apos;ll need admin approval to join the team
-              </p>
-            )}
+            <p className="text-xs text-gray-500 mt-1">
+              You&apos;ll need admin approval to join the team.
+            </p>
           </div>
 
           <button

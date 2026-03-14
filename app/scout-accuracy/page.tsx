@@ -349,6 +349,11 @@ function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE
 function ScoutAccuracyContent() {
   const { userData } = useAuth();
   const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const canViewFullAccuracy =
+    Boolean(userData?.isTeamAdmin) ||
+    userData?.role === "coach" ||
+    userRoles.includes("team-coach") ||
+    userRoles.includes("lead-scout");
   const canViewRestrictedData =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||
@@ -634,6 +639,10 @@ function ScoutAccuracyContent() {
     if (rankMode === "preserve") return filtered;
     return rankScouts(filtered.map((row) => row.scout));
   }, [attendanceFilter, eventAttendees, rankMode, scoutStats]);
+  const visibleRankedScoutStats = useMemo(() => {
+    if (canViewFullAccuracy) return rankedScoutStats;
+    return rankedScoutStats.filter(({ rank }) => rank <= 5);
+  }, [canViewFullAccuracy, rankedScoutStats]);
 
   function getAccuracyColor(accuracy: number): string {
     if (accuracy >= 95) return "text-green-600";
@@ -1108,13 +1117,15 @@ function ScoutAccuracyContent() {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Total Entries
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
+                        {canViewFullAccuracy && (
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {rankedScoutStats.map(({ scout, rank }) => {
+                      {visibleRankedScoutStats.map(({ scout, rank }) => {
                         const badge = getAccuracyBadge(scout.averageAccuracy, scout.practiceSessionsCompleted);
                         const roleBadge = getTeamRoleBadge(scout.role, scout.roles);
                         const displayRank = scout.practiceSessionsCompleted === 0 ? "?" : `#${rank}`;
@@ -1149,15 +1160,17 @@ function ScoutAccuracyContent() {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                               {scout.totalEntries}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <button
-                                onClick={() => setSelectedScout(scout.scoutName)}
-                                className="text-sm font-medium hover:underline"
-                                style={{ color: "var(--primary-color)" }}
-                              >
-                                View Details →
-                              </button>
-                            </td>
+                            {canViewFullAccuracy && (
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <button
+                                  onClick={() => setSelectedScout(scout.scoutName)}
+                                  className="text-sm font-medium hover:underline"
+                                  style={{ color: "var(--primary-color)" }}
+                                >
+                                  View Details →
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}

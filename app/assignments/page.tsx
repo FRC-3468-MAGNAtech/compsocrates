@@ -299,6 +299,7 @@ function AssignmentsContent() {
   const [showPracticeEventPicker, setShowPracticeEventPicker] = useState(false);
   const [practiceEventSearch, setPracticeEventSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [bulkDeleteInProgress, setBulkDeleteInProgress] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
   const [practiceMatchOptions, setPracticeMatchOptions] = useState<PracticeMatchOption[]>([]);
@@ -689,6 +690,21 @@ function AssignmentsContent() {
     () => members.filter((member) => String(member.displayName || "").trim().length > 0),
     [members]
   );
+  const canBulkDelete = useMemo(() => {
+    if (!userData) return false;
+    if (userData.isTeamAdmin) return true;
+    const roles = getUserRoles(userData);
+    return roles.includes("team-coach") || roles.includes("lead-scout");
+  }, [userData]);
+  const selectedEventOption = useMemo(
+    () => events.find((event) => event.key === selectedEvent) || null,
+    [events, selectedEvent]
+  );
+  const assignmentViewLabel = useMemo(() => {
+    if (assignmentView === "pit") return "Pit";
+    if (assignmentView === "practice") return "Practice";
+    return "Match";
+  }, [assignmentView]);
   const randomizeRoleKeys = useMemo(() => {
     const set = new Set<string>();
     randomizeEligibleMembers.forEach((member) => {
@@ -1070,6 +1086,51 @@ function AssignmentsContent() {
     } catch (error) {
       console.error("Error deleting practice assignment:", error);
       alert("Error deleting practice assignment");
+    }
+  }
+
+  async function deleteAssignmentsByCategory(target: "match" | "pit" | "practice") {
+    if (!userData?.teamId) return;
+    if (!canBulkDelete) {
+      alert("You do not have permission to bulk delete assignments.");
+      return;
+    }
+    const eventKey = selectedEvent;
+    if (!eventKey) {
+      alert("Select an event first.");
+      return;
+    }
+    const eventLabel = selectedEventOption?.name || eventKey;
+    const targetLabel = target === "pit" ? "pit assignments" : target === "practice" ? "practice assignments" : "match assignments";
+    if (!confirm(`Delete all ${targetLabel} for ${eventLabel}? This cannot be undone.`)) return;
+
+    setBulkDeleteInProgress(true);
+    try {
+      const collectionName =
+        target === "pit" ? "pitAssignments" : target === "practice" ? "practiceAssignments" : "matchAssignments";
+      const snap = await getDocs(query(collection(db, collectionName), where("eventKey", "==", eventKey)));
+      const docsToDelete =
+        target === "match"
+          ? snap.docs.filter((assignmentDoc) => {
+              const data = assignmentDoc.data() as Record<string, unknown>;
+              return !isEventPracticeAssignment({
+                matchKey: data.matchKey as string | undefined,
+                matchLabel: data.matchLabel as string | undefined,
+              });
+            })
+          : snap.docs;
+      if (docsToDelete.length === 0) {
+        alert(`No ${targetLabel} found for ${eventLabel}.`);
+        return;
+      }
+      await Promise.all(docsToDelete.map((assignmentDoc) => deleteDoc(doc(db, collectionName, assignmentDoc.id))));
+      await loadData();
+      alert(`Deleted ${docsToDelete.length} ${targetLabel} for ${eventLabel}.`);
+    } catch (error) {
+      console.error("Error deleting assignments:", error);
+      alert("Error deleting assignments.");
+    } finally {
+      setBulkDeleteInProgress(false);
     }
   }
 
@@ -1625,6 +1686,16 @@ function AssignmentsContent() {
                     >
                       Practice
                     </button>
+                    {canBulkDelete && (
+                      <button
+                        type="button"
+                        onClick={() => void deleteAssignmentsByCategory(assignmentView)}
+                        disabled={bulkDeleteInProgress || !selectedEvent}
+                        className="px-3 py-2 rounded text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {bulkDeleteInProgress ? "Deleting..." : `Delete ${assignmentViewLabel} Assignments`}
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="overflow-x-auto">

@@ -8,7 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
-import { getRoleBadge } from "@/app/utils/roles";
+import { getRoleBadge, getUserRoles } from "@/app/utils/roles";
 import { getEventsForGame, isInEventWindow, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 
 type UserProfile = {
@@ -31,6 +31,12 @@ type TeamDoc = {
 function ProfileContent() {
   const params = useParams<{ userId: string }>();
   const { userData } = useAuth();
+  const viewerRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const canViewAccuracy =
+    Boolean(userData?.isTeamAdmin) ||
+    userData?.role === "coach" ||
+    viewerRoles.includes("team-coach") ||
+    viewerRoles.includes("lead-scout");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [teamLabel, setTeamLabel] = useState("No team");
   const [canView, setCanView] = useState(true);
@@ -61,6 +67,12 @@ function ProfileContent() {
   >("lastScoutedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!canViewAccuracy && sortKey === "accuracy") {
+      setSortKey("lastScoutedAt");
+    }
+  }, [canViewAccuracy, sortKey]);
 
   useEffect(() => {
     async function loadProfile() {
@@ -346,17 +358,19 @@ function ProfileContent() {
                     <p className="text-xs text-gray-500">Practice Sessions</p>
                     <p className="text-2xl font-bold">{stats.practiceSessions}</p>
                   </div>
-                  <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
-                    <p className="text-xs text-gray-500">Avg Accuracy</p>
-                    <p className="text-2xl font-bold">{stats.avgAccuracy}%</p>
-                  </div>
+                  {canViewAccuracy && (
+                    <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">Avg Accuracy</p>
+                      <p className="text-2xl font-bold">{stats.avgAccuracy}%</p>
+                    </div>
+                  )}
                   <div className="snap-start min-w-[200px] p-4 border border-gray-200 rounded-lg text-center">
                     <p className="text-xs text-gray-500">Events</p>
                     <p className="text-2xl font-bold">{stats.eventsScouted}</p>
                   </div>
                 </div>
               </div>
-              <div className="hidden md:grid grid-cols-4 gap-3 text-center">
+              <div className={`hidden md:grid ${canViewAccuracy ? "grid-cols-4" : "grid-cols-3"} gap-3 text-center`}>
                 <div className="p-3 border border-gray-200 rounded-lg">
                   <p className="text-xs text-gray-500">{entriesLabel}</p>
                   <p className="text-2xl font-bold">{stats.totalEntries}</p>
@@ -365,17 +379,21 @@ function ProfileContent() {
                   <p className="text-xs text-gray-500">Practice Sessions</p>
                   <p className="text-2xl font-bold">{stats.practiceSessions}</p>
                 </div>
-                <div className="p-3 border border-gray-200 rounded-lg">
-                  <p className="text-xs text-gray-500">Avg Accuracy</p>
-                  <p className="text-2xl font-bold">{stats.avgAccuracy}%</p>
-                </div>
+                {canViewAccuracy && (
+                  <div className="p-3 border border-gray-200 rounded-lg">
+                    <p className="text-xs text-gray-500">Avg Accuracy</p>
+                    <p className="text-2xl font-bold">{stats.avgAccuracy}%</p>
+                  </div>
+                )}
                 <div className="p-3 border border-gray-200 rounded-lg">
                   <p className="text-xs text-gray-500">Events</p>
                   <p className="text-2xl font-bold">{stats.eventsScouted}</p>
                 </div>
               </div>
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">By Season / Game / Event / Match / Type / Difficulty / Accuracy</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                  By Season / Game / Event / Match / Type / Difficulty{canViewAccuracy ? " / Accuracy" : ""}
+                </h3>
                 {scoutingBreakdown.length === 0 ? (
                   <p className="text-sm text-gray-500">No scouting entries yet.</p>
                 ) : (
@@ -390,7 +408,11 @@ function ProfileContent() {
                           <th className="py-1 cursor-pointer" onClick={() => handleSort("match")}>Match {sortIndicator("match")}</th>
                           <th className="py-1 cursor-pointer" onClick={() => handleSort("scoutingType")}>Type {sortIndicator("scoutingType")}</th>
                           <th className="py-1 cursor-pointer" onClick={() => handleSort("difficulty")}>Difficulty {sortIndicator("difficulty")}</th>
-                          <th className="py-1 text-right cursor-pointer" onClick={() => handleSort("accuracy")}>Accuracy {sortIndicator("accuracy")}</th>
+                          {canViewAccuracy && (
+                            <th className="py-1 text-right cursor-pointer" onClick={() => handleSort("accuracy")}>
+                              Accuracy {sortIndicator("accuracy")}
+                            </th>
+                          )}
                           <th className="py-1 text-right cursor-pointer" onClick={() => handleSort("count")}>Entries {sortIndicator("count")}</th>
                         </tr>
                       </thead>
@@ -411,9 +433,11 @@ function ProfileContent() {
                                     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
                                     .join(" ")}
                             </td>
-                            <td className="py-1 text-right font-semibold">
-                              {row.accuracyCount > 0 ? `${Math.round(row.accuracyTotal / row.accuracyCount)}%` : "-"}
-                            </td>
+                            {canViewAccuracy && (
+                              <td className="py-1 text-right font-semibold">
+                                {row.accuracyCount > 0 ? `${Math.round(row.accuracyTotal / row.accuracyCount)}%` : "-"}
+                              </td>
+                            )}
                             <td className="py-1 text-right font-semibold">{row.count}</td>
                           </tr>
                         ))}
