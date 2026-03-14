@@ -9,7 +9,8 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
-import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { type TBAMatch } from "@/app/utils/tba-api";
+import { fetchEventMatchesWithTeamAuth } from "@/app/utils/reefscapeMatchSync";
 
 type MatchRow = {
   key: string;
@@ -61,25 +62,15 @@ function MatchListContent() {
           getUpcomingEvents(userData.teamId),
           getDoc(doc(db, "teams", userData.teamId)),
         ]);
-        const attendanceByEvent = (teamDoc.exists() ? teamDoc.data().eventAttendees : {}) as Record<string, string[]> | undefined;
-        const normalizedUid = String(userData.uid || "").trim();
-        const normalizedName = String(userData.displayName || "").trim().toLowerCase();
-        const visibleEvents = userData.isTeamAdmin
-          ? allEvents
-          : allEvents.filter((event) => {
-              const attendees = attendanceByEvent?.[event.key] || [];
-              return attendees.some((value) => {
-                const safe = String(value || "").trim();
-                return safe === normalizedUid || safe.toLowerCase() === normalizedName;
-              });
-            });
-        const orderedEvents = sortDashboardEvents(visibleEvents);
+        const orderedEvents = sortDashboardEvents(allEvents);
         setEvents(orderedEvents);
         setActiveEventKey(orderedEvents[0]?.key || "");
 
+        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
         const matches = await Promise.all(
           orderedEvents.map(async (event) => {
-            const rows = await getEventMatches(event.key);
+            const rows = await fetchEventMatchesWithTeamAuth(event.key, { encryptedKey, plainKey });
             const normalized = rows
               .sort((a, b) => {
                 if (a.comp_level !== b.comp_level) return a.comp_level.localeCompare(b.comp_level);

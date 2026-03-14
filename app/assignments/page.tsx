@@ -8,6 +8,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   query,
   setDoc,
   where,
@@ -415,7 +416,19 @@ function AssignmentsContent() {
         ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
         : [];
       const resolvedEvents = await resolveEventOptions(teamData);
-      setEvents(resolvedEvents);
+      const eventsWithAssignments = (
+        await Promise.all(
+          resolvedEvents.map(async (event) => {
+            const [matchSnap, pitSnap, practiceSnap] = await Promise.all([
+              getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", event.key), limit(1))),
+              getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", event.key), limit(1))),
+              getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", event.key), limit(1))),
+            ]);
+            return matchSnap.size > 0 || pitSnap.size > 0 || practiceSnap.size > 0 ? event : null;
+          })
+        )
+      ).filter((event): event is EventOption => Boolean(event));
+      setEvents(eventsWithAssignments);
       const fallbackFromApp = APP_EVENTS.map((event) => ({
         key: event.key,
         name: event.name,
@@ -452,15 +465,13 @@ function AssignmentsContent() {
           practiceUniverse = dedupeEventOptionsByName([...practiceUniverse, ...tbaOptions]);
         }
       }
-      const availablePracticeEvents = sortEventOptions(
-        dedupeEventOptionsByName(practiceUniverse.filter((event) => !signedEventKeys.includes(event.key)))
-      );
+      const availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse));
       setPracticeEventOptions(availablePracticeEvents);
       const scheduleOptions = sortEventOptions(dedupeEventOptionsByName([...resolvedEvents, ...availablePracticeEvents]));
       setPracticeScheduleEventOptions(scheduleOptions);
-      const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
+      const effectiveEvent = eventsWithAssignments.some((event) => event.key === selectedEvent)
         ? selectedEvent
-        : (resolvedEvents[0]?.key || "");
+        : (eventsWithAssignments[0]?.key || "");
       if (!selectedEvent || effectiveEvent !== selectedEvent) {
         setSelectedEvent(effectiveEvent);
       }

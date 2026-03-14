@@ -154,10 +154,23 @@ function PitScoutFormContent() {
       try {
         await getDoc(doc(db, "teams", userData.teamId));
         const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
-        setEventKey(resolvedEvent);
+        const pitAssignmentsSnap = await getDocs(
+          query(collection(db, "pitAssignments"), where("scoutId", "==", userData.uid))
+        );
+        const pitAssignments = pitAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        const assignmentForEvent =
+          pitAssignments.find((assignment) => String(assignment.eventKey || "").trim() === resolvedEvent) ||
+          (resolvedEvent === "app-testing" ? pitAssignments[0] : undefined);
+        const effectiveEvent = String(assignmentForEvent?.eventKey || resolvedEvent || "app-testing").trim() || "app-testing";
+        setEventKey(effectiveEvent);
 
-        if (resolvedEvent !== "app-testing") {
-          const matches = await getEventMatches(resolvedEvent);
+        const assignedTeam = String(assignmentForEvent?.teamNumber || "").trim();
+        if (assignedTeam) {
+          setForm((prev) => (prev.teamNumber ? prev : { ...prev, teamNumber: assignedTeam }));
+        }
+
+        if (effectiveEvent !== "app-testing") {
+          const matches = await getEventMatches(effectiveEvent);
           const teamSet = new Set<string>();
           matches.forEach((match) => {
             [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys].forEach((teamKey) => {
@@ -171,7 +184,7 @@ function PitScoutFormContent() {
         }
 
         const scoutedSnap = await getDocs(
-          query(collection(db, "pitScouting"), where("teamId", "==", userData.teamId), where("eventKey", "==", resolvedEvent), where("game", "==", "REBUILT"))
+          query(collection(db, "pitScouting"), where("teamId", "==", userData.teamId), where("eventKey", "==", effectiveEvent), where("game", "==", "REBUILT"))
         );
         const done = new Set<string>();
         scoutedSnap.docs.forEach((row) => {

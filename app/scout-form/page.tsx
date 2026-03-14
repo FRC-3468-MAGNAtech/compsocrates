@@ -255,6 +255,22 @@ function rowMatchesEvent(row: Record<string, unknown>, eventKey: string) {
   return isInEventWindow(timestamp, event.startDate, event.endDate);
 }
 
+function isUserAttendingEvent(
+  attendeesByEvent: Record<string, string[]> | undefined,
+  eventKey: string,
+  user: { uid?: string | null; displayName?: string | null }
+) {
+  if (!attendeesByEvent) return false;
+  const attendees = attendeesByEvent[eventKey] || [];
+  const normalizedUid = String(user.uid || "").trim();
+  const normalizedName = String(user.displayName || "").trim().toLowerCase();
+  return attendees.some((value) => {
+    const safe = String(value || "").trim();
+    if (!safe) return false;
+    return safe === normalizedUid || safe.toLowerCase() === normalizedName;
+  });
+}
+
 function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number) {
   return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (BPS[bpsScale] || 0) * seconds)));
 }
@@ -890,8 +906,10 @@ function ScoutFormContent() {
         }
 
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
-        const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
+        const teamData = teamDoc.data() as Record<string, unknown> | undefined;
+        const encryptedKey = String(teamData?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamData?.tbaApiKey || "").trim();
+        const attendeesByEvent = (teamData?.eventAttendees || {}) as Record<string, string[]>;
         const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
 
         const modalOptions = buildReefscapeModalOptions(matches);
@@ -924,29 +942,48 @@ function ScoutFormContent() {
         setTargets(next.length > 0 ? nextTargets : {});
         setModalCompleted(matches.length > 0 ? buildCompletedModalIdsFromTba(matches) : new Set());
 
-        const now = Date.now() / 1000;
-        const ordered = resolved.slice().sort((a, b) => {
-          const aTime = Number(a.scheduleTime || 0);
-          const bTime = Number(b.scheduleTime || 0);
-          if (aTime > 0 && bTime > 0) return aTime - bTime;
-          if (aTime > 0 && bTime <= 0) return -1;
-          if (aTime <= 0 && bTime > 0) return 1;
-          return a.matchNumber - b.matchNumber;
-        });
-        const nextMatch = ordered.find((match) => Number(match.scheduleTime || 0) >= now) || ordered[0] || null;
-        setSelectedMatch((current) => current || nextMatch);
-
         const assignmentSnapByEvent = await getDocs(
           query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent), where("scoutId", "==", userData.uid))
         );
         const assigned: Record<string, string> = {};
+        const assignedMatchIds = new Set<string>();
         assignmentSnapByEvent.docs.forEach((row) => {
           const data = row.data() as AssignmentRow;
           const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
           const team = String(data.teamNumber || "").trim();
-          if (matchId && team) assigned[matchId] = team;
+          if (matchId) {
+            assignedMatchIds.add(matchId);
+            if (team) assigned[matchId] = team;
+          }
         });
         setAssignedTeams(assigned);
+
+        const now = Date.now() / 1000;
+        const graceSeconds = 10 * 60;
+        const pickNextBySchedule = (rows: MatchOption[]) => {
+          const scheduled = rows
+            .map((match) => ({ match, time: Number(match.scheduleTime || 0) }))
+            .filter((row) => row.time > 0 && row.time >= now - graceSeconds)
+            .sort((a, b) => a.time - b.time);
+          if (scheduled.length > 0) return scheduled[0]?.match || null;
+          return rows.slice().sort((a, b) => a.matchNumber - b.matchNumber)[0] || null;
+        };
+
+        const assignedMatches = resolved.filter((match) => assignedMatchIds.has(match.id));
+        const isAttending = assignedMatchIds.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
+        let nextMatch: MatchOption | null = null;
+        if (assignedMatches.length > 0) {
+          nextMatch = pickNextBySchedule(assignedMatches);
+        } else if (!isAttending) {
+          nextMatch =
+            resolved.find((match) => match.type === "qualification" && match.matchNumber === 1) ||
+            resolved.find((match) => match.type === "qualification") ||
+            resolved[0] ||
+            null;
+        } else {
+          nextMatch = pickNextBySchedule(resolved);
+        }
+        setSelectedMatch((current) => current || nextMatch);
       } catch (error) {
         console.error("Failed to load match context:", error);
         const fallback = buildFallbackScoutOptions();
@@ -1355,13 +1392,18 @@ function ScoutFormContent() {
                   <label className="block text-sm font-medium text-gray-700">Scout Name</label>
                   <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.scoutName} disabled />
                   <label className="block text-sm font-medium text-gray-700">Team Number</label>
-                  {assignedTeam ? (
-                    <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.teamNumber} disabled />
-                  ) : selectedTeams.length > 0 ? (
+                  {selectedTeams.length > 0 ? (
                     <div className="flex gap-2">
                       <select className="flex-1 border rounded p-2" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value }))}>
                         <option value="">Select Team</option>
-                        {selectedTeams.map((team) => <option key={team} value={team} disabled={selectedScoutedTeams.has(team)}>{selectedScoutedTeams.has(team) ? `${team} (Scouted)` : team}</option>)}
+                        {assignedTeam && !selectedTeams.includes(assignedTeam) && (
+                          <option value={assignedTeam}>{`${assignedTeam} (Assigned)`}</option>
+                        )}
+                        {selectedTeams.map((team) => (
+                          <option key={team} value={team} disabled={selectedScoutedTeams.has(team)}>
+                            {selectedScoutedTeams.has(team) ? `${team} (Scouted)` : team}
+                          </option>
+                        ))}
                       </select>
                       <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
                     </div>

@@ -128,14 +128,15 @@ function FinalsBracket({
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
   const now = Date.now() / 1000;
+  const graceSeconds = 10 * 60;
   const nextByTime =
     availableNumbers
       .map((n) => ({ n, t: Number(timesByNumber.get(n) || 0) }))
-      .filter((row) => row.t > 0 && row.t >= now)
+      .filter((row) => row.t > 0 && row.t >= now - graceSeconds)
       .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
   const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
-  // Prefer the earliest incomplete bracket slot to avoid jumping ahead.
-  const nextSlot = firstOpen > 0 ? firstOpen : nextByTime;
+  // Prefer the soonest scheduled match (with grace), otherwise fall back to the earliest incomplete slot.
+  const nextSlot = nextByTime > 0 ? nextByTime : firstOpen;
   const resolvedStatusOf = (n: number): MatchStatus => {
     if (completedNumbers.has(n)) return "completed";
     if (n === nextSlot) return "next";
