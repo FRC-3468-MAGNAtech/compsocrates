@@ -34,6 +34,10 @@ export interface TBAMatch {
   comp_level: "qm" | "ef" | "qf" | "sf" | "f"; // qualification, eighths, quarters, semis, finals
   set_number: number;
   match_number: number;
+  videos?: Array<{
+    type: string;
+    key: string;
+  }>;
   alliances: {
     red: {
       team_keys: string[]; // ["frc1234", "frc5678", "frc9012"]

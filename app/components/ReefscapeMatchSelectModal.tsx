@@ -129,6 +129,8 @@ function FinalsBracket({
   const totalWidth = c5 + B.w;
   const now = Date.now() / 1000;
   const graceSeconds = 10 * 60;
+  const hasScheduleTimes = availableNumbers.some((n) => Number(timesByNumber.get(n) || 0) > 0);
+  const hasCompleted = completedNumbers.size > 0;
   const nextByTime =
     availableNumbers
       .filter((n) => !completedNumbers.has(n))
@@ -137,7 +139,11 @@ function FinalsBracket({
       .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
   const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
   // Prefer the soonest scheduled match (with grace), otherwise fall back to the earliest incomplete slot.
-  const nextSlot = nextByTime > 0 ? nextByTime : firstOpen;
+  const nextSlot = hasScheduleTimes
+    ? (nextByTime > 0 ? nextByTime : firstOpen)
+    : hasCompleted
+    ? firstOpen
+    : -1;
   const resolvedStatusOf = (n: number): MatchStatus => {
     if (completedNumbers.has(n)) return "completed";
     if (n === nextSlot) return "next";
