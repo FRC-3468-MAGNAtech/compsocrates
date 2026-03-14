@@ -74,7 +74,7 @@ type MatchOption = {
   key: string;
   label: string;
   teams: number[];
-  compLevel: TBAMatch["comp_level"];
+  compLevel: TBAMatch["comp_level"] | "pm";
   matchNumber: number;
   setNumber: number;
   scheduleTime: number;
