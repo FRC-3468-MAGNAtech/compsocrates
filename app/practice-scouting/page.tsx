@@ -16,6 +16,7 @@ import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvent
 import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { buildCompletedModalIdsFromTba, buildReefscapeModalOptions, isTbaMatchCompleted } from "@/app/utils/reefscapeMatchSync";
+import { getEffectiveNowSec } from "@/app/utils/teamTime";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -848,9 +849,9 @@ function getModalIdForMatch(match: CandidatePracticeMatch): string {
   return finalsKind === "bracket" ? `sf${parsedNumber}` : `f${parsedNumber}`;
 }
 
-function pickNextModalIdFromOptions(options: ReefscapeMatchOption[], completed: Set<string>): string {
+function pickNextModalIdFromOptions(options: ReefscapeMatchOption[], completed: Set<string>, nowSec: number): string {
   if (options.length === 0) return "";
-  const now = Date.now() / 1000;
+  const now = nowSec;
 
   const bracketOptions = options.filter((opt) => opt.type === "finals" && opt.id.startsWith("sf"));
   if (bracketOptions.length > 0) {
@@ -897,12 +898,12 @@ function pickNextModalIdFromOptions(options: ReefscapeMatchOption[], completed: 
   return firstIncomplete?.id || "";
 }
 
-function pickNextModalIdFromTba(matches: TBAMatch[]): string {
+function pickNextModalIdFromTba(matches: TBAMatch[], nowSec: number): string {
   if (!matches.length) return "";
   const options = buildReefscapeModalOptions(matches);
   if (options.length === 0) return "";
   const completed = buildCompletedModalIdsFromTba(matches);
-  return pickNextModalIdFromOptions(options, completed);
+  return pickNextModalIdFromOptions(options, completed, nowSec);
 }
 
 function buildModalOptionsFromCandidates(matches: CandidatePracticeMatch[]): {
@@ -1022,7 +1023,7 @@ function resolvePracticeEvent(
 
 function PracticeScoutingContent() {
   const router = useRouter();
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
@@ -2452,7 +2453,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (aTime <= 0 && bTime > 0) return 1;
       return Number(a.matchNumber || 0) - Number(b.matchNumber || 0);
     });
-    const nowSec = Math.floor(Date.now() / 1000);
+    const nowSec = getEffectiveNowSec(teamTimeOverride);
     const active = sortedPool.find((match) => {
       const time = Number((match as unknown as Record<string, unknown>).scheduleTime || 0);
       const done = Boolean((match as unknown as Record<string, unknown>).isCompleted);
@@ -2466,10 +2467,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     let preferred = active;
     if (!preferred) {
       const preferredModalId = liveTbaMatches.length > 0
-        ? pickNextModalIdFromTba(liveTbaMatches)
+        ? pickNextModalIdFromTba(liveTbaMatches, nowSec)
         : (() => {
             const { options, completed } = buildModalOptionsFromCandidates(pool);
-            return pickNextModalIdFromOptions(options, completed);
+            return pickNextModalIdFromOptions(options, completed, nowSec);
           })();
       if (preferredModalId) {
         preferred =

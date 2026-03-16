@@ -13,6 +13,7 @@ import { db } from "@/app/firebase";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
+import { getEffectiveNowSec } from "@/app/utils/teamTime";
 import {
   buildCompletedModalIdsFromTba,
   buildReefscapeModalOptions,
@@ -782,7 +783,7 @@ function mapAssignmentToMatchId(labelOrKey: string) {
 }
 function ScoutFormContent() {
   const router = useRouter();
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const searchParams = useSearchParams();
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
@@ -960,7 +961,7 @@ function ScoutFormContent() {
         });
         setAssignedTeams(assigned);
 
-        const now = Date.now() / 1000;
+        const now = getEffectiveNowSec(teamTimeOverride);
         const graceSeconds = 10 * 60;
         const pickNextBySchedule = (rows: MatchOption[]) => {
           const scheduled = rows
@@ -996,7 +997,7 @@ function ScoutFormContent() {
       }
     }
     void loadEventContext();
-  }, [userData?.teamId, userData?.uid]);
+  }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
   useEffect(() => {
     async function loadScouted() {
       if (!eventKey) return;

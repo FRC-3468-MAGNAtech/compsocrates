@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
+import { getEffectiveNowMs, toLocalDateTimeInputValue } from "@/app/utils/teamTime";
 
 type OwnerManagedUser = {
   uid: string;
@@ -18,7 +19,7 @@ type OwnerManagedUser = {
 };
 
 function AdminPanelContent() {
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const [savingDashboard, setSavingDashboard] = useState(false);
   const [ownerAllowed, setOwnerAllowed] = useState(false);
   const [ownerLoading, setOwnerLoading] = useState(true);
@@ -28,6 +29,8 @@ function AdminPanelContent() {
   const [managedUser, setManagedUser] = useState<OwnerManagedUser | null>(null);
   const [ownerDraftName, setOwnerDraftName] = useState("");
   const [ownerSaving, setOwnerSaving] = useState(false);
+  const [timeInput, setTimeInput] = useState("");
+  const [timeSaving, setTimeSaving] = useState(false);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
     { label: "Pit Scout", value: "/pit-scout-dashboard" },
@@ -63,6 +66,12 @@ function AdminPanelContent() {
     }
     void loadOwnerAccess();
   }, [userData?.uid, userData?.email]);
+
+  useEffect(() => {
+    if (!userData?.teamId) return;
+    const effectiveNow = getEffectiveNowMs(teamTimeOverride);
+    setTimeInput(toLocalDateTimeInputValue(effectiveNow));
+  }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
   async function savePreferredDashboard(nextValue: string) {
     if (!userData?.uid) return;
@@ -147,6 +156,67 @@ function AdminPanelContent() {
     }
   }
 
+  async function saveTeamTimeOverride() {
+    if (!userData?.teamId || !userData?.uid) return;
+    const nextValue = timeInput.trim();
+    if (!nextValue) {
+      alert("Pick a date/time first.");
+      return;
+    }
+    const targetMs = new Date(nextValue).getTime();
+    if (!Number.isFinite(targetMs)) {
+      alert("Invalid date/time.");
+      return;
+    }
+    const offsetMs = targetMs - Date.now();
+    setTimeSaving(true);
+    try {
+      await setDoc(
+        doc(db, "teams", userData.teamId),
+        {
+          timeOverride: {
+            enabled: true,
+            offsetMs,
+            updatedAt: Date.now(),
+            updatedBy: userData.uid,
+          },
+        },
+        { merge: true }
+      );
+      alert("Simulated date/time updated.");
+    } catch (error) {
+      console.error("Failed to save time override:", error);
+      alert("Unable to update simulated time.");
+    } finally {
+      setTimeSaving(false);
+    }
+  }
+
+  async function clearTeamTimeOverride() {
+    if (!userData?.teamId || !userData?.uid) return;
+    setTimeSaving(true);
+    try {
+      await setDoc(
+        doc(db, "teams", userData.teamId),
+        {
+          timeOverride: {
+            enabled: false,
+            offsetMs: 0,
+            updatedAt: Date.now(),
+            updatedBy: userData.uid,
+          },
+        },
+        { merge: true }
+      );
+      alert("Simulated time disabled.");
+    } catch (error) {
+      console.error("Failed to clear time override:", error);
+      alert("Unable to disable simulated time.");
+    } finally {
+      setTimeSaving(false);
+    }
+  }
+
   if (ownerLoading) {
     return (
       <div className="flex h-screen bg-gray-50">
@@ -199,6 +269,44 @@ function AdminPanelContent() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md p-6 border mb-4">
+            <h2 className="text-xl font-semibold mb-2">Simulated Date / Time</h2>
+            <p className="text-sm text-gray-600 mb-3">
+              Use this to test event windows when no competitions are currently live.
+            </p>
+            <div className="grid gap-3 max-w-md">
+              <input
+                type="datetime-local"
+                className="w-full border rounded p-2"
+                value={timeInput}
+                onChange={(event) => setTimeInput(event.target.value)}
+              />
+              <p className="text-xs text-gray-500">
+                {teamTimeOverride?.enabled ? "Override enabled" : "Override disabled"} · Effective now:{" "}
+                {new Date(getEffectiveNowMs(teamTimeOverride)).toLocaleString()}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveTeamTimeOverride()}
+                  disabled={timeSaving}
+                  className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
+                  style={{ backgroundColor: "var(--primary-color)" }}
+                >
+                  Apply Simulated Time
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void clearTeamTimeOverride()}
+                  disabled={timeSaving}
+                  className="px-4 py-2 rounded border border-gray-300 text-gray-700 disabled:opacity-60"
+                >
+                  Use Real Time
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">

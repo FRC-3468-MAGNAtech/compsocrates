@@ -1,6 +1,7 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
+import { getEffectiveNowDate, getEffectiveNowMs, parseTeamTimeOverride } from "@/app/utils/teamTime";
 
 export type DetectedEventOption = {
   key: string;
@@ -53,6 +54,8 @@ export async function getTeamEventOptions(teamId: string): Promise<DetectedEvent
   const teamDoc = await getDoc(doc(db, "teams", teamId));
   if (!teamDoc.exists()) return [];
   const teamData = teamDoc.data() as Record<string, unknown>;
+  const override = parseTeamTimeOverride(teamData);
+  const baseYear = getEffectiveNowDate(override).getFullYear();
   const selectedEvents = Array.isArray(teamData.selectedEvents)
     ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
     : [];
@@ -77,7 +80,7 @@ export async function getTeamEventOptions(teamId: string): Promise<DetectedEvent
       const year = Number(eventKey.slice(0, 4));
       if (Number.isFinite(year)) years.add(year);
     });
-    if (years.size === 0) years.add(new Date().getFullYear());
+    if (years.size === 0) years.add(baseYear);
 
     const responses = await Promise.all(
       Array.from(years).map(async (year) => {
@@ -127,9 +130,13 @@ export async function getTeamEventOptions(teamId: string): Promise<DetectedEvent
 }
 
 export async function resolveDetectedTeamEvent(teamId: string): Promise<DetectedEventOption | null> {
-  const options = await getTeamEventOptions(teamId);
+  const [options, teamDoc] = await Promise.all([
+    getTeamEventOptions(teamId),
+    getDoc(doc(db, "teams", teamId)),
+  ]);
   if (options.length === 0) return null;
-  const key = pickDetectedEventKey(options, Date.now());
+  const override = teamDoc.exists() ? parseTeamTimeOverride(teamDoc.data() as Record<string, unknown>) : null;
+  const key = pickDetectedEventKey(options, getEffectiveNowMs(override));
   return options.find((event) => event.key === key) || options[0] || null;
 }
 

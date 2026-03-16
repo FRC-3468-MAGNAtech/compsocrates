@@ -13,11 +13,12 @@ import {
   updateProfile,
   sendEmailVerification
 } from "firebase/auth";
-import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { auth, db } from "@/app/firebase";
 import { setSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { TeamRole, normalizeLegacyRole } from "@/app/utils/roles";
 import { withHiddenOwnerPermissions } from "@/app/utils/ownerPermissions";
+import { parseTeamTimeOverride, type TeamTimeOverride } from "@/app/utils/teamTime";
 
 // User data structure
 export type UserRole = TeamRole | "scout" | "coach";
@@ -47,6 +48,7 @@ type AuthContextType = {
   user: User | null;
   currentUser: User | null;
   userData: UserData | null;
+  teamTimeOverride: TeamTimeOverride | null;
   loading: boolean;
   signUp: (email: string, password: string, name: string, role: UserRole, teamId: string, isTeamAdmin: boolean) => Promise<string>;
   signIn: (email: string, password: string) => Promise<void>;
@@ -59,6 +61,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   currentUser: null,
   userData: null,
+  teamTimeOverride: null,
   loading: true,
   signUp: async () => "",
   signIn: async () => {},
@@ -70,6 +73,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [teamTimeOverride, setTeamTimeOverride] = useState<TeamTimeOverride | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -290,11 +294,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [router]);
 
+  useEffect(() => {
+    if (!userData?.teamId) {
+      setTeamTimeOverride(null);
+      return;
+    }
+    const teamRef = doc(db, "teams", userData.teamId);
+    const unsubscribe = onSnapshot(
+      teamRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setTeamTimeOverride(null);
+          return;
+        }
+        setTeamTimeOverride(parseTeamTimeOverride(snap.data()));
+      },
+      (error) => {
+        console.error("Failed to load team time override:", error);
+        setTeamTimeOverride(null);
+      }
+    );
+    return () => unsubscribe();
+  }, [userData?.teamId]);
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       currentUser: user,
-      userData, 
+      userData,
+      teamTimeOverride,
       loading, 
       signUp, 
       signIn, 

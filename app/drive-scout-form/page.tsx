@@ -9,6 +9,7 @@ import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/comp
 import { useAuth } from "@/app/AuthContext";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
+import { getEffectiveNowSec } from "@/app/utils/teamTime";
 import {
   buildCompletedModalIdsFromTba,
   buildReefscapeModalOptions,
@@ -180,7 +181,7 @@ function MatchPickerModal({
 }
 
 function DriveReflectionFormContent() {
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [notes, setNotes] = useState("");
@@ -288,7 +289,7 @@ function DriveReflectionFormContent() {
           (match) => assignedMatchKeys.has(match.key) || assignedMatchKeys.has(match.label)
         );
 
-        const now = Date.now() / 1000;
+        const now = getEffectiveNowSec(teamTimeOverride);
         const graceSeconds = 10 * 60;
         const pickNextBySchedule = (rows: MatchOption[]) => {
           const scheduled = rows
@@ -334,7 +335,7 @@ function DriveReflectionFormContent() {
     }
 
     void loadMatches();
-  }, [userData?.teamId]);
+  }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
   function setRobotTeamDefaults(match: MatchOption, ourTeam: string) {
     const teammates = match.teams.slice(0, 3);

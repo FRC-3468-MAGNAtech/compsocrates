@@ -14,6 +14,7 @@ import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { canAccessForm, normalizeFormAccessOverrides, type FormAccessOverrides, type TeamRole } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, MapPin, Target, TriangleAlert } from "lucide-react";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
+import { getEffectiveNowMs, getEffectiveNowSec } from "@/app/utils/teamTime";
 
 type DashboardMatch = {
   key: string;
@@ -98,16 +99,15 @@ function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
     }));
 }
 
-function isPastEvent(event: UpcomingEvent) {
-  const now = Date.now();
+function isPastEvent(event: UpcomingEvent, nowMs: number) {
   const end = new Date(`${event.endDate}T23:59:59`).getTime();
-  return Number.isFinite(end) && now > end;
+  return Number.isFinite(end) && nowMs > end;
 }
 
-function sortDashboardEvents(events: UpcomingEvent[]) {
+function sortDashboardEvents(events: UpcomingEvent[], nowMs: number) {
   return [...events].sort((a, b) => {
-    const aPast = isPastEvent(a);
-    const bPast = isPastEvent(b);
+    const aPast = isPastEvent(a, nowMs);
+    const bPast = isPastEvent(b, nowMs);
     if (aPast !== bPast) return aPast ? 1 : -1;
     const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
     const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
@@ -115,11 +115,10 @@ function sortDashboardEvents(events: UpcomingEvent[]) {
   });
 }
 
-function isEventActive(event: UpcomingEvent) {
-  const now = Date.now();
+function isEventActive(event: UpcomingEvent, nowMs: number) {
   const start = new Date(`${event.startDate}T00:00:00`).getTime();
   const end = new Date(`${event.endDate}T23:59:59`).getTime();
-  return now >= start && now <= end;
+  return nowMs >= start && nowMs <= end;
 }
 
 function parseTeamNumber(input: string | undefined | null): number | null {
@@ -142,7 +141,7 @@ function TeamRoleDashboardContent({
   driveTeamFocus,
   showManualScoutFallback,
 }: Omit<TeamRoleDashboardProps, "role">) {
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<TeamStats | null>(null);
@@ -153,6 +152,7 @@ function TeamRoleDashboardContent({
   const [unscoutedTeams, setUnscoutedTeams] = useState<number[]>([]);
   const [nextTeamMatch, setNextTeamMatch] = useState<DashboardMatch | null>(null);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
+  const nowMs = getEffectiveNowMs(teamTimeOverride);
 
   useEffect(() => {
     if (userData && !userData.teamId) {
@@ -161,7 +161,7 @@ function TeamRoleDashboardContent({
     }
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userData?.teamId, userData?.uid]);
+  }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
   async function loadData() {
     if (!userData?.teamId || !userData?.uid) return;
@@ -183,7 +183,7 @@ function TeamRoleDashboardContent({
         userData.uid || "",
         userData.displayName || ""
       );
-      const orderedEvents = sortDashboardEvents(visibleEvents);
+      const orderedEvents = sortDashboardEvents(visibleEvents, nowMs);
 
       setStats(teamStats);
       setUpcomingEvents(orderedEvents);
@@ -232,7 +232,7 @@ function TeamRoleDashboardContent({
         const teamNumber = parseTeamNumber(String(teamDoc.data()?.teamNumber || teamDoc.data()?.teamName || userData.teamId));
         if (teamNumber) {
           const allMatches: DashboardMatch[] = Object.values(matchMap).flatMap((matches: DashboardMatch[]) => matches);
-          const nowSec = Math.floor(Date.now() / 1000);
+          const nowSec = getEffectiveNowSec(teamTimeOverride);
           const nextMatch = allMatches
             .filter((match: DashboardMatch) => match.scheduleTime > nowSec)
             .filter((match: DashboardMatch) => [...match.redTeams, ...match.blueTeams].includes(teamNumber))
@@ -343,7 +343,7 @@ function TeamRoleDashboardContent({
               {pitTeamFocus && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6">
                   <h2 className="text-xl font-semibold mb-2">Helper Form Status</h2>
-                  {activeEvent && isEventActive(activeEvent) ? (
+                  {activeEvent && isEventActive(activeEvent, nowMs) ? (
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <p className="text-sm text-gray-700">Competition is active. Log any pit assistance in the Helper Form.</p>
                       <button

@@ -10,6 +10,7 @@ import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { getEffectiveNowMs } from "@/app/utils/teamTime";
 
 type MatchRow = {
   key: string;
@@ -60,16 +61,15 @@ async function fetchMatchesForEvent(eventKey: string, encryptedKey: string, plai
   }
 }
 
-function isPastEvent(event: UpcomingEvent) {
-  const now = Date.now();
+function isPastEvent(event: UpcomingEvent, nowMs: number) {
   const end = new Date(`${event.endDate}T23:59:59`).getTime();
-  return Number.isFinite(end) && now > end;
+  return Number.isFinite(end) && nowMs > end;
 }
 
-function sortDashboardEvents(events: UpcomingEvent[]) {
+function sortDashboardEvents(events: UpcomingEvent[], nowMs: number) {
   return [...events].sort((a, b) => {
-    const aPast = isPastEvent(a);
-    const bPast = isPastEvent(b);
+    const aPast = isPastEvent(a, nowMs);
+    const bPast = isPastEvent(b, nowMs);
     if (aPast !== bPast) return aPast ? 1 : -1;
     const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
     const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
@@ -78,7 +78,7 @@ function sortDashboardEvents(events: UpcomingEvent[]) {
 }
 
 function MatchListContent() {
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<UpcomingEvent[]>([]);
   const [activeEventKey, setActiveEventKey] = useState("");
@@ -89,11 +89,12 @@ function MatchListContent() {
       if (!userData?.teamId) return;
       setLoading(true);
       try {
+        const nowMs = getEffectiveNowMs(teamTimeOverride);
         const [allEvents, teamDoc] = await Promise.all([
           getUpcomingEvents(userData.teamId),
           getDoc(doc(db, "teams", userData.teamId)),
         ]);
-        const orderedEvents = sortDashboardEvents(allEvents);
+        const orderedEvents = sortDashboardEvents(allEvents, nowMs);
         setEvents(orderedEvents);
         setActiveEventKey(orderedEvents[0]?.key || "");
 
@@ -135,7 +136,7 @@ function MatchListContent() {
       }
     }
     void load();
-  }, [userData?.teamId, userData?.uid, userData?.displayName, userData?.isTeamAdmin]);
+  }, [userData?.teamId, userData?.uid, userData?.displayName, userData?.isTeamAdmin, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
   const activeMatches = useMemo(() => matchesByEvent[activeEventKey] || [], [matchesByEvent, activeEventKey]);
 

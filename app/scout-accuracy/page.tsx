@@ -26,6 +26,7 @@ interface ScoutStats {
   recentAccuracies: number[];
   recentSessions: Array<{
     sessionId: string;
+    sessionNumber: number;
     accuracy: number;
     timestamp: number;
     deviceType?: "mobile" | "pc";
@@ -35,6 +36,7 @@ interface ScoutStats {
   }>;
   allSessions: Array<{
     sessionId: string;
+    sessionNumber: number;
     accuracy: number;
     timestamp: number;
     deviceType?: "mobile" | "pc";
@@ -365,6 +367,7 @@ function ScoutAccuracyContent() {
     userData?.role === "coach" ||
     userRoles.includes("team-coach");
   const [flagSaveKey, setFlagSaveKey] = useState("");
+  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
@@ -445,8 +448,10 @@ function ScoutAccuracyContent() {
             if (!entityId) return;
             teamFlagStateById.set(flagStateDocId(entityType, entityId), row);
           });
+          setFlagStates(Object.fromEntries(teamFlagStateById.entries()));
         } catch (error) {
           console.warn("Unable to load scouting flag states for scout accuracy. Continuing without flag states.", error);
+          setFlagStates({});
         }
       }
       const statsPromises = memberData.map(async (member) => {
@@ -562,8 +567,22 @@ function ScoutAccuracyContent() {
         const sortedTimeline = accuracyTimeline
           .slice()
           .sort((a, b) => b.timestamp - a.timestamp);
-        recentSessions = sortedTimeline.slice(0, 5);
-        allSessions = sortedTimeline;
+        const chronological = accuracyTimeline
+          .slice()
+          .sort((a, b) => {
+            if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+            return a.sessionId.localeCompare(b.sessionId);
+          });
+        const sessionNumberById = new Map<string, number>();
+        chronological.forEach((row, idx) => {
+          sessionNumberById.set(row.sessionId, idx + 1);
+        });
+        const withSessionNumber = (row: typeof accuracyTimeline[number]) => ({
+          ...row,
+          sessionNumber: sessionNumberById.get(row.sessionId) || 1,
+        });
+        recentSessions = sortedTimeline.slice(0, 5).map(withSessionNumber);
+        allSessions = sortedTimeline.map(withSessionNumber);
         recentAccuracies = recentSessions.map((row) => row.accuracy);
         const averageAccuracy = includedAccuracyCount > 0
           ? Math.round(totalAccuracy / includedAccuracyCount)
@@ -848,56 +867,59 @@ function ScoutAccuracyContent() {
     }
   }
 
-  async function setPracticeSessionFlagDismissed(sessionId: string, dismissed: boolean) {
+  async function updatePracticeSessionFlagState(sessionId: string, patch: Partial<StoredFlagState>) {
     if (!canManageFlags || !userData?.teamId) return;
     const key = flagStateDocId("practiceSession", sessionId);
     setFlagSaveKey(key);
+    const existing = flagStates[key];
     try {
+      const nextState: StoredFlagState = {
+        entityType: "practiceSession",
+        entityId: sessionId,
+        dismissed: patch.dismissed ?? existing?.dismissed ?? false,
+        manualFlagged: patch.manualFlagged ?? existing?.manualFlagged ?? false,
+        manualReason: patch.manualReason ?? existing?.manualReason,
+        manualFlaggedAt: patch.manualFlaggedAt ?? existing?.manualFlaggedAt,
+        manualFlaggedBy: patch.manualFlaggedBy ?? existing?.manualFlaggedBy,
+        excludeFromAccuracy: patch.excludeFromAccuracy ?? existing?.excludeFromAccuracy ?? false,
+        excludeReason: patch.excludeReason ?? existing?.excludeReason,
+        excludedAt: patch.excludedAt ?? existing?.excludedAt,
+        excludedBy: patch.excludedBy ?? existing?.excludedBy,
+        dismissedAt: patch.dismissedAt ?? existing?.dismissedAt,
+        dismissedBy: patch.dismissedBy ?? existing?.dismissedBy,
+      };
       await setDoc(
         doc(db, "scoutingFlagStates", key),
         {
           teamId: userData.teamId,
-          entityType: "practiceSession",
-          entityId: sessionId,
-          dismissed,
-          dismissedAt: Date.now(),
-          dismissedBy: userData.uid || "",
+          ...nextState,
         },
         { merge: true }
       );
+      setFlagStates((prev) => ({ ...prev, [key]: nextState }));
       await loadScoutStats();
     } catch (error) {
       console.error("Failed updating practice session flag state:", error);
-      alert("Could not update flag state.");
+      alert("Could not update accuracy exclusion.");
     } finally {
       setFlagSaveKey("");
     }
   }
 
+  async function setPracticeSessionFlagDismissed(sessionId: string, dismissed: boolean) {
+    await updatePracticeSessionFlagState(sessionId, {
+      dismissed,
+      dismissedAt: Date.now(),
+      dismissedBy: userData?.uid || "",
+    });
+  }
+
   async function setPracticeSessionExcluded(sessionId: string, excluded: boolean) {
-    if (!canManageFlags || !userData?.teamId) return;
-    const key = flagStateDocId("practiceSession", sessionId);
-    setFlagSaveKey(key);
-    try {
-      await setDoc(
-        doc(db, "scoutingFlagStates", key),
-        {
-          teamId: userData.teamId,
-          entityType: "practiceSession",
-          entityId: sessionId,
-          excludeFromAccuracy: excluded,
-          excludedAt: Date.now(),
-          excludedBy: userData.uid || "",
-        },
-        { merge: true }
-      );
-      await loadScoutStats();
-    } catch (error) {
-      console.error("Failed updating practice session exclusion state:", error);
-      alert("Could not update accuracy exclusion.");
-    } finally {
-      setFlagSaveKey("");
-    }
+    await updatePracticeSessionFlagState(sessionId, {
+      excludeFromAccuracy: excluded,
+      excludedAt: Date.now(),
+      excludedBy: userData?.uid || "",
+    });
   }
 
   return (
@@ -1238,7 +1260,7 @@ function ScoutAccuracyContent() {
                             {selectedScoutData.recentSessions.map((session, i) => (
                               <div key={i} className="flex items-center gap-4">
                                 <div className="text-sm text-gray-600 w-40">
-                                  <div>{`Session ${i + 1}`}</div>
+                                  <div>{`Session ${session.sessionNumber}`}</div>
                                   <div className="text-xs">
                                     {session.deviceType === "mobile"
                                       ? "Mobile"
@@ -1411,7 +1433,7 @@ function ScoutAccuracyContent() {
                       {selectedScoutData.allSessions.map((session, i) => (
                         <div key={session.sessionId} className="flex items-center gap-4">
                           <div className="text-sm text-gray-600 w-40">
-                            <div>{`Session ${i + 1}`}</div>
+                            <div>{`Session ${session.sessionNumber}`}</div>
                             <div className="text-xs">
                               {session.deviceType === "mobile"
                                 ? "Mobile"

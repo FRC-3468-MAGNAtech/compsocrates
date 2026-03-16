@@ -4,6 +4,7 @@ import { db } from "@/app/firebase";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 import { getUserRoles } from "@/app/utils/roles";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
+import { getEffectiveNowDate, parseTeamTimeOverride } from "@/app/utils/teamTime";
 
 export interface TeamStats {
   totalEntries: number;
@@ -231,7 +232,8 @@ export function formatActivity(activity: Activity): string {
 }
 
 export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[]> {
-  const now = new Date();
+  let now = new Date();
+  let baseYear = now.getFullYear();
   let selectedEventKeys: string[] = [];
   let encryptedKey = "";
   let plainKey = "";
@@ -240,6 +242,9 @@ export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[
     const teamDoc = await getDoc(doc(db, "teams", teamId));
     if (teamDoc.exists()) {
       const teamData = teamDoc.data();
+      const override = parseTeamTimeOverride(teamData as Record<string, unknown>);
+      now = getEffectiveNowDate(override);
+      baseYear = now.getFullYear();
       if (Array.isArray(teamData.selectedEvents)) {
         selectedEventKeys = dedupeEventKeys(teamData.selectedEvents.map((value: unknown) => String(value || "")));
       }
@@ -261,7 +266,7 @@ export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[
         const year = Number(String(eventKey).slice(0, 4));
         if (Number.isFinite(year)) years.add(year);
       });
-      if (years.size === 0) years.add(new Date().getFullYear());
+      if (years.size === 0) years.add(baseYear);
 
       const responses = await Promise.all(
         Array.from(years).map(async (year) => {
@@ -292,7 +297,7 @@ export async function getUpcomingEvents(teamId?: string): Promise<UpcomingEvent[
     events = selectedEventKeys.map((key) => {
       const tba = tbaByKey.get(key);
       const fallback = staticByKey.get(key);
-      const startDate = tba?.startDate || fallback?.startDate || `${new Date().getFullYear()}-01-01`;
+      const startDate = tba?.startDate || fallback?.startDate || `${baseYear}-01-01`;
       const endDate = tba?.endDate || fallback?.endDate || startDate;
       const location =
         [tba?.city || fallback?.city || "", tba?.stateProv || fallback?.state_prov || ""].filter(Boolean).join(", ") ||

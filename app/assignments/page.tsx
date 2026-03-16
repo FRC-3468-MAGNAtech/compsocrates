@@ -23,6 +23,7 @@ import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getRoleLabel, getUserRoles, normalizeLegacyRole } from "@/app/utils/roles";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
+import { getEffectiveNowDate, getEffectiveNowMs, getEffectiveNowSec } from "@/app/utils/teamTime";
 
 interface Assignment {
   id: string;
@@ -138,16 +139,15 @@ function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
   return Array.from(byName.values());
 }
 
-function isPastEventOption(event: EventOption) {
-  const now = Date.now();
+function isPastEventOption(event: EventOption, nowMs: number) {
   const end = new Date(`${event.endDate}T23:59:59`).getTime();
-  return Number.isFinite(end) && now > end;
+  return Number.isFinite(end) && nowMs > end;
 }
 
-function sortEventOptions(events: EventOption[]) {
+function sortEventOptions(events: EventOption[], nowMs: number) {
   return [...events].sort((a, b) => {
-    const aPast = isPastEventOption(a);
-    const bPast = isPastEventOption(b);
+    const aPast = isPastEventOption(a, nowMs);
+    const bPast = isPastEventOption(b, nowMs);
     if (aPast !== bPast) return aPast ? 1 : -1;
     const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
     const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
@@ -293,10 +293,10 @@ function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string
   return key.includes("_pm") || /^p\d+$/.test(key) || label.includes("practice ");
 }
 
-function upsertEventOption(options: EventOption[], candidate: EventOption): EventOption[] {
+function upsertEventOption(options: EventOption[], candidate: EventOption, nowMs: number): EventOption[] {
   const map = new Map(options.map((option) => [option.key, option]));
   map.set(candidate.key, candidate);
-  return sortEventOptions(Array.from(map.values()));
+  return sortEventOptions(Array.from(map.values()), nowMs);
 }
 
 function scoreScoutingRecord(record: Record<string, unknown>): number {
@@ -362,7 +362,7 @@ async function fetchEventMatchesForAssignments(
 }
 
 function AssignmentsContent() {
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [pitAssignments, setPitAssignments] = useState<PitAssignment[]>([]);
   const [practiceAssignments, setPracticeAssignments] = useState<PracticeAssignment[]>([]);
@@ -413,9 +413,9 @@ function AssignmentsContent() {
 
   useEffect(() => {
     void loadData();
-  }, [selectedEvent, userData?.teamId]);
+  }, [selectedEvent, userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
-  async function resolveEventOptions(teamData: Record<string, unknown>): Promise<EventOption[]> {
+  async function resolveEventOptions(teamData: Record<string, unknown>, nowMs: number): Promise<EventOption[]> {
     const selected = Array.isArray(teamData.selectedEvents)
       ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
       : [];
@@ -425,7 +425,7 @@ function AssignmentsContent() {
       startDate: event.startDate,
       endDate: event.endDate,
     }));
-    if (selected.length === 0) return sortEventOptions(fallbackFromApp);
+    if (selected.length === 0) return sortEventOptions(fallbackFromApp, nowMs);
 
     const encryptedKey = typeof teamData.tbaApiKeyEncrypted === "string" ? teamData.tbaApiKeyEncrypted.trim() : "";
     const plainKey = typeof teamData.tbaApiKey === "string" ? teamData.tbaApiKey.trim() : "";
@@ -436,7 +436,7 @@ function AssignmentsContent() {
         const year = Number(eventKey.slice(0, 4));
         if (Number.isFinite(year)) years.add(year);
       });
-      if (years.size === 0) years.add(new Date().getFullYear());
+      if (years.size === 0) years.add(new Date(nowMs).getFullYear());
 
       const responses = await Promise.all(
         Array.from(years).map(async (year) => {
@@ -457,8 +457,8 @@ function AssignmentsContent() {
         fromTba.set(key, {
           key,
           name: String(event.name || key),
-          startDate: String(event.start_date || `${new Date().getFullYear()}-01-01`),
-          endDate: String(event.end_date || event.start_date || `${new Date().getFullYear()}-01-01`),
+          startDate: String(event.start_date || `${new Date(nowMs).getFullYear()}-01-01`),
+          endDate: String(event.end_date || event.start_date || `${new Date(nowMs).getFullYear()}-01-01`),
         });
       });
     }
@@ -468,16 +468,18 @@ function AssignmentsContent() {
       .map((key) => fromTba.get(key) || staticByKey.get(key) || {
         key,
         name: key,
-        startDate: `${new Date().getFullYear()}-01-01`,
-        endDate: `${new Date().getFullYear()}-01-01`,
+        startDate: `${new Date(nowMs).getFullYear()}-01-01`,
+        endDate: `${new Date(nowMs).getFullYear()}-01-01`,
       });
-    return sortEventOptions(dedupeEventOptionsByName(resolved));
+    return sortEventOptions(dedupeEventOptionsByName(resolved), nowMs);
   }
 
   async function loadData() {
     if (!userData?.teamId) return;
     setLoading(true);
     try {
+      const nowMs = getEffectiveNowMs(teamTimeOverride);
+      const effectiveYear = new Date(nowMs).getFullYear();
       const [membersSnap, teamDoc] = await Promise.all([
         getDocs(query(collection(db, "users"), where("teamId", "==", userData.teamId))),
         getDoc(doc(db, "teams", userData.teamId)),
@@ -491,16 +493,14 @@ function AssignmentsContent() {
       const signedEventKeys = Array.isArray(teamData.selectedEvents)
         ? dedupeEventKeys(teamData.selectedEvents.map((value) => String(value || "").trim()).filter(Boolean))
         : [];
-      const resolvedEvents = await resolveEventOptions(teamData);
-      const eventsWithAssignments = (
+      const resolvedEvents = await resolveEventOptions(teamData, nowMs);
+      const eventsWithPracticeSchedule = (
         await Promise.all(
           resolvedEvents.map(async (event) => {
-            const [matchSnap, pitSnap, practiceSnap] = await Promise.all([
-              getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", event.key), limit(1))),
-              getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", event.key), limit(1))),
-              getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", event.key), limit(1))),
-            ]);
-            return matchSnap.size > 0 || pitSnap.size > 0 || practiceSnap.size > 0 ? event : null;
+            const practiceMatchSnap = await getDocs(
+              query(collection(db, "practiceMatches"), where("eventKey", "==", event.key), limit(1))
+            );
+            return practiceMatchSnap.size > 0 ? event : null;
           })
         )
       ).filter((event): event is EventOption => Boolean(event));
@@ -514,7 +514,7 @@ function AssignmentsContent() {
       let practiceUniverse = [...fallbackFromApp];
       if (encryptedKey || plainKey) {
         const years = new Set<number>();
-        years.add(new Date().getFullYear());
+        years.add(effectiveYear);
         signedEventKeys.forEach((eventKey) => {
           const year = Number(String(eventKey || "").slice(0, 4));
           if (Number.isFinite(year)) years.add(year);
@@ -534,16 +534,16 @@ function AssignmentsContent() {
         const tbaOptions = tbaResponses.flat().map((event) => ({
           key: String(event.key || "").trim(),
           name: String(event.name || event.key || "").trim(),
-          startDate: String(event.start_date || `${new Date().getFullYear()}-01-01`),
-          endDate: String(event.end_date || event.start_date || `${new Date().getFullYear()}-01-01`),
+          startDate: String(event.start_date || `${effectiveYear}-01-01`),
+          endDate: String(event.end_date || event.start_date || `${effectiveYear}-01-01`),
         })).filter((event) => Boolean(event.key));
         if (tbaOptions.length > 0) {
           practiceUniverse = dedupeEventOptionsByName([...practiceUniverse, ...tbaOptions]);
         }
       }
-      const availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse));
+      const availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse), nowMs);
       setPracticeEventOptions(availablePracticeEvents);
-      const scheduleOptions = sortEventOptions(dedupeEventOptionsByName(eventsWithAssignments));
+      const scheduleOptions = sortEventOptions(dedupeEventOptionsByName(eventsWithPracticeSchedule), nowMs);
       setPracticeScheduleEventOptions(scheduleOptions);
       const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
@@ -681,7 +681,7 @@ function AssignmentsContent() {
           scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
         }));
         const hasFinals = options.some((match) => match.compLevel === "f");
-        if (!hasFinals) {
+        if (!hasFinals && options.length > 0) {
           for (let n = 1; n <= 3; n += 1) {
             options.push({
               key: `f${n}`,
@@ -745,7 +745,7 @@ function AssignmentsContent() {
     [typeFilteredMatches, selectedMatchKey]
   );
   const activeOrNextMatchKey = useMemo(() => {
-    const now = Date.now() / 1000;
+    const now = getEffectiveNowSec(teamTimeOverride);
     const timedMatches = [...matchOptions]
       .filter((match) => match.scheduleTime > 0)
       .sort((a, b) => a.scheduleTime - b.scheduleTime);
@@ -754,7 +754,7 @@ function AssignmentsContent() {
     if (active) return active.key;
     const next = timedMatches.find((match) => match.scheduleTime >= now);
     return next?.key || timedMatches[timedMatches.length - 1].key;
-  }, [matchOptions]);
+  }, [matchOptions, teamTimeOverride]);
   const pitTeamOptions = useMemo(() => {
     const teams = [...eventTeamOptions];
     const assigned = new Set(pitAssignments.map((assignment) => assignment.teamNumber));
@@ -1386,7 +1386,7 @@ function AssignmentsContent() {
       const allTeams = Array.from(
         new Set(targetMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
       );
-      const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || new Date().getFullYear();
+      const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || getEffectiveNowDate(teamTimeOverride).getFullYear();
       const manualPriorityTeams = Array.from(
         new Set([...(config?.priorityTeams || []), ...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
       );
@@ -1523,7 +1523,7 @@ function AssignmentsContent() {
       );
 
       const lowScoutMode = eligibleMembers.length < 6;
-      const yearFromEvent = parseInt(practiceEventKey.slice(0, 4), 10) || new Date().getFullYear();
+      const yearFromEvent = parseInt(practiceEventKey.slice(0, 4), 10) || getEffectiveNowDate(teamTimeOverride).getFullYear();
       const allPracticeTeams = Array.from(new Set(targetMatches.flatMap((match) => match.teams))).filter((team) => Number.isFinite(team));
       const { historyMap, statboticsMap } = lowScoutMode
         ? await buildPerformanceMapsForTeams(allPracticeTeams, yearFromEvent, practiceEventKey)
@@ -1554,6 +1554,7 @@ function AssignmentsContent() {
       });
 
       await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "matchAssignments"), assignment)));
+      const effectiveYear = getEffectiveNowDate(teamTimeOverride).getFullYear();
       const selectedOption =
         practiceScheduleEventOptions.find((event) => event.key === practiceEventKey) ||
         practiceEventOptions.find((event) => event.key === practiceEventKey) ||
@@ -1561,10 +1562,10 @@ function AssignmentsContent() {
         {
           key: practiceEventKey,
           name: practiceEventKey,
-          startDate: `${new Date().getFullYear()}-01-01`,
-          endDate: `${new Date().getFullYear()}-01-01`,
+          startDate: `${effectiveYear}-01-01`,
+          endDate: `${effectiveYear}-01-01`,
         };
-      setPracticeScheduleEventOptions((prev) => upsertEventOption(prev, selectedOption));
+      setPracticeScheduleEventOptions((prev) => upsertEventOption(prev, selectedOption, getEffectiveNowMs(teamTimeOverride)));
       setPracticeScheduleEventKey(practiceEventKey);
       setScheduleView("practice");
       await loadPracticeScheduleEvent(practiceEventKey);

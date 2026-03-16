@@ -34,7 +34,9 @@ export default function ExpandableNotesCell({
     const el = containerRef.current;
     if (!el) return;
     const checkOverflow = () => {
-      setIsOverflowing(el.scrollHeight > el.clientHeight + 1);
+      const heightOverflow = el.scrollHeight > el.clientHeight + 1;
+      const widthOverflow = el.scrollWidth > el.clientWidth + 1;
+      setIsOverflowing(heightOverflow || widthOverflow);
     };
     checkOverflow();
     const id = window.setTimeout(checkOverflow, 0);

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, CircleHelp, Hourglass, X as XIcon } from "lucide-react";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
+import { useAuth } from "@/app/AuthContext";
+import { getEffectiveNowSec } from "@/app/utils/teamTime";
 
 export type MatchType = "practice" | "qualification" | "finals";
 
@@ -90,6 +92,7 @@ function FinalsBracket({
   timesByNumber,
   availableNumbers,
   finalsSummaryDone,
+  nowSec,
   allowCompletedPick = false,
 }: {
   completedNumbers: Set<number>;
@@ -97,6 +100,7 @@ function FinalsBracket({
   timesByNumber: Map<number, number>;
   availableNumbers: number[];
   finalsSummaryDone: boolean;
+  nowSec: number;
   allowCompletedPick?: boolean;
 }) {
   const B = { w: 104, h: 58, colGap: 52, row: 84 };
@@ -127,7 +131,7 @@ function FinalsBracket({
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
-  const now = Date.now() / 1000;
+  const now = nowSec;
   const graceSeconds = 10 * 60;
   const hasScheduleTimes = availableNumbers.some((n) => Number(timesByNumber.get(n) || 0) > 0);
   const hasCompleted = completedNumbers.size > 0;
@@ -231,9 +235,11 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   allowManualOverride?: boolean;
   allowCompletedPick?: boolean;
 }) {
+  const { teamTimeOverride } = useAuth();
   const [step, setStep] = useState<"type" | MatchType>("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
   const [manualMatchNumber, setManualMatchNumber] = useState("");
+  const nowSec = getEffectiveNowSec(teamTimeOverride);
 
   useEffect(() => {
     if (!open) {
@@ -294,7 +300,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
     return byType;
   }, [options]);
   const nextOverallId = useMemo(() => {
-    const now = Date.now() / 1000;
+    const now = nowSec;
     const sorted = [...options]
       .filter((opt) => !completed.has(opt.id))
       .map((opt) => ({ id: opt.id, time: Number(opt.scheduleTime || 0), matchNumber: opt.matchNumber }))
@@ -305,7 +311,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
       return a.matchNumber - b.matchNumber;
     });
     return sorted.find((row) => row.time >= now)?.id || "";
-  }, [options, completed]);
+  }, [options, completed, nowSec]);
 
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
@@ -387,7 +393,6 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         timeString: timeStringFromEpoch(m.scheduleTime),
                         matchId: m.id,
                       }));
-                    const now = Date.now() / 1000;
                     const resolvedNextNum = nextOverallId
                       ? rows.find((row) => row.matchId === nextOverallId)?.matchNum ?? -1
                       : -1;
@@ -456,6 +461,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   })()}
                   availableNumbers={Array.from({ length: 13 }, (_, i) => i + 1)}
                   finalsSummaryDone={isFinalDone(1) && isFinalDone(2)}
+                  nowSec={nowSec}
                   allowCompletedPick={allowCompletedPick}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {

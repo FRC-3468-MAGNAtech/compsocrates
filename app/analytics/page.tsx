@@ -696,6 +696,7 @@ function AnalyticsPageContent() {
   const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canDeleteEntries = isCoach || isTeamAdmin;
   const canManageFlags = isCoach || isTeamCoach || isTeamAdmin;
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -2006,8 +2007,8 @@ function AnalyticsPageContent() {
                 <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
-                <th className="bg-pink-300 text-center" colSpan={5}>General</th>
-                <th className="bg-gray-300 text-center" colSpan={1} />
+                <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 5 : 3}>General</th>
+                {canViewAdminColumns && <th className="bg-gray-300 text-center" colSpan={1} />}
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -2026,8 +2027,8 @@ function AnalyticsPageContent() {
                 <th className="bg-pink-200 text-center" colSpan={1}>Incidents</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Score</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
-                <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>
-                <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
+                {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>}
+                {canViewAdminColumns && <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>}
               </tr>
               <tr>
                 <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
@@ -2129,15 +2130,21 @@ function AnalyticsPageContent() {
                 <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
                   {sortLabel(sortKey, sortDir, "notes", "Comments")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
-                  {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
-                  {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                  {sortLabel(sortKey, sortDir, "id", "Actions")}
-                </th>
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
+                    {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
+                  </th>
+                )}
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
+                    {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
+                  </th>
+                )}
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                    {sortLabel(sortKey, sortDir, "id", "Actions")}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -2195,48 +2202,52 @@ function AnalyticsPageContent() {
                   <td className="text-left align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
                     <ExpandableNotesCell text={entry.notes} />
                   </td>
-                  <td className="text-center">
-                    {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedAccuracyEntry(entry);
-                          void loadAccuracyDetails(entry);
-                        }}
-                        className="underline decoration-dotted underline-offset-2"
-                        style={{ color: "var(--primary-color)" }}
-                      >
-                        {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
-                      </button>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>
-                  <td className="text-center">
-                    {canManageFlags && (
-                      <div className="mb-2">
+                  {canViewAdminColumns && (
+                    <td className="text-center">
+                      {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
                         <button
                           type="button"
-                          onClick={() => setFlagMenuEntry(entry)}
-                          disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                          className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                          onClick={() => {
+                            setSelectedAccuracyEntry(entry);
+                            void loadAccuracyDetails(entry);
+                          }}
+                          className="underline decoration-dotted underline-offset-2"
+                          style={{ color: "var(--primary-color)" }}
                         >
-                          {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                          {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
                         </button>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteEntry(entry)}
-                      className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                      style={{ backgroundColor: "#dc2626" }}
-                      disabled={!canDeleteEntries}
-                      title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                    >
-                      Delete
-                    </button>
-                  </td>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  )}
+                  {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
+                  {canViewAdminColumns && (
+                    <td className="text-center">
+                      {canManageFlags && (
+                        <div className="mb-2">
+                          <button
+                            type="button"
+                            onClick={() => setFlagMenuEntry(entry)}
+                            disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
+                            className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                          >
+                            {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                          </button>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteEntry(entry)}
+                        className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                        style={{ backgroundColor: "#dc2626" }}
+                        disabled={!canDeleteEntries}
+                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
                 );
               })}
@@ -2251,8 +2262,8 @@ function AnalyticsPageContent() {
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
-              <th className="bg-pink-300 text-center" colSpan={4}>General</th>
-              <th className="bg-gray-300 text-center" colSpan={1} />
+              <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 4 : 2}>General</th>
+              {canViewAdminColumns && <th className="bg-gray-300 text-center" colSpan={1} />}
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -2269,9 +2280,9 @@ function AnalyticsPageContent() {
               <th className="bg-purple-200 text-center" colSpan={1}>Climb</th>
               <th className="bg-purple-200 text-center" colSpan={1}>End Place</th>
               <th className="bg-pink-200 text-center" colSpan={2}>Comments</th>
-              <th className="bg-pink-200 text-center" colSpan={1}>Accuracy Script</th>
-              <th className="bg-pink-200 text-center" colSpan={1}>Script Status</th>
-              <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>
+              {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Accuracy Script</th>}
+              {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Script Status</th>}
+              {canViewAdminColumns && <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>}
             </tr>
             <tr>
               <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
@@ -2364,15 +2375,21 @@ function AnalyticsPageContent() {
               <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
                 {sortLabel(sortKey, sortDir, "notes", "Comments")}
               </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
-                {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
-              </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
-                {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
-              </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                {sortLabel(sortKey, sortDir, "id", "Actions")}
-              </th>
+              {canViewAdminColumns && (
+                <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
+                  {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
+                </th>
+              )}
+              {canViewAdminColumns && (
+                <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
+                  {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
+                </th>
+              )}
+              {canViewAdminColumns && (
+                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                  {sortLabel(sortKey, sortDir, "id", "Actions")}
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -2419,48 +2436,52 @@ function AnalyticsPageContent() {
                 <td className="text-left align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
                   <ExpandableNotesCell text={entry.notes} />
                 </td>
-                <td className="text-center">
-                  {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAccuracyEntry(entry);
-                        void loadAccuracyDetails(entry);
-                      }}
-                      className="underline decoration-dotted underline-offset-2"
-                      style={{ color: "var(--primary-color)" }}
-                    >
-                      {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
-                    </button>
-                  ) : (
-                    "-"
-                  )}
-                </td>
-                <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>
-                <td className="text-center">
-                  {canManageFlags && (
-                    <div className="mb-2">
+                {canViewAdminColumns && (
+                  <td className="text-center">
+                    {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
                       <button
                         type="button"
-                        onClick={() => setFlagMenuEntry(entry)}
-                        disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                        className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                        onClick={() => {
+                          setSelectedAccuracyEntry(entry);
+                          void loadAccuracyDetails(entry);
+                        }}
+                        className="underline decoration-dotted underline-offset-2"
+                        style={{ color: "var(--primary-color)" }}
                       >
-                        {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                        {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
                       </button>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteEntry(entry)}
-                    className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                    style={{ backgroundColor: "#dc2626" }}
-                    disabled={!canDeleteEntries}
-                    title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                  >
-                    Delete
-                  </button>
-                </td>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                )}
+                {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
+                {canViewAdminColumns && (
+                  <td className="text-center">
+                    {canManageFlags && (
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() => setFlagMenuEntry(entry)}
+                          disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
+                          className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                        >
+                          {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteEntry(entry)}
+                      className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                      style={{ backgroundColor: "#dc2626" }}
+                      disabled={!canDeleteEntries}
+                      title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                )}
               </tr>
               );
             })}

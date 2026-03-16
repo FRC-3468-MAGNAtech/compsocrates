@@ -14,6 +14,7 @@ import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getUserRoles } from "@/app/utils/roles";
 import { BarChart3, CalendarDays, ClipboardList, Target, Users, Wrench, MapPin } from "lucide-react";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
+import { getEffectiveNowMs } from "@/app/utils/teamTime";
 
 interface TeamData {
   scoutCount?: number;
@@ -88,16 +89,15 @@ function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
     }));
 }
 
-function isPastEvent(event: UpcomingEvent) {
-  const now = Date.now();
+function isPastEvent(event: UpcomingEvent, nowMs: number) {
   const end = new Date(`${event.endDate}T23:59:59`).getTime();
-  return Number.isFinite(end) && now > end;
+  return Number.isFinite(end) && nowMs > end;
 }
 
-function sortDashboardEvents(events: UpcomingEvent[]) {
+function sortDashboardEvents(events: UpcomingEvent[], nowMs: number) {
   return [...events].sort((a, b) => {
-    const aPast = isPastEvent(a);
-    const bPast = isPastEvent(b);
+    const aPast = isPastEvent(a, nowMs);
+    const bPast = isPastEvent(b, nowMs);
     if (aPast !== bPast) return aPast ? 1 : -1;
     const aTime = new Date(`${a.startDate}T12:00:00`).getTime();
     const bTime = new Date(`${b.startDate}T12:00:00`).getTime();
@@ -107,7 +107,7 @@ function sortDashboardEvents(events: UpcomingEvent[]) {
 
 function CoachDashboardContent() {
   const router = useRouter();
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const [stats, setStats] = useState<TeamStats | null>(null);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [activeEventKey, setActiveEventKey] = useState("");
@@ -124,6 +124,7 @@ function CoachDashboardContent() {
   const [eventAverageAccuracyByKey, setEventAverageAccuracyByKey] = useState<Record<string, number>>({});
   const [overallAverageAccuracy, setOverallAverageAccuracy] = useState(0);
   const [accuracyMode, setAccuracyMode] = useState<PracticeAccuracyMode>("competitive");
+  const nowMs = getEffectiveNowMs(teamTimeOverride);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -145,7 +146,7 @@ function CoachDashboardContent() {
       return;
     }
     loadDashboardData();
-  }, [userData?.teamId, userData, router, accuracyMode]);
+  }, [userData?.teamId, userData, router, accuracyMode, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
   async function loadDashboardData() {
     if (!userData?.teamId) return;
@@ -170,7 +171,7 @@ function CoachDashboardContent() {
         userData.uid || "",
         userData.displayName || ""
       );
-      const orderedEvents = sortDashboardEvents(visibleEvents);
+      const orderedEvents = sortDashboardEvents(visibleEvents, nowMs);
       setUpcomingEvents(orderedEvents);
       setActiveEventKey((current) => {
         if (current && orderedEvents.some((event) => event.key === current)) return current;
