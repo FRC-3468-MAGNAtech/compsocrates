@@ -385,7 +385,7 @@ function CoachDashboardContent() {
                         }).length
                       : readyScoutNames.length;
                     const eventMatches = eventMatchesByKey[event.key] || [];
-                    const eventIsPast = isPastEvent(event);
+                    const eventIsPast = isPastEvent(event, nowMs);
                     return (
                       <div className="space-y-4">
                         <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
