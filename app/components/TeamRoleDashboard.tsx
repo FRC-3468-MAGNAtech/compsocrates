@@ -487,7 +487,7 @@ function TeamRoleDashboardContent({
                       <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <h2 className="text-xl font-semibold mb-1">{isPastEvent(activeEvent) ? "Past Event" : "Event Data"}</h2>
+                            <h2 className="text-xl font-semibold mb-1">{isPastEvent(activeEvent, nowMs) ? "Past Event" : "Event Data"}</h2>
                             <p className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>{activeEvent.name}</p>
                             <p className="text-gray-600 flex flex-wrap items-center gap-2">
                               <CalendarDays size={16} />
