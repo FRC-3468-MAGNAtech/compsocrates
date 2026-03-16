@@ -898,11 +898,11 @@ function pickNextModalIdFromOptions(options: ReefscapeMatchOption[], completed: 
   return firstIncomplete?.id || "";
 }
 
-function pickNextModalIdFromTba(matches: TBAMatch[], nowSec: number): string {
+function pickNextModalIdFromTba(matches: TBAMatch[], nowSec: number, useScheduleCompletion = false): string {
   if (!matches.length) return "";
   const options = buildReefscapeModalOptions(matches);
   if (options.length === 0) return "";
-  const completed = buildCompletedModalIdsFromTba(matches);
+  const completed = buildCompletedModalIdsFromTba(matches, useScheduleCompletion ? nowSec : undefined);
   return pickNextModalIdFromOptions(options, completed, nowSec);
 }
 
@@ -2467,7 +2467,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     let preferred = active;
     if (!preferred) {
       const preferredModalId = liveTbaMatches.length > 0
-        ? pickNextModalIdFromTba(liveTbaMatches, nowSec)
+        ? pickNextModalIdFromTba(liveTbaMatches, nowSec, Boolean(teamTimeOverride?.enabled))
         : (() => {
             const { options, completed } = buildModalOptionsFromCandidates(pool);
             return pickNextModalIdFromOptions(options, completed, nowSec);
@@ -3364,8 +3364,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return new Set<string>();
     }
 
-    return buildCompletedModalIdsFromTba(liveTbaMatches);
-  }, [liveTbaMatches, selectedDifficulty, sharedModalOptions]);
+    const completionNow = teamTimeOverride?.enabled ? getEffectiveNowSec(teamTimeOverride) : undefined;
+    return buildCompletedModalIdsFromTba(liveTbaMatches, completionNow);
+  }, [liveTbaMatches, selectedDifficulty, sharedModalOptions, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
   function handleSharedModalPick(option: PracticeSelectorOption) {
     const picked = liveScopedCandidateMatches.find((match) => match.id === option.sourceId);

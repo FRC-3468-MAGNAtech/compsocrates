@@ -943,7 +943,8 @@ function ScoutFormContent() {
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
-        setModalCompleted(matches.length > 0 ? buildCompletedModalIdsFromTba(matches) : new Set());
+        const completionNow = teamTimeOverride?.enabled ? getEffectiveNowSec(teamTimeOverride) : undefined;
+        setModalCompleted(matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set());
 
         const assignmentSnapByEvent = await getDocs(
           query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent), where("scoutId", "==", userData.uid))

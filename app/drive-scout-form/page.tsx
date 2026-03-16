@@ -262,7 +262,8 @@ function DriveReflectionFormContent() {
         const attendeesByEvent = (teamData?.eventAttendees || {}) as Record<string, string[]>;
         const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
         setEventTbaMatches(matches);
-        setModalCompleted(buildCompletedModalIdsFromTba(matches));
+        const completionNow = teamTimeOverride?.enabled ? getEffectiveNowSec(teamTimeOverride) : undefined;
+        setModalCompleted(buildCompletedModalIdsFromTba(matches, completionNow));
         const options: MatchOption[] = matches
           .map((match) => {
             const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]

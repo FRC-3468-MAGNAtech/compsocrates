@@ -10,6 +10,7 @@ import { collection, doc, getDoc, getDocs, query, where } from "firebase/firesto
 import { db } from "@/app/firebase";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import { buildCompletedModalIdsFromTba, fetchEventMatchesWithTeamAuth } from "@/app/utils/reefscapeMatchSync";
+import { getEffectiveNowSec } from "@/app/utils/teamTime";
 
 /* -------------------------------------------------------
    MODAL — Fade In + Fade Out + Smooth Resize
@@ -354,7 +355,7 @@ function FinalsBracket({
 -------------------------------------------------------- */
 function ScoutFormContent() {
   const router = useRouter();
-  const { userData } = useAuth();
+  const { userData, teamTimeOverride } = useAuth();
   const showEventWarning = false;
   const [eventKey, setEventKey] = useState("app-testing");
 
@@ -444,7 +445,8 @@ function ScoutFormContent() {
         const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
         const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
         const matches = await fetchEventMatchesWithTeamAuth(resolvedEventKey, { encryptedKey, plainKey });
-        setTbaCompletedMatches(matches.length > 0 ? buildCompletedModalIdsFromTba(matches) : new Set());
+        const completionNow = teamTimeOverride?.enabled ? getEffectiveNowSec(teamTimeOverride) : undefined;
+        setTbaCompletedMatches(matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set());
         const qualification = matches
           .filter((match) => match.comp_level === "qm")
           .sort((a, b) => a.match_number - b.match_number);
