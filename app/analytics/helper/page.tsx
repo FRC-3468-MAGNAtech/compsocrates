@@ -32,7 +32,11 @@ type HelperEntry = {
 
 function HelperAnalyticsContent() {
   const { userData } = useAuth();
-  const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
+  const isCoach = userData?.role === "coach";
+  const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
+  const isTeamAdmin = Boolean(userData?.isTeamAdmin);
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
+  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin;
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
@@ -255,13 +259,13 @@ function HelperAnalyticsContent() {
               <tr>
                 <th className="bg-red-300 text-center" colSpan={2}>Information</th>
                 <th className="bg-green-300 text-center" colSpan={2}>Outcome</th>
-                <th className="bg-pink-300 text-center" colSpan={2}>General</th>
+                <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 2 : 1}>General</th>
               </tr>
               <tr>
                 <th className="bg-red-200 text-center" colSpan={2}>Information</th>
                 <th className="bg-green-200 text-center" colSpan={2}>Outcome</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+                {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
               </tr>
               <tr>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("helperName")}>
@@ -279,9 +283,11 @@ function HelperAnalyticsContent() {
                 <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                   {sortLabel(sortKey, sortDir, "notes", "Notes")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                  {sortLabel(sortKey, sortDir, "id", "Actions")}
-                </th>
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                    {sortLabel(sortKey, sortDir, "id", "Actions")}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -294,18 +300,20 @@ function HelperAnalyticsContent() {
                   <td className="align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
                     <ExpandableNotesCell text={entry.notes} />
                   </td>
-                  <td className="text-center">
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteEntry(entry)}
-                      className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                      style={{ backgroundColor: "#dc2626" }}
-                      disabled={!canDeleteEntries}
-                      title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                    >
-                      Delete
-                    </button>
-                  </td>
+                  {canViewAdminColumns && (
+                    <td className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteEntry(entry)}
+                        className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
+                        style={{ backgroundColor: "#dc2626" }}
+                        disabled={!canDeleteEntries}
+                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -89,7 +89,11 @@ function fuelScaleDisplay(value: number | string | undefined): string {
 
 function PitAnalyticsContent() {
   const { userData } = useAuth();
-  const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
+  const isCoach = userData?.role === "coach";
+  const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
+  const isTeamAdmin = Boolean(userData?.isTeamAdmin);
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
+  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin;
   const canImportCsv = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
   const canExportCsv = canImportCsv;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
@@ -587,7 +591,7 @@ function PitAnalyticsContent() {
                   <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
                   <th className="bg-yellow-300 text-center" colSpan={3}>Cycles</th>
-                  <th className="bg-pink-300 text-center" colSpan={2}>General</th>
+                  <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 2 : 1}>General</th>
                 </tr>
                 <tr>
                   <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -596,7 +600,7 @@ function PitAnalyticsContent() {
                   <th className="bg-purple-200 text-center" colSpan={3}>Climb</th>
                   <th className="bg-yellow-200 text-center" colSpan={3}>Cycles</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                  <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+                  {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
                 </tr>
                 <tr>
                   <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
@@ -644,9 +648,11 @@ function PitAnalyticsContent() {
                   <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                     {sortLabel(sortKey, sortDir, "notes", "Comments")}
                   </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                    {sortLabel(sortKey, sortDir, "id", "Actions")}
-                  </th>
+                  {canViewAdminColumns && (
+                    <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                      {sortLabel(sortKey, sortDir, "id", "Actions")}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -667,18 +673,20 @@ function PitAnalyticsContent() {
                     <td>{formatAnalyticsText(entry.typicalClimbTime)}</td>
                     <td>{formatAnalyticsText(entry.autoCycleDescription)}</td>
                     <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
-                    <td className="text-center">
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteEntry(entry)}
-                        className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                        style={{ backgroundColor: "#dc2626" }}
-                        disabled={!canDeleteEntries}
-                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                      >
-                        Delete
-                      </button>
-                    </td>
+                    {canViewAdminColumns && (
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteEntry(entry)}
+                          className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
+                          style={{ backgroundColor: "#dc2626" }}
+                          disabled={!canDeleteEntries}
+                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -693,7 +701,7 @@ function PitAnalyticsContent() {
                   <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
                   <th className="bg-green-300 text-center" colSpan={2}>Algae</th>
                   <th className="bg-blue-300 text-center" colSpan={4}>Field Plan</th>
-                  <th className="bg-pink-300 text-center" colSpan={3}>General</th>
+                  <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 3 : 2}>General</th>
                 </tr>
                 <tr>
                   <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
@@ -704,7 +712,7 @@ function PitAnalyticsContent() {
                   <th className="bg-blue-200 text-center" colSpan={4}>Field Plan</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Rating</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                  <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+                  {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
                 </tr>
                 <tr>
                   <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
@@ -758,9 +766,11 @@ function PitAnalyticsContent() {
                   <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                     {sortLabel(sortKey, sortDir, "notes", "Comments")}
                   </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                    {sortLabel(sortKey, sortDir, "id", "Actions")}
-                  </th>
+                  {canViewAdminColumns && (
+                    <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                      {sortLabel(sortKey, sortDir, "id", "Actions")}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -783,18 +793,20 @@ function PitAnalyticsContent() {
                     <td>{formatAnalyticsText(entry.betterAt)}</td>
                     <td>{entry.rating || "-"}</td>
                     <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
-                    <td className="text-center">
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteEntry(entry)}
-                        className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                        style={{ backgroundColor: "#dc2626" }}
-                        disabled={!canDeleteEntries}
-                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                      >
-                        Delete
-                      </button>
-                    </td>
+                    {canViewAdminColumns && (
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteEntry(entry)}
+                          className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
+                          style={{ backgroundColor: "#dc2626" }}
+                          disabled={!canDeleteEntries}
+                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

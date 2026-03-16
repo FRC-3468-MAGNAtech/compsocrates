@@ -869,13 +869,16 @@ function ScoutAccuracyContent() {
 
   async function updatePracticeSessionFlagState(sessionId: string, patch: Partial<StoredFlagState>) {
     if (!canManageFlags || !userData?.teamId) return;
-    const key = flagStateDocId("practiceSession", sessionId);
+    const trimmedSessionId = String(sessionId || "").trim();
+    if (!trimmedSessionId) return;
+    const key = flagStateDocId("practiceSession", trimmedSessionId);
     setFlagSaveKey(key);
     const existing = flagStates[key];
+    let saved = false;
     try {
       const nextState: StoredFlagState = {
         entityType: "practiceSession",
-        entityId: sessionId,
+        entityId: trimmedSessionId,
         dismissed: patch.dismissed ?? existing?.dismissed ?? false,
         manualFlagged: patch.manualFlagged ?? existing?.manualFlagged ?? false,
         manualReason: patch.manualReason ?? existing?.manualReason,
@@ -888,22 +891,66 @@ function ScoutAccuracyContent() {
         dismissedAt: patch.dismissedAt ?? existing?.dismissedAt,
         dismissedBy: patch.dismissedBy ?? existing?.dismissedBy,
       };
-      await setDoc(
-        doc(db, "scoutingFlagStates", key),
-        {
-          teamId: userData.teamId,
-          ...nextState,
-        },
-        { merge: true }
-      );
+      const payload: Record<string, unknown> = {
+        teamId: userData.teamId,
+        entityType: nextState.entityType,
+        entityId: nextState.entityId,
+        dismissed: nextState.dismissed,
+        manualFlagged: Boolean(nextState.manualFlagged),
+        excludeFromAccuracy: Boolean(nextState.excludeFromAccuracy),
+      };
+      if (nextState.manualReason !== undefined) payload.manualReason = nextState.manualReason;
+      if (nextState.manualFlaggedAt !== undefined) payload.manualFlaggedAt = nextState.manualFlaggedAt;
+      if (nextState.manualFlaggedBy !== undefined) payload.manualFlaggedBy = nextState.manualFlaggedBy;
+      if (nextState.excludeReason !== undefined) payload.excludeReason = nextState.excludeReason;
+      if (nextState.excludedAt !== undefined) payload.excludedAt = nextState.excludedAt;
+      if (nextState.excludedBy !== undefined) payload.excludedBy = nextState.excludedBy;
+      if (nextState.dismissedAt !== undefined) payload.dismissedAt = nextState.dismissedAt;
+      if (nextState.dismissedBy !== undefined) payload.dismissedBy = nextState.dismissedBy;
+
+      await setDoc(doc(db, "scoutingFlagStates", key), payload, { merge: true });
       setFlagStates((prev) => ({ ...prev, [key]: nextState }));
-      await loadScoutStats();
+      saved = true;
     } catch (error) {
       console.error("Failed updating practice session flag state:", error);
       alert("Could not update accuracy exclusion.");
     } finally {
       setFlagSaveKey("");
     }
+    if (!saved) return;
+
+    setScoutStats((prev) =>
+      prev.map((scout) => {
+        let touched = false;
+        const updateSession = (session: ScoutStats["recentSessions"][number]) => {
+          if (session.sessionId !== trimmedSessionId) return session;
+          touched = true;
+          return {
+            ...session,
+            dismissed: typeof patch.dismissed === "boolean" ? patch.dismissed : session.dismissed,
+            excluded: typeof patch.excludeFromAccuracy === "boolean" ? patch.excludeFromAccuracy : session.excluded,
+          };
+        };
+        const nextAllSessions = scout.allSessions.map(updateSession);
+        const nextRecentSessions = scout.recentSessions.map(updateSession);
+        if (!touched) return scout;
+        const includedSessions = nextAllSessions.filter((session) => !session.excluded);
+        const averageAccuracy =
+          includedSessions.length > 0
+            ? Math.round(includedSessions.reduce((sum, session) => sum + session.accuracy, 0) / includedSessions.length)
+            : 0;
+        return {
+          ...scout,
+          allSessions: nextAllSessions,
+          recentSessions: nextRecentSessions,
+          recentAccuracies: nextRecentSessions.map((session) => session.accuracy),
+          averageAccuracy,
+        };
+      })
+    );
+    void loadScoutStats().catch((error) => {
+      console.warn("Unable to refresh scout accuracy after flag update.", error);
+    });
   }
 
   async function setPracticeSessionFlagDismissed(sessionId: string, dismissed: boolean) {
@@ -915,10 +962,11 @@ function ScoutAccuracyContent() {
   }
 
   async function setPracticeSessionExcluded(sessionId: string, excluded: boolean) {
+    const excludedBy = userData?.uid;
     await updatePracticeSessionFlagState(sessionId, {
       excludeFromAccuracy: excluded,
       excludedAt: Date.now(),
-      excludedBy: userData?.uid || "",
+      excludedBy: excludedBy || undefined,
     });
   }
 

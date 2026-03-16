@@ -106,7 +106,7 @@ type AssignmentMatchChoice = {
   teams: number[];
 };
 
-type RandomizeTarget = "match" | "practice";
+type RandomizeTarget = "match" | "practice" | "pit";
 type RandomizePattern = "rotate-each-match" | "block-5" | "constant";
 type RandomizeCategory = "practice" | "qualification" | "finals";
 
@@ -804,7 +804,7 @@ function AssignmentsContent() {
     setRandomizeMatchCount("");
     setRandomizePattern("rotate-each-match");
     setRandomizeScoutIds(randomizeEligibleMembers.map((member) => member.uid));
-    setRandomizeCategories(target === "practice" ? ["practice"] : ["qualification"]);
+    setRandomizeCategories(target === "practice" ? ["practice"] : target === "match" ? ["qualification"] : []);
     setRandomizePriorityTeamSearch("");
     setRandomizePriorityTeams(seededPriorityTeams);
     setShowRandomizeModal(true);
@@ -1009,24 +1009,49 @@ function AssignmentsContent() {
     return { historyMap, statboticsMap };
   }
 
-  function pickScoutForSlot(
-    scouts: TeamMember[],
-    matchIndex: number,
-    teamIndex: number,
-    pattern: RandomizePattern
-  ): TeamMember | null {
-    if (scouts.length === 0) return null;
-    if (pattern === "block-5") {
-      const half = Math.ceil(scouts.length / 2);
-      const blockIndex = Math.floor(matchIndex / 5);
-      const useFirst = blockIndex % 2 === 0;
-      const group = useFirst ? scouts.slice(0, half) : scouts.slice(half);
-      const pool = group.length > 0 ? group : scouts;
-      return pool[teamIndex % pool.length] || null;
-    }
-    const offset = pattern === "constant" ? 0 : matchIndex;
-    return scouts[(offset + teamIndex) % scouts.length] || null;
+function takeSequentialScouts(scouts: TeamMember[], startIndex: number, count: number): TeamMember[] {
+  if (scouts.length === 0 || count <= 0) return [];
+  const result: TeamMember[] = [];
+  for (let i = 0; i < count; i += 1) {
+    result.push(scouts[(startIndex + i) % scouts.length]);
   }
+  return result;
+}
+
+function buildMatchScoutOrder(
+  scouts: TeamMember[],
+  matchIndex: number,
+  slots: number,
+  pattern: RandomizePattern
+): TeamMember[] {
+  if (scouts.length === 0 || slots <= 0) return [];
+  const targetSlots = Math.min(slots, scouts.length);
+  if (pattern === "constant") return scouts.slice(0, targetSlots);
+
+  if (pattern === "block-5") {
+    const blockIndex = Math.floor(matchIndex / 5);
+    if (scouts.length <= targetSlots) {
+      const startIndex = (blockIndex * targetSlots) % scouts.length;
+      return takeSequentialScouts(scouts, startIndex, targetSlots);
+    }
+
+    const evenCount = scouts.length % 2 === 1 ? scouts.length - 1 : scouts.length;
+    const splitSize = Math.max(1, Math.floor(evenCount / 2));
+    const useFirst = blockIndex % 2 === 0;
+    const baseGroup = scouts.slice(useFirst ? 0 : splitSize, useFirst ? splitSize : evenCount);
+    const trimmedBase = baseGroup.slice(0, Math.min(baseGroup.length, targetSlots));
+    if (trimmedBase.length >= targetSlots) return trimmedBase.slice(0, targetSlots);
+
+    const remaining = scouts.filter((member) => !trimmedBase.some((entry) => entry.uid === member.uid));
+    const remainingStart = remaining.length > 0 ? blockIndex % remaining.length : 0;
+    const extrasNeeded = targetSlots - trimmedBase.length;
+    const extras = takeSequentialScouts(remaining, remainingStart, extrasNeeded);
+    return [...trimmedBase, ...extras].slice(0, targetSlots);
+  }
+
+  const startIndex = matchIndex % scouts.length;
+  return takeSequentialScouts(scouts, startIndex, targetSlots);
+}
 
   async function generateManualPracticeMatches(targetEventKey?: string) {
     const eventKey = String(targetEventKey || selectedEvent || "").trim();
@@ -1399,8 +1424,14 @@ function AssignmentsContent() {
           ? computeTeamPriorityOrder(match.teams, manualPriorityTeams, historyMap, statboticsMap)
           : [...match.teams];
         const teamsToAssign = lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
-        teamsToAssign.forEach((teamNumber, teamIndex) => {
-          const scout = pickScoutForSlot(scoutOrder, matchIndex, teamIndex, config?.pattern || "rotate-each-match");
+        const matchScouts = buildMatchScoutOrder(
+          scoutOrder,
+          matchIndex,
+          teamsToAssign.length,
+          config?.pattern || "rotate-each-match"
+        );
+        teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
+          const scout = matchScouts[teamIndex];
           if (!scout) return;
           newAssignments.push({
             eventKey: selectedEvent,
@@ -1537,8 +1568,14 @@ function AssignmentsContent() {
         const teamOrder = computeTeamPriorityOrder(sourceTeams, manualPriorityTeams, historyMap, statboticsMap);
         const teamsToAssign = lowScoutMode ? teamOrder.slice(0, scoutOrder.length) : teamOrder;
 
-        teamsToAssign.forEach((teamNumber, teamIndex) => {
-          const scout = pickScoutForSlot(scoutOrder, matchIndex, teamIndex, config?.pattern || "rotate-each-match");
+        const matchScouts = buildMatchScoutOrder(
+          scoutOrder,
+          matchIndex,
+          teamsToAssign.length,
+          config?.pattern || "rotate-each-match"
+        );
+        teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
+          const scout = matchScouts[teamIndex];
           if (!scout) return;
           newAssignments.push({
             eventKey: practiceEventKey,
@@ -1596,6 +1633,50 @@ function AssignmentsContent() {
     }
   }
 
+  async function randomizePitAssignments(config?: RandomizeConfig) {
+    if (!userData || !selectedEvent) return;
+    if (eventTeamOptions.length === 0) {
+      alert("No teams are available for pit assignments yet.");
+      return;
+    }
+    const selectedScoutIds = new Set(config?.scoutIds || []);
+    const eligibleMembers = randomizeEligibleMembers.filter(
+      (member) => selectedScoutIds.size === 0 || selectedScoutIds.has(member.uid)
+    );
+    if (eligibleMembers.length === 0) {
+      alert("No eligible scout-role members available to assign.");
+      return;
+    }
+
+    if (!confirm("Randomize pit assignments for this event? Existing pit assignments will be replaced.")) return;
+
+    try {
+      const existing = pitAssignments.filter((assignment) => assignment.eventKey === selectedEvent);
+      await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "pitAssignments", assignment.id))));
+
+      const sortedTeams = [...eventTeamOptions].filter((team) => Number.isFinite(team)).sort((a, b) => a - b);
+      const now = Date.now();
+      const newAssignments: Array<Omit<PitAssignment, "id">> = sortedTeams.map((teamNumber, index) => {
+        const scout = eligibleMembers[index % eligibleMembers.length];
+        return {
+          eventKey: selectedEvent,
+          teamNumber,
+          scoutId: scout.uid,
+          scoutName: scout.displayName,
+          assignedBy: userData.uid,
+          assignedAt: now + index,
+        };
+      });
+
+      await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "pitAssignments"), assignment)));
+      await loadData();
+      alert(`Randomized ${newAssignments.length} pit assignments across ${sortedTeams.length} teams.`);
+    } catch (error) {
+      console.error("Error randomizing pit assignments:", error);
+      alert("Error randomizing pit assignments.");
+    }
+  }
+
   async function runRandomizeFromConfig() {
     const selectedCount = randomizeScoutIds.length;
     if (selectedCount === 0) {
@@ -1617,6 +1698,10 @@ function AssignmentsContent() {
       categories: randomizeCategories,
     };
     setShowRandomizeModal(false);
+    if (config.target === "pit") {
+      await randomizePitAssignments(config);
+      return;
+    }
     if (config.target === "practice") {
       await randomizePracticeAssignments(config);
       return;
@@ -1713,6 +1798,9 @@ function AssignmentsContent() {
       const eventKey = String(randomizePracticeEventKey || "").trim().toLowerCase();
       if (!eventKey) return [];
       return practicePriorityTeamsByEvent[eventKey] || [];
+    }
+    if (randomizeTarget === "pit") {
+      return [];
     }
     return Array.from(
       new Set(
@@ -1861,6 +1949,16 @@ function AssignmentsContent() {
                     >
                       Practice
                     </button>
+                    {assignmentView === "pit" && (
+                      <button
+                        type="button"
+                        onClick={() => openRandomizeConfig("pit")}
+                        className="px-3 py-2 rounded text-sm font-medium text-white"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        Randomize Pit
+                      </button>
+                    )}
                     {canBulkDelete && (
                       <button
                         type="button"
@@ -2314,7 +2412,7 @@ function AssignmentsContent() {
               <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[76vh] overflow-y-auto p-4">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-semibold theme-text">
-                    Randomize {randomizeTarget === "practice" ? "Practice" : "Match"} Assignments
+                    Randomize {randomizeTarget === "practice" ? "Practice" : randomizeTarget === "pit" ? "Pit" : "Match"} Assignments
                   </h3>
                   <button
                     type="button"
@@ -2366,17 +2464,19 @@ function AssignmentsContent() {
                       </div>
                     </div>
                   )}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Matches To Randomize</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={randomizeMatchCount}
-                      onChange={(e) => setRandomizeMatchCount(e.target.value.replace(/[^\d]/g, ""))}
-                      className="w-full border rounded p-2"
-                      placeholder="Leave blank for all upcoming matches"
-                    />
-                  </div>
+                  {randomizeTarget !== "pit" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Matches To Randomize</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={randomizeMatchCount}
+                        onChange={(e) => setRandomizeMatchCount(e.target.value.replace(/[^\d]/g, ""))}
+                        className="w-full border rounded p-2"
+                        placeholder="Leave blank for all upcoming matches"
+                      />
+                    </div>
+                  )}
                   {randomizeTarget === "match" && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Match Categories</label>
@@ -2403,18 +2503,20 @@ function AssignmentsContent() {
                     </div>
                   )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Match Pattern</label>
-                    <select
-                      value={randomizePattern}
-                      onChange={(e) => setRandomizePattern(e.target.value as RandomizePattern)}
-                      className="w-full border rounded p-2"
-                    >
-                      <option value="rotate-each-match">Rotate each match</option>
-                      <option value="block-5">Intervals of 5 then swap</option>
-                      <option value="constant">Constant same order</option>
-                    </select>
-                  </div>
+                  {randomizeTarget !== "pit" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Match Pattern</label>
+                      <select
+                        value={randomizePattern}
+                        onChange={(e) => setRandomizePattern(e.target.value as RandomizePattern)}
+                        className="w-full border rounded p-2"
+                      >
+                        <option value="rotate-each-match">Rotate each match</option>
+                        <option value="block-5">Intervals of 5 then swap</option>
+                        <option value="constant">Constant same order</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -2456,51 +2558,55 @@ function AssignmentsContent() {
                         ))
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      If fewer than 6 scouts are selected, randomize prioritizes manual priority teams, then highest-performing teams.
-                    </p>
+                    {randomizeTarget !== "pit" && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        If fewer than 6 scouts are selected, randomize prioritizes manual priority teams, then highest-performing teams.
+                      </p>
+                    )}
                   </div>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Prioritized Teams (Optional)</label>
-                      <span className="text-xs text-gray-500">{randomizePriorityTeams.length} selected</span>
+                  {randomizeTarget !== "pit" && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Prioritized Teams (Optional)</label>
+                        <span className="text-xs text-gray-500">{randomizePriorityTeams.length} selected</span>
+                      </div>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={randomizePriorityTeamSearch}
+                          onChange={(e) => setRandomizePriorityTeamSearch(e.target.value)}
+                          className="flex-1 border rounded p-2"
+                          placeholder="Search teams in this schedule..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setRandomizePriorityTeams([])}
+                          className="px-3 py-2 rounded border text-sm"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <div className="max-h-20 overflow-y-auto border rounded p-2 space-y-1">
+                        {filteredRandomizePriorityCandidates.length === 0 ? (
+                          <p className="text-sm text-gray-500">
+                            No teams found for this schedule.
+                          </p>
+                        ) : (
+                          filteredRandomizePriorityCandidates.map((teamNumber) => (
+                            <label key={`randomize-priority-team-${teamNumber}`} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={randomizePriorityTeams.includes(teamNumber)}
+                                onChange={() => toggleRandomizePriorityTeam(teamNumber)}
+                              />
+                              <span>Team {teamNumber}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={randomizePriorityTeamSearch}
-                        onChange={(e) => setRandomizePriorityTeamSearch(e.target.value)}
-                        className="flex-1 border rounded p-2"
-                        placeholder="Search teams in this schedule..."
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setRandomizePriorityTeams([])}
-                        className="px-3 py-2 rounded border text-sm"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    <div className="max-h-20 overflow-y-auto border rounded p-2 space-y-1">
-                      {filteredRandomizePriorityCandidates.length === 0 ? (
-                        <p className="text-sm text-gray-500">
-                          No teams found for this schedule.
-                        </p>
-                      ) : (
-                        filteredRandomizePriorityCandidates.map((teamNumber) => (
-                          <label key={`randomize-priority-team-${teamNumber}`} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={randomizePriorityTeams.includes(teamNumber)}
-                              onChange={() => toggleRandomizePriorityTeam(teamNumber)}
-                            />
-                            <span>Team {teamNumber}</span>
-                          </label>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3 mt-6">
@@ -2509,7 +2615,11 @@ function AssignmentsContent() {
                     onClick={() => void runRandomizeFromConfig()}
                     className="flex-1 py-2 rounded text-white font-semibold"
                     style={{ backgroundColor: "var(--primary-color)" }}
-                    disabled={randomizeScoutIds.length === 0 || (randomizeTarget === "practice" && !randomizePracticeEventKey)}
+                    disabled={
+                      randomizeScoutIds.length === 0 ||
+                      (randomizeTarget === "practice" && !randomizePracticeEventKey) ||
+                      (randomizeTarget === "pit" && !selectedEvent)
+                    }
                   >
                     Run Randomize
                   </button>

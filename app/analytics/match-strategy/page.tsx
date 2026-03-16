@@ -31,7 +31,11 @@ type MatchStrategyEntry = {
 
 function MatchStrategyAnalyticsContent() {
   const { userData } = useAuth();
-  const canDeleteEntries = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
+  const isCoach = userData?.role === "coach";
+  const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
+  const isTeamAdmin = Boolean(userData?.isTeamAdmin);
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
+  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin;
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
@@ -378,7 +382,7 @@ function MatchStrategyAnalyticsContent() {
               <tr>
                 <th className="bg-red-300 text-center" colSpan={2}>Information</th>
                 <th className="bg-blue-300 text-center" colSpan={15}>Robots</th>
-                <th className="bg-pink-300 text-center" colSpan={2}>General</th>
+                <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 2 : 1}>General</th>
               </tr>
               <tr>
                 <th className="bg-red-200 text-center" colSpan={2}>Information</th>
@@ -386,7 +390,7 @@ function MatchStrategyAnalyticsContent() {
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 2</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 3</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
+                {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
               </tr>
               <tr>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
@@ -443,9 +447,11 @@ function MatchStrategyAnalyticsContent() {
                 <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                   {sortLabel(sortKey, sortDir, "notes", "Notes")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                  {sortLabel(sortKey, sortDir, "id", "Actions")}
-                </th>
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                    {sortLabel(sortKey, sortDir, "id", "Actions")}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -475,6 +481,7 @@ function MatchStrategyAnalyticsContent() {
                     <td className="align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
                       <ExpandableNotesCell text={entry.notes} />
                     </td>
+                  {canViewAdminColumns && (
                     <td className="text-center">
                       <button
                         type="button"
@@ -487,6 +494,7 @@ function MatchStrategyAnalyticsContent() {
                         Delete
                       </button>
                     </td>
+                  )}
                   </tr>
                 );
               })}
