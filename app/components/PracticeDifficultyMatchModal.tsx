@@ -13,6 +13,7 @@ export type PracticeDifficultyModalOption = {
   stageNumber: number;
   alliance: "red" | "blue" | "";
   progress: "fresh" | "partial" | "complete";
+  difficulty?: "easy" | "medium" | "hard" | "";
 };
 
 export default function PracticeDifficultyMatchModal({
@@ -22,6 +23,10 @@ export default function PracticeDifficultyMatchModal({
   options,
   onPick,
   onRandomize,
+  titleOverride,
+  showDifficultyFilters = false,
+  difficultyFilter = "all",
+  onDifficultyFilterChange,
 }: {
   open: boolean;
   onClose: () => void;
@@ -29,6 +34,10 @@ export default function PracticeDifficultyMatchModal({
   options: PracticeDifficultyModalOption[];
   onPick: (id: string) => void;
   onRandomize: (visibleIds: string[]) => void;
+  titleOverride?: string;
+  showDifficultyFilters?: boolean;
+  difficultyFilter?: "all" | "easy" | "medium" | "hard";
+  onDifficultyFilterChange?: (value: "all" | "easy" | "medium" | "hard") => void;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -40,6 +49,10 @@ export default function PracticeDifficultyMatchModal({
           return hay.includes(term);
         })
       : options;
+    const difficultyFiltered =
+      showDifficultyFilters && difficultyFilter !== "all"
+        ? filtered.filter((row) => row.difficulty === difficultyFilter)
+        : filtered;
     const progressOrder: Record<PracticeDifficultyModalOption["progress"], number> = {
       fresh: 0,
       partial: 1,
@@ -56,11 +69,22 @@ export default function PracticeDifficultyMatchModal({
       blue: 1,
       "": 2,
     };
+    const difficultyOrder: Record<string, number> = {
+      easy: 0,
+      medium: 1,
+      hard: 2,
+      "": 3,
+      undefined: 3,
+    };
     const yearFromKey = (key: string) => {
       const year = Number(String(key || "").trim().slice(0, 4));
       return Number.isFinite(year) ? year : 0;
     };
-    return [...filtered].sort((a, b) => {
+    return [...difficultyFiltered].sort((a, b) => {
+      if (showDifficultyFilters && difficultyFilter === "all") {
+        const diffRank = (difficultyOrder[a.difficulty ?? ""] ?? 3) - (difficultyOrder[b.difficulty ?? ""] ?? 3);
+        if (diffRank !== 0) return diffRank;
+      }
       const diff = progressOrder[a.progress] - progressOrder[b.progress];
       if (diff !== 0) return diff;
       const yearDiff = yearFromKey(a.eventKey) - yearFromKey(b.eventKey);
@@ -75,9 +99,9 @@ export default function PracticeDifficultyMatchModal({
       if (eventDiff !== 0) return eventDiff;
       return a.label.localeCompare(b.label);
     });
-  }, [options, searchTerm]);
+  }, [difficultyFilter, options, searchTerm, showDifficultyFilters]);
 
-  const title = `${difficulty.charAt(0).toUpperCase()}${difficulty.slice(1)} Match Select`;
+  const title = titleOverride || `${difficulty.charAt(0).toUpperCase()}${difficulty.slice(1)} Match Select`;
 
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
@@ -85,6 +109,25 @@ export default function PracticeDifficultyMatchModal({
         {title}
       </h2>
       <p className="text-sm text-gray-600 mb-3">Search by match or team number, then pick a match.</p>
+      {showDifficultyFilters && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {(["all", "easy", "medium", "hard"] as const).map((option) => {
+            const isActive = difficultyFilter === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => onDifficultyFilterChange?.(option)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                  isActive ? "border-indigo-500 bg-indigo-50 text-indigo-800" : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {option === "all" ? "All" : option.charAt(0).toUpperCase() + option.slice(1)}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <input
         type="text"
         value={searchTerm}
@@ -110,6 +153,9 @@ export default function PracticeDifficultyMatchModal({
                 <p className="font-semibold text-sm">{row.label}</p>
                 <p className="text-xs text-gray-600">Event: {row.eventName || "Unknown"}</p>
                 <p className="text-xs text-gray-600">{row.teamLabel}</p>
+                {row.difficulty && (
+                  <p className="text-xs text-gray-500">Difficulty: {row.difficulty}</p>
+                )}
                 <p className="text-xs text-gray-500 mt-1">
                   Progress: {row.progress}
                 </p>

@@ -200,6 +200,12 @@ type LivePracticeLobby = {
   status: "waiting" | "in_progress" | "completed" | "closed";
   createdAt: number;
   startedAt?: number;
+  hostOptOut?: boolean;
+  hostVideo?: boolean;
+  selectedMatchId?: string;
+  selectedMatchBase?: string;
+  selectedMatchLabel?: string;
+  selectedMatchDifficulty?: "easy" | "medium" | "hard" | "";
   revealUntil?: number;
   playersByUid?: Record<string, { name?: string; joinedAt?: number }>;
   matchJson?: string;
@@ -1051,6 +1057,11 @@ function PracticeScoutingContent() {
   const [liveLobby, setLiveLobby] = useState<LivePracticeLobby | null>(null);
   const [liveLobbyBusy, setLiveLobbyBusy] = useState(false);
   const [liveLobbyError, setLiveLobbyError] = useState("");
+  const [showLobbyMatchModal, setShowLobbyMatchModal] = useState(false);
+  const [lobbyMatchCandidates, setLobbyMatchCandidates] = useState<CandidatePracticeMatch[]>([]);
+  const [lobbyMatchBusy, setLobbyMatchBusy] = useState(false);
+  const [lobbyMatchError, setLobbyMatchError] = useState("");
+  const [lobbyMatchDifficultyFilter, setLobbyMatchDifficultyFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
   const [liveMatchBundle, setLiveMatchBundle] = useState<LiveMatchBundle | null>(null);
   const [liveAssignments, setLiveAssignments] = useState<Record<string, LiveAssignment>>({});
   const [liveSubmissions, setLiveSubmissions] = useState<Record<string, Record<string, unknown>>>({});
@@ -1087,14 +1098,27 @@ function PracticeScoutingContent() {
       .sort((a, b) => a.joinedAt - b.joinedAt);
   }, [liveLobby]);
 
+  const liveLobbyParticipants = useMemo(() => {
+    if (!liveLobby) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
+    if (!liveLobby.hostOptOut) return liveLobbyPlayers;
+    return liveLobbyPlayers.filter((player) => player.uid !== liveLobby.hostId);
+  }, [liveLobby, liveLobbyPlayers]);
+
   const liveLobbyPlayerCount = liveLobbyPlayers.length;
-  const liveLobbyCanStart = liveLobbyPlayerCount > 0 && liveLobbyPlayerCount % 3 === 0;
+  const liveLobbyParticipantCount = liveLobbyParticipants.length;
+  const liveLobbyCanStart = liveLobbyParticipantCount > 0 && liveLobbyParticipantCount % 3 === 0;
   const userIsLiveLobbyHost = Boolean(liveLobby && userData?.uid && liveLobby.hostId === userData.uid);
   const myLiveAssignment = useMemo(() => {
     if (!userData?.uid) return null;
     return liveAssignments[userData.uid] || null;
   }, [liveAssignments, userData?.uid]);
-  const liveSubmittedCount = useMemo(() => Object.keys(liveSubmissions || {}).length, [liveSubmissions]);
+  const liveSubmittedCount = useMemo(() => {
+    if (!liveLobby) return 0;
+    const submissions = liveSubmissions || {};
+    if (!liveLobby.hostOptOut) return Object.keys(submissions).length;
+    const participantIds = new Set(liveLobbyParticipants.map((player) => player.uid));
+    return Object.keys(submissions).filter((uid) => participantIds.has(uid)).length;
+  }, [liveLobby, liveLobbyParticipants, liveSubmissions]);
   const myLiveTeamMembers = useMemo(() => {
     if (!myLiveAssignment) return [] as Array<{ uid: string; name: string; assignment: LiveAssignment }>;
     return liveLobbyPlayers
@@ -1107,6 +1131,10 @@ function PracticeScoutingContent() {
       .filter((row): row is { uid: string; name: string; assignment: LiveAssignment } => Boolean(row))
       .sort((a, b) => a.assignment.robotIndex - b.assignment.robotIndex);
   }, [liveAssignments, liveLobbyPlayers, myLiveAssignment]);
+
+  const hideLiveLobbyVideo = Boolean(selectedDifficulty === "live" && liveLobby?.hostVideo && !userIsLiveLobbyHost);
+  const hostOptedOut = Boolean(selectedDifficulty === "live" && liveLobby?.hostOptOut && userIsLiveLobbyHost);
+  const showLiveLobbyForm = !hostOptedOut;
 
   function getLocalLobbyStore() {
     if (typeof window === "undefined") return {} as Record<string, LivePracticeLobbyStorage>;
@@ -1313,6 +1341,17 @@ function PracticeScoutingContent() {
   ]);
 
   useEffect(() => {
+    if (!liveLobby || !liveMatchBundle) return;
+    if (!userIsLiveLobbyHost) return;
+    if (!liveLobby.hostOptOut || !liveLobby.hostVideo) return;
+    if (currentStep !== "select" && currentStep !== "live_reveal") return;
+    const hostMatch = liveMatchBundle.red || liveMatchBundle.blue;
+    if (!hostMatch) return;
+    setSelectedDifficulty("live");
+    startPracticeMatch({ ...hostMatch, progress: "fresh" as const }, { liveMode: true, robotIndex: 0, teamNumber: "" });
+  }, [currentStep, liveLobby, liveMatchBundle, startPracticeMatch, userIsLiveLobbyHost]);
+
+  useEffect(() => {
     if (!liveLobby || liveLobby.status !== "completed") return;
     if (!liveMatchBundle) return;
     const board = computeLiveLeaderboardFromLobby(liveMatchBundle, liveAssignments, liveSubmissions);
@@ -1334,17 +1373,65 @@ function PracticeScoutingContent() {
     return code;
   }
 
-  async function loadLiveMatchBundleFromPastMatches(): Promise<LiveMatchBundle | null> {
+  async function fetchLobbyMatchCandidates(): Promise<CandidatePracticeMatch[]> {
+    if (!activeMatchGame) return [];
     let matches: PracticeMatch[] = [];
-    const snapshot = await getDocs(collection(db, "practiceMatches"));
-    matches = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as PracticeMatch[];
+    try {
+      const matchesSnapshot = await getDocs(collection(db, "practiceMatches"));
+      matches = matchesSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as PracticeMatch[];
+    } catch (queryError) {
+      const allSnapshot = await getDocs(collection(db, "practiceMatches"));
+      matches = allSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as PracticeMatch[];
+      console.warn("Lobby match load query failed; using fallback practice match load.", queryError);
+    }
+
+    if (matches.length === 0) return [];
+
     const gameFiltered = matches.filter((match) => matchBelongsToSelectedGame(match));
+    if (gameFiltered.length === 0) return [];
+
     const normalized = gameFiltered
       .map((match) => ({ ...match, allianceTeams: getMatchTeams(match as unknown as PracticeMatch & Record<string, unknown>) }))
       .filter((match) => match.allianceTeams.length >= 3);
-    const deduped = dedupePracticeMatches(normalized);
+
+    let candidateMatches = normalized;
+    if (candidateMatches.length === 0) {
+      candidateMatches = buildLegacyGroupedMatches(gameFiltered);
+    }
+    if (candidateMatches.length === 0) return [];
+
+    candidateMatches = dedupePracticeMatches(candidateMatches);
+    return candidateMatches.map((match) => ({ ...match, progress: "fresh" as const }));
+  }
+
+  async function loadLobbyMatchCandidates(): Promise<CandidatePracticeMatch[]> {
+    setLobbyMatchBusy(true);
+    setLobbyMatchError("");
+    try {
+      const loaded = await fetchLobbyMatchCandidates();
+      if (loaded.length === 0) {
+        setLobbyMatchError("No matches available for lobby selection.");
+      }
+      setLobbyMatchCandidates(loaded);
+      return loaded;
+    } catch (error) {
+      console.error("Failed loading lobby match candidates:", error);
+      setLobbyMatchError("Could not load matches for lobby selection.");
+      return [];
+    } finally {
+      setLobbyMatchBusy(false);
+    }
+  }
+
+  async function loadLiveMatchBundleFromPastMatches(input?: {
+    matchId?: string;
+    matchBase?: string;
+  }): Promise<LiveMatchBundle | null> {
+    const candidates = await fetchLobbyMatchCandidates();
+    if (candidates.length === 0) return null;
+
     const byBase = new Map<string, { red?: PracticeMatch; blue?: PracticeMatch }>();
-    for (const match of deduped) {
+    for (const match of candidates) {
       const base = getPracticeBaseIdentity(match);
       const alliance = normalizeAllianceSide((match as unknown as Record<string, unknown>).alliance);
       if (!alliance) continue;
@@ -1352,10 +1439,76 @@ function PracticeScoutingContent() {
       bucket[alliance] = match;
       byBase.set(base, bucket);
     }
-    const bundled = Array.from(byBase.values()).filter((row) => row.red && row.blue) as Array<{ red: PracticeMatch; blue: PracticeMatch }>;
+
+    const bundled = Array.from(byBase.entries())
+      .filter(([, row]) => row.red && row.blue)
+      .map(([base, row]) => ({ base, red: row.red!, blue: row.blue! }));
+
     if (bundled.length === 0) return null;
+
+    let preferredBase = input?.matchBase || "";
+    if (!preferredBase && input?.matchId) {
+      const picked = candidates.find((match) => match.id === input.matchId);
+      if (!picked) return null;
+      preferredBase = getPracticeBaseIdentity(picked);
+    }
+
+    if (preferredBase) {
+      const preferred = bundled.find((row) => row.base === preferredBase);
+      if (!preferred) return null;
+      return { red: preferred.red, blue: preferred.blue };
+    }
+
     const picked = bundled[Math.floor(Math.random() * bundled.length)];
     return { red: picked.red, blue: picked.blue };
+  }
+
+  async function updateLiveLobbySettings(update: Partial<Pick<LivePracticeLobby,
+    "hostOptOut" | "hostVideo" | "selectedMatchId" | "selectedMatchBase" | "selectedMatchLabel" | "selectedMatchDifficulty">>) {
+    if (!liveLobby || !userData?.uid || !userIsLiveLobbyHost) return;
+    const nextLobby = { ...liveLobby, ...update };
+    setLiveLobby(nextLobby);
+
+    if (liveLobby.id.startsWith("local:")) {
+      upsertLocalLobby(liveLobby.code, { ...nextLobby, id: liveLobby.id });
+      return;
+    }
+
+    setLiveLobbyBusy(true);
+    try {
+      const payload: Record<string, unknown> = {
+        action: "update",
+        code: liveLobby.code,
+        uid: userData.uid,
+      };
+      if (Object.prototype.hasOwnProperty.call(update, "hostOptOut")) payload.hostOptOut = update.hostOptOut;
+      if (Object.prototype.hasOwnProperty.call(update, "hostVideo")) payload.hostVideo = update.hostVideo;
+      if (Object.prototype.hasOwnProperty.call(update, "selectedMatchId")) payload.selectedMatchId = update.selectedMatchId ?? "";
+      if (Object.prototype.hasOwnProperty.call(update, "selectedMatchBase")) payload.selectedMatchBase = update.selectedMatchBase ?? "";
+      if (Object.prototype.hasOwnProperty.call(update, "selectedMatchLabel")) payload.selectedMatchLabel = update.selectedMatchLabel ?? "";
+      if (Object.prototype.hasOwnProperty.call(update, "selectedMatchDifficulty")) payload.selectedMatchDifficulty = update.selectedMatchDifficulty ?? "";
+
+      const response = await fetch("/api/live-lobbies", {
+        method: "POST",
+        headers: await authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const fail = (await response.json().catch(() => ({}))) as { error?: string };
+        setLiveLobbyError(fail.error || "Could not update lobby settings.");
+        return;
+      }
+      const updated = (await response.json()) as { lobby?: LivePracticeLobby };
+      if (updated.lobby) {
+        setLiveLobby(updated.lobby);
+        setLiveLobbyError("");
+      }
+    } catch (error) {
+      console.error("Failed updating lobby settings:", error);
+      setLiveLobbyError("Could not update lobby settings.");
+    } finally {
+      setLiveLobbyBusy(false);
+    }
   }
 
   function buildLiveAssignments(players: Array<{ uid: string }>, bundle: LiveMatchBundle) {
@@ -1387,6 +1540,12 @@ function PracticeScoutingContent() {
         mode: selectedMode,
         status: "waiting",
         createdAt: Date.now(),
+        hostOptOut: false,
+        hostVideo: false,
+        selectedMatchId: "",
+        selectedMatchBase: "",
+        selectedMatchLabel: "",
+        selectedMatchDifficulty: "",
         playersByUid: {
           [userData.uid]: { name: userData.displayName || "Host", joinedAt: Date.now() },
         },
@@ -1407,6 +1566,8 @@ function PracticeScoutingContent() {
               teamId: payload.teamId,
               game: payload.game,
               mode: payload.mode,
+              hostOptOut: payload.hostOptOut,
+              hostVideo: payload.hostVideo,
             }),
           });
           if (response.status === 409) {
@@ -1560,18 +1721,25 @@ function PracticeScoutingContent() {
   async function startLiveLobbySession() {
     if (!liveLobby || !userIsLiveLobbyHost) return;
     if (!liveLobbyCanStart) {
-      alert("Live practice requires players in multiples of 3.");
+      alert("Live practice requires participants in multiples of 3.");
       return;
     }
     setLiveLobbyBusy(true);
     try {
-      const bundle = await loadLiveMatchBundleFromPastMatches();
+      const bundle = await loadLiveMatchBundleFromPastMatches({
+        matchId: liveLobby.selectedMatchId || "",
+        matchBase: liveLobby.selectedMatchBase || "",
+      });
       if (!bundle) {
-        setLiveLobbyError("No past matches available with both alliances for live practice.");
+        setLiveLobbyError(
+          liveLobby.selectedMatchId || liveLobby.selectedMatchBase
+            ? "Selected match is unavailable. Choose another or clear the selection."
+            : "No past matches available with both alliances for live practice."
+        );
         return;
       }
-      const players = [...liveLobbyPlayers];
-      const assignments = buildLiveAssignments(players, bundle);
+      const participants = [...liveLobbyParticipants];
+      const assignments = buildLiveAssignments(participants, bundle);
       const matchJson = JSON.stringify(bundle);
       const assignmentsJson = JSON.stringify(assignments);
 
@@ -1585,7 +1753,9 @@ function PracticeScoutingContent() {
           assignmentsJson,
           submissionsJson: "{}",
         });
-        setCurrentStep("live_reveal");
+        if (!liveLobby.hostOptOut) {
+          setCurrentStep("live_reveal");
+        }
         return;
       }
       const response = await fetch("/api/live-lobbies", {
@@ -1607,7 +1777,9 @@ function PracticeScoutingContent() {
       const payload = (await response.json()) as { lobby?: LivePracticeLobby };
       if (payload.lobby) {
         setLiveLobby(payload.lobby);
-        setCurrentStep("live_reveal");
+        if (!payload.lobby.hostOptOut) {
+          setCurrentStep("live_reveal");
+        }
       }
     } catch (error) {
       console.error("Failed starting live lobby:", error);
@@ -2913,8 +3085,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setShowDifficultyMatchModal(false);
     setShowLiveLinkModal(false);
     setShowLiveRobotModal(false);
+    setShowLobbyMatchModal(false);
     setPendingLiveMatchPick(null);
     setLiveVideoUrl("");
+    setLobbyMatchCandidates([]);
+    setLobbyMatchError("");
+    setLobbyMatchBusy(false);
+    setLobbyMatchDifficultyFilter("all");
     setCurrentMatch(null);
     setCurrentRobotIndex(0);
     setBreakCompletedRobotIndex(null);
@@ -2949,6 +3126,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
   async function submitLiveRobot() {
     if (!currentMatch || !userData) return;
+    if (liveLobby?.hostOptOut && userIsLiveLobbyHost) {
+      alert("Host opted out of scouting for this lobby.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -3118,7 +3299,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         }));
         if (liveLobby.id.startsWith("local:")) {
           const next = { ...nextSubmissions };
-          const totalPlayers = Object.keys(liveLobby.playersByUid || {}).length;
+          const totalPlayers = liveLobby.hostOptOut
+            ? Math.max(0, Object.keys(liveLobby.playersByUid || {}).length - 1)
+            : Object.keys(liveLobby.playersByUid || {}).length;
           const completed = Object.keys(next).length >= totalPlayers;
           const nextLobby: LivePracticeLobby = {
             ...liveLobby,
@@ -3218,6 +3401,53 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     });
   }, [activeMatchGame, candidateMatches, selectedDifficulty, teamEventCatalog]);
 
+  const lobbyMatchByBase = useMemo(() => {
+    const map = new Map<string, { red?: CandidatePracticeMatch; blue?: CandidatePracticeMatch }>();
+    lobbyMatchCandidates.forEach((match) => {
+      const base = getPracticeBaseIdentity(match);
+      const alliance = normalizeAllianceSide(match.alliance);
+      if (!alliance) return;
+      const bucket = map.get(base) || {};
+      bucket[alliance] = match;
+      map.set(base, bucket);
+    });
+    return map;
+  }, [lobbyMatchCandidates]);
+
+  const lobbyMatchOptions = useMemo<PracticeDifficultyModalOption[]>(() => {
+    if (!activeMatchGame) return [];
+    return lobbyMatchCandidates
+      .filter((match) => {
+        const base = getPracticeBaseIdentity(match);
+        const siblings = lobbyMatchByBase.get(base);
+        return Boolean(siblings?.red && siblings?.blue);
+      })
+      .map((match) => {
+        const matchLabel = getPracticeLabel(match);
+        const teamLabel = (match.allianceTeams || []).join(", ");
+        const { eventKey, eventName } = resolvePracticeEvent(match, activeMatchGame || "REEFSCAPE", teamEventCatalog);
+        const resolvedEventName = eventName || eventKey || "Unknown Event";
+        const resolvedEventKey = eventKey || "";
+        const stage = getPracticeStage(match);
+        const stageNumber = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
+        const alliance = normalizeAllianceSide(match.alliance);
+        const score = getPracticeMatchScore(match);
+        const difficulty = score !== null ? scoreToDifficulty(score) : "";
+        return {
+          id: match.id,
+          label: matchLabel,
+          eventName: resolvedEventName,
+          eventKey: resolvedEventKey,
+          teamLabel: teamLabel ? `Teams: ${teamLabel}` : "Teams: -",
+          stage,
+          stageNumber,
+          alliance,
+          progress: match.progress,
+          difficulty,
+        };
+      });
+  }, [activeMatchGame, lobbyMatchByBase, lobbyMatchCandidates, teamEventCatalog]);
+
   function continueLiveSoloSession() {
     if (!currentMatch) return;
     const selected = { ...currentMatch, progress: "fresh" as const } as CandidatePracticeMatch;
@@ -3239,6 +3469,42 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     if (!picked) return;
     setShowDifficultyMatchModal(false);
     startPracticeMatch(picked);
+  }
+
+  async function openLobbyMatchPicker() {
+    if (!activeMatchGame) return;
+    const loaded = await loadLobbyMatchCandidates();
+    if (loaded.length === 0) return;
+    setShowLobbyMatchModal(true);
+  }
+
+  function handleLobbyMatchPick(matchId: string) {
+    const picked = lobbyMatchCandidates.find((match) => match.id === matchId);
+    if (!picked) return;
+    const base = getPracticeBaseIdentity(picked);
+    const siblings = lobbyMatchByBase.get(base);
+    if (!siblings?.red || !siblings?.blue) {
+      alert("Selected match needs both red and blue alliances for live practice.");
+      return;
+    }
+    const score = getPracticeMatchScore(picked);
+    const difficulty = score !== null ? scoreToDifficulty(score) : "";
+    void updateLiveLobbySettings({
+      selectedMatchId: picked.id,
+      selectedMatchBase: base,
+      selectedMatchLabel: getPracticeLabel(picked),
+      selectedMatchDifficulty: difficulty,
+    });
+    setShowLobbyMatchModal(false);
+  }
+
+  function handleLobbyMatchRandomize(visibleIds: string[]) {
+    const pool = lobbyMatchCandidates.filter((match) => visibleIds.includes(match.id));
+    if (pool.length === 0) return;
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    const picked = pool[randomIndex];
+    if (!picked) return;
+    handleLobbyMatchPick(picked.id);
   }
 
   const liveScopedCandidateMatches = useMemo(() => {
@@ -3616,7 +3882,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 <div className="mt-6 rounded-xl border border-indigo-300 bg-indigo-500/5 shadow-md p-4">
                   <h3 className="font-semibold mb-1 text-indigo-800">Live Practice Lobby (Beta)</h3>
                   <p className="text-sm text-gray-700 mb-3">
-                    Host or join a live room. Match starts are only allowed when players are in multiples of 3.
+                    Host or join a live room. Match starts are only allowed when participants are in multiples of 3.
                   </p>
                   {!liveLobby ? (
                     <div className="space-y-3">
@@ -3662,20 +3928,93 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       )}
                       <div className="rounded border border-gray-300 p-3 bg-gray-50 text-gray-900">
                         <p className="text-sm font-semibold mb-2 text-gray-900">Players ({liveLobbyPlayerCount})</p>
+                        {liveLobby.hostOptOut && (
+                          <p className="text-xs text-gray-600 mb-2">Participants: {liveLobbyParticipantCount} (host opted out)</p>
+                        )}
                         <div className="grid sm:grid-cols-2 gap-1 text-sm text-gray-900">
                           {liveLobbyPlayers.map((player) => (
                             <p key={player.uid}>
                               {player.name}
-                              {player.uid === liveLobby.hostId ? " (Host)" : ""}
+                              {player.uid === liveLobby.hostId ? ` (Host${liveLobby.hostOptOut ? ", Opted Out" : ""})` : ""}
                             </p>
                           ))}
                         </div>
                       </div>
                       <p className={`text-sm font-semibold ${liveLobbyCanStart ? "text-green-700" : "text-amber-700"}`}>
                         {liveLobbyCanStart
-                          ? "Ready: player count is a multiple of 3."
-                          : "Need player count in multiples of 3 before starting."}
+                          ? "Ready: participant count is a multiple of 3."
+                          : "Need participant count in multiples of 3 before starting."}
                       </p>
+                      {userIsLiveLobbyHost && liveLobby.status === "waiting" && (
+                        <div className="rounded border border-indigo-200 bg-indigo-50 p-3 space-y-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Host Options</p>
+                          <label className="flex items-start gap-2 text-sm text-indigo-900">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(liveLobby.hostOptOut)}
+                              onChange={(event) => {
+                                void updateLiveLobbySettings({ hostOptOut: event.target.checked });
+                              }}
+                              disabled={liveLobbyBusy}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              Opt out of scouting (host is not assigned to a robot).
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-2 text-sm text-indigo-900">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(liveLobby.hostVideo)}
+                              onChange={(event) => {
+                                void updateLiveLobbySettings({ hostVideo: event.target.checked });
+                              }}
+                              disabled={liveLobbyBusy}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              Host video (only the host sees the video; others get the form only).
+                            </span>
+                          </label>
+                          <div className="border-t border-indigo-200 pt-3 space-y-2">
+                            <p className="text-sm font-semibold text-indigo-900">Match Selection</p>
+                            {liveLobby.selectedMatchLabel ? (
+                              <div className="text-xs text-indigo-800 space-y-1">
+                                <p>Selected: {liveLobby.selectedMatchLabel}</p>
+                                {liveLobby.selectedMatchDifficulty && <p>Difficulty: {liveLobby.selectedMatchDifficulty}</p>}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-700">No match selected. A random match will be chosen at start.</p>
+                            )}
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void openLobbyMatchPicker()}
+                                disabled={liveLobbyBusy || lobbyMatchBusy}
+                                className="px-3 py-1.5 rounded border border-indigo-400 text-indigo-800 text-xs font-semibold disabled:opacity-50"
+                              >
+                                {lobbyMatchBusy ? "Loading..." : liveLobby.selectedMatchLabel ? "Change Match" : "Select Match"}
+                              </button>
+                              {(liveLobby.selectedMatchId || liveLobby.selectedMatchBase) && (
+                                <button
+                                  type="button"
+                                  onClick={() => void updateLiveLobbySettings({
+                                    selectedMatchId: "",
+                                    selectedMatchBase: "",
+                                    selectedMatchLabel: "",
+                                    selectedMatchDifficulty: "",
+                                  })}
+                                  disabled={liveLobbyBusy}
+                                  className="px-3 py-1.5 rounded border border-gray-300 text-xs font-semibold disabled:opacity-50"
+                                >
+                                  Use Random
+                                </button>
+                              )}
+                            </div>
+                            {lobbyMatchError && <p className="text-xs text-amber-700">{lobbyMatchError}</p>}
+                          </div>
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         {userIsLiveLobbyHost && liveLobby.status === "waiting" && (
                           <button
@@ -3704,7 +4043,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                               <p className="text-sm text-indigo-800 mt-1">Match started. Complete your scout and submit.</p>
                             )}
                             <p className="text-sm text-indigo-800 mt-1">
-                              Submitted: {liveSubmittedCount}/{liveLobbyPlayerCount}
+                              Submitted: {liveSubmittedCount}/{liveLobbyParticipantCount}
                             </p>
                           </div>
                         )}
@@ -3773,7 +4112,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               <p className="text-gray-600 mb-8">
                 {selectedDifficulty === "live"
                   ? liveLobby
-                    ? `Waiting for all players to submit (${liveSubmittedCount}/${liveLobbyPlayerCount}).`
+                    ? `Waiting for all participants to submit (${liveSubmittedCount}/${liveLobbyParticipantCount}).`
                     : "Ready for the next team. You can keep scouting or end the session."
                   : "Take a short break before the next robot, just like normal scouting rotations between matches."}
               </p>
@@ -3817,26 +4156,27 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
         {/* STEP 2: PRACTICE SCOUTING */}
         {currentStep === 'practice' && currentMatch && (
-          <div className="h-screen flex flex-col md:flex-row">
+          <div className={`h-screen flex flex-col ${hideLiveLobbyVideo ? "" : "md:flex-row"}`}>
             {/* VIDEO PLAYER */}
-            <div className="shrink-0 bg-black md:flex md:flex-col md:flex-1">
-              <div className="relative w-full aspect-video md:aspect-auto md:flex-1">
-                <iframe
-                  key={`${currentMatch.id}-${currentRobotIndex}`}
-                  ref={iframeRef}
-                  src={getYouTubeEmbedUrl(currentMatch.videoUrl)}
-                  className="w-full h-full"
-                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                  title="Practice Match Video"
-                  frameBorder="0"
-                />
-                {selectedMode === "competitive" && (
-                  <div className="absolute inset-0 z-10" aria-hidden="true" />
-                )}
-              </div>
+            {!hideLiveLobbyVideo && (
+              <div className="shrink-0 bg-black md:flex md:flex-col md:flex-1">
+                <div className="relative w-full aspect-video md:aspect-auto md:flex-1">
+                  <iframe
+                    key={`${currentMatch.id}-${currentRobotIndex}`}
+                    ref={iframeRef}
+                    src={getYouTubeEmbedUrl(currentMatch.videoUrl)}
+                    className="w-full h-full"
+                    allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                    title="Practice Match Video"
+                    frameBorder="0"
+                  />
+                  {selectedMode === "competitive" && (
+                    <div className="absolute inset-0 z-10" aria-hidden="true" />
+                  )}
+                </div>
 
-              {/* Match Info */}
-              <div className="hidden md:block bg-black bg-opacity-90 text-white p-4">
+                {/* Match Info */}
+                <div className="hidden md:block bg-black bg-opacity-90 text-white p-4">
                 <h3 className="font-semibold text-lg">
                   {getPracticeStageLabel(getPracticeStage({
                     matchType: currentMatch.matchType,
@@ -3890,11 +4230,23 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 {selectedMode === 'competitive' && (
                   <p className="text-xs mt-2 text-yellow-300">Video cannot be paused in competitive mode.</p>
                 )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* SCOUTING FORM */}
-            <div ref={formPaneRef} className="w-full md:w-[22rem] md:flex-none flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4">
+            {showLiveLobbyForm ? (
+              <div
+                ref={formPaneRef}
+                className={`w-full flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4 ${
+                  hideLiveLobbyVideo ? "" : "md:w-[22rem] md:flex-none"
+                }`}
+              >
+                {hideLiveLobbyVideo && (
+                  <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 text-sm rounded-lg p-3">
+                    Video is hosted by {liveLobby?.hostName || "the host"}. Use the shared screen and fill out your form here.
+                  </div>
+                )}
               {selectedDifficulty !== "live" && (
                 <button
                   type="button"
@@ -4535,6 +4887,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               </div>
             )}
           </div>
+        ) : (
+          <div className="w-full flex-1 min-h-0 overflow-y-auto bg-gray-100 p-6">
+            <div className="max-w-xl mx-auto bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-700">
+              <h2 className="text-lg font-semibold mb-2">Hosting Only</h2>
+              <p className="text-sm">
+                You opted out of scouting for this lobby. Keep the video running for the team.
+              </p>
+            </div>
+          </div>
+        )}
+          </div>
         )}
 
         {/* STEP 3: RESULTS */}
@@ -4736,6 +5099,18 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           options={sharedModalOptions}
           completed={sharedModalCompleted}
           onPick={handleSharedModalPick}
+        />
+        <PracticeDifficultyMatchModal
+          open={showLobbyMatchModal}
+          onClose={() => setShowLobbyMatchModal(false)}
+          difficulty="easy"
+          titleOverride="Lobby Match Select"
+          options={lobbyMatchOptions}
+          onPick={handleLobbyMatchPick}
+          onRandomize={handleLobbyMatchRandomize}
+          showDifficultyFilters
+          difficultyFilter={lobbyMatchDifficultyFilter}
+          onDifficultyFilterChange={setLobbyMatchDifficultyFilter}
         />
         <PracticeDifficultyMatchModal
           open={showDifficultyMatchModal && selectedDifficulty !== "live" && selectedDifficulty !== null}

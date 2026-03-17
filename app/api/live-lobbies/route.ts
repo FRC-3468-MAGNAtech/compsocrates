@@ -18,6 +18,12 @@ type LobbyPayload = {
   status: "waiting" | "in_progress" | "completed" | "closed";
   createdAt: number;
   startedAt?: number;
+  hostOptOut?: boolean;
+  hostVideo?: boolean;
+  selectedMatchId?: string;
+  selectedMatchBase?: string;
+  selectedMatchLabel?: string;
+  selectedMatchDifficulty?: "easy" | "medium" | "hard" | "";
   playersByUid: LobbyPlayers;
   revealUntil?: number;
   matchJson?: string;
@@ -42,6 +48,14 @@ function readNumberValue(value: FirestoreValue | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function readBooleanValue(value: FirestoreValue | undefined) {
+  const raw = readStringValue(value).trim().toLowerCase();
+  if (!raw) return false;
+  if (["true", "1", "yes", "on"].includes(raw)) return true;
+  if (["false", "0", "no", "off"].includes(raw)) return false;
+  return false;
+}
+
 function encodeFields(values: Record<string, unknown>) {
   const fields: Record<string, FirestoreValue> = {};
   Object.entries(values).forEach(([key, value]) => {
@@ -52,6 +66,17 @@ function encodeFields(values: Record<string, unknown>) {
     fields[key] = { stringValue: String(value ?? "") };
   });
   return fields;
+}
+
+function parseBooleanInput(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+  if (typeof value === "string") {
+    const raw = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(raw)) return true;
+    if (["false", "0", "no", "off", ""].includes(raw)) return false;
+  }
+  return false;
 }
 
 async function fetchIdToken() {
@@ -125,6 +150,14 @@ function parseLobbyFromDocument(document: { name?: string; fields?: Record<strin
     createdAt: readNumberValue(fields.createdAt),
     startedAt: readNumberValue(fields.startedAt) || undefined,
     revealUntil: readNumberValue(fields.revealUntil) || undefined,
+    hostOptOut: readBooleanValue(fields.hostOptOut),
+    hostVideo: readBooleanValue(fields.hostVideo),
+    selectedMatchId: readStringValue(fields.selectedMatchId),
+    selectedMatchBase: readStringValue(fields.selectedMatchBase),
+    selectedMatchLabel: readStringValue(fields.selectedMatchLabel),
+    selectedMatchDifficulty: (["easy", "medium", "hard"].includes(readStringValue(fields.selectedMatchDifficulty))
+      ? readStringValue(fields.selectedMatchDifficulty)
+      : "") as LobbyPayload["selectedMatchDifficulty"],
     playersByUid,
     matchJson: readStringValue(fields.matchJson),
     assignmentsJson: readStringValue(fields.assignmentsJson),
@@ -214,6 +247,8 @@ export async function POST(request: NextRequest) {
       const teamId = String(body.teamId || "").trim();
       const game = String(body.game || "REEFSCAPE").toUpperCase() === "REBUILT" ? "REBUILT" : "REEFSCAPE";
       const mode = String(body.mode || "trial") === "competitive" ? "competitive" : "trial";
+      const hostOptOut = parseBooleanInput(body.hostOptOut);
+      const hostVideo = parseBooleanInput(body.hostVideo);
       if (!code || !hostId || !teamId) return NextResponse.json({ error: "Missing create fields" }, { status: 400 });
       const existing = await queryLobbyByCode(projectId, apiKey, idToken, code);
       if (existing && (existing.status === "waiting" || existing.status === "in_progress")) {
@@ -239,6 +274,8 @@ export async function POST(request: NextRequest) {
             mode,
             status: "waiting",
             createdAt,
+            hostOptOut,
+            hostVideo,
             playersJson: JSON.stringify(playersByUid),
           }),
         }),
@@ -275,6 +312,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ lobby: updated });
     }
 
+    if (action === "update") {
+      const code = String(body.code || "").trim().toUpperCase();
+      const uid = String(body.uid || "").trim();
+      if (!code || !uid) return NextResponse.json({ error: "Missing update fields" }, { status: 400 });
+      const lobby = await queryLobbyByCode(projectId, apiKey, idToken, code);
+      if (!lobby) return NextResponse.json({ error: "Lobby not found" }, { status: 404 });
+      if (lobby.hostId !== uid) return NextResponse.json({ error: "Only host can update" }, { status: 403 });
+      if (lobby.status !== "waiting") {
+        return NextResponse.json({ error: "Lobby must be waiting to update settings" }, { status: 400 });
+      }
+
+      const fields: Record<string, unknown> = { updatedAt: Date.now() };
+      if (Object.prototype.hasOwnProperty.call(body, "hostOptOut")) {
+        fields.hostOptOut = parseBooleanInput(body.hostOptOut);
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "hostVideo")) {
+        fields.hostVideo = parseBooleanInput(body.hostVideo);
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "selectedMatchId")) {
+        fields.selectedMatchId = String(body.selectedMatchId || "");
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "selectedMatchBase")) {
+        fields.selectedMatchBase = String(body.selectedMatchBase || "");
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "selectedMatchLabel")) {
+        fields.selectedMatchLabel = String(body.selectedMatchLabel || "");
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "selectedMatchDifficulty")) {
+        fields.selectedMatchDifficulty = String(body.selectedMatchDifficulty || "");
+      }
+
+      const updated = await patchLobby(projectId, apiKey, idToken, lobby.id, fields);
+      if (!updated) return NextResponse.json({ error: "Update patch failed" }, { status: 500 });
+      return NextResponse.json({ lobby: updated });
+    }
+
     if (action === "start") {
       const code = String(body.code || "").trim().toUpperCase();
       const uid = String(body.uid || "").trim();
@@ -285,7 +358,10 @@ export async function POST(request: NextRequest) {
       if (!lobby) return NextResponse.json({ error: "Lobby not found" }, { status: 404 });
       if (lobby.hostId !== uid) return NextResponse.json({ error: "Only host can start" }, { status: 403 });
       const count = Object.keys(lobby.playersByUid || {}).length;
-      if (count === 0 || count % 3 !== 0) return NextResponse.json({ error: "Player count must be a multiple of 3" }, { status: 400 });
+      const participantCount = lobby.hostOptOut ? Math.max(0, count - 1) : count;
+      if (participantCount === 0 || participantCount % 3 !== 0) {
+        return NextResponse.json({ error: "Participant count must be a multiple of 3" }, { status: 400 });
+      }
       if (!matchJson || !assignmentsJson) return NextResponse.json({ error: "Missing match assignments" }, { status: 400 });
       let parsedAssignments: Record<string, unknown> = {};
       try {
@@ -294,7 +370,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Invalid assignments payload" }, { status: 400 });
       }
       const assignedCount = Object.keys(parsedAssignments || {}).length;
-      if (assignedCount < count) return NextResponse.json({ error: "All players must have assignments" }, { status: 400 });
+      if (assignedCount < participantCount) return NextResponse.json({ error: "All participants must have assignments" }, { status: 400 });
       const now = Date.now();
       const updated = await patchLobby(projectId, apiKey, idToken, lobby.id, {
         status: "in_progress",
@@ -318,6 +394,9 @@ export async function POST(request: NextRequest) {
       if (!lobby) return NextResponse.json({ error: "Lobby not found" }, { status: 404 });
       if (lobby.status !== "in_progress") return NextResponse.json({ error: "Lobby is not in progress" }, { status: 400 });
       const players = lobby.playersByUid || {};
+      if (lobby.hostOptOut && uid === lobby.hostId) {
+        return NextResponse.json({ error: "Host opted out of scouting" }, { status: 403 });
+      }
       if (!players[uid]) return NextResponse.json({ error: "Only active players can submit" }, { status: 403 });
       let existing: Record<string, unknown> = {};
       try {
@@ -335,7 +414,7 @@ export async function POST(request: NextRequest) {
         ...parsedSubmission,
         submittedAt: Date.now(),
       };
-      const playerCount = Object.keys(players).length;
+      const playerCount = lobby.hostOptOut ? Math.max(0, Object.keys(players).length - 1) : Object.keys(players).length;
       const submittedCount = Object.keys(existing).length;
       const shouldComplete = submittedCount >= playerCount;
       const updated = await patchLobby(projectId, apiKey, idToken, lobby.id, {
