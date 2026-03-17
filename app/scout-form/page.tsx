@@ -174,18 +174,38 @@ const INCIDENTS = [
   { value: "red-card", label: "Red Card" },
 ];
 
-const BPS = [0, 2, 5, 8, 10];
-const CARRY = [0, 12, 23, 32, 42, 53, 54];
+const BPS = [0, 2, 5, 8, 12, 16, 20, 23, 25];
+const CARRY = [0, 12, 23, 32, 42, 53, 64, 74, 75];
 const PRELOAD = [0, 2, 4, 6, 8];
 const PRELOAD_LABELS = ["0", "1-2", "3-4", "5-6", "7-8"];
-const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10+"];
-const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
+const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "21-24", "25+"];
+const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54-64", "65-74", "75+"];
+const BPS_MAX = BPS_LABELS.length - 1;
+const CARRY_MAX = CARRY_LABELS.length - 1;
 
 function convertPitScale(value: number, kind: "preload" | "bps" | "carry") {
   const n = Number(value || 0);
   if (kind === "preload") return n <= 0 ? 0 : n <= 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 3 : 4;
-  if (kind === "bps") return n <= 0 ? 0 : n <= 3 ? 1 : n <= 6 ? 2 : n <= 9 ? 3 : 4;
-  return n <= 0 ? 0 : n <= 12 ? 1 : n <= 23 ? 2 : n <= 32 ? 3 : n <= 42 ? 4 : n <= 53 ? 5 : 6;
+  if (kind === "bps") {
+    return n <= 0 ? 0
+      : n <= 3 ? 1
+      : n <= 6 ? 2
+      : n <= 9 ? 3
+      : n <= 13 ? 4
+      : n <= 17 ? 5
+      : n <= 21 ? 6
+      : n <= 24 ? 7
+      : 8;
+  }
+  return n <= 0 ? 0
+    : n <= 12 ? 1
+    : n <= 23 ? 2
+    : n <= 32 ? 3
+    : n <= 42 ? 4
+    : n <= 53 ? 5
+    : n <= 64 ? 6
+    : n <= 74 ? 7
+    : 8;
 }
 
 function scaleRangeForIndex(kind: "preload" | "bps" | "carry", index: number): { min: number; max: number } {
@@ -201,7 +221,11 @@ function scaleRangeForIndex(kind: "preload" | "bps" | "carry", index: number): {
     if (index === 1) return { min: 1, max: 3 };
     if (index === 2) return { min: 4, max: 6 };
     if (index === 3) return { min: 7, max: 9 };
-    return { min: 10, max: Number.POSITIVE_INFINITY };
+    if (index === 4) return { min: 10, max: 13 };
+    if (index === 5) return { min: 14, max: 17 };
+    if (index === 6) return { min: 18, max: 21 };
+    if (index === 7) return { min: 21, max: 24 };
+    return { min: 25, max: Number.POSITIVE_INFINITY };
   }
   if (index <= 0) return { min: 0, max: 0 };
   if (index === 1) return { min: 1, max: 12 };
@@ -209,7 +233,9 @@ function scaleRangeForIndex(kind: "preload" | "bps" | "carry", index: number): {
   if (index === 3) return { min: 24, max: 32 };
   if (index === 4) return { min: 33, max: 42 };
   if (index === 5) return { min: 43, max: 53 };
-  return { min: 54, max: Number.POSITIVE_INFINITY };
+  if (index === 6) return { min: 54, max: 64 };
+  if (index === 7) return { min: 65, max: 74 };
+  return { min: 75, max: Number.POSITIVE_INFINITY };
 }
 
 function pitValueFitsScale(kind: "preload" | "bps" | "carry", value: number | null, scaleIndex: number) {
@@ -1155,7 +1181,7 @@ function ScoutFormContent() {
 
   function estimateAutoSectionFuel() {
     const preloadCapFromScale = PRELOAD[Math.max(0, Math.min(4, form.autoPreloadScale))] || 0;
-    const carryCapFromScale = CARRY[Math.max(0, Math.min(6, form.autoCarryScale))] || 0;
+    const carryCapFromScale = CARRY[Math.max(0, Math.min(CARRY_MAX, form.autoCarryScale))] || 0;
     const preloadCap = pitSync.preloadRaw !== null && pitPreloadFits ? pitSync.preloadRaw : preloadCapFromScale;
     const carryCap = pitSync.carryRaw !== null && pitCarryFitsAuto ? pitSync.carryRaw : carryCapFromScale;
     const autoBps = pitSync.bpsRaw !== null && pitBpsFitsAuto ? pitSync.bpsRaw : (BPS[form.autoBpsScale] || 0);
@@ -1167,7 +1193,7 @@ function ScoutFormContent() {
   }
 
   function estimateTeleSectionFuel() {
-    const carryCapFromScale = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const carryCapFromScale = CARRY[Math.max(0, Math.min(CARRY_MAX, form.teleCarryScale))] || 0;
     const carryCap = pitSync.carryRaw !== null && pitCarryFitsTele ? pitSync.carryRaw : carryCapFromScale;
     const teleBps = pitSync.bpsRaw !== null && pitBpsFitsTele ? pitSync.bpsRaw : (BPS[form.teleBpsScale] || 0);
     const estimateSection = (sec: number) => Math.max(0, Math.round(Math.min(Math.max(0, carryCap), teleBps * sec)));
@@ -1185,7 +1211,7 @@ function ScoutFormContent() {
   }
 
   function estimateEndgameSectionFuel() {
-    const carryCapFromScale = CARRY[Math.max(0, Math.min(6, form.teleCarryScale))] || 0;
+    const carryCapFromScale = CARRY[Math.max(0, Math.min(CARRY_MAX, form.teleCarryScale))] || 0;
     const carryCap = pitSync.carryRaw !== null && pitCarryFitsTele ? pitSync.carryRaw : carryCapFromScale;
     const teleBps = pitSync.bpsRaw !== null && pitBpsFitsTele ? pitSync.bpsRaw : (BPS[form.teleBpsScale] || 0);
     const estimated = endgameCycles.reduce(
@@ -1434,15 +1460,15 @@ function ScoutFormContent() {
                   </label>
                   <input type="range" min={0} max={4} value={form.autoPreloadScale} onChange={(e) => setForm((p) => ({ ...p, autoPreloadScale: Number(e.target.value) }))} className="w-full" />
                   <label className="block text-sm font-medium text-gray-700">
-                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.autoBpsScale))]})
+                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(BPS_MAX, form.autoBpsScale))]})
                     {pitSync.bpsRaw !== null ? ` | Pit: ${pitSync.bpsRaw}` : ""}
                   </label>
-                  <input type="range" min={0} max={4} value={form.autoBpsScale} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className="w-full" />
+                  <input type="range" min={0} max={BPS_MAX} value={form.autoBpsScale} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className="w-full" />
                   <label className="block text-sm font-medium text-gray-700">
-                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.autoCarryScale))]})
+                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, form.autoCarryScale))]})
                     {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
                   </label>
-                  <input type="range" min={0} max={6} value={form.autoCarryScale} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className="w-full" />
+                  <input type="range" min={0} max={CARRY_MAX} value={form.autoCarryScale} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className="w-full" />
                   <CycleTimer
                     title="Auto Cycle Timer"
                     values={autoCycles}
@@ -1462,15 +1488,15 @@ function ScoutFormContent() {
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
                   <label className="block text-sm font-medium text-gray-700">
-                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, form.teleBpsScale))]})
+                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(BPS_MAX, form.teleBpsScale))]})
                     {pitSync.bpsRaw !== null ? ` | Pit: ${pitSync.bpsRaw}` : ""}
                   </label>
-                  <input type="range" min={0} max={4} value={form.teleBpsScale} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className="w-full" />
+                  <input type="range" min={0} max={BPS_MAX} value={form.teleBpsScale} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className="w-full" />
                   <label className="block text-sm font-medium text-gray-700">
-                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, form.teleCarryScale))]})
+                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, form.teleCarryScale))]})
                     {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
                   </label>
-                  <input type="range" min={0} max={6} value={form.teleCarryScale} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className="w-full" />
+                  <input type="range" min={0} max={CARRY_MAX} value={form.teleCarryScale} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className="w-full" />
                   <CycleTimer
                     title="Transition Shift"
                     values={transitionCycles}

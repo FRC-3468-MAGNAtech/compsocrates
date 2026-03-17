@@ -275,13 +275,15 @@ type TbaMatchRow = {
 };
 
 const REBUILT_PRELOAD_RANGES = ["0", "1-2", "3-4", "5-6", "7-8"];
-const REBUILT_BPS_RANGES = ["0", "1-3", "4-6", "7-9", "10+"];
-const REBUILT_CARRY_RANGES = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
-const REBUILT_BPS_VALUES = [0, 2, 5, 8, 10];
-const REBUILT_CARRY_VALUES = [0, 12, 23, 32, 42, 53, 54];
+const REBUILT_BPS_RANGES = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "21-24", "25+"];
+const REBUILT_CARRY_RANGES = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54-64", "65-74", "75+"];
+const REBUILT_BPS_VALUES = [0, 2, 5, 8, 12, 16, 20, 23, 25];
+const REBUILT_CARRY_VALUES = [0, 12, 23, 32, 42, 53, 64, 74, 75];
+const REBUILT_BPS_MAX = REBUILT_BPS_RANGES.length - 1;
+const REBUILT_CARRY_MAX = REBUILT_CARRY_RANGES.length - 1;
 
 function rebuiltPreloadRange(scale?: number) {
-  const idx = Math.max(0, Math.min(4, Number(scale ?? 0)));
+  const idx = Math.max(0, Math.min(REBUILT_BPS_MAX, Number(scale ?? 0)));
   return REBUILT_PRELOAD_RANGES[idx];
 }
 
@@ -291,14 +293,14 @@ function rebuiltBpsRange(scale?: number) {
 }
 
 function rebuiltCarryRange(scale?: number) {
-  const idx = Math.max(0, Math.min(6, Number(scale ?? 0)));
+  const idx = Math.max(0, Math.min(REBUILT_CARRY_MAX, Number(scale ?? 0)));
   return REBUILT_CARRY_RANGES[idx];
 }
 
 function rebuiltFuelFromCycles(cycles: number[] | undefined, bpsScale: number, carryScale: number) {
   if (!Array.isArray(cycles) || cycles.length === 0) return 0;
-  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(4, Number(bpsScale || 0)))] || 0;
-  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(6, Number(carryScale || 0)))] || 0;
+  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(REBUILT_BPS_MAX, Number(bpsScale || 0)))] || 0;
+  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(REBUILT_CARRY_MAX, Number(carryScale || 0)))] || 0;
   return cycles.reduce((sum, seconds) => {
     const sec = Number(seconds || 0);
     if (!Number.isFinite(sec) || sec <= 0) return sum;
@@ -366,8 +368,8 @@ function parseMatchIdentity(entry: Pick<Entry, "matchId" | "matchType" | "matchN
 function rebuiltAutoFuelFromCycles(cycles: number[] | undefined, preloadScale: number, bpsScale: number, carryScale: number) {
   if (!Array.isArray(cycles) || cycles.length === 0) return 0;
   const preloadCap = [0, 2, 4, 6, 8][Math.max(0, Math.min(4, Number(preloadScale || 0)))] || 0;
-  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(4, Number(bpsScale || 0)))] || 0;
-  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(6, Number(carryScale || 0)))] || 0;
+  const bps = REBUILT_BPS_VALUES[Math.max(0, Math.min(REBUILT_BPS_MAX, Number(bpsScale || 0)))] || 0;
+  const carryCap = REBUILT_CARRY_VALUES[Math.max(0, Math.min(REBUILT_CARRY_MAX, Number(carryScale || 0)))] || 0;
   return cycles.reduce((sum, seconds, index) => {
     const sec = Number(seconds || 0);
     if (!Number.isFinite(sec) || sec <= 0) return sum;

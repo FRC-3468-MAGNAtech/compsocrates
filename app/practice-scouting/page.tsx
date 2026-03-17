@@ -142,12 +142,14 @@ type RebuiltScoutedData = {
   notes: string;
 };
 
-const REBUILT_BPS = [0, 2, 5, 8, 10];
-const REBUILT_CARRY = [0, 12, 23, 32, 42, 53, 54];
+const REBUILT_BPS = [0, 2, 5, 8, 12, 16, 20, 23, 25];
+const REBUILT_CARRY = [0, 12, 23, 32, 42, 53, 64, 74, 75];
 const REBUILT_PRELOAD = [0, 2, 4, 6, 8];
 const PRELOAD_LABELS = ["0", "1-2", "3-4", "5-6", "7-8"];
-const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10+"];
-const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54+"];
+const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "21-24", "25+"];
+const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54-64", "65-74", "75+"];
+const BPS_MAX = BPS_LABELS.length - 1;
+const CARRY_MAX = CARRY_LABELS.length - 1;
 
 function estimateRebuiltBalls(seconds: number, bpsScale: number, capacityBalls: number) {
   return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (REBUILT_BPS[bpsScale] || 0) * seconds)));
@@ -554,8 +556,8 @@ function resolveSectionFuel(estimated: number, scoredOverride: number, missedFue
 
 function calculateRebuiltScoutedScore(data: RebuiltScoutedData): number {
   const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, data.autoPreloadScale))] || 0;
-  const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, data.autoCarryScale))] || 0;
-  const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, data.teleCarryScale))] || 0;
+  const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(CARRY_MAX, data.autoCarryScale))] || 0;
+  const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(CARRY_MAX, data.teleCarryScale))] || 0;
   const autoEstimatedFuel = data.autoCycles.reduce((sum, seconds, index) => {
     const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
     return sum + estimateRebuiltBalls(seconds, data.autoBpsScale, capacity);
@@ -590,9 +592,22 @@ function calculateRebuiltScoutedScore(data: RebuiltScoutedData): number {
 }
 
 function getScaleCandidatesFromIndex(index: number, labels: "preload" | "bps" | "carry"): number[] {
-  const i = Math.max(0, labels === "carry" ? Math.min(6, Number(index || 0)) : Math.min(4, Number(index || 0)));
+  const maxIndex = labels === "carry" ? CARRY_MAX : labels === "bps" ? BPS_MAX : 4;
+  const i = Math.max(0, Math.min(maxIndex, Number(index || 0)));
   if (labels === "preload") return [[0], [1, 2], [3, 4], [5, 6], [7, 8]][i] || [0];
-  if (labels === "bps") return [[0], [1, 2, 3], [4, 5, 6], [7, 8, 9], [10]][i] || [0];
+  if (labels === "bps") {
+    return [
+      [0],
+      [1, 2, 3],
+      [4, 5, 6],
+      [7, 8, 9],
+      [10, 11, 12, 13],
+      [14, 15, 16, 17],
+      [18, 19, 20, 21],
+      [21, 22, 23, 24],
+      [25],
+    ][i] || [0];
+  }
   return [
     [0],
     Array.from({ length: 12 }, (_, n) => n + 1),
@@ -600,7 +615,9 @@ function getScaleCandidatesFromIndex(index: number, labels: "preload" | "bps" | 
     Array.from({ length: 10 }, (_, n) => n + 23),
     Array.from({ length: 10 }, (_, n) => n + 33),
     Array.from({ length: 11 }, (_, n) => n + 43),
-    [54],
+    Array.from({ length: 11 }, (_, n) => n + 54),
+    Array.from({ length: 10 }, (_, n) => n + 65),
+    [75],
   ][i] || [0];
 }
 
@@ -2854,8 +2871,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       await Promise.all(
         allRobotData.map((robotData) => {
           const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, robotData.autoPreloadScale))] || 0;
-          const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.autoCarryScale))] || 0;
-          const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.teleCarryScale))] || 0;
+          const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(CARRY_MAX, robotData.autoCarryScale))] || 0;
+          const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(CARRY_MAX, robotData.teleCarryScale))] || 0;
           const autoEstimatedFuel = robotData.autoCycles.reduce((sum, seconds, index) => {
             const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
             return sum + estimateRebuiltBalls(seconds, robotData.autoBpsScale, capacity);
@@ -3148,8 +3165,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (activeMatchGame === "REBUILT") {
         const robotData = { ...rebuiltFormData };
         const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, robotData.autoPreloadScale))] || 0;
-        const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.autoCarryScale))] || 0;
-        const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(6, robotData.teleCarryScale))] || 0;
+        const autoCarryCap = REBUILT_CARRY[Math.max(0, Math.min(CARRY_MAX, robotData.autoCarryScale))] || 0;
+        const teleCarryCap = REBUILT_CARRY[Math.max(0, Math.min(CARRY_MAX, robotData.teleCarryScale))] || 0;
         const autoEstimatedFuel = robotData.autoCycles.reduce((sum, seconds, index) => {
           const capacity = index === 0 && preloadCap > 0 ? preloadCap : autoCarryCap;
           return sum + estimateRebuiltBalls(seconds, robotData.autoBpsScale, capacity);
@@ -4492,23 +4509,23 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         className="w-full"
                       />
                       <label className="block text-sm font-medium text-gray-700">
-                        Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, rebuiltFormData.autoBpsScale))]})
+                        Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(BPS_MAX, rebuiltFormData.autoBpsScale))]})
                       </label>
                       <input
                         type="range"
                         min={0}
-                        max={4}
+                        max={BPS_MAX}
                         value={rebuiltFormData.autoBpsScale}
                         onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoBpsScale: Number(e.target.value) })}
                         className="w-full"
                       />
                       <label className="block text-sm font-medium text-gray-700">
-                        Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, rebuiltFormData.autoCarryScale))]})
+                        Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, rebuiltFormData.autoCarryScale))]})
                       </label>
                       <input
                         type="range"
                         min={0}
-                        max={6}
+                        max={CARRY_MAX}
                         value={rebuiltFormData.autoCarryScale}
                         onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, autoCarryScale: Number(e.target.value) })}
                         className="w-full"
@@ -4571,23 +4588,23 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
                     <div className="space-y-3">
                       <label className="block text-sm font-medium text-gray-700">
-                        Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(4, rebuiltFormData.teleBpsScale))]})
+                        Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(BPS_MAX, rebuiltFormData.teleBpsScale))]})
                       </label>
                       <input
                         type="range"
                         min={0}
-                        max={4}
+                        max={BPS_MAX}
                         value={rebuiltFormData.teleBpsScale}
                         onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teleBpsScale: Number(e.target.value) })}
                         className="w-full"
                       />
                       <label className="block text-sm font-medium text-gray-700">
-                        Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(6, rebuiltFormData.teleCarryScale))]})
+                        Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, rebuiltFormData.teleCarryScale))]})
                       </label>
                       <input
                         type="range"
                         min={0}
-                        max={6}
+                        max={CARRY_MAX}
                         value={rebuiltFormData.teleCarryScale}
                         onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, teleCarryScale: Number(e.target.value) })}
                         className="w-full"

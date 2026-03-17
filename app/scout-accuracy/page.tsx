@@ -154,7 +154,11 @@ const BPS_SCALE_VALUES: number[][] = [
   [1, 2, 3],
   [4, 5, 6],
   [7, 8, 9],
-  [10],
+  [10, 11, 12, 13],
+  [14, 15, 16, 17],
+  [18, 19, 20, 21],
+  [21, 22, 23, 24],
+  [25],
 ];
 
 const CARRY_SCALE_VALUES: number[][] = [
@@ -164,7 +168,9 @@ const CARRY_SCALE_VALUES: number[][] = [
   Array.from({ length: 10 }, (_, i) => i + 23),
   Array.from({ length: 10 }, (_, i) => i + 33),
   Array.from({ length: 11 }, (_, i) => i + 43),
-  [54],
+  Array.from({ length: 11 }, (_, i) => i + 54),
+  Array.from({ length: 10 }, (_, i) => i + 65),
+  [75],
 ];
 
 function getScaleCandidates(scale: unknown, table: number[][], fallback = 0) {
