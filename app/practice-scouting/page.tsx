@@ -4236,6 +4236,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
             {/* SCOUTING FORM */}
             {showLiveLobbyForm ? (
+              <>
               <div
                 ref={formPaneRef}
                 className={`w-full flex-1 min-h-0 overflow-y-auto bg-gray-100 p-4 space-y-4 ${
@@ -4887,6 +4888,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               </div>
             )}
           </div>
+          </>
         ) : (
           <div className="w-full flex-1 min-h-0 overflow-y-auto bg-gray-100 p-6">
             <div className="max-w-xl mx-auto bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-700">
