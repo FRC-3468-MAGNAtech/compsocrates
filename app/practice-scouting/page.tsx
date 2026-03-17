@@ -4887,7 +4887,6 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </div>
               </div>
             )}
-          </div>
           </>
         ) : (
           <div className="w-full flex-1 min-h-0 overflow-y-auto bg-gray-100 p-6">
