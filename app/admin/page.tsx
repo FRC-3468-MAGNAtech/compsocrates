@@ -51,6 +51,16 @@ function parseMatchNumber(value: string): string {
   return numeric.replace(/^0+/, "") || (numeric ? "0" : "");
 }
 
+function parseBulkIds(raw: string): string[] {
+  const unique = new Set<string>();
+  String(raw || "")
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .forEach((value) => unique.add(value));
+  return Array.from(unique.values());
+}
+
 function AdminPanelContent() {
   const { userData, teamTimeOverride } = useAuth();
   const [savingDashboard, setSavingDashboard] = useState(false);
@@ -68,6 +78,16 @@ function AdminPanelContent() {
   const [scoutingLoading, setScoutingLoading] = useState(false);
   const [scoutingSaving, setScoutingSaving] = useState(false);
   const [scoutingDraft, setScoutingDraft] = useState<ScoutingEditDraft | null>(null);
+  const [bulkIdsInput, setBulkIdsInput] = useState("");
+  const [bulkSetPractice, setBulkSetPractice] = useState(false);
+  const [bulkPracticeValue, setBulkPracticeValue] = useState(false);
+  const [bulkSetEvent, setBulkSetEvent] = useState(false);
+  const [bulkEventKey, setBulkEventKey] = useState("");
+  const [bulkEventName, setBulkEventName] = useState("");
+  const [bulkSetMatch, setBulkSetMatch] = useState(false);
+  const [bulkMatchType, setBulkMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
+  const [bulkMatchNumber, setBulkMatchNumber] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
     { label: "Pit Scout", value: "/pit-scout-dashboard" },
@@ -268,6 +288,7 @@ function AdminPanelContent() {
     }
     return Array.from(byId.values());
   })();
+  const bulkIds = parseBulkIds(bulkIdsInput);
 
   async function loadScoutingDoc() {
     const id = scoutingLookupId.trim();
@@ -354,6 +375,76 @@ function AdminPanelContent() {
       alert("Unable to update scouting entry.");
     } finally {
       setScoutingSaving(false);
+    }
+  }
+
+  async function runBulkUpdate() {
+    if (!canEditScouting) return;
+    const ids = bulkIds;
+    if (ids.length === 0) {
+      alert("Paste at least one scouting document ID.");
+      return;
+    }
+    const updatePayload: Record<string, unknown> = {};
+
+    if (bulkSetEvent) {
+      const cleanedEventKey = String(bulkEventKey || "").trim().toLowerCase();
+      if (!cleanedEventKey) {
+        alert("Event key is required for bulk event updates.");
+        return;
+      }
+      const knownEvent = scoutingEventOptions.find((event) => event.id === cleanedEventKey);
+      const eventName = String(bulkEventName || knownEvent?.name || cleanedEventKey).trim();
+      updatePayload.eventKey = cleanedEventKey;
+      updatePayload.eventName = eventName;
+    }
+
+    if (bulkSetMatch) {
+      const cleanedMatchNumber = parseMatchNumber(bulkMatchNumber);
+      if (!cleanedMatchNumber) {
+        alert("Match number is required for bulk match updates.");
+        return;
+      }
+      const matchType = coerceMatchType(bulkMatchType);
+      const prefix = matchType === "practice" ? "p" : matchType === "finals" ? "f" : "q";
+      updatePayload.matchType = matchType;
+      updatePayload.matchNumber = cleanedMatchNumber;
+      updatePayload.matchId = `${prefix}${cleanedMatchNumber}`;
+    }
+
+    if (bulkSetPractice) {
+      updatePayload.isPracticeScouting = Boolean(bulkPracticeValue);
+      if (!bulkPracticeValue) {
+        updatePayload.practiceMode = "";
+        updatePayload.practiceSessionId = "";
+        updatePayload.isLivePracticeScouting = false;
+      }
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      alert("Select at least one field to update.");
+      return;
+    }
+
+    const ok = window.confirm(`Apply updates to ${ids.length} scouting entries?`);
+    if (!ok) return;
+
+    setBulkSaving(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => updateDoc(doc(db, "scouting", id), updatePayload))
+      );
+      const successCount = results.filter((result) => result.status === "fulfilled").length;
+      const failCount = results.length - successCount;
+      if (failCount > 0) {
+        console.warn("Bulk update failures:", results);
+      }
+      alert(`Bulk update complete. Updated ${successCount}/${ids.length} entries.`);
+    } catch (error) {
+      console.error("Bulk update failed:", error);
+      alert("Bulk update failed.");
+    } finally {
+      setBulkSaving(false);
     }
   }
 
@@ -584,6 +675,149 @@ function AdminPanelContent() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md p-6 border mb-4">
+            <h2 className="text-xl font-semibold mb-2">Bulk Scouting Editor</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Paste multiple scouting document IDs and apply updates in one batch.
+            </p>
+            {!canEditScouting && (
+              <p className="text-sm text-gray-500">Only team admins can run bulk edits.</p>
+            )}
+            {canEditScouting && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Scouting Document IDs</label>
+                  <textarea
+                    className="w-full border rounded p-2 h-28"
+                    value={bulkIdsInput}
+                    onChange={(event) => setBulkIdsInput(event.target.value)}
+                    placeholder="One ID per line or separated by commas"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">{bulkIds.length} IDs detected.</p>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-3">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkSetPractice}
+                      onChange={(event) => setBulkSetPractice(event.target.checked)}
+                    />
+                    Update practice flag
+                  </label>
+                  {bulkSetPractice && (
+                    <select
+                      className="border rounded p-2"
+                      value={bulkPracticeValue ? "practice" : "match"}
+                      onChange={(event) => setBulkPracticeValue(event.target.value === "practice")}
+                    >
+                      <option value="practice">Set to Practice</option>
+                      <option value="match">Set to Match</option>
+                    </select>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkSetEvent}
+                      onChange={(event) => setBulkSetEvent(event.target.checked)}
+                    />
+                    Update event assignment
+                  </label>
+                  {bulkSetEvent && (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Key</label>
+                        <input
+                          list="bulk-event-options"
+                          className="w-full border rounded p-2"
+                          value={bulkEventKey}
+                          onChange={(event) => setBulkEventKey(event.target.value)}
+                          placeholder="e.g. 2026arli"
+                        />
+                        <datalist id="bulk-event-options">
+                          {scoutingEventOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name}
+                            </option>
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Name (optional)</label>
+                        <input
+                          className="w-full border rounded p-2"
+                          value={bulkEventName}
+                          onChange={(event) => setBulkEventName(event.target.value)}
+                          placeholder="Display name override"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkSetMatch}
+                      onChange={(event) => setBulkSetMatch(event.target.checked)}
+                    />
+                    Update match assignment
+                  </label>
+                  {bulkSetMatch && (
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
+                        <select
+                          className="w-full border rounded p-2"
+                          value={bulkMatchType}
+                          onChange={(event) => setBulkMatchType(coerceMatchType(event.target.value))}
+                        >
+                          <option value="practice">Practice</option>
+                          <option value="qualification">Qualification</option>
+                          <option value="finals">Finals</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Number</label>
+                        <input
+                          className="w-full border rounded p-2"
+                          value={bulkMatchNumber}
+                          onChange={(event) => setBulkMatchNumber(event.target.value)}
+                          placeholder="e.g. 7"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Match ID Preview</label>
+                        <div className="w-full border rounded p-2 bg-gray-50 text-sm text-gray-700">
+                          {(() => {
+                            const number = parseMatchNumber(bulkMatchNumber);
+                            if (!number) return "-";
+                            const prefix = bulkMatchType === "practice" ? "p" : bulkMatchType === "finals" ? "f" : "q";
+                            return `${prefix}${number}`;
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void runBulkUpdate()}
+                  disabled={bulkSaving}
+                  className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
+                  style={{ backgroundColor: "var(--primary-color)" }}
+                >
+                  {bulkSaving ? "Applying..." : "Apply Bulk Update"}
+                </button>
+              </div>
             )}
           </div>
 

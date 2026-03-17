@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
@@ -740,6 +740,7 @@ function AnalyticsPageContent() {
   const [flagSavingKey, setFlagSavingKey] = useState("");
   const [flagMenuEntry, setFlagMenuEntry] = useState<Entry | null>(null);
   const [manualFlagReason, setManualFlagReason] = useState<string>(MANUAL_FLAG_REASONS[0].value);
+  const deleteGuardRef = useRef<string | null>(null);
 
   const rebuiltEventOptions = useMemo(
     () =>
@@ -1182,6 +1183,18 @@ function AnalyticsPageContent() {
     if (!ok) return;
     await deleteDoc(doc(db, "scouting", entry.id));
     await loadData();
+  }
+
+  function triggerDeleteEntry(entry: Entry, event?: { preventDefault?: () => void; stopPropagation?: () => void }) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (deleteGuardRef.current === entry.id) return;
+    deleteGuardRef.current = entry.id;
+    void handleDeleteEntry(entry).finally(() => {
+      if (deleteGuardRef.current === entry.id) {
+        deleteGuardRef.current = null;
+      }
+    });
   }
 
   async function updateScoutingEntryFlagState(
@@ -2240,7 +2253,8 @@ function AnalyticsPageContent() {
                       )}
                       <button
                         type="button"
-                        onClick={() => void handleDeleteEntry(entry)}
+                        onClick={(event) => triggerDeleteEntry(entry, event)}
+                        onPointerUp={(event) => triggerDeleteEntry(entry, event)}
                         className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
                         style={{ backgroundColor: "#dc2626" }}
                         disabled={!canDeleteEntries}
@@ -2474,7 +2488,8 @@ function AnalyticsPageContent() {
                     )}
                     <button
                       type="button"
-                      onClick={() => void handleDeleteEntry(entry)}
+                      onClick={(event) => triggerDeleteEntry(entry, event)}
+                      onPointerUp={(event) => triggerDeleteEntry(entry, event)}
                       className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
                       style={{ backgroundColor: "#dc2626" }}
                       disabled={!canDeleteEntries}

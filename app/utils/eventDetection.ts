@@ -132,6 +132,14 @@ export async function resolveDetectedTeamEvent(teamId: string): Promise<Detected
   if (options.length === 0) return null;
   const override = teamDoc.exists() ? parseTeamTimeOverride(teamDoc.data() as Record<string, unknown>) : null;
   const key = pickDetectedEventKey(options, getEffectiveNowMs(override));
+  if (key === "app-testing") {
+    return {
+      key: "app-testing",
+      name: "App Testing",
+      startDate: "",
+      endDate: "",
+    };
+  }
   return options.find((event) => event.key === key) || options[0] || null;
 }
 
