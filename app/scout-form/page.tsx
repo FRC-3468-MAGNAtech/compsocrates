@@ -178,7 +178,7 @@ const BPS = [0, 2, 5, 8, 12, 16, 20, 23, 25];
 const CARRY = [0, 12, 23, 32, 42, 53, 64, 74, 75];
 const PRELOAD = [0, 2, 4, 6, 8];
 const PRELOAD_LABELS = ["0", "1-2", "3-4", "5-6", "7-8"];
-const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "21-24", "25+"];
+const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "22-24", "25+"];
 const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54-64", "65-74", "75+"];
 const BPS_MAX = BPS_LABELS.length - 1;
 const CARRY_MAX = CARRY_LABELS.length - 1;
@@ -224,7 +224,7 @@ function scaleRangeForIndex(kind: "preload" | "bps" | "carry", index: number): {
     if (index === 4) return { min: 10, max: 13 };
     if (index === 5) return { min: 14, max: 17 };
     if (index === 6) return { min: 18, max: 21 };
-    if (index === 7) return { min: 21, max: 24 };
+    if (index === 7) return { min: 22, max: 24 };
     return { min: 25, max: Number.POSITIVE_INFINITY };
   }
   if (index <= 0) return { min: 0, max: 0 };

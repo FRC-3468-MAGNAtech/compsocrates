@@ -275,7 +275,7 @@ type TbaMatchRow = {
 };
 
 const REBUILT_PRELOAD_RANGES = ["0", "1-2", "3-4", "5-6", "7-8"];
-const REBUILT_BPS_RANGES = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "21-24", "25+"];
+const REBUILT_BPS_RANGES = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "22-24", "25+"];
 const REBUILT_CARRY_RANGES = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54-64", "65-74", "75+"];
 const REBUILT_BPS_VALUES = [0, 2, 5, 8, 12, 16, 20, 23, 25];
 const REBUILT_CARRY_VALUES = [0, 12, 23, 32, 42, 53, 64, 74, 75];
