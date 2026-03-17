@@ -36,17 +36,12 @@ export function pickDetectedEventKey(events: DetectedEventOption[], now = Date.n
     .sort((a, b) => a.startMs - b.startMs)[0];
   if (active?.key) return active.key;
 
-  const next = withTime
-    .filter((event) => event.startMs > 0 && event.startMs >= now)
-    .sort((a, b) => a.startMs - b.startMs)[0];
-  if (next?.key) return next.key;
-
   const latestPast = withTime
     .filter((event) => event.endMs > 0 && event.endMs < now)
     .sort((a, b) => b.endMs - a.endMs)[0];
   if (latestPast?.key) return latestPast.key;
 
-  return withTime[0]?.key || "app-testing";
+  return "app-testing";
 }
 
 export async function getTeamEventOptions(teamId: string): Promise<DetectedEventOption[]> {

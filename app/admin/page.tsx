@@ -8,6 +8,20 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { getEffectiveNowMs, toLocalDateTimeInputValue } from "@/app/utils/teamTime";
+import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+
+type ScoutingEditDraft = {
+  id: string;
+  game: AnalyticsGame;
+  eventKey: string;
+  eventName: string;
+  matchType: "practice" | "qualification" | "finals";
+  matchNumber: string;
+  isPracticeScouting: boolean;
+  practiceMode?: string;
+  practiceSessionId?: string;
+  isLivePracticeScouting?: boolean;
+};
 
 type OwnerManagedUser = {
   uid: string;
@@ -17,6 +31,25 @@ type OwnerManagedUser = {
   role?: string;
   emailVerificationExempt?: boolean;
 };
+
+function coerceMatchType(value: string): "practice" | "qualification" | "finals" {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "practice") return "practice";
+  if (raw === "finals" || raw === "final") return "finals";
+  return "qualification";
+}
+
+function matchTypeFromId(matchId: string): "practice" | "qualification" | "finals" {
+  const raw = String(matchId || "").trim().toLowerCase();
+  if (raw.startsWith("p")) return "practice";
+  if (raw.startsWith("f")) return "finals";
+  return "qualification";
+}
+
+function parseMatchNumber(value: string): string {
+  const numeric = String(value || "").match(/\d+/)?.[0] || "";
+  return numeric.replace(/^0+/, "") || (numeric ? "0" : "");
+}
 
 function AdminPanelContent() {
   const { userData, teamTimeOverride } = useAuth();
@@ -31,6 +64,10 @@ function AdminPanelContent() {
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [timeInput, setTimeInput] = useState("");
   const [timeSaving, setTimeSaving] = useState(false);
+  const [scoutingLookupId, setScoutingLookupId] = useState("");
+  const [scoutingLoading, setScoutingLoading] = useState(false);
+  const [scoutingSaving, setScoutingSaving] = useState(false);
+  const [scoutingDraft, setScoutingDraft] = useState<ScoutingEditDraft | null>(null);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
     { label: "Pit Scout", value: "/pit-scout-dashboard" },
@@ -217,6 +254,109 @@ function AdminPanelContent() {
     }
   }
 
+  const canEditScouting = Boolean(userData?.isTeamAdmin) || ownerAllowed;
+  const scoutingEventOptions = (() => {
+    const combined = [...getEventsForGame("REBUILT"), ...getEventsForGame("REEFSCAPE")];
+    const byId = new Map<string, { id: string; name: string }>();
+    combined.forEach((event) => {
+      const id = String(event.id || "").trim();
+      if (!id || byId.has(id)) return;
+      byId.set(id, { id, name: event.name });
+    });
+    if (scoutingDraft?.eventKey && !byId.has(scoutingDraft.eventKey)) {
+      byId.set(scoutingDraft.eventKey, { id: scoutingDraft.eventKey, name: scoutingDraft.eventName || scoutingDraft.eventKey });
+    }
+    return Array.from(byId.values());
+  })();
+
+  async function loadScoutingDoc() {
+    const id = scoutingLookupId.trim();
+    if (!id || !canEditScouting) return;
+    setScoutingLoading(true);
+    try {
+      const snap = await getDoc(doc(db, "scouting", id));
+      if (!snap.exists()) {
+        setScoutingDraft(null);
+        alert("No scouting document found for that ID.");
+        return;
+      }
+      const row = snap.data() as Record<string, unknown>;
+      const matchId = String(row.matchId || "");
+      const rawMatchType = String(row.matchType || "").trim();
+      const matchType = rawMatchType ? coerceMatchType(rawMatchType) : matchTypeFromId(matchId);
+      const matchNumber = String(row.matchNumber || parseMatchNumber(matchId) || "");
+      const eventKey = String(row.eventKey || "").trim() || "app-testing";
+      const eventName = String(row.eventName || "").trim();
+      const isPracticeScouting =
+        Boolean(row.isPracticeScouting) || Boolean(row.practiceMode) || Boolean(row.practiceSessionId);
+      const game = String(row.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+      setScoutingDraft({
+        id: snap.id,
+        game,
+        eventKey,
+        eventName,
+        matchType: matchType || matchTypeFromId(matchId),
+        matchNumber,
+        isPracticeScouting,
+        practiceMode: typeof row.practiceMode === "string" ? row.practiceMode : undefined,
+        practiceSessionId: typeof row.practiceSessionId === "string" ? row.practiceSessionId : undefined,
+        isLivePracticeScouting: Boolean(row.isLivePracticeScouting),
+      });
+    } catch (error) {
+      console.error("Failed to load scouting doc:", error);
+      alert("Failed to load scouting document.");
+    } finally {
+      setScoutingLoading(false);
+    }
+  }
+
+  async function saveScoutingEdits() {
+    if (!scoutingDraft || !canEditScouting) return;
+    const cleanedEventKey = String(scoutingDraft.eventKey || "").trim().toLowerCase();
+    const cleanedMatchNumber = parseMatchNumber(scoutingDraft.matchNumber);
+    if (!cleanedEventKey) {
+      alert("Event key cannot be empty.");
+      return;
+    }
+    if (!cleanedMatchNumber) {
+      alert("Match number cannot be empty.");
+      return;
+    }
+    const matchType = scoutingDraft.matchType || "qualification";
+    const matchPrefix = matchType === "practice" ? "p" : matchType === "finals" ? "f" : "q";
+    const matchId = `${matchPrefix}${cleanedMatchNumber}`;
+
+    const knownEvent = scoutingEventOptions.find((event) => event.id === cleanedEventKey);
+    const eventName = String(scoutingDraft.eventName || knownEvent?.name || cleanedEventKey).trim();
+
+    const updatePayload: Record<string, unknown> = {
+      eventKey: cleanedEventKey,
+      eventName,
+      matchType,
+      matchNumber: cleanedMatchNumber,
+      matchId,
+      isPracticeScouting: Boolean(scoutingDraft.isPracticeScouting),
+    };
+
+    if (!scoutingDraft.isPracticeScouting) {
+      updatePayload.practiceMode = "";
+      updatePayload.practiceSessionId = "";
+      updatePayload.isLivePracticeScouting = false;
+    }
+
+    setScoutingSaving(true);
+    try {
+      await updateDoc(doc(db, "scouting", scoutingDraft.id), updatePayload);
+      setScoutingDraft((prev) => (prev ? { ...prev, eventKey: cleanedEventKey, eventName, matchNumber: cleanedMatchNumber, matchType } : prev));
+      alert("Scouting entry updated.");
+    } catch (error) {
+      console.error("Failed to update scouting entry:", error);
+      alert("Unable to update scouting entry.");
+    } finally {
+      setScoutingSaving(false);
+    }
+  }
+
   if (ownerLoading) {
     return (
       <div className="flex h-screen bg-gray-50">
@@ -307,6 +447,144 @@ function AdminPanelContent() {
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-md p-6 border mb-4">
+            <h2 className="text-xl font-semibold mb-2">Scouting Entry Editor</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Update practice flag, event assignment, or match number for a scouting document.
+            </p>
+            {!canEditScouting && (
+              <p className="text-sm text-gray-500">Only team admins can edit scouting entries.</p>
+            )}
+            {canEditScouting && (
+              <>
+                <div className="grid md:grid-cols-[1fr_auto] gap-2 mb-3">
+                  <input
+                    className="border rounded p-2"
+                    value={scoutingLookupId}
+                    onChange={(event) => setScoutingLookupId(event.target.value)}
+                    placeholder="Paste scouting document ID"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void loadScoutingDoc()}
+                    disabled={scoutingLoading}
+                    className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    {scoutingLoading ? "Loading..." : "Load"}
+                  </button>
+                </div>
+
+                {scoutingDraft && (
+                  <div className="space-y-4 border rounded p-4">
+                    <p className="text-xs text-gray-500">Loaded ID: <span className="font-mono text-gray-700">{scoutingDraft.id}</span></p>
+                    <p className="text-xs text-gray-500">Game: <span className="font-semibold text-gray-700">{scoutingDraft.game}</span></p>
+
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={scoutingDraft.isPracticeScouting}
+                        onChange={(event) =>
+                          setScoutingDraft((prev) => (prev ? { ...prev, isPracticeScouting: event.target.checked } : prev))
+                        }
+                      />
+                      Practice scouted entry
+                    </label>
+                    {(scoutingDraft.practiceMode || scoutingDraft.practiceSessionId) && (
+                      <p className="text-xs text-gray-500">
+                        Practice mode: {scoutingDraft.practiceMode || "-"} · Session: {scoutingDraft.practiceSessionId || "-"}
+                      </p>
+                    )}
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Key</label>
+                        <input
+                          list="scouting-event-options"
+                          className="w-full border rounded p-2"
+                          value={scoutingDraft.eventKey}
+                          onChange={(event) =>
+                            setScoutingDraft((prev) => (prev ? { ...prev, eventKey: event.target.value } : prev))
+                          }
+                          placeholder="e.g. 2026arli"
+                        />
+                        <datalist id="scouting-event-options">
+                          {scoutingEventOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name}
+                            </option>
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
+                        <input
+                          className="w-full border rounded p-2"
+                          value={scoutingDraft.eventName}
+                          onChange={(event) =>
+                            setScoutingDraft((prev) => (prev ? { ...prev, eventName: event.target.value } : prev))
+                          }
+                          placeholder="Optional display name"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
+                        <select
+                          className="w-full border rounded p-2"
+                          value={scoutingDraft.matchType}
+                          onChange={(event) =>
+                            setScoutingDraft((prev) =>
+                              prev ? { ...prev, matchType: coerceMatchType(event.target.value) } : prev
+                            )
+                          }
+                        >
+                          <option value="practice">Practice</option>
+                          <option value="qualification">Qualification</option>
+                          <option value="finals">Finals</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Number</label>
+                        <input
+                          className="w-full border rounded p-2"
+                          value={scoutingDraft.matchNumber}
+                          onChange={(event) =>
+                            setScoutingDraft((prev) => (prev ? { ...prev, matchNumber: event.target.value } : prev))
+                          }
+                          placeholder="e.g. 5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Match ID Preview</label>
+                        <div className="w-full border rounded p-2 bg-gray-50 text-sm text-gray-700">
+                          {(() => {
+                            const number = parseMatchNumber(scoutingDraft.matchNumber);
+                            if (!number) return "-";
+                            const prefix = scoutingDraft.matchType === "practice" ? "p" : scoutingDraft.matchType === "finals" ? "f" : "q";
+                            return `${prefix}${number}`;
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void saveScoutingEdits()}
+                      disabled={scoutingSaving}
+                      className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                    >
+                      {scoutingSaving ? "Saving..." : "Save Scouting Changes"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
