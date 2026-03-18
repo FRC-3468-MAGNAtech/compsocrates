@@ -33,6 +33,7 @@ interface Assignment {
   scoutId: string;
   scoutName: string;
   teamNumber: number;
+  scoutHumanPlayer?: boolean;
   assignedBy: string;
   assignedAt: number;
 }
@@ -384,6 +385,7 @@ function AssignmentsContent() {
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [selectedScoutId, setSelectedScoutId] = useState("");
   const [selectedTeamNumber, setSelectedTeamNumber] = useState("");
+  const [selectedScoutHumanPlayer, setSelectedScoutHumanPlayer] = useState(false);
   const [selectedPitScoutId, setSelectedPitScoutId] = useState("");
   const [selectedPitTeamNumber, setSelectedPitTeamNumber] = useState("");
   const [selectedMatchType, setSelectedMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
@@ -1128,12 +1130,14 @@ function buildMatchScoutOrder(
         scoutId: selectedScoutId,
         scoutName: scout.displayName,
         teamNumber: parseInt(selectedTeamNumber, 10),
+        scoutHumanPlayer: selectedScoutHumanPlayer,
         assignedBy: userData.uid,
         assignedAt: Date.now(),
       });
       setSelectedMatchKey("");
       setSelectedScoutId("");
       setSelectedTeamNumber("");
+      setSelectedScoutHumanPlayer(false);
       setSelectedMatchType("qualification");
       setShowAssignModal(false);
       await loadData();
@@ -1440,6 +1444,7 @@ function buildMatchScoutOrder(
             scoutId: scout.uid,
             scoutName: scout.displayName,
             teamNumber,
+            scoutHumanPlayer: teamIndex === 0,
             assignedBy: userData.uid,
             assignedAt: Date.now(),
           });
@@ -1584,6 +1589,7 @@ function buildMatchScoutOrder(
             scoutId: scout.uid,
             scoutName: scout.displayName,
             teamNumber,
+            scoutHumanPlayer: teamIndex === 0,
             assignedBy: userData.uid,
             assignedAt: now + matchIndex,
           });
@@ -1853,7 +1859,10 @@ function buildMatchScoutOrder(
               <p className="text-gray-600">Assign team members and set who is attending each event.</p>
             </div>
             <button
-              onClick={() => setShowAssignModal(true)}
+              onClick={() => {
+                setSelectedScoutHumanPlayer(false);
+                setShowAssignModal(true);
+              }}
               className="flex items-center gap-2 px-4 py-2 rounded text-white font-semibold hover:opacity-90"
               style={{ backgroundColor: "var(--primary-color)" }}
             >
@@ -2009,7 +2018,9 @@ function buildMatchScoutOrder(
                             <td className="px-6 py-4 whitespace-nowrap font-medium">{assignment.matchLabel || assignment.matchKey}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.eventKey}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">Team {assignment.teamNumber}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              Team {assignment.teamNumber}{assignment.scoutHumanPlayer ? " (HP)" : ""}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <button onClick={() => void deleteAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
                                 <Trash2 size={18} />
@@ -2134,7 +2145,12 @@ function buildMatchScoutOrder(
                                 <td className="px-6 py-4 text-sm">
                                   {perMatch.length === 0
                                     ? "Unassigned"
-                                    : perMatch.map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`).join(" | ")}
+                                    : perMatch
+                                        .map(
+                                          (assignment) =>
+                                            `T${assignment.teamNumber}: ${assignment.scoutName}${assignment.scoutHumanPlayer ? " (HP)" : ""}`
+                                        )
+                                        .join(" | ")}
                                 </td>
                               </tr>
                             );
@@ -2157,7 +2173,12 @@ function buildMatchScoutOrder(
                               <td className="px-6 py-4 text-sm">
                                 {perMatch.length === 0
                                   ? "Unassigned"
-                                  : perMatch.map((assignment) => `T${assignment.teamNumber}: ${assignment.scoutName}`).join(" | ")}
+                                  : perMatch
+                                      .map(
+                                        (assignment) =>
+                                          `T${assignment.teamNumber}: ${assignment.scoutName}${assignment.scoutHumanPlayer ? " (HP)" : ""}`
+                                      )
+                                      .join(" | ")}
                               </td>
                             </tr>
                           );
@@ -2345,31 +2366,43 @@ function buildMatchScoutOrder(
                     </select>
                   </div>
                   {assignmentModalMode === "match" && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
-                    {selectedMatch && selectedMatch.teams.length > 0 ? (
-                      <select
-                        className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
-                        value={selectedTeamNumber}
-                        onChange={(e) => setSelectedTeamNumber(e.target.value)}
-                      >
-                        <option value="">Select Team</option>
-                        {selectedMatch.teams.map((team) => (
-                          <option key={team} value={team}>
-                            Team {team}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
-                        value={selectedTeamNumber}
-                        onChange={(e) => setSelectedTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
-                        placeholder={selectedMatch ? "Enter team number" : "Select Match First"}
-                        disabled={!selectedMatch}
-                      />
-                    )}
-                  </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                        {selectedMatch && selectedMatch.teams.length > 0 ? (
+                          <select
+                            className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
+                            value={selectedTeamNumber}
+                            onChange={(e) => setSelectedTeamNumber(e.target.value)}
+                          >
+                            <option value="">Select Team</option>
+                            {selectedMatch.teams.map((team) => (
+                              <option key={team} value={team}>
+                                Team {team}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            className="w-full border rounded p-2 disabled:bg-gray-100 disabled:text-gray-500"
+                            value={selectedTeamNumber}
+                            onChange={(e) => setSelectedTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
+                            placeholder={selectedMatch ? "Enter team number" : "Select Match First"}
+                            disabled={!selectedMatch}
+                          />
+                        )}
+                      </div>
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={selectedScoutHumanPlayer}
+                          onChange={(e) => setSelectedScoutHumanPlayer(e.target.checked)}
+                        />
+                        Scout Human Player
+                      </label>
+                      <p className="text-xs text-gray-500">Shows a human player reminder on the match form for this assignment.</p>
+                    </div>
                   )}
                 </div>
                 <div className="flex gap-3 mt-6">
@@ -2398,7 +2431,10 @@ function buildMatchScoutOrder(
                     Create
                   </button>
                   <button
-                    onClick={() => setShowAssignModal(false)}
+                    onClick={() => {
+                      setSelectedScoutHumanPlayer(false);
+                      setShowAssignModal(false);
+                    }}
                     className="flex-1 py-2 rounded border-2 border-gray-300 text-gray-700 font-medium"
                   >
                     Cancel

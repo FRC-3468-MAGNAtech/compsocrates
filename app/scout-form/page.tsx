@@ -39,6 +39,7 @@ type AssignmentRow = {
   matchLabel?: string;
   eventKey?: string;
   teamNumber?: number;
+  scoutHumanPlayer?: boolean;
 };
 
 function TeamPickerModal({
@@ -820,6 +821,7 @@ function ScoutFormContent() {
   const [modalCompleted, setModalCompleted] = useState<Set<string>>(new Set());
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
+  const [assignedHumanPlayerMatches, setAssignedHumanPlayerMatches] = useState<Set<string>>(new Set());
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
   const [targets, setTargets] = useState<Record<string, number>>({});
@@ -892,6 +894,7 @@ function ScoutFormContent() {
         setOptions(fallback);
         setTargets({});
         setModalCompleted(new Set());
+        setAssignedHumanPlayerMatches(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
         return;
       }
@@ -914,6 +917,7 @@ function ScoutFormContent() {
             setOptions(fallback);
             setTargets({});
             setModalCompleted(new Set());
+            setAssignedHumanPlayerMatches(new Set());
             setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
             return;
           }
@@ -932,6 +936,7 @@ function ScoutFormContent() {
           setOptions(fallback);
           setTargets({});
           setModalCompleted(new Set());
+          setAssignedHumanPlayerMatches(new Set());
           setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
           return;
         }
@@ -979,6 +984,7 @@ function ScoutFormContent() {
         );
         const assigned: Record<string, string> = {};
         const assignedMatchIds = new Set<string>();
+        const assignedHumanPlayer = new Set<string>();
         assignmentSnapByEvent.docs.forEach((row) => {
           const data = row.data() as AssignmentRow;
           const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
@@ -986,9 +992,11 @@ function ScoutFormContent() {
           if (matchId) {
             assignedMatchIds.add(matchId);
             if (team) assigned[matchId] = team;
+            if (data.scoutHumanPlayer) assignedHumanPlayer.add(matchId);
           }
         });
         setAssignedTeams(assigned);
+        setAssignedHumanPlayerMatches(assignedHumanPlayer);
 
         const now = getEffectiveNowSec(teamTimeOverride);
         const graceSeconds = 10 * 60;
@@ -1022,6 +1030,7 @@ function ScoutFormContent() {
         setOptions(fallback);
         setTargets({});
         setModalCompleted(new Set());
+        setAssignedHumanPlayerMatches(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
       }
     }
@@ -1052,6 +1061,7 @@ function ScoutFormContent() {
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
   const assignedTeam = assignedTeams[selectedMatchId] || "";
+  const isHumanPlayerAssigned = assignedHumanPlayerMatches.has(selectedMatchId);
   const pitPreloadFits = pitValueFitsScale("preload", pitSync.preloadRaw, form.autoPreloadScale);
   const pitBpsFitsAuto = pitValueFitsScale("bps", pitSync.bpsRaw, form.autoBpsScale);
   const pitBpsFitsTele = pitValueFitsScale("bps", pitSync.bpsRaw, form.teleBpsScale);
@@ -1373,6 +1383,13 @@ function ScoutFormContent() {
               {fromPractice && (
                 <p className="text-sm text-gray-600 mb-2">Opened from Practice Scouting.</p>
               )}
+              {isHumanPlayerAssigned && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-2">
+                  <p className="text-sm font-medium text-yellow-800">
+                    This match, include the <strong>Human Player</strong> score.
+                  </p>
+                </div>
+              )}
               {pitSync.eventSynced ? (
                 <p className="text-sm text-green-700 mb-2">Detected pit scout form is synced for this team and event.</p>
               ) : (
@@ -1485,6 +1502,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Missed Fuel" value={form.autoCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, autoCounterMissedFuel: next }))} />
                   <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
                   <ClimbCounter label="Scored Fuel" value={form.autoHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, autoHumanPlayerFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Climb</h3>
                   <ClimbCounter label="Failed Climb" value={form.autoFailedClimb} onChange={(next) => setForm((p) => ({ ...p, autoFailedClimb: next }))} />
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />Successful Climb</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonAuto} onChange={(e) => setForm((p) => ({ ...p, wonAuto: e.target.checked }))} />Won Auto</label>
@@ -1512,6 +1530,8 @@ function ScoutFormContent() {
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.transitionCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, transitionCounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
                   <p className="text-xs text-gray-600">
                     Counted shifts right now: Transition + {form.wonAuto !== form.hubActivationOverride ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
                     Toggle <span className="font-medium">Won Auto</span> or <span className="font-medium">Hub Activation Override</span> to flip counted shifts.
@@ -1525,6 +1545,8 @@ function ScoutFormContent() {
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.shift1CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift1CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift1CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift1CounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
                   <CycleTimer
                     title={`Shift 2 ${form.wonAuto !== form.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
                     values={shift2Cycles}
@@ -1534,6 +1556,8 @@ function ScoutFormContent() {
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.shift2CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift2CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift2CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift2CounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
                   <CycleTimer
                     title={`Shift 3 ${form.wonAuto !== form.hubActivationOverride ? "(Not Counted)" : "(Counted)"}`}
                     values={shift3Cycles}
@@ -1543,6 +1567,8 @@ function ScoutFormContent() {
                   <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
                   <ClimbCounter label="Scored Fuel" value={form.shift3CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift3CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift3CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift3CounterMissedFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
                   <CycleTimer
                     title={`Shift 4 ${form.wonAuto !== form.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
                     values={shift4Cycles}
@@ -1569,6 +1595,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Missed Fuel" value={form.endgameCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, endgameCounterMissedFuel: next }))} />
                   <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
                   <ClimbCounter label="Scored Fuel" value={form.endgameHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, endgameHumanPlayerFuel: next }))} />
+                  <h3 className="text-sm font-semibold text-gray-700">Climb</h3>
                   <ClimbCounter label="Failed Climb" value={form.endgameFailedClimb} onChange={(next) => setForm((p) => ({ ...p, endgameFailedClimb: next }))} />
                   <select className="w-full border rounded p-2" value={form.endgameStatus} onChange={(e) => setForm((p) => ({ ...p, endgameStatus: e.target.value }))}>
                     <option value="">Status At End of Match</option>
