@@ -381,6 +381,7 @@ function ScoutFormContent() {
     scoutName: userData?.displayName || "",
     teamNumber: "",
     startingPosition: "",
+    robotWeight: "",
     leftStartingZone: false,
     autoCoralMissed: 0,
     autoCoralL1: 0,
@@ -797,6 +798,18 @@ function ScoutFormContent() {
                 <option value="middle">Middle</option>
                 <option value="opposite">Opposite Side</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Robot Weight
+              </label>
+              <input
+                type="text"
+                value={formData.robotWeight}
+                onChange={(e) => setFormData({ ...formData, robotWeight: e.target.value })}
+                className="w-full border rounded p-2"
+                placeholder="Optional"
+              />
             </div>
           </div>
         </div>

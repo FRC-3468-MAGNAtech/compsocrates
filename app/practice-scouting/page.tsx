@@ -104,6 +104,7 @@ type PracticeStep = 'select' | 'live_reveal' | 'practice' | 'break' | 'results';
 type RebuiltScoutedData = {
   teamNumber: string;
   startingPosition: string;
+  robotWeight: string;
   autoPreloadScale: number;
   autoBpsScale: number;
   autoCarryScale: number;
@@ -244,6 +245,7 @@ function createEmptyScoutedData(teamNumber = "", notes = ""): ScoutedData {
   return {
     teamNumber,
     startingPosition: "",
+    robotWeight: "",
     leftStartingZone: false,
     autoCoralMissed: 0,
     autoCoralL1: 0,
@@ -510,6 +512,7 @@ function createEmptyRebuiltScoutedData(teamNumber = "", notes = ""): RebuiltScou
   return {
     teamNumber,
     startingPosition: "",
+    robotWeight: "",
     autoPreloadScale: 0,
     autoBpsScale: 0,
     autoCarryScale: 0,
@@ -581,7 +584,7 @@ function calculateRebuiltScoutedScore(data: RebuiltScoutedData): number {
   const endgameFuelSection = resolveSectionFuel(endgameEstimatedFuel, data.endgameCounterOverride, data.endgameCounterMissedFuel);
 
   const autoFuel = autoFuelSection + Number(data.autoHumanPlayerFuel || 0);
-  const teleopFuel = transitionFuel + (data.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + Number(data.teleopHumanPlayerFuel || 0);
+  const teleopFuel = transitionFuel + (data.wonAuto ? shift1Fuel + shift3Fuel : shift2Fuel + shift4Fuel) + Number(data.teleopHumanPlayerFuel || 0);
   const endgameFuel = endgameFuelSection + Number(data.endgameHumanPlayerFuel || 0);
   const autoClimb = data.autoSuccessfulClimb ? 15 : 0;
   const teleopClimb =
@@ -682,7 +685,7 @@ function rebuiltScoreCandidatesForAccuracy(data: RebuiltScoutedData): number[] {
               data.endgameCounterOverride,
               data.endgameCounterMissedFuel
             ) + Number(data.endgameHumanPlayerFuel || 0);
-            const teleFuel = transition + (data.wonAuto ? shift2 + shift4 : shift1 + shift3) + Number(data.teleopHumanPlayerFuel || 0);
+            const teleFuel = transition + (data.wonAuto ? shift1 + shift3 : shift2 + shift4) + Number(data.teleopHumanPlayerFuel || 0);
             candidates.add(autoFuel + teleFuel + endgameFuel + autoClimb + teleopClimb);
           }
         }
@@ -2168,7 +2171,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setHumanPlayerRobot(
       typeof draft.humanPlayerRobot === "number" ? Math.max(0, Math.min(2, draft.humanPlayerRobot)) : null
     );
-    setFormData(draft.formData || createEmptyScoutedData());
+    setFormData({
+      ...createEmptyScoutedData(),
+      ...(draft.formData || {}),
+    });
     setRebuiltFormData({
       ...createEmptyRebuiltScoutedData(),
       ...(draft.rebuiltFormData || {}),
@@ -2898,7 +2904,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           const shift4Fuel = resolveSectionFuel(shift4EstimatedFuel, robotData.shift4CounterOverride, robotData.shift4CounterMissedFuel);
           const endgameFuelSection = resolveSectionFuel(endgameEstimatedFuel, robotData.endgameCounterOverride, robotData.endgameCounterMissedFuel);
           const autoFuelWithHuman = autoFuelSection + Number(robotData.autoHumanPlayerFuel || 0);
-          const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + Number(robotData.teleopHumanPlayerFuel || 0);
+          const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift1Fuel + shift3Fuel : shift2Fuel + shift4Fuel) + Number(robotData.teleopHumanPlayerFuel || 0);
           const endgameFuelWithHuman = endgameFuelSection + Number(robotData.endgameHumanPlayerFuel || 0);
 
           return addDoc(collection(db, "scouting"), {
@@ -2906,6 +2912,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             scoutId: userData.uid,
             teamNumber: robotData.teamNumber,
             startingPosition: robotData.startingPosition,
+            robotWeight: robotData.robotWeight,
             incidents: robotData.incidents,
             notes: robotData.notes,
             auto: {
@@ -3192,7 +3199,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         const shift4Fuel = resolveSectionFuel(shift4EstimatedFuel, robotData.shift4CounterOverride, robotData.shift4CounterMissedFuel);
         const endgameFuelSection = resolveSectionFuel(endgameEstimatedFuel, robotData.endgameCounterOverride, robotData.endgameCounterMissedFuel);
         const autoFuelWithHuman = autoFuelSection + Number(robotData.autoHumanPlayerFuel || 0);
-        const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + Number(robotData.teleopHumanPlayerFuel || 0);
+        const teleEstimatedFuel = transitionFuel + (robotData.wonAuto ? shift1Fuel + shift3Fuel : shift2Fuel + shift4Fuel) + Number(robotData.teleopHumanPlayerFuel || 0);
         const endgameFuelWithHuman = endgameFuelSection + Number(robotData.endgameHumanPlayerFuel || 0);
 
         await addDoc(collection(db, "scouting"), {
@@ -3200,6 +3207,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           scoutId: userData.uid,
           teamNumber: robotData.teamNumber,
           startingPosition: robotData.startingPosition,
+          robotWeight: robotData.robotWeight,
           incidents: robotData.incidents,
           notes: robotData.notes,
           auto: {
@@ -4363,6 +4371,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       <option value="Opposite Side">Opposite Side</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Robot Weight</label>
+                    <input
+                      type="text"
+                      value={formData.robotWeight}
+                      onChange={(e) => setFormData({ ...formData, robotWeight: e.target.value })}
+                      className="w-full border rounded p-2"
+                      placeholder="Optional"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -4490,6 +4508,16 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                           <option value="middle">Middle</option>
                           <option value="depot-side">Depot Side</option>
                         </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Robot Weight</label>
+                        <input
+                          type="text"
+                          value={rebuiltFormData.robotWeight}
+                          onChange={(e) => setRebuiltFormData({ ...rebuiltFormData, robotWeight: e.target.value })}
+                          className="w-full border rounded p-2"
+                          placeholder="Optional"
+                        />
                       </div>
                     </div>
                   </div>
@@ -4632,10 +4660,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, transitionCounterMissedFuel: value })}
                       />
                       <p className="text-xs text-gray-600">
-                        Counted shifts right now: Transition + {rebuiltFormData.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
+                        Counted shifts right now: Transition + {rebuiltFormData.wonAuto ? "Shift 1 + Shift 3" : "Shift 2 + Shift 4"}.
                       </p>
                       <RebuiltCycleTimer
-                        title={`Shift 1 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                        title={`Shift 1 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                         values={rebuiltFormData.shift1Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1Cycles: [...rebuiltFormData.shift1Cycles, value] })}
                         onDelete={(index) =>
@@ -4657,7 +4685,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1CounterMissedFuel: value })}
                       />
                       <RebuiltCycleTimer
-                        title={`Shift 2 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                        title={`Shift 2 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
                         values={rebuiltFormData.shift2Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2Cycles: [...rebuiltFormData.shift2Cycles, value] })}
                         onDelete={(index) =>
@@ -4679,7 +4707,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2CounterMissedFuel: value })}
                       />
                       <RebuiltCycleTimer
-                        title={`Shift 3 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                        title={`Shift 3 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                         values={rebuiltFormData.shift3Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3Cycles: [...rebuiltFormData.shift3Cycles, value] })}
                         onDelete={(index) =>
@@ -4701,7 +4729,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3CounterMissedFuel: value })}
                       />
                       <RebuiltCycleTimer
-                        title={`Shift 4 ${rebuiltFormData.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                        title={`Shift 4 ${rebuiltFormData.wonAuto ? "(Not Counted)" : "(Counted)"}`}
                         values={rebuiltFormData.shift4Cycles}
                         onAdd={(value) => setRebuiltFormData({ ...rebuiltFormData, shift4Cycles: [...rebuiltFormData.shift4Cycles, value] })}
                         onDelete={(index) =>

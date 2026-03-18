@@ -133,6 +133,7 @@ type FormState = {
   scoutName: string;
   teamNumber: string;
   startingPosition: string;
+  robotWeight: string;
   autoPreloadScale: number;
   autoBpsScale: number;
   autoCarryScale: number;
@@ -838,6 +839,7 @@ function ScoutFormContent() {
     scoutName: userData?.displayName || "",
     teamNumber: "",
     startingPosition: "",
+    robotWeight: "",
     autoPreloadScale: 0,
     autoBpsScale: 0,
     autoCarryScale: 0,
@@ -1207,7 +1209,7 @@ function ScoutFormContent() {
     const s2 = resolveSectionFuel(s2Estimated, form.shift2CounterOverride, form.shift2CounterMissedFuel);
     const s3 = resolveSectionFuel(s3Estimated, form.shift3CounterOverride, form.shift3CounterMissedFuel);
     const s4 = resolveSectionFuel(s4Estimated, form.shift4CounterOverride, form.shift4CounterMissedFuel);
-    return transition + (form.wonAuto ? s2 + s4 : s1 + s3);
+    return transition + (form.wonAuto ? s1 + s3 : s2 + s4);
   }
 
   function estimateEndgameSectionFuel() {
@@ -1261,6 +1263,7 @@ function ScoutFormContent() {
         matchNumber: String(selectedMatch.matchNumber),
         teamNumber: form.teamNumber.trim(),
         startingPosition: form.startingPosition,
+        robotWeight: form.robotWeight.trim(),
         auto: {
           preloadScale: form.autoPreloadScale,
           bpsScale: form.autoBpsScale,
@@ -1322,6 +1325,7 @@ function ScoutFormContent() {
         ...prev,
         teamNumber: assignedTeam || "",
         startingPosition: "",
+        robotWeight: "",
         autoHumanPlayerFuel: 0,
         autoCounterOverride: 0,
         autoCounterMissedFuel: 0,
@@ -1443,6 +1447,13 @@ function ScoutFormContent() {
                       <button type="button" className="px-4 rounded border disabled:opacity-50" onClick={() => setShowTeamPicker(true)} disabled={selectedTeams.length === 0}>Pick</button>
                     </div>
                   )}
+                  <label className="block text-sm font-medium text-gray-700">Robot Weight</label>
+                  <input
+                    className="w-full border rounded p-2"
+                    value={form.robotWeight}
+                    onChange={(e) => setForm((p) => ({ ...p, robotWeight: e.target.value }))}
+                    placeholder="Optional"
+                  />
                   <label className="block text-sm font-medium text-gray-700">Starting Position</label>
                   <select className="w-full border rounded p-2" value={form.startingPosition} onChange={(e) => setForm((p) => ({ ...p, startingPosition: e.target.value }))}>
                     <option value="">Select Position</option>
@@ -1507,11 +1518,11 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.transitionCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, transitionCounterMissedFuel: next }))} />
                   <p className="text-xs text-gray-600">
-                    Counted shifts right now: Transition + {form.wonAuto ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
+                    Counted shifts right now: Transition + {form.wonAuto ? "Shift 1 + Shift 3" : "Shift 2 + Shift 4"}.
                     Toggle <span className="font-medium">Won Auto</span> to flip counted shifts.
                   </p>
                   <CycleTimer
-                    title={`Shift 1 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                    title={`Shift 1 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                     values={shift1Cycles}
                     onAdd={(v) => setShift1Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift1Cycles((p) => p.filter((_, i) => i !== index))}
@@ -1520,7 +1531,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.shift1CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift1CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift1CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift1CounterMissedFuel: next }))} />
                   <CycleTimer
-                    title={`Shift 2 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                    title={`Shift 2 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
                     values={shift2Cycles}
                     onAdd={(v) => setShift2Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift2Cycles((p) => p.filter((_, i) => i !== index))}
@@ -1529,7 +1540,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.shift2CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift2CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift2CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift2CounterMissedFuel: next }))} />
                   <CycleTimer
-                    title={`Shift 3 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                    title={`Shift 3 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
                     values={shift3Cycles}
                     onAdd={(v) => setShift3Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift3Cycles((p) => p.filter((_, i) => i !== index))}
@@ -1538,7 +1549,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.shift3CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift3CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift3CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift3CounterMissedFuel: next }))} />
                   <CycleTimer
-                    title={`Shift 4 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                    title={`Shift 4 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
                     values={shift4Cycles}
                     onAdd={(v) => setShift4Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift4Cycles((p) => p.filter((_, i) => i !== index))}
