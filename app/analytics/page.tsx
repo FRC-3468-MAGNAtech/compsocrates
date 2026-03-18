@@ -422,13 +422,16 @@ function getRebuiltFuelBreakdown(entry: Entry) {
   const autoHumanFuel = Number(entry.auto?.humanPlayerFuel || 0);
   const teleHumanFuel = Number(entry.teleop?.humanPlayerFuel || 0);
   const endgameHumanFuel = Number(entry.endgame?.humanPlayerFuel || 0);
-  const wonAuto = Boolean(entry.auto?.wonAuto || entry.teleop?.shiftParityFromWonAuto);
+  const countShiftsTwoFour =
+    typeof entry.teleop?.shiftParityFromWonAuto === "boolean"
+      ? entry.teleop.shiftParityFromWonAuto
+      : Boolean(entry.auto?.wonAuto);
 
   const autoFuel = autoSectionFuel + autoHumanFuel;
-  const teleFuel = transitionFuel + (wonAuto ? shift1Fuel + shift3Fuel : shift2Fuel + shift4Fuel) + teleHumanFuel;
-  const teleEstimatedUsed = wonAuto
-    ? transitionEstimatedUsed || shift1EstimatedUsed || shift3EstimatedUsed
-    : transitionEstimatedUsed || shift2EstimatedUsed || shift4EstimatedUsed;
+  const teleFuel = transitionFuel + (countShiftsTwoFour ? shift2Fuel + shift4Fuel : shift1Fuel + shift3Fuel) + teleHumanFuel;
+  const teleEstimatedUsed = countShiftsTwoFour
+    ? transitionEstimatedUsed || shift2EstimatedUsed || shift4EstimatedUsed
+    : transitionEstimatedUsed || shift1EstimatedUsed || shift3EstimatedUsed;
   const endgameFuel = endgameSectionFuel + endgameHumanFuel;
 
   return {

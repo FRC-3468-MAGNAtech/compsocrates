@@ -142,6 +142,7 @@ type FormState = {
   autoFailedClimb: number;
   autoSuccessfulClimb: boolean;
   wonAuto: boolean;
+  hubActivationOverride: boolean;
   teleBpsScale: number;
   teleCarryScale: number;
   transitionCounterOverride: number;
@@ -847,6 +848,7 @@ function ScoutFormContent() {
     autoFailedClimb: 0,
     autoSuccessfulClimb: false,
     wonAuto: false,
+    hubActivationOverride: false,
     teleBpsScale: 0,
     teleCarryScale: 0,
     transitionCounterOverride: 0,
@@ -1196,6 +1198,7 @@ function ScoutFormContent() {
     const carryCapFromScale = CARRY[Math.max(0, Math.min(CARRY_MAX, form.teleCarryScale))] || 0;
     const carryCap = pitSync.carryRaw !== null && pitCarryFitsTele ? pitSync.carryRaw : carryCapFromScale;
     const teleBps = pitSync.bpsRaw !== null && pitBpsFitsTele ? pitSync.bpsRaw : (BPS[form.teleBpsScale] || 0);
+    const countShiftsTwoFour = form.wonAuto !== form.hubActivationOverride;
     const estimateSection = (sec: number) => Math.max(0, Math.round(Math.min(Math.max(0, carryCap), teleBps * sec)));
     const transitionEstimated = transitionCycles.reduce((sum, sec) => sum + estimateSection(sec), 0);
     const s1Estimated = shift1Cycles.reduce((sum, sec) => sum + estimateSection(sec), 0);
@@ -1207,7 +1210,7 @@ function ScoutFormContent() {
     const s2 = resolveSectionFuel(s2Estimated, form.shift2CounterOverride, form.shift2CounterMissedFuel);
     const s3 = resolveSectionFuel(s3Estimated, form.shift3CounterOverride, form.shift3CounterMissedFuel);
     const s4 = resolveSectionFuel(s4Estimated, form.shift4CounterOverride, form.shift4CounterMissedFuel);
-    return transition + (form.wonAuto ? s1 + s3 : s2 + s4);
+    return transition + (countShiftsTwoFour ? s2 + s4 : s1 + s3);
   }
 
   function estimateEndgameSectionFuel() {
@@ -1273,9 +1276,10 @@ function ScoutFormContent() {
           failedClimb: form.autoFailedClimb,
           successfulClimb: form.autoSuccessfulClimb,
           wonAuto: form.wonAuto,
+          hubActivationOverride: form.hubActivationOverride,
         },
         teleop: {
-          shiftParityFromWonAuto: form.wonAuto,
+          shiftParityFromWonAuto: form.wonAuto !== form.hubActivationOverride,
           bpsScale: form.teleBpsScale,
           carryingScale: form.teleCarryScale,
           transitionCycles,
@@ -1328,6 +1332,7 @@ function ScoutFormContent() {
         autoFailedClimb: 0,
         autoSuccessfulClimb: false,
         wonAuto: false,
+        hubActivationOverride: false,
         transitionCounterOverride: 0,
         transitionCounterMissedFuel: 0,
         shift1CounterOverride: 0,
@@ -1483,6 +1488,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Failed Climb" value={form.autoFailedClimb} onChange={(next) => setForm((p) => ({ ...p, autoFailedClimb: next }))} />
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />Successful Climb</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonAuto} onChange={(e) => setForm((p) => ({ ...p, wonAuto: e.target.checked }))} />Won Auto</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.hubActivationOverride} onChange={(e) => setForm((p) => ({ ...p, hubActivationOverride: e.target.checked }))} />Hub Activation Override</label>
                 </div>
 
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
@@ -1507,11 +1513,11 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.transitionCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, transitionCounterMissedFuel: next }))} />
                   <p className="text-xs text-gray-600">
-                    Counted shifts right now: Transition + {form.wonAuto ? "Shift 1 + Shift 3" : "Shift 2 + Shift 4"}.
-                    Toggle <span className="font-medium">Won Auto</span> to flip counted shifts.
+                    Counted shifts right now: Transition + {form.wonAuto !== form.hubActivationOverride ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
+                    Toggle <span className="font-medium">Won Auto</span> or <span className="font-medium">Hub Activation Override</span> to flip counted shifts.
                   </p>
                   <CycleTimer
-                    title={`Shift 1 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                    title={`Shift 1 ${form.wonAuto !== form.hubActivationOverride ? "(Not Counted)" : "(Counted)"}`}
                     values={shift1Cycles}
                     onAdd={(v) => setShift1Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift1Cycles((p) => p.filter((_, i) => i !== index))}
@@ -1520,7 +1526,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.shift1CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift1CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift1CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift1CounterMissedFuel: next }))} />
                   <CycleTimer
-                    title={`Shift 2 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                    title={`Shift 2 ${form.wonAuto !== form.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
                     values={shift2Cycles}
                     onAdd={(v) => setShift2Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift2Cycles((p) => p.filter((_, i) => i !== index))}
@@ -1529,7 +1535,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.shift2CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift2CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift2CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift2CounterMissedFuel: next }))} />
                   <CycleTimer
-                    title={`Shift 3 ${form.wonAuto ? "(Counted)" : "(Not Counted)"}`}
+                    title={`Shift 3 ${form.wonAuto !== form.hubActivationOverride ? "(Not Counted)" : "(Counted)"}`}
                     values={shift3Cycles}
                     onAdd={(v) => setShift3Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift3Cycles((p) => p.filter((_, i) => i !== index))}
@@ -1538,7 +1544,7 @@ function ScoutFormContent() {
                   <ClimbCounter label="Scored Fuel" value={form.shift3CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift3CounterOverride: next }))} />
                   <ClimbCounter label="Missed Fuel" value={form.shift3CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift3CounterMissedFuel: next }))} />
                   <CycleTimer
-                    title={`Shift 4 ${form.wonAuto ? "(Not Counted)" : "(Counted)"}`}
+                    title={`Shift 4 ${form.wonAuto !== form.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
                     values={shift4Cycles}
                     onAdd={(v) => setShift4Cycles((p) => [...p, v])}
                     onDelete={(index) => setShift4Cycles((p) => p.filter((_, i) => i !== index))}

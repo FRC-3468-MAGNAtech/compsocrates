@@ -206,7 +206,10 @@ function rebuiltEntryScoreCandidates(entry: ScoutingEntry): number[] {
   const autoCarryCandidates = getScaleCandidates(entry.auto?.carryingScale, CARRY_SCALE_VALUES, 0);
   const teleBpsCandidates = getScaleCandidates(entry.teleop?.bpsScale, BPS_SCALE_VALUES, 0);
   const teleCarryCandidates = getScaleCandidates(entry.teleop?.carryingScale, CARRY_SCALE_VALUES, 0);
-  const wonAuto = Boolean(entry.auto?.wonAuto || entry.teleop?.shiftParityFromWonAuto);
+  const countShiftsTwoFour =
+    typeof entry.teleop?.shiftParityFromWonAuto === "boolean"
+      ? entry.teleop.shiftParityFromWonAuto
+      : Boolean(entry.auto?.wonAuto);
   const autoClimb = entry.auto?.successfulClimb ? 15 : 0;
   const endStatus = String(entry.endgame?.status || "").toLowerCase();
   const teleopClimb =
@@ -253,7 +256,7 @@ function rebuiltEntryScoreCandidates(entry: ScoutingEntry): number[] {
               entry.teleop?.shift4Override,
               entry.teleop?.shift4MissedFuel
             );
-            const teleFuel = transition + (wonAuto ? shift1 + shift3 : shift2 + shift4) + toNumber(entry.teleop?.humanPlayerFuel);
+            const teleFuel = transition + (countShiftsTwoFour ? shift2 + shift4 : shift1 + shift3) + toNumber(entry.teleop?.humanPlayerFuel);
             const endgameFuel = resolveSectionFuel(
               estimateFuelFromCycles(entry.endgame?.cycleTimes, teleBps, teleCarry),
               entry.endgame?.counterOverride,
