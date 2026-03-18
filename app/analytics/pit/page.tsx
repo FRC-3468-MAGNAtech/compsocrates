@@ -22,6 +22,7 @@ type PitEntry = {
   timestamp?: number;
   teamNumber?: string;
   scoutName?: string;
+  robotWeight?: string;
   robotPictureUrl?: string;
   pitDisposition?: boolean | string;
   driveDisposition?: boolean | string;
@@ -110,6 +111,7 @@ function PitAnalyticsContent() {
   const [sortKey, setSortKey] = useState<
     | "teamNumber"
     | "scoutName"
+    | "robotWeight"
     | "robotPictureUrl"
     | "pitDisposition"
     | "driveDisposition"
@@ -203,6 +205,8 @@ function PitAnalyticsContent() {
           return entry.teamNumber || "";
         case "scoutName":
           return entry.scoutName || "";
+        case "robotWeight":
+          return entry.robotWeight || "";
         case "robotPictureUrl":
           return entry.robotPictureUrl ? 1 : 0;
         case "pitDisposition":
@@ -276,6 +280,7 @@ function PitAnalyticsContent() {
       "Team",
       "Scout",
       "Robot Picture",
+      "Robot Weight",
       "Disposition",
       "Drive Base",
       "Center of Gravity",
@@ -303,6 +308,7 @@ function PitAnalyticsContent() {
         entry.teamNumber || "",
         entry.scoutName || "",
         entry.robotPictureUrl || "",
+        entry.robotWeight || "",
         dispositionToCsv(entry.pitDisposition),
         entry.driveBaseType || "",
         entry.centerOfGravity || "",
@@ -386,6 +392,7 @@ function PitAnalyticsContent() {
         const idxTeam = headers.findIndex((h) => h === "team" || h === "teamnumber");
         const idxScout = headers.findIndex((h) => h === "scout" || h === "scoutname");
         const idxRobotPicture = headers.findIndex((h) => h === "robotpicture");
+        const idxRobotWeight = headers.findIndex((h) => h === "robotweight");
         const idxDisposition = headers.findIndex((h) => h === "disposition");
         const idxDriveBase = headers.findIndex((h) => h === "drivebase" || h === "drivebasetype");
         const idxCog = headers.findIndex((h) => h === "centerofgravity");
@@ -426,6 +433,7 @@ function PitAnalyticsContent() {
             teamNumber: team,
             scoutName: scout,
             robotPictureUrl: get(idxRobotPicture),
+            robotWeight: get(idxRobotWeight),
             pitDisposition: toBoolean(dispositionRaw) || dispositionRaw.length > 0,
             driveDisposition: false,
             driveBaseType: get(idxDriveBase),
@@ -586,7 +594,7 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={3}>Information</th>
                   <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
@@ -594,7 +602,7 @@ function PitAnalyticsContent() {
                   <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 2 : 1}>General</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-200 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-200 text-center" colSpan={3}>Climb</th>
@@ -608,6 +616,9 @@ function PitAnalyticsContent() {
                   </th>
                   <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                     {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
+                    {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
                     {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
@@ -660,6 +671,7 @@ function PitAnalyticsContent() {
                   <tr key={entry.id}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
                     <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td>{formatAnalyticsText(entry.robotWeight)}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>
@@ -695,7 +707,7 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={3}>Information</th>
                   <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-300 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
@@ -704,7 +716,7 @@ function PitAnalyticsContent() {
                   <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 3 : 2}>General</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-200 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-200 text-center" colSpan={2}>Coral</th>
@@ -720,6 +732,9 @@ function PitAnalyticsContent() {
                   </th>
                   <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                     {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
+                    {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
                     {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
@@ -778,6 +793,7 @@ function PitAnalyticsContent() {
                   <tr key={entry.id}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
                     <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td>{formatAnalyticsText(entry.robotWeight)}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>

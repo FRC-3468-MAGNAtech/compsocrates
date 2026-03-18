@@ -45,7 +45,6 @@ export interface PracticeSession {
   scoutedData: {
     teamNumber: string;
     startingPosition: string;
-    robotWeight?: string;
     leftStartingZone: boolean;
     
     autoCoralMissed: number;

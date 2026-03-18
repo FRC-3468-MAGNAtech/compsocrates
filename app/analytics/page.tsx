@@ -45,7 +45,6 @@ type Entry = {
   teamNumber: string;
   scoutName: string;
   startingPosition: string;
-  robotWeight?: string;
   leftStartingZone: boolean;
   submittedAt?: number;
   autoCoralMissed: number;
@@ -2019,7 +2018,7 @@ function AnalyticsPageContent() {
             <thead className="sticky-header">
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="bg-yellow-300 text-center" colSpan={3}>Pre-Match</th>
+                <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
                 <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
@@ -2028,7 +2027,7 @@ function AnalyticsPageContent() {
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                <th className="bg-yellow-200 text-center" colSpan={3}>Pre-Match</th>
+                <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
                 <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
@@ -2058,9 +2057,6 @@ function AnalyticsPageContent() {
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
                   {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
-                  {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoPreloadScale")}>
                   {sortLabel(sortKey, sortDir, "autoPreloadScale", "Preload")}
@@ -2188,7 +2184,6 @@ function AnalyticsPageContent() {
                   <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
                   <td className="text-center">{displayEntryText(entry.scoutName)}</td>
                   <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
-                  <td className="text-center">{displayEntryText(entry.robotWeight || "-")}</td>
                   <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
                   <td className="text-center">{rebuiltCarryRange(entry.auto?.carryingScale)}</td>
@@ -2279,7 +2274,7 @@ function AnalyticsPageContent() {
           <thead className="sticky-header">
             <tr>
               <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-              <th className="bg-yellow-300 text-center" colSpan={3}>Pre-Match</th>
+              <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
@@ -2288,7 +2283,7 @@ function AnalyticsPageContent() {
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-              <th className="bg-yellow-200 text-center" colSpan={3}>Pre-Match</th>
+              <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
               <th className="bg-green-200 text-center" colSpan={2}>Algae Processor</th>
@@ -2317,9 +2312,6 @@ function AnalyticsPageContent() {
               </th>
               <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
                 {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
-              </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
-                {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
               </th>
               <th className="cursor-pointer text-center" onClick={() => handleSort("leftStartingZone")}>
                 {sortLabel(sortKey, sortDir, "leftStartingZone", "Leave")}
@@ -2430,7 +2422,6 @@ function AnalyticsPageContent() {
                 <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
                 <td className="text-center">{displayEntryText(entry.scoutName)}</td>
                 <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
-                <td className="text-center">{displayEntryText(entry.robotWeight || "-")}</td>
                 <td className="text-center">{entry.leftStartingZone ? "Y" : "N"}</td>
                 <td className="text-center">{entry.autoCoralMissed || 0}</td>
                 <td className="text-center">{entry.autoCoralL1 || 0}</td>

@@ -15,6 +15,7 @@ import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 type PitFormState = {
   scoutName: string;
   teamNumber: string;
+  robotWeight: string;
   robotPictureUrl: string;
   pitDisposition: boolean;
   driveDisposition: boolean;
@@ -96,6 +97,7 @@ function PitScoutFormContent() {
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
     teamNumber: "",
+    robotWeight: "",
     robotPictureUrl: "",
     pitDisposition: false,
     driveDisposition: false,
@@ -225,6 +227,7 @@ function PitScoutFormContent() {
       setForm((prev) => ({
         ...prev,
         teamNumber: "",
+        robotWeight: "",
         robotPictureUrl: "",
         notes: "",
         typicalFuelCycleTime: "",
@@ -281,6 +284,14 @@ function PitScoutFormContent() {
                 />
                 <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
               </div>
+
+              <label className="block text-sm font-medium text-gray-700">Robot Weight</label>
+              <input
+                className="w-full border rounded p-3"
+                value={form.robotWeight}
+                onChange={(event) => setForm({ ...form, robotWeight: event.target.value })}
+                placeholder="Robot Weight"
+              />
 
               <label className="block text-sm font-medium text-gray-700">Picture of Robot</label>
               <div className="rounded-lg border p-3 space-y-3">

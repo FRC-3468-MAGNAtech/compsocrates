@@ -13,6 +13,7 @@ import { Image as ImageIcon, Link as LinkIcon, Trash2 } from "lucide-react";
 type PitFormState = {
   scoutName: string;
   teamNumber: string;
+  robotWeight: string;
   robotPictureUrl: string;
   pitDisposition: boolean;
   driveDisposition: boolean;
@@ -48,6 +49,7 @@ function PitScoutFormContent() {
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
     teamNumber: "",
+    robotWeight: "",
     robotPictureUrl: "",
     pitDisposition: false,
     driveDisposition: false,
@@ -170,6 +172,14 @@ function PitScoutFormContent() {
                 className="w-full border rounded p-3"
                 placeholder="Team Number"
                 required
+              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Robot Weight</label>
+              <input
+                type="text"
+                value={form.robotWeight}
+                onChange={(event) => setForm({ ...form, robotWeight: event.target.value })}
+                className="w-full border rounded p-3"
+                placeholder="Robot Weight"
               />
               <label className="block text-sm font-medium text-gray-700 mb-1">Picture of Robot</label>
               <div className="rounded-lg border p-3 space-y-3">

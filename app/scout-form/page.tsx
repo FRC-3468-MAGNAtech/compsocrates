@@ -133,7 +133,6 @@ type FormState = {
   scoutName: string;
   teamNumber: string;
   startingPosition: string;
-  robotWeight: string;
   autoPreloadScale: number;
   autoBpsScale: number;
   autoCarryScale: number;
@@ -839,7 +838,6 @@ function ScoutFormContent() {
     scoutName: userData?.displayName || "",
     teamNumber: "",
     startingPosition: "",
-    robotWeight: "",
     autoPreloadScale: 0,
     autoBpsScale: 0,
     autoCarryScale: 0,
@@ -1263,7 +1261,6 @@ function ScoutFormContent() {
         matchNumber: String(selectedMatch.matchNumber),
         teamNumber: form.teamNumber.trim(),
         startingPosition: form.startingPosition,
-        robotWeight: form.robotWeight.trim(),
         auto: {
           preloadScale: form.autoPreloadScale,
           bpsScale: form.autoBpsScale,
@@ -1325,7 +1322,6 @@ function ScoutFormContent() {
         ...prev,
         teamNumber: assignedTeam || "",
         startingPosition: "",
-        robotWeight: "",
         autoHumanPlayerFuel: 0,
         autoCounterOverride: 0,
         autoCounterMissedFuel: 0,
@@ -1447,13 +1443,6 @@ function ScoutFormContent() {
                       <button type="button" className="px-4 rounded border disabled:opacity-50" onClick={() => setShowTeamPicker(true)} disabled={selectedTeams.length === 0}>Pick</button>
                     </div>
                   )}
-                  <label className="block text-sm font-medium text-gray-700">Robot Weight</label>
-                  <input
-                    className="w-full border rounded p-2"
-                    value={form.robotWeight}
-                    onChange={(e) => setForm((p) => ({ ...p, robotWeight: e.target.value }))}
-                    placeholder="Optional"
-                  />
                   <label className="block text-sm font-medium text-gray-700">Starting Position</label>
                   <select className="w-full border rounded p-2" value={form.startingPosition} onChange={(e) => setForm((p) => ({ ...p, startingPosition: e.target.value }))}>
                     <option value="">Select Position</option>
