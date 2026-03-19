@@ -136,6 +136,9 @@ function MatchListContent() {
                   };
                 });
               const firstSchedule = await fetchFirstSchedule(event.key, "Practice");
+              const existingPracticeNumbers = new Set(
+                normalized.filter((row) => row.level === "practice").map((row) => row.matchNumber)
+              );
               const firstPracticeRows = firstSchedule
                 .map((match) => {
                   const { red, blue } = splitFirstAllianceTeams(match);
@@ -150,7 +153,8 @@ function MatchListContent() {
                     matchNumber: match.matchNumber,
                   };
                 })
-                .filter((row) => row.red.length >= 3 && row.blue.length >= 3);
+                .filter((row) => row.red.length >= 3 && row.blue.length >= 3)
+                .filter((row) => !existingPracticeNumbers.has(row.matchNumber));
               const merged = [...firstPracticeRows, ...normalized].sort((a, b) => {
                 const levelOrder = a.level === "practice" ? -1 : a.level === "qualification" ? 0 : a.level === "playoff" ? 1 : 2;
                 const otherLevelOrder = b.level === "practice" ? -1 : b.level === "qualification" ? 0 : b.level === "playoff" ? 1 : 2;
