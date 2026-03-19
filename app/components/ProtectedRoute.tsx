@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth, UserRole } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
-import { getUserRoles } from "@/app/utils/roles";
-import { useMemo } from "react";
+import { canAccessForm, FormAccessOverrides, FormKey, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
+import { db } from "@/app/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 type ProtectedRouteProps = {
   children: React.ReactNode;
   allowedRoles?: UserRole[];
   requireAuth?: boolean;
   requireVersionReleaseAccess?: boolean;
+  formKey?: FormKey;
 };
 
 export default function ProtectedRoute({ 
@@ -20,14 +22,53 @@ export default function ProtectedRoute({
   allowedRoles,
   requireAuth = true,
   requireVersionReleaseAccess = false,
+  formKey,
 }: ProtectedRouteProps) {
   const { user, userData, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
+  const [formAccessLoading, setFormAccessLoading] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+    if (!formKey || !userData?.teamId) {
+      setFormAccessOverrides({});
+      setFormAccessLoading(false);
+      return () => {};
+    }
+    setFormAccessLoading(true);
+    async function loadOverrides() {
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (!isActive) return;
+        if (teamDoc.exists()) {
+          setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.data().formAccessOverrides));
+        } else {
+          setFormAccessOverrides({});
+        }
+      } catch (error) {
+        console.error("Failed to load form access overrides:", error);
+        if (isActive) setFormAccessOverrides({});
+      } finally {
+        if (isActive) setFormAccessLoading(false);
+      }
+    }
+    void loadOverrides();
+    return () => {
+      isActive = false;
+    };
+  }, [formKey, userData?.teamId]);
+
+  const hasFormOverrideAccess = useMemo((): boolean => {
+    if (!formKey || !userData) return false;
+    return canAccessForm({ formKey, user: userData, formAccessOverrides });
+  }, [formKey, formAccessOverrides, userData]);
 
   const hasAllowedRole = useMemo((): boolean => {
     if (!allowedRoles || !userData) return true;
     if (userData.isTeamAdmin) return true;
+    if (hasFormOverrideAccess) return true;
     const userRoles = getUserRoles(userData);
     const allowed = new Set<string>(allowedRoles);
     if (allowed.has(userData.role)) return true;
@@ -37,7 +78,7 @@ export default function ProtectedRoute({
     if (allowed.has("scout") && userRoles.some((role) => role !== "lead-strategist")) return true;
     if (allowed.has("coach") && (userRoles.includes("lead-strategist") || userRoles.includes("team-coach") || userData.isTeamAdmin)) return true;
     return false;
-  }, [allowedRoles, userData]);
+  }, [allowedRoles, hasFormOverrideAccess, userData]);
 
   const hasRequiredVersionReleaseAccess = useMemo((): boolean => {
     if (!requireVersionReleaseAccess) return true;
@@ -45,7 +86,7 @@ export default function ProtectedRoute({
   }, [requireVersionReleaseAccess, userData?.canManageVersionReleases]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || formAccessLoading) return;
 
     // If route requires auth but user is not logged in
     if (requireAuth && !user) {
@@ -93,10 +134,10 @@ export default function ProtectedRoute({
       router.push(getDashboardRoute(userData));
       return;
     }
-  }, [user, userData, loading, requireAuth, router, pathname, hasAllowedRole, hasRequiredVersionReleaseAccess]);
+  }, [user, userData, loading, formAccessLoading, requireAuth, router, pathname, hasAllowedRole, hasRequiredVersionReleaseAccess]);
 
   // Show loading state
-  if (loading) {
+  if (loading || formAccessLoading) {
     return (
       <div
         className="min-h-screen flex items-center justify-center"

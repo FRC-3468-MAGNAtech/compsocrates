@@ -626,7 +626,7 @@ function MatchStrategyFormContent() {
 
 export default function MatchStrategyFormPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["lead-strategist"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["lead-strategist"]} formKey="match-strategy-form">
       <MatchStrategyFormContent />
     </ProtectedRoute>
   );

@@ -727,7 +727,7 @@ function DriveReflectionFormContent() {
 
 export default function DriveReflectionFormPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["drive-team"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["drive-team"]} formKey="drive-scout-form">
       <DriveReflectionFormContent />
     </ProtectedRoute>
   );

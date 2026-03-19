@@ -308,7 +308,7 @@ function TeamStrategyFormContent() {
 
 export default function TeamStrategyFormPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["lead-strategist"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["lead-strategist"]} formKey="strategy-scout-form">
       <TeamStrategyFormContent />
     </ProtectedRoute>
   );

@@ -619,7 +619,7 @@ function PitScoutFormContent() {
 
 export default function PitScoutFormPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["pit-scout"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["pit-scout"]} formKey="pit-scout-form">
       <PitScoutFormContent />
     </ProtectedRoute>
   );

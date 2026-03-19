@@ -143,7 +143,7 @@ function HelperFormContent() {
 
 export default function HelperFormPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["pit-team"]}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["pit-team"]} formKey="helper-form">
       <HelperFormContent />
     </ProtectedRoute>
   );
