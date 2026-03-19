@@ -117,8 +117,6 @@ function PitScoutFormContent() {
   const [robotPictureUrlInput, setRobotPictureUrlInput] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
   const [apiTeams, setApiTeams] = useState<string[]>([]);
-  const [manualTeamCsv, setManualTeamCsv] = useState("");
-  const [manualTeamNumbers, setManualTeamNumbers] = useState<string[]>([]);
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
   const [assignedPitTeams, setAssignedPitTeams] = useState<string[]>([]);
@@ -174,36 +172,18 @@ function PitScoutFormContent() {
     setForm((prev) => ({ ...prev, robotPictureUrl: "" }));
   }
 
-  function applyManualTeamCsv() {
-    const parsed = parseManualTeamCsv(manualTeamCsv);
-    if (parsed.length === 0) {
-      alert("No valid team numbers found in the CSV.");
-      return;
+  function parseManualTeamList(input: unknown): string[] {
+    if (Array.isArray(input)) {
+      return input
+        .map((value) => parseInt(String(value || "").replace(/[^\d]/g, ""), 10))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .map((value) => String(value))
+        .sort((a, b) => Number(a) - Number(b));
     }
-    if (typeof window !== "undefined" && eventKey) {
-      localStorage.setItem(`pit-manual-teams:${eventKey}`, manualTeamCsv);
+    if (typeof input === "string") {
+      return parseManualTeamCsv(input);
     }
-    setManualTeamNumbers(parsed);
-    const merged = Array.from(new Set([...parsed, ...assignedPitTeams])).sort((a, b) => Number(a) - Number(b));
-    setAvailableTeams(merged);
-    setTeamLoadNote(`Using manual team list (${parsed.length} teams).`);
-  }
-
-  function clearManualTeamCsv() {
-    setManualTeamCsv("");
-    setManualTeamNumbers([]);
-    if (typeof window !== "undefined" && eventKey) {
-      localStorage.removeItem(`pit-manual-teams:${eventKey}`);
-    }
-    if (apiTeams.length > 0) {
-      const merged = Array.from(new Set([...apiTeams, ...assignedPitTeams])).sort((a, b) => Number(a) - Number(b));
-      setAvailableTeams(merged);
-      setTeamLoadNote("");
-    } else {
-      const merged = Array.from(new Set([...assignedPitTeams])).sort((a, b) => Number(a) - Number(b));
-      setAvailableTeams(merged);
-      setTeamLoadNote(merged.length > 0 ? "Using assigned team list." : "No teams loaded yet.");
-    }
+    return [];
   }
 
   useEffect(() => {
@@ -215,7 +195,8 @@ function PitScoutFormContent() {
     async function loadEventTeams() {
       if (!userData?.teamId) return;
       try {
-        await getDoc(doc(db, "teams", userData.teamId));
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const teamData = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
         const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
         const pitAssignmentsSnap = await getDocs(
           query(collection(db, "pitAssignments"), where("scoutId", "==", userData.uid))
@@ -234,12 +215,8 @@ function PitScoutFormContent() {
         const sortedAssignedTeams = Array.from(new Set(assignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b));
         setAssignedPitTeams(sortedAssignedTeams);
 
-        const manualStorageKey = `pit-manual-teams:${effectiveEvent}`;
-        const storedManualCsv =
-          typeof window !== "undefined" ? localStorage.getItem(manualStorageKey) || "" : "";
-        const storedManualTeams = parseManualTeamCsv(storedManualCsv);
-        setManualTeamCsv(storedManualCsv);
-        setManualTeamNumbers(storedManualTeams);
+        const manualByEvent = (teamData.manualTeamListsByEvent || {}) as Record<string, unknown>;
+        const storedManualTeams = parseManualTeamList(manualByEvent[effectiveEvent]);
 
         let firstTeams: string[] = [];
         let loadNote = "";
@@ -286,7 +263,7 @@ function PitScoutFormContent() {
         if (firstTeams.length > 0) {
           setTeamLoadNote("");
         } else if (storedManualTeams.length > 0) {
-          setTeamLoadNote("Using manual team list.");
+          setTeamLoadNote("Using manual team list from assignments.");
         } else if (sortedAssignedTeams.length > 0) {
           setTeamLoadNote("Using assigned team list.");
         } else if (loadNote) {
@@ -411,32 +388,6 @@ function PitScoutFormContent() {
                 <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
               </div>
               {teamLoadNote && <p className="text-xs text-gray-500">{teamLoadNote}</p>}
-              <div className="rounded-lg border border-dashed p-3 space-y-2 bg-gray-50">
-                <p className="text-sm font-medium text-gray-700">Manual Team Import (CSV Fallback)</p>
-                <textarea
-                  value={manualTeamCsv}
-                  onChange={(event) => setManualTeamCsv(event.target.value)}
-                  className="w-full border rounded p-2 text-sm"
-                  rows={4}
-                  placeholder="team_number,team_name,city,state_prov,country,robot_image_url"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={applyManualTeamCsv}
-                    className="px-3 py-2 rounded text-white text-sm"
-                    style={{ backgroundColor: "var(--primary-color)" }}
-                  >
-                    Use CSV
-                  </button>
-                  <button type="button" onClick={clearManualTeamCsv} className="px-3 py-2 rounded border text-sm">
-                    Clear
-                  </button>
-                  {manualTeamNumbers.length > 0 && (
-                    <span className="text-xs text-gray-500 flex items-center">Loaded {manualTeamNumbers.length} teams</span>
-                  )}
-                </div>
-              </div>
 
               <label className="block text-sm font-medium text-gray-700">Robot Weight</label>
               <input

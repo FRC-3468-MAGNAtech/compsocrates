@@ -286,6 +286,30 @@ function parseTeamNumbers(value: unknown): number[] {
   return [];
 }
 
+function parseManualTeamCsv(raw: string): number[] {
+  if (!raw.trim()) return [];
+  const lines = raw.split(/\r?\n/);
+  const numbers: number[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const firstCell = trimmed.split(",")[0] ?? "";
+    const value = parseInt(firstCell.replace(/[^\d]/g, ""), 10);
+    if (Number.isFinite(value) && value > 0) numbers.push(value);
+  }
+  return Array.from(new Set(numbers)).sort((a, b) => a - b);
+}
+
+function parseManualTeamList(input: unknown): number[] {
+  if (Array.isArray(input)) {
+    return Array.from(new Set(parseTeamNumbers(input))).sort((a, b) => a - b);
+  }
+  if (typeof input === "string") {
+    return parseManualTeamCsv(input);
+  }
+  return [];
+}
+
 function normalizePracticeStage(rawType: unknown, rawMatchKey: unknown, rawCompLevel: unknown): "practice" | "qualification" | "playoff" {
   const compLevel = String(rawCompLevel || "").toLowerCase().trim();
   if (compLevel === "qm") return "qualification";
@@ -436,6 +460,8 @@ function AssignmentsContent() {
   const [eventAttendees, setEventAttendees] = useState<Record<string, string[]>>({});
   const [manualPriorityTeamsByEvent, setManualPriorityTeamsByEvent] = useState<Record<string, number[]>>({});
   const [manualPriorityTeamsGlobal, setManualPriorityTeamsGlobal] = useState<number[]>([]);
+  const [manualTeamListsByEvent, setManualTeamListsByEvent] = useState<Record<string, number[]>>({});
+  const [manualTeamCsv, setManualTeamCsv] = useState("");
 
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [selectedScoutId, setSelectedScoutId] = useState("");
@@ -473,6 +499,15 @@ function AssignmentsContent() {
   useEffect(() => {
     void loadData();
   }, [selectedEvent, userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
+
+  useEffect(() => {
+    if (!selectedEvent) {
+      setManualTeamCsv("");
+      return;
+    }
+    const stored = manualTeamListsByEvent[selectedEvent] || [];
+    setManualTeamCsv(stored.join("\n"));
+  }, [manualTeamListsByEvent, selectedEvent]);
 
   async function resolveEventOptions(teamData: Record<string, unknown>, nowMs: number): Promise<EventOption[]> {
     const selected = Array.isArray(teamData.selectedEvents)
@@ -769,6 +804,12 @@ function AssignmentsContent() {
       setManualPriorityTeamsGlobal(
         parseTeamNumbers(teamData.priorityTeams || teamData.assignmentPriorityTeams || teamData.priorityTeamNumbers || [])
       );
+      const manualTeamsByEventRaw = (teamData.manualTeamListsByEvent || {}) as Record<string, unknown>;
+      const normalizedManualTeams: Record<string, number[]> = {};
+      Object.entries(manualTeamsByEventRaw).forEach(([eventKey, teamList]) => {
+        normalizedManualTeams[eventKey] = parseManualTeamList(teamList);
+      });
+      setManualTeamListsByEvent(normalizedManualTeams);
 
       try {
         const matches = await fetchEventMatchesForAssignments(effectiveEvent, encryptedKey, plainKey);
@@ -822,10 +863,17 @@ function AssignmentsContent() {
     }
   }
 
-  const eventTeamOptions = useMemo(
-    () => Array.from(new Set(matchOptions.flatMap((match) => match.teams))).sort((a, b) => a - b),
-    [matchOptions]
+  const manualEventTeams = useMemo(
+    () => (selectedEvent ? manualTeamListsByEvent[selectedEvent] || [] : []),
+    [manualTeamListsByEvent, selectedEvent]
   );
+  const eventTeamOptions = useMemo(() => {
+    const combined = new Set<number>([
+      ...matchOptions.flatMap((match) => match.teams),
+      ...manualEventTeams,
+    ]);
+    return Array.from(combined).sort((a, b) => a - b);
+  }, [matchOptions, manualEventTeams]);
   const eventPracticeMatches = useMemo(
     () => practiceMatchOptions.filter((match) => match.stage === "practice"),
     [practiceMatchOptions]
@@ -1362,6 +1410,48 @@ function buildMatchScoutOrder(
     } catch (error) {
       console.error("Error creating team assignment:", error);
       alert("Error creating team assignment");
+    }
+  }
+
+  async function saveManualTeamCsv() {
+    if (!userData?.teamId) return;
+    if (!selectedEvent) {
+      alert("Select an event first.");
+      return;
+    }
+    const parsed = parseManualTeamCsv(manualTeamCsv);
+    const updated = { ...manualTeamListsByEvent, [selectedEvent]: parsed };
+    try {
+      await setDoc(doc(db, "teams", userData.teamId), { manualTeamListsByEvent: updated }, { merge: true });
+      setManualTeamListsByEvent(updated);
+      setManualTeamCsv(parsed.join("\n"));
+      if (parsed.length === 0) {
+        alert("Manual team list cleared for this event.");
+      } else {
+        alert(`Saved ${parsed.length} manual teams for this event.`);
+      }
+    } catch (error) {
+      console.error("Error saving manual team list:", error);
+      alert("Unable to save manual team list.");
+    }
+  }
+
+  async function clearManualTeamCsv() {
+    if (!userData?.teamId) return;
+    if (!selectedEvent) {
+      alert("Select an event first.");
+      return;
+    }
+    const updated = { ...manualTeamListsByEvent };
+    delete updated[selectedEvent];
+    try {
+      await setDoc(doc(db, "teams", userData.teamId), { manualTeamListsByEvent: updated }, { merge: true });
+      setManualTeamListsByEvent(updated);
+      setManualTeamCsv("");
+      alert("Manual team list cleared for this event.");
+    } catch (error) {
+      console.error("Error clearing manual team list:", error);
+      alert("Unable to clear manual team list.");
     }
   }
 
@@ -2647,6 +2737,39 @@ function buildMatchScoutOrder(
                           </option>
                         ))}
                       </select>
+                      <div className="mt-3 rounded-lg border border-dashed p-3 space-y-2 bg-gray-50">
+                        <p className="text-sm font-medium text-gray-700">Manual Team Import (CSV Fallback)</p>
+                        <textarea
+                          value={manualTeamCsv}
+                          onChange={(event) => setManualTeamCsv(event.target.value)}
+                          className="w-full border rounded p-2 text-sm"
+                          rows={4}
+                          placeholder="team_number,team_name,city,state_prov,country,robot_image_url"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void saveManualTeamCsv()}
+                            className="px-3 py-2 rounded text-white text-sm"
+                            style={{ backgroundColor: "var(--primary-color)" }}
+                          >
+                            Save CSV
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void clearManualTeamCsv()}
+                            className="px-3 py-2 rounded border text-sm"
+                          >
+                            Clear
+                          </button>
+                          {manualEventTeams.length > 0 && (
+                            <span className="text-xs text-gray-500 flex items-center">
+                              Loaded {manualEventTeams.length} teams
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">Used when API teams are unavailable for pit/team assignments.</p>
+                      </div>
                     </div>
                   )}
                   <div>
