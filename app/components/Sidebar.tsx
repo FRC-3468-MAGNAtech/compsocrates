@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/AuthContext";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
@@ -26,7 +26,11 @@ export default function Sidebar() {
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { userData, logOut } = useAuth();
+  const leadParam = searchParams.get("lead");
+  const isLeadView = leadParam === "1";
+  const isMatchView = leadParam === "0" || leadParam === null || leadParam === "";
 
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", String(collapsed));
@@ -218,7 +222,19 @@ export default function Sidebar() {
           className="flex-1 p-2 overflow-y-auto"
         >
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isScoutFormPath = pathname === "/scout-form";
+            const isLeadHref = item.href.startsWith("/scout-form") && item.href.includes("lead=1");
+            const isMatchHref = item.href.startsWith("/scout-form") && item.href.includes("lead=0");
+            let isActive = pathname === item.href;
+            if (isScoutFormPath && item.href.startsWith("/scout-form")) {
+              if (isLeadHref) {
+                isActive = isLeadView;
+              } else if (isMatchHref) {
+                isActive = isMatchView;
+              } else {
+                isActive = isMatchView;
+              }
+            }
             const Icon = item.icon;
             return (
               <Link

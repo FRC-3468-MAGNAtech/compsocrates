@@ -199,31 +199,32 @@ function LeadAnalyticsContent() {
             <thead className="sticky-header">
               <tr>
                 <th className="bg-red-300 text-center" colSpan={3}>Pre-Match</th>
+                <th className="bg-pink-300 text-center" colSpan={3}>Overall Alliance</th>
                 <th className="bg-blue-300 text-center" colSpan={9}>Robots</th>
-                <th className="bg-pink-300 text-center" colSpan={4}>General</th>
+                <th className="bg-pink-300 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
                 <th className="bg-red-200 text-center" colSpan={3}>Pre-Match</th>
+                <th className="bg-pink-200 text-center" colSpan={3}>Overall Alliance</th>
                 <th className="bg-blue-200 text-center" colSpan={3}>Robot 1</th>
                 <th className="bg-blue-200 text-center" colSpan={3}>Robot 2</th>
                 <th className="bg-blue-200 text-center" colSpan={3}>Robot 3</th>
-                <th className="bg-pink-200 text-center" colSpan={3}>Notes</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>
               </tr>
               <tr>
                 <th className="text-center">Match</th>
                 <th className="text-center">Alliance</th>
                 <th className="text-center">Scout</th>
-                <th className="text-center">Team Number</th>
-                <th className="text-center">Notes</th>
-                <th className="text-center">Skill Level</th>
-                <th className="text-center">Team Number</th>
-                <th className="text-center">Notes</th>
-                <th className="text-center">Skill Level</th>
-                <th className="text-center">Team Number</th>
-                <th className="text-center">Notes</th>
-                <th className="text-center">Skill Level</th>
                 <th className="text-center">Alliance / Team Numbers</th>
+                <th className="text-center">Notes</th>
+                <th className="text-center">Skill Level</th>
+                <th className="text-center">Team Number</th>
+                <th className="text-center">Notes</th>
+                <th className="text-center">Skill Level</th>
+                <th className="text-center">Team Number</th>
+                <th className="text-center">Notes</th>
+                <th className="text-center">Skill Level</th>
+                <th className="text-center">Team Number</th>
                 <th className="text-center">Notes</th>
                 <th className="text-center">Skill Level</th>
                 <th className="text-center">Actions</th>
@@ -240,6 +241,11 @@ function LeadAnalyticsContent() {
                     <td className="font-semibold">{entry.matchLabel || entry.matchId || "-"}</td>
                     <td>{entry.alliance ? entry.alliance.toUpperCase() : "-"}</td>
                     <td>{entry.scoutName || "-"}</td>
+                    <td>{formatAnalyticsText(overall?.teams) || "-"}</td>
+                    <td className="min-w-[180px]">
+                      <LeadNotesCell text={formatAnalyticsText(overall?.notes)} />
+                    </td>
+                    <td>{overall?.skillLevel || "-"}</td>
                     <td>{r1?.teamNumber || "-"}</td>
                     <td className="min-w-[180px]">
                       <LeadNotesCell text={formatAnalyticsText(r1?.notes)} />
@@ -255,11 +261,6 @@ function LeadAnalyticsContent() {
                       <LeadNotesCell text={formatAnalyticsText(r3?.notes)} />
                     </td>
                     <td>{r3?.skillLevel || "-"}</td>
-                    <td>{formatAnalyticsText(overall?.teams) || "-"}</td>
-                    <td className="min-w-[180px]">
-                      <LeadNotesCell text={formatAnalyticsText(overall?.notes)} />
-                    </td>
-                    <td>{overall?.skillLevel || "-"}</td>
                     <td className="text-center">
                       {canDeleteEntries ? (
                         <button

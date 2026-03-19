@@ -1909,6 +1909,29 @@ function ScoutFormContent() {
               </div>
 
               <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Overall Alliance</h2>
+                <h3 className="text-sm font-semibold text-gray-700">Alliance Color / Team</h3>
+                <input
+                  className="w-full border rounded p-2"
+                  value={leadForm.overallAllianceTeams}
+                  onChange={(e) => {
+                    setOverallAllianceTeamsTouched(true);
+                    setLeadForm((prev) => ({ ...prev, overallAllianceTeams: e.target.value }));
+                  }}
+                  placeholder="RED / 1111, 2222, 3333"
+                />
+                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
+                <textarea
+                  className="w-full border rounded p-2"
+                  rows={3}
+                  value={leadForm.overallAllianceNotes}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, overallAllianceNotes: e.target.value }))}
+                />
+                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
+                <LeadScaleSelector value={leadForm.overallAllianceSkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, overallAllianceSkillLevel: value }))} />
+              </div>
+
+              <div className="bg-white rounded-xl shadow p-4 space-y-3">
                 <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Robot 1</h2>
                 <h3 className="text-sm font-semibold text-gray-700">Team Number</h3>
                 <div className="flex gap-2 items-center">
@@ -1975,29 +1998,6 @@ function ScoutFormContent() {
                 />
                 <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
                 <LeadScaleSelector value={leadForm.robot3SkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, robot3SkillLevel: value }))} />
-              </div>
-
-              <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Overall Alliance</h2>
-                <h3 className="text-sm font-semibold text-gray-700">Alliance Color / Team</h3>
-                <input
-                  className="w-full border rounded p-2"
-                  value={leadForm.overallAllianceTeams}
-                  onChange={(e) => {
-                    setOverallAllianceTeamsTouched(true);
-                    setLeadForm((prev) => ({ ...prev, overallAllianceTeams: e.target.value }));
-                  }}
-                  placeholder="RED / 1111, 2222, 3333"
-                />
-                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
-                <textarea
-                  className="w-full border rounded p-2"
-                  rows={3}
-                  value={leadForm.overallAllianceNotes}
-                  onChange={(e) => setLeadForm((prev) => ({ ...prev, overallAllianceNotes: e.target.value }))}
-                />
-                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
-                <LeadScaleSelector value={leadForm.overallAllianceSkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, overallAllianceSkillLevel: value }))} />
               </div>
 
               <button type="submit" disabled={leadSaving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
