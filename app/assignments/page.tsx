@@ -142,6 +142,33 @@ type RandomizeConfig = {
   categories?: RandomizeCategory[];
 };
 
+function buildPracticeChoicesFromSources(
+  matchOptions: MatchOption[],
+  practiceOptions: PracticeMatchOption[],
+  fallbackTeams: number[]
+): AssignmentMatchChoice[] {
+  const byMatch = new Map<number, Set<number>>();
+  const addTeams = (matchNumber: number, teams: number[]) => {
+    if (!Number.isFinite(matchNumber) || matchNumber <= 0) return;
+    const bucket = byMatch.get(matchNumber) || new Set<number>();
+    teams.forEach((team) => bucket.add(team));
+    byMatch.set(matchNumber, bucket);
+  };
+  matchOptions
+    .filter((match) => match.compLevel === "pr")
+    .forEach((match) => addTeams(match.matchNumber, match.teams));
+  practiceOptions
+    .filter((match) => match.stage === "practice")
+    .forEach((match) => addTeams(match.matchNumber, match.teams));
+  return Array.from(byMatch.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([matchNumber, teams]) => ({
+      key: `p${matchNumber}`,
+      label: `Practice ${matchNumber}`,
+      teams: teams.size > 0 ? Array.from(teams).sort((a, b) => a - b) : fallbackTeams,
+    }));
+}
+
 function dedupeEventOptionsByName(options: EventOption[]): EventOption[] {
   const byName = new Map<string, EventOption>();
   options.forEach((option) => {
@@ -178,12 +205,12 @@ function sortEventOptions(events: EventOption[], nowMs: number) {
 }
 
 function compLevelPriority(compLevel: string) {
+  if (compLevel === "pr" || compLevel === "pm") return -1;
   if (compLevel === "qm") return 0;
   if (compLevel === "ef") return 1;
   if (compLevel === "qf") return 2;
   if (compLevel === "sf") return 3;
   if (compLevel === "f") return 4;
-  if (compLevel === "pm") return 5;
   return 999;
 }
 
@@ -958,26 +985,16 @@ function AssignmentsContent() {
     return Array.from(combined).sort((a, b) => a - b);
   }, [matchOptions, manualEventTeams, firstEventTeams]);
   const eventPracticeMatches = useMemo(
-    () => practiceMatchOptions.filter((match) => match.stage === "practice"),
-    [practiceMatchOptions]
+    () => practiceMatchOptions.filter((match) => match.stage === "practice" && match.eventKey === selectedEvent),
+    [practiceMatchOptions, selectedEvent]
+  );
+  const practiceMatchChoices = useMemo(
+    () => buildPracticeChoicesFromSources(matchOptions, eventPracticeMatches, eventTeamOptions),
+    [matchOptions, eventPracticeMatches, eventTeamOptions]
   );
   const typeFilteredMatches = useMemo<AssignmentMatchChoice[]>(() => {
     if (selectedMatchType === "practice") {
-      const byMatch = new Map<number, Set<number>>();
-      eventPracticeMatches.forEach((match) => {
-        const matchNumber = match.matchNumber;
-        if (!Number.isFinite(matchNumber) || matchNumber <= 0) return;
-        const bucket = byMatch.get(matchNumber) || new Set<number>();
-        match.teams.forEach((team) => bucket.add(team));
-        byMatch.set(matchNumber, bucket);
-      });
-      return Array.from(byMatch.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([matchNumber, teams]) => ({
-          key: `p${matchNumber}`,
-          label: `Practice ${matchNumber}`,
-          teams: teams.size > 0 ? Array.from(teams).sort((a, b) => a - b) : eventTeamOptions,
-        }));
+      return practiceMatchChoices;
     }
     if (selectedMatchType === "qualification") {
       return matchOptions
@@ -1003,6 +1020,38 @@ function AssignmentsContent() {
     const next = timedMatches.find((match) => match.scheduleTime >= now);
     return next?.key || timedMatches[timedMatches.length - 1].key;
   }, [matchOptions, teamTimeOverride]);
+  const matchScheduleOptions = useMemo(() => {
+    const normalizedMatchOptions = matchOptions.map((match) => {
+      if (match.compLevel !== "pr") return match;
+      return {
+        ...match,
+        key: `p${match.matchNumber}`,
+        label: `Practice ${match.matchNumber}`,
+      };
+    });
+    const practiceAsMatch = eventPracticeMatches.map((match) => ({
+      key: `p${match.matchNumber}`,
+      label: `Practice ${match.matchNumber}`,
+      teams: match.teams,
+      compLevel: "pr",
+      matchNumber: match.matchNumber,
+      setNumber: 1,
+      scheduleTime: match.scheduleTime,
+    }));
+    const existingPractice = new Set(
+      normalizedMatchOptions.filter((match) => match.compLevel === "pr").map((match) => match.matchNumber)
+    );
+    const merged = [
+      ...normalizedMatchOptions,
+      ...practiceAsMatch.filter((match) => !existingPractice.has(match.matchNumber)),
+    ];
+    return merged.sort((a, b) => {
+      const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
+      if (priorityDiff !== 0) return priorityDiff;
+      if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
+      return a.matchNumber - b.matchNumber;
+    });
+  }, [eventPracticeMatches, matchOptions]);
   const pitTeamOptions = useMemo(() => {
     const teams = [...eventTeamOptions];
     const assigned = new Set(pitAssignments.map((assignment) => assignment.teamNumber));
@@ -1384,9 +1433,10 @@ function buildMatchScoutOrder(
 
   async function selectMatchType(type: "practice" | "qualification" | "finals") {
     if (type === "practice") {
-      let available = eventPracticeMatches;
+      let available = practiceMatchChoices;
       if (available.length === 0) {
-        available = await ensurePracticeMatchesForEvent(selectedEvent);
+        const fetched = await ensurePracticeMatchesForEvent(selectedEvent);
+        available = buildPracticeChoicesFromSources(matchOptions, fetched, eventTeamOptions);
       }
       if (available.length === 0) {
         alert("No event practice matches detected. Use Quals/Finals to assign event scouting, or generate manual practice matches from the Match Schedule view.");
@@ -2624,7 +2674,7 @@ function buildMatchScoutOrder(
                             );
                           })}
                       {scheduleView === "match" &&
-                        matchOptions.map((match) => {
+                        matchScheduleOptions.map((match) => {
                           const perMatch = matchAssignmentsSorted.filter((assignment) => assignment.matchKey === match.key);
                           const isActive = activeOrNextMatchKey === match.key;
                           return (
@@ -2658,7 +2708,7 @@ function buildMatchScoutOrder(
                           </td>
                         </tr>
                       )}
-                      {scheduleView === "match" && matchOptions.length === 0 && (
+                      {scheduleView === "match" && matchScheduleOptions.length === 0 && (
                         <tr>
                           <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
                             No match schedule found for this event.
