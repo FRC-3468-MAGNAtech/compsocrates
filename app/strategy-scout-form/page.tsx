@@ -7,7 +7,6 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
-import { getEventMatches } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEvent } from "@/app/utils/eventDetection";
 
 type TeamPickerProps = {
@@ -59,6 +58,45 @@ function TeamPickerModal({ open, onClose, teams, scoutedTeams, onSelect }: TeamP
   );
 }
 
+function getFirstEventCodeFromTbaKey(key: string): string {
+  const normalized = String(key || "").toLowerCase();
+  const specialMap: Record<string, string> = {
+    "2026labr": "LAKE",
+    "2025lake": "LAKE",
+  };
+  if (specialMap[normalized]) return specialMap[normalized];
+  const suffix = normalized.slice(4).toUpperCase();
+  return suffix || normalized.toUpperCase();
+}
+
+function parseManualTeamCsv(raw: string): string[] {
+  if (!raw) return [];
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const numbers = new Set<number>();
+  lines.forEach((line) => {
+    const firstValue = line.split(",")[0]?.trim() ?? "";
+    const parsed = parseInt(firstValue.replace(/[^\d]/g, ""), 10);
+    if (Number.isFinite(parsed) && parsed > 0) numbers.add(parsed);
+  });
+  return Array.from(numbers)
+    .sort((a, b) => a - b)
+    .map((num) => String(num));
+}
+
+function parseManualTeamList(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input
+      .map((value) => parseInt(String(value || "").replace(/[^\d]/g, ""), 10))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .map((value) => String(value))
+      .sort((a, b) => Number(a) - Number(b));
+  }
+  if (typeof input === "string") {
+    return parseManualTeamCsv(input);
+  }
+  return [];
+}
+
 function TeamStrategyFormContent() {
   const { userData } = useAuth();
   const [saving, setSaving] = useState(false);
@@ -75,7 +113,9 @@ function TeamStrategyFormContent() {
   const [moveAndShoot, setMoveAndShoot] = useState(false);
   const [notes, setNotes] = useState("");
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
+  const [assignedTeamNumbers, setAssignedTeamNumbers] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
+  const [teamLoadNote, setTeamLoadNote] = useState("");
 
   const eventLabel = useMemo(() => {
     if (!eventKey || eventKey === "app-testing") return "Practice Event";
@@ -93,35 +133,88 @@ function TeamStrategyFormContent() {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const resolvedEvent = await resolveDetectedTeamEvent(userData.teamId);
         const resolvedKey = resolvedEvent?.key || "app-testing";
-        setEventKey(resolvedKey);
-        setEventName(resolvedEvent?.name || "Practice Event");
 
-        if (resolvedKey !== "app-testing") {
-          const ourTeam = String(teamDoc.data()?.teamNumber || "").replace(/[^\d]/g, "");
-          const matches = await getEventMatches(resolvedKey);
-          const teamAppears = ourTeam
-            ? matches.some((match) =>
-                [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
-                  .map((key) => key.replace("frc", "").trim())
-                  .includes(ourTeam)
-              )
-            : false;
-          const teamSet = new Set<string>();
-          if (teamAppears) {
-            matches.forEach((match) => {
-              [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys].forEach((key) => {
-                const team = key.replace("frc", "").trim();
-                if (team) teamSet.add(team);
+        const teamAssignmentsSnap = await getDocs(
+          query(collection(db, "teamAssignments"), where("scoutId", "==", userData.uid))
+        );
+        const teamAssignments = teamAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        const assignmentForEvent =
+          teamAssignments.find((assignment) => String(assignment.eventKey || "").trim() === resolvedKey) ||
+          (resolvedKey === "app-testing" ? teamAssignments[0] : undefined);
+        const effectiveEvent = String(assignmentForEvent?.eventKey || resolvedKey || "app-testing").trim() || "app-testing";
+        setEventKey(effectiveEvent);
+        setEventName(effectiveEvent === resolvedKey ? resolvedEvent?.name || "Practice Event" : effectiveEvent);
+
+        const assignedTeamsForEvent = teamAssignments
+          .filter((assignment) => String(assignment.eventKey || "").trim() === effectiveEvent)
+          .map((assignment) => String(assignment.teamNumber || "").replace(/[^\d]/g, ""))
+          .filter(Boolean);
+        const sortedAssignedTeams = Array.from(new Set(assignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b));
+        setAssignedTeamNumbers(sortedAssignedTeams);
+
+        const manualByEvent = (teamDoc.data()?.manualTeamListsByEvent || {}) as Record<string, unknown>;
+        const storedManualTeams = parseManualTeamList(manualByEvent[effectiveEvent]);
+
+        let firstTeams: string[] = [];
+        let loadNote = "";
+        if (effectiveEvent !== "app-testing") {
+          const year = Number(effectiveEvent.slice(0, 4));
+          if (Number.isFinite(year)) {
+            try {
+              const eventCode = getFirstEventCodeFromTbaKey(effectiveEvent);
+              const response = await fetch("/api/first/teams", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ year, eventCode }),
               });
-            });
+              if (response.ok) {
+                const payload = await response.json();
+                const rows = Array.isArray(payload.teams) ? (payload.teams as Array<Record<string, unknown>>) : [];
+                firstTeams = Array.from(
+                  new Set(
+                    rows
+                      .map((team) => Number(team.teamNumber || 0))
+                      .filter((teamNumber) => Number.isFinite(teamNumber) && teamNumber > 0)
+                      .map((teamNumber) => String(teamNumber))
+                  )
+                ).sort((a, b) => Number(a) - Number(b));
+                if (firstTeams.length === 0) loadNote = "FIRST API returned no teams yet.";
+              } else {
+                const payload = await response.json().catch(() => ({}));
+                const reason = String((payload as { code?: string }).code || "");
+                loadNote = reason === "missing_credentials" ? "FIRST API credentials are missing." : `Unable to load teams (${response.status}).`;
+              }
+            } catch (error) {
+              console.error("Failed to fetch FIRST teams:", error);
+              loadNote = "Unable to load teams right now.";
+            }
+          } else {
+            loadNote = "Event key missing year for FIRST API.";
           }
-          setAvailableTeams(Array.from(teamSet).sort((a, b) => Number(a) - Number(b)));
+        }
+
+        const baseTeams = firstTeams.length > 0 ? firstTeams : storedManualTeams;
+        const mergedTeams = Array.from(new Set([...baseTeams, ...sortedAssignedTeams])).sort((a, b) => Number(a) - Number(b));
+        setAvailableTeams(mergedTeams);
+        if (firstTeams.length > 0) {
+          setTeamLoadNote("");
+        } else if (storedManualTeams.length > 0) {
+          setTeamLoadNote("Using manual team list from assignments.");
+        } else if (sortedAssignedTeams.length > 0) {
+          setTeamLoadNote("Using assigned team list.");
+        } else if (loadNote) {
+          setTeamLoadNote(loadNote);
         } else {
-          setAvailableTeams([]);
+          setTeamLoadNote("No teams available yet.");
         }
 
         const strategySnap = await getDocs(
-          query(collection(db, "strategyScouting"), where("teamId", "==", userData.teamId), where("eventKey", "==", resolvedKey))
+          query(
+            collection(db, "strategyScouting"),
+            where("teamId", "==", userData.teamId),
+            where("eventKey", "==", effectiveEvent),
+            where("game", "==", "REBUILT")
+          )
         );
         const done = new Set<string>();
         strategySnap.docs.forEach((snap) => {
@@ -135,7 +228,18 @@ function TeamStrategyFormContent() {
     }
 
     void loadContext();
-  }, [userData?.teamId]);
+  }, [userData?.teamId, userData?.uid]);
+
+  useEffect(() => {
+    if (assignedTeamNumbers.length === 0) return;
+    const nextTeam = assignedTeamNumbers.find((team) => !scoutedTeams.has(team));
+    if (!nextTeam) return;
+    setTeamNumber((prev) => {
+      if (prev && !scoutedTeams.has(prev)) return prev;
+      if (prev === nextTeam) return prev;
+      return nextTeam;
+    });
+  }, [assignedTeamNumbers, scoutedTeams]);
 
   const canSubmit = useMemo(() => {
     return teamNumber.trim().length > 0 && startingPosition && bestAt;
@@ -216,6 +320,7 @@ function TeamStrategyFormContent() {
               />
               <button type="button" onClick={() => setShowTeamPicker(true)} className="px-4 rounded border">Pick</button>
             </div>
+            {teamLoadNote && <p className="text-xs text-gray-500">{teamLoadNote}</p>}
           </div>
 
           <div className="bg-white rounded-xl shadow p-4 space-y-3">
