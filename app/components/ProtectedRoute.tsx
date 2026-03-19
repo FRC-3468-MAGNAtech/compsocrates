@@ -32,7 +32,8 @@ export default function ProtectedRoute({
 
   useEffect(() => {
     let isActive = true;
-    if (!formKey || !userData?.teamId) {
+    const teamId = userData?.teamId;
+    if (!formKey || !teamId) {
       setFormAccessOverrides({});
       setFormAccessLoading(false);
       return () => {};
@@ -40,7 +41,7 @@ export default function ProtectedRoute({
     setFormAccessLoading(true);
     async function loadOverrides() {
       try {
-        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const teamDoc = await getDoc(doc(db, "teams", teamId));
         if (!isActive) return;
         if (teamDoc.exists()) {
           setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.data().formAccessOverrides));
