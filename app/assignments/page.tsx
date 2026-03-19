@@ -410,48 +410,81 @@ function buildFirstPracticeSeeds(eventKey: string, matches: Awaited<ReturnType<t
   });
 }
 
-async function buildFirstPracticeOptions(eventKey: string) {
-  const firstSchedule = await fetchFirstPracticeSchedule(eventKey);
-  const firstSeeds = buildFirstPracticeSeeds(eventKey, firstSchedule);
-  const options = firstSeeds.map((seed) => ({
-    id: seed.id,
-    eventKey,
-    matchKey: seed.matchKey,
-    label: practiceMatchLabel("practice", seed.matchNumber, seed.alliance),
-    teams: seed.teams,
-    stage: "practice" as const,
-    matchNumber: seed.matchNumber,
-    scheduleTime: seed.scheduleTime,
-    isManual: false,
-    alliance: seed.alliance,
-  })) as PracticeMatchOption[];
-  return { options, seeds: firstSeeds };
+function mergePracticeRows(primary: PracticeMatchOption[], secondary: PracticeMatchOption[]): PracticeMatchOption[] {
+  const byMatch = new Map<number, PracticeMatchOption>();
+  const addRow = (row: PracticeMatchOption) => {
+    const matchNumber = Number(row.matchNumber || 0);
+    if (!Number.isFinite(matchNumber) || matchNumber <= 0) return;
+    const existing = byMatch.get(matchNumber);
+    if (!existing) {
+      byMatch.set(matchNumber, { ...row });
+      return;
+    }
+    const mergedTeams = Array.from(new Set([...(existing.teams || []), ...(row.teams || [])]));
+    byMatch.set(matchNumber, {
+      ...existing,
+      teams: mergedTeams,
+      scheduleTime: existing.scheduleTime || row.scheduleTime,
+      isManual: Boolean(existing.isManual || row.isManual),
+      id: existing.id || row.id,
+      matchKey: existing.matchKey || row.matchKey,
+    });
+  };
+  primary.forEach(addRow);
+  secondary.forEach(addRow);
+  return Array.from(byMatch.values()).sort((a, b) => a.matchNumber - b.matchNumber);
 }
 
-async function upsertFirstPracticeSeeds(eventKey: string, seeds: FirstPracticeSeed[]) {
-  if (seeds.length === 0) return;
-  const now = Date.now();
-  await Promise.all(
-    seeds.map((seed) =>
-      setDoc(
-        doc(db, "practiceMatches", seed.id),
-        {
-          eventKey,
-          matchNumber: seed.matchNumber,
-          matchType: "practice",
-          matchKey: seed.matchKey,
-          alliance: seed.alliance,
-          allianceTeams: seed.teams,
-          teams: seed.teams,
-          scheduleTime: seed.scheduleTime,
-          compLevel: "pr",
-          source: "first",
-          updatedAt: now,
-        },
-        { merge: true }
-      )
-    )
-  );
+async function buildPracticeRowsFromMatchListStyle(
+  eventKey: string,
+  matches: TBAMatch[]
+): Promise<PracticeMatchOption[]> {
+  const safeEventKey = String(eventKey || "").trim();
+  if (!safeEventKey) return [];
+  const tbaPractice = matches
+    .filter((match) => match.comp_level === "pr")
+    .map((match) => {
+      const red = match.alliances.red.team_keys.map((key) => parseInt(key.replace("frc", ""), 10)).filter(Number.isFinite);
+      const blue = match.alliances.blue.team_keys.map((key) => parseInt(key.replace("frc", ""), 10)).filter(Number.isFinite);
+      const teams = Array.from(new Set([...red, ...blue]));
+      const matchNumber = match.match_number;
+      return {
+        id: `tba_${safeEventKey}_practice_${matchNumber}`,
+        eventKey: safeEventKey,
+        matchKey: `p${matchNumber}`,
+        label: `Practice ${matchNumber}`,
+        teams,
+        stage: "practice" as const,
+        matchNumber,
+        scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
+        isManual: false,
+        alliance: "red",
+      } as PracticeMatchOption;
+    });
+  const existingPracticeNumbers = new Set(tbaPractice.map((row) => row.matchNumber));
+  const firstSchedule = await fetchFirstPracticeSchedule(safeEventKey);
+  const firstPractice = firstSchedule
+    .map((match) => {
+      const { red, blue } = splitFirstAllianceTeams(match);
+      return {
+        id: `first_${safeEventKey}_practice_${match.matchNumber}`,
+        eventKey: safeEventKey,
+        matchKey: `p${match.matchNumber}`,
+        label: `Practice ${match.matchNumber}`,
+        teams: Array.from(new Set([...red, ...blue])),
+        stage: "practice" as const,
+        matchNumber: match.matchNumber,
+        scheduleTime: match.startTime || 0,
+        isManual: false,
+        alliance: "red",
+        redCount: red.length,
+        blueCount: blue.length,
+      };
+    })
+    .filter((row) => row.redCount >= 3 && row.blueCount >= 3)
+    .filter((row) => !existingPracticeNumbers.has(row.matchNumber))
+    .map(({ redCount, blueCount, ...rest }) => rest as PracticeMatchOption);
+  return [...firstPractice, ...tbaPractice].sort((a, b) => a.matchNumber - b.matchNumber);
 }
 
 function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string }) {
@@ -886,20 +919,7 @@ function AssignmentsContent() {
           if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
           return a.id.localeCompare(b.id);
         });
-      const hasPracticeStage = practiceOptions.some((row) => row.stage === "practice");
-      let mergedPracticeOptions = practiceOptions;
-      if (effectiveEvent !== "app-testing" && !hasPracticeStage) {
-        const { options, seeds } = await buildFirstPracticeOptions(effectiveEvent);
-        if (options.length > 0) {
-          await upsertFirstPracticeSeeds(effectiveEvent, seeds);
-          mergedPracticeOptions = options;
-        }
-      }
-      setPracticeMatchOptions(mergedPracticeOptions);
-      setPracticeScheduleMatchesByEvent((prev) => ({
-        ...prev,
-        [effectiveEvent]: mergedPracticeOptions.filter((row) => row.stage === "practice"),
-      }));
+      const practiceFromFirestore = practiceOptions.filter((row) => row.stage === "practice");
       const priorityByEventRaw = (
         teamData.priorityTeamsByEvent ||
         teamData.assignmentPriorityTeamsByEvent ||
@@ -962,9 +982,30 @@ function AssignmentsContent() {
           return a.matchNumber - b.matchNumber;
         });
         setMatchOptions(normalizedOptions);
+
+        const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(effectiveEvent, matches);
+        const mergedPracticeOptions = mergePracticeRows(practiceFromSchedule, practiceFromFirestore);
+        if (mergedPracticeOptions.length > 0) {
+          setPracticeMatchOptions(mergedPracticeOptions);
+          setPracticeScheduleMatchesByEvent((prev) => ({
+            ...prev,
+            [effectiveEvent]: mergedPracticeOptions,
+          }));
+        } else {
+          setPracticeMatchOptions(practiceFromFirestore);
+          setPracticeScheduleMatchesByEvent((prev) => ({
+            ...prev,
+            [effectiveEvent]: practiceFromFirestore,
+          }));
+        }
       } catch (error) {
         console.error("Unable to fetch TBA matches for assignments:", error);
         setMatchOptions([]);
+        setPracticeMatchOptions(practiceFromFirestore);
+        setPracticeScheduleMatchesByEvent((prev) => ({
+          ...prev,
+          [effectiveEvent]: practiceFromFirestore,
+        }));
       }
     } catch (error) {
       console.error("Error loading data:", error);
@@ -1159,12 +1200,10 @@ function AssignmentsContent() {
         .filter((row) => row.matchNumber > 0 && row.stage === "practice")
         .sort((a, b) => a.matchNumber - b.matchNumber);
       let mergedPracticeRows = practiceRows;
-      if (safeEventKey !== "app-testing" && practiceRows.length === 0) {
-        const { options, seeds } = await buildFirstPracticeOptions(safeEventKey);
-        if (options.length > 0) {
-          await upsertFirstPracticeSeeds(safeEventKey, seeds);
-          mergedPracticeRows = options;
-        }
+      if (safeEventKey !== "app-testing") {
+        const matches = await fetchEventMatchesForAssignments(safeEventKey, teamTbaAuth.encryptedKey, teamTbaAuth.plainKey);
+        const scheduleRows = await buildPracticeRowsFromMatchListStyle(safeEventKey, matches);
+        mergedPracticeRows = mergePracticeRows(scheduleRows, practiceRows);
       }
       const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
         id: assignmentDoc.id,
@@ -1403,17 +1442,18 @@ function buildMatchScoutOrder(
       (row) => row.stage === "practice" && row.eventKey === safeEventKey && row.matchNumber > 0
     );
     if (existing.length > 0) return existing;
-    const { options, seeds } = await buildFirstPracticeOptions(safeEventKey);
-    if (options.length > 0) {
-      await upsertFirstPracticeSeeds(safeEventKey, seeds);
+    const matches = await fetchEventMatchesForAssignments(safeEventKey, teamTbaAuth.encryptedKey, teamTbaAuth.plainKey);
+    const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(safeEventKey, matches);
+    const merged = mergePracticeRows(practiceFromSchedule, existing);
+    if (merged.length > 0) {
       setPracticeMatchOptions((prev) => {
         const others = prev.filter((row) => row.eventKey !== safeEventKey || row.stage !== "practice");
-        return [...others, ...options];
+        return [...others, ...merged];
       });
-      setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: options }));
-      return options;
+      setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: merged }));
+      return merged;
     }
-    return [];
+    return existing;
   }
 
   async function selectMatchType(type: "practice" | "qualification" | "finals") {
