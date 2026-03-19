@@ -147,7 +147,7 @@ function MatchScoutFormContent() {
                 value="placeholder"
                 onChange={(event) => {
                   if (event.target.value === "reefscape") {
-                    router.push("/scout-form");
+                    router.push("/scout-form?lead=0");
                   }
                 }}
               >

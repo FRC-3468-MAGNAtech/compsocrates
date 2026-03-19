@@ -421,7 +421,7 @@ function TeamRoleDashboardContent({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-sm text-gray-700">You can still open the match form and scout manually.</p>
                     <button
-                      onClick={() => router.push("/scout-form")}
+                      onClick={() => router.push("/scout-form?lead=0")}
                       className="px-4 py-2 rounded-lg text-white font-medium"
                       style={{ backgroundColor: "var(--primary-color)" }}
                     >
@@ -603,7 +603,7 @@ function TeamRoleDashboardContent({
 
                   {canOpenMatchForm && (
                     <button
-                      onClick={() => router.push("/scout-form")}
+                      onClick={() => router.push("/scout-form?lead=0")}
                       className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                     >
                       <ClipboardList size={22} className="mb-2" />

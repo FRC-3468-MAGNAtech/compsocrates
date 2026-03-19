@@ -648,7 +648,7 @@ function CoachDashboardContent() {
                 <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
                 <div className="grid md:grid-cols-2 gap-4">
                   <button
-                    onClick={() => router.push("/scout-form")}
+                    onClick={() => router.push("/scout-form?lead=0")}
                     className="p-4 border-2 border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 text-left transition-colors"
                   >
                     <ClipboardList size={22} className="mb-2" />

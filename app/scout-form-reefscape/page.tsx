@@ -673,7 +673,7 @@ function ScoutFormContent() {
               value="reefscape"
               onChange={(event) => {
                 if (event.target.value === "placeholder") {
-                  router.push("/scout-form");
+                  router.push("/scout-form?lead=0");
                 }
               }}
             >

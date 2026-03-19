@@ -16,7 +16,7 @@ type RoleDashboardProps = {
 };
 
 const formLinks = [
-  { href: "/scout-form", key: "match-scout-form" as const },
+  { href: "/scout-form?lead=0", key: "match-scout-form" as const },
   { href: "/pit-scout-form", key: "pit-scout-form" as const },
   { href: "/strategy-scout-form", key: "strategy-scout-form" as const },
   { href: "/drive-scout-form", key: "drive-scout-form" as const },

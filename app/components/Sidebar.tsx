@@ -117,7 +117,7 @@ export default function Sidebar() {
   const navItems = [
     { href: getDashboardRoute(userData), label: "Dashboard", icon: BarChart3 },
     ...(canAccessForm({ formKey: "match-scout-form", user: userData, formAccessOverrides })
-      ? [{ href: "/scout-form", label: "Match Scout Form", icon: ClipboardList }]
+      ? [{ href: "/scout-form?lead=0", label: "Match Scout Form", icon: ClipboardList }]
       : []),
     ...(canAccessForm({ formKey: "lead-scout-form", user: userData, formAccessOverrides })
       ? [{ href: "/scout-form?lead=1", label: "Lead Scout Form", icon: ClipboardList }]

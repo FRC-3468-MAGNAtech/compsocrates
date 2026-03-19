@@ -98,21 +98,22 @@ function TeamPickerModal({
 }
 
 function LeadScaleSelector({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const safeValue = Math.min(5, Math.max(1, value || 1));
   return (
-    <div className="flex flex-wrap gap-2">
-      {LEAD_SKILL_LEVELS.map((level) => {
-        const active = value === level;
-        return (
-          <button
-            key={level}
-            type="button"
-            onClick={() => onChange(level)}
-            className={`px-3 py-1 rounded text-sm border ${active ? "bg-red-600 text-white border-red-600" : "bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200"}`}
-          >
-            {level}
-          </button>
-        );
-      })}
+    <div className="space-y-1">
+      <input
+        type="range"
+        min={1}
+        max={5}
+        value={safeValue}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full"
+      />
+      <div className="flex justify-between text-[11px] text-gray-500">
+        {LEAD_SKILL_LEVELS.map((level) => (
+          <span key={level}>{level}</span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -893,18 +894,18 @@ function ScoutFormContent() {
     robot1TeamNumber: "",
     robot1PickNumber: "",
     robot1Notes: "",
-    robot1SkillLevel: 0,
+    robot1SkillLevel: 1,
     robot2TeamNumber: "",
     robot2PickNumber: "",
     robot2Notes: "",
-    robot2SkillLevel: 0,
+    robot2SkillLevel: 1,
     robot3TeamNumber: "",
     robot3PickNumber: "",
     robot3Notes: "",
-    robot3SkillLevel: 0,
+    robot3SkillLevel: 1,
     overallAllianceTeams: "",
     overallAllianceNotes: "",
-    overallAllianceSkillLevel: 0,
+    overallAllianceSkillLevel: 1,
   });
   const [overallAllianceTeamsTouched, setOverallAllianceTeamsTouched] = useState(false);
   const [leadTeamPickerOpen, setLeadTeamPickerOpen] = useState(false);
@@ -1549,18 +1550,18 @@ function ScoutFormContent() {
         robot1TeamNumber: "",
         robot1PickNumber: "",
         robot1Notes: "",
-        robot1SkillLevel: 0,
+        robot1SkillLevel: 1,
         robot2TeamNumber: "",
         robot2PickNumber: "",
         robot2Notes: "",
-        robot2SkillLevel: 0,
+        robot2SkillLevel: 1,
         robot3TeamNumber: "",
         robot3PickNumber: "",
         robot3Notes: "",
-        robot3SkillLevel: 0,
+        robot3SkillLevel: 1,
         overallAllianceTeams: "",
         overallAllianceNotes: "",
-        overallAllianceSkillLevel: 0,
+        overallAllianceSkillLevel: 1,
       }));
       setOverallAllianceTeamsTouched(false);
     } catch (error) {
@@ -1654,7 +1655,7 @@ function ScoutFormContent() {
               {leadMode && (
                 <button
                   type="button"
-                  onClick={() => router.push("/scout-form")}
+                  onClick={() => router.push("/scout-form?lead=0")}
                   className="mt-3 px-3 py-1.5 rounded border border-gray-200 text-sm text-gray-700 hover:bg-gray-100"
                 >
                   Back to Match Scout Form
@@ -1917,12 +1918,6 @@ function ScoutFormContent() {
                     onChange={(e) => setLeadForm((prev) => ({ ...prev, robot1TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
                     placeholder="Team #"
                   />
-                  <input
-                    className="w-24 border rounded p-2"
-                    value={leadForm.robot1PickNumber}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot1PickNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    placeholder="Pick #"
-                  />
                   <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot1")}>Pick</button>
                 </div>
                 <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
@@ -1946,12 +1941,6 @@ function ScoutFormContent() {
                     onChange={(e) => setLeadForm((prev) => ({ ...prev, robot2TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
                     placeholder="Team #"
                   />
-                  <input
-                    className="w-24 border rounded p-2"
-                    value={leadForm.robot2PickNumber}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot2PickNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    placeholder="Pick #"
-                  />
                   <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot2")}>Pick</button>
                 </div>
                 <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
@@ -1974,12 +1963,6 @@ function ScoutFormContent() {
                     value={leadForm.robot3TeamNumber}
                     onChange={(e) => setLeadForm((prev) => ({ ...prev, robot3TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
                     placeholder="Team #"
-                  />
-                  <input
-                    className="w-24 border rounded p-2"
-                    value={leadForm.robot3PickNumber}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot3PickNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    placeholder="Pick #"
                   />
                   <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot3")}>Pick</button>
                 </div>
