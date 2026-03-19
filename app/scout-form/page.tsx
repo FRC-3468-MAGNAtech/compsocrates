@@ -906,6 +906,7 @@ function ScoutFormContent() {
     overallAllianceNotes: "",
     overallAllianceSkillLevel: 0,
   });
+  const [overallAllianceTeamsTouched, setOverallAllianceTeamsTouched] = useState(false);
   const [leadTeamPickerOpen, setLeadTeamPickerOpen] = useState(false);
   const [leadTeamPickerTarget, setLeadTeamPickerTarget] = useState<"robot1" | "robot2" | "robot3" | null>(null);
   const [form, setForm] = useState<FormState>({
@@ -1228,6 +1229,26 @@ function ScoutFormContent() {
   }, [leadForm.alliance, leadAllianceTeams]);
 
   useEffect(() => {
+    if (overallAllianceTeamsTouched) return;
+    if (!leadForm.alliance) return;
+    const teamList = [leadForm.robot1TeamNumber, leadForm.robot2TeamNumber, leadForm.robot3TeamNumber]
+      .map((team) => team.trim())
+      .filter(Boolean);
+    if (teamList.length === 0) return;
+    const allianceLabel = leadForm.alliance.toUpperCase();
+    setLeadForm((prev) => ({
+      ...prev,
+      overallAllianceTeams: `${allianceLabel} / ${teamList.join(", ")}`,
+    }));
+  }, [
+    leadForm.alliance,
+    leadForm.robot1TeamNumber,
+    leadForm.robot2TeamNumber,
+    leadForm.robot3TeamNumber,
+    overallAllianceTeamsTouched,
+  ]);
+
+  useEffect(() => {
     async function loadPitDefaults() {
       if (!userData?.teamId || !form.teamNumber.trim()) {
         setPitSync({ eventSynced: false, preloadRaw: null, bpsRaw: null, carryRaw: null });
@@ -1541,6 +1562,7 @@ function ScoutFormContent() {
         overallAllianceNotes: "",
         overallAllianceSkillLevel: 0,
       }));
+      setOverallAllianceTeamsTouched(false);
     } catch (error) {
       console.error("Error submitting lead scout form:", error);
       alert("Could not submit lead scout form.");
@@ -1833,18 +1855,9 @@ function ScoutFormContent() {
                   ))}
                 </div>
 
-                <div className="space-y-2">
-                  <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
-                    {saving ? "Submitting..." : "Submit Match Scout Form"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/scout-form?lead=1")}
-                    className="w-full py-3 rounded border border-gray-200 text-gray-700 font-semibold hover:bg-gray-100"
-                  >
-                    Open Lead Scout Form
-                  </button>
-                </div>
+                <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
+                  {saving ? "Submitting..." : "Submit Match Scout Form"}
+                </button>
               </form>
             )}
 
@@ -1983,11 +1996,14 @@ function ScoutFormContent() {
 
               <div className="bg-white rounded-xl shadow p-4 space-y-3">
                 <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Overall Alliance</h2>
-                <h3 className="text-sm font-semibold text-gray-700">Alliance Colors / Team</h3>
+                <h3 className="text-sm font-semibold text-gray-700">Alliance Color / Team</h3>
                 <input
                   className="w-full border rounded p-2"
                   value={leadForm.overallAllianceTeams}
-                  onChange={(e) => setLeadForm((prev) => ({ ...prev, overallAllianceTeams: e.target.value }))}
+                  onChange={(e) => {
+                    setOverallAllianceTeamsTouched(true);
+                    setLeadForm((prev) => ({ ...prev, overallAllianceTeams: e.target.value }));
+                  }}
                   placeholder="RED / 1111, 2222, 3333"
                 />
                 <h3 className="text-sm font-semibold text-gray-700">Notes</h3>

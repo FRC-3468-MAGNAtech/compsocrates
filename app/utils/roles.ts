@@ -21,6 +21,7 @@ export type RoleAwareUser = {
 
 export type FormKey =
   | "match-scout-form"
+  | "lead-scout-form"
   | "pit-scout-form"
   | "strategy-scout-form"
   | "match-strategy-form"
@@ -32,6 +33,7 @@ export type FormAccessOverrides = Partial<Record<FormKey, string[]>>;
 
 export const FORM_LABELS: Record<FormKey, string> = {
   "match-scout-form": "Match Scout Form",
+  "lead-scout-form": "Lead Scout Form",
   "pit-scout-form": "Pit Scout Form",
   "strategy-scout-form": "Team Strategy Form",
   "match-strategy-form": "Match Strategy Form",
@@ -42,6 +44,7 @@ export const FORM_LABELS: Record<FormKey, string> = {
 
 export const FORM_ROLE_REQUIREMENT: Record<FormKey, TeamRole | null> = {
   "match-scout-form": null,
+  "lead-scout-form": "lead-scout",
   "pit-scout-form": "pit-scout",
   "strategy-scout-form": "lead-strategist",
   "match-strategy-form": "lead-strategist",

@@ -119,6 +119,9 @@ export default function Sidebar() {
     ...(canAccessForm({ formKey: "match-scout-form", user: userData, formAccessOverrides })
       ? [{ href: "/scout-form", label: "Match Scout Form", icon: ClipboardList }]
       : []),
+    ...(canAccessForm({ formKey: "lead-scout-form", user: userData, formAccessOverrides })
+      ? [{ href: "/scout-form?lead=1", label: "Lead Scout Form", icon: ClipboardList }]
+      : []),
     ...(canAccessForm({ formKey: "pit-scout-form", user: userData, formAccessOverrides })
       ? [{ href: "/pit-scout-form", label: "Pit Scout Form", icon: ClipboardList }]
       : []),
