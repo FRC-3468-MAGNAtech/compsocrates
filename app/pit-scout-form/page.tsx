@@ -198,10 +198,15 @@ function PitScoutFormContent() {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const teamData = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
         const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
-        const pitAssignmentsSnap = await getDocs(
-          query(collection(db, "pitAssignments"), where("scoutId", "==", userData.uid))
-        );
-        const pitAssignments = pitAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        let pitAssignments: Record<string, unknown>[] = [];
+        try {
+          const pitAssignmentsSnap = await getDocs(
+            query(collection(db, "pitAssignments"), where("scoutId", "==", userData.uid))
+          );
+          pitAssignments = pitAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        } catch (error) {
+          console.warn("Unable to load pit assignments:", error);
+        }
         const assignmentForEvent =
           pitAssignments.find((assignment) => String(assignment.eventKey || "").trim() === resolvedEvent) ||
           (resolvedEvent === "app-testing" ? pitAssignments[0] : undefined);
@@ -272,15 +277,25 @@ function PitScoutFormContent() {
           setTeamLoadNote("No teams available yet.");
         }
 
-        const scoutedSnap = await getDocs(
-          query(collection(db, "pitScouting"), where("teamId", "==", userData.teamId), where("eventKey", "==", effectiveEvent), where("game", "==", "REBUILT"))
-        );
-        const done = new Set<string>();
-        scoutedSnap.docs.forEach((row) => {
-          const team = String(row.data().teamNumber || "").trim();
-          if (team) done.add(team);
-        });
-        setScoutedTeams(done);
+        try {
+          const scoutedSnap = await getDocs(
+            query(
+              collection(db, "pitScouting"),
+              where("teamId", "==", userData.teamId),
+              where("eventKey", "==", effectiveEvent),
+              where("game", "==", "REBUILT")
+            )
+          );
+          const done = new Set<string>();
+          scoutedSnap.docs.forEach((row) => {
+            const team = String(row.data().teamNumber || "").trim();
+            if (team) done.add(team);
+          });
+          setScoutedTeams(done);
+        } catch (error) {
+          console.warn("Unable to load pit scouting entries:", error);
+          setScoutedTeams(new Set());
+        }
       } catch (error) {
         console.error("Failed loading pit team list:", error);
         setAvailableTeams([]);
