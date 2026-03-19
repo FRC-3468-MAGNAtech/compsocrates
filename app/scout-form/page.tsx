@@ -14,6 +14,7 @@ import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
+import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import {
   buildCompletedModalIdsFromTba,
   buildReefscapeModalOptions,
@@ -1020,7 +1021,33 @@ function ScoutFormContent() {
         const encryptedKey = String(teamData?.tbaApiKeyEncrypted || "").trim();
         const plainKey = String(teamData?.tbaApiKey || "").trim();
         const attendeesByEvent = (teamData?.eventAttendees || {}) as Record<string, string[]>;
-        const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
+        let matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
+        const firstSchedule = await fetchFirstSchedule(assignedEvent, "Practice");
+        if (firstSchedule.length > 0) {
+          const existingPracticeNumbers = new Set(
+            matches.filter((match) => match.comp_level === "pr").map((match) => match.match_number)
+          );
+          const practiceFromFirst = firstSchedule
+            .filter((match) => !existingPracticeNumbers.has(match.matchNumber))
+            .map((match) => {
+              const { red, blue } = splitFirstAllianceTeams(match);
+              return {
+                key: `${assignedEvent}_pr${match.matchNumber}`,
+                comp_level: "pr",
+                set_number: 1,
+                match_number: match.matchNumber,
+                alliances: {
+                  red: { team_keys: red.map((team) => `frc${team}`), score: -1 },
+                  blue: { team_keys: blue.map((team) => `frc${team}`), score: -1 },
+                },
+                time: match.startTime || 0,
+                predicted_time: match.startTime || 0,
+                actual_time: 0,
+              } as TBAMatch;
+            })
+            .filter((match) => match.alliances.red.team_keys.length >= 3 && match.alliances.blue.team_keys.length >= 3);
+          matches = [...matches, ...practiceFromFirst];
+        }
 
         const modalOptions = buildReefscapeModalOptions(matches);
         const teamsById = new Map<string, { teams: string[]; scheduleTime: number; redTeams: string[]; blueTeams: string[] }>();

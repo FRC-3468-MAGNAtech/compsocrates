@@ -11,6 +11,7 @@ import { useAuth } from "@/app/AuthContext";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getEffectiveNowMs } from "@/app/utils/teamTime";
+import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 
 type MatchRow = {
   key: string;
@@ -18,6 +19,9 @@ type MatchRow = {
   time: number;
   red: number[];
   blue: number[];
+  level: "practice" | "qualification" | "playoff" | "finals";
+  setNumber: number;
+  matchNumber: number;
 };
 
 function matchLabel(match: TBAMatch) {
@@ -30,6 +34,7 @@ function matchLabel(match: TBAMatch) {
 }
 
 function compLevelPriority(compLevel: string) {
+  if (compLevel === "pr") return -1;
   if (compLevel === "qm") return 0;
   if (compLevel === "ef") return 1;
   if (compLevel === "qf") return 2;
@@ -111,14 +116,50 @@ function MatchListContent() {
                   if (a.set_number !== b.set_number) return a.set_number - b.set_number;
                   return a.match_number - b.match_number;
                 })
-                .map((match) => ({
-                  key: match.key,
-                  label: matchLabel(match),
-                  time: match.actual_time || match.predicted_time || match.time || 0,
-                  red: match.alliances.red.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
-                  blue: match.alliances.blue.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
-                }));
-              return [event.key, normalized] as const;
+                .map((match) => {
+                  const level = match.comp_level === "pr"
+                    ? "practice"
+                    : match.comp_level === "qm"
+                    ? "qualification"
+                    : match.comp_level === "f"
+                    ? "finals"
+                    : "playoff";
+                  return {
+                    key: match.key,
+                    label: matchLabel(match),
+                    time: match.actual_time || match.predicted_time || match.time || 0,
+                    red: match.alliances.red.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
+                    blue: match.alliances.blue.team_keys.map((k) => parseInt(k.replace("frc", ""), 10)).filter(Number.isFinite),
+                    level,
+                    setNumber: match.set_number,
+                    matchNumber: match.match_number,
+                  };
+                });
+              const firstSchedule = await fetchFirstSchedule(event.key, "Practice");
+              const firstPracticeRows = firstSchedule
+                .map((match) => {
+                  const { red, blue } = splitFirstAllianceTeams(match);
+                  return {
+                    key: `first_${event.key}_practice_${match.matchNumber}`,
+                    label: `Practice ${match.matchNumber}`,
+                    time: match.startTime || 0,
+                    red,
+                    blue,
+                    level: "practice" as const,
+                    setNumber: 1,
+                    matchNumber: match.matchNumber,
+                  };
+                })
+                .filter((row) => row.red.length >= 3 && row.blue.length >= 3);
+              const merged = [...firstPracticeRows, ...normalized].sort((a, b) => {
+                const levelOrder = a.level === "practice" ? -1 : a.level === "qualification" ? 0 : a.level === "playoff" ? 1 : 2;
+                const otherLevelOrder = b.level === "practice" ? -1 : b.level === "qualification" ? 0 : b.level === "playoff" ? 1 : 2;
+                if (levelOrder !== otherLevelOrder) return levelOrder - otherLevelOrder;
+                if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
+                if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
+                return a.time - b.time;
+              });
+              return [event.key, merged] as const;
             } catch (error) {
               console.warn(`Match list failed for ${event.key}:`, error);
               return [event.key, []] as const;

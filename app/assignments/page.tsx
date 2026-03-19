@@ -24,6 +24,7 @@ import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getRoleLabel, getUserRoles, normalizeLegacyRole } from "@/app/utils/roles";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 import { getEffectiveNowDate, getEffectiveNowMs, getEffectiveNowSec } from "@/app/utils/teamTime";
+import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 
 interface Assignment {
   id: string;
@@ -109,6 +110,16 @@ type PracticeMatchOption = {
   matchNumber: number;
   scheduleTime: number;
   isManual: boolean;
+  alliance?: "red" | "blue" | "";
+};
+
+type FirstPracticeSeed = {
+  id: string;
+  matchNumber: number;
+  matchKey: string;
+  alliance: "red" | "blue";
+  teams: number[];
+  scheduleTime: number;
 };
 
 type AssignmentMatchChoice = {
@@ -296,6 +307,39 @@ function practiceMatchLabel(stage: "practice" | "qualification" | "playoff", mat
     ? `${alliance.charAt(0).toUpperCase()}${alliance.slice(1)} Alliance`
     : "Alliance";
   return `${prefix} ${matchNumber} • ${allianceLabel}`;
+}
+function buildFirstPracticeSeeds(eventKey: string, matches: Awaited<ReturnType<typeof fetchFirstSchedule>>): FirstPracticeSeed[] {
+  const safeEvent = String(eventKey || "").trim();
+  if (!safeEvent) return [];
+  return matches.flatMap((match) => {
+    const matchNumber = Number(match.matchNumber || 0);
+    if (!Number.isFinite(matchNumber) || matchNumber <= 0) return [];
+    const scheduleTime = Number(match.startTime || 0);
+    const { red, blue } = splitFirstAllianceTeams(match);
+    const matchKey = `${safeEvent}_pm${matchNumber}`;
+    const seeds: FirstPracticeSeed[] = [];
+    if (red.length >= 3) {
+      seeds.push({
+        id: `first_${safeEvent}_practice_${matchNumber}_red`,
+        matchNumber,
+        matchKey,
+        alliance: "red",
+        teams: red.slice(0, 3),
+        scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+      });
+    }
+    if (blue.length >= 3) {
+      seeds.push({
+        id: `first_${safeEvent}_practice_${matchNumber}_blue`,
+        matchNumber,
+        matchKey,
+        alliance: "blue",
+        teams: blue.slice(0, 3),
+        scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+      });
+    }
+    return seeds;
+  });
 }
 
 function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string }) {
@@ -653,6 +697,7 @@ function AssignmentsContent() {
             matchNumber,
             scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
             isManual: Boolean(data.manualGenerated),
+            alliance: alliance === "red" || alliance === "blue" ? alliance : "",
           } as PracticeMatchOption;
         })
         .filter((row) => row.teams.length >= 3 && row.matchNumber > 0)
@@ -663,10 +708,52 @@ function AssignmentsContent() {
           if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
           return a.id.localeCompare(b.id);
         });
-      setPracticeMatchOptions(practiceOptions);
+      let mergedPracticeOptions = practiceOptions;
+      if (effectiveEvent !== "app-testing" && practiceOptions.length === 0) {
+        const firstSchedule = await fetchFirstSchedule(effectiveEvent, "Practice");
+        const firstSeeds = buildFirstPracticeSeeds(effectiveEvent, firstSchedule);
+        const firstOptions = firstSeeds.map((seed) => ({
+          id: seed.id,
+          eventKey: effectiveEvent,
+          matchKey: seed.matchKey,
+          label: practiceMatchLabel("practice", seed.matchNumber, seed.alliance),
+          teams: seed.teams,
+          stage: "practice" as const,
+          matchNumber: seed.matchNumber,
+          scheduleTime: seed.scheduleTime,
+          isManual: false,
+          alliance: seed.alliance,
+        })) as PracticeMatchOption[];
+        if (firstOptions.length > 0) {
+          const now = Date.now();
+          await Promise.all(
+            firstSeeds.map((seed) =>
+              setDoc(
+                doc(db, "practiceMatches", seed.id),
+                {
+                  eventKey: effectiveEvent,
+                  matchNumber: seed.matchNumber,
+                  matchType: "practice",
+                  matchKey: seed.matchKey,
+                  alliance: seed.alliance,
+                  allianceTeams: seed.teams,
+                  teams: seed.teams,
+                  scheduleTime: seed.scheduleTime,
+                  compLevel: "pr",
+                  source: "first",
+                  updatedAt: now,
+                },
+                { merge: true }
+              )
+            )
+          );
+          mergedPracticeOptions = firstOptions;
+        }
+      }
+      setPracticeMatchOptions(mergedPracticeOptions);
       setPracticeScheduleMatchesByEvent((prev) => ({
         ...prev,
-        [effectiveEvent]: practiceOptions.filter((row) => row.stage === "practice"),
+        [effectiveEvent]: mergedPracticeOptions.filter((row) => row.stage === "practice"),
       }));
       const priorityByEventRaw = (
         teamData.priorityTeamsByEvent ||
@@ -898,16 +985,59 @@ function AssignmentsContent() {
             matchNumber,
             scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
             isManual: Boolean(data.manualGenerated),
+            alliance: alliance === "red" || alliance === "blue" ? alliance : "",
           } as PracticeMatchOption;
         })
         .filter((row) => row.teams.length >= 3 && row.matchNumber > 0 && row.stage === "practice")
         .sort((a, b) => a.matchNumber - b.matchNumber);
+      let mergedPracticeRows = practiceRows;
+      if (safeEventKey !== "app-testing" && practiceRows.length === 0) {
+        const firstSchedule = await fetchFirstSchedule(safeEventKey, "Practice");
+        const firstSeeds = buildFirstPracticeSeeds(safeEventKey, firstSchedule);
+        const firstOptions = firstSeeds.map((seed) => ({
+          id: seed.id,
+          eventKey: safeEventKey,
+          matchKey: seed.matchKey,
+          label: practiceMatchLabel("practice", seed.matchNumber, seed.alliance),
+          teams: seed.teams,
+          stage: "practice" as const,
+          matchNumber: seed.matchNumber,
+          scheduleTime: seed.scheduleTime,
+          isManual: false,
+          alliance: seed.alliance,
+        })) as PracticeMatchOption[];
+        if (firstOptions.length > 0) {
+          const now = Date.now();
+          await Promise.all(
+            firstSeeds.map((seed) =>
+              setDoc(
+                doc(db, "practiceMatches", seed.id),
+                {
+                  eventKey: safeEventKey,
+                  matchNumber: seed.matchNumber,
+                  matchType: "practice",
+                  matchKey: seed.matchKey,
+                  alliance: seed.alliance,
+                  allianceTeams: seed.teams,
+                  teams: seed.teams,
+                  scheduleTime: seed.scheduleTime,
+                  compLevel: "pr",
+                  source: "first",
+                  updatedAt: now,
+                },
+                { merge: true }
+              )
+            )
+          );
+          mergedPracticeRows = firstOptions;
+        }
+      }
       const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
         id: assignmentDoc.id,
         ...assignmentDoc.data(),
       })) as Assignment[];
       const practiceAssignmentRows = assignmentRows.filter((row) => isEventPracticeAssignment(row));
-      setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: practiceRows }));
+      setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: mergedPracticeRows }));
       setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [safeEventKey]: practiceAssignmentRows }));
     } catch (error) {
       console.error("Failed to load practice schedule event data:", error);
@@ -2927,3 +3057,4 @@ export default function AssignmentsPage() {
     </ProtectedRoute>
   );
 }
+
