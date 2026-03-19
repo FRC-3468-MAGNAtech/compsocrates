@@ -1652,15 +1652,6 @@ function ScoutFormContent() {
                   </div>
                 </>
               )}
-              {leadMode && (
-                <button
-                  type="button"
-                  onClick={() => router.push("/scout-form?lead=0")}
-                  className="mt-3 px-3 py-1.5 rounded border border-gray-200 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  Back to Match Scout Form
-                </button>
-              )}
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
