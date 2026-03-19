@@ -706,8 +706,11 @@ function AssignmentsContent() {
       if (!selectedEvent || effectiveEvent !== selectedEvent) {
         setSelectedEvent(effectiveEvent);
       }
+      const scheduleDefaultKey = scheduleOptions.some((event) => event.key === effectiveEvent)
+        ? effectiveEvent
+        : (scheduleOptions[0]?.key || "");
       if (!practiceScheduleEventKey || !scheduleOptions.some((event) => event.key === practiceScheduleEventKey)) {
-        setPracticeScheduleEventKey(scheduleOptions[0]?.key || "");
+        setPracticeScheduleEventKey(scheduleDefaultKey);
       }
       if (!selectedPracticeEventKey || !availablePracticeEvents.some((event) => event.key === selectedPracticeEventKey)) {
         setSelectedPracticeEventKey(availablePracticeEvents[0]?.key || "");
@@ -1084,7 +1087,6 @@ function AssignmentsContent() {
   async function loadPracticeScheduleEvent(eventKey: string) {
     const safeEventKey = String(eventKey || "").trim();
     if (!safeEventKey) return;
-    if (practiceScheduleMatchesByEvent[safeEventKey] && practiceScheduleAssignmentsByEvent[safeEventKey]) return;
     try {
       const [matchesSnap, assignmentsSnap] = await Promise.all([
         getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", safeEventKey))),
