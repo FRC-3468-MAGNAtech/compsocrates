@@ -731,6 +731,7 @@ function normalizePracticeMatchType(
   rawCompLevel: unknown
 ): "qualification" | "playoff" | "practice" {
   const compLevel = String(rawCompLevel || "").trim().toLowerCase();
+  if (compLevel === "pr" || compLevel === "pm") return "practice";
   if (compLevel === "qm") return "qualification";
   if (compLevel === "qf" || compLevel === "sf" || compLevel === "f") return "playoff";
 
@@ -2263,7 +2264,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         alert("No practice matches have valid alliance team data. Please add team numbers to practice match docs.");
         return [];
       }
-      candidateMatches = dedupePracticeMatches(candidateMatches);
+      const manualMatches = dedupePracticeMatches(candidateMatches);
+      candidateMatches = manualMatches;
       if (difficulty === "live") {
         const hintedEventKey = String(liveEventOverride || liveEventKeyHint || "").trim().toLowerCase();
         if (hintedEventKey) {
@@ -2289,8 +2291,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             const tbaCandidates = tbaMatches.flatMap((match) => {
               const matchKey = String(match.key || "").trim();
               const scheduleTime = Number(match.actual_time || match.predicted_time || match.time || 0);
-                const isCompleted = isTbaMatchCompleted(match);
-              const stageMatchType = match.comp_level === "qm" ? "qualification" : "playoff";
+              const isCompleted = isTbaMatchCompleted(match);
+              const compLevel = String(match.comp_level || "").trim().toLowerCase();
+              const stageMatchType = compLevel === "qm" ? "qualification" : compLevel === "pr" ? "practice" : "playoff";
               const perAlliance = (["red", "blue"] as const).map((alliance) => {
                 const teams = (match.alliances?.[alliance]?.team_keys || [])
                   .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
@@ -2306,7 +2309,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   matchKey,
                   matchNumber: Number(match.match_number || 0),
                   setNumber: Number(match.set_number || 0),
-                  compLevel: String(match.comp_level || "").trim().toLowerCase(),
+                  compLevel,
                   matchType: stageMatchType,
                   difficulty: normalizedDifficulty,
                   alliance,
@@ -2329,7 +2332,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             });
 
             if (tbaCandidates.length > 0) {
-              candidateMatches = dedupePracticeMatches(tbaCandidates);
+              const tbaHasPractice = tbaCandidates.some((match) => getPracticeStage(match) === "practice");
+              if (tbaHasPractice) {
+                candidateMatches = dedupePracticeMatches(tbaCandidates);
+              } else {
+                const manualPractice = manualMatches.filter((match) => getPracticeStage(match) === "practice");
+                candidateMatches = dedupePracticeMatches([...tbaCandidates, ...manualPractice]);
+              }
             }
           } catch (error) {
             console.error("Failed loading live candidates from FIRST/TBA:", error);
@@ -3546,7 +3555,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const filtered = candidateMatches.filter(
       (match) => String(getPracticeEventKey(match) || "").trim().toLowerCase() === scopedEventKey
     );
-    return filtered.length > 0 ? filtered : candidateMatches;
+    if (filtered.length === 0) return candidateMatches;
+    const hasPracticeMatches = filtered.some((match) => getPracticeStage(match) === "practice");
+    if (!hasPracticeMatches) {
+      const manualPractice = candidateMatches.filter((match) => getPracticeStage(match) === "practice");
+      if (manualPractice.length > 0) {
+        return [...filtered, ...manualPractice];
+      }
+    }
+    return filtered;
   }, [candidateMatches, currentMatch, liveEventKeyHint, selectedDifficulty]);
 
   const liveTbaScheduleById = useMemo(() => {

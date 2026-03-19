@@ -31,7 +31,7 @@ export interface TBATeam {
 
 export interface TBAMatch {
   key: string;
-  comp_level: "qm" | "ef" | "qf" | "sf" | "f"; // qualification, eighths, quarters, semis, finals
+  comp_level: "pr" | "qm" | "ef" | "qf" | "sf" | "f"; // practice, qualification, eighths, quarters, semis, finals
   set_number: number;
   match_number: number;
   videos?: Array<{

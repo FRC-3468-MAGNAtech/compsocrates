@@ -76,6 +76,7 @@ function parseFinalsSeriesNumber(match: Pick<TBAMatch, "key" | "set_number" | "m
 }
 
 export function mapTbaMatchToModalId(match: Pick<TBAMatch, "comp_level" | "set_number" | "match_number" | "key">): string {
+  if (match.comp_level === "pr") return `p${match.match_number}`;
   if (match.comp_level === "qm") return `q${match.match_number}`;
   if (match.comp_level === "f") return `f${parseFinalsSeriesNumber(match)}`;
   const slot = mapPlayoffToBracketSlot(match);
@@ -84,7 +85,7 @@ export function mapTbaMatchToModalId(match: Pick<TBAMatch, "comp_level" | "set_n
 }
 
 function compareTbaMatchesForModal(a: TBAMatch, b: TBAMatch): number {
-  const compOrder: Record<string, number> = { qm: 0, qf: 1, sf: 2, f: 3 };
+  const compOrder: Record<string, number> = { pr: 0, qm: 1, qf: 2, sf: 3, f: 4 };
   const levelDiff = (compOrder[a.comp_level] ?? 9) - (compOrder[b.comp_level] ?? 9);
   if (levelDiff !== 0) return levelDiff;
   if (a.set_number !== b.set_number) return a.set_number - b.set_number;
@@ -99,6 +100,19 @@ export function buildReefscapeModalOptions(matches: TBAMatch[]): ReefscapeMatchO
     const id = mapTbaMatchToModalId(match);
     if (!id) return;
     const scheduleTime = getTbaScheduleTime(match);
+    if (match.comp_level === "pr") {
+      const existing = byId.get(id);
+      if (!existing || scheduleTime < existing.scheduleTime || existing.scheduleTime <= 0) {
+        byId.set(id, {
+          id,
+          type: "practice",
+          label: `Practice ${match.match_number}`,
+          matchNumber: match.match_number,
+          scheduleTime,
+        });
+      }
+      return;
+    }
     if (match.comp_level === "qm") {
       const existing = byId.get(id);
       if (!existing || scheduleTime < existing.scheduleTime || existing.scheduleTime <= 0) {
