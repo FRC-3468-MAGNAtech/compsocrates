@@ -21,6 +21,7 @@ type AnalyticsShellProps = {
 
 const analyticsLinks: Array<{ href: string; label: string } | { divider: true }> = [
   { href: "/analytics", label: "Match Analytics" },
+  { href: "/analytics/lead", label: "Lead Analytics" },
   { href: "/analytics/pit", label: "Pit Analytics" },
   { href: "/analytics/team-strategy", label: "Team Strategy" },
   { href: "/analytics/match-strategy", label: "Match Strategy" },

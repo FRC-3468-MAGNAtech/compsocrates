@@ -4571,6 +4571,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         value={rebuiltFormData.autoHumanPlayerFuel}
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, autoHumanPlayerFuel: value })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Climb</h3>
                       <Counter
                         label="Failed Climb"
                         value={rebuiltFormData.autoFailedClimb}
@@ -4653,6 +4654,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         value={rebuiltFormData.transitionCounterMissedFuel}
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, transitionCounterMissedFuel: value })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.teleopHumanPlayerFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, teleopHumanPlayerFuel: value })}
+                      />
                       <p className="text-xs text-gray-600">
                         Counted shifts right now: Transition + {rebuiltFormData.wonAuto !== rebuiltFormData.hubActivationOverride ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
                         Toggle <span className="font-medium">Won Auto</span> or <span className="font-medium">Hub Activation Override</span> to flip counted shifts.
@@ -4679,6 +4686,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         value={rebuiltFormData.shift1CounterMissedFuel}
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift1CounterMissedFuel: value })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.teleopHumanPlayerFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, teleopHumanPlayerFuel: value })}
+                      />
                       <RebuiltCycleTimer
                         title={`Shift 2 ${rebuiltFormData.wonAuto !== rebuiltFormData.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
                         values={rebuiltFormData.shift2Cycles}
@@ -4701,6 +4714,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         value={rebuiltFormData.shift2CounterMissedFuel}
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift2CounterMissedFuel: value })}
                       />
+                      <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.teleopHumanPlayerFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, teleopHumanPlayerFuel: value })}
+                      />
                       <RebuiltCycleTimer
                         title={`Shift 3 ${rebuiltFormData.wonAuto !== rebuiltFormData.hubActivationOverride ? "(Not Counted)" : "(Counted)"}`}
                         values={rebuiltFormData.shift3Cycles}
@@ -4722,6 +4741,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         label="Missed Fuel"
                         value={rebuiltFormData.shift3CounterMissedFuel}
                         onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, shift3CounterMissedFuel: value })}
+                      />
+                      <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
+                      <Counter
+                        label="Scored Fuel"
+                        value={rebuiltFormData.teleopHumanPlayerFuel}
+                        onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, teleopHumanPlayerFuel: value })}
                       />
                       <RebuiltCycleTimer
                         title={`Shift 4 ${rebuiltFormData.wonAuto !== rebuiltFormData.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
@@ -4784,6 +4809,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       value={rebuiltFormData.endgameHumanPlayerFuel}
                       onChange={(value) => setRebuiltFormData({ ...rebuiltFormData, endgameHumanPlayerFuel: value })}
                     />
+                    <h3 className="text-sm font-semibold text-gray-700">Climb</h3>
                     <Counter
                       label="Failed Climb"
                       value={rebuiltFormData.endgameFailedClimb}

@@ -32,6 +32,8 @@ type MatchOption = {
   matchNumber: number;
   scheduleTime: number;
   teams: string[];
+  redTeams?: string[];
+  blueTeams?: string[];
 };
 
 type AssignmentRow = {
@@ -95,6 +97,26 @@ function TeamPickerModal({
   );
 }
 
+function LeadScaleSelector({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {LEAD_SKILL_LEVELS.map((level) => {
+        const active = value === level;
+        return (
+          <button
+            key={level}
+            type="button"
+            onClick={() => onChange(level)}
+            className={`px-3 py-1 rounded text-sm border ${active ? "bg-red-600 text-white border-red-600" : "bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200"}`}
+          >
+            {level}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function buildFallbackScoutOptions(): MatchOption[] {
   const rows: MatchOption[] = [];
   for (let n = 1; n <= 20; n += 1) {
@@ -105,6 +127,8 @@ function buildFallbackScoutOptions(): MatchOption[] {
       matchNumber: n,
       scheduleTime: 0,
       teams: [],
+      redTeams: [],
+      blueTeams: [],
     });
   }
   for (let n = 1; n <= 80; n += 1) {
@@ -115,6 +139,8 @@ function buildFallbackScoutOptions(): MatchOption[] {
       matchNumber: n,
       scheduleTime: 0,
       teams: [],
+      redTeams: [],
+      blueTeams: [],
     });
   }
   for (let n = 1; n <= 3; n += 1) {
@@ -125,6 +151,8 @@ function buildFallbackScoutOptions(): MatchOption[] {
       matchNumber: n,
       scheduleTime: 0,
       teams: [],
+      redTeams: [],
+      blueTeams: [],
     });
   }
   return rows;
@@ -166,6 +194,26 @@ type FormState = {
   notes: string;
 };
 
+type LeadFormState = {
+  scoutName: string;
+  alliance: "red" | "blue" | "";
+  robot1TeamNumber: string;
+  robot1PickNumber: string;
+  robot1Notes: string;
+  robot1SkillLevel: number;
+  robot2TeamNumber: string;
+  robot2PickNumber: string;
+  robot2Notes: string;
+  robot2SkillLevel: number;
+  robot3TeamNumber: string;
+  robot3PickNumber: string;
+  robot3Notes: string;
+  robot3SkillLevel: number;
+  overallAllianceTeams: string;
+  overallAllianceNotes: string;
+  overallAllianceSkillLevel: number;
+};
+
 const INCIDENTS = [
   { value: "died", label: "Died During Match" },
   { value: "never-started", label: "Never Started Match" },
@@ -184,6 +232,7 @@ const BPS_LABELS = ["0", "1-3", "4-6", "7-9", "10-13", "14-17", "18-21", "22-24"
 const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54-64", "65-74", "75+"];
 const BPS_MAX = BPS_LABELS.length - 1;
 const CARRY_MAX = CARRY_LABELS.length - 1;
+const LEAD_SKILL_LEVELS = [1, 2, 3, 4, 5];
 
 function convertPitScale(value: number, kind: "preload" | "bps" | "carry") {
   const n = Number(value || 0);
@@ -837,6 +886,28 @@ function ScoutFormContent() {
     carryRaw: null,
   });
   const [saving, setSaving] = useState(false);
+  const [leadSaving, setLeadSaving] = useState(false);
+  const [leadForm, setLeadForm] = useState<LeadFormState>({
+    scoutName: userData?.displayName || "",
+    alliance: "",
+    robot1TeamNumber: "",
+    robot1PickNumber: "",
+    robot1Notes: "",
+    robot1SkillLevel: 0,
+    robot2TeamNumber: "",
+    robot2PickNumber: "",
+    robot2Notes: "",
+    robot2SkillLevel: 0,
+    robot3TeamNumber: "",
+    robot3PickNumber: "",
+    robot3Notes: "",
+    robot3SkillLevel: 0,
+    overallAllianceTeams: "",
+    overallAllianceNotes: "",
+    overallAllianceSkillLevel: 0,
+  });
+  const [leadTeamPickerOpen, setLeadTeamPickerOpen] = useState(false);
+  const [leadTeamPickerTarget, setLeadTeamPickerTarget] = useState<"robot1" | "robot2" | "robot3" | null>(null);
   const [form, setForm] = useState<FormState>({
     scoutName: userData?.displayName || "",
     teamNumber: "",
@@ -884,6 +955,7 @@ function ScoutFormContent() {
   useEffect(() => {
     if (!userData?.displayName) return;
     setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
+    setLeadForm((prev) => ({ ...prev, scoutName: userData.displayName }));
   }, [userData?.displayName]);
 
   useEffect(() => {
@@ -949,29 +1021,34 @@ function ScoutFormContent() {
         const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
 
         const modalOptions = buildReefscapeModalOptions(matches);
-        const teamsById = new Map<string, { teams: string[]; scheduleTime: number }>();
+        const teamsById = new Map<string, { teams: string[]; scheduleTime: number; redTeams: string[]; blueTeams: string[] }>();
         matches.forEach((match) => {
           const modalId = mapTbaMatchToModalId(match);
           if (!modalId) return;
-          const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+          const redTeams = match.alliances.red.team_keys
             .map((k) => k.replace("frc", "").trim())
             .filter(Boolean);
+          const blueTeams = match.alliances.blue.team_keys
+            .map((k) => k.replace("frc", "").trim())
+            .filter(Boolean);
+          const teams = [...redTeams, ...blueTeams];
           const scheduleTime = getTbaScheduleTime(match);
           const existing = teamsById.get(modalId);
           if (!existing) {
-            teamsById.set(modalId, { teams, scheduleTime });
+            teamsById.set(modalId, { teams, scheduleTime, redTeams, blueTeams });
             return;
           }
           if ((existing.scheduleTime <= 0 && scheduleTime > 0) || (scheduleTime > 0 && scheduleTime < existing.scheduleTime)) {
-            teamsById.set(modalId, { teams, scheduleTime });
+            teamsById.set(modalId, { teams, scheduleTime, redTeams, blueTeams });
           }
         });
 
         const nextTargets: Record<string, number> = {};
         const next = modalOptions.map((opt) => {
-          const teams = teamsById.get(opt.id)?.teams || [];
+          const stored = teamsById.get(opt.id);
+          const teams = stored?.teams || [];
           nextTargets[opt.id] = teams.length || 6;
-          return { ...opt, teams };
+          return { ...opt, teams, redTeams: stored?.redTeams || [], blueTeams: stored?.blueTeams || [] };
         });
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
@@ -1062,6 +1139,13 @@ function ScoutFormContent() {
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
   const assignedTeam = assignedTeams[selectedMatchId] || "";
   const isHumanPlayerAssigned = assignedHumanPlayerMatches.has(selectedMatchId);
+  const selectedRedTeams = selectedMatch?.redTeams || [];
+  const selectedBlueTeams = selectedMatch?.blueTeams || [];
+  const leadAllianceTeams = useMemo(() => {
+    if (leadForm.alliance === "red") return selectedRedTeams;
+    if (leadForm.alliance === "blue") return selectedBlueTeams;
+    return [] as string[];
+  }, [leadForm.alliance, selectedRedTeams, selectedBlueTeams]);
   const pitPreloadFits = pitValueFitsScale("preload", pitSync.preloadRaw, form.autoPreloadScale);
   const pitBpsFitsAuto = pitValueFitsScale("bps", pitSync.bpsRaw, form.autoBpsScale);
   const pitBpsFitsTele = pitValueFitsScale("bps", pitSync.bpsRaw, form.teleBpsScale);
@@ -1131,6 +1215,17 @@ function ScoutFormContent() {
   useEffect(() => {
     if (assignedTeam) setForm((prev) => ({ ...prev, teamNumber: assignedTeam }));
   }, [assignedTeam]);
+
+  useEffect(() => {
+    if (!leadForm.alliance) return;
+    if (leadAllianceTeams.length === 0) return;
+    setLeadForm((prev) => ({
+      ...prev,
+      robot1TeamNumber: leadAllianceTeams[0] || "",
+      robot2TeamNumber: leadAllianceTeams[1] || "",
+      robot3TeamNumber: leadAllianceTeams[2] || "",
+    }));
+  }, [leadForm.alliance, leadAllianceTeams]);
 
   useEffect(() => {
     async function loadPitDefaults() {
@@ -1369,6 +1464,109 @@ function ScoutFormContent() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function submitLead(event: React.FormEvent) {
+    event.preventDefault();
+    if (!userData?.uid) {
+      alert("You must be logged in to submit.");
+      return;
+    }
+    if (!selectedMatch) return alert("Select a match first.");
+    if (!leadForm.alliance) return alert("Select an alliance first.");
+    if (!leadForm.robot1TeamNumber.trim() || !leadForm.robot2TeamNumber.trim() || !leadForm.robot3TeamNumber.trim()) {
+      alert("Enter all three team numbers for the alliance.");
+      return;
+    }
+
+    setLeadSaving(true);
+    try {
+      await addDoc(collection(db, "leadScouting"), {
+        scoutName: leadForm.scoutName || userData.displayName || "",
+        scoutId: userData.uid,
+        teamId: userData.teamId || "",
+        eventKey,
+        game: "REBUILT",
+        matchId: selectedMatch.id,
+        matchType: selectedMatch.type,
+        matchNumber: String(selectedMatch.matchNumber),
+        matchLabel: selectedMatch.label || getSelectedMatchDisplay(),
+        alliance: leadForm.alliance,
+        isPracticeScouting: selectedMatch.type === "practice",
+        robots: [
+          {
+            teamNumber: leadForm.robot1TeamNumber.trim(),
+            pickNumber: leadForm.robot1PickNumber.trim(),
+            notes: leadForm.robot1Notes.trim(),
+            skillLevel: leadForm.robot1SkillLevel || 0,
+          },
+          {
+            teamNumber: leadForm.robot2TeamNumber.trim(),
+            pickNumber: leadForm.robot2PickNumber.trim(),
+            notes: leadForm.robot2Notes.trim(),
+            skillLevel: leadForm.robot2SkillLevel || 0,
+          },
+          {
+            teamNumber: leadForm.robot3TeamNumber.trim(),
+            pickNumber: leadForm.robot3PickNumber.trim(),
+            notes: leadForm.robot3Notes.trim(),
+            skillLevel: leadForm.robot3SkillLevel || 0,
+          },
+        ],
+        overallAlliance: {
+          teams: leadForm.overallAllianceTeams.trim(),
+          notes: leadForm.overallAllianceNotes.trim(),
+          skillLevel: leadForm.overallAllianceSkillLevel || 0,
+        },
+        submittedAt: Date.now(),
+        timestamp: Date.now(),
+      });
+      alert("Lead scout form submitted.");
+      setLeadForm((prev) => ({
+        ...prev,
+        alliance: "",
+        robot1TeamNumber: "",
+        robot1PickNumber: "",
+        robot1Notes: "",
+        robot1SkillLevel: 0,
+        robot2TeamNumber: "",
+        robot2PickNumber: "",
+        robot2Notes: "",
+        robot2SkillLevel: 0,
+        robot3TeamNumber: "",
+        robot3PickNumber: "",
+        robot3Notes: "",
+        robot3SkillLevel: 0,
+        overallAllianceTeams: "",
+        overallAllianceNotes: "",
+        overallAllianceSkillLevel: 0,
+      }));
+    } catch (error) {
+      console.error("Error submitting lead scout form:", error);
+      alert("Could not submit lead scout form.");
+    } finally {
+      setLeadSaving(false);
+    }
+  }
+
+  function openLeadTeamPicker(target: "robot1" | "robot2" | "robot3") {
+    setLeadTeamPickerTarget(target);
+    setLeadTeamPickerOpen(true);
+  }
+
+  function closeLeadTeamPicker() {
+    setLeadTeamPickerOpen(false);
+    setLeadTeamPickerTarget(null);
+  }
+
+  function handleLeadTeamPick(team: string) {
+    setLeadForm((prev) => {
+      if (leadTeamPickerTarget === "robot1") return { ...prev, robot1TeamNumber: team };
+      if (leadTeamPickerTarget === "robot2") return { ...prev, robot2TeamNumber: team };
+      if (leadTeamPickerTarget === "robot3") return { ...prev, robot3TeamNumber: team };
+      return prev;
+    });
+    closeLeadTeamPicker();
   }
   const fromPractice = searchParams.get("practice") === "1";
 
@@ -1618,6 +1816,168 @@ function ScoutFormContent() {
 
                 <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>{saving ? "Submitting..." : "Submit Match Scout Form"}</button>
             </form>
+
+            <div className="bg-white rounded-xl shadow p-4">
+              <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--primary-color)" }}>Lead Scout Form</h1>
+              <p className="text-sm text-gray-600">Alliance-level observations for strategy and notes.</p>
+            </div>
+
+            <form className="space-y-6" onSubmit={submitLead}>
+              <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm font-medium text-gray-700">Match Select</span>
+                  <span className="text-sm font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
+                  <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-gray-700">Red/Blue Alliance</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLeadForm((prev) => ({ ...prev, alliance: "red" }))}
+                      className={`px-3 py-1 rounded text-sm font-medium border ${leadForm.alliance === "red" ? "bg-red-600 text-white border-red-600" : "bg-gray-100 text-gray-700 border-gray-200"}`}
+                    >
+                      Red
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLeadForm((prev) => ({ ...prev, alliance: "blue" }))}
+                      className={`px-3 py-1 rounded text-sm font-medium border ${leadForm.alliance === "blue" ? "bg-blue-600 text-white border-blue-600" : "bg-gray-100 text-gray-700 border-gray-200"}`}
+                    >
+                      Blue
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLeadForm((prev) => ({
+                        ...prev,
+                        alliance: prev.alliance === "red" ? "blue" : "red",
+                      }))
+                    }
+                    className="px-3 py-1 rounded text-sm border border-gray-200 text-gray-700 hover:bg-gray-100"
+                  >
+                    Swap
+                  </button>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-1">Scout Name</h3>
+                  <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={leadForm.scoutName} disabled />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Robot 1</h2>
+                <h3 className="text-sm font-semibold text-gray-700">Team Number</h3>
+                <div className="flex gap-2 items-center">
+                  <input
+                    className="flex-1 border rounded p-2"
+                    value={leadForm.robot1TeamNumber}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot1TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    placeholder="Team #"
+                  />
+                  <input
+                    className="w-24 border rounded p-2"
+                    value={leadForm.robot1PickNumber}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot1PickNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    placeholder="Pick #"
+                  />
+                  <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot1")}>Pick</button>
+                </div>
+                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
+                <textarea
+                  className="w-full border rounded p-2"
+                  rows={3}
+                  value={leadForm.robot1Notes}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, robot1Notes: e.target.value }))}
+                />
+                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
+                <LeadScaleSelector value={leadForm.robot1SkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, robot1SkillLevel: value }))} />
+              </div>
+
+              <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Robot 2</h2>
+                <h3 className="text-sm font-semibold text-gray-700">Team Number</h3>
+                <div className="flex gap-2 items-center">
+                  <input
+                    className="flex-1 border rounded p-2"
+                    value={leadForm.robot2TeamNumber}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot2TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    placeholder="Team #"
+                  />
+                  <input
+                    className="w-24 border rounded p-2"
+                    value={leadForm.robot2PickNumber}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot2PickNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    placeholder="Pick #"
+                  />
+                  <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot2")}>Pick</button>
+                </div>
+                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
+                <textarea
+                  className="w-full border rounded p-2"
+                  rows={3}
+                  value={leadForm.robot2Notes}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, robot2Notes: e.target.value }))}
+                />
+                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
+                <LeadScaleSelector value={leadForm.robot2SkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, robot2SkillLevel: value }))} />
+              </div>
+
+              <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Robot 3</h2>
+                <h3 className="text-sm font-semibold text-gray-700">Team Number</h3>
+                <div className="flex gap-2 items-center">
+                  <input
+                    className="flex-1 border rounded p-2"
+                    value={leadForm.robot3TeamNumber}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot3TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    placeholder="Team #"
+                  />
+                  <input
+                    className="w-24 border rounded p-2"
+                    value={leadForm.robot3PickNumber}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot3PickNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    placeholder="Pick #"
+                  />
+                  <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot3")}>Pick</button>
+                </div>
+                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
+                <textarea
+                  className="w-full border rounded p-2"
+                  rows={3}
+                  value={leadForm.robot3Notes}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, robot3Notes: e.target.value }))}
+                />
+                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
+                <LeadScaleSelector value={leadForm.robot3SkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, robot3SkillLevel: value }))} />
+              </div>
+
+              <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Overall Alliance</h2>
+                <h3 className="text-sm font-semibold text-gray-700">Alliance Colors / Team</h3>
+                <input
+                  className="w-full border rounded p-2"
+                  value={leadForm.overallAllianceTeams}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, overallAllianceTeams: e.target.value }))}
+                  placeholder="RED / 1111, 2222, 3333"
+                />
+                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
+                <textarea
+                  className="w-full border rounded p-2"
+                  rows={3}
+                  value={leadForm.overallAllianceNotes}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, overallAllianceNotes: e.target.value }))}
+                />
+                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
+                <LeadScaleSelector value={leadForm.overallAllianceSkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, overallAllianceSkillLevel: value }))} />
+              </div>
+
+              <button type="submit" disabled={leadSaving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
+                {leadSaving ? "Submitting..." : "Submit Lead Scout Form"}
+              </button>
+            </form>
           </div>
 
           <div className="hidden md:block w-80 p-4">
@@ -1644,6 +2004,13 @@ function ScoutFormContent() {
             scoutedTeams={selectedScoutedTeams}
             onClose={() => setShowTeamPicker(false)}
             onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
+          />
+          <TeamPickerModal
+            open={leadTeamPickerOpen}
+            teams={leadAllianceTeams}
+            scoutedTeams={new Set()}
+            onClose={closeLeadTeamPicker}
+            onSelect={handleLeadTeamPick}
           />
         </div>
       </div>
