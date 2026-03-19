@@ -24,7 +24,7 @@ import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getRoleLabel, getUserRoles, normalizeLegacyRole } from "@/app/utils/roles";
 import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
 import { getEffectiveNowDate, getEffectiveNowMs, getEffectiveNowSec } from "@/app/utils/teamTime";
-import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
+import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 
 interface Assignment {
   id: string;
@@ -340,6 +340,13 @@ function buildFirstPracticeSeeds(eventKey: string, matches: Awaited<ReturnType<t
     if (!Number.isFinite(matchNumber) || matchNumber <= 0) return [];
     const scheduleTime = Number(match.startTime || 0);
     const { red, blue } = splitFirstAllianceTeams(match);
+    const allTeams = Array.from(
+      new Set(
+        match.teams
+          .map((team) => Number(team.teamNumber || 0))
+          .filter((teamNumber) => Number.isFinite(teamNumber) && teamNumber > 0)
+      )
+    );
     const matchKey = `${safeEvent}_pm${matchNumber}`;
     const seeds: FirstPracticeSeed[] = [];
     if (red.length >= 3) {
@@ -359,6 +366,16 @@ function buildFirstPracticeSeeds(eventKey: string, matches: Awaited<ReturnType<t
         matchKey,
         alliance: "blue",
         teams: blue.slice(0, 3),
+        scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+      });
+    }
+    if (seeds.length === 0) {
+      seeds.push({
+        id: `first_${safeEvent}_practice_${matchNumber}`,
+        matchNumber,
+        matchKey,
+        alliance: "",
+        teams: allTeams,
         scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
       });
     }
@@ -440,6 +457,34 @@ async function fetchEventMatchesForAssignments(
   return getEventMatches(safeEvent);
 }
 
+async function fetchFirstTeamsForEvent(eventKey: string): Promise<number[]> {
+  const safeEventKey = String(eventKey || "").trim();
+  if (!safeEventKey || safeEventKey === "app-testing") return [];
+  const year = Number(safeEventKey.slice(0, 4));
+  if (!Number.isFinite(year)) return [];
+  try {
+    const eventCode = getFirstEventCodeFromTbaKey(safeEventKey);
+    const response = await fetch("/api/first/teams", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ year, eventCode }),
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as { teams?: Array<Record<string, unknown>> };
+    const rows = Array.isArray(payload.teams) ? payload.teams : [];
+    return Array.from(
+      new Set(
+        rows
+          .map((team) => Number(team.teamNumber || 0))
+          .filter((teamNumber) => Number.isFinite(teamNumber) && teamNumber > 0)
+      )
+    ).sort((a, b) => a - b);
+  } catch (error) {
+    console.warn("Failed to fetch FIRST teams:", error);
+    return [];
+  }
+}
+
 function AssignmentsContent() {
   const { userData, teamTimeOverride } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -462,6 +507,7 @@ function AssignmentsContent() {
   const [manualPriorityTeamsGlobal, setManualPriorityTeamsGlobal] = useState<number[]>([]);
   const [manualTeamListsByEvent, setManualTeamListsByEvent] = useState<Record<string, number[]>>({});
   const [manualTeamCsv, setManualTeamCsv] = useState("");
+  const [firstTeamsByEvent, setFirstTeamsByEvent] = useState<Record<string, number[]>>({});
 
   const [selectedMatchKey, setSelectedMatchKey] = useState("");
   const [selectedScoutId, setSelectedScoutId] = useState("");
@@ -661,6 +707,9 @@ function AssignmentsContent() {
         return;
       }
 
+      const firstTeams = await fetchFirstTeamsForEvent(effectiveEvent);
+      setFirstTeamsByEvent((prev) => ({ ...prev, [effectiveEvent]: firstTeams }));
+
       const [assignmentsSnap, pitAssignmentsSnap, teamAssignmentsSnap, practiceMatchesSnap] = await Promise.all([
         getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", effectiveEvent))),
         getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", effectiveEvent))),
@@ -735,7 +784,7 @@ function AssignmentsContent() {
             alliance: alliance === "red" || alliance === "blue" ? alliance : "",
           } as PracticeMatchOption;
         })
-        .filter((row) => row.teams.length >= 3 && row.matchNumber > 0)
+        .filter((row) => row.matchNumber > 0)
         .sort((a, b) => {
           const stageOrder = a.stage === "practice" ? 0 : a.stage === "qualification" ? 1 : 2;
           const otherStageOrder = b.stage === "practice" ? 0 : b.stage === "qualification" ? 1 : 2;
@@ -743,8 +792,9 @@ function AssignmentsContent() {
           if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
           return a.id.localeCompare(b.id);
         });
+      const hasPracticeStage = practiceOptions.some((row) => row.stage === "practice");
       let mergedPracticeOptions = practiceOptions;
-      if (effectiveEvent !== "app-testing" && practiceOptions.length === 0) {
+      if (effectiveEvent !== "app-testing" && !hasPracticeStage) {
         const firstSchedule = await fetchFirstSchedule(effectiveEvent, "Practice");
         const firstSeeds = buildFirstPracticeSeeds(effectiveEvent, firstSchedule);
         const firstOptions = firstSeeds.map((seed) => ({
@@ -867,26 +917,38 @@ function AssignmentsContent() {
     () => (selectedEvent ? manualTeamListsByEvent[selectedEvent] || [] : []),
     [manualTeamListsByEvent, selectedEvent]
   );
+  const firstEventTeams = useMemo(
+    () => (selectedEvent ? firstTeamsByEvent[selectedEvent] || [] : []),
+    [firstTeamsByEvent, selectedEvent]
+  );
   const eventTeamOptions = useMemo(() => {
     const combined = new Set<number>([
       ...matchOptions.flatMap((match) => match.teams),
       ...manualEventTeams,
+      ...firstEventTeams,
     ]);
     return Array.from(combined).sort((a, b) => a - b);
-  }, [matchOptions, manualEventTeams]);
+  }, [matchOptions, manualEventTeams, firstEventTeams]);
   const eventPracticeMatches = useMemo(
     () => practiceMatchOptions.filter((match) => match.stage === "practice"),
     [practiceMatchOptions]
   );
   const typeFilteredMatches = useMemo<AssignmentMatchChoice[]>(() => {
     if (selectedMatchType === "practice") {
-      return eventPracticeMatches
-        .slice()
-        .sort((a, b) => a.matchNumber - b.matchNumber)
-        .map((match) => ({
-          key: `p${match.matchNumber}`,
-          label: `Practice ${match.matchNumber}`,
-          teams: match.teams.length > 0 ? match.teams : eventTeamOptions,
+      const byMatch = new Map<number, Set<number>>();
+      eventPracticeMatches.forEach((match) => {
+        const matchNumber = match.matchNumber;
+        if (!Number.isFinite(matchNumber) || matchNumber <= 0) return;
+        const bucket = byMatch.get(matchNumber) || new Set<number>();
+        match.teams.forEach((team) => bucket.add(team));
+        byMatch.set(matchNumber, bucket);
+      });
+      return Array.from(byMatch.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([matchNumber, teams]) => ({
+          key: `p${matchNumber}`,
+          label: `Practice ${matchNumber}`,
+          teams: teams.size > 0 ? Array.from(teams).sort((a, b) => a - b) : eventTeamOptions,
         }));
     }
     if (selectedMatchType === "qualification") {
