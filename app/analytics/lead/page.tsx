@@ -97,7 +97,7 @@ function LeadAnalyticsContent() {
       filtered.slice().sort((a, b) => {
         const matchA = a.matchLabel || a.matchId || "";
         const matchB = b.matchLabel || b.matchId || "";
-        const matchSort = compareMatchLabels(matchA, matchB);
+        const matchSort = compareMatchLabels(matchA, matchB, "asc");
         if (matchSort !== 0) return matchSort;
         const allianceSort = String(a.alliance || "").localeCompare(String(b.alliance || ""));
         if (allianceSort !== 0) return allianceSort;
