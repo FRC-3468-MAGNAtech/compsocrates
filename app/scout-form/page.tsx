@@ -1539,6 +1539,7 @@ function ScoutFormContent() {
         teamId: userData.teamId || "",
         eventKey,
         game: "REBUILT",
+        matchKey: selectedMatch.id,
         matchId: selectedMatch.id,
         matchType: selectedMatch.type,
         matchNumber: String(selectedMatch.matchNumber),
@@ -1570,6 +1571,7 @@ function ScoutFormContent() {
           notes: leadForm.overallAllianceNotes.trim(),
           skillLevel: leadForm.overallAllianceSkillLevel || 0,
         },
+        createdAt: Date.now(),
         submittedAt: Date.now(),
         timestamp: Date.now(),
       });

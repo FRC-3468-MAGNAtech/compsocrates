@@ -2307,22 +2307,26 @@ function buildMatchScoutOrder(
   const randomizeUsesMatches = randomizeTarget === "match" || randomizeTarget === "practice";
   const randomizePriorityCandidates = useMemo(() => {
     if (randomizeTarget === "practice") {
-      const eventKey = String(randomizePracticeEventKey || "").trim().toLowerCase();
-      if (!eventKey) return [];
-      return practicePriorityTeamsByEvent[eventKey] || [];
+      const eventKeyRaw = String(randomizePracticeEventKey || "").trim();
+      const eventKey = eventKeyRaw.toLowerCase();
+      if (!eventKeyRaw) return [];
+      const fromAssignments = practicePriorityTeamsByEvent[eventKey] || [];
+      if (fromAssignments.length > 0) return fromAssignments;
+      const fromFirst = firstTeamsByEvent[eventKeyRaw] || firstTeamsByEvent[eventKey] || [];
+      if (fromFirst.length > 0) return fromFirst;
+      return manualTeamListsByEvent[eventKeyRaw] || manualTeamListsByEvent[eventKey] || [];
     }
     if (randomizeTarget === "pit" || randomizeTarget === "team") {
       return [];
     }
-    return Array.from(
-      new Set(
-        matchOptions
-          .filter((match) => match.compLevel === "qm")
-          .flatMap((match) => match.teams)
-          .filter((team) => Number.isFinite(team) && team > 0)
-      )
-    ).sort((a, b) => a - b);
-  }, [matchOptions, practicePriorityTeamsByEvent, randomizePracticeEventKey, randomizeTarget]);
+    const fromMatches = matchOptions
+      .filter((match) => match.compLevel === "qm")
+      .flatMap((match) => match.teams)
+      .filter((team) => Number.isFinite(team) && team > 0);
+    const fromFirst = firstTeamsByEvent[selectedEvent] || [];
+    const fromManual = manualTeamListsByEvent[selectedEvent] || [];
+    return Array.from(new Set([...fromMatches, ...fromFirst, ...fromManual])).sort((a, b) => a - b);
+  }, [matchOptions, practicePriorityTeamsByEvent, randomizePracticeEventKey, randomizeTarget, firstTeamsByEvent, manualTeamListsByEvent, selectedEvent]);
   const filteredRandomizePriorityCandidates = useMemo(() => {
     const needle = randomizePriorityTeamSearch.trim().toLowerCase();
     if (!needle) return randomizePriorityCandidates;
