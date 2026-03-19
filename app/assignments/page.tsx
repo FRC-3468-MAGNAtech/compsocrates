@@ -941,66 +941,62 @@ function AssignmentsContent() {
       });
       setManualTeamListsByEvent(normalizedManualTeams);
 
+      let matches: TBAMatch[] = [];
       try {
-        const matches = await fetchEventMatchesForAssignments(effectiveEvent, encryptedKey, plainKey);
-        const sorted = [...matches].sort((a, b) => {
-          const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
-          if (priorityDiff !== 0) return priorityDiff;
-          if (a.set_number !== b.set_number) return a.set_number - b.set_number;
-          return a.match_number - b.match_number;
-        });
-
-        const options = sorted.map((match) => ({
-          key: match.key,
-          label: matchLabel(match),
-          teams: [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
-            .map((teamKey) => parseInt(teamKey.replace("frc", ""), 10))
-            .filter((teamNumber) => !Number.isNaN(teamNumber)),
-          compLevel: match.comp_level,
-          matchNumber: match.match_number,
-          setNumber: match.set_number,
-          scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
-        }));
-        const hasFinals = options.some((match) => match.compLevel === "f");
-        if (!hasFinals && options.length > 0) {
-          for (let n = 1; n <= 3; n += 1) {
-            options.push({
-              key: `f${n}`,
-              label: `Finals ${n}`,
-              teams: [],
-              compLevel: "f",
-              matchNumber: n,
-              setNumber: 1,
-              scheduleTime: 0,
-            });
-          }
-        }
-        const normalizedOptions = options.slice().sort((a, b) => {
-          const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
-          if (priorityDiff !== 0) return priorityDiff;
-          if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
-          return a.matchNumber - b.matchNumber;
-        });
-        setMatchOptions(normalizedOptions);
-
-        const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(effectiveEvent, matches);
-        const mergedPracticeOptions = mergePracticeRows(practiceFromSchedule, practiceFromFirestore);
-        if (mergedPracticeOptions.length > 0) {
-          setPracticeMatchOptions(mergedPracticeOptions);
-          setPracticeScheduleMatchesByEvent((prev) => ({
-            ...prev,
-            [effectiveEvent]: mergedPracticeOptions,
-          }));
-        } else {
-          setPracticeMatchOptions(practiceFromFirestore);
-          setPracticeScheduleMatchesByEvent((prev) => ({
-            ...prev,
-            [effectiveEvent]: practiceFromFirestore,
-          }));
-        }
+        matches = await fetchEventMatchesForAssignments(effectiveEvent, encryptedKey, plainKey);
       } catch (error) {
-        console.error("Unable to fetch TBA matches for assignments:", error);
-        setMatchOptions([]);
+        console.warn("Unable to fetch TBA matches for assignments:", error);
+      }
+
+      const sorted = [...matches].sort((a, b) => {
+        const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
+        if (priorityDiff !== 0) return priorityDiff;
+        if (a.set_number !== b.set_number) return a.set_number - b.set_number;
+        return a.match_number - b.match_number;
+      });
+
+      const options = sorted.map((match) => ({
+        key: match.key,
+        label: matchLabel(match),
+        teams: [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+          .map((teamKey) => parseInt(teamKey.replace("frc", ""), 10))
+          .filter((teamNumber) => !Number.isNaN(teamNumber)),
+        compLevel: match.comp_level,
+        matchNumber: match.match_number,
+        setNumber: match.set_number,
+        scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
+      }));
+      const hasFinals = options.some((match) => match.compLevel === "f");
+      if (!hasFinals && options.length > 0) {
+        for (let n = 1; n <= 3; n += 1) {
+          options.push({
+            key: `f${n}`,
+            label: `Finals ${n}`,
+            teams: [],
+            compLevel: "f",
+            matchNumber: n,
+            setNumber: 1,
+            scheduleTime: 0,
+          });
+        }
+      }
+      const normalizedOptions = options.slice().sort((a, b) => {
+        const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
+        if (priorityDiff !== 0) return priorityDiff;
+        if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
+        return a.matchNumber - b.matchNumber;
+      });
+      setMatchOptions(normalizedOptions);
+
+      const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(effectiveEvent, matches);
+      const mergedPracticeOptions = mergePracticeRows(practiceFromSchedule, practiceFromFirestore);
+      if (mergedPracticeOptions.length > 0) {
+        setPracticeMatchOptions(mergedPracticeOptions);
+        setPracticeScheduleMatchesByEvent((prev) => ({
+          ...prev,
+          [effectiveEvent]: mergedPracticeOptions,
+        }));
+      } else {
         setPracticeMatchOptions(practiceFromFirestore);
         setPracticeScheduleMatchesByEvent((prev) => ({
           ...prev,
@@ -1201,7 +1197,12 @@ function AssignmentsContent() {
         .sort((a, b) => a.matchNumber - b.matchNumber);
       let mergedPracticeRows = practiceRows;
       if (safeEventKey !== "app-testing") {
-        const matches = await fetchEventMatchesForAssignments(safeEventKey, teamTbaAuth.encryptedKey, teamTbaAuth.plainKey);
+        let matches: TBAMatch[] = [];
+        try {
+          matches = await fetchEventMatchesForAssignments(safeEventKey, teamTbaAuth.encryptedKey, teamTbaAuth.plainKey);
+        } catch (error) {
+          console.warn("Unable to fetch TBA matches for practice schedule:", error);
+        }
         const scheduleRows = await buildPracticeRowsFromMatchListStyle(safeEventKey, matches);
         mergedPracticeRows = mergePracticeRows(scheduleRows, practiceRows);
       }
@@ -1442,7 +1443,12 @@ function buildMatchScoutOrder(
       (row) => row.stage === "practice" && row.eventKey === safeEventKey && row.matchNumber > 0
     );
     if (existing.length > 0) return existing;
-    const matches = await fetchEventMatchesForAssignments(safeEventKey, teamTbaAuth.encryptedKey, teamTbaAuth.plainKey);
+    let matches: TBAMatch[] = [];
+    try {
+      matches = await fetchEventMatchesForAssignments(safeEventKey, teamTbaAuth.encryptedKey, teamTbaAuth.plainKey);
+    } catch (error) {
+      console.warn("Unable to fetch TBA matches for practice sync:", error);
+    }
     const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(safeEventKey, matches);
     const merged = mergePracticeRows(practiceFromSchedule, existing);
     if (merged.length > 0) {
