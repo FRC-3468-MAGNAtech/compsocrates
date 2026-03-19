@@ -1569,6 +1569,7 @@ function ScoutFormContent() {
     closeLeadTeamPicker();
   }
   const fromPractice = searchParams.get("practice") === "1";
+  const leadMode = searchParams.get("lead") === "1";
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -1577,49 +1578,66 @@ function ScoutFormContent() {
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
           <div className="flex-1 p-4 space-y-6 max-w-3xl">
             <div className="bg-white rounded-xl shadow p-4">
-              <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Match Scout Form</h1>
-              {fromPractice && (
-                <p className="text-sm text-gray-600 mb-2">Opened from Practice Scouting.</p>
-              )}
-              {isHumanPlayerAssigned && (
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-2">
-                  <p className="text-sm font-medium text-yellow-800">
-                    This match, include the <strong>Human Player</strong> score.
-                  </p>
-                </div>
-              )}
-              {pitSync.eventSynced ? (
-                <p className="text-sm text-green-700 mb-2">Detected pit scout form is synced for this team and event.</p>
+              <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
+                {leadMode ? "Lead Scout Form" : "Match Scout Form"}
+              </h1>
+              {leadMode ? (
+                <p className="text-sm text-gray-600 mb-2">Alliance-level observations for strategy and notes.</p>
               ) : (
-                <p className="text-sm text-amber-700 mb-2">No pit scout form synced for this team in this event yet.</p>
+                <>
+                  {fromPractice && (
+                    <p className="text-sm text-gray-600 mb-2">Opened from Practice Scouting.</p>
+                  )}
+                  {isHumanPlayerAssigned && (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-2">
+                      <p className="text-sm font-medium text-yellow-800">
+                        This match, include the <strong>Human Player</strong> score.
+                      </p>
+                    </div>
+                  )}
+                  {pitSync.eventSynced ? (
+                    <p className="text-sm text-green-700 mb-2">Detected pit scout form is synced for this team and event.</p>
+                  ) : (
+                    <p className="text-sm text-amber-700 mb-2">No pit scout form synced for this team in this event yet.</p>
+                  )}
+                  {pitMismatchMessages.length > 0 && (
+                    <div className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-2">
+                      <p className="text-sm font-medium text-red-700">
+                        Warning: match scout scales do not match synced pit scout values for this team.
+                      </p>
+                      {pitMismatchMessages.map((message) => (
+                        <p key={message} className="text-xs text-red-700">
+                          {message}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 max-w-sm">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
+                    <select
+                      className="w-full border rounded p-2"
+                      value="REBUILT"
+                      onChange={(e) => {
+                        if (e.target.value === "REEFSCAPE") {
+                          router.push("/scout-form-reefscape");
+                        }
+                      }}
+                    >
+                      <option value="REEFSCAPE">REEFSCAPE Form</option>
+                      <option value="REBUILT">REBUILT Form</option>
+                    </select>
+                  </div>
+                </>
               )}
-              {pitMismatchMessages.length > 0 && (
-                <div className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-2">
-                  <p className="text-sm font-medium text-red-700">
-                    Warning: match scout scales do not match synced pit scout values for this team.
-                  </p>
-                  {pitMismatchMessages.map((message) => (
-                    <p key={message} className="text-xs text-red-700">
-                      {message}
-                    </p>
-                  ))}
-                </div>
-              )}
-              <div className="mt-3 max-w-sm">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
-                <select
-                  className="w-full border rounded p-2"
-                  value="REBUILT"
-                  onChange={(e) => {
-                    if (e.target.value === "REEFSCAPE") {
-                      router.push("/scout-form-reefscape");
-                    }
-                  }}
+              {leadMode && (
+                <button
+                  type="button"
+                  onClick={() => router.push("/scout-form")}
+                  className="mt-3 px-3 py-1.5 rounded border border-gray-200 text-sm text-gray-700 hover:bg-gray-100"
                 >
-                  <option value="REEFSCAPE">REEFSCAPE Form</option>
-                  <option value="REBUILT">REBUILT Form</option>
-                </select>
-              </div>
+                  Back to Match Scout Form
+                </button>
+              )}
             </div>
 
             <div className="bg-white rounded-xl shadow p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
@@ -1630,13 +1648,14 @@ function ScoutFormContent() {
               </div>
             </div>
 
-            <form
-              className="space-y-6"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submit();
-              }}
-            >
+            {!leadMode && (
+              <form
+                className="space-y-6"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submit();
+                }}
+              >
                 <div className="bg-white rounded-xl shadow p-4 space-y-3">
                   <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
                   <label className="block text-sm font-medium text-gray-700">Scout Name</label>
@@ -1814,15 +1833,23 @@ function ScoutFormContent() {
                   ))}
                 </div>
 
-                <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>{saving ? "Submitting..." : "Submit Match Scout Form"}</button>
-            </form>
+                <div className="space-y-2">
+                  <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
+                    {saving ? "Submitting..." : "Submit Match Scout Form"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/scout-form?lead=1")}
+                    className="w-full py-3 rounded border border-gray-200 text-gray-700 font-semibold hover:bg-gray-100"
+                  >
+                    Open Lead Scout Form
+                  </button>
+                </div>
+              </form>
+            )}
 
-            <div className="bg-white rounded-xl shadow p-4">
-              <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--primary-color)" }}>Lead Scout Form</h1>
-              <p className="text-sm text-gray-600">Alliance-level observations for strategy and notes.</p>
-            </div>
-
-            <form className="space-y-6" onSubmit={submitLead}>
+            {leadMode && (
+              <form className="space-y-6" onSubmit={submitLead}>
               <div className="bg-white rounded-xl shadow p-4 space-y-3">
                 <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
                 <div className="flex items-center gap-3 flex-wrap">
@@ -1977,24 +2004,29 @@ function ScoutFormContent() {
               <button type="submit" disabled={leadSaving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
                 {leadSaving ? "Submitting..." : "Submit Lead Scout Form"}
               </button>
-            </form>
+              </form>
+            )}
           </div>
 
-          <div className="hidden md:block w-80 p-4">
-            <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
-              <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
-              <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Optional notes..." />
-            </div>
-          </div>
+          {!leadMode && (
+            <>
+              <div className="hidden md:block w-80 p-4">
+                <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
+                  <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
+                  <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Optional notes..." />
+                </div>
+              </div>
 
-          <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
-            <button onClick={() => setMobileNotesOpen((p) => !p)} className="px-2 py-4 rounded-l-xl text-white" style={{ backgroundColor: "var(--primary-color)" }}>{mobileNotesOpen ? ">" : "<"}</button>
-          </div>
-          {mobileNotesOpen && (
-            <div className="fixed inset-0 z-50 bg-white p-4">
-              <div className="flex items-center justify-between mb-2"><h2 className="text-xl font-semibold">Notes</h2><button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
-              <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full h-[calc(100%-3rem)] border rounded p-3 resize-none" />
-            </div>
+              <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
+                <button onClick={() => setMobileNotesOpen((p) => !p)} className="px-2 py-4 rounded-l-xl text-white" style={{ backgroundColor: "var(--primary-color)" }}>{mobileNotesOpen ? ">" : "<"}</button>
+              </div>
+              {mobileNotesOpen && (
+                <div className="fixed inset-0 z-50 bg-white p-4">
+                  <div className="flex items-center justify-between mb-2"><h2 className="text-xl font-semibold">Notes</h2><button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+                  <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full h-[calc(100%-3rem)] border rounded p-3 resize-none" />
+                </div>
+              )}
+            </>
           )}
 
           <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
