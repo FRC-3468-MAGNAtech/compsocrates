@@ -116,6 +116,9 @@ function MatchScoutFormContent() {
         teamId: userData.teamId || "",
       });
       alert("Match Scout placeholder submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
       setForm((prev) => ({
         ...prev,
         teamNumber: "",

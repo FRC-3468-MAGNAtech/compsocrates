@@ -33,6 +33,9 @@ function HelperFormContent() {
         createdAt: Date.now(),
       });
       alert("Helper Form submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
       setTeamNumber("");
       setSuccessful(false);
       setIssueSolved("");

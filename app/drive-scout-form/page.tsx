@@ -519,6 +519,9 @@ function DriveReflectionFormContent() {
         createdAt: Date.now(),
       });
       alert("Drive Reflection Form submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
     } catch (error) {
       console.error("Failed to submit drive reflection form:", error);
       alert("Could not submit form.");

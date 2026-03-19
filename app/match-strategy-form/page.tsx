@@ -464,6 +464,9 @@ function MatchStrategyFormContent() {
         createdAt: Date.now(),
       });
       alert("Match Strategy Form submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
     } catch (error) {
       console.error("Failed to submit match strategy form:", error);
       alert("Could not submit form.");

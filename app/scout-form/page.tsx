@@ -1443,6 +1443,9 @@ function ScoutFormContent() {
         timestamp: Date.now(),
       });
       alert("Match scout form submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
       setScoutedCounts((prev) => ({ ...prev, [selectedMatch.id]: (prev[selectedMatch.id] || 0) + 1 }));
       setScoutedTeamsByMatch((prev) => {
         const now = new Set(prev[selectedMatch.id] || []);
@@ -1544,6 +1547,9 @@ function ScoutFormContent() {
         timestamp: Date.now(),
       });
       alert("Lead scout form submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
       setLeadForm((prev) => ({
         ...prev,
         alliance: "",

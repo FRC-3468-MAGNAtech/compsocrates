@@ -163,6 +163,9 @@ function TeamStrategyFormContent() {
         createdAt: Date.now(),
       });
       alert("Team Strategy Form submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
       setTeamNumber("");
       setStartingPosition("");
       setBestAt("");

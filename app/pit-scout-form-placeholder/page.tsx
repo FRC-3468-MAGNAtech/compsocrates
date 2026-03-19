@@ -98,6 +98,9 @@ function PitScoutPlaceholderContent() {
       const payload = buildPitReefscapePayload(form, userData.uid, userData.teamId || "");
       await addDoc(collection(db, "pitScouting"), payload);
       alert("Pit Scout placeholder submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
       setForm((prev) => ({
         ...prev,
         teamNumber: "",

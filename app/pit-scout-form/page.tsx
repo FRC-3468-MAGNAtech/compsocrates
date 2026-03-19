@@ -346,6 +346,9 @@ function PitScoutFormContent() {
       };
       await addDoc(collection(db, "pitScouting"), payload);
       alert("Pit Scout Form submitted.");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
       setScoutedTeams((prev) => new Set(prev).add(form.teamNumber.trim()));
       setForm((prev) => ({
         ...prev,
