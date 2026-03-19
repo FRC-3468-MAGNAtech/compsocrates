@@ -1683,16 +1683,7 @@ function buildMatchScoutOrder(
           ? "practiceAssignments"
           : "matchAssignments";
       const snap = await getDocs(query(collection(db, collectionName), where("eventKey", "==", eventKey)));
-      const docsToDelete =
-        target === "match"
-          ? snap.docs.filter((assignmentDoc) => {
-              const data = assignmentDoc.data() as Record<string, unknown>;
-              return !isEventPracticeAssignment({
-                matchKey: data.matchKey as string | undefined,
-                matchLabel: data.matchLabel as string | undefined,
-              });
-            })
-          : snap.docs;
+      const docsToDelete = snap.docs;
       if (docsToDelete.length === 0) {
         alert(`No ${targetLabel} found for ${eventLabel}.`);
         return;
@@ -2252,7 +2243,6 @@ function buildMatchScoutOrder(
   const matchAssignmentsSorted = useMemo(
     () =>
       assignments
-        .filter((assignment) => !isEventPracticeAssignment(assignment))
         .slice()
         .sort((a, b) => {
           const aKey = getAssignmentMatchSortKey(a);

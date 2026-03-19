@@ -1549,19 +1549,16 @@ function ScoutFormContent() {
         robots: [
           {
             teamNumber: leadForm.robot1TeamNumber.trim(),
-            pickNumber: leadForm.robot1PickNumber.trim(),
             notes: leadForm.robot1Notes.trim(),
             skillLevel: leadForm.robot1SkillLevel || 0,
           },
           {
             teamNumber: leadForm.robot2TeamNumber.trim(),
-            pickNumber: leadForm.robot2PickNumber.trim(),
             notes: leadForm.robot2Notes.trim(),
             skillLevel: leadForm.robot2SkillLevel || 0,
           },
           {
             teamNumber: leadForm.robot3TeamNumber.trim(),
-            pickNumber: leadForm.robot3PickNumber.trim(),
             notes: leadForm.robot3Notes.trim(),
             skillLevel: leadForm.robot3SkillLevel || 0,
           },
@@ -1601,7 +1598,8 @@ function ScoutFormContent() {
       setOverallAllianceTeamsTouched(false);
     } catch (error) {
       console.error("Error submitting lead scout form:", error);
-      alert("Could not submit lead scout form.");
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not submit lead scout form. ${message}`);
     } finally {
       setLeadSaving(false);
     }
