@@ -9,7 +9,6 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
-import { getEventMatches } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 
 type PitFormState = {
@@ -84,6 +83,31 @@ function TeamPickerModal({
   );
 }
 
+function getFirstEventCodeFromTbaKey(key: string): string {
+  const normalized = String(key || "").toLowerCase();
+  const specialMap: Record<string, string> = {
+    "2026labr": "LAKE",
+    "2025lake": "LAKE",
+  };
+  if (specialMap[normalized]) return specialMap[normalized];
+  const suffix = normalized.slice(4).toUpperCase();
+  return suffix || normalized.toUpperCase();
+}
+
+function parseManualTeamCsv(raw: string): string[] {
+  if (!raw) return [];
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const numbers = new Set<number>();
+  lines.forEach((line) => {
+    const firstValue = line.split(",")[0]?.trim() ?? "";
+    const parsed = parseInt(firstValue.replace(/[^\d]/g, ""), 10);
+    if (Number.isFinite(parsed) && parsed > 0) numbers.add(parsed);
+  });
+  return Array.from(numbers)
+    .sort((a, b) => a - b)
+    .map((num) => String(num));
+}
+
 function PitScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
@@ -92,8 +116,13 @@ function PitScoutFormContent() {
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [robotPictureUrlInput, setRobotPictureUrlInput] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
+  const [apiTeams, setApiTeams] = useState<string[]>([]);
+  const [manualTeamCsv, setManualTeamCsv] = useState("");
+  const [manualTeamNumbers, setManualTeamNumbers] = useState<string[]>([]);
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
+  const [assignedPitTeams, setAssignedPitTeams] = useState<string[]>([]);
+  const [teamLoadNote, setTeamLoadNote] = useState("");
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
     teamNumber: "",
@@ -145,6 +174,38 @@ function PitScoutFormContent() {
     setForm((prev) => ({ ...prev, robotPictureUrl: "" }));
   }
 
+  function applyManualTeamCsv() {
+    const parsed = parseManualTeamCsv(manualTeamCsv);
+    if (parsed.length === 0) {
+      alert("No valid team numbers found in the CSV.");
+      return;
+    }
+    if (typeof window !== "undefined" && eventKey) {
+      localStorage.setItem(`pit-manual-teams:${eventKey}`, manualTeamCsv);
+    }
+    setManualTeamNumbers(parsed);
+    const merged = Array.from(new Set([...parsed, ...assignedPitTeams])).sort((a, b) => Number(a) - Number(b));
+    setAvailableTeams(merged);
+    setTeamLoadNote(`Using manual team list (${parsed.length} teams).`);
+  }
+
+  function clearManualTeamCsv() {
+    setManualTeamCsv("");
+    setManualTeamNumbers([]);
+    if (typeof window !== "undefined" && eventKey) {
+      localStorage.removeItem(`pit-manual-teams:${eventKey}`);
+    }
+    if (apiTeams.length > 0) {
+      const merged = Array.from(new Set([...apiTeams, ...assignedPitTeams])).sort((a, b) => Number(a) - Number(b));
+      setAvailableTeams(merged);
+      setTeamLoadNote("");
+    } else {
+      const merged = Array.from(new Set([...assignedPitTeams])).sort((a, b) => Number(a) - Number(b));
+      setAvailableTeams(merged);
+      setTeamLoadNote(merged.length > 0 ? "Using assigned team list." : "No teams loaded yet.");
+    }
+  }
+
   useEffect(() => {
     if (!userData?.displayName) return;
     setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
@@ -166,23 +227,72 @@ function PitScoutFormContent() {
         const effectiveEvent = String(assignmentForEvent?.eventKey || resolvedEvent || "app-testing").trim() || "app-testing";
         setEventKey(effectiveEvent);
 
-        const assignedTeam = String(assignmentForEvent?.teamNumber || "").trim();
-        if (assignedTeam) {
-          setForm((prev) => (prev.teamNumber ? prev : { ...prev, teamNumber: assignedTeam }));
+        const assignedTeamsForEvent = pitAssignments
+          .filter((assignment) => String(assignment.eventKey || "").trim() === effectiveEvent)
+          .map((assignment) => String(assignment.teamNumber || "").replace(/[^\d]/g, ""))
+          .filter(Boolean);
+        const sortedAssignedTeams = Array.from(new Set(assignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b));
+        setAssignedPitTeams(sortedAssignedTeams);
+
+        const manualStorageKey = `pit-manual-teams:${effectiveEvent}`;
+        const storedManualCsv =
+          typeof window !== "undefined" ? localStorage.getItem(manualStorageKey) || "" : "";
+        const storedManualTeams = parseManualTeamCsv(storedManualCsv);
+        setManualTeamCsv(storedManualCsv);
+        setManualTeamNumbers(storedManualTeams);
+
+        let firstTeams: string[] = [];
+        let loadNote = "";
+        if (effectiveEvent !== "app-testing") {
+          const year = Number(effectiveEvent.slice(0, 4));
+          if (Number.isFinite(year)) {
+            try {
+              const eventCode = getFirstEventCodeFromTbaKey(effectiveEvent);
+              const response = await fetch("/api/first/teams", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ year, eventCode }),
+              });
+              if (response.ok) {
+                const payload = await response.json();
+                const rows = Array.isArray(payload.teams) ? (payload.teams as Array<Record<string, unknown>>) : [];
+                firstTeams = Array.from(
+                  new Set(
+                    rows
+                      .map((team) => Number(team.teamNumber || 0))
+                      .filter((teamNumber) => Number.isFinite(teamNumber) && teamNumber > 0)
+                      .map((teamNumber) => String(teamNumber))
+                  )
+                ).sort((a, b) => Number(a) - Number(b));
+                if (firstTeams.length === 0) loadNote = "FIRST API returned no teams yet.";
+              } else {
+                const payload = await response.json().catch(() => ({}));
+                const reason = String((payload as { code?: string }).code || "");
+                loadNote = reason === "missing_credentials" ? "FIRST API credentials are missing." : `Unable to load teams (${response.status}).`;
+              }
+            } catch (error) {
+              console.error("Failed to fetch FIRST teams:", error);
+              loadNote = "Unable to load teams right now.";
+            }
+          } else {
+            loadNote = "Event key missing year for FIRST API.";
+          }
         }
 
-        if (effectiveEvent !== "app-testing") {
-          const matches = await getEventMatches(effectiveEvent);
-          const teamSet = new Set<string>();
-          matches.forEach((match) => {
-            [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys].forEach((teamKey) => {
-              const team = teamKey.replace("frc", "").trim();
-              if (team) teamSet.add(team);
-            });
-          });
-          setAvailableTeams(Array.from(teamSet).sort((a, b) => Number(a) - Number(b)));
+        setApiTeams(firstTeams);
+        const baseTeams = firstTeams.length > 0 ? firstTeams : storedManualTeams;
+        const mergedTeams = Array.from(new Set([...baseTeams, ...sortedAssignedTeams])).sort((a, b) => Number(a) - Number(b));
+        setAvailableTeams(mergedTeams);
+        if (firstTeams.length > 0) {
+          setTeamLoadNote("");
+        } else if (storedManualTeams.length > 0) {
+          setTeamLoadNote("Using manual team list.");
+        } else if (sortedAssignedTeams.length > 0) {
+          setTeamLoadNote("Using assigned team list.");
+        } else if (loadNote) {
+          setTeamLoadNote(loadNote);
         } else {
-          setAvailableTeams([]);
+          setTeamLoadNote("No teams available yet.");
         }
 
         const scoutedSnap = await getDocs(
@@ -196,10 +306,23 @@ function PitScoutFormContent() {
         setScoutedTeams(done);
       } catch (error) {
         console.error("Failed loading pit team list:", error);
+        setAvailableTeams([]);
+        setTeamLoadNote("Unable to load teams right now.");
       }
     }
     void loadEventTeams();
-  }, [userData?.teamId]);
+  }, [userData?.teamId, userData?.uid]);
+
+  useEffect(() => {
+    if (assignedPitTeams.length === 0) return;
+    const nextTeam = assignedPitTeams.find((team) => !scoutedTeams.has(team));
+    if (!nextTeam) return;
+    setForm((prev) => {
+      if (prev.teamNumber && !scoutedTeams.has(prev.teamNumber)) return prev;
+      if (prev.teamNumber === nextTeam) return prev;
+      return { ...prev, teamNumber: nextTeam };
+    });
+  }, [assignedPitTeams, form.teamNumber, scoutedTeams]);
 
   const canSubmit = useMemo(() => {
     return form.teamNumber.trim().length > 0;
@@ -283,6 +406,33 @@ function PitScoutFormContent() {
                   required
                 />
                 <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
+              </div>
+              {teamLoadNote && <p className="text-xs text-gray-500">{teamLoadNote}</p>}
+              <div className="rounded-lg border border-dashed p-3 space-y-2 bg-gray-50">
+                <p className="text-sm font-medium text-gray-700">Manual Team Import (CSV Fallback)</p>
+                <textarea
+                  value={manualTeamCsv}
+                  onChange={(event) => setManualTeamCsv(event.target.value)}
+                  className="w-full border rounded p-2 text-sm"
+                  rows={4}
+                  placeholder="team_number,team_name,city,state_prov,country,robot_image_url"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={applyManualTeamCsv}
+                    className="px-3 py-2 rounded text-white text-sm"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Use CSV
+                  </button>
+                  <button type="button" onClick={clearManualTeamCsv} className="px-3 py-2 rounded border text-sm">
+                    Clear
+                  </button>
+                  {manualTeamNumbers.length > 0 && (
+                    <span className="text-xs text-gray-500 flex items-center">Loaded {manualTeamNumbers.length} teams</span>
+                  )}
+                </div>
               </div>
 
               <label className="block text-sm font-medium text-gray-700">Robot Weight</label>
