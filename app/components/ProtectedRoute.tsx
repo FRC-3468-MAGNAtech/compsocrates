@@ -39,9 +39,9 @@ export default function ProtectedRoute({
       return () => {};
     }
     setFormAccessLoading(true);
-    async function loadOverrides() {
+    async function loadOverrides(resolvedTeamId: string) {
       try {
-        const teamDoc = await getDoc(doc(db, "teams", teamId));
+        const teamDoc = await getDoc(doc(db, "teams", resolvedTeamId));
         if (!isActive) return;
         if (teamDoc.exists()) {
           setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.data().formAccessOverrides));
@@ -55,7 +55,7 @@ export default function ProtectedRoute({
         if (isActive) setFormAccessLoading(false);
       }
     }
-    void loadOverrides();
+    void loadOverrides(teamId);
     return () => {
       isActive = false;
     };
