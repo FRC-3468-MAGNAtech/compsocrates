@@ -485,6 +485,17 @@ async function fetchFirstTeamsForEvent(eventKey: string): Promise<number[]> {
   }
 }
 
+async function fetchFirstPracticeSchedule(eventKey: string): Promise<Awaited<ReturnType<typeof fetchFirstSchedule>>> {
+  const primary = await fetchFirstSchedule(eventKey, "Practice");
+  if (primary.length > 0) return primary;
+  const lower = await fetchFirstSchedule(eventKey, "practice");
+  if (lower.length > 0) return lower;
+  const fallback = await fetchFirstSchedule(eventKey, "");
+  if (fallback.length === 0) return [];
+  const filtered = fallback.filter((match) => String(match.tournamentLevel || "").toLowerCase().includes("practice"));
+  return filtered;
+}
+
 function AssignmentsContent() {
   const { userData, teamTimeOverride } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -795,7 +806,7 @@ function AssignmentsContent() {
       const hasPracticeStage = practiceOptions.some((row) => row.stage === "practice");
       let mergedPracticeOptions = practiceOptions;
       if (effectiveEvent !== "app-testing" && !hasPracticeStage) {
-        const firstSchedule = await fetchFirstSchedule(effectiveEvent, "Practice");
+        const firstSchedule = await fetchFirstPracticeSchedule(effectiveEvent);
         const firstSeeds = buildFirstPracticeSeeds(effectiveEvent, firstSchedule);
         const firstOptions = firstSeeds.map((seed) => ({
           id: seed.id,
@@ -1102,7 +1113,7 @@ function AssignmentsContent() {
         .sort((a, b) => a.matchNumber - b.matchNumber);
       let mergedPracticeRows = practiceRows;
       if (safeEventKey !== "app-testing" && practiceRows.length === 0) {
-        const firstSchedule = await fetchFirstSchedule(safeEventKey, "Practice");
+        const firstSchedule = await fetchFirstPracticeSchedule(safeEventKey);
         const firstSeeds = buildFirstPracticeSeeds(safeEventKey, firstSchedule);
         const firstOptions = firstSeeds.map((seed) => ({
           id: seed.id,
@@ -2677,7 +2688,7 @@ function buildMatchScoutOrder(
                     onClick={() => setAssignmentModalMode("team")}
                     className={`py-2 rounded text-sm font-medium ${assignmentModalMode === "team" ? "bg-red-600 text-white" : "bg-gray-100"}`}
                   >
-                    Team
+                    Team Strategy
                   </button>
                   <button
                     onClick={() => setAssignmentModalMode("practice")}
