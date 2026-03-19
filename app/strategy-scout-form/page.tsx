@@ -130,9 +130,25 @@ function TeamStrategyFormContent() {
     async function loadContext() {
       if (!userData?.teamId) return;
       try {
-        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        const resolvedEvent = await resolveDetectedTeamEvent(userData.teamId);
-        const resolvedKey = resolvedEvent?.key || "app-testing";
+        let teamData: Record<string, unknown> = {};
+        try {
+          const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+          teamData = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
+        } catch (error) {
+          console.warn("Unable to load team document:", error);
+        }
+
+        let resolvedKey = "app-testing";
+        let resolvedName = "Practice Event";
+        try {
+          const resolvedEvent = await resolveDetectedTeamEvent(userData.teamId);
+          if (resolvedEvent?.key) {
+            resolvedKey = resolvedEvent.key;
+            resolvedName = resolvedEvent.name || resolvedKey;
+          }
+        } catch (error) {
+          console.warn("Unable to resolve event for strategy form:", error);
+        }
 
         let teamAssignments: Record<string, unknown>[] = [];
         try {
@@ -141,7 +157,7 @@ function TeamStrategyFormContent() {
           );
           teamAssignments = teamAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
         } catch (error) {
-          console.warn("Unable to load team assignments for team strategy:", error);
+          console.warn("Unable to load team assignments:", error);
         }
 
         const assignmentForEvent =
@@ -149,7 +165,7 @@ function TeamStrategyFormContent() {
           (resolvedKey === "app-testing" ? teamAssignments[0] : undefined);
         const effectiveEvent = String(assignmentForEvent?.eventKey || resolvedKey || "app-testing").trim() || "app-testing";
         setEventKey(effectiveEvent);
-        setEventName(effectiveEvent === resolvedKey ? resolvedEvent?.name || "Practice Event" : effectiveEvent);
+        setEventName(effectiveEvent === resolvedKey ? resolvedName : effectiveEvent);
 
         const assignedTeamsForEvent = teamAssignments
           .filter((assignment) => String(assignment.eventKey || "").trim() === effectiveEvent)
@@ -158,7 +174,7 @@ function TeamStrategyFormContent() {
         const sortedAssignedTeams = Array.from(new Set(assignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b));
         setAssignedTeamNumbers(sortedAssignedTeams);
 
-        const manualByEvent = (teamDoc.data()?.manualTeamListsByEvent || {}) as Record<string, unknown>;
+        const manualByEvent = (teamData.manualTeamListsByEvent || {}) as Record<string, unknown>;
         const storedManualTeams = parseManualTeamList(manualByEvent[effectiveEvent]);
 
         let firstTeams: string[] = [];
@@ -235,6 +251,8 @@ function TeamStrategyFormContent() {
         }
       } catch (error) {
         console.error("Failed loading strategy form context:", error);
+        setAvailableTeams([]);
+        setTeamLoadNote("Unable to load teams right now.");
       }
     }
 
