@@ -134,10 +134,16 @@ function TeamStrategyFormContent() {
         const resolvedEvent = await resolveDetectedTeamEvent(userData.teamId);
         const resolvedKey = resolvedEvent?.key || "app-testing";
 
-        const teamAssignmentsSnap = await getDocs(
-          query(collection(db, "teamAssignments"), where("scoutId", "==", userData.uid))
-        );
-        const teamAssignments = teamAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        let teamAssignments: Record<string, unknown>[] = [];
+        try {
+          const teamAssignmentsSnap = await getDocs(
+            query(collection(db, "teamAssignments"), where("scoutId", "==", userData.uid))
+          );
+          teamAssignments = teamAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        } catch (error) {
+          console.warn("Unable to load team assignments for team strategy:", error);
+        }
+
         const assignmentForEvent =
           teamAssignments.find((assignment) => String(assignment.eventKey || "").trim() === resolvedKey) ||
           (resolvedKey === "app-testing" ? teamAssignments[0] : undefined);
@@ -208,20 +214,25 @@ function TeamStrategyFormContent() {
           setTeamLoadNote("No teams available yet.");
         }
 
-        const strategySnap = await getDocs(
-          query(
-            collection(db, "strategyScouting"),
-            where("teamId", "==", userData.teamId),
-            where("eventKey", "==", effectiveEvent),
-            where("game", "==", "REBUILT")
-          )
-        );
-        const done = new Set<string>();
-        strategySnap.docs.forEach((snap) => {
-          const value = String(snap.data().teamNumber || "").trim();
-          if (value) done.add(value);
-        });
-        setScoutedTeams(done);
+        try {
+          const strategySnap = await getDocs(
+            query(
+              collection(db, "strategyScouting"),
+              where("teamId", "==", userData.teamId),
+              where("eventKey", "==", effectiveEvent),
+              where("game", "==", "REBUILT")
+            )
+          );
+          const done = new Set<string>();
+          strategySnap.docs.forEach((snap) => {
+            const value = String(snap.data().teamNumber || "").trim();
+            if (value) done.add(value);
+          });
+          setScoutedTeams(done);
+        } catch (error) {
+          console.warn("Unable to load strategy scouting entries:", error);
+          setScoutedTeams(new Set());
+        }
       } catch (error) {
         console.error("Failed loading strategy form context:", error);
       }
