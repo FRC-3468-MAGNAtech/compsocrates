@@ -493,7 +493,7 @@ async function fetchFirstPracticeSchedule(eventKey: string): Promise<Awaited<Ret
   const fallback = await fetchFirstSchedule(eventKey, "");
   if (fallback.length === 0) return [];
   const filtered = fallback.filter((match) => String(match.tournamentLevel || "").toLowerCase().includes("practice"));
-  return filtered;
+  return filtered.length > 0 ? filtered : fallback;
 }
 
 function AssignmentsContent() {
@@ -694,7 +694,11 @@ function AssignmentsContent() {
       }
       const availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse), nowMs);
       setPracticeEventOptions(availablePracticeEvents);
-      const scheduleOptions = sortEventOptions(dedupeEventOptionsByName(eventsWithPracticeSchedule), nowMs);
+      const scheduleOptionsBase = sortEventOptions(dedupeEventOptionsByName(eventsWithPracticeSchedule), nowMs);
+      const selectedScheduleEvent = resolvedEvents.find((event) => event.key === selectedEvent);
+      const scheduleOptions = selectedScheduleEvent
+        ? upsertEventOption(scheduleOptionsBase, selectedScheduleEvent, nowMs)
+        : scheduleOptionsBase;
       setPracticeScheduleEventOptions(scheduleOptions);
       const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
@@ -1109,7 +1113,7 @@ function AssignmentsContent() {
             alliance: alliance === "red" || alliance === "blue" ? alliance : "",
           } as PracticeMatchOption;
         })
-        .filter((row) => row.teams.length >= 3 && row.matchNumber > 0 && row.stage === "practice")
+        .filter((row) => row.matchNumber > 0 && row.stage === "practice")
         .sort((a, b) => a.matchNumber - b.matchNumber);
       let mergedPracticeRows = practiceRows;
       if (safeEventKey !== "app-testing" && practiceRows.length === 0) {
