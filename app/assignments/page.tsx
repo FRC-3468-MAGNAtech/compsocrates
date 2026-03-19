@@ -374,7 +374,7 @@ function buildFirstPracticeSeeds(eventKey: string, matches: Awaited<ReturnType<t
         id: `first_${safeEvent}_practice_${matchNumber}`,
         matchNumber,
         matchKey,
-        alliance: "",
+        alliance: "red",
         teams: allTeams,
         scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
       });
