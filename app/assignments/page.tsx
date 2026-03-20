@@ -872,110 +872,6 @@ function AssignmentsContent() {
       const firstTeams = await fetchFirstTeamsForEvent(activeEventKey);
       setFirstTeamsByEvent((prev) => ({ ...prev, [activeEventKey]: firstTeams }));
 
-      const [assignmentsSnap, pitAssignmentsSnap, teamAssignmentsSnap, practiceMatchesSnap] = await Promise.all([
-        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", activeEventKey))),
-        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", activeEventKey))),
-        getDocs(query(collection(db, "teamAssignments"), where("eventKey", "==", activeEventKey))),
-        getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", activeEventKey))),
-      ]);
-      let practiceAssignmentsDocs = [] as Array<{ id: string; data: Record<string, unknown> }>;
-      try {
-        const byTeamSnap = await getDocs(query(collection(db, "practiceAssignments"), where("teamId", "==", userData.teamId)));
-        practiceAssignmentsDocs = byTeamSnap.docs.map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          data: assignmentDoc.data() as Record<string, unknown>,
-        }));
-      } catch {
-        const byEventSnap = await getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", activeEventKey)));
-        practiceAssignmentsDocs = byEventSnap.docs.map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          data: assignmentDoc.data() as Record<string, unknown>,
-        }));
-      }
-      setAssignments(
-        assignmentsSnap.docs.map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          ...assignmentDoc.data(),
-        })) as Assignment[]
-      );
-      const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
-        id: assignmentDoc.id,
-        ...assignmentDoc.data(),
-      })) as Assignment[];
-      const eventPracticeAssignments = assignmentRows.filter((row) => isEventPracticeAssignment(row));
-      setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [activeEventKey]: eventPracticeAssignments }));
-      setPitAssignments(
-        pitAssignmentsSnap.docs.map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          ...assignmentDoc.data(),
-        })) as PitAssignment[]
-      );
-      setTeamAssignments(
-        teamAssignmentsSnap.docs.map((assignmentDoc) => ({
-          id: assignmentDoc.id,
-          ...assignmentDoc.data(),
-        })) as TeamAssignment[]
-      );
-      setPracticeAssignments(
-        practiceAssignmentsDocs.map((row) => ({
-          id: row.id,
-          ...row.data,
-        })) as PracticeAssignment[]
-      );
-
-      const practiceOptions = practiceMatchesSnap.docs
-        .map((practiceDoc) => {
-          const data = practiceDoc.data() as Record<string, unknown>;
-          const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
-          const matchNumber = Number(data.matchNumber || 0);
-          const scheduleTime = Number(data.scheduleTime || data.time || 0);
-          const alliance = String(data.alliance || "").trim().toLowerCase();
-          const teams = parseTeamNumbers(
-            data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
-          ).slice(0, 3);
-          return {
-            id: practiceDoc.id,
-            eventKey: activeEventKey,
-            matchKey: String(data.matchKey || practiceDoc.id),
-            label: practiceMatchLabel(stage, matchNumber, alliance),
-            teams,
-            stage,
-            matchNumber,
-            scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
-            isManual: Boolean(data.manualGenerated),
-            alliance: alliance === "red" || alliance === "blue" ? alliance : "",
-          } as PracticeMatchOption;
-        })
-        .filter((row) => row.matchNumber > 0)
-        .sort((a, b) => {
-          const stageOrder = a.stage === "practice" ? 0 : a.stage === "qualification" ? 1 : 2;
-          const otherStageOrder = b.stage === "practice" ? 0 : b.stage === "qualification" ? 1 : 2;
-          if (stageOrder !== otherStageOrder) return stageOrder - otherStageOrder;
-          if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
-          return a.id.localeCompare(b.id);
-        });
-      const practiceFromFirestore = practiceOptions.filter((row) => row.stage === "practice");
-      const priorityByEventRaw = (
-        teamData.priorityTeamsByEvent ||
-        teamData.assignmentPriorityTeamsByEvent ||
-        teamData.eventPriorityTeams ||
-        {}
-      ) as Record<string, unknown>;
-      const normalizedByEvent: Record<string, number[]> = {};
-      Object.entries(priorityByEventRaw).forEach(([eventKey, teamList]) => {
-        normalizedByEvent[eventKey] = parseTeamNumbers(teamList);
-      });
-      setManualPriorityTeamsByEvent(normalizedByEvent);
-      setManualPriorityTeamsGlobal(
-        parseTeamNumbers(teamData.priorityTeams || teamData.assignmentPriorityTeams || teamData.priorityTeamNumbers || [])
-      );
-      const manualTeamsByEventRaw = (teamData.manualTeamListsByEvent || {}) as Record<string, unknown>;
-      const normalizedManualTeams: Record<string, number[]> = {};
-      Object.entries(manualTeamsByEventRaw).forEach(([eventKey, teamList]) => {
-        normalizedManualTeams[eventKey] = parseManualTeamList(teamList);
-      });
-      setManualTeamListsByEvent(normalizedManualTeams);
-
       let matches: TBAMatch[] = preFetchedMatches;
       const hasQualification = matches.some((match) => match.comp_level === "qm");
       if (!hasQualification) {
@@ -1044,6 +940,145 @@ function AssignmentsContent() {
       setMatchOptions(normalizedOptions);
 
       const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(activeEventKey, matches);
+      if (practiceFromSchedule.length > 0) {
+        setPracticeMatchOptions(practiceFromSchedule);
+        setPracticeScheduleMatchesByEvent((prev) => ({
+          ...prev,
+          [activeEventKey]: practiceFromSchedule,
+        }));
+      }
+
+      const [assignmentsResult, pitAssignmentsResult, teamAssignmentsResult, practiceMatchesResult] = await Promise.allSettled([
+        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", activeEventKey))),
+        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", activeEventKey))),
+        getDocs(query(collection(db, "teamAssignments"), where("eventKey", "==", activeEventKey))),
+        getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", activeEventKey))),
+      ]);
+
+      const assignmentsSnap = assignmentsResult.status === "fulfilled" ? assignmentsResult.value : null;
+      const pitAssignmentsSnap = pitAssignmentsResult.status === "fulfilled" ? pitAssignmentsResult.value : null;
+      const teamAssignmentsSnap = teamAssignmentsResult.status === "fulfilled" ? teamAssignmentsResult.value : null;
+      const practiceMatchesSnap = practiceMatchesResult.status === "fulfilled" ? practiceMatchesResult.value : null;
+
+      let practiceAssignmentsDocs = [] as Array<{ id: string; data: Record<string, unknown> }>;
+      try {
+        const byTeamSnap = await getDocs(query(collection(db, "practiceAssignments"), where("teamId", "==", userData.teamId)));
+        practiceAssignmentsDocs = byTeamSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          data: assignmentDoc.data() as Record<string, unknown>,
+        }));
+      } catch (error) {
+        console.warn("Practice assignments team query failed:", error);
+        try {
+          const byEventSnap = await getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", activeEventKey)));
+          practiceAssignmentsDocs = byEventSnap.docs.map((assignmentDoc) => ({
+            id: assignmentDoc.id,
+            data: assignmentDoc.data() as Record<string, unknown>,
+          }));
+        } catch (fallbackError) {
+          console.warn("Practice assignments event query failed:", fallbackError);
+          practiceAssignmentsDocs = [];
+        }
+      }
+
+      if (assignmentsSnap) {
+        setAssignments(
+          assignmentsSnap.docs.map((assignmentDoc) => ({
+            id: assignmentDoc.id,
+            ...assignmentDoc.data(),
+          })) as Assignment[]
+        );
+        const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
+          id: assignmentDoc.id,
+          ...assignmentDoc.data(),
+        })) as Assignment[];
+        const eventPracticeAssignments = assignmentRows.filter((row) => isEventPracticeAssignment(row));
+        setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [activeEventKey]: eventPracticeAssignments }));
+      } else {
+        setAssignments([]);
+        setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [activeEventKey]: [] }));
+      }
+
+      setPitAssignments(
+        pitAssignmentsSnap
+          ? (pitAssignmentsSnap.docs.map((assignmentDoc) => ({
+              id: assignmentDoc.id,
+              ...assignmentDoc.data(),
+            })) as PitAssignment[])
+          : []
+      );
+      setTeamAssignments(
+        teamAssignmentsSnap
+          ? (teamAssignmentsSnap.docs.map((assignmentDoc) => ({
+              id: assignmentDoc.id,
+              ...assignmentDoc.data(),
+            })) as TeamAssignment[])
+          : []
+      );
+      setPracticeAssignments(
+        practiceAssignmentsDocs.map((row) => ({
+          id: row.id,
+          ...row.data,
+        })) as PracticeAssignment[]
+      );
+
+      let practiceFromFirestore: PracticeMatchOption[] = [];
+      if (practiceMatchesSnap) {
+        const practiceOptions = practiceMatchesSnap.docs
+          .map((practiceDoc) => {
+            const data = practiceDoc.data() as Record<string, unknown>;
+            const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+            const matchNumber = Number(data.matchNumber || 0);
+            const scheduleTime = Number(data.scheduleTime || data.time || 0);
+            const alliance = String(data.alliance || "").trim().toLowerCase();
+            const teams = parseTeamNumbers(
+              data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+            ).slice(0, 3);
+            return {
+              id: practiceDoc.id,
+              eventKey: activeEventKey,
+              matchKey: String(data.matchKey || practiceDoc.id),
+              label: practiceMatchLabel(stage, matchNumber, alliance),
+              teams,
+              stage,
+              matchNumber,
+              scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+              isManual: Boolean(data.manualGenerated),
+              alliance: alliance === "red" || alliance === "blue" ? alliance : "",
+            } as PracticeMatchOption;
+          })
+          .filter((row) => row.matchNumber > 0)
+          .sort((a, b) => {
+            const stageOrder = a.stage === "practice" ? 0 : a.stage === "qualification" ? 1 : 2;
+            const otherStageOrder = b.stage === "practice" ? 0 : b.stage === "qualification" ? 1 : 2;
+            if (stageOrder !== otherStageOrder) return stageOrder - otherStageOrder;
+            if (a.matchNumber !== b.matchNumber) return a.matchNumber - b.matchNumber;
+            return a.id.localeCompare(b.id);
+          });
+        practiceFromFirestore = practiceOptions.filter((row) => row.stage === "practice");
+      }
+
+      const priorityByEventRaw = (
+        teamData.priorityTeamsByEvent ||
+        teamData.assignmentPriorityTeamsByEvent ||
+        teamData.eventPriorityTeams ||
+        {}
+      ) as Record<string, unknown>;
+      const normalizedByEvent: Record<string, number[]> = {};
+      Object.entries(priorityByEventRaw).forEach(([eventKey, teamList]) => {
+        normalizedByEvent[eventKey] = parseTeamNumbers(teamList);
+      });
+      setManualPriorityTeamsByEvent(normalizedByEvent);
+      setManualPriorityTeamsGlobal(
+        parseTeamNumbers(teamData.priorityTeams || teamData.assignmentPriorityTeams || teamData.priorityTeamNumbers || [])
+      );
+      const manualTeamsByEventRaw = (teamData.manualTeamListsByEvent || {}) as Record<string, unknown>;
+      const normalizedManualTeams: Record<string, number[]> = {};
+      Object.entries(manualTeamsByEventRaw).forEach(([eventKey, teamList]) => {
+        normalizedManualTeams[eventKey] = parseManualTeamList(teamList);
+      });
+      setManualTeamListsByEvent(normalizedManualTeams);
+
       const mergedPracticeOptions = mergePracticeRows(practiceFromSchedule, practiceFromFirestore);
       if (mergedPracticeOptions.length > 0) {
         setPracticeMatchOptions(mergedPracticeOptions);
@@ -1221,35 +1256,42 @@ function AssignmentsContent() {
     const safeEventKey = String(eventKey || "").trim();
     if (!safeEventKey) return;
     try {
-      const [matchesSnap, assignmentsSnap] = await Promise.all([
+      const [matchesResult, assignmentsResult] = await Promise.allSettled([
         getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", safeEventKey))),
         getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", safeEventKey))),
       ]);
-      const practiceRows = matchesSnap.docs
-        .map((practiceDoc) => {
-          const data = practiceDoc.data() as Record<string, unknown>;
-          const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
-          const matchNumber = Number(data.matchNumber || 0);
-          const scheduleTime = Number(data.scheduleTime || data.time || 0);
-          const alliance = String(data.alliance || "").trim().toLowerCase();
-          const teams = parseTeamNumbers(
-            data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
-          ).slice(0, 3);
-          return {
-            id: practiceDoc.id,
-            eventKey: safeEventKey,
-            matchKey: String(data.matchKey || practiceDoc.id),
-            label: practiceMatchLabel(stage, matchNumber, alliance),
-            teams,
-            stage,
-            matchNumber,
-            scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
-            isManual: Boolean(data.manualGenerated),
-            alliance: alliance === "red" || alliance === "blue" ? alliance : "",
-          } as PracticeMatchOption;
-        })
-        .filter((row) => row.matchNumber > 0 && row.stage === "practice")
-        .sort((a, b) => a.matchNumber - b.matchNumber);
+
+      const matchesSnap = matchesResult.status === "fulfilled" ? matchesResult.value : null;
+      const assignmentsSnap = assignmentsResult.status === "fulfilled" ? assignmentsResult.value : null;
+
+      const practiceRows = matchesSnap
+        ? matchesSnap.docs
+            .map((practiceDoc) => {
+              const data = practiceDoc.data() as Record<string, unknown>;
+              const stage = normalizePracticeStage(data.matchType, data.matchKey, data.compLevel);
+              const matchNumber = Number(data.matchNumber || 0);
+              const scheduleTime = Number(data.scheduleTime || data.time || 0);
+              const alliance = String(data.alliance || "").trim().toLowerCase();
+              const teams = parseTeamNumbers(
+                data.allianceTeams || data.teams || data.teamNumbers || data.redAllianceTeams || data.blueAllianceTeams
+              ).slice(0, 3);
+              return {
+                id: practiceDoc.id,
+                eventKey: safeEventKey,
+                matchKey: String(data.matchKey || practiceDoc.id),
+                label: practiceMatchLabel(stage, matchNumber, alliance),
+                teams,
+                stage,
+                matchNumber,
+                scheduleTime: Number.isFinite(scheduleTime) ? scheduleTime : 0,
+                isManual: Boolean(data.manualGenerated),
+                alliance: alliance === "red" || alliance === "blue" ? alliance : "",
+              } as PracticeMatchOption;
+            })
+            .filter((row) => row.matchNumber > 0 && row.stage === "practice")
+            .sort((a, b) => a.matchNumber - b.matchNumber)
+        : [];
+
       let mergedPracticeRows = practiceRows;
       if (safeEventKey !== "app-testing") {
         let matches: TBAMatch[] = [];
@@ -1261,10 +1303,12 @@ function AssignmentsContent() {
         const scheduleRows = await buildPracticeRowsFromMatchListStyle(safeEventKey, matches);
         mergedPracticeRows = mergePracticeRows(scheduleRows, practiceRows);
       }
-      const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
-        id: assignmentDoc.id,
-        ...assignmentDoc.data(),
-      })) as Assignment[];
+      const assignmentRows = assignmentsSnap
+        ? (assignmentsSnap.docs.map((assignmentDoc) => ({
+            id: assignmentDoc.id,
+            ...assignmentDoc.data(),
+          })) as Assignment[])
+        : [];
       const practiceAssignmentRows = assignmentRows.filter((row) => isEventPracticeAssignment(row));
       setPracticeScheduleMatchesByEvent((prev) => ({ ...prev, [safeEventKey]: mergedPracticeRows }));
       setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [safeEventKey]: practiceAssignmentRows }));
