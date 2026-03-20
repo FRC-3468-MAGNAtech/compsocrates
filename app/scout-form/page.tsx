@@ -1127,7 +1127,8 @@ function ScoutFormContent() {
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
         const completionNow = getEffectiveNowSec(teamTimeOverride);
-        setModalCompleted(matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set());
+        const completedSet = matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set<string>();
+        setModalCompleted(completedSet);
 
         const assignmentSnapByEvent = await getDocs(
           query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent), where("scoutId", "==", userData.uid))
@@ -1172,20 +1173,37 @@ function ScoutFormContent() {
 
         const now = getEffectiveNowSec(teamTimeOverride);
         const graceSeconds = 10 * 60;
+        const matchTypeOrder: Record<MatchType, number> = { practice: 0, qualification: 1, finals: 2 };
         const pickNextBySchedule = (rows: MatchOption[]) => {
           const scheduled = rows
             .map((match) => ({ match, time: Number(match.scheduleTime || 0) }))
             .filter((row) => row.time > 0 && row.time >= now - graceSeconds)
             .sort((a, b) => a.time - b.time);
           if (scheduled.length > 0) return scheduled[0]?.match || null;
-          return rows.slice().sort((a, b) => a.matchNumber - b.matchNumber)[0] || null;
+          return rows
+            .slice()
+            .sort((a, b) => {
+              const typeDiff = matchTypeOrder[a.type] - matchTypeOrder[b.type];
+              if (typeDiff !== 0) return typeDiff;
+              return a.matchNumber - b.matchNumber;
+            })[0] || null;
+        };
+        const pickFirstIncomplete = (rows: MatchOption[]) => {
+          const ordered = rows
+            .slice()
+            .sort((a, b) => {
+              const typeDiff = matchTypeOrder[a.type] - matchTypeOrder[b.type];
+              if (typeDiff !== 0) return typeDiff;
+              return a.matchNumber - b.matchNumber;
+            });
+          return ordered.find((match) => !completedSet.has(match.id)) || null;
         };
 
         const assignedMatches = resolved.filter((match) => assignedMatchIds.has(match.id));
         const isAttending = assignedMatchIds.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
         let nextMatch: MatchOption | null = null;
         if (assignedMatches.length > 0) {
-          nextMatch = pickNextBySchedule(assignedMatches);
+          nextMatch = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
         } else if (!isAttending) {
           nextMatch =
             resolved.find((match) => match.type === "qualification" && match.matchNumber === 1) ||
@@ -1193,7 +1211,7 @@ function ScoutFormContent() {
             resolved[0] ||
             null;
         } else {
-          nextMatch = pickNextBySchedule(resolved);
+          nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
         }
         setSelectedMatch((current) => current || nextMatch);
       } catch (error) {
