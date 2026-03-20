@@ -553,7 +553,7 @@ async function fetchEventMatchesForAssignments(
   const safeEvent = String(eventKey || "").trim();
   if (!safeEvent) return [];
 
-  if (encryptedKey || plainKey) {
+  try {
     const response = await fetch("/api/tba/matches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -563,9 +563,16 @@ async function fetchEventMatchesForAssignments(
       const payload = (await response.json()) as { matches?: TBAMatch[] };
       if (Array.isArray(payload.matches) && payload.matches.length > 0) return payload.matches;
     }
+  } catch (error) {
+    console.warn("Assignments TBA proxy failed:", error);
   }
 
-  return getEventMatches(safeEvent, plainKey || undefined);
+  try {
+    return await getEventMatches(safeEvent, plainKey || undefined);
+  } catch (error) {
+    console.warn("Assignments direct TBA fetch failed:", error);
+    return [];
+  }
 }
 
 async function fetchFirstTeamsForEvent(eventKey: string): Promise<number[]> {
