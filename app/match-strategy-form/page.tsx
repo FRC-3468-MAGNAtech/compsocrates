@@ -34,6 +34,8 @@ type MatchOption = {
   blueTeams?: string[];
 };
 
+type MatchType = "practice" | "qualification" | "finals";
+
 type ModalMatchOption = ReefscapeMatchOption & {
   sourceKey: string;
 };
@@ -91,6 +93,18 @@ function extractMatchNumber(option: MatchOption): number {
   const fromLabel = label.match(/\d+(?:-\d+)?$/)?.[0];
   if (fromLabel) return Number(fromLabel.split("-").pop() || 0);
   return 0;
+}
+
+function getMatchType(option: MatchOption): MatchType {
+  const rawKey = String(option.key || "").toLowerCase();
+  if (rawKey.includes("_qm") || rawKey.startsWith("q")) return "qualification";
+  if (rawKey.includes("_pr") || rawKey.startsWith("p")) return "practice";
+  if (rawKey.includes("_sf") || rawKey.includes("_qf") || rawKey.includes("_f") || rawKey.startsWith("f")) return "finals";
+  const label = String(option.label || "").trim().toLowerCase();
+  if (label.startsWith("q")) return "qualification";
+  if (label.startsWith("practice")) return "practice";
+  if (label.startsWith("f") || label.startsWith("sf") || label.startsWith("qf")) return "finals";
+  return "qualification";
 }
 
 function displayMatchLabel(option: MatchOption | null): string {
@@ -221,7 +235,8 @@ function MatchStrategyFormContent() {
         const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
         setEventTbaMatches(matches);
         const completionNow = getEffectiveNowSec(teamTimeOverride);
-        setModalCompleted(buildCompletedModalIdsFromTba(matches, completionNow));
+        const completedSet = buildCompletedModalIdsFromTba(matches, completionNow);
+        setModalCompleted(completedSet);
         const options: MatchOption[] = matches
           .map((match) => {
             const redTeams = match.alliances.red.team_keys
@@ -243,6 +258,28 @@ function MatchStrategyFormContent() {
           .sort((a, b) => a.scheduleTime - b.scheduleTime);
         const resolvedOptions = options.length > 0 ? options : buildFallbackMatchStrategyMatches();
         setMatchOptions(resolvedOptions);
+        const modalIdByKey = new Map<string, string>();
+        matches.forEach((match) => {
+          const key = String(match.key || "").trim();
+          const id = mapTbaMatchToModalId(match);
+          if (!key || !id || modalIdByKey.has(key)) return;
+          modalIdByKey.set(key, id);
+        });
+        const getModalIdForMatch = (match: MatchOption) => {
+          const key = String(match.key || "").trim();
+          const mapped = modalIdByKey.get(key);
+          if (mapped) return mapped;
+          const type = getMatchType(match);
+          const number = extractMatchNumber(match) || 1;
+          if (type === "qualification") return `q${number}`;
+          if (type === "practice") return `p${number}`;
+          if (type === "finals") return `f${number}`;
+          return "";
+        };
+        const isCompletedMatch = (match: MatchOption) => {
+          const modalId = getModalIdForMatch(match);
+          return Boolean(modalId && completedSet.has(modalId));
+        };
 
         const assignedMatchKeys = new Set(
           assignmentSnap.docs
@@ -257,29 +294,41 @@ function MatchStrategyFormContent() {
 
         const now = getEffectiveNowSec(teamTimeOverride);
         const graceSeconds = 10 * 60;
+        const matchTypeOrder: Record<MatchType, number> = { qualification: 0, practice: 1, finals: 2 };
+        const sortByTypeAndNumber = (a: MatchOption, b: MatchOption) => {
+          const typeDiff = matchTypeOrder[getMatchType(a)] - matchTypeOrder[getMatchType(b)];
+          if (typeDiff !== 0) return typeDiff;
+          return extractMatchNumber(a) - extractMatchNumber(b);
+        };
         const pickNextBySchedule = (rows: MatchOption[]) => {
           const scheduled = rows
             .map((match) => ({ match, time: Number(match.scheduleTime || 0) }))
             .filter((row) => row.time > 0 && row.time >= now - graceSeconds)
-            .sort((a, b) => a.time - b.time);
+            .sort((a, b) => {
+              const typeDiff = matchTypeOrder[getMatchType(a.match)] - matchTypeOrder[getMatchType(b.match)];
+              if (typeDiff !== 0) return typeDiff;
+              if (a.time !== b.time) return a.time - b.time;
+              return extractMatchNumber(a.match) - extractMatchNumber(b.match);
+            });
           if (scheduled.length > 0) return scheduled[0]?.match || null;
           return rows
             .slice()
-            .sort((a, b) => extractMatchNumber(a) - extractMatchNumber(b))[0] || null;
+            .sort(sortByTypeAndNumber)[0] || null;
         };
-        const pickFirstByNumber = (rows: MatchOption[]) =>
-          rows
-            .slice()
-            .sort((a, b) => extractMatchNumber(a) - extractMatchNumber(b))[0] || null;
+        const pickFirstByNumber = (rows: MatchOption[]) => rows.slice().sort(sortByTypeAndNumber)[0] || null;
+        const pickFirstIncomplete = (rows: MatchOption[]) => {
+          const ordered = rows.slice().sort(sortByTypeAndNumber);
+          return ordered.find((match) => !isCompletedMatch(match)) || null;
+        };
 
         const isAttending = assignedMatchKeys.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
         let next: MatchOption | null = null;
         const teamMatches = ourTeamNumber > 0 ? resolvedOptions.filter((match) => match.teams.includes(String(ourTeamNumber))) : [];
-        const teamFirst = teamMatches.length > 0 ? pickFirstByNumber(teamMatches) : null;
+        const teamFirst = teamMatches.length > 0 ? pickFirstIncomplete(teamMatches) || pickNextBySchedule(teamMatches) || pickFirstByNumber(teamMatches) : null;
         if (teamFirst) {
           next = teamFirst;
         } else if (assignedMatches.length > 0) {
-          next = pickNextBySchedule(assignedMatches);
+          next = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
         } else if (!isAttending) {
           next =
             resolvedOptions.find((match) => /_qm1$/i.test(match.key) || /^Q1$/i.test(match.label)) ||
@@ -287,11 +336,22 @@ function MatchStrategyFormContent() {
             resolvedOptions[0] ||
             null;
         } else {
-          next = pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
+          next = pickFirstIncomplete(resolvedOptions) || pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
         }
-        if (next) {
-          setSelectedMatchKey(next.key);
-          setRobotTeamDefaults(next, ourTeamNumber > 0 ? String(ourTeamNumber) : "");
+        const currentMatch = selectedMatchKey
+          ? resolvedOptions.find((match) => match.key === selectedMatchKey) || null
+          : null;
+        const currentCompleted = currentMatch ? isCompletedMatch(currentMatch) : false;
+        const shouldReplace =
+          !currentMatch ||
+          currentCompleted ||
+          (currentMatch && next && getMatchType(currentMatch) === "practice" && getMatchType(next) === "qualification");
+        const finalMatch = shouldReplace ? next : currentMatch;
+        if (finalMatch) {
+          setSelectedMatchKey(finalMatch.key);
+          if (shouldReplace) {
+            setRobotTeamDefaults(finalMatch, ourTeamNumber > 0 ? String(ourTeamNumber) : "");
+          }
         } else {
           setSelectedMatchKey("");
           setRobot1((prev) => ({ ...prev, teamNumber: "" }));
