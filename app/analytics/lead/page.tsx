@@ -14,7 +14,7 @@ import {
   isPracticeScoutedEntry,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
-import { formatAnalyticsText } from "@/app/utils/displayFormat";
+import { formatAnalyticsText, formatMatchLabelShort, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 import { useAuth } from "@/app/AuthContext";
 
@@ -245,6 +245,12 @@ function LeadAnalyticsContent() {
     };
     return filtered.slice().sort((a, b) => {
       if (sortKey === "matchLabel") {
+        const aMeta = getMatchLabelMeta(String(a.matchLabel || a.matchId || ""));
+        const bMeta = getMatchLabelMeta(String(b.matchLabel || b.matchId || ""));
+        if (aMeta.order !== bMeta.order) return sortDir === "asc" ? aMeta.order - bMeta.order : bMeta.order - aMeta.order;
+        if (aMeta.matchNumber !== bMeta.matchNumber) {
+          return sortDir === "asc" ? aMeta.matchNumber - bMeta.matchNumber : bMeta.matchNumber - aMeta.matchNumber;
+        }
         return compareMatchLabels(String(a.matchLabel || a.matchId || ""), String(b.matchLabel || b.matchId || ""), sortDir);
       }
       return compareSortValues(getValue(a), getValue(b), sortDir);
@@ -365,7 +371,7 @@ function LeadAnalyticsContent() {
                 const overall = entry.overallAlliance;
                 return (
                   <tr key={entry.id}>
-                    <td className="font-semibold">{entry.matchLabel || entry.matchId || "-"}</td>
+                    <td className="font-semibold">{formatMatchLabelShort(entry.matchLabel || entry.matchId || "")}</td>
                     <td>{entry.alliance ? entry.alliance.toUpperCase() : "-"}</td>
                     <td>{entry.scoutName || "-"}</td>
                     <td>{formatAnalyticsText(overall?.teams) || "-"}</td>
