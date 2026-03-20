@@ -1011,20 +1011,7 @@ function AssignmentsContent() {
         setNumber: match.set_number,
         scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
       }));
-      const hasFinals = options.some((match) => match.compLevel === "f");
-      if (!hasFinals && options.length > 0) {
-        for (let n = 1; n <= 3; n += 1) {
-          options.push({
-            key: `f${n}`,
-            label: `Finals ${n}`,
-            teams: [],
-            compLevel: "f",
-            matchNumber: n,
-            setNumber: 1,
-            scheduleTime: 0,
-          });
-        }
-      }
+      // Only show finals when the event actually has playoff/finals matches.
       const normalizedOptions = options.slice().sort((a, b) => {
         const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
         if (priorityDiff !== 0) return priorityDiff;
