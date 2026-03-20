@@ -1173,12 +1173,17 @@ function ScoutFormContent() {
 
         const now = getEffectiveNowSec(teamTimeOverride);
         const graceSeconds = 10 * 60;
-        const matchTypeOrder: Record<MatchType, number> = { practice: 0, qualification: 1, finals: 2 };
+        const matchTypeOrder: Record<MatchType, number> = { qualification: 0, practice: 1, finals: 2 };
         const pickNextBySchedule = (rows: MatchOption[]) => {
           const scheduled = rows
             .map((match) => ({ match, time: Number(match.scheduleTime || 0) }))
             .filter((row) => row.time > 0 && row.time >= now - graceSeconds)
-            .sort((a, b) => a.time - b.time);
+            .sort((a, b) => {
+              const typeDiff = matchTypeOrder[a.match.type] - matchTypeOrder[b.match.type];
+              if (typeDiff !== 0) return typeDiff;
+              if (a.time !== b.time) return a.time - b.time;
+              return a.match.matchNumber - b.match.matchNumber;
+            });
           if (scheduled.length > 0) return scheduled[0]?.match || null;
           return rows
             .slice()
@@ -1213,7 +1218,15 @@ function ScoutFormContent() {
         } else {
           nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
         }
-        setSelectedMatch((current) => current || nextMatch);
+        setSelectedMatch((current) => {
+          if (!nextMatch) return current || null;
+          if (!current) return nextMatch;
+          const currentStillExists = resolved.some((match) => match.id === current.id);
+          if (!currentStillExists) return nextMatch;
+          if (completedSet.has(current.id)) return nextMatch;
+          if (current.type === "practice" && nextMatch.type === "qualification") return nextMatch;
+          return current;
+        });
       } catch (error) {
         console.error("Failed to load match context:", error);
         const fallback = buildFallbackScoutOptions();
