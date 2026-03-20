@@ -7,8 +7,10 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import {
+  classifyRebuiltEventByTimestampWithOptions,
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
+  getEventsForGame,
   isPracticeScoutedEntry,
   normalizeMatchLabel,
   type AnalyticsGame,
@@ -171,6 +173,7 @@ function TeamAveragesContent() {
 
   const dedupedEntries = useMemo(() => {
     const byKey = new Map<string, { entry: ScoutingEntry; time: number; order: number }>();
+    const eventOptions = getEventsForGame(selectedGame);
     filteredEntries.forEach((entry, index) => {
       const team = String(entry.teamNumber || "").trim();
       if (!team) return;
@@ -179,7 +182,20 @@ function TeamAveragesContent() {
         byKey.set(`${team}::${index}`, { entry, time: entryTime(entry), order: index });
         return;
       }
-      const eventKey = String(entry.eventKey || entry.eventName || "").trim().toLowerCase() || "unknown";
+      let eventKey = String(entry.eventKey || "").trim().toLowerCase();
+      if (!eventKey && selectedGame === "REBUILT") {
+        const ts = Number(entry.submittedAt ?? entry.timestamp ?? 0);
+        if (Number.isFinite(ts) && ts > 0) {
+          eventKey = classifyRebuiltEventByTimestampWithOptions(ts, eventOptions);
+        }
+      }
+      if (!eventKey) {
+        eventKey = String(entry.eventName || "").trim().toLowerCase();
+      }
+      if (!eventKey && selectedEvent !== "all") {
+        eventKey = String(selectedEvent).trim().toLowerCase();
+      }
+      if (!eventKey) eventKey = "unknown";
       const key = `${eventKey}::${matchKey}::${team}`;
       const time = entryTime(entry);
       const existing = byKey.get(key);
