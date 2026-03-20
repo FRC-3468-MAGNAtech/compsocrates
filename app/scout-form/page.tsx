@@ -1305,6 +1305,10 @@ function ScoutFormContent() {
       alert("Select an event before requesting a sub-in.");
       return;
     }
+    if (!assignedMatchIds.has(match.id)) {
+      alert("You can only request a sub-in for matches assigned to you.");
+      return;
+    }
     if (subInSubmitting) return;
     setSubInSubmitting(true);
     try {
@@ -1315,29 +1319,52 @@ function ScoutFormContent() {
       }
       const fallbackTeam = assignedTeam || form.teamNumber;
       const parsedTeam = Number(String(fallbackTeam || "").replace(/[^\d]/g, ""));
+      const payload = {
+        idToken,
+        teamId: userData.teamId,
+        eventKey,
+        matchId: match.id,
+        matchLabel: getMatchDisplay(match),
+        matchType: match.type,
+        matchNumber: match.matchNumber,
+        teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
+        requestedByName: userData.displayName || "Scout",
+      };
       const response = await fetch("/api/sub-in-requests/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          idToken,
-          teamId: userData.teamId,
-          eventKey,
-          matchId: match.id,
-          matchLabel: getMatchDisplay(match),
-          matchType: match.type,
-          matchNumber: match.matchNumber,
-          teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
-          requestedByName: userData.displayName || "Scout",
-        }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error || "Unable to submit sub-in request.");
+        let errorMessage = "Unable to submit sub-in request.";
+        try {
+          const errorPayload = (await response.json()) as { error?: string };
+          errorMessage = errorPayload.error || errorMessage;
+        } catch {
+          // ignore parse errors
+        }
+        try {
+          await addDoc(collection(db, "subInRequests"), {
+            teamId: userData.teamId,
+            eventKey,
+            matchId: match.id,
+            matchLabel: getMatchDisplay(match),
+            matchType: match.type,
+            matchNumber: match.matchNumber,
+            teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
+            requestedByUid: userData.uid,
+            requestedByName: userData.displayName || "Scout",
+            requestedAt: Date.now(),
+          });
+        } catch (fallbackError) {
+          throw new Error(errorMessage);
+        }
       }
       alert(`Sub-in requested for ${getMatchDisplay(match)}.`);
     } catch (error) {
       console.error("Failed to submit sub-in request:", error);
-      alert("Could not submit sub-in request.");
+      const message = error instanceof Error && error.message ? error.message : "Could not submit sub-in request.";
+      alert(message);
     } finally {
       setSubInSubmitting(false);
     }

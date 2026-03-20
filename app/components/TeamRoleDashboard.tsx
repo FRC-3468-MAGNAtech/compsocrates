@@ -209,6 +209,30 @@ function TeamRoleDashboardContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
+  async function loadSubInRequests(teamId: string) {
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        setSubInRequests([]);
+        return;
+      }
+      const response = await fetch("/api/sub-in-requests/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken, teamId }),
+      });
+      if (response.ok) {
+        const payload = (await response.json()) as { requests?: SubInRequest[] };
+        setSubInRequests(Array.isArray(payload.requests) ? payload.requests : []);
+      } else {
+        setSubInRequests([]);
+      }
+    } catch (error) {
+      console.warn("Failed to load sub-in requests:", error);
+      setSubInRequests([]);
+    }
+  }
+
   async function loadData() {
     if (!userData?.teamId || !userData?.uid) return;
     setLoading(true);
@@ -222,27 +246,7 @@ function TeamRoleDashboardContent({
       setUserMatchAssignments(
         assignmentSnap.docs.map((docSnap) => docSnap.data() as MatchAssignment).filter((row) => row.eventKey)
       );
-      try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (idToken) {
-          const response = await fetch("/api/sub-in-requests/list", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idToken, teamId: userData.teamId }),
-          });
-          if (response.ok) {
-            const payload = (await response.json()) as { requests?: SubInRequest[] };
-            setSubInRequests(Array.isArray(payload.requests) ? payload.requests : []);
-          } else {
-            setSubInRequests([]);
-          }
-        } else {
-          setSubInRequests([]);
-        }
-      } catch (error) {
-        console.warn("Failed to load sub-in requests:", error);
-        setSubInRequests([]);
-      }
+      await loadSubInRequests(userData.teamId);
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
       const attendanceByEvent = teamDoc.exists()
@@ -319,6 +323,14 @@ function TeamRoleDashboardContent({
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!userData?.teamId) return;
+    const interval = setInterval(() => {
+      void loadSubInRequests(userData.teamId);
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [userData?.teamId]);
 
   const needsPractice = practiceSessionsCount < 3;
   const canOpenMatchForm = canAccessForm({ formKey: "match-scout-form", user: userData, formAccessOverrides });
