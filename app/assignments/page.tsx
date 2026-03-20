@@ -493,6 +493,13 @@ function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string
   return key.includes("_pm") || /^p\d+$/.test(key) || label.includes("practice ");
 }
 
+function assignmentMatchesPractice(assignment: { matchKey?: string; matchLabel?: string }, matchNumber: number): boolean {
+  const key = String(assignment.matchKey || "").toLowerCase();
+  if (key === `p${matchNumber}`) return true;
+  const label = String(assignment.matchLabel || "").toLowerCase();
+  return label.includes(`practice ${matchNumber}`);
+}
+
 function upsertEventOption(options: EventOption[], candidate: EventOption, nowMs: number): EventOption[] {
   const map = new Map(options.map((option) => [option.key, option]));
   map.set(candidate.key, candidate);
@@ -2382,6 +2389,15 @@ function buildMatchScoutOrder(
     () => (selectedEvent ? practiceScheduleAssignmentsByEvent[selectedEvent] || [] : []),
     [practiceScheduleAssignmentsByEvent, selectedEvent]
   );
+  const practiceScheduleMatchesAssigned = useMemo(() => {
+    if (!selectedEvent) return [];
+    const matches = practiceScheduleMatchesByEvent[selectedEvent] || [];
+    const assignments = practiceScheduleAssignmentsByEvent[selectedEvent] || [];
+    if (assignments.length === 0) return [];
+    return matches.filter((match) =>
+      assignments.some((assignment) => assignmentMatchesPractice(assignment, match.matchNumber))
+    );
+  }, [practiceScheduleAssignmentsByEvent, practiceScheduleMatchesByEvent, selectedEvent]);
 
   useEffect(() => {
     if (scheduleView !== "practice") return;
@@ -2690,12 +2706,12 @@ function buildMatchScoutOrder(
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {scheduleView === "practice" &&
-                        practiceScheduleMatches
+                        practiceScheduleMatchesAssigned
                           .slice()
                           .sort((a, b) => a.matchNumber - b.matchNumber)
                           .map((match) => {
-                            const perMatch = practiceScheduleAssignments.filter(
-                              (assignment) => assignment.matchKey === `p${match.matchNumber}`
+                            const perMatch = practiceScheduleAssignments.filter((assignment) =>
+                              assignmentMatchesPractice(assignment, match.matchNumber)
                             );
                             return (
                               <tr key={match.id}>
@@ -2746,11 +2762,9 @@ function buildMatchScoutOrder(
                             </tr>
                           );
                         })}
-                      {scheduleView === "practice" && practiceScheduleMatches.length === 0 && (
+                      {scheduleView === "practice" && practiceScheduleMatchesAssigned.length === 0 && (
                         <tr>
-                          <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
-                            No event practice matches found. Open New Assignment and click Practice to generate manual practice matches.
-                          </td>
+                          <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">No practice assignments yet.</td>
                         </tr>
                       )}
                       {scheduleView === "match" && matchScheduleOptions.length === 0 && (
