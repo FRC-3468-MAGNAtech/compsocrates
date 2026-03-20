@@ -1118,7 +1118,7 @@ function ScoutFormContent() {
         const resolved = next.length > 0 ? next : buildFallbackScoutOptions();
         setOptions(resolved);
         setTargets(next.length > 0 ? nextTargets : {});
-        const completionNow = teamTimeOverride?.enabled ? getEffectiveNowSec(teamTimeOverride) : undefined;
+        const completionNow = getEffectiveNowSec(teamTimeOverride);
         setModalCompleted(matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set());
 
         const assignmentSnapByEvent = await getDocs(

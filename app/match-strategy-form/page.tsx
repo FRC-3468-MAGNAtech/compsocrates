@@ -220,7 +220,7 @@ function MatchStrategyFormContent() {
         const attendeesByEvent = (teamData?.eventAttendees || {}) as Record<string, string[]>;
         const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
         setEventTbaMatches(matches);
-        const completionNow = teamTimeOverride?.enabled ? getEffectiveNowSec(teamTimeOverride) : undefined;
+        const completionNow = getEffectiveNowSec(teamTimeOverride);
         setModalCompleted(buildCompletedModalIdsFromTba(matches, completionNow));
         const options: MatchOption[] = matches
           .map((match) => {
