@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -40,9 +40,27 @@ type SubInRequest = {
   matchType?: string;
   matchNumber?: number;
   teamNumber?: number | null;
+  requestedById?: string;
   requestedByName?: string;
   requestedAt?: number;
 };
+
+type SubInClaim = {
+  id: string;
+  eventKey?: string;
+  matchId?: string;
+  matchLabel?: string;
+  matchType?: string;
+  matchNumber?: number;
+  teamNumber?: number | null;
+  claimedById?: string;
+  claimedByName?: string;
+  requestedById?: string;
+  requestedByName?: string;
+  submittedAt?: number;
+};
+
+type NotificationPermissionState = "default" | "denied" | "granted";
 
 function filterEventsByAttendance(
   events: UpcomingEvent[],
@@ -198,6 +216,13 @@ function TeamRoleDashboardContent({
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const [userMatchAssignments, setUserMatchAssignments] = useState<MatchAssignment[]>([]);
   const [subInRequests, setSubInRequests] = useState<SubInRequest[]>([]);
+  const [subInClaimsByKey, setSubInClaimsByKey] = useState<Record<string, SubInClaim>>({});
+  const [subInClaimsForUser, setSubInClaimsForUser] = useState<SubInClaim[]>([]);
+  const [subInClaimingId, setSubInClaimingId] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>("default");
+  const notificationsSupported = typeof window !== "undefined" && "Notification" in window;
+  const notifiedSubInRequestsRef = useRef<Set<string>>(new Set());
+  const notifiedUpNextRef = useRef<string>("");
   const nowMs = getEffectiveNowMs(teamTimeOverride);
 
   useEffect(() => {
@@ -209,12 +234,18 @@ function TeamRoleDashboardContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
+  useEffect(() => {
+    if (!notificationsSupported) return;
+    setNotificationPermission(Notification.permission);
+  }, [notificationsSupported]);
+
   async function loadSubInRequests(teamId: string) {
     try {
-      const snap = await getDocs(
-        query(collection(db, "scouting"), where("teamId", "==", teamId), where("entryType", "==", "sub-in-request"))
-      );
-      const requests = snap.docs.map((docSnap) => {
+      const [requestSnap, claimSnap] = await Promise.all([
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", teamId), where("entryType", "==", "sub-in-request"))),
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", teamId), where("entryType", "==", "sub-in-claim"))),
+      ]);
+      const requests = requestSnap.docs.map((docSnap) => {
         const data = docSnap.data() as Record<string, unknown>;
         return {
           id: docSnap.id,
@@ -224,14 +255,106 @@ function TeamRoleDashboardContent({
           matchType: String(data.matchType || ""),
           matchNumber: Number(data.matchNumber || 0),
           teamNumber: Number(data.teamNumber || 0) || null,
+          requestedById: String(data.requestedById || data.scoutId || ""),
           requestedByName: String(data.requestedByName || data.scoutName || ""),
           requestedAt: Number(data.requestedAt || data.submittedAt || 0),
         } as SubInRequest;
       });
+      const claimsByKey: Record<string, SubInClaim> = {};
+      const claimsForUser: SubInClaim[] = [];
+      claimSnap.docs.forEach((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        const matchId = String(data.matchId || "");
+        const teamNumber = Number(data.teamNumber || 0) || null;
+        if (!matchId || !teamNumber) return;
+        const claim: SubInClaim = {
+          id: docSnap.id,
+          eventKey: String(data.eventKey || ""),
+          matchId,
+          matchLabel: String(data.matchLabel || ""),
+          matchType: String(data.matchType || ""),
+          matchNumber: Number(data.matchNumber || 0),
+          teamNumber,
+          claimedById: String(data.claimedById || data.scoutId || ""),
+          claimedByName: String(data.claimedByName || data.scoutName || ""),
+          requestedById: String(data.requestedById || ""),
+          requestedByName: String(data.requestedByName || ""),
+          submittedAt: Number(data.submittedAt || data.timestamp || 0),
+        };
+        const claimEventKey = claim.eventKey || "";
+        claimsByKey[`${claimEventKey}|${matchId}|${teamNumber}`] = claim;
+        if (userData?.uid && claim.claimedById === userData.uid) {
+          claimsForUser.push(claim);
+        }
+      });
       setSubInRequests(requests);
+      setSubInClaimsByKey(claimsByKey);
+      setSubInClaimsForUser(claimsForUser);
     } catch (error) {
       console.warn("Failed to load sub-in requests:", error);
       setSubInRequests([]);
+      setSubInClaimsByKey({});
+      setSubInClaimsForUser([]);
+    }
+  }
+
+  async function claimSubIn(request: SubInRequest) {
+    if (!userData?.teamId || !userData?.uid) {
+      alert("You must be signed in to accept a sub-in.");
+      return;
+    }
+    if (!request.matchId || !request.teamNumber) {
+      alert("Missing match or team info for this sub-in request.");
+      return;
+    }
+    const eventKey = String(request.eventKey || activeEvent?.key || "").trim();
+    if (!eventKey) {
+      alert("Event not set for this sub-in request.");
+      return;
+    }
+    if (subInClaimingId === request.id) return;
+    setSubInClaimingId(request.id);
+    try {
+      const now = Date.now();
+      await addDoc(collection(db, "scouting"), {
+        entryType: "sub-in-claim",
+        formType: "sub-in-claim",
+        game: "REBUILT",
+        teamId: userData.teamId,
+        eventKey,
+        matchId: request.matchId,
+        matchKey: request.matchId,
+        matchLabel: request.matchLabel || "",
+        matchType: request.matchType || "",
+        matchNumber: String(request.matchNumber || ""),
+        teamNumber: String(request.teamNumber),
+        scoutId: userData.uid,
+        scoutName: userData.displayName || "Scout",
+        claimedById: userData.uid,
+        claimedByName: userData.displayName || "Scout",
+        requestedById: request.requestedById || "",
+        requestedByName: request.requestedByName || "",
+        requestId: request.id,
+        submittedAt: now,
+        timestamp: now,
+      });
+      await loadSubInRequests(userData.teamId);
+    } catch (error) {
+      console.error("Failed to accept sub-in request:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not accept sub-in request. ${message}`);
+    } finally {
+      setSubInClaimingId(null);
+    }
+  }
+
+  async function requestNotificationPermission() {
+    if (!notificationsSupported) return;
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+    } catch (error) {
+      console.warn("Notification permission request failed:", error);
     }
   }
 
@@ -342,6 +465,17 @@ function TeamRoleDashboardContent({
     [activeEventKey, upcomingEvents]
   );
   const activeMatches = activeEvent ? eventMatchesByKey[activeEvent.key] || [] : [];
+  const subInAssignmentsForUser = useMemo(
+    () =>
+      subInClaimsForUser.map((claim) => ({
+        eventKey: claim.eventKey,
+        matchKey: claim.matchId,
+        matchLabel: claim.matchLabel,
+        teamNumber: claim.teamNumber || undefined,
+        scoutName: claim.claimedByName,
+      })),
+    [subInClaimsForUser]
+  );
   const nowSec = getEffectiveNowSec(teamTimeOverride);
   const visibleSubInRequests = useMemo(() => {
     if (!activeEvent) return [];
@@ -356,7 +490,10 @@ function TeamRoleDashboardContent({
   }, [activeEvent, subInRequests, nowMs]);
   const upNextAssignment = useMemo(() => {
     if (!activeEvent) return null;
-    const assignmentsForEvent = userMatchAssignments.filter((assignment) => assignment.eventKey === activeEvent.key);
+    const assignmentsForEvent = [
+      ...userMatchAssignments.filter((assignment) => assignment.eventKey === activeEvent.key),
+      ...subInAssignmentsForUser.filter((assignment) => assignment.eventKey === activeEvent.key),
+    ];
     if (assignmentsForEvent.length === 0) return null;
     const upcomingMatch = [...activeMatches]
       .filter((match) => match.scheduleTime > 0 && match.scheduleTime >= nowSec)
@@ -369,7 +506,36 @@ function TeamRoleDashboardContent({
     });
     if (!assignment) return null;
     return { match: upcomingMatch, assignment };
-  }, [activeEvent, activeMatches, nowSec, userMatchAssignments]);
+  }, [activeEvent, activeMatches, nowSec, userMatchAssignments, subInAssignmentsForUser]);
+
+  useEffect(() => {
+    if (!notificationsSupported || notificationPermission !== "granted") return;
+    visibleSubInRequests.forEach((request) => {
+      const key = request.id || `${request.matchId || ""}|${request.teamNumber || ""}`;
+      if (!key || notifiedSubInRequestsRef.current.has(key)) return;
+      try {
+        const body = `${request.matchLabel || "Match"}${request.teamNumber ? ` - Team ${request.teamNumber}` : ""}`;
+        new Notification("Sub-In Requested", { body });
+        notifiedSubInRequestsRef.current.add(key);
+      } catch (error) {
+        console.warn("Unable to send sub-in notification:", error);
+      }
+    });
+  }, [visibleSubInRequests, notificationPermission, notificationsSupported]);
+
+  useEffect(() => {
+    if (!notificationsSupported || notificationPermission !== "granted") return;
+    if (!upNextAssignment) return;
+    const key = `${upNextAssignment.match.key}|${upNextAssignment.assignment.teamNumber || ""}`;
+    if (notifiedUpNextRef.current === key) return;
+    try {
+      const body = `${upNextAssignment.match.label}${upNextAssignment.assignment.teamNumber ? ` - Team ${upNextAssignment.assignment.teamNumber}` : ""}`;
+      new Notification("Up Next Assignment", { body });
+      notifiedUpNextRef.current = key;
+    } catch (error) {
+      console.warn("Unable to send up-next notification:", error);
+    }
+  }, [upNextAssignment, notificationPermission, notificationsSupported]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -388,24 +554,66 @@ function TeamRoleDashboardContent({
             </div>
           ) : (
             <>
+              {notificationsSupported && notificationPermission !== "granted" && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                  <h2 className="text-xl font-semibold mb-2">Enable Notifications</h2>
+                  <p className="text-sm text-gray-700 mb-3">
+                    Turn on device notifications for sub-in requests and upcoming assignments.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void requestNotificationPermission()}
+                    className="px-4 py-2 rounded text-white text-sm font-semibold"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Enable Notifications
+                  </button>
+                  {notificationPermission === "denied" && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Notifications are blocked in your browser settings. Re-enable them to get alerts.
+                    </p>
+                  )}
+                </div>
+              )}
               {visibleSubInRequests.length > 0 && (
                 <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-orange-500">
                   <h2 className="text-xl font-semibold mb-2">Sub-In Requests</h2>
                   <div className="space-y-2">
-                    {visibleSubInRequests.map((request) => (
-                      <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <div className="text-gray-800">
-                          <span className="font-semibold">{request.matchLabel || "Match"}</span>
-                          {request.teamNumber ? ` — Team ${request.teamNumber}` : ""}
-                          {request.requestedByName ? ` · Requested by ${request.requestedByName}` : ""}
+                    {visibleSubInRequests.map((request) => {
+                      const claimKey = `${request.eventKey || ""}|${request.matchId || ""}|${request.teamNumber || ""}`;
+                      const claim = subInClaimsByKey[claimKey];
+                      return (
+                        <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <div className="text-gray-800">
+                            <span className="font-semibold">{request.matchLabel || "Match"}</span>
+                            {request.teamNumber ? ` - Team ${request.teamNumber}` : ""}
+                            {request.requestedByName ? ` - Requested by ${request.requestedByName}` : ""}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {claim ? (
+                              <span className="text-xs font-semibold text-green-700">
+                                Sub Assigned{claim.claimedByName ? ` - ${claim.claimedByName}` : ""}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => void claimSubIn(request)}
+                                disabled={subInClaimingId === request.id}
+                                className="px-3 py-1 rounded text-xs font-semibold text-white disabled:opacity-60"
+                                style={{ backgroundColor: "var(--primary-color)" }}
+                              >
+                                {subInClaimingId === request.id ? "Assigning..." : "Take Sub-In"}
+                              </button>
+                            )}
+                            {request.requestedAt ? (
+                              <span className="text-xs text-gray-500">
+                                {new Date(request.requestedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                        {request.requestedAt ? (
-                          <span className="text-xs text-gray-500">
-                            {new Date(request.requestedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                          </span>
-                        ) : null}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -415,11 +623,10 @@ function TeamRoleDashboardContent({
                   <h2 className="text-xl font-semibold mb-2">Up Next Assignment</h2>
                   <p className="text-sm text-gray-800">
                     You are up next for <span className="font-semibold">{upNextAssignment.match.label}</span>
-                    {upNextAssignment.assignment.teamNumber ? ` — Team ${upNextAssignment.assignment.teamNumber}` : ""}.
+                    {upNextAssignment.assignment.teamNumber ? ` - Team ${upNextAssignment.assignment.teamNumber}` : ""}.
                   </p>
                 </div>
               )}
-
               {specialNotice && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                   <h2 className="text-xl font-semibold mb-2">{specialNotice.title}</h2>
@@ -795,3 +1002,9 @@ export default function TeamRoleDashboard(props: TeamRoleDashboardProps) {
     </ProtectedRoute>
   );
 }
+
+
+
+
+
+

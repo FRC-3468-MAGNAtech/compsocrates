@@ -72,6 +72,12 @@ interface PracticeAssignment {
   assignedAt: number;
 }
 
+interface SubInClaim {
+  matchId: string;
+  teamNumber: number;
+  claimedByName: string;
+}
+
 interface TeamMember {
   uid: string;
   displayName: string;
@@ -260,6 +266,32 @@ function parseMatchLabelParts(label: string) {
     return { compLevel: "ef", setNumber: parseInt(octofinal[1], 10) || 0, matchNumber: parseInt(octofinal[2], 10) || 0 };
   }
   return null;
+}
+
+function mapAssignmentToMatchId(labelOrKey: string) {
+  const raw = String(labelOrKey || "").toLowerCase();
+  const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
+  if (direct) return `${direct[1]}${direct[2]}`;
+  const qm = raw.match(/(?:_qm|qualification(?:\s+match)?\s+)(\d+)/);
+  if (qm) return `q${qm[1]}`;
+  const practice = raw.match(/(?:_pr|_pm|practice(?:\s+match)?\s+)(\d+)/);
+  if (practice) return `p${practice[1]}`;
+  const sfFromKey = raw.match(/_sf(\d+)m(\d+)/);
+  if (sfFromKey) return `sf${sfFromKey[1]}`;
+  const sfFromLabel = raw.match(/semifinal\s+(\d+)(?:-\d+)?/);
+  if (sfFromLabel) return `sf${sfFromLabel[1]}`;
+  const qfFromKey = raw.match(/_qf(\d+)m(\d+)/);
+  if (qfFromKey) return `qf${qfFromKey[1]}`;
+  const qfFromLabel = raw.match(/quarterfinal\s+(\d+)(?:-\d+)?/);
+  if (qfFromLabel) return `qf${qfFromLabel[1]}`;
+  const finalsFromKey = raw.match(/_f(\d+)m(\d+)/);
+  if (finalsFromKey) return `f${finalsFromKey[2]}`;
+  const finals = raw.match(/finals\s+(\d+)/);
+  if (finals) {
+    const number = Number(finals[1]);
+    return `f${number >= 14 && number <= 16 ? number - 13 : number}`;
+  }
+  return "";
 }
 
 function getAssignmentMatchSortKey(assignment: Assignment) {
@@ -620,6 +652,7 @@ function AssignmentsContent() {
   const [pitAssignments, setPitAssignments] = useState<PitAssignment[]>([]);
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignment[]>([]);
   const [practiceAssignments, setPracticeAssignments] = useState<PracticeAssignment[]>([]);
+  const [subInClaimsByMatchTeam, setSubInClaimsByMatchTeam] = useState<Record<string, SubInClaim>>({});
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [selectedEvent, setSelectedEvent] = useState("");
   const [events, setEvents] = useState<EventOption[]>([]);
@@ -864,6 +897,7 @@ function AssignmentsContent() {
         setPitAssignments([]);
         setTeamAssignments([]);
         setPracticeAssignments([]);
+        setSubInClaimsByMatchTeam({});
         setMatchOptions([]);
         setPracticeMatchOptions([]);
         return;
@@ -1021,6 +1055,29 @@ function AssignmentsContent() {
           ...row.data,
         })) as PracticeAssignment[]
       );
+
+      try {
+        const subInSnap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", activeEventKey)));
+        const claimMap: Record<string, SubInClaim> = {};
+        subInSnap.docs.forEach((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          const entryType = String(data.entryType || data.formType || "").toLowerCase().trim();
+          if (entryType !== "sub-in-claim") return;
+          const matchIdRaw = String(data.matchId || "");
+          const matchId = matchIdRaw || mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
+          const teamNumber = Number(data.teamNumber || 0);
+          if (!matchId || !Number.isFinite(teamNumber) || teamNumber <= 0) return;
+          claimMap[`${matchId}|${teamNumber}`] = {
+            matchId,
+            teamNumber,
+            claimedByName: String(data.claimedByName || data.scoutName || "").trim(),
+          };
+        });
+        setSubInClaimsByMatchTeam(claimMap);
+      } catch (error) {
+        console.warn("Failed to load sub-in claims:", error);
+        setSubInClaimsByMatchTeam({});
+      }
 
       let practiceFromFirestore: PracticeMatchOption[] = [];
       if (practiceMatchesSnap) {
@@ -2443,6 +2500,11 @@ function buildMatchScoutOrder(
     () => (selectedEvent ? practiceScheduleAssignmentsByEvent[selectedEvent] || [] : []),
     [practiceScheduleAssignmentsByEvent, selectedEvent]
   );
+  const getSubInClaimForAssignment = (matchKey: string, matchLabel: string, teamNumber: number) => {
+    const matchId = mapAssignmentToMatchId(String(matchKey || matchLabel || ""));
+    if (!matchId) return null;
+    return subInClaimsByMatchTeam[`${matchId}|${teamNumber}`] || null;
+  };
   const practiceScheduleMatchesAssigned = useMemo(() => {
     if (!selectedEvent) return [];
     const matches = practiceScheduleMatchesByEvent[selectedEvent] || [];
@@ -2665,7 +2727,18 @@ function buildMatchScoutOrder(
                           <tr key={assignment.id}>
                             <td className="px-6 py-4 whitespace-nowrap font-medium">{assignment.matchLabel || assignment.matchKey}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.eventKey}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {(() => {
+                                const claim = getSubInClaimForAssignment(assignment.matchKey, assignment.matchLabel, assignment.teamNumber);
+                                if (!claim) return assignment.scoutName;
+                                return (
+                                  <span>
+                                    <span className="line-through text-gray-400">{assignment.scoutName}</span>
+                                    <span className="ml-2 text-gray-700">{claim.claimedByName}</span>
+                                  </span>
+                                );
+                              })()}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               Team {assignment.teamNumber}{assignment.scoutHumanPlayer ? " (HP)" : ""}
                             </td>
@@ -2681,7 +2754,18 @@ function buildMatchScoutOrder(
                           <tr key={assignment.id}>
                             <td className="px-6 py-4 whitespace-nowrap font-medium">{assignment.matchLabel || assignment.matchKey}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.eventKey}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {(() => {
+                                const claim = getSubInClaimForAssignment(assignment.matchKey, assignment.matchLabel, assignment.teamNumber);
+                                if (!claim) return assignment.scoutName;
+                                return (
+                                  <span>
+                                    <span className="line-through text-gray-400">{assignment.scoutName}</span>
+                                    <span className="ml-2 text-gray-700">{claim.claimedByName}</span>
+                                  </span>
+                                );
+                              })()}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap">Team {assignment.teamNumber}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
@@ -2776,14 +2860,39 @@ function buildMatchScoutOrder(
                                     : (match.isManual ? "Manual" : "TBD")}
                                 </td>
                                 <td className="px-6 py-4 text-sm">
-                                  {perMatch.length === 0
-                                    ? "Unassigned"
-                                    : perMatch
-                                        .map(
-                                          (assignment) =>
-                                            `T${assignment.teamNumber}: ${assignment.scoutName}${assignment.scoutHumanPlayer ? " (HP)" : ""}`
-                                        )
-                                        .join(" | ")}
+                                  {perMatch.length === 0 ? (
+                                    "Unassigned"
+                                  ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                      {perMatch.map((assignment, index) => {
+                                        const claim = getSubInClaimForAssignment(
+                                          assignment.matchKey,
+                                          assignment.matchLabel,
+                                          assignment.teamNumber
+                                        );
+                                        return (
+                                          <span key={assignment.id} className="inline-flex items-center">
+                                            <span>{`T${assignment.teamNumber}: `}</span>
+                                            {claim ? (
+                                              <>
+                                                <span className="line-through text-gray-400">
+                                                  {assignment.scoutName}
+                                                  {assignment.scoutHumanPlayer ? " (HP)" : ""}
+                                                </span>
+                                                <span className="ml-1 text-gray-700">{claim.claimedByName}</span>
+                                              </>
+                                            ) : (
+                                              <span>
+                                                {assignment.scoutName}
+                                                {assignment.scoutHumanPlayer ? " (HP)" : ""}
+                                              </span>
+                                            )}
+                                            {index < perMatch.length - 1 && <span className="mx-2 text-gray-400">|</span>}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -2804,14 +2913,39 @@ function buildMatchScoutOrder(
                                   : "TBD"}
                               </td>
                               <td className="px-6 py-4 text-sm">
-                                {perMatch.length === 0
-                                  ? "Unassigned"
-                                  : perMatch
-                                      .map(
-                                        (assignment) =>
-                                          `T${assignment.teamNumber}: ${assignment.scoutName}${assignment.scoutHumanPlayer ? " (HP)" : ""}`
-                                      )
-                                      .join(" | ")}
+                                {perMatch.length === 0 ? (
+                                  "Unassigned"
+                                ) : (
+                                  <div className="flex flex-wrap gap-2">
+                                    {perMatch.map((assignment, index) => {
+                                      const claim = getSubInClaimForAssignment(
+                                        assignment.matchKey,
+                                        assignment.matchLabel,
+                                        assignment.teamNumber
+                                      );
+                                      return (
+                                        <span key={assignment.id} className="inline-flex items-center">
+                                          <span>{`T${assignment.teamNumber}: `}</span>
+                                          {claim ? (
+                                            <>
+                                              <span className="line-through text-gray-400">
+                                                {assignment.scoutName}
+                                                {assignment.scoutHumanPlayer ? " (HP)" : ""}
+                                              </span>
+                                              <span className="ml-1 text-gray-700">{claim.claimedByName}</span>
+                                            </>
+                                          ) : (
+                                            <span>
+                                              {assignment.scoutName}
+                                              {assignment.scoutHumanPlayer ? " (HP)" : ""}
+                                            </span>
+                                          )}
+                                          {index < perMatch.length - 1 && <span className="mx-2 text-gray-400">|</span>}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           );

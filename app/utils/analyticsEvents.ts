@@ -204,7 +204,7 @@ type LeadScoutedLike = {
 
 export function isSubInRequestEntry(entry: { entryType?: string; formType?: string }): boolean {
   const type = String(entry.entryType || entry.formType || "").toLowerCase().trim();
-  return type === "sub-in-request" || type === "sub-in";
+  return type === "sub-in-request" || type === "sub-in-claim" || type === "sub-in";
 }
 
 export function isPracticeScoutedEntry(entry: PracticeScoutedLike): boolean {
