@@ -257,7 +257,10 @@ function LeadAnalyticsContent() {
     });
   }, [filtered, sortDir, sortKey]);
 
-  const eventOptions = useMemo(() => getEventOptionsForEntries(normalized, selectedGame), [normalized, selectedGame]);
+  const eventOptions = useMemo(
+    () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)],
+    [normalized, selectedGame]
+  );
 
   function handleSort(key: SortKey) {
     setSortDir((prev) => (key === sortKey ? (prev === "asc" ? "desc" : "asc") : "asc"));
