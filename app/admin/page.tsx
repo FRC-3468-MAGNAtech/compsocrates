@@ -366,9 +366,11 @@ function AdminPanelContent() {
       setFormEntriesLoading(true);
       try {
         const rows: FormEditorEntry[] = [];
+        const teamIdFilter = String(userData?.teamId || "").trim();
         await Promise.all(
           activeFormType.collections.map(async (collectionName) => {
-            const snap = await getDocs(collection(db, collectionName));
+            const baseRef = collection(db, collectionName);
+            const snap = teamIdFilter ? await getDocs(query(baseRef, where("teamId", "==", teamIdFilter))) : await getDocs(baseRef);
             snap.docs.forEach((docSnap) => {
               const data = docSnap.data() as Record<string, unknown>;
               const teamId = String(data.teamId || "").trim();
