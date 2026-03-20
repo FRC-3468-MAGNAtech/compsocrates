@@ -883,6 +883,8 @@ function ScoutFormContent() {
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
   const [modalOpen, setModalOpen] = useState(false);
+  const [subInModalOpen, setSubInModalOpen] = useState(false);
+  const [subInSubmitting, setSubInSubmitting] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [options, setOptions] = useState<MatchOption[]>([]);
   const [modalCompleted, setModalCompleted] = useState<Set<string>>(new Set());
@@ -1285,6 +1287,48 @@ function ScoutFormContent() {
     if (selectedMatch.type === "qualification") return `Qualification Match ${selectedMatch.matchNumber}`;
     if (selectedMatch.type === "finals") return getFinalsDisplayLabel(selectedMatch);
     return selectedMatch.label || "No match is set";
+  }
+
+  function getMatchDisplay(match: MatchOption) {
+    if (match.type === "practice") return `Practice Match ${match.matchNumber}`;
+    if (match.type === "qualification") return `Qualification Match ${match.matchNumber}`;
+    if (match.type === "finals") return getFinalsDisplayLabel(match);
+    return match.label || "Match";
+  }
+
+  async function submitSubInRequest(match: MatchOption) {
+    if (!userData?.teamId || !userData?.uid) {
+      alert("You must be signed in to request a sub-in.");
+      return;
+    }
+    if (!eventKey || eventKey === "app-testing") {
+      alert("Select an event before requesting a sub-in.");
+      return;
+    }
+    if (subInSubmitting) return;
+    setSubInSubmitting(true);
+    try {
+      const fallbackTeam = assignedTeam || form.teamNumber;
+      const parsedTeam = Number(String(fallbackTeam || "").replace(/[^\d]/g, ""));
+      await addDoc(collection(db, "subInRequests"), {
+        teamId: userData.teamId,
+        eventKey,
+        matchId: match.id,
+        matchLabel: getMatchDisplay(match),
+        matchType: match.type,
+        matchNumber: match.matchNumber,
+        teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
+        requestedByUid: userData.uid,
+        requestedByName: userData.displayName || "Scout",
+        requestedAt: Date.now(),
+      });
+      alert(`Sub-in requested for ${getMatchDisplay(match)}.`);
+    } catch (error) {
+      console.error("Failed to submit sub-in request:", error);
+      alert("Could not submit sub-in request.");
+    } finally {
+      setSubInSubmitting(false);
+    }
   }
 
   useEffect(() => {
@@ -1762,6 +1806,17 @@ function ScoutFormContent() {
                 <span className="text-lg font-semibold">Assigned Match:</span>
                 <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
                 <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
+                {!leadMode && (
+                  <button
+                    type="button"
+                    onClick={() => setSubInModalOpen(true)}
+                    className="px-2 py-0.5 text-xs rounded text-white"
+                    style={{ backgroundColor: "#c2410c" }}
+                    disabled={subInSubmitting}
+                  >
+                    {subInSubmitting ? "Requesting..." : "Request Sub-In"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2124,6 +2179,17 @@ function ScoutFormContent() {
             completed={completedMatches}
             assigned={assignedMatchIds}
             onPick={setSelectedMatch}
+          />
+          <ReefscapeMatchSelectModal
+            open={subInModalOpen}
+            onClose={() => setSubInModalOpen(false)}
+            options={options}
+            completed={completedMatches}
+            assigned={assignedMatchIds}
+            onPick={(match) => {
+              void submitSubInRequest(match);
+              setSubInModalOpen(false);
+            }}
           />
           <TeamPickerModal
             open={showTeamPicker}

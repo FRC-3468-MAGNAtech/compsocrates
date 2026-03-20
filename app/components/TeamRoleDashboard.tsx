@@ -24,6 +24,26 @@ type DashboardMatch = {
   blueTeams: number[];
 };
 
+type MatchAssignment = {
+  eventKey?: string;
+  matchKey?: string;
+  matchLabel?: string;
+  teamNumber?: number;
+  scoutName?: string;
+};
+
+type SubInRequest = {
+  id: string;
+  eventKey?: string;
+  matchId?: string;
+  matchLabel?: string;
+  matchType?: string;
+  matchNumber?: number;
+  teamNumber?: number | null;
+  requestedByName?: string;
+  requestedAt?: number;
+};
+
 function filterEventsByAttendance(
   events: UpcomingEvent[],
   attendanceByEvent: Record<string, string[]>,
@@ -76,6 +96,30 @@ function matchLabel(match: TBAMatch) {
   if (match.comp_level === "qf") return `Quarterfinal ${match.set_number}-${match.match_number}`;
   if (match.comp_level === "ef") return `Octofinal ${match.set_number}-${match.match_number}`;
   return match.key;
+}
+
+function normalizeMatchId(value: string): string {
+  const raw = String(value || "").toLowerCase().trim();
+  if (!raw) return "";
+  const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
+  if (direct) return `${direct[1]}${Number(direct[2])}`;
+  const qm = raw.match(/_qm(\d+)/);
+  if (qm) return `q${Number(qm[1])}`;
+  const practiceKey = raw.match(/_(?:pr|pm)(\d+)/);
+  if (practiceKey) return `p${Number(practiceKey[1])}`;
+  const practice = raw.match(/practice(?:\s+match)?\s+(\d+)/);
+  if (practice) return `p${Number(practice[1])}`;
+  const qual = raw.match(/qualification(?:\s+match)?\s+(\d+)/);
+  if (qual) return `q${Number(qual[1])}`;
+  const sf = raw.match(/_sf(\d+)m(\d+)/);
+  if (sf) return `sf${Number(sf[1])}`;
+  const qf = raw.match(/_qf(\d+)m(\d+)/);
+  if (qf) return `qf${Number(qf[1])}`;
+  const finals = raw.match(/_f(\d+)m(\d+)/);
+  if (finals) return `f${Number(finals[2])}`;
+  const finalsLabel = raw.match(/finals?\s+(\d+)/);
+  if (finalsLabel) return `f${Number(finalsLabel[1])}`;
+  return "";
 }
 
 function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
@@ -152,6 +196,8 @@ function TeamRoleDashboardContent({
   const [unscoutedTeams, setUnscoutedTeams] = useState<number[]>([]);
   const [nextTeamMatch, setNextTeamMatch] = useState<DashboardMatch | null>(null);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
+  const [userMatchAssignments, setUserMatchAssignments] = useState<MatchAssignment[]>([]);
+  const [subInRequests, setSubInRequests] = useState<SubInRequest[]>([]);
   const nowMs = getEffectiveNowMs(teamTimeOverride);
 
   useEffect(() => {
@@ -171,6 +217,14 @@ function TeamRoleDashboardContent({
       const events: UpcomingEvent[] = await getUpcomingEvents(userData.teamId);
       const practiceSnap = await getDocs(
         query(collection(db, "practiceSessions"), where("scoutName", "==", userData.displayName || ""))
+      );
+      const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+      setUserMatchAssignments(
+        assignmentSnap.docs.map((docSnap) => docSnap.data() as MatchAssignment).filter((row) => row.eventKey)
+      );
+      const subInSnap = await getDocs(query(collection(db, "subInRequests"), where("teamId", "==", userData.teamId)));
+      setSubInRequests(
+        subInSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Omit<SubInRequest, "id">) }))
       );
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
@@ -257,6 +311,36 @@ function TeamRoleDashboardContent({
     [activeEventKey, upcomingEvents]
   );
   const activeMatches = activeEvent ? eventMatchesByKey[activeEvent.key] || [] : [];
+  const nowSec = getEffectiveNowSec(teamTimeOverride);
+  const visibleSubInRequests = useMemo(() => {
+    if (!activeEvent) return [];
+    const ttlMs = 6 * 60 * 60 * 1000;
+    return subInRequests
+      .filter((request) => request.eventKey === activeEvent.key)
+      .filter((request) => {
+        const ts = Number(request.requestedAt || 0);
+        return !ts || nowMs - ts <= ttlMs;
+      })
+      .sort((a, b) => Number(b.requestedAt || 0) - Number(a.requestedAt || 0));
+  }, [activeEvent, subInRequests, nowMs]);
+  const upNextAssignment = useMemo(() => {
+    if (!activeEvent) return null;
+    const assignmentsForEvent = userMatchAssignments.filter((assignment) => assignment.eventKey === activeEvent.key);
+    if (assignmentsForEvent.length === 0) return null;
+    const upcomingMatch = [...activeMatches]
+      .filter((match) => match.scheduleTime > 0 && match.scheduleTime >= nowSec)
+      .sort((a, b) => a.scheduleTime - b.scheduleTime)[0];
+    if (!upcomingMatch) return null;
+    const upNextWindowSec = 20 * 60;
+    if (upcomingMatch.scheduleTime - nowSec > upNextWindowSec) return null;
+    const matchId = normalizeMatchId(upcomingMatch.key) || normalizeMatchId(upcomingMatch.label);
+    const assignment = assignmentsForEvent.find((row) => {
+      const assignmentId = normalizeMatchId(String(row.matchKey || "")) || normalizeMatchId(String(row.matchLabel || ""));
+      return assignmentId && matchId && assignmentId === matchId;
+    });
+    if (!assignment) return null;
+    return { match: upcomingMatch, assignment };
+  }, [activeEvent, activeMatches, nowSec, userMatchAssignments]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -275,6 +359,38 @@ function TeamRoleDashboardContent({
             </div>
           ) : (
             <>
+              {visibleSubInRequests.length > 0 && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-orange-500">
+                  <h2 className="text-xl font-semibold mb-2">Sub-In Requests</h2>
+                  <div className="space-y-2">
+                    {visibleSubInRequests.map((request) => (
+                      <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <div className="text-gray-800">
+                          <span className="font-semibold">{request.matchLabel || "Match"}</span>
+                          {request.teamNumber ? ` — Team ${request.teamNumber}` : ""}
+                          {request.requestedByName ? ` · Requested by ${request.requestedByName}` : ""}
+                        </div>
+                        {request.requestedAt ? (
+                          <span className="text-xs text-gray-500">
+                            {new Date(request.requestedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {upNextAssignment && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-amber-500">
+                  <h2 className="text-xl font-semibold mb-2">Up Next Assignment</h2>
+                  <p className="text-sm text-gray-800">
+                    You are up next for <span className="font-semibold">{upNextAssignment.match.label}</span>
+                    {upNextAssignment.assignment.teamNumber ? ` — Team ${upNextAssignment.assignment.teamNumber}` : ""}.
+                  </p>
+                </div>
+              )}
+
               {specialNotice && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                   <h2 className="text-xl font-semibold mb-2">{specialNotice.title}</h2>
