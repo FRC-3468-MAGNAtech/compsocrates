@@ -561,7 +561,7 @@ async function fetchEventMatchesForAssignments(
     });
     if (response.ok) {
       const payload = (await response.json()) as { matches?: TBAMatch[] };
-      if (Array.isArray(payload.matches) && payload.matches.length > 0) return payload.matches;
+      if (Array.isArray(payload.matches)) return payload.matches;
     }
   } catch (error) {
     console.warn("Assignments TBA proxy failed:", error);
@@ -818,19 +818,40 @@ function AssignmentsContent() {
       const availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse), nowMs);
       setPracticeEventOptions(availablePracticeEvents);
       const scheduleOptionsBase = sortEventOptions(dedupeEventOptionsByName(eventsWithPracticeSchedule), nowMs);
-      const selectedScheduleEvent = resolvedEvents.find((event) => event.key === selectedEvent);
+      let activeEventKey = resolvedEvents.some((event) => event.key === selectedEvent)
+        ? selectedEvent
+        : (resolvedEvents[0]?.key || "");
+      const isInitialSelection = !selectedEvent;
+      let preFetchedMatches: TBAMatch[] = [];
+      if (activeEventKey) {
+        if (isInitialSelection && resolvedEvents.length > 0) {
+          const matchBatches = await Promise.all(
+            resolvedEvents.map(async (event) => ({
+              key: event.key,
+              matches: await fetchEventMatchesForAssignments(event.key, encryptedKey, plainKey),
+            }))
+          );
+          const firstWithMatches = matchBatches.find((entry) => entry.matches.length > 0);
+          if (firstWithMatches) {
+            activeEventKey = firstWithMatches.key;
+          }
+          preFetchedMatches =
+            matchBatches.find((entry) => entry.key === activeEventKey)?.matches || [];
+        } else {
+          preFetchedMatches = await fetchEventMatchesForAssignments(activeEventKey, encryptedKey, plainKey);
+        }
+      }
+      const selectedScheduleEvent = resolvedEvents.find((event) => event.key === activeEventKey);
       const scheduleOptions = selectedScheduleEvent
         ? upsertEventOption(scheduleOptionsBase, selectedScheduleEvent, nowMs)
         : scheduleOptionsBase;
       setPracticeScheduleEventOptions(scheduleOptions);
-      const effectiveEvent = resolvedEvents.some((event) => event.key === selectedEvent)
-        ? selectedEvent
-        : (resolvedEvents[0]?.key || "");
-      if (!selectedEvent || effectiveEvent !== selectedEvent) {
-        setSelectedEvent(effectiveEvent);
+
+      if (!selectedEvent || activeEventKey !== selectedEvent) {
+        setSelectedEvent(activeEventKey);
       }
-      const scheduleDefaultKey = scheduleOptions.some((event) => event.key === effectiveEvent)
-        ? effectiveEvent
+      const scheduleDefaultKey = scheduleOptions.some((event) => event.key === activeEventKey)
+        ? activeEventKey
         : (scheduleOptions[0]?.key || "");
       if (!practiceScheduleEventKey || !scheduleOptions.some((event) => event.key === practiceScheduleEventKey)) {
         setPracticeScheduleEventKey(scheduleDefaultKey);
@@ -838,7 +859,7 @@ function AssignmentsContent() {
       if (!selectedPracticeEventKey || !availablePracticeEvents.some((event) => event.key === selectedPracticeEventKey)) {
         setSelectedPracticeEventKey(availablePracticeEvents[0]?.key || "");
       }
-      if (!effectiveEvent) {
+      if (!activeEventKey) {
         setAssignments([]);
         setPitAssignments([]);
         setTeamAssignments([]);
@@ -848,14 +869,14 @@ function AssignmentsContent() {
         return;
       }
 
-      const firstTeams = await fetchFirstTeamsForEvent(effectiveEvent);
-      setFirstTeamsByEvent((prev) => ({ ...prev, [effectiveEvent]: firstTeams }));
+      const firstTeams = await fetchFirstTeamsForEvent(activeEventKey);
+      setFirstTeamsByEvent((prev) => ({ ...prev, [activeEventKey]: firstTeams }));
 
       const [assignmentsSnap, pitAssignmentsSnap, teamAssignmentsSnap, practiceMatchesSnap] = await Promise.all([
-        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", effectiveEvent))),
-        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", effectiveEvent))),
-        getDocs(query(collection(db, "teamAssignments"), where("eventKey", "==", effectiveEvent))),
-        getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", effectiveEvent))),
+        getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", activeEventKey))),
+        getDocs(query(collection(db, "pitAssignments"), where("eventKey", "==", activeEventKey))),
+        getDocs(query(collection(db, "teamAssignments"), where("eventKey", "==", activeEventKey))),
+        getDocs(query(collection(db, "practiceMatches"), where("eventKey", "==", activeEventKey))),
       ]);
       let practiceAssignmentsDocs = [] as Array<{ id: string; data: Record<string, unknown> }>;
       try {
@@ -865,7 +886,7 @@ function AssignmentsContent() {
           data: assignmentDoc.data() as Record<string, unknown>,
         }));
       } catch {
-        const byEventSnap = await getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", effectiveEvent)));
+        const byEventSnap = await getDocs(query(collection(db, "practiceAssignments"), where("eventKey", "==", activeEventKey)));
         practiceAssignmentsDocs = byEventSnap.docs.map((assignmentDoc) => ({
           id: assignmentDoc.id,
           data: assignmentDoc.data() as Record<string, unknown>,
@@ -882,7 +903,7 @@ function AssignmentsContent() {
         ...assignmentDoc.data(),
       })) as Assignment[];
       const eventPracticeAssignments = assignmentRows.filter((row) => isEventPracticeAssignment(row));
-      setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [effectiveEvent]: eventPracticeAssignments }));
+      setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [activeEventKey]: eventPracticeAssignments }));
       setPitAssignments(
         pitAssignmentsSnap.docs.map((assignmentDoc) => ({
           id: assignmentDoc.id,
@@ -914,7 +935,7 @@ function AssignmentsContent() {
           ).slice(0, 3);
           return {
             id: practiceDoc.id,
-            eventKey: effectiveEvent,
+            eventKey: activeEventKey,
             matchKey: String(data.matchKey || practiceDoc.id),
             label: practiceMatchLabel(stage, matchNumber, alliance),
             teams,
@@ -955,21 +976,16 @@ function AssignmentsContent() {
       });
       setManualTeamListsByEvent(normalizedManualTeams);
 
-      let matches: TBAMatch[] = [];
-      try {
-        matches = await fetchEventMatchesForAssignments(effectiveEvent, encryptedKey, plainKey);
-      } catch (error) {
-        console.warn("Unable to fetch TBA matches for assignments:", error);
-      }
+      let matches: TBAMatch[] = preFetchedMatches;
       const hasQualification = matches.some((match) => match.comp_level === "qm");
       if (!hasQualification) {
-        let firstQualification = await fetchFirstSchedule(effectiveEvent, "Qualification");
+        let firstQualification = await fetchFirstSchedule(activeEventKey, "Qualification");
         if (firstQualification.length === 0) {
-          const lower = await fetchFirstSchedule(effectiveEvent, "qualification");
+          const lower = await fetchFirstSchedule(activeEventKey, "qualification");
           if (lower.length > 0) firstQualification = lower;
         }
         if (firstQualification.length === 0) {
-          const fallback = await fetchFirstSchedule(effectiveEvent, "");
+          const fallback = await fetchFirstSchedule(activeEventKey, "");
           const filtered = fallback.filter((match) => String(match.tournamentLevel || "").toLowerCase().includes("qual"));
           firstQualification = filtered.length > 0 ? filtered : fallback;
         }
@@ -981,7 +997,7 @@ function AssignmentsContent() {
             .map((match) => {
               const { red, blue } = splitFirstAllianceTeams(match);
               return {
-                key: `${effectiveEvent}_qm${match.matchNumber}`,
+                key: `${activeEventKey}_qm${match.matchNumber}`,
                 comp_level: "qm" as const,
                 set_number: 1,
                 match_number: match.matchNumber,
@@ -1027,19 +1043,19 @@ function AssignmentsContent() {
       });
       setMatchOptions(normalizedOptions);
 
-      const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(effectiveEvent, matches);
+      const practiceFromSchedule = await buildPracticeRowsFromMatchListStyle(activeEventKey, matches);
       const mergedPracticeOptions = mergePracticeRows(practiceFromSchedule, practiceFromFirestore);
       if (mergedPracticeOptions.length > 0) {
         setPracticeMatchOptions(mergedPracticeOptions);
         setPracticeScheduleMatchesByEvent((prev) => ({
           ...prev,
-          [effectiveEvent]: mergedPracticeOptions,
+          [activeEventKey]: mergedPracticeOptions,
         }));
       } else {
         setPracticeMatchOptions(practiceFromFirestore);
         setPracticeScheduleMatchesByEvent((prev) => ({
           ...prev,
-          [effectiveEvent]: practiceFromFirestore,
+          [activeEventKey]: practiceFromFirestore,
         }));
       }
     } catch (error) {
