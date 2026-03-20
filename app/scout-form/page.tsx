@@ -1372,6 +1372,15 @@ function ScoutFormContent() {
         alert("Team number missing for this match.");
         return;
       }
+      const existingSub = subInStatusByMatch[match.id]?.[teamValue];
+      if (existingSub === "requested") {
+        alert("A sub-in has already been requested for this team.");
+        return;
+      }
+      if (existingSub === "assigned") {
+        alert("A sub-in has already been assigned for this team.");
+        return;
+      }
       const now = Date.now();
       await addDoc(collection(db, "scouting"), {
         entryType: "sub-in-request",
