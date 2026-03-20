@@ -153,7 +153,8 @@ function compareRobotToPlan(actual: RobotReflection, planned: StrategyRobot) {
   const mismatches: string[] = [];
   const actualStarting = normalizeText(actual.startingPosition);
   const plannedStarting = normalizeText(planned.startingPosition);
-  if (actualStarting && plannedStarting && actualStarting !== plannedStarting) {
+  const plannedStartingAny = plannedStarting === "any" || plannedStarting === "anywhere";
+  if (actualStarting && plannedStarting && !plannedStartingAny && actualStarting !== plannedStarting) {
     mismatches.push("Starting Position");
   }
   const actualRole = normalizeText(actual.role);

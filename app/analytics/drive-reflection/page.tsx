@@ -8,7 +8,7 @@ import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
-import { formatAnalyticsText } from "@/app/utils/displayFormat";
+import { formatAnalyticsText, formatMatchLabelShort, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
@@ -161,6 +161,12 @@ function DriveReflectionAnalyticsContent() {
 
     return [...filtered].sort((a, b) => {
       if (sortKey === "matchLabel") {
+        const aMeta = getMatchLabelMeta(a.matchLabel || "");
+        const bMeta = getMatchLabelMeta(b.matchLabel || "");
+        if (aMeta.order !== bMeta.order) return sortDir === "asc" ? aMeta.order - bMeta.order : bMeta.order - aMeta.order;
+        if (aMeta.matchNumber !== bMeta.matchNumber) {
+          return sortDir === "asc" ? aMeta.matchNumber - bMeta.matchNumber : bMeta.matchNumber - aMeta.matchNumber;
+        }
         return compareMatchLabels(a.matchLabel || "", b.matchLabel || "", sortDir);
       }
       return compareSortValues(getValue(a), getValue(b), sortDir);
@@ -461,7 +467,7 @@ function DriveReflectionAnalyticsContent() {
                 const r3 = entry.robots?.[2];
                 return (
                   <tr key={entry.id}>
-                    <td className="font-semibold">{entry.matchLabel || "-"}</td>
+                    <td className="font-semibold">{formatMatchLabelShort(entry.matchLabel || "")}</td>
                     <td>{entry.scoutName || "-"}</td>
                     <td>{r1?.teamNumber || "-"}</td>
                     <td>{formatAnalyticsText(r1?.startingPosition)}</td>

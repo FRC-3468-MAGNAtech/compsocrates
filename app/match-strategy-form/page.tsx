@@ -572,13 +572,14 @@ function MatchStrategyFormContent() {
         <p className="text-xs text-amber-700">No pit form synced for team {syncStatus.team} at this event yet.</p>
       )}
 
-      <label className="block text-sm font-medium text-gray-700">Starting Position</label>
-      <select className="w-full border rounded p-3" value={robot.startingPosition} onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}>
-        <option value="">Select Position</option>
-        <option value="outpost-side">Outpost Side</option>
-        <option value="middle">Middle</option>
-        <option value="depot-side">Depot Side</option>
-      </select>
+        <label className="block text-sm font-medium text-gray-700">Starting Position</label>
+        <select className="w-full border rounded p-3" value={robot.startingPosition} onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}>
+          <option value="">Select Position</option>
+          <option value="any">Any</option>
+          <option value="outpost-side">Outpost Side</option>
+          <option value="middle">Middle</option>
+          <option value="depot-side">Depot Side</option>
+        </select>
 
       <label className="block text-sm font-medium text-gray-700">Role</label>
       <select className="w-full border rounded p-3" value={robot.role} onChange={(e) => setRobot({ ...robot, role: e.target.value })}>
