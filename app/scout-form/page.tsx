@@ -49,12 +49,14 @@ function TeamPickerModal({
   open,
   teams,
   scoutedTeams,
+  assignedTeams,
   onClose,
   onSelect,
 }: {
   open: boolean;
   teams: string[];
   scoutedTeams: Set<string>;
+  assignedTeams?: Set<string>;
   onClose: () => void;
   onSelect: (team: string) => void;
 }) {
@@ -68,6 +70,8 @@ function TeamPickerModal({
           <div className="grid grid-cols-3 gap-2">
             {teams.map((team) => {
               const done = scoutedTeams.has(team);
+              const assigned = assignedTeams?.has(team);
+              const label = done ? `${team} (Scouted)` : assigned ? `${team} (Assigned)` : team;
               return (
                 <button
                   key={team}
@@ -79,7 +83,7 @@ function TeamPickerModal({
                   }}
                   className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
                 >
-                  {done ? `${team} (Scouted)` : team}
+                  {label}
                 </button>
               );
             })}
@@ -872,6 +876,7 @@ function ScoutFormContent() {
   const [modalCompleted, setModalCompleted] = useState<Set<string>>(new Set());
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
+  const [assignedTeamsByMatch, setAssignedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [assignedHumanPlayerMatches, setAssignedHumanPlayerMatches] = useState<Set<string>>(new Set());
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
@@ -1104,6 +1109,27 @@ function ScoutFormContent() {
         setAssignedTeams(assigned);
         setAssignedHumanPlayerMatches(assignedHumanPlayer);
 
+        try {
+          const assignmentSnapAll = await getDocs(
+            query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent))
+          );
+          const byMatch = new Map<string, Set<string>>();
+          assignmentSnapAll.docs.forEach((row) => {
+            const data = row.data() as AssignmentRow;
+            const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
+            const team = String(data.teamNumber || "").trim();
+            if (!matchId || !team) return;
+            if (!byMatch.has(matchId)) byMatch.set(matchId, new Set<string>());
+            byMatch.get(matchId)?.add(team);
+          });
+          setAssignedTeamsByMatch(
+            Object.fromEntries(Array.from(byMatch.entries()).map(([key, value]) => [key, Array.from(value)]))
+          );
+        } catch (error) {
+          console.warn("Unable to load assigned teams for match list:", error);
+          setAssignedTeamsByMatch({});
+        }
+
         const now = getEffectiveNowSec(teamTimeOverride);
         const graceSeconds = 10 * 60;
         const pickNextBySchedule = (rows: MatchOption[]) => {
@@ -1166,6 +1192,10 @@ function ScoutFormContent() {
   const selectedMatchId = selectedMatch?.id || "";
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
+  const selectedAssignedTeams = useMemo(
+    () => new Set(assignedTeamsByMatch[selectedMatchId] || []),
+    [assignedTeamsByMatch, selectedMatchId]
+  );
   const assignedTeam = assignedTeams[selectedMatchId] || "";
   const isHumanPlayerAssigned = assignedHumanPlayerMatches.has(selectedMatchId);
   const selectedRedTeams = selectedMatch?.redTeams || [];
@@ -2081,6 +2111,7 @@ function ScoutFormContent() {
             open={showTeamPicker}
             teams={selectedTeams}
             scoutedTeams={selectedScoutedTeams}
+            assignedTeams={selectedAssignedTeams}
             onClose={() => setShowTeamPicker(false)}
             onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
           />
@@ -2088,6 +2119,7 @@ function ScoutFormContent() {
             open={leadTeamPickerOpen}
             teams={leadAllianceTeams}
             scoutedTeams={new Set()}
+            assignedTeams={new Set()}
             onClose={closeLeadTeamPicker}
             onSelect={handleLeadTeamPick}
           />
