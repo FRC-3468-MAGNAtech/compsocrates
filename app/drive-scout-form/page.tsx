@@ -30,6 +30,8 @@ type MatchOption = {
   label: string;
   scheduleTime: number;
   teams: string[];
+  redTeams?: string[];
+  blueTeams?: string[];
 };
 
 type ModalMatchOption = ReefscapeMatchOption & {
@@ -266,14 +268,20 @@ function DriveReflectionFormContent() {
         setModalCompleted(buildCompletedModalIdsFromTba(matches, completionNow));
         const options: MatchOption[] = matches
           .map((match) => {
-            const teams = [...match.alliances.red.team_keys, ...match.alliances.blue.team_keys]
+            const redTeams = match.alliances.red.team_keys
               .map((key) => key.replace("frc", "").trim())
               .filter(Boolean);
+            const blueTeams = match.alliances.blue.team_keys
+              .map((key) => key.replace("frc", "").trim())
+              .filter(Boolean);
+            const teams = [...redTeams, ...blueTeams];
             return {
               key: match.key,
               label: labelForMatch(match),
               scheduleTime: match.actual_time || match.predicted_time || match.time || 0,
               teams,
+              redTeams,
+              blueTeams,
             };
           })
           .sort((a, b) => a.scheduleTime - b.scheduleTime);
@@ -298,7 +306,9 @@ function DriveReflectionFormContent() {
             .filter((row) => row.time > 0 && row.time >= now - graceSeconds)
             .sort((a, b) => a.time - b.time);
           if (scheduled.length > 0) return scheduled[0]?.match || null;
-          return rows.slice().sort((a, b) => a.scheduleTime - b.scheduleTime)[0] || null;
+          return rows
+            .slice()
+            .sort((a, b) => extractMatchNumber(a) - extractMatchNumber(b))[0] || null;
         };
 
         const isAttending = assignedMatchKeys.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
@@ -339,8 +349,17 @@ function DriveReflectionFormContent() {
   }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
   function setRobotTeamDefaults(match: MatchOption, ourTeam: string) {
-    const teammates = match.teams.slice(0, 3);
-    const sorted = ourTeam && teammates.includes(ourTeam) ? [ourTeam, ...teammates.filter((team) => team !== ourTeam)] : teammates;
+    const redTeams = match.redTeams && match.redTeams.length > 0 ? match.redTeams : match.teams.slice(0, 3);
+    const blueTeams = match.blueTeams && match.blueTeams.length > 0 ? match.blueTeams : match.teams.slice(3, 6);
+    let allianceTeams = redTeams.length > 0 ? redTeams : match.teams.slice(0, 3);
+    if (ourTeam && blueTeams.includes(ourTeam)) {
+      allianceTeams = blueTeams;
+    } else if (ourTeam && redTeams.includes(ourTeam)) {
+      allianceTeams = redTeams;
+    }
+    const sorted = ourTeam && allianceTeams.includes(ourTeam)
+      ? [ourTeam, ...allianceTeams.filter((team) => team !== ourTeam)]
+      : allianceTeams;
     setRobot1((prev) => ({ ...prev, teamNumber: sorted[0] || prev.teamNumber }));
     setRobot2((prev) => ({ ...prev, teamNumber: sorted[1] || prev.teamNumber }));
     setRobot3((prev) => ({ ...prev, teamNumber: sorted[2] || prev.teamNumber }));

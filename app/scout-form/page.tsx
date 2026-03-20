@@ -877,6 +877,7 @@ function ScoutFormContent() {
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
   const [assignedTeamsByMatch, setAssignedTeamsByMatch] = useState<Record<string, string[]>>({});
+  const [assignedMatchIds, setAssignedMatchIds] = useState<Set<string>>(new Set());
   const [assignedHumanPlayerMatches, setAssignedHumanPlayerMatches] = useState<Set<string>>(new Set());
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
@@ -975,6 +976,7 @@ function ScoutFormContent() {
         setTargets({});
         setModalCompleted(new Set());
         setAssignedHumanPlayerMatches(new Set());
+        setAssignedMatchIds(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
         return;
       }
@@ -998,6 +1000,7 @@ function ScoutFormContent() {
             setTargets({});
             setModalCompleted(new Set());
             setAssignedHumanPlayerMatches(new Set());
+            setAssignedMatchIds(new Set());
             setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
             return;
           }
@@ -1017,6 +1020,7 @@ function ScoutFormContent() {
           setTargets({});
           setModalCompleted(new Set());
           setAssignedHumanPlayerMatches(new Set());
+          setAssignedMatchIds(new Set());
           setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
           return;
         }
@@ -1107,6 +1111,7 @@ function ScoutFormContent() {
           }
         });
         setAssignedTeams(assigned);
+        setAssignedMatchIds(assignedMatchIds);
         setAssignedHumanPlayerMatches(assignedHumanPlayer);
 
         try {
@@ -1163,6 +1168,7 @@ function ScoutFormContent() {
         setTargets({});
         setModalCompleted(new Set());
         setAssignedHumanPlayerMatches(new Set());
+        setAssignedMatchIds(new Set());
         setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
       }
     }
@@ -1762,27 +1768,22 @@ function ScoutFormContent() {
                   <label className="block text-sm font-medium text-gray-700">Scout Name</label>
                   <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.scoutName} disabled />
                   <label className="block text-sm font-medium text-gray-700">Team Number</label>
-                  {selectedTeams.length > 0 ? (
-                    <div className="flex gap-2">
-                      <select className="flex-1 border rounded p-2" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value }))}>
-                        <option value="">Select Team</option>
-                        {assignedTeam && !selectedTeams.includes(assignedTeam) && (
-                          <option value={assignedTeam}>{`${assignedTeam} (Assigned)`}</option>
-                        )}
-                        {selectedTeams.map((team) => (
-                          <option key={team} value={team} disabled={selectedScoutedTeams.has(team)}>
-                            {selectedScoutedTeams.has(team) ? `${team} (Scouted)` : team}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input className="flex-1 border rounded p-2" placeholder="Enter team number" value={form.teamNumber} onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))} />
-                      <button type="button" className="px-4 rounded border disabled:opacity-50" onClick={() => setShowTeamPicker(true)} disabled={selectedTeams.length === 0}>Pick</button>
-                    </div>
-                  )}
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 border rounded p-2"
+                      placeholder={selectedTeams.length > 0 ? "Select team" : "Enter team number"}
+                      value={form.teamNumber}
+                      onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    />
+                    <button
+                      type="button"
+                      className="px-4 rounded border disabled:opacity-50"
+                      onClick={() => setShowTeamPicker(true)}
+                      disabled={selectedTeams.length === 0}
+                    >
+                      Pick
+                    </button>
+                  </div>
                   <label className="block text-sm font-medium text-gray-700">Starting Position</label>
                   <select className="w-full border rounded p-2" value={form.startingPosition} onChange={(e) => setForm((p) => ({ ...p, startingPosition: e.target.value }))}>
                     <option value="">Select Position</option>
@@ -2106,7 +2107,14 @@ function ScoutFormContent() {
             </>
           )}
 
-          <ReefscapeMatchSelectModal open={modalOpen} onClose={() => setModalOpen(false)} options={options} completed={completedMatches} onPick={setSelectedMatch} />
+          <ReefscapeMatchSelectModal
+            open={modalOpen}
+            onClose={() => setModalOpen(false)}
+            options={options}
+            completed={completedMatches}
+            assigned={assignedMatchIds}
+            onPick={setSelectedMatch}
+          />
           <TeamPickerModal
             open={showTeamPicker}
             teams={selectedTeams}

@@ -223,6 +223,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   onClose,
   options,
   completed = new Set<string>(),
+  assigned = new Set<string>(),
   onPick,
   allowManualOverride = true,
   allowCompletedPick = true,
@@ -231,6 +232,7 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   onClose: () => void;
   options: T[];
   completed?: Set<string>;
+  assigned?: Set<string>;
   onPick: (option: T) => void;
   allowManualOverride?: boolean;
   allowCompletedPick?: boolean;
@@ -398,9 +400,11 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                       : -1;
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
+                      const isAssigned = assigned.has(matchId);
                       const status: MatchStatus = done ? "completed" : matchNum === resolvedNextNum ? "next" : "upcoming";
                       const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
                       const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
+                      const borderColor = isAssigned ? "var(--primary-color)" : color;
                       return (
                         <button
                           key={`${step}-${matchNum}`}
@@ -415,13 +419,20 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                               ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300"
                               : done
                                 ? "opacity-70 hover:bg-gray-50"
-                                : "hover:bg-gray-50"
+                                : isAssigned
+                                  ? "hover:bg-indigo-50 bg-indigo-50"
+                                  : "hover:bg-gray-50"
                           }`}
-                          style={done && !allowCompletedPick ? undefined : { borderColor: color }}
+                          style={done && !allowCompletedPick ? undefined : { borderColor }}
                         >
                           <div className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: color }}>
                             {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
                           </div>
+                          {isAssigned && (
+                            <div className="absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
+                              Your Match
+                            </div>
+                          )}
                           <div className="mt-3">
                             <div className="font-semibold text-sm">{displayLabel}</div>
                             <div className="text-xs text-gray-600">{timeString}</div>
