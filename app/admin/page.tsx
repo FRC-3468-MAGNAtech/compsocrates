@@ -362,18 +362,18 @@ function AdminPanelContent() {
       return;
     }
     let isActive = true;
-    async function loadEntries() {
+    async function loadEntries(activeFormType: FormTypeOption) {
       setFormEntriesLoading(true);
       try {
         const rows: FormEditorEntry[] = [];
         await Promise.all(
-          formType.collections.map(async (collectionName) => {
+          activeFormType.collections.map(async (collectionName) => {
             const snap = await getDocs(collection(db, collectionName));
             snap.docs.forEach((docSnap) => {
               const data = docSnap.data() as Record<string, unknown>;
               const teamId = String(data.teamId || "").trim();
               if (userData?.teamId && teamId && teamId !== String(userData.teamId)) return;
-              if (formType.id === "lead-scout") {
+              if (activeFormType.id === "lead-scout") {
                 if (!isLeadScoutingEntry(data)) return;
               } else if (collectionName === "scouting" && isLeadScoutingEntry(data)) {
                 return;
@@ -390,7 +390,7 @@ function AdminPanelContent() {
         if (isActive) setFormEntriesLoading(false);
       }
     }
-    void loadEntries();
+    void loadEntries(formType);
     return () => {
       isActive = false;
     };
