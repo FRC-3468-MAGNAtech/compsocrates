@@ -561,11 +561,11 @@ async function fetchEventMatchesForAssignments(
     });
     if (response.ok) {
       const payload = (await response.json()) as { matches?: TBAMatch[] };
-      if (Array.isArray(payload.matches)) return payload.matches;
+      if (Array.isArray(payload.matches) && payload.matches.length > 0) return payload.matches;
     }
   }
 
-  return getEventMatches(safeEvent);
+  return getEventMatches(safeEvent, plainKey || undefined);
 }
 
 async function fetchFirstTeamsForEvent(eventKey: string): Promise<number[]> {
