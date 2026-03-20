@@ -382,9 +382,9 @@ function AdminPanelContent() {
             } else {
               snapshots.push(await getDocs(baseRef));
             }
-            if (snapshots.every((snap) => snap.empty) && collectionName === "leadScouting") {
+            if (collectionName === "leadScouting" && formEvent !== "all") {
               try {
-                snapshots.push(await getDocs(baseRef));
+                snapshots.push(await getDocs(query(baseRef, where("eventKey", "==", formEvent))));
               } catch {
                 // Ignore fallback errors (likely permission-related).
               }
@@ -418,7 +418,7 @@ function AdminPanelContent() {
     return () => {
       isActive = false;
     };
-  }, [formEditorOpen, selectedFormType, userData?.teamId]);
+  }, [formEditorOpen, selectedFormType, userData?.teamId, formEvent]);
 
   useEffect(() => {
     if (!selectedFormEntry) {
