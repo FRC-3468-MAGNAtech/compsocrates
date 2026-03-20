@@ -1,28 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
 import { getEffectiveNowMs, toLocalDateTimeInputValue } from "@/app/utils/teamTime";
-import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
-
-type ScoutingEditDraft = {
-  id: string;
-  game: AnalyticsGame;
-  eventKey: string;
-  eventName: string;
-  matchType: "practice" | "qualification" | "finals";
-  matchNumber: string;
-  teamNumber: string;
-  isPracticeScouting: boolean;
-  practiceMode?: string;
-  practiceSessionId?: string;
-  isLivePracticeScouting?: boolean;
-};
+import {
+  entryMatchesAnalyticsFilters,
+  getEventOptionsForEntries,
+  getEventsForGame,
+  isLeadScoutingEntry,
+  isPracticeScoutedEntry,
+  type AnalyticsGame,
+} from "@/app/utils/analyticsEvents";
 
 type OwnerManagedUser = {
   uid: string;
@@ -33,38 +26,97 @@ type OwnerManagedUser = {
   emailVerificationExempt?: boolean;
 };
 
-function coerceMatchType(value: string): "practice" | "qualification" | "finals" {
-  const raw = String(value || "").trim().toLowerCase();
-  if (raw === "practice") return "practice";
-  if (raw === "finals" || raw === "final") return "finals";
-  return "qualification";
+type FormTypeId =
+  | "match-scout"
+  | "lead-scout"
+  | "pit-scout"
+  | "team-strategy"
+  | "match-strategy"
+  | "drive-reflection";
+
+type FormTypeOption = {
+  id: FormTypeId;
+  label: string;
+  collections: string[];
+  supportsPracticeToggle?: boolean;
+};
+
+type FormEditorEntry = {
+  id: string;
+  collection: string;
+  data: Record<string, unknown>;
+};
+
+const FORM_TYPES: FormTypeOption[] = [
+  { id: "match-scout", label: "Match Scout Form", collections: ["scouting"], supportsPracticeToggle: true },
+  { id: "lead-scout", label: "Lead Scout Form", collections: ["leadScouting", "scouting"] },
+  { id: "pit-scout", label: "Pit Scout Form", collections: ["pitScouting"] },
+  { id: "team-strategy", label: "Team Strategy Form", collections: ["strategyScouting"] },
+  { id: "match-strategy", label: "Match Strategy Form", collections: ["matchStrategyPlans"] },
+  { id: "drive-reflection", label: "Drive Reflection Form", collections: ["driveScouting"] },
+];
+
+function entrySortTime(entry: Record<string, unknown>): number {
+  const raw = Number(entry.submittedAt ?? entry.createdAt ?? entry.timestamp ?? 0);
+  return Number.isFinite(raw) ? raw : 0;
 }
 
-function matchTypeFromId(matchId: string): "practice" | "qualification" | "finals" {
-  const raw = String(matchId || "").trim().toLowerCase();
-  if (raw.startsWith("p")) return "practice";
-  if (raw.startsWith("f")) return "finals";
-  return "qualification";
+function entryMatchLabel(entry: Record<string, unknown>): string {
+  return String(
+    entry.matchLabel || entry.matchId || entry.matchKey || entry.matchNumber || ""
+  )
+    .trim();
 }
 
-function parseMatchNumber(value: string): string {
-  const numeric = String(value || "").match(/\d+/)?.[0] || "";
-  return numeric.replace(/^0+/, "") || (numeric ? "0" : "");
+function entryTeamLabel(entry: Record<string, unknown>): string {
+  const value = String(entry.teamNumber || "").trim();
+  return value ? `Team ${value}` : "";
 }
 
-function parseTeamNumber(value: string): string {
-  const numeric = String(value || "").match(/\d+/)?.[0] || "";
-  return numeric.replace(/^0+/, "") || (numeric ? "0" : "");
+function entryScoutLabel(entry: Record<string, unknown>): string {
+  const value = String(entry.scoutName || "").trim();
+  return value ? `Scout: ${value}` : "";
 }
 
-function parseBulkIds(raw: string): string[] {
-  const unique = new Set<string>();
-  String(raw || "")
-    .split(/[\s,]+/)
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .forEach((value) => unique.add(value));
-  return Array.from(unique.values());
+function entryRobotTeams(entry: Record<string, unknown>): string {
+  const robots = Array.isArray(entry.robots) ? entry.robots : [];
+  const teams = robots
+    .map((robot) => (robot && typeof robot === "object" ? String((robot as { teamNumber?: string }).teamNumber || "").trim() : ""))
+    .filter(Boolean);
+  return teams.length > 0 ? teams.join(", ") : "";
+}
+
+function buildEntrySummary(entry: Record<string, unknown>, formType: FormTypeId) {
+  const matchLabel = entryMatchLabel(entry);
+  const teamLabel = entryTeamLabel(entry);
+  const scoutLabel = entryScoutLabel(entry);
+  if (formType === "match-scout") {
+    return {
+      title: `${matchLabel || "Match"}${teamLabel ? ` - ${teamLabel}` : ""}`,
+      subtitle: scoutLabel,
+    };
+  }
+  if (formType === "lead-scout") {
+    const alliance = String(entry.alliance || "").toUpperCase();
+    return {
+      title: `${matchLabel || "Lead Match"}${alliance ? ` - ${alliance}` : ""}`,
+      subtitle: scoutLabel,
+    };
+  }
+  if (formType === "pit-scout" || formType === "team-strategy") {
+    return {
+      title: teamLabel || "Team Entry",
+      subtitle: scoutLabel,
+    };
+  }
+  if (formType === "match-strategy" || formType === "drive-reflection") {
+    const teams = entryRobotTeams(entry);
+    return {
+      title: matchLabel || "Match Plan",
+      subtitle: teams ? `Teams: ${teams}` : scoutLabel,
+    };
+  }
+  return { title: matchLabel || teamLabel || "Entry", subtitle: scoutLabel };
 }
 
 function AdminPanelContent() {
@@ -80,22 +132,16 @@ function AdminPanelContent() {
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [timeInput, setTimeInput] = useState("");
   const [timeSaving, setTimeSaving] = useState(false);
-  const [scoutingLookupId, setScoutingLookupId] = useState("");
-  const [scoutingLoading, setScoutingLoading] = useState(false);
-  const [scoutingSaving, setScoutingSaving] = useState(false);
-  const [scoutingDraft, setScoutingDraft] = useState<ScoutingEditDraft | null>(null);
-  const [bulkIdsInput, setBulkIdsInput] = useState("");
-  const [bulkSetPractice, setBulkSetPractice] = useState(false);
-  const [bulkPracticeValue, setBulkPracticeValue] = useState(false);
-  const [bulkSetEvent, setBulkSetEvent] = useState(false);
-  const [bulkEventKey, setBulkEventKey] = useState("");
-  const [bulkEventName, setBulkEventName] = useState("");
-  const [bulkSetMatch, setBulkSetMatch] = useState(false);
-  const [bulkMatchType, setBulkMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
-  const [bulkMatchNumber, setBulkMatchNumber] = useState("");
-  const [bulkSetTeam, setBulkSetTeam] = useState(false);
-  const [bulkTeamNumber, setBulkTeamNumber] = useState("");
-  const [bulkSaving, setBulkSaving] = useState(false);
+  const [formEditorOpen, setFormEditorOpen] = useState(false);
+  const [selectedFormType, setSelectedFormType] = useState<FormTypeOption | null>(null);
+  const [formGame, setFormGame] = useState<AnalyticsGame>("REBUILT");
+  const [formEvent, setFormEvent] = useState("all");
+  const [formPracticeOnly, setFormPracticeOnly] = useState(false);
+  const [formEntriesRaw, setFormEntriesRaw] = useState<FormEditorEntry[]>([]);
+  const [formEntriesLoading, setFormEntriesLoading] = useState(false);
+  const [selectedFormEntry, setSelectedFormEntry] = useState<FormEditorEntry | null>(null);
+  const [entryDraftJson, setEntryDraftJson] = useState("");
+  const [entrySaving, setEntrySaving] = useState(false);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
     { label: "Pit Scout", value: "/pit-scout-dashboard" },
@@ -283,204 +329,130 @@ function AdminPanelContent() {
   }
 
   const canEditScouting = Boolean(userData?.isTeamAdmin) || ownerAllowed;
-  const scoutingEventOptions = (() => {
-    const combined = [...getEventsForGame("REBUILT"), ...getEventsForGame("REEFSCAPE")];
-    const byId = new Map<string, { id: string; name: string }>();
-    combined.forEach((event) => {
-      const id = String(event.id || "").trim();
-      if (!id || byId.has(id)) return;
-      byId.set(id, { id, name: event.name });
-    });
-    if (scoutingDraft?.eventKey && !byId.has(scoutingDraft.eventKey)) {
-      byId.set(scoutingDraft.eventKey, { id: scoutingDraft.eventKey, name: scoutingDraft.eventName || scoutingDraft.eventKey });
-    }
-    return Array.from(byId.values());
-  })();
-  const bulkIds = parseBulkIds(bulkIdsInput);
+  const formEventOptions = useMemo(() => {
+    const baseEntries = formEntriesRaw.map((row) => row.data as { eventKey?: string; eventName?: string; game?: string });
+    return [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(baseEntries, formGame)];
+  }, [formEntriesRaw, formGame]);
 
-  async function loadScoutingDoc() {
-    const id = scoutingLookupId.trim();
-    if (!id || !canEditScouting) return;
-    setScoutingLoading(true);
-    try {
-      const snap = await getDoc(doc(db, "scouting", id));
-      if (!snap.exists()) {
-        setScoutingDraft(null);
-        alert("No scouting document found for that ID.");
-        return;
+  useEffect(() => {
+    if (!selectedFormType?.supportsPracticeToggle) {
+      setFormPracticeOnly(false);
+    }
+  }, [selectedFormType]);
+
+  useEffect(() => {
+    if (formEvent !== "all" && !formEventOptions.some((option) => option.id === formEvent)) {
+      setFormEvent("all");
+    }
+  }, [formEventOptions, formEvent]);
+
+  useEffect(() => {
+    setSelectedFormEntry(null);
+    setEntryDraftJson("");
+  }, [selectedFormType, formGame, formEvent, formPracticeOnly]);
+
+  useEffect(() => {
+    if (!formEditorOpen || !selectedFormType || !userData?.teamId) {
+      setFormEntriesRaw([]);
+      return;
+    }
+    let isActive = true;
+    async function loadEntries() {
+      setFormEntriesLoading(true);
+      try {
+        const rows: FormEditorEntry[] = [];
+        await Promise.all(
+          selectedFormType.collections.map(async (collectionName) => {
+            const snap = await getDocs(collection(db, collectionName));
+            snap.docs.forEach((docSnap) => {
+              const data = docSnap.data() as Record<string, unknown>;
+              const teamId = String(data.teamId || "").trim();
+              if (userData?.teamId && teamId && teamId !== String(userData.teamId)) return;
+              if (selectedFormType.id === "lead-scout") {
+                if (!isLeadScoutingEntry(data)) return;
+              } else if (collectionName === "scouting" && isLeadScoutingEntry(data)) {
+                return;
+              }
+              rows.push({ id: docSnap.id, collection: collectionName, data });
+            });
+          })
+        );
+        if (isActive) setFormEntriesRaw(rows);
+      } catch (error) {
+        console.error("Failed to load form entries:", error);
+        if (isActive) setFormEntriesRaw([]);
+      } finally {
+        if (isActive) setFormEntriesLoading(false);
       }
-      const row = snap.data() as Record<string, unknown>;
-      const matchId = String(row.matchId || "");
-      const rawMatchType = String(row.matchType || "").trim();
-      const matchType = rawMatchType ? coerceMatchType(rawMatchType) : matchTypeFromId(matchId);
-      const matchNumber = String(row.matchNumber || parseMatchNumber(matchId) || "");
-      const teamNumber = String(row.teamNumber || "").trim();
-      const eventKey = String(row.eventKey || "").trim() || "app-testing";
-      const eventName = String(row.eventName || "").trim();
-      const isPracticeScouting =
-        Boolean(row.isPracticeScouting) || Boolean(row.practiceMode) || Boolean(row.practiceSessionId);
-      const game = String(row.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
-      setScoutingDraft({
-        id: snap.id,
-        game,
-        eventKey,
-        eventName,
-        matchType: matchType || matchTypeFromId(matchId),
-        matchNumber,
-        teamNumber,
-        isPracticeScouting,
-        practiceMode: typeof row.practiceMode === "string" ? row.practiceMode : undefined,
-        practiceSessionId: typeof row.practiceSessionId === "string" ? row.practiceSessionId : undefined,
-        isLivePracticeScouting: Boolean(row.isLivePracticeScouting),
-      });
-    } catch (error) {
-      console.error("Failed to load scouting doc:", error);
-      alert("Failed to load scouting document.");
-    } finally {
-      setScoutingLoading(false);
     }
-  }
-
-  async function saveScoutingEdits() {
-    if (!scoutingDraft || !canEditScouting) return;
-    const cleanedEventKey = String(scoutingDraft.eventKey || "").trim().toLowerCase();
-    const cleanedMatchNumber = parseMatchNumber(scoutingDraft.matchNumber);
-    if (!cleanedEventKey) {
-      alert("Event key cannot be empty.");
-      return;
-    }
-    if (!cleanedMatchNumber) {
-      alert("Match number cannot be empty.");
-      return;
-    }
-    const cleanedTeamNumber = parseTeamNumber(scoutingDraft.teamNumber);
-    if (!cleanedTeamNumber) {
-      alert("Team number cannot be empty.");
-      return;
-    }
-    const matchType = scoutingDraft.matchType || "qualification";
-    const matchPrefix = matchType === "practice" ? "p" : matchType === "finals" ? "f" : "q";
-    const matchId = `${matchPrefix}${cleanedMatchNumber}`;
-
-    const knownEvent = scoutingEventOptions.find((event) => event.id === cleanedEventKey);
-    const eventName = String(scoutingDraft.eventName || knownEvent?.name || cleanedEventKey).trim();
-
-    const updatePayload: Record<string, unknown> = {
-      eventKey: cleanedEventKey,
-      eventName,
-      matchType,
-      matchNumber: cleanedMatchNumber,
-      teamNumber: cleanedTeamNumber,
-      matchId,
-      isPracticeScouting: Boolean(scoutingDraft.isPracticeScouting),
+    void loadEntries();
+    return () => {
+      isActive = false;
     };
+  }, [formEditorOpen, selectedFormType, userData?.teamId]);
 
-    if (!scoutingDraft.isPracticeScouting) {
-      updatePayload.practiceMode = "";
-      updatePayload.practiceSessionId = "";
-      updatePayload.isLivePracticeScouting = false;
-    }
-
-    setScoutingSaving(true);
-    try {
-      await updateDoc(doc(db, "scouting", scoutingDraft.id), updatePayload);
-      setScoutingDraft((prev) =>
-        prev
-          ? {
-              ...prev,
-              eventKey: cleanedEventKey,
-              eventName,
-              matchNumber: cleanedMatchNumber,
-              matchType,
-              teamNumber: cleanedTeamNumber,
-            }
-          : prev
-      );
-      alert("Scouting entry updated.");
-    } catch (error) {
-      console.error("Failed to update scouting entry:", error);
-      alert("Unable to update scouting entry.");
-    } finally {
-      setScoutingSaving(false);
-    }
-  }
-
-  async function runBulkUpdate() {
-    if (!canEditScouting) return;
-    const ids = bulkIds;
-    if (ids.length === 0) {
-      alert("Paste at least one scouting document ID.");
+  useEffect(() => {
+    if (!selectedFormEntry) {
+      setEntryDraftJson("");
       return;
     }
-    const updatePayload: Record<string, unknown> = {};
+    setEntryDraftJson(JSON.stringify(selectedFormEntry.data, null, 2));
+  }, [selectedFormEntry]);
 
-    if (bulkSetEvent) {
-      const cleanedEventKey = String(bulkEventKey || "").trim().toLowerCase();
-      if (!cleanedEventKey) {
-        alert("Event key is required for bulk event updates.");
+  const filteredFormEntries = useMemo(() => {
+    if (!selectedFormType) return [];
+    const eventOptions = getEventsForGame(formGame);
+    return formEntriesRaw
+      .filter((row) => {
+        const entry = row.data;
+        const includeLead = selectedFormType.id === "lead-scout";
+        if (selectedFormType.id === "lead-scout" && !isLeadScoutingEntry(entry)) return false;
+        if (!entryMatchesAnalyticsFilters(entry as Record<string, unknown>, formGame, formEvent, eventOptions, { includeLead })) {
+          return false;
+        }
+        if (selectedFormType.id === "match-scout") {
+          const isPractice = isPracticeScoutedEntry(entry as { isPracticeScouting?: boolean; practiceMode?: string; practiceSessionId?: string });
+          if (formPracticeOnly && !isPractice) return false;
+          if (!formPracticeOnly && isPractice) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => entrySortTime(b.data) - entrySortTime(a.data));
+  }, [formEntriesRaw, selectedFormType, formGame, formEvent, formPracticeOnly]);
+
+  async function saveFormEdits() {
+    if (!selectedFormEntry || !canEditScouting) return;
+    let payload: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(entryDraftJson || "");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        alert("Edited form must be a JSON object.");
         return;
       }
-      const knownEvent = scoutingEventOptions.find((event) => event.id === cleanedEventKey);
-      const eventName = String(bulkEventName || knownEvent?.name || cleanedEventKey).trim();
-      updatePayload.eventKey = cleanedEventKey;
-      updatePayload.eventName = eventName;
-    }
-
-    if (bulkSetMatch) {
-      const cleanedMatchNumber = parseMatchNumber(bulkMatchNumber);
-      if (!cleanedMatchNumber) {
-        alert("Match number is required for bulk match updates.");
-        return;
-      }
-      const matchType = coerceMatchType(bulkMatchType);
-      const prefix = matchType === "practice" ? "p" : matchType === "finals" ? "f" : "q";
-      updatePayload.matchType = matchType;
-      updatePayload.matchNumber = cleanedMatchNumber;
-      updatePayload.matchId = `${prefix}${cleanedMatchNumber}`;
-    }
-
-    if (bulkSetTeam) {
-      const cleanedTeamNumber = parseTeamNumber(bulkTeamNumber);
-      if (!cleanedTeamNumber) {
-        alert("Team number is required for bulk team updates.");
-        return;
-      }
-      updatePayload.teamNumber = cleanedTeamNumber;
-    }
-
-    if (bulkSetPractice) {
-      updatePayload.isPracticeScouting = Boolean(bulkPracticeValue);
-      if (!bulkPracticeValue) {
-        updatePayload.practiceMode = "";
-        updatePayload.practiceSessionId = "";
-        updatePayload.isLivePracticeScouting = false;
-      }
-    }
-
-    if (Object.keys(updatePayload).length === 0) {
-      alert("Select at least one field to update.");
+      payload = parsed as Record<string, unknown>;
+    } catch (error) {
+      console.error("Invalid JSON payload:", error);
+      alert("Invalid JSON. Please fix formatting before saving.");
       return;
     }
 
-    const ok = window.confirm(`Apply updates to ${ids.length} scouting entries?`);
-    if (!ok) return;
-
-    setBulkSaving(true);
+    setEntrySaving(true);
     try {
-      const results = await Promise.allSettled(
-        ids.map((id) => updateDoc(doc(db, "scouting", id), updatePayload))
+      await setDoc(doc(db, selectedFormEntry.collection, selectedFormEntry.id), payload, { merge: true });
+      setFormEntriesRaw((prev) =>
+        prev.map((row) =>
+          row.id === selectedFormEntry.id && row.collection === selectedFormEntry.collection
+            ? { ...row, data: payload }
+            : row
+        )
       );
-      const successCount = results.filter((result) => result.status === "fulfilled").length;
-      const failCount = results.length - successCount;
-      if (failCount > 0) {
-        console.warn("Bulk update failures:", results);
-      }
-      alert(`Bulk update complete. Updated ${successCount}/${ids.length} entries.`);
+      setSelectedFormEntry((prev) => (prev ? { ...prev, data: payload } : prev));
+      alert("Form updated.");
     } catch (error) {
-      console.error("Bulk update failed:", error);
-      alert("Bulk update failed.");
+      console.error("Failed to update form:", error);
+      alert("Unable to update form entry.");
     } finally {
-      setBulkSaving(false);
+      setEntrySaving(false);
     }
   }
 
@@ -577,315 +549,170 @@ function AdminPanelContent() {
           </div>
 
           <div className="bg-white rounded-xl shadow-md p-6 border mb-4">
-            <h2 className="text-xl font-semibold mb-2">Scouting Entry Editor</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold">Form Editor</h2>
+              <button
+                type="button"
+                onClick={() => setFormEditorOpen((prev) => !prev)}
+                className="px-3 py-1 rounded border border-gray-300 text-sm"
+              >
+                {formEditorOpen ? "Close" : "Open"}
+              </button>
+            </div>
             <p className="text-sm text-gray-600 mb-4">
-              Update practice flag, event assignment, or match number for a scouting document.
+              Edit submitted forms by event and game. Changes save back to Firestore.
             </p>
             {!canEditScouting && (
-              <p className="text-sm text-gray-500">Only team admins can edit scouting entries.</p>
+              <p className="text-sm text-gray-500">Only team admins can edit forms.</p>
             )}
-            {canEditScouting && (
-              <>
-                <div className="grid md:grid-cols-[1fr_auto] gap-2 mb-3">
-                  <input
-                    className="border rounded p-2"
-                    value={scoutingLookupId}
-                    onChange={(event) => setScoutingLookupId(event.target.value)}
-                    placeholder="Paste scouting document ID"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void loadScoutingDoc()}
-                    disabled={scoutingLoading}
-                    className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
-                    style={{ backgroundColor: "var(--primary-color)" }}
-                  >
-                    {scoutingLoading ? "Loading..." : "Load"}
-                  </button>
+            {canEditScouting && formEditorOpen && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {FORM_TYPES.map((form) => (
+                    <button
+                      key={form.id}
+                      type="button"
+                      onClick={() => setSelectedFormType(form)}
+                      className={`px-3 py-1 rounded border text-sm ${
+                        selectedFormType?.id === form.id
+                          ? "text-white"
+                          : "bg-white text-gray-700 border-gray-300"
+                      }`}
+                      style={
+                        selectedFormType?.id === form.id
+                          ? { backgroundColor: "var(--primary-color)", borderColor: "var(--primary-color)" }
+                          : undefined
+                      }
+                    >
+                      {form.label}
+                    </button>
+                  ))}
                 </div>
 
-                {scoutingDraft && (
-                  <div className="space-y-4 border rounded p-4">
-                    <p className="text-xs text-gray-500">Loaded ID: <span className="font-mono text-gray-700">{scoutingDraft.id}</span></p>
-                    <p className="text-xs text-gray-500">Game: <span className="font-semibold text-gray-700">{scoutingDraft.game}</span></p>
+                {selectedFormType ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="text-sm font-medium text-gray-700">Game</label>
+                      <select
+                        className="border rounded p-2 text-sm"
+                        value={formGame}
+                        onChange={(event) => setFormGame(event.target.value === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT")}
+                      >
+                        <option value="REBUILT">REBUILT</option>
+                        <option value="REEFSCAPE">REEFSCAPE</option>
+                      </select>
 
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={scoutingDraft.isPracticeScouting}
-                        onChange={(event) =>
-                          setScoutingDraft((prev) => (prev ? { ...prev, isPracticeScouting: event.target.checked } : prev))
-                        }
-                      />
-                      Practice scouted entry
-                    </label>
-                    {(scoutingDraft.practiceMode || scoutingDraft.practiceSessionId) && (
-                      <p className="text-xs text-gray-500">
-                        Practice mode: {scoutingDraft.practiceMode || "-"} · Session: {scoutingDraft.practiceSessionId || "-"}
-                      </p>
+                      <label className="text-sm font-medium text-gray-700">Event</label>
+                      <select
+                        className="border rounded p-2 text-sm min-w-[200px]"
+                        value={formEvent}
+                        onChange={(event) => setFormEvent(event.target.value)}
+                      >
+                        {formEventOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {selectedFormType.supportsPracticeToggle && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700">Match Scope</span>
+                        <button
+                          type="button"
+                          onClick={() => setFormPracticeOnly(false)}
+                          className={`px-3 py-1 rounded border text-sm ${
+                            !formPracticeOnly ? "text-white" : "bg-white text-gray-700 border-gray-300"
+                          }`}
+                          style={
+                            !formPracticeOnly
+                              ? { backgroundColor: "var(--primary-color)", borderColor: "var(--primary-color)" }
+                              : undefined
+                          }
+                        >
+                          Event
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormPracticeOnly(true)}
+                          className={`px-3 py-1 rounded border text-sm ${
+                            formPracticeOnly ? "text-white" : "bg-white text-gray-700 border-gray-300"
+                          }`}
+                          style={
+                            formPracticeOnly
+                              ? { backgroundColor: "var(--primary-color)", borderColor: "var(--primary-color)" }
+                              : undefined
+                          }
+                        >
+                          Practice
+                        </button>
+                      </div>
                     )}
 
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Key</label>
-                        <input
-                          list="scouting-event-options"
-                          className="w-full border rounded p-2"
-                          value={scoutingDraft.eventKey}
-                          onChange={(event) =>
-                            setScoutingDraft((prev) => (prev ? { ...prev, eventKey: event.target.value } : prev))
-                          }
-                          placeholder="e.g. 2026arli"
-                        />
-                        <datalist id="scouting-event-options">
-                          {scoutingEventOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.name}
-                            </option>
-                          ))}
-                        </datalist>
+                    <div className="grid md:grid-cols-[1.4fr_2fr] gap-4">
+                      <div className="border rounded p-2 bg-gray-50 max-h-[420px] overflow-y-auto">
+                        {formEntriesLoading ? (
+                          <p className="text-sm text-gray-600 p-2">Loading forms...</p>
+                        ) : filteredFormEntries.length === 0 ? (
+                          <p className="text-sm text-gray-600 p-2">No forms found for this selection.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {filteredFormEntries.map((row) => {
+                              const summary = buildEntrySummary(row.data, selectedFormType.id);
+                              const timeValue = entrySortTime(row.data);
+                              const timeLabel = timeValue ? new Date(timeValue).toLocaleString() : "";
+                              const isSelected =
+                                selectedFormEntry?.id === row.id && selectedFormEntry.collection === row.collection;
+                              return (
+                                <button
+                                  key={`${row.collection}:${row.id}`}
+                                  type="button"
+                                  onClick={() => setSelectedFormEntry(row)}
+                                  className={`w-full text-left rounded border p-2 transition ${
+                                    isSelected ? "border-purple-500 bg-purple-50" : "border-gray-200 bg-white hover:bg-gray-50"
+                                  }`}
+                                >
+                                  <div className="font-semibold text-sm">{summary.title}</div>
+                                  {summary.subtitle && <div className="text-xs text-gray-600">{summary.subtitle}</div>}
+                                  {timeLabel && <div className="text-xs text-gray-500">{timeLabel}</div>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
-                        <input
-                          className="w-full border rounded p-2"
-                          value={scoutingDraft.eventName}
-                          onChange={(event) =>
-                            setScoutingDraft((prev) => (prev ? { ...prev, eventName: event.target.value } : prev))
-                          }
-                          placeholder="Optional display name"
-                        />
+
+                      <div className="border rounded p-3 bg-white">
+                        {selectedFormEntry ? (
+                          <div className="space-y-3">
+                            <p className="text-xs text-gray-500">
+                              Editing ID: <span className="font-mono text-gray-700">{selectedFormEntry.id}</span>
+                            </p>
+                            <textarea
+                              className="w-full border rounded p-2 h-72 font-mono text-xs"
+                              value={entryDraftJson}
+                              onChange={(event) => setEntryDraftJson(event.target.value)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void saveFormEdits()}
+                              disabled={entrySaving}
+                              className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
+                              style={{ backgroundColor: "var(--primary-color)" }}
+                            >
+                              {entrySaving ? "Saving..." : "Save Form Changes"}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-600">Select a form entry to edit.</p>
+                        )}
                       </div>
                     </div>
-
-                    <div className="grid sm:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
-                        <select
-                          className="w-full border rounded p-2"
-                          value={scoutingDraft.matchType}
-                          onChange={(event) =>
-                            setScoutingDraft((prev) =>
-                              prev ? { ...prev, matchType: coerceMatchType(event.target.value) } : prev
-                            )
-                          }
-                        >
-                          <option value="practice">Practice</option>
-                          <option value="qualification">Qualification</option>
-                          <option value="finals">Finals</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Number</label>
-                        <input
-                          className="w-full border rounded p-2"
-                          value={scoutingDraft.matchNumber}
-                          onChange={(event) =>
-                            setScoutingDraft((prev) => (prev ? { ...prev, matchNumber: event.target.value } : prev))
-                          }
-                          placeholder="e.g. 5"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
-                        <input
-                          className="w-full border rounded p-2"
-                          value={scoutingDraft.teamNumber}
-                          onChange={(event) =>
-                            setScoutingDraft((prev) => (prev ? { ...prev, teamNumber: event.target.value } : prev))
-                          }
-                          placeholder="e.g. 3468"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Match ID Preview</label>
-                        <div className="w-full border rounded p-2 bg-gray-50 text-sm text-gray-700">
-                          {(() => {
-                            const number = parseMatchNumber(scoutingDraft.matchNumber);
-                            if (!number) return "-";
-                            const prefix = scoutingDraft.matchType === "practice" ? "p" : scoutingDraft.matchType === "finals" ? "f" : "q";
-                            return `${prefix}${number}`;
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void saveScoutingEdits()}
-                      disabled={scoutingSaving}
-                      className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
-                      style={{ backgroundColor: "var(--primary-color)" }}
-                    >
-                      {scoutingSaving ? "Saving..." : "Save Scouting Changes"}
-                    </button>
-                  </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-600">Choose a form to begin editing.</p>
                 )}
-              </>
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6 border mb-4">
-            <h2 className="text-xl font-semibold mb-2">Bulk Scouting Editor</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Paste multiple scouting document IDs and apply updates in one batch.
-            </p>
-            {!canEditScouting && (
-              <p className="text-sm text-gray-500">Only team admins can run bulk edits.</p>
-            )}
-            {canEditScouting && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Scouting Document IDs</label>
-                  <textarea
-                    className="w-full border rounded p-2 h-28"
-                    value={bulkIdsInput}
-                    onChange={(event) => setBulkIdsInput(event.target.value)}
-                    placeholder="One ID per line or separated by commas"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">{bulkIds.length} IDs detected.</p>
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-3">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={bulkSetPractice}
-                      onChange={(event) => setBulkSetPractice(event.target.checked)}
-                    />
-                    Update practice flag
-                  </label>
-                  {bulkSetPractice && (
-                    <select
-                      className="border rounded p-2"
-                      value={bulkPracticeValue ? "practice" : "match"}
-                      onChange={(event) => setBulkPracticeValue(event.target.value === "practice")}
-                    >
-                      <option value="practice">Set to Practice</option>
-                      <option value="match">Set to Match</option>
-                    </select>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={bulkSetEvent}
-                      onChange={(event) => setBulkSetEvent(event.target.checked)}
-                    />
-                    Update event assignment
-                  </label>
-                  {bulkSetEvent && (
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Key</label>
-                        <input
-                          list="bulk-event-options"
-                          className="w-full border rounded p-2"
-                          value={bulkEventKey}
-                          onChange={(event) => setBulkEventKey(event.target.value)}
-                          placeholder="e.g. 2026arli"
-                        />
-                        <datalist id="bulk-event-options">
-                          {scoutingEventOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.name}
-                            </option>
-                          ))}
-                        </datalist>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Event Name (optional)</label>
-                        <input
-                          className="w-full border rounded p-2"
-                          value={bulkEventName}
-                          onChange={(event) => setBulkEventName(event.target.value)}
-                          placeholder="Display name override"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={bulkSetMatch}
-                      onChange={(event) => setBulkSetMatch(event.target.checked)}
-                    />
-                    Update match assignment
-                  </label>
-                  {bulkSetMatch && (
-                    <div className="grid sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
-                        <select
-                          className="w-full border rounded p-2"
-                          value={bulkMatchType}
-                          onChange={(event) => setBulkMatchType(coerceMatchType(event.target.value))}
-                        >
-                          <option value="practice">Practice</option>
-                          <option value="qualification">Qualification</option>
-                          <option value="finals">Finals</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Match Number</label>
-                        <input
-                          className="w-full border rounded p-2"
-                          value={bulkMatchNumber}
-                          onChange={(event) => setBulkMatchNumber(event.target.value)}
-                          placeholder="e.g. 7"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Match ID Preview</label>
-                        <div className="w-full border rounded p-2 bg-gray-50 text-sm text-gray-700">
-                          {(() => {
-                            const number = parseMatchNumber(bulkMatchNumber);
-                            if (!number) return "-";
-                            const prefix = bulkMatchType === "practice" ? "p" : bulkMatchType === "finals" ? "f" : "q";
-                            return `${prefix}${number}`;
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={bulkSetTeam}
-                      onChange={(event) => setBulkSetTeam(event.target.checked)}
-                    />
-                    Update team number
-                  </label>
-                  {bulkSetTeam && (
-                    <div className="max-w-xs">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
-                      <input
-                        className="w-full border rounded p-2"
-                        value={bulkTeamNumber}
-                        onChange={(event) => setBulkTeamNumber(event.target.value)}
-                        placeholder="e.g. 3468"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void runBulkUpdate()}
-                  disabled={bulkSaving}
-                  className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
-                  style={{ backgroundColor: "var(--primary-color)" }}
-                >
-                  {bulkSaving ? "Applying..." : "Apply Bulk Update"}
-                </button>
               </div>
             )}
           </div>
