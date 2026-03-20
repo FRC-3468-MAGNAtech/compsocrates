@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -23,6 +23,44 @@ type DashboardMatch = {
   redTeams: number[];
   blueTeams: number[];
 };
+
+type MatchAssignment = {
+  eventKey?: string;
+  matchKey?: string;
+  matchLabel?: string;
+  teamNumber?: number;
+  scoutName?: string;
+};
+
+type SubInRequest = {
+  id: string;
+  eventKey?: string;
+  matchId?: string;
+  matchLabel?: string;
+  matchType?: string;
+  matchNumber?: number;
+  teamNumber?: number | null;
+  requestedById?: string;
+  requestedByName?: string;
+  requestedAt?: number;
+};
+
+type SubInClaim = {
+  id: string;
+  eventKey?: string;
+  matchId?: string;
+  matchLabel?: string;
+  matchType?: string;
+  matchNumber?: number;
+  teamNumber?: number | null;
+  claimedById?: string;
+  claimedByName?: string;
+  requestedById?: string;
+  requestedByName?: string;
+  submittedAt?: number;
+};
+
+type NotificationPermissionState = "default" | "denied" | "granted";
 
 function filterEventsByAttendance(
   events: UpcomingEvent[],
@@ -78,6 +116,30 @@ function matchLabel(match: TBAMatch) {
   return match.key;
 }
 
+function normalizeMatchId(value: string): string {
+  const raw = String(value || "").toLowerCase().trim();
+  if (!raw) return "";
+  const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
+  if (direct) return `${direct[1]}${Number(direct[2])}`;
+  const qm = raw.match(/_qm(\d+)/);
+  if (qm) return `q${Number(qm[1])}`;
+  const practiceKey = raw.match(/_(?:pr|pm)(\d+)/);
+  if (practiceKey) return `p${Number(practiceKey[1])}`;
+  const practice = raw.match(/practice(?:\s+match)?\s+(\d+)/);
+  if (practice) return `p${Number(practice[1])}`;
+  const qual = raw.match(/qualification(?:\s+match)?\s+(\d+)/);
+  if (qual) return `q${Number(qual[1])}`;
+  const sf = raw.match(/_sf(\d+)m(\d+)/);
+  if (sf) return `sf${Number(sf[1])}`;
+  const qf = raw.match(/_qf(\d+)m(\d+)/);
+  if (qf) return `qf${Number(qf[1])}`;
+  const finals = raw.match(/_f(\d+)m(\d+)/);
+  if (finals) return `f${Number(finals[2])}`;
+  const finalsLabel = raw.match(/finals?\s+(\d+)/);
+  if (finalsLabel) return `f${Number(finalsLabel[1])}`;
+  return "";
+}
+
 function normalizeMatches(matches: TBAMatch[]): DashboardMatch[] {
   return [...matches]
     .sort((a, b) => {
@@ -129,6 +191,14 @@ function parseTeamNumber(input: string | undefined | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function subInRequestKey(request: SubInRequest): string {
+  const id = String(request.id || "").trim();
+  if (id) return id;
+  const matchId = String(request.matchId || "").trim();
+  const team = String(request.teamNumber || "").trim();
+  return `${matchId}|${team}`.trim();
+}
+
 function TeamRoleDashboardContent({
   title,
   subtitle,
@@ -152,6 +222,18 @@ function TeamRoleDashboardContent({
   const [unscoutedTeams, setUnscoutedTeams] = useState<number[]>([]);
   const [nextTeamMatch, setNextTeamMatch] = useState<DashboardMatch | null>(null);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
+  const [userMatchAssignments, setUserMatchAssignments] = useState<MatchAssignment[]>([]);
+  const [subInRequests, setSubInRequests] = useState<SubInRequest[]>([]);
+  const [subInClaimsByKey, setSubInClaimsByKey] = useState<Record<string, SubInClaim>>({});
+  const [subInClaimsForUser, setSubInClaimsForUser] = useState<SubInClaim[]>([]);
+  const [subInClaimingId, setSubInClaimingId] = useState<string | null>(null);
+  const [subInClearing, setSubInClearing] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>("default");
+  const notificationsSupported = typeof window !== "undefined" && "Notification" in window;
+  const notifiedSubInRequestsRef = useRef<Set<string>>(new Set());
+  const notifiedUpNextRef = useRef<string>("");
+  const notificationsEnabledAtRef = useRef<number | null>(null);
+  const notificationsInitializedRef = useRef(false);
   const nowMs = getEffectiveNowMs(teamTimeOverride);
 
   useEffect(() => {
@@ -163,6 +245,174 @@ function TeamRoleDashboardContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
 
+  useEffect(() => {
+    if (!notificationsSupported) return;
+    setNotificationPermission(Notification.permission);
+  }, [notificationsSupported]);
+
+  async function loadSubInRequests(teamId: string) {
+    try {
+      const [requestSnap, claimSnap] = await Promise.all([
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", teamId), where("entryType", "==", "sub-in-request"))),
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", teamId), where("entryType", "==", "sub-in-claim"))),
+      ]);
+      const requests = requestSnap.docs.map((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        return {
+          id: docSnap.id,
+          eventKey: String(data.eventKey || ""),
+          matchId: String(data.matchId || ""),
+          matchLabel: String(data.matchLabel || ""),
+          matchType: String(data.matchType || ""),
+          matchNumber: Number(data.matchNumber || 0),
+          teamNumber: Number(data.teamNumber || 0) || null,
+          requestedById: String(data.requestedById || data.scoutId || ""),
+          requestedByName: String(data.requestedByName || data.scoutName || ""),
+          requestedAt: Number(data.requestedAt || data.submittedAt || 0),
+        } as SubInRequest;
+      });
+      const claimsByKey: Record<string, SubInClaim> = {};
+      const claimsForUser: SubInClaim[] = [];
+      claimSnap.docs.forEach((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        const matchId = String(data.matchId || "");
+        const teamNumber = Number(data.teamNumber || 0) || null;
+        if (!matchId || !teamNumber) return;
+        const claim: SubInClaim = {
+          id: docSnap.id,
+          eventKey: String(data.eventKey || ""),
+          matchId,
+          matchLabel: String(data.matchLabel || ""),
+          matchType: String(data.matchType || ""),
+          matchNumber: Number(data.matchNumber || 0),
+          teamNumber,
+          claimedById: String(data.claimedById || data.scoutId || ""),
+          claimedByName: String(data.claimedByName || data.scoutName || ""),
+          requestedById: String(data.requestedById || ""),
+          requestedByName: String(data.requestedByName || ""),
+          submittedAt: Number(data.submittedAt || data.timestamp || 0),
+        };
+        const claimEventKey = claim.eventKey || "";
+        claimsByKey[`${claimEventKey}|${matchId}|${teamNumber}`] = claim;
+        if (userData?.uid && claim.claimedById === userData.uid) {
+          claimsForUser.push(claim);
+        }
+      });
+      setSubInRequests(requests);
+      setSubInClaimsByKey(claimsByKey);
+      setSubInClaimsForUser(claimsForUser);
+    } catch (error) {
+      console.warn("Failed to load sub-in requests:", error);
+      setSubInRequests([]);
+      setSubInClaimsByKey({});
+      setSubInClaimsForUser([]);
+    }
+  }
+
+  async function claimSubIn(request: SubInRequest) {
+    if (!userData?.teamId || !userData?.uid) {
+      alert("You must be signed in to accept a sub-in.");
+      return;
+    }
+    if (!request.matchId || !request.teamNumber) {
+      alert("Missing match or team info for this sub-in request.");
+      return;
+    }
+    const eventKey = String(request.eventKey || activeEvent?.key || "").trim();
+    if (!eventKey) {
+      alert("Event not set for this sub-in request.");
+      return;
+    }
+    if (subInClaimingId === request.id) return;
+    setSubInClaimingId(request.id);
+    try {
+      const now = Date.now();
+      await addDoc(collection(db, "scouting"), {
+        entryType: "sub-in-claim",
+        formType: "sub-in-claim",
+        game: "REBUILT",
+        teamId: userData.teamId,
+        eventKey,
+        matchId: request.matchId,
+        matchKey: request.matchId,
+        matchLabel: request.matchLabel || "",
+        matchType: request.matchType || "",
+        matchNumber: String(request.matchNumber || ""),
+        teamNumber: String(request.teamNumber),
+        scoutId: userData.uid,
+        scoutName: userData.displayName || "Scout",
+        claimedById: userData.uid,
+        claimedByName: userData.displayName || "Scout",
+        requestedById: request.requestedById || "",
+        requestedByName: request.requestedByName || "",
+        requestId: request.id,
+        submittedAt: now,
+        timestamp: now,
+      });
+      await loadSubInRequests(userData.teamId);
+    } catch (error) {
+      console.error("Failed to accept sub-in request:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not accept sub-in request. ${message}`);
+    } finally {
+      setSubInClaimingId(null);
+    }
+  }
+
+  async function deleteSubInRequest(request: SubInRequest) {
+    if (!userData?.teamId || !userData?.uid) {
+      alert("You must be signed in to delete a sub-in request.");
+      return;
+    }
+    if (!request.id) return;
+    try {
+      await deleteDoc(doc(db, "scouting", request.id));
+      await loadSubInRequests(userData.teamId);
+    } catch (error) {
+      console.error("Failed to delete sub-in request:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not delete sub-in request. ${message}`);
+    }
+  }
+
+  async function clearAllSubInRequests() {
+    if (!userData?.teamId || !userData?.isTeamAdmin) {
+      alert("Only team admins can clear all sub-in requests.");
+      return;
+    }
+    if (subInClearing) return;
+    const confirmed = window.confirm("Delete all sub-in requests and claims for this team?");
+    if (!confirmed) return;
+    setSubInClearing(true);
+    try {
+      const [requestSnap, claimSnap] = await Promise.all([
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", userData.teamId), where("entryType", "==", "sub-in-request"))),
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", userData.teamId), where("entryType", "==", "sub-in-claim"))),
+      ]);
+      const deletions: Promise<void>[] = [];
+      requestSnap.docs.forEach((docSnap) => deletions.push(deleteDoc(doc(db, "scouting", docSnap.id))));
+      claimSnap.docs.forEach((docSnap) => deletions.push(deleteDoc(doc(db, "scouting", docSnap.id))));
+      await Promise.all(deletions);
+      await loadSubInRequests(userData.teamId);
+    } catch (error) {
+      console.error("Failed to clear sub-in requests:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not clear sub-in requests. ${message}`);
+    } finally {
+      setSubInClearing(false);
+    }
+  }
+
+  async function requestNotificationPermission() {
+    if (!notificationsSupported) return;
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+    } catch (error) {
+      console.warn("Notification permission request failed:", error);
+    }
+  }
+
   async function loadData() {
     if (!userData?.teamId || !userData?.uid) return;
     setLoading(true);
@@ -172,6 +422,11 @@ function TeamRoleDashboardContent({
       const practiceSnap = await getDocs(
         query(collection(db, "practiceSessions"), where("scoutName", "==", userData.displayName || ""))
       );
+      const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+      setUserMatchAssignments(
+        assignmentSnap.docs.map((docSnap) => docSnap.data() as MatchAssignment).filter((row) => row.eventKey)
+      );
+      await loadSubInRequests(userData.teamId);
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
       const attendanceByEvent = teamDoc.exists()
@@ -249,6 +504,14 @@ function TeamRoleDashboardContent({
     }
   }
 
+  useEffect(() => {
+    if (!userData?.teamId) return;
+    const interval = setInterval(() => {
+      void loadSubInRequests(userData.teamId);
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [userData?.teamId]);
+
   const needsPractice = practiceSessionsCount < 3;
   const canOpenMatchForm = canAccessForm({ formKey: "match-scout-form", user: userData, formAccessOverrides });
   const canOpenPitForm = canAccessForm({ formKey: "pit-scout-form", user: userData, formAccessOverrides });
@@ -257,6 +520,140 @@ function TeamRoleDashboardContent({
     [activeEventKey, upcomingEvents]
   );
   const activeMatches = activeEvent ? eventMatchesByKey[activeEvent.key] || [] : [];
+  const subInAssignmentsForUser = useMemo(
+    () =>
+      subInClaimsForUser.map((claim) => ({
+        eventKey: claim.eventKey,
+        matchKey: claim.matchId,
+        matchLabel: claim.matchLabel,
+        teamNumber: claim.teamNumber || undefined,
+        scoutName: claim.claimedByName,
+      })),
+    [subInClaimsForUser]
+  );
+  const nowSec = getEffectiveNowSec(teamTimeOverride);
+  const visibleSubInRequests = useMemo(() => {
+    if (!activeEvent) return [];
+    const ttlMs = 6 * 60 * 60 * 1000;
+    return subInRequests
+      .filter((request) => request.eventKey === activeEvent.key)
+      .filter((request) => {
+        const ts = Number(request.requestedAt || 0);
+        return !ts || nowMs - ts <= ttlMs;
+      })
+      .sort((a, b) => Number(b.requestedAt || 0) - Number(a.requestedAt || 0));
+  }, [activeEvent, subInRequests, nowMs]);
+  const upNextAssignment = useMemo(() => {
+    if (!activeEvent) return null;
+    const assignmentsForEvent = [
+      ...userMatchAssignments.filter((assignment) => assignment.eventKey === activeEvent.key),
+      ...subInAssignmentsForUser.filter((assignment) => assignment.eventKey === activeEvent.key),
+    ];
+    if (assignmentsForEvent.length === 0) return null;
+    const upcomingMatch = [...activeMatches]
+      .filter((match) => match.scheduleTime > 0 && match.scheduleTime >= nowSec)
+      .sort((a, b) => a.scheduleTime - b.scheduleTime)[0];
+    if (!upcomingMatch) return null;
+    const matchId = normalizeMatchId(upcomingMatch.key) || normalizeMatchId(upcomingMatch.label);
+    const assignment = assignmentsForEvent.find((row) => {
+      const assignmentId = normalizeMatchId(String(row.matchKey || "")) || normalizeMatchId(String(row.matchLabel || ""));
+      return assignmentId && matchId && assignmentId === matchId;
+    });
+    if (!assignment) return null;
+    return { match: upcomingMatch, assignment };
+  }, [activeEvent, activeMatches, nowSec, userMatchAssignments, subInAssignmentsForUser]);
+
+  const upcomingAssignment = useMemo(() => {
+    if (!activeEvent) return null;
+    const assignmentsForEvent = [
+      ...userMatchAssignments.filter((assignment) => assignment.eventKey === activeEvent.key),
+      ...subInAssignmentsForUser.filter((assignment) => assignment.eventKey === activeEvent.key),
+    ];
+    if (assignmentsForEvent.length === 0) return null;
+    const assignmentIds = new Set(
+      assignmentsForEvent
+        .map((row) => normalizeMatchId(String(row.matchKey || "")) || normalizeMatchId(String(row.matchLabel || "")))
+        .filter(Boolean)
+    );
+    if (assignmentIds.size === 0) return null;
+    const candidates = activeMatches
+      .map((match) => ({ match, id: normalizeMatchId(match.key) || normalizeMatchId(match.label) }))
+      .filter((row) => row.id && assignmentIds.has(row.id));
+    if (candidates.length === 0) return null;
+    const sorted = candidates
+      .filter((row) => (row.match.scheduleTime > 0 ? row.match.scheduleTime >= nowSec : true))
+      .sort((a, b) => {
+        const timeA = a.match.scheduleTime > 0 ? a.match.scheduleTime : Number.MAX_SAFE_INTEGER;
+        const timeB = b.match.scheduleTime > 0 ? b.match.scheduleTime : Number.MAX_SAFE_INTEGER;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.match.label.localeCompare(b.match.label);
+      });
+    const next = sorted[0] || candidates[0];
+    const assignment = assignmentsForEvent.find((row) => {
+      const assignmentId = normalizeMatchId(String(row.matchKey || "")) || normalizeMatchId(String(row.matchLabel || ""));
+      return assignmentId && assignmentId === next.id;
+    });
+    if (!assignment) return null;
+    return { match: next.match, assignment };
+  }, [activeEvent, activeMatches, nowSec, userMatchAssignments, subInAssignmentsForUser]);
+
+  useEffect(() => {
+    if (!notificationsSupported) return;
+    if (notificationPermission !== "granted") {
+      notificationsInitializedRef.current = false;
+      notificationsEnabledAtRef.current = null;
+      return;
+    }
+    if (notificationsInitializedRef.current) return;
+    notificationsEnabledAtRef.current = Date.now();
+    const initialKeys = visibleSubInRequests.map(subInRequestKey).filter((key) => key.length > 0);
+    notifiedSubInRequestsRef.current = new Set(initialKeys);
+    if (upNextAssignment) {
+      notifiedUpNextRef.current = `${upNextAssignment.match.key}|${upNextAssignment.assignment.teamNumber || ""}`;
+    } else {
+      notifiedUpNextRef.current = "";
+    }
+    notificationsInitializedRef.current = true;
+  }, [notificationPermission, notificationsSupported, visibleSubInRequests, upNextAssignment]);
+
+  useEffect(() => {
+    if (!notificationsSupported || notificationPermission !== "granted") return;
+    if (!notificationsInitializedRef.current) return;
+    visibleSubInRequests.forEach((request) => {
+      const key = subInRequestKey(request);
+      if (!key || notifiedSubInRequestsRef.current.has(key)) return;
+      const enabledAt = notificationsEnabledAtRef.current;
+      const requestedAt = Number(request.requestedAt || 0);
+      if (enabledAt && (!requestedAt || requestedAt <= enabledAt)) return;
+      try {
+        const body = `${request.matchLabel || "Match"}${request.teamNumber ? ` - Team ${request.teamNumber}` : ""}`;
+        new Notification("Sub-In Requested", { body });
+        notifiedSubInRequestsRef.current.add(key);
+      } catch (error) {
+        console.warn("Unable to send sub-in notification:", error);
+      }
+    });
+  }, [visibleSubInRequests, notificationPermission, notificationsSupported]);
+
+  useEffect(() => {
+    if (!notificationsSupported || notificationPermission !== "granted") return;
+    if (!notificationsInitializedRef.current) return;
+    if (!upNextAssignment) return;
+    const key = `${upNextAssignment.match.key}|${upNextAssignment.assignment.teamNumber || ""}`;
+    if (notifiedUpNextRef.current === key) return;
+    const enabledAt = notificationsEnabledAtRef.current;
+    if (enabledAt && upNextAssignment.match.scheduleTime > 0 && upNextAssignment.match.scheduleTime * 1000 <= enabledAt) {
+      notifiedUpNextRef.current = key;
+      return;
+    }
+    try {
+      const body = `${upNextAssignment.match.label}${upNextAssignment.assignment.teamNumber ? ` - Team ${upNextAssignment.assignment.teamNumber}` : ""}`;
+      new Notification("Up Next Assignment", { body });
+      notifiedUpNextRef.current = key;
+    } catch (error) {
+      console.warn("Unable to send up-next notification:", error);
+    }
+  }, [upNextAssignment, notificationPermission, notificationsSupported]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -275,6 +672,129 @@ function TeamRoleDashboardContent({
             </div>
           ) : (
             <>
+              {notificationsSupported && notificationPermission !== "granted" && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
+                  <h2 className="text-xl font-semibold mb-2">Enable Notifications</h2>
+                  <p className="text-sm text-gray-700 mb-3">
+                    Turn on device notifications for sub-in requests and upcoming assignments.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void requestNotificationPermission()}
+                    className="px-4 py-2 rounded text-white text-sm font-semibold"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Enable Notifications
+                  </button>
+                  {notificationPermission === "denied" && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Notifications are blocked in your browser settings. Re-enable them to get alerts.
+                    </p>
+                  )}
+                </div>
+              )}
+              {visibleSubInRequests.length > 0 && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-orange-500">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h2 className="text-xl font-semibold">Sub-In Requests</h2>
+                    {userData?.isTeamAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => void clearAllSubInRequests()}
+                        disabled={subInClearing}
+                        className="px-3 py-1 rounded text-xs font-semibold border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      >
+                        {subInClearing ? "Clearing..." : "Clear All"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {visibleSubInRequests.map((request) => {
+                      const claimKey = `${request.eventKey || ""}|${request.matchId || ""}|${request.teamNumber || ""}`;
+                      const claim = subInClaimsByKey[claimKey];
+                      const isRequester = Boolean(request.requestedById && userData?.uid && request.requestedById === userData.uid);
+                      return (
+                        <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <div className="text-gray-800">
+                            <span className="font-semibold">{request.matchLabel || "Match"}</span>
+                            {request.teamNumber ? ` - Team ${request.teamNumber}` : ""}
+                            {request.requestedByName ? ` - Requested by ${request.requestedByName}` : ""}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {claim ? (
+                              <span className="text-xs font-semibold text-green-700">
+                                Sub Assigned{claim.claimedByName ? ` - ${claim.claimedByName}` : ""}
+                              </span>
+                            ) : isRequester ? (
+                              <button
+                                type="button"
+                                onClick={() => void deleteSubInRequest(request)}
+                                className="px-3 py-1 rounded text-xs font-semibold border border-red-200 text-red-700 hover:bg-red-50"
+                              >
+                                Delete Request
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => void claimSubIn(request)}
+                                disabled={subInClaimingId === request.id}
+                                className="px-3 py-1 rounded text-xs font-semibold text-white disabled:opacity-60"
+                                style={{ backgroundColor: "var(--primary-color)" }}
+                              >
+                                {subInClaimingId === request.id ? "Assigning..." : "Take Sub-In"}
+                              </button>
+                            )}
+                            {request.requestedAt ? (
+                              <span className="text-xs text-gray-500">
+                                {new Date(request.requestedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {upNextAssignment && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-amber-500">
+                  <h2 className="text-xl font-semibold mb-2">Up Next Assignment</h2>
+                  <p className="text-sm text-gray-800">
+                    You are up next for <span className="font-semibold">{upNextAssignment.match.label}</span>
+                    {upNextAssignment.assignment.teamNumber ? ` - Team ${upNextAssignment.assignment.teamNumber}` : ""}.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {upNextAssignment.match.scheduleTime > 0
+                      ? new Date(upNextAssignment.match.scheduleTime * 1000).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : "Time TBD"}
+                  </p>
+                </div>
+              )}
+              {(!upNextAssignment && upcomingAssignment) && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-blue-500">
+                  <h2 className="text-xl font-semibold mb-2">Upcoming Assignment</h2>
+                  <p className="text-sm text-gray-800">
+                    Your next assigned match is <span className="font-semibold">{upcomingAssignment.match.label}</span>
+                    {upcomingAssignment.assignment.teamNumber ? ` - Team ${upcomingAssignment.assignment.teamNumber}` : ""}.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {upcomingAssignment.match.scheduleTime > 0
+                      ? new Date(upcomingAssignment.match.scheduleTime * 1000).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : "Time TBD"}
+                  </p>
+                </div>
+              )}
               {specialNotice && (
                 <div className="bg-white rounded-xl shadow-md p-6 mb-6 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
                   <h2 className="text-xl font-semibold mb-2">{specialNotice.title}</h2>
@@ -650,3 +1170,9 @@ export default function TeamRoleDashboard(props: TeamRoleDashboardProps) {
     </ProtectedRoute>
   );
 }
+
+
+
+
+
+

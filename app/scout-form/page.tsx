@@ -50,6 +50,7 @@ function TeamPickerModal({
   teams,
   scoutedTeams,
   assignedTeams,
+  subInStatuses,
   highlightedTeams,
   onClose,
   onSelect,
@@ -58,6 +59,7 @@ function TeamPickerModal({
   teams: string[];
   scoutedTeams: Set<string>;
   assignedTeams?: Set<string>;
+  subInStatuses?: Record<string, "requested" | "assigned">;
   highlightedTeams?: Set<string>;
   onClose: () => void;
   onSelect: (team: string) => void;
@@ -73,8 +75,17 @@ function TeamPickerModal({
             {teams.map((team) => {
               const done = scoutedTeams.has(team);
               const assigned = assignedTeams?.has(team);
+              const subStatus = subInStatuses?.[team];
               const highlighted = highlightedTeams?.has(team);
-              const label = done ? `${team} (Scouted)` : assigned ? `${team} (Assigned)` : team;
+              const label = done
+                ? `${team} (Scouted)`
+                : subStatus === "assigned"
+                  ? `${team} (Sub Assigned)`
+                  : subStatus === "requested"
+                    ? `${team} (Sub Req)`
+                    : assigned
+                      ? `${team} (Assigned)`
+                      : team;
               return (
                 <button
                   key={team}
@@ -883,6 +894,8 @@ function ScoutFormContent() {
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
   const [modalOpen, setModalOpen] = useState(false);
+  const [subInModalOpen, setSubInModalOpen] = useState(false);
+  const [subInSubmitting, setSubInSubmitting] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [options, setOptions] = useState<MatchOption[]>([]);
   const [modalCompleted, setModalCompleted] = useState<Set<string>>(new Set());
@@ -891,6 +904,8 @@ function ScoutFormContent() {
   const [assignedTeamsByMatch, setAssignedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [assignedMatchIds, setAssignedMatchIds] = useState<Set<string>>(new Set());
   const [assignedHumanPlayerMatches, setAssignedHumanPlayerMatches] = useState<Set<string>>(new Set());
+  const [subInStatusByMatch, setSubInStatusByMatch] = useState<Record<string, Record<string, "requested" | "assigned">>>({});
+  const [subInClaimsForUser, setSubInClaimsForUser] = useState<Record<string, string>>({});
   const [scoutedTeamsByMatch, setScoutedTeamsByMatch] = useState<Record<string, string[]>>({});
   const [scoutedCounts, setScoutedCounts] = useState<Record<string, number>>({});
   const [targets, setTargets] = useState<Record<string, number>>({});
@@ -1192,10 +1207,30 @@ function ScoutFormContent() {
       const snap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)));
       const counts: Record<string, number> = {};
       const teamsMap = new Map<string, Set<string>>();
+      const subStatuses: Record<string, Record<string, "requested" | "assigned">> = {};
+      const userClaims: Record<string, string> = {};
       snap.docs.forEach((d) => {
         const row = d.data() as Record<string, unknown>;
-        const matchId = normalizeScoutedMatchId(row.matchId);
+        const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
+        const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
         const team = String(row.teamNumber || "").trim();
+        if (entryType === "sub-in-request" || entryType === "sub-in-claim") {
+          if (matchId && team) {
+            if (!subStatuses[matchId]) subStatuses[matchId] = {};
+            if (entryType === "sub-in-claim") {
+              subStatuses[matchId][team] = "assigned";
+            } else if (subStatuses[matchId][team] !== "assigned") {
+              subStatuses[matchId][team] = "requested";
+            }
+          }
+          if (entryType === "sub-in-claim" && userData?.uid) {
+            const claimant = String(row.claimedById || row.scoutId || "").trim();
+            if (claimant && claimant === userData.uid && matchId && team) {
+              userClaims[matchId] = team;
+            }
+          }
+          return;
+        }
         if (!matchId) return;
         counts[matchId] = (counts[matchId] || 0) + 1;
         if (!teamsMap.has(matchId)) teamsMap.set(matchId, new Set<string>());
@@ -1203,15 +1238,35 @@ function ScoutFormContent() {
       });
       setScoutedCounts(counts);
       setScoutedTeamsByMatch(Object.fromEntries(Array.from(teamsMap.entries()).map(([k, v]) => [k, Array.from(v)])));
+      setSubInStatusByMatch(subStatuses);
+      setSubInClaimsForUser(userClaims);
+      if (Object.keys(userClaims).length > 0) {
+        setAssignedTeams((prev) => ({ ...prev, ...userClaims }));
+        setAssignedMatchIds((prev) => {
+          const next = new Set(prev);
+          Object.keys(userClaims).forEach((match) => next.add(match));
+          return next;
+        });
+      }
     }
     void loadScouted();
-  }, [eventKey]);
+  }, [eventKey, userData?.uid]);
 
   const selectedMatchId = selectedMatch?.id || "";
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
-  const assignedTeam = assignedTeams[selectedMatchId] || "";
+  const effectiveAssignedTeams = useMemo(
+    () => ({ ...assignedTeams, ...subInClaimsForUser }),
+    [assignedTeams, subInClaimsForUser]
+  );
+  const effectiveAssignedMatchIds = useMemo(() => {
+    const next = new Set(assignedMatchIds);
+    Object.keys(subInClaimsForUser).forEach((matchId) => next.add(matchId));
+    return next;
+  }, [assignedMatchIds, subInClaimsForUser]);
+  const assignedTeam = effectiveAssignedTeams[selectedMatchId] || "";
   const selectedAssignedTeams = useMemo(() => new Set(assignedTeamsByMatch[selectedMatchId] || []), [assignedTeamsByMatch, selectedMatchId]);
+  const selectedSubInStatuses = useMemo(() => subInStatusByMatch[selectedMatchId] || {}, [subInStatusByMatch, selectedMatchId]);
   const highlightedAssignedTeams = useMemo(() => (assignedTeam ? new Set([assignedTeam]) : new Set<string>()), [assignedTeam]);
   const isHumanPlayerAssigned = assignedHumanPlayerMatches.has(selectedMatchId);
   const selectedRedTeams = selectedMatch?.redTeams || [];
@@ -1285,6 +1340,82 @@ function ScoutFormContent() {
     if (selectedMatch.type === "qualification") return `Qualification Match ${selectedMatch.matchNumber}`;
     if (selectedMatch.type === "finals") return getFinalsDisplayLabel(selectedMatch);
     return selectedMatch.label || "No match is set";
+  }
+
+  function getMatchDisplay(match: MatchOption) {
+    if (match.type === "practice") return `Practice Match ${match.matchNumber}`;
+    if (match.type === "qualification") return `Qualification Match ${match.matchNumber}`;
+    if (match.type === "finals") return getFinalsDisplayLabel(match);
+    return match.label || "Match";
+  }
+
+  async function submitSubInRequest(match: MatchOption) {
+    if (!userData?.teamId || !userData?.uid) {
+      alert("You must be signed in to request a sub-in.");
+      return;
+    }
+    if (!eventKey || eventKey === "app-testing") {
+      alert("Select an event before requesting a sub-in.");
+      return;
+    }
+    if (!effectiveAssignedMatchIds.has(match.id)) {
+      alert("You can only request a sub-in for matches assigned to you.");
+      return;
+    }
+    if (subInSubmitting) return;
+    setSubInSubmitting(true);
+    try {
+      const fallbackTeam = assignedTeam || form.teamNumber;
+      const parsedTeam = String(fallbackTeam || "").match(/\d+/)?.[0] || "";
+      const teamValue = parsedTeam ? parsedTeam : "";
+      if (!teamValue) {
+        alert("Team number missing for this match.");
+        return;
+      }
+      const existingSub = subInStatusByMatch[match.id]?.[teamValue];
+      if (existingSub === "requested") {
+        alert("A sub-in has already been requested for this team.");
+        return;
+      }
+      if (existingSub === "assigned") {
+        alert("A sub-in has already been assigned for this team.");
+        return;
+      }
+      const now = Date.now();
+      await addDoc(collection(db, "scouting"), {
+        entryType: "sub-in-request",
+        formType: "sub-in-request",
+        game: "REBUILT",
+        teamId: userData.teamId,
+        eventKey,
+        matchId: match.id,
+        matchKey: match.id,
+        matchLabel: getMatchDisplay(match),
+        matchType: match.type,
+        matchNumber: String(match.matchNumber),
+        teamNumber: teamValue,
+        scoutId: userData.uid,
+        scoutName: userData.displayName || "Scout",
+        requestedById: userData.uid,
+        requestedByName: userData.displayName || "Scout",
+        submittedAt: now,
+        requestedAt: now,
+        timestamp: now,
+      });
+      setSubInStatusByMatch((prev) => {
+        const next = { ...prev };
+        const existing = next[match.id] || {};
+        next[match.id] = { ...existing, [teamValue]: "requested" };
+        return next;
+      });
+      alert(`Sub-in requested for ${getMatchDisplay(match)}.`);
+    } catch (error) {
+      console.error("Failed to submit sub-in request:", error);
+      const message = error instanceof Error && error.message ? error.message : "Could not submit sub-in request.";
+      alert(message);
+    } finally {
+      setSubInSubmitting(false);
+    }
   }
 
   useEffect(() => {
@@ -1762,6 +1893,17 @@ function ScoutFormContent() {
                 <span className="text-lg font-semibold">Assigned Match:</span>
                 <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
                 <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
+                {!leadMode && (
+                  <button
+                    type="button"
+                    onClick={() => setSubInModalOpen(true)}
+                    className="px-2 py-0.5 text-xs rounded text-white"
+                    style={{ backgroundColor: "#c2410c" }}
+                    disabled={subInSubmitting}
+                  >
+                    {subInSubmitting ? "Requesting..." : "Request Sub-In"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2122,14 +2264,26 @@ function ScoutFormContent() {
             onClose={() => setModalOpen(false)}
             options={options}
             completed={completedMatches}
-            assigned={assignedMatchIds}
+            assigned={effectiveAssignedMatchIds}
             onPick={setSelectedMatch}
+          />
+          <ReefscapeMatchSelectModal
+            open={subInModalOpen}
+            onClose={() => setSubInModalOpen(false)}
+            options={options}
+            completed={completedMatches}
+            assigned={effectiveAssignedMatchIds}
+            onPick={(match) => {
+              void submitSubInRequest(match);
+              setSubInModalOpen(false);
+            }}
           />
           <TeamPickerModal
             open={showTeamPicker}
             teams={selectedTeams}
             scoutedTeams={selectedScoutedTeams}
             assignedTeams={selectedAssignedTeams}
+            subInStatuses={selectedSubInStatuses}
             highlightedTeams={highlightedAssignedTeams}
             onClose={() => setShowTeamPicker(false)}
             onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
@@ -2139,6 +2293,7 @@ function ScoutFormContent() {
             teams={leadAllianceTeams}
             scoutedTeams={new Set()}
             assignedTeams={new Set()}
+            subInStatuses={{}}
             highlightedTeams={new Set()}
             onClose={closeLeadTeamPicker}
             onSelect={handleLeadTeamPick}

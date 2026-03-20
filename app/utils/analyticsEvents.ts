@@ -202,6 +202,11 @@ type LeadScoutedLike = {
   isLeadScouting?: boolean;
 };
 
+export function isSubInRequestEntry(entry: { entryType?: string; formType?: string }): boolean {
+  const type = String(entry.entryType || entry.formType || "").toLowerCase().trim();
+  return type === "sub-in-request" || type === "sub-in-claim" || type === "sub-in";
+}
+
 export function isPracticeScoutedEntry(entry: PracticeScoutedLike): boolean {
   return Boolean(entry.isPracticeScouting) || Boolean(entry.practiceMode) || Boolean(entry.practiceSessionId);
 }
@@ -219,6 +224,7 @@ export function entryMatchesAnalyticsFilters(
   eventOptions: AnalyticsEventOption[] = getEventsForGame(game),
   options?: { includeLead?: boolean }
 ): boolean {
+  if (isSubInRequestEntry(entry as LeadScoutedLike)) return false;
   if (!options?.includeLead && isLeadScoutingEntry(entry as LeadScoutedLike)) return false;
   if ((entry.game || "REEFSCAPE") !== game) return false;
   if (eventId === "all") return true;
