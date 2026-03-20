@@ -368,7 +368,7 @@ function AdminPanelContent() {
         const rows: FormEditorEntry[] = [];
         const teamIdFilter = String(userData?.teamId || "").trim();
         const numericTeamId = Number(teamIdFilter);
-        const includeNumericTeamId = Number.isFinite(numericTeamId) && String(numericTeamId) !== teamIdFilter;
+        const includeNumericTeamId = Number.isFinite(numericTeamId);
         const seenIds = new Set<string>();
         await Promise.all(
           activeFormType.collections.map(async (collectionName) => {
