@@ -370,6 +370,28 @@ function AdminPanelContent() {
         const numericTeamId = Number(teamIdFilter);
         const includeNumericTeamId = Number.isFinite(numericTeamId);
         const seenIds = new Set<string>();
+        if (activeFormType.id === "lead-scout") {
+          const results = await Promise.allSettled([
+            getDocs(collection(db, "leadScouting")),
+            getDocs(query(collection(db, "scouting"), where("entryType", "==", "lead"))),
+          ]);
+          const leadScoutingDocs = results[0].status === "fulfilled" ? results[0].value.docs : [];
+          const scoutingDocs = results[1].status === "fulfilled" ? results[1].value.docs : [];
+          const allLeadDocs = [
+            ...leadScoutingDocs.map((docSnap) => ({ docSnap, collectionName: "leadScouting" })),
+            ...scoutingDocs.map((docSnap) => ({ docSnap, collectionName: "scouting" })),
+          ];
+          allLeadDocs.forEach(({ docSnap, collectionName }) => {
+            const seenKey = `${collectionName}:${docSnap.id}`;
+            if (seenIds.has(seenKey)) return;
+            const data = docSnap.data() as Record<string, unknown>;
+            const teamId = String(data.teamId || "").trim();
+            if (userData?.teamId && teamId && teamId !== String(userData.teamId)) return;
+            seenIds.add(seenKey);
+            rows.push({ id: docSnap.id, collection: collectionName, data });
+          });
+          return;
+        }
         await Promise.all(
           activeFormType.collections.map(async (collectionName) => {
             const baseRef = collection(db, collectionName);
@@ -391,7 +413,8 @@ function AdminPanelContent() {
             }
             snapshots.forEach((snap) => {
               snap.docs.forEach((docSnap) => {
-                if (seenIds.has(docSnap.id)) return;
+                const seenKey = `${collectionName}:${docSnap.id}`;
+                if (seenIds.has(seenKey)) return;
                 const data = docSnap.data() as Record<string, unknown>;
                 const teamId = String(data.teamId || "").trim();
                 if (userData?.teamId && teamId && teamId !== String(userData.teamId)) return;
@@ -400,7 +423,7 @@ function AdminPanelContent() {
                 } else if (collectionName === "scouting" && isLeadScoutingEntry(data)) {
                   return;
                 }
-                seenIds.add(docSnap.id);
+                seenIds.add(seenKey);
                 rows.push({ id: docSnap.id, collection: collectionName, data });
               });
             });
