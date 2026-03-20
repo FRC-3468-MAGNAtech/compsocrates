@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, CircleHelp, Hourglass, X as XIcon } from "lucide-react";
+import { Check, Hourglass, X as XIcon } from "lucide-react";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
-import { useAuth } from "@/app/AuthContext";
-import { getEffectiveNowSec } from "@/app/utils/teamTime";
 
 export type MatchType = "practice" | "qualification" | "finals";
 
@@ -18,7 +16,6 @@ export type ReefscapeMatchOption = {
 };
 
 type MatchStatus = "completed" | "next" | "upcoming";
-type FinalsSeriesStatus = MatchStatus | "unknown";
 
 function inferFinalsKind(match: ReefscapeMatchOption): "bracket" | "series" | null {
   if (match.finalsKind === "bracket" || match.finalsKind === "series") return match.finalsKind;
@@ -92,7 +89,6 @@ function FinalsBracket({
   timesByNumber,
   availableNumbers,
   finalsSummaryDone,
-  nowSec,
   allowCompletedPick = false,
 }: {
   completedNumbers: Set<number>;
@@ -100,7 +96,6 @@ function FinalsBracket({
   timesByNumber: Map<number, number>;
   availableNumbers: number[];
   finalsSummaryDone: boolean;
-  nowSec: number;
   allowCompletedPick?: boolean;
 }) {
   const B = { w: 104, h: 58, colGap: 52, row: 84 };
@@ -131,23 +126,7 @@ function FinalsBracket({
   const join4 = c3 + B.w + 30;
   const join5 = c4 + B.w + 30;
   const totalWidth = c5 + B.w;
-  const now = nowSec;
-  const graceSeconds = 10 * 60;
-  const hasScheduleTimes = availableNumbers.some((n) => Number(timesByNumber.get(n) || 0) > 0);
-  const hasCompleted = completedNumbers.size > 0;
-  const nextByTime =
-    availableNumbers
-      .filter((n) => !completedNumbers.has(n))
-      .map((n) => ({ n, t: Number(timesByNumber.get(n) || 0) }))
-      .filter((row) => row.t > 0 && row.t >= now - graceSeconds)
-      .sort((a, b) => a.t - b.t)[0]?.n ?? -1;
-  const firstOpen = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
-  // Prefer the soonest scheduled match (with grace), otherwise fall back to the earliest incomplete slot.
-  const nextSlot = hasScheduleTimes
-    ? (nextByTime > 0 ? nextByTime : firstOpen)
-    : hasCompleted
-    ? firstOpen
-    : -1;
+  const nextSlot = availableNumbers.find((n) => !completedNumbers.has(n)) || -1;
   const resolvedStatusOf = (n: number): MatchStatus => {
     if (completedNumbers.has(n)) return "completed";
     if (n === nextSlot) return "next";
@@ -237,11 +216,9 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   allowManualOverride?: boolean;
   allowCompletedPick?: boolean;
 }) {
-  const { teamTimeOverride } = useAuth();
   const [step, setStep] = useState<"type" | MatchType>("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
   const [manualMatchNumber, setManualMatchNumber] = useState("");
-  const nowSec = getEffectiveNowSec(teamTimeOverride);
 
   useEffect(() => {
     if (!open) {
@@ -301,19 +278,6 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
     });
     return byType;
   }, [options]);
-  const nextOverallId = useMemo(() => {
-    const now = nowSec;
-    const sorted = [...options]
-      .filter((opt) => !completed.has(opt.id))
-      .map((opt) => ({ id: opt.id, time: Number(opt.scheduleTime || 0), matchNumber: opt.matchNumber }))
-      .filter((row) => row.time > 0);
-    if (sorted.length === 0) return "";
-    sorted.sort((a, b) => {
-      if (a.time !== b.time) return a.time - b.time;
-      return a.matchNumber - b.matchNumber;
-    });
-    return sorted.find((row) => row.time >= now)?.id || "";
-  }, [options, completed, nowSec]);
 
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
@@ -395,16 +359,14 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         timeString: timeStringFromEpoch(m.scheduleTime),
                         matchId: m.id,
                       }));
-                    const resolvedNextNum = nextOverallId
-                      ? rows.find((row) => row.matchId === nextOverallId)?.matchNum ?? -1
-                      : -1;
+                    const resolvedNextNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
                       const isAssigned = assigned.has(matchId);
                       const status: MatchStatus = done ? "completed" : matchNum === resolvedNextNum ? "next" : "upcoming";
                       const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
                       const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
-                      const borderColor = isAssigned ? "var(--primary-color)" : color;
+                      const borderColor = color;
                       return (
                         <button
                           key={`${step}-${matchNum}`}
@@ -472,7 +434,6 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   })()}
                   availableNumbers={Array.from({ length: 13 }, (_, i) => i + 1)}
                   finalsSummaryDone={isFinalDone(1) && isFinalDone(2)}
-                  nowSec={nowSec}
                   allowCompletedPick={allowCompletedPick}
                   onPick={(matchNumber) => {
                     if (matchNumber === 14) {
@@ -509,32 +470,15 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                   </div>
                   <p className="text-gray-600 mb-6 text-center">Which finals match are you scouting?</p>
                   <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
-                    {[1, 2, 3].map((matchNum) => (
-                      (() => {
+                    {(() => {
+                      const nextFinalSeries = [1, 2, 3].find((num) => !isFinalDone(num)) ?? -1;
+                      return [1, 2, 3].map((matchNum) => {
                         const picked = finalsSeriesByNumber.get(matchNum) || finalsById.get(`f${matchNum}`);
                         const done = isFinalDone(matchNum);
-                        const hasRealSchedule = !!picked && Number(picked.scheduleTime || 0) > 0;
-                        const unknownF3 = matchNum === 3 && !done && !hasRealSchedule;
-                        const resolvedNextFinal =
-                          nextOverallId && /^f[1-3]$/i.test(nextOverallId)
-                            ? Number(nextOverallId.replace(/[^\d]/g, "")) || -1
-                            : -1;
-                        const status: FinalsSeriesStatus = done
-                          ? "completed"
-                          : unknownF3
-                            ? "unknown"
-                            : matchNum === resolvedNextFinal
-                              ? "next"
-                              : "upcoming";
-                        const color =
-                          status === "completed"
-                            ? "#16a34a"
-                            : status === "next"
-                              ? "#ca8a04"
-                              : status === "unknown"
-                                ? "#6b7280"
-                                : "#ef4444";
+                        const status: MatchStatus = done ? "completed" : matchNum === nextFinalSeries ? "next" : "upcoming";
+                        const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
                         const timeLabel = picked ? timeStringFromEpoch(Number(picked.scheduleTime || 0)) : "TBD";
+                        const isDisabled = done && !allowCompletedPick;
                         return (
                           <button
                             key={matchNum}
@@ -558,16 +502,16 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                               onPick(fallback);
                               onClose();
                             }}
-                            disabled={done && !allowCompletedPick}
+                            disabled={isDisabled}
                             className={`group relative p-8 border-2 rounded-2xl transition-all ${
-                              done && !allowCompletedPick
+                              isDisabled
                                 ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300"
                                 : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"
                             }`}
-                            style={unknownF3 || done ? undefined : { borderColor: color }}
+                            style={isDisabled ? undefined : { borderColor: color }}
                           >
                             <div className="absolute top-2 left-2 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: color }}>
-                              {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : status === "unknown" ? <CircleHelp size={10} /> : <XIcon size={10} />}
+                              {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
                             </div>
                             <div className="text-center">
                               <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
@@ -583,8 +527,8 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                             </div>
                           </button>
                         );
-                      })()
-                    ))}
+                      });
+                    })()}
                   </div>
                   <p className="text-center text-sm text-gray-500 mt-6">
                     Select the specific finals match you&apos;re scouting

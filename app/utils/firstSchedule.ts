@@ -8,6 +8,8 @@ export type FirstScheduleMatch = {
   startTime: number;
   tournamentLevel: string;
   teams: FirstScheduleTeam[];
+  redScore?: number;
+  blueScore?: number;
 };
 
 type FirstSchedulePayload = {
@@ -31,6 +33,55 @@ function parseStartTime(raw: unknown): number {
   const parsed = Date.parse(String(raw || ""));
   if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000);
   return 0;
+}
+
+function parseScoreValue(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function readScore(row: Record<string, unknown>, alliance: "red" | "blue"): number | null {
+  const upper = alliance === "red" ? "Red" : "Blue";
+  const candidates = [
+    `score${upper}Final`,
+    `score${upper}FinalScore`,
+    `score${upper}FinalPoints`,
+    `score${upper}`,
+    `${alliance}Score`,
+    `${alliance}FinalScore`,
+    `${alliance}ScoreFinal`,
+    `${upper}Score`,
+    `${upper}FinalScore`,
+  ];
+  for (const key of candidates) {
+    const value = parseScoreValue(row[key]);
+    if (value !== null) return value;
+  }
+  const allianceBlock = row.alliances || (row as Record<string, unknown>).Alliances;
+  if (allianceBlock && typeof allianceBlock === "object") {
+    const block = allianceBlock as Record<string, unknown>;
+    const entry = (block[alliance] || block[upper]) as Record<string, unknown> | undefined;
+    if (entry && typeof entry === "object") {
+      const value = parseScoreValue(
+        (entry as Record<string, unknown>).score ??
+          (entry as Record<string, unknown>).finalScore ??
+          (entry as Record<string, unknown>).totalScore ??
+          (entry as Record<string, unknown>).totalPoints
+      );
+      if (value !== null) return value;
+    }
+  }
+  const flatAllianceScore = parseScoreValue(
+    row[`${alliance}AllianceScore`] ?? row[`${upper}AllianceScore`]
+  );
+  if (flatAllianceScore !== null) return flatAllianceScore;
+  return null;
 }
 
 export function getFirstEventCodeFromTbaKey(key: string): string {
@@ -85,7 +136,16 @@ export async function fetchFirstSchedule(eventKey: string, tournamentLevel = "Pr
             return { teamNumber, station };
           })
           .filter((team) => Number.isFinite(team.teamNumber) && team.teamNumber > 0);
-        return { matchNumber, startTime, tournamentLevel: tournament, teams };
+        const redScore = readScore(row, "red");
+        const blueScore = readScore(row, "blue");
+        return {
+          matchNumber,
+          startTime,
+          tournamentLevel: tournament,
+          teams,
+          redScore: redScore ?? undefined,
+          blueScore: blueScore ?? undefined,
+        };
       })
       .filter((row) => Number.isFinite(row.matchNumber) && row.matchNumber > 0);
   } catch (error) {

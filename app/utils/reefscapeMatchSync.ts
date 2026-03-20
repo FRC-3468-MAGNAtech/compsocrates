@@ -169,23 +169,14 @@ export function buildReefscapeModalOptions(matches: TBAMatch[]): ReefscapeMatchO
   });
 }
 
-export function buildCompletedModalIdsFromTba(matches: TBAMatch[], nowSec?: number): Set<string> {
+export function buildCompletedModalIdsFromTba(matches: TBAMatch[], _nowSec?: number): Set<string> {
   const completed = new Set<string>();
-  const useScheduleTime = Number.isFinite(nowSec);
-  const graceSeconds = 10 * 60;
 
   matches.forEach((match) => {
     const id = mapTbaMatchToModalId(match);
     if (!id) return;
     if (isTbaMatchCompleted(match)) {
       completed.add(id);
-      return;
-    }
-    if (useScheduleTime) {
-      const scheduleTime = getTbaScheduleTime(match);
-      if (scheduleTime > 0 && scheduleTime <= (nowSec as number) - graceSeconds) {
-        completed.add(id);
-      }
     }
   });
   return completed;
