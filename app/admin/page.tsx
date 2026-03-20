@@ -17,6 +17,7 @@ type ScoutingEditDraft = {
   eventName: string;
   matchType: "practice" | "qualification" | "finals";
   matchNumber: string;
+  teamNumber: string;
   isPracticeScouting: boolean;
   practiceMode?: string;
   practiceSessionId?: string;
@@ -47,6 +48,11 @@ function matchTypeFromId(matchId: string): "practice" | "qualification" | "final
 }
 
 function parseMatchNumber(value: string): string {
+  const numeric = String(value || "").match(/\d+/)?.[0] || "";
+  return numeric.replace(/^0+/, "") || (numeric ? "0" : "");
+}
+
+function parseTeamNumber(value: string): string {
   const numeric = String(value || "").match(/\d+/)?.[0] || "";
   return numeric.replace(/^0+/, "") || (numeric ? "0" : "");
 }
@@ -87,6 +93,8 @@ function AdminPanelContent() {
   const [bulkSetMatch, setBulkSetMatch] = useState(false);
   const [bulkMatchType, setBulkMatchType] = useState<"practice" | "qualification" | "finals">("qualification");
   const [bulkMatchNumber, setBulkMatchNumber] = useState("");
+  const [bulkSetTeam, setBulkSetTeam] = useState(false);
+  const [bulkTeamNumber, setBulkTeamNumber] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
   const dashboardOptions = [
     { label: "Match Scout", value: "/match-scout-dashboard" },
@@ -306,6 +314,7 @@ function AdminPanelContent() {
       const rawMatchType = String(row.matchType || "").trim();
       const matchType = rawMatchType ? coerceMatchType(rawMatchType) : matchTypeFromId(matchId);
       const matchNumber = String(row.matchNumber || parseMatchNumber(matchId) || "");
+      const teamNumber = String(row.teamNumber || "").trim();
       const eventKey = String(row.eventKey || "").trim() || "app-testing";
       const eventName = String(row.eventName || "").trim();
       const isPracticeScouting =
@@ -318,6 +327,7 @@ function AdminPanelContent() {
         eventName,
         matchType: matchType || matchTypeFromId(matchId),
         matchNumber,
+        teamNumber,
         isPracticeScouting,
         practiceMode: typeof row.practiceMode === "string" ? row.practiceMode : undefined,
         practiceSessionId: typeof row.practiceSessionId === "string" ? row.practiceSessionId : undefined,
@@ -343,6 +353,11 @@ function AdminPanelContent() {
       alert("Match number cannot be empty.");
       return;
     }
+    const cleanedTeamNumber = parseTeamNumber(scoutingDraft.teamNumber);
+    if (!cleanedTeamNumber) {
+      alert("Team number cannot be empty.");
+      return;
+    }
     const matchType = scoutingDraft.matchType || "qualification";
     const matchPrefix = matchType === "practice" ? "p" : matchType === "finals" ? "f" : "q";
     const matchId = `${matchPrefix}${cleanedMatchNumber}`;
@@ -355,6 +370,7 @@ function AdminPanelContent() {
       eventName,
       matchType,
       matchNumber: cleanedMatchNumber,
+      teamNumber: cleanedTeamNumber,
       matchId,
       isPracticeScouting: Boolean(scoutingDraft.isPracticeScouting),
     };
@@ -368,7 +384,18 @@ function AdminPanelContent() {
     setScoutingSaving(true);
     try {
       await updateDoc(doc(db, "scouting", scoutingDraft.id), updatePayload);
-      setScoutingDraft((prev) => (prev ? { ...prev, eventKey: cleanedEventKey, eventName, matchNumber: cleanedMatchNumber, matchType } : prev));
+      setScoutingDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              eventKey: cleanedEventKey,
+              eventName,
+              matchNumber: cleanedMatchNumber,
+              matchType,
+              teamNumber: cleanedTeamNumber,
+            }
+          : prev
+      );
       alert("Scouting entry updated.");
     } catch (error) {
       console.error("Failed to update scouting entry:", error);
@@ -410,6 +437,15 @@ function AdminPanelContent() {
       updatePayload.matchType = matchType;
       updatePayload.matchNumber = cleanedMatchNumber;
       updatePayload.matchId = `${prefix}${cleanedMatchNumber}`;
+    }
+
+    if (bulkSetTeam) {
+      const cleanedTeamNumber = parseTeamNumber(bulkTeamNumber);
+      if (!cleanedTeamNumber) {
+        alert("Team number is required for bulk team updates.");
+        return;
+      }
+      updatePayload.teamNumber = cleanedTeamNumber;
     }
 
     if (bulkSetPractice) {
@@ -622,7 +658,7 @@ function AdminPanelContent() {
                       </div>
                     </div>
 
-                    <div className="grid sm:grid-cols-3 gap-3">
+                    <div className="grid sm:grid-cols-4 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
                         <select
@@ -648,6 +684,17 @@ function AdminPanelContent() {
                             setScoutingDraft((prev) => (prev ? { ...prev, matchNumber: event.target.value } : prev))
                           }
                           placeholder="e.g. 5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
+                        <input
+                          className="w-full border rounded p-2"
+                          value={scoutingDraft.teamNumber}
+                          onChange={(event) =>
+                            setScoutingDraft((prev) => (prev ? { ...prev, teamNumber: event.target.value } : prev))
+                          }
+                          placeholder="e.g. 3468"
                         />
                       </div>
                       <div>
@@ -804,6 +851,28 @@ function AdminPanelContent() {
                           })()}
                         </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkSetTeam}
+                      onChange={(event) => setBulkSetTeam(event.target.checked)}
+                    />
+                    Update team number
+                  </label>
+                  {bulkSetTeam && (
+                    <div className="max-w-xs">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
+                      <input
+                        className="w-full border rounded p-2"
+                        value={bulkTeamNumber}
+                        onChange={(event) => setBulkTeamNumber(event.target.value)}
+                        placeholder="e.g. 3468"
+                      />
                     </div>
                   )}
                 </div>
