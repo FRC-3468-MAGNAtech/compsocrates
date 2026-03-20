@@ -1546,7 +1546,7 @@ function ScoutFormContent() {
       const matchLabel = selectedMatch.label || getSelectedMatchDisplay() || "";
       const matchType = selectedMatch.type || "qualification";
       const matchNumber = Number.isFinite(selectedMatch.matchNumber) ? selectedMatch.matchNumber : 0;
-      await addDoc(collection(db, "leadScouting"), {
+      const payload = {
         scoutName: leadForm.scoutName || userData.displayName || "",
         scoutId: userData.uid,
         teamId: userData.teamId || "",
@@ -1559,6 +1559,8 @@ function ScoutFormContent() {
         matchLabel,
         alliance: leadForm.alliance,
         isPracticeScouting: matchType === "practice",
+        isLeadScouting: true,
+        entryType: "lead",
         robots: [
           {
             teamNumber: leadForm.robot1TeamNumber.trim(),
@@ -1584,7 +1586,16 @@ function ScoutFormContent() {
         createdAt: Date.now(),
         submittedAt: Date.now(),
         timestamp: Date.now(),
-      });
+      };
+      try {
+        await addDoc(collection(db, "leadScouting"), payload);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/missing or insufficient permissions/i.test(message)) {
+          throw error;
+        }
+        await addDoc(collection(db, "scouting"), payload);
+      }
       alert("Lead scout form submitted.");
       if (typeof window !== "undefined") {
         window.location.reload();

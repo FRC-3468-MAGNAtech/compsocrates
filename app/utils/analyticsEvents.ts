@@ -196,16 +196,30 @@ type PracticeScoutedLike = {
   practiceSessionId?: string;
 };
 
+type LeadScoutedLike = {
+  entryType?: string;
+  formType?: string;
+  isLeadScouting?: boolean;
+};
+
 export function isPracticeScoutedEntry(entry: PracticeScoutedLike): boolean {
   return Boolean(entry.isPracticeScouting) || Boolean(entry.practiceMode) || Boolean(entry.practiceSessionId);
+}
+
+export function isLeadScoutingEntry(entry: LeadScoutedLike): boolean {
+  if (Boolean(entry.isLeadScouting)) return true;
+  const type = String(entry.entryType || entry.formType || "").toLowerCase().trim();
+  return type === "lead" || type === "lead-scout" || type === "lead-scouting";
 }
 
 export function entryMatchesAnalyticsFilters(
   entry: EventLikeEntry,
   game: AnalyticsGame,
   eventId: string,
-  eventOptions: AnalyticsEventOption[] = getEventsForGame(game)
+  eventOptions: AnalyticsEventOption[] = getEventsForGame(game),
+  options?: { includeLead?: boolean }
 ): boolean {
+  if (!options?.includeLead && isLeadScoutingEntry(entry as LeadScoutedLike)) return false;
   if ((entry.game || "REEFSCAPE") !== game) return false;
   if (eventId === "all") return true;
 

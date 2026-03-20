@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
@@ -10,6 +10,7 @@ import { useAnalyticsNotesSettings } from "@/app/components/AnalyticsNotesContex
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
+  isLeadScoutingEntry,
   isPracticeScoutedEntry,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
@@ -42,6 +43,9 @@ type LeadScoutEntry = {
   submittedAt?: number;
   timestamp?: number;
   isPracticeScouting?: boolean;
+  entryType?: string;
+  isLeadScouting?: boolean;
+  sourceCollection?: "leadScouting" | "scouting";
 };
 
 function LeadNotesCell({ text }: { text?: string | null }) {
@@ -126,8 +130,31 @@ function LeadAnalyticsContent() {
     async function load() {
       setLoading(true);
       try {
-        const snap = await getDocs(collection(db, "leadScouting"));
-        setEntries(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as LeadScoutEntry[]);
+        const results = await Promise.allSettled([
+          getDocs(collection(db, "leadScouting")),
+          getDocs(query(collection(db, "scouting"), where("entryType", "==", "lead"))),
+        ]);
+        const leadEntries =
+          results[0].status === "fulfilled"
+            ? results[0].value.docs.map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+                entryType: "lead",
+                isLeadScouting: true,
+                sourceCollection: "leadScouting",
+              }))
+            : [];
+        const scoutingEntries =
+          results[1].status === "fulfilled"
+            ? results[1].value.docs.map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+                entryType: "lead",
+                isLeadScouting: true,
+                sourceCollection: "scouting",
+              }))
+            : [];
+        setEntries([...leadEntries, ...scoutingEntries] as LeadScoutEntry[]);
       } finally {
         setLoading(false);
       }
@@ -146,8 +173,11 @@ function LeadAnalyticsContent() {
   );
 
   const filtered = useMemo(() => {
-    const gameFiltered = normalized.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
-    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
+    const gameFiltered = normalized.filter((entry) =>
+      entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, undefined, { includeLead: true })
+    );
+    const leadOnly = gameFiltered.filter((entry) => isLeadScoutingEntry(entry));
+    return leadOnly.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
   }, [normalized, practiceMatchesOnly, selectedEvent, selectedGame]);
 
   const sorted = useMemo(
@@ -170,7 +200,8 @@ function LeadAnalyticsContent() {
     if (!canDeleteEntries) return;
     const ok = confirm("Delete this lead scout entry?");
     if (!ok) return;
-    await deleteDoc(doc(db, "leadScouting", entry.id));
+    const collectionName = entry.sourceCollection === "scouting" ? "scouting" : "leadScouting";
+    await deleteDoc(doc(db, collectionName, entry.id));
     setEntries((prev) => prev.filter((row) => row.id !== entry.id));
   }
 
