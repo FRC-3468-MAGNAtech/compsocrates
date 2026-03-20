@@ -367,20 +367,42 @@ function AdminPanelContent() {
       try {
         const rows: FormEditorEntry[] = [];
         const teamIdFilter = String(userData?.teamId || "").trim();
+        const numericTeamId = Number(teamIdFilter);
+        const includeNumericTeamId = Number.isFinite(numericTeamId) && String(numericTeamId) !== teamIdFilter;
+        const seenIds = new Set<string>();
         await Promise.all(
           activeFormType.collections.map(async (collectionName) => {
             const baseRef = collection(db, collectionName);
-            const snap = teamIdFilter ? await getDocs(query(baseRef, where("teamId", "==", teamIdFilter))) : await getDocs(baseRef);
-            snap.docs.forEach((docSnap) => {
-              const data = docSnap.data() as Record<string, unknown>;
-              const teamId = String(data.teamId || "").trim();
-              if (userData?.teamId && teamId && teamId !== String(userData.teamId)) return;
-              if (activeFormType.id === "lead-scout") {
-                if (!isLeadScoutingEntry(data)) return;
-              } else if (collectionName === "scouting" && isLeadScoutingEntry(data)) {
-                return;
+            const snapshots = [];
+            if (teamIdFilter) {
+              snapshots.push(await getDocs(query(baseRef, where("teamId", "==", teamIdFilter))));
+              if (includeNumericTeamId) {
+                snapshots.push(await getDocs(query(baseRef, where("teamId", "==", numericTeamId))));
               }
-              rows.push({ id: docSnap.id, collection: collectionName, data });
+            } else {
+              snapshots.push(await getDocs(baseRef));
+            }
+            if (snapshots.every((snap) => snap.empty) && collectionName === "leadScouting") {
+              try {
+                snapshots.push(await getDocs(baseRef));
+              } catch {
+                // Ignore fallback errors (likely permission-related).
+              }
+            }
+            snapshots.forEach((snap) => {
+              snap.docs.forEach((docSnap) => {
+                if (seenIds.has(docSnap.id)) return;
+                const data = docSnap.data() as Record<string, unknown>;
+                const teamId = String(data.teamId || "").trim();
+                if (userData?.teamId && teamId && teamId !== String(userData.teamId)) return;
+                if (activeFormType.id === "lead-scout") {
+                  if (!isLeadScoutingEntry(data) && collectionName !== "leadScouting") return;
+                } else if (collectionName === "scouting" && isLeadScoutingEntry(data)) {
+                  return;
+                }
+                seenIds.add(docSnap.id);
+                rows.push({ id: docSnap.id, collection: collectionName, data });
+              });
             });
           })
         );
