@@ -50,6 +50,7 @@ function TeamPickerModal({
   teams,
   scoutedTeams,
   assignedTeams,
+  highlightedTeams,
   onClose,
   onSelect,
 }: {
@@ -57,6 +58,7 @@ function TeamPickerModal({
   teams: string[];
   scoutedTeams: Set<string>;
   assignedTeams?: Set<string>;
+  highlightedTeams?: Set<string>;
   onClose: () => void;
   onSelect: (team: string) => void;
 }) {
@@ -71,6 +73,7 @@ function TeamPickerModal({
             {teams.map((team) => {
               const done = scoutedTeams.has(team);
               const assigned = assignedTeams?.has(team);
+              const highlighted = highlightedTeams?.has(team);
               const label = done ? `${team} (Scouted)` : assigned ? `${team} (Assigned)` : team;
               return (
                 <button
@@ -84,11 +87,11 @@ function TeamPickerModal({
                   className={`rounded-lg border p-3 text-sm text-left ${
                     done
                       ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
-                      : assigned
+                      : highlighted
                         ? "bg-indigo-50 hover:bg-indigo-100"
                         : "hover:bg-gray-50 border-red-400"
                   }`}
-                  style={!done && assigned ? { borderColor: "var(--primary-color)" } : undefined}
+                  style={!done && highlighted ? { borderColor: "var(--primary-color)" } : undefined}
                 >
                   {label}
                 </button>
@@ -1208,10 +1211,8 @@ function ScoutFormContent() {
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
   const assignedTeam = assignedTeams[selectedMatchId] || "";
-  const selectedAssignedTeams = useMemo(
-    () => (assignedTeam ? new Set([assignedTeam]) : new Set<string>()),
-    [assignedTeam]
-  );
+  const selectedAssignedTeams = useMemo(() => new Set(assignedTeamsByMatch[selectedMatchId] || []), [assignedTeamsByMatch, selectedMatchId]);
+  const highlightedAssignedTeams = useMemo(() => (assignedTeam ? new Set([assignedTeam]) : new Set<string>()), [assignedTeam]);
   const isHumanPlayerAssigned = assignedHumanPlayerMatches.has(selectedMatchId);
   const selectedRedTeams = selectedMatch?.redTeams || [];
   const selectedBlueTeams = selectedMatch?.blueTeams || [];
@@ -2129,6 +2130,7 @@ function ScoutFormContent() {
             teams={selectedTeams}
             scoutedTeams={selectedScoutedTeams}
             assignedTeams={selectedAssignedTeams}
+            highlightedTeams={highlightedAssignedTeams}
             onClose={() => setShowTeamPicker(false)}
             onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
           />
@@ -2137,6 +2139,7 @@ function ScoutFormContent() {
             teams={leadAllianceTeams}
             scoutedTeams={new Set()}
             assignedTeams={new Set()}
+            highlightedTeams={new Set()}
             onClose={closeLeadTeamPicker}
             onSelect={handleLeadTeamPick}
           />
