@@ -434,9 +434,15 @@ function AdminPanelContent() {
     return formEntriesRaw
       .filter((row) => {
         const entry = row.data;
+        const normalizedEntry = {
+          ...entry,
+          game: (entry.game || formGame) as AnalyticsGame,
+          submittedAt: entry.submittedAt || entry.timestamp || entry.createdAt || 0,
+          timestamp: entry.timestamp || entry.submittedAt || entry.createdAt || 0,
+        } as Record<string, unknown>;
         const includeLead = selectedFormType.id === "lead-scout";
         if (selectedFormType.id === "lead-scout" && !isLeadScoutingEntry(entry)) return false;
-        if (!entryMatchesAnalyticsFilters(entry as Record<string, unknown>, formGame, formEvent, eventOptions, { includeLead })) {
+        if (!entryMatchesAnalyticsFilters(normalizedEntry, formGame, formEvent, eventOptions, { includeLead })) {
           return false;
         }
         if (selectedFormType.id === "match-scout") {
