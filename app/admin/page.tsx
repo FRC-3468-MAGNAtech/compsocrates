@@ -352,7 +352,12 @@ function AdminPanelContent() {
   }, [selectedFormType, formGame, formEvent, formPracticeOnly]);
 
   useEffect(() => {
-    if (!formEditorOpen || !selectedFormType || !userData?.teamId) {
+    if (!formEditorOpen || !userData?.teamId) {
+      setFormEntriesRaw([]);
+      return;
+    }
+    const formType = selectedFormType;
+    if (!formType) {
       setFormEntriesRaw([]);
       return;
     }
@@ -362,13 +367,13 @@ function AdminPanelContent() {
       try {
         const rows: FormEditorEntry[] = [];
         await Promise.all(
-          selectedFormType.collections.map(async (collectionName) => {
+          formType.collections.map(async (collectionName) => {
             const snap = await getDocs(collection(db, collectionName));
             snap.docs.forEach((docSnap) => {
               const data = docSnap.data() as Record<string, unknown>;
               const teamId = String(data.teamId || "").trim();
               if (userData?.teamId && teamId && teamId !== String(userData.teamId)) return;
-              if (selectedFormType.id === "lead-scout") {
+              if (formType.id === "lead-scout") {
                 if (!isLeadScoutingEntry(data)) return;
               } else if (collectionName === "scouting" && isLeadScoutingEntry(data)) {
                 return;
