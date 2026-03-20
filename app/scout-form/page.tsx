@@ -1207,11 +1207,11 @@ function ScoutFormContent() {
   const selectedMatchId = selectedMatch?.id || "";
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
-  const selectedAssignedTeams = useMemo(
-    () => new Set(assignedTeamsByMatch[selectedMatchId] || []),
-    [assignedTeamsByMatch, selectedMatchId]
-  );
   const assignedTeam = assignedTeams[selectedMatchId] || "";
+  const selectedAssignedTeams = useMemo(
+    () => (assignedTeam ? new Set([assignedTeam]) : new Set<string>()),
+    [assignedTeam]
+  );
   const isHumanPlayerAssigned = assignedHumanPlayerMatches.has(selectedMatchId);
   const selectedRedTeams = selectedMatch?.redTeams || [];
   const selectedBlueTeams = selectedMatch?.blueTeams || [];
