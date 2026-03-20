@@ -81,7 +81,14 @@ function TeamPickerModal({
                     onSelect(team);
                     onClose();
                   }}
-                  className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
+                  className={`rounded-lg border p-3 text-sm text-left ${
+                    done
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
+                      : assigned
+                        ? "bg-indigo-50 hover:bg-indigo-100"
+                        : "hover:bg-gray-50 border-red-400"
+                  }`}
+                  style={!done && assigned ? { borderColor: "var(--primary-color)" } : undefined}
                 >
                   {label}
                 </button>
@@ -814,9 +821,11 @@ function normalizeScoutedMatchId(value: unknown): string {
 
   const fromQmKey = raw.match(/_qm(\d+)/);
   if (fromQmKey) return `q${Number(fromQmKey[1])}`;
-  const fromPractice = raw.match(/practice\s+(\d+)/);
+  const fromPracticeKey = raw.match(/_(?:pr|pm)(\d+)/);
+  if (fromPracticeKey) return `p${Number(fromPracticeKey[1])}`;
+  const fromPractice = raw.match(/practice(?:\s+match)?\s+(\d+)/);
   if (fromPractice) return `p${Number(fromPractice[1])}`;
-  const fromQual = raw.match(/qualification\s+(\d+)/);
+  const fromQual = raw.match(/qualification(?:\s+match)?\s+(\d+)/);
   if (fromQual) return `q${Number(fromQual[1])}`;
 
   const sfSlot = parsePlayoffSlotFromKey(raw, "sf");
@@ -843,9 +852,9 @@ function mapAssignmentToMatchId(labelOrKey: string) {
   const raw = String(labelOrKey || "").toLowerCase();
   const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
   if (direct) return `${direct[1]}${direct[2]}`;
-  const qm = raw.match(/(?:_qm|qualification\s+)(\d+)/);
+  const qm = raw.match(/(?:_qm|qualification(?:\s+match)?\s+)(\d+)/);
   if (qm) return `q${qm[1]}`;
-  const practice = raw.match(/practice\s+(\d+)/);
+  const practice = raw.match(/(?:_pr|_pm|practice(?:\s+match)?\s+)(\d+)/);
   if (practice) return `p${practice[1]}`;
   const sfFromKey = parsePlayoffSlotFromKey(raw, "sf");
   if (sfFromKey !== null) return `sf${sfFromKey}`;

@@ -310,10 +310,18 @@ function DriveReflectionFormContent() {
             .slice()
             .sort((a, b) => extractMatchNumber(a) - extractMatchNumber(b))[0] || null;
         };
+        const pickFirstByNumber = (rows: MatchOption[]) =>
+          rows
+            .slice()
+            .sort((a, b) => extractMatchNumber(a) - extractMatchNumber(b))[0] || null;
 
         const isAttending = assignedMatchKeys.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
         let next: MatchOption | null = null;
-        if (assignedMatches.length > 0) {
+        const teamMatches = ourTeamStr ? resolvedOptions.filter((match) => match.teams.includes(ourTeamStr)) : [];
+        const teamFirst = teamMatches.length > 0 ? pickFirstByNumber(teamMatches) : null;
+        if (teamFirst) {
+          next = teamFirst;
+        } else if (assignedMatches.length > 0) {
           next = pickNextBySchedule(assignedMatches);
         } else if (!isAttending) {
           next =
@@ -322,9 +330,7 @@ function DriveReflectionFormContent() {
             resolvedOptions[0] ||
             null;
         } else {
-          const teamMatches = ourTeamStr ? resolvedOptions.filter((match) => match.teams.includes(ourTeamStr)) : [];
-          const teamNext = teamMatches.length > 0 ? pickNextBySchedule(teamMatches) : null;
-          next = teamNext || pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
+          next = pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
         }
         if (next) {
           setSelectedMatchKey(next.key);
