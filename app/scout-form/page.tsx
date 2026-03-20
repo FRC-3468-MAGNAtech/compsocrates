@@ -1525,6 +1525,16 @@ function ScoutFormContent() {
       return;
     }
     if (!selectedMatch) return alert("Select a match first.");
+    const safeEventKey = String(eventKey || "").trim();
+    if (!safeEventKey) {
+      alert("Event not set yet. Please refresh and try again.");
+      return;
+    }
+    const safeMatchId = String(selectedMatch.id || "").trim();
+    if (!safeMatchId) {
+      alert("Select a match first.");
+      return;
+    }
     if (!leadForm.alliance) return alert("Select an alliance first.");
     if (!leadForm.robot1TeamNumber.trim() || !leadForm.robot2TeamNumber.trim() || !leadForm.robot3TeamNumber.trim()) {
       alert("Enter all three team numbers for the alliance.");
@@ -1533,19 +1543,22 @@ function ScoutFormContent() {
 
     setLeadSaving(true);
     try {
+      const matchLabel = selectedMatch.label || getSelectedMatchDisplay() || "";
+      const matchType = selectedMatch.type || "qualification";
+      const matchNumber = Number.isFinite(selectedMatch.matchNumber) ? selectedMatch.matchNumber : 0;
       await addDoc(collection(db, "leadScouting"), {
         scoutName: leadForm.scoutName || userData.displayName || "",
         scoutId: userData.uid,
         teamId: userData.teamId || "",
-        eventKey,
+        eventKey: safeEventKey,
         game: "REBUILT",
-        matchKey: selectedMatch.id,
-        matchId: selectedMatch.id,
-        matchType: selectedMatch.type,
-        matchNumber: String(selectedMatch.matchNumber),
-        matchLabel: selectedMatch.label || getSelectedMatchDisplay(),
+        matchKey: safeMatchId,
+        matchId: safeMatchId,
+        matchType,
+        matchNumber: String(matchNumber),
+        matchLabel,
         alliance: leadForm.alliance,
-        isPracticeScouting: selectedMatch.type === "practice",
+        isPracticeScouting: matchType === "practice",
         robots: [
           {
             teamNumber: leadForm.robot1TeamNumber.trim(),

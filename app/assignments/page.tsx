@@ -1117,7 +1117,7 @@ function AssignmentsContent() {
   }, [randomizeEligibleMembers]);
 
   function openRandomizeConfig(target: RandomizeTarget) {
-    const sourceEventKey = target === "practice" ? (selectedPracticeEventKey || selectedEvent) : selectedEvent;
+    const sourceEventKey = target === "practice" ? (selectedEvent || selectedPracticeEventKey) : selectedEvent;
     const seededPriorityTeams = Array.from(
       new Set([...(manualPriorityTeamsByEvent[sourceEventKey] || []), ...manualPriorityTeamsGlobal])
     );
@@ -2241,10 +2241,19 @@ function buildMatchScoutOrder(
   }
 
   const matchAssignmentsSorted = useMemo(
-    () =>
-      assignments
-        .slice()
-        .sort((a, b) => {
+    () => {
+      const merged = assignments.slice();
+      const practiceRows = selectedEvent ? practiceScheduleAssignmentsByEvent[selectedEvent] || [] : [];
+      if (practiceRows.length > 0) {
+        const seen = new Set(merged.map((row) => row.id));
+        practiceRows.forEach((row) => {
+          if (!seen.has(row.id)) {
+            merged.push(row);
+            seen.add(row.id);
+          }
+        });
+      }
+      return merged.sort((a, b) => {
           const aKey = getAssignmentMatchSortKey(a);
           const bKey = getAssignmentMatchSortKey(b);
           if (aKey.priority !== bKey.priority) return aKey.priority - bKey.priority;
@@ -2253,8 +2262,9 @@ function buildMatchScoutOrder(
           const labelDiff = aKey.label.localeCompare(bKey.label);
           if (labelDiff !== 0) return labelDiff;
           return a.teamNumber - b.teamNumber;
-        }),
-    [assignments]
+        });
+    },
+    [assignments, practiceScheduleAssignmentsByEvent, selectedEvent]
   );
   const practiceAssignmentsSorted = useMemo(
     () =>
