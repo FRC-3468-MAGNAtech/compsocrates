@@ -524,6 +524,40 @@ function TeamRoleDashboardContent({
     return { match: upcomingMatch, assignment };
   }, [activeEvent, activeMatches, nowSec, userMatchAssignments, subInAssignmentsForUser]);
 
+  const upcomingAssignment = useMemo(() => {
+    if (!activeEvent) return null;
+    const assignmentsForEvent = [
+      ...userMatchAssignments.filter((assignment) => assignment.eventKey === activeEvent.key),
+      ...subInAssignmentsForUser.filter((assignment) => assignment.eventKey === activeEvent.key),
+    ];
+    if (assignmentsForEvent.length === 0) return null;
+    const assignmentIds = new Set(
+      assignmentsForEvent
+        .map((row) => normalizeMatchId(String(row.matchKey || "")) || normalizeMatchId(String(row.matchLabel || "")))
+        .filter(Boolean)
+    );
+    if (assignmentIds.size === 0) return null;
+    const candidates = activeMatches
+      .map((match) => ({ match, id: normalizeMatchId(match.key) || normalizeMatchId(match.label) }))
+      .filter((row) => row.id && assignmentIds.has(row.id));
+    if (candidates.length === 0) return null;
+    const sorted = candidates
+      .filter((row) => (row.match.scheduleTime > 0 ? row.match.scheduleTime >= nowSec : true))
+      .sort((a, b) => {
+        const timeA = a.match.scheduleTime > 0 ? a.match.scheduleTime : Number.MAX_SAFE_INTEGER;
+        const timeB = b.match.scheduleTime > 0 ? b.match.scheduleTime : Number.MAX_SAFE_INTEGER;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.match.label.localeCompare(b.match.label);
+      });
+    const next = sorted[0] || candidates[0];
+    const assignment = assignmentsForEvent.find((row) => {
+      const assignmentId = normalizeMatchId(String(row.matchKey || "")) || normalizeMatchId(String(row.matchLabel || ""));
+      return assignmentId && assignmentId === next.id;
+    });
+    if (!assignment) return null;
+    return { match: next.match, assignment };
+  }, [activeEvent, activeMatches, nowSec, userMatchAssignments, subInAssignmentsForUser]);
+
   useEffect(() => {
     if (!notificationsSupported || notificationPermission !== "granted") return;
     visibleSubInRequests.forEach((request) => {
@@ -649,6 +683,35 @@ function TeamRoleDashboardContent({
                   <p className="text-sm text-gray-800">
                     You are up next for <span className="font-semibold">{upNextAssignment.match.label}</span>
                     {upNextAssignment.assignment.teamNumber ? ` - Team ${upNextAssignment.assignment.teamNumber}` : ""}.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {upNextAssignment.match.scheduleTime > 0
+                      ? new Date(upNextAssignment.match.scheduleTime * 1000).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : "Time TBD"}
+                  </p>
+                </div>
+              )}
+              {(!upNextAssignment && upcomingAssignment) && (
+                <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-blue-500">
+                  <h2 className="text-xl font-semibold mb-2">Upcoming Assignment</h2>
+                  <p className="text-sm text-gray-800">
+                    Your next assigned match is <span className="font-semibold">{upcomingAssignment.match.label}</span>
+                    {upcomingAssignment.assignment.teamNumber ? ` - Team ${upcomingAssignment.assignment.teamNumber}` : ""}.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {upcomingAssignment.match.scheduleTime > 0
+                      ? new Date(upcomingAssignment.match.scheduleTime * 1000).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : "Time TBD"}
                   </p>
                 </div>
               )}
