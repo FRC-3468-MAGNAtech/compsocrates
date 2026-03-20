@@ -894,7 +894,12 @@ function ScoutFormContent() {
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
   const [modalOpen, setModalOpen] = useState(false);
+  const [subInRequestOpen, setSubInRequestOpen] = useState(false);
   const [subInModalOpen, setSubInModalOpen] = useState(false);
+  const [subInRequestStep, setSubInRequestStep] = useState<"choice" | "range">("choice");
+  const [subInRangeType, setSubInRangeType] = useState<MatchType>("qualification");
+  const [subInRangeStart, setSubInRangeStart] = useState("");
+  const [subInRangeEnd, setSubInRangeEnd] = useState("");
   const [subInSubmitting, setSubInSubmitting] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [options, setOptions] = useState<MatchOption[]>([]);
@@ -1352,37 +1357,40 @@ function ScoutFormContent() {
     return match.label || "Match";
   }
 
-  async function submitSubInRequest(match: MatchOption) {
+  async function submitSubInRequest(
+    match: MatchOption,
+    options?: { silent?: boolean; bypassSubmitting?: boolean }
+  ): Promise<"requested" | "skipped" | "error"> {
     if (!userData?.teamId || !userData?.uid) {
-      alert("You must be signed in to request a sub-in.");
-      return;
+      if (!options?.silent) alert("You must be signed in to request a sub-in.");
+      return "error";
     }
     if (!eventKey || eventKey === "app-testing") {
-      alert("Select an event before requesting a sub-in.");
-      return;
+      if (!options?.silent) alert("Select an event before requesting a sub-in.");
+      return "error";
     }
     if (!effectiveAssignedMatchIds.has(match.id)) {
-      alert("You can only request a sub-in for matches assigned to you.");
-      return;
+      if (!options?.silent) alert("You can only request a sub-in for matches assigned to you.");
+      return "skipped";
     }
-    if (subInSubmitting) return;
-    setSubInSubmitting(true);
+    if (!options?.bypassSubmitting && subInSubmitting) return "skipped";
+    if (!options?.bypassSubmitting) setSubInSubmitting(true);
     try {
-      const fallbackTeam = assignedTeam || form.teamNumber;
+      const fallbackTeam = effectiveAssignedTeams[match.id] || assignedTeam || form.teamNumber;
       const parsedTeam = String(fallbackTeam || "").match(/\d+/)?.[0] || "";
       const teamValue = parsedTeam ? parsedTeam : "";
       if (!teamValue) {
-        alert("Team number missing for this match.");
-        return;
+        if (!options?.silent) alert("Team number missing for this match.");
+        return "skipped";
       }
       const existingSub = subInStatusByMatch[match.id]?.[teamValue];
       if (existingSub === "requested") {
-        alert("A sub-in has already been requested for this team.");
-        return;
+        if (!options?.silent) alert("A sub-in has already been requested for this team.");
+        return "skipped";
       }
       if (existingSub === "assigned") {
-        alert("A sub-in has already been assigned for this team.");
-        return;
+        if (!options?.silent) alert("A sub-in has already been assigned for this team.");
+        return "skipped";
       }
       const now = Date.now();
       await addDoc(collection(db, "scouting"), {
@@ -1411,15 +1419,66 @@ function ScoutFormContent() {
         next[match.id] = { ...existing, [teamValue]: "requested" };
         return next;
       });
-      alert(`Sub-in requested for ${getMatchDisplay(match)}.`);
+      if (!options?.silent) alert(`Sub-in requested for ${getMatchDisplay(match)}.`);
+      return "requested";
     } catch (error) {
       console.error("Failed to submit sub-in request:", error);
       const message = error instanceof Error && error.message ? error.message : "Could not submit sub-in request.";
-      alert(message);
+      if (!options?.silent) alert(message);
+      return "error";
     } finally {
-      setSubInSubmitting(false);
+      if (!options?.bypassSubmitting) setSubInSubmitting(false);
     }
   }
+
+  async function submitSubInRange() {
+    if (!userData?.teamId || !userData?.uid) {
+      alert("You must be signed in to request a sub-in.");
+      return;
+    }
+    if (!eventKey || eventKey === "app-testing") {
+      alert("Select an event before requesting a sub-in.");
+      return;
+    }
+    const start = Number(String(subInRangeStart || "").replace(/[^\d]/g, ""));
+    const end = Number(String(subInRangeEnd || "").replace(/[^\d]/g, ""));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0 || end <= 0) {
+      alert("Enter a valid match range (e.g., 45-65).");
+      return;
+    }
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    const matchesInRange = options.filter(
+      (match) => match.type === subInRangeType && match.matchNumber >= min && match.matchNumber <= max
+    );
+    const assignedInRange = matchesInRange.filter((match) => effectiveAssignedMatchIds.has(match.id));
+    if (assignedInRange.length === 0) {
+      alert("No assigned matches found in that range.");
+      return;
+    }
+    if (subInSubmitting) return;
+    setSubInSubmitting(true);
+    let requested = 0;
+    let skipped = 0;
+    let errored = 0;
+    for (const match of assignedInRange) {
+      const result = await submitSubInRequest(match, { silent: true, bypassSubmitting: true });
+      if (result === "requested") requested += 1;
+      else if (result === "error") errored += 1;
+      else skipped += 1;
+    }
+    setSubInSubmitting(false);
+    alert(`Sub-in requests: ${requested} requested, ${skipped} skipped, ${errored} failed.`);
+    setSubInRequestOpen(false);
+  }
+
+  useEffect(() => {
+    if (!subInRequestOpen) return;
+    setSubInRequestStep("choice");
+    if (selectedMatch?.type) setSubInRangeType(selectedMatch.type);
+    setSubInRangeStart("");
+    setSubInRangeEnd("");
+  }, [subInRequestOpen, selectedMatch?.type]);
 
   useEffect(() => {
     if (assignedTeam) setForm((prev) => ({ ...prev, teamNumber: assignedTeam }));
@@ -1896,15 +1955,15 @@ function ScoutFormContent() {
                 <span className="text-lg font-semibold">Assigned Match:</span>
                 <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
                 <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
-                {!leadMode && (
-                  <button
-                    type="button"
-                    onClick={() => setSubInModalOpen(true)}
-                    className="px-2 py-0.5 text-xs rounded text-white"
-                    style={{ backgroundColor: "#c2410c" }}
-                    disabled={subInSubmitting}
-                  >
-                    {subInSubmitting ? "Requesting..." : "Request Sub-In"}
+                  {!leadMode && (
+                    <button
+                      type="button"
+                      onClick={() => setSubInRequestOpen(true)}
+                      className="px-2 py-0.5 text-xs rounded text-white"
+                      style={{ backgroundColor: "#c2410c" }}
+                      disabled={subInSubmitting}
+                    >
+                      {subInSubmitting ? "Requesting..." : "Request Sub-In"}
                   </button>
                 )}
               </div>
@@ -2262,25 +2321,118 @@ function ScoutFormContent() {
             </>
           )}
 
-          <ReefscapeMatchSelectModal
-            open={modalOpen}
-            onClose={() => setModalOpen(false)}
-            options={options}
-            completed={completedMatches}
-            assigned={effectiveAssignedMatchIds}
-            onPick={setSelectedMatch}
-          />
-          <ReefscapeMatchSelectModal
-            open={subInModalOpen}
-            onClose={() => setSubInModalOpen(false)}
-            options={options}
-            completed={completedMatches}
-            assigned={effectiveAssignedMatchIds}
-            onPick={(match) => {
-              void submitSubInRequest(match);
-              setSubInModalOpen(false);
-            }}
-          />
+            <ReefscapeMatchSelectModal
+              open={modalOpen}
+              onClose={() => setModalOpen(false)}
+              options={options}
+              completed={completedMatches}
+              assigned={effectiveAssignedMatchIds}
+              onPick={setSelectedMatch}
+            />
+            <ReefscapeStyleModal open={subInRequestOpen} onClose={() => setSubInRequestOpen(false)} step="qualification">
+              {subInRequestStep === "choice" ? (
+                <>
+                  <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--primary-color)" }}>Request Sub-In</h2>
+                  <p className="text-sm text-gray-600 mb-4">Pick a single match or request multiple matches.</p>
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      className="w-full py-2 rounded text-white"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                      onClick={() => {
+                        setSubInRequestOpen(false);
+                        setSubInModalOpen(true);
+                      }}
+                    >
+                      One Match
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      onClick={() => setSubInRequestStep("range")}
+                    >
+                      Multiple Matches
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSubInRequestStep("choice")}
+                    className="text-sm text-gray-600 hover:text-gray-900 mb-3"
+                  >
+                    {"\u2190 Back"}
+                  </button>
+                  <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Multiple Matches</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Enter a range (x-y, inclusive). We will only request sub-ins for matches in that range that you are assigned to.
+                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
+                      <select
+                        className="w-full border rounded p-2"
+                        value={subInRangeType}
+                        onChange={(event) => setSubInRangeType(event.target.value as MatchType)}
+                      >
+                        <option value="practice">Practice</option>
+                        <option value="qualification">Qualification</option>
+                        <option value="finals">Finals</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="flex-1 border rounded p-2"
+                        placeholder="Start (x)"
+                        value={subInRangeStart}
+                        onChange={(event) => setSubInRangeStart(event.target.value.replace(/[^\d]/g, ""))}
+                      />
+                      <span className="text-sm text-gray-500">to</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="flex-1 border rounded p-2"
+                        placeholder="End (y)"
+                        value={subInRangeEnd}
+                        onChange={(event) => setSubInRangeEnd(event.target.value.replace(/[^\d]/g, ""))}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      className="flex-1 py-2 rounded text-white"
+                      style={{ backgroundColor: "var(--primary-color)" }}
+                      onClick={() => void submitSubInRange()}
+                      disabled={subInSubmitting}
+                    >
+                      {subInSubmitting ? "Requesting..." : "Request Range"}
+                    </button>
+                    <button
+                      type="button"
+                      className="flex-1 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50"
+                      onClick={() => setSubInRequestOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </ReefscapeStyleModal>
+            <ReefscapeMatchSelectModal
+              open={subInModalOpen}
+              onClose={() => setSubInModalOpen(false)}
+              options={options}
+              completed={completedMatches}
+              assigned={effectiveAssignedMatchIds}
+              onPick={(match) => {
+                void submitSubInRequest(match);
+                setSubInModalOpen(false);
+              }}
+            />
           <TeamPickerModal
             open={showTeamPicker}
             teams={selectedTeams}
