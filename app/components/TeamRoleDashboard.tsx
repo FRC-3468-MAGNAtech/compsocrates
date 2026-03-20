@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { auth, db } from "@/app/firebase";
+import { db } from "@/app/firebase";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -211,22 +211,24 @@ function TeamRoleDashboardContent({
 
   async function loadSubInRequests(teamId: string) {
     try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) {
-        setSubInRequests([]);
-        return;
-      }
-      const response = await fetch("/api/sub-in-requests/list", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken, teamId }),
+      const snap = await getDocs(
+        query(collection(db, "scouting"), where("teamId", "==", teamId), where("entryType", "==", "sub-in-request"))
+      );
+      const requests = snap.docs.map((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        return {
+          id: docSnap.id,
+          eventKey: String(data.eventKey || ""),
+          matchId: String(data.matchId || ""),
+          matchLabel: String(data.matchLabel || ""),
+          matchType: String(data.matchType || ""),
+          matchNumber: Number(data.matchNumber || 0),
+          teamNumber: Number(data.teamNumber || 0) || null,
+          requestedByName: String(data.requestedByName || data.scoutName || ""),
+          requestedAt: Number(data.requestedAt || data.submittedAt || 0),
+        } as SubInRequest;
       });
-      if (response.ok) {
-        const payload = (await response.json()) as { requests?: SubInRequest[] };
-        setSubInRequests(Array.isArray(payload.requests) ? payload.requests : []);
-      } else {
-        setSubInRequests([]);
-      }
+      setSubInRequests(requests);
     } catch (error) {
       console.warn("Failed to load sub-in requests:", error);
       setSubInRequests([]);
@@ -360,8 +362,6 @@ function TeamRoleDashboardContent({
       .filter((match) => match.scheduleTime > 0 && match.scheduleTime >= nowSec)
       .sort((a, b) => a.scheduleTime - b.scheduleTime)[0];
     if (!upcomingMatch) return null;
-    const upNextWindowSec = 20 * 60;
-    if (upcomingMatch.scheduleTime - nowSec > upNextWindowSec) return null;
     const matchId = normalizeMatchId(upcomingMatch.key) || normalizeMatchId(upcomingMatch.label);
     const assignment = assignmentsForEvent.find((row) => {
       const assignmentId = normalizeMatchId(String(row.matchKey || "")) || normalizeMatchId(String(row.matchLabel || ""));

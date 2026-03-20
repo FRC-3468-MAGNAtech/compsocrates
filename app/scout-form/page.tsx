@@ -9,7 +9,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
-import { auth, db } from "@/app/firebase";
+import { db } from "@/app/firebase";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
@@ -1191,16 +1191,18 @@ function ScoutFormContent() {
   useEffect(() => {
     async function loadScouted() {
       if (!eventKey) return;
-      const snap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)));
-      const counts: Record<string, number> = {};
-      const teamsMap = new Map<string, Set<string>>();
-      snap.docs.forEach((d) => {
-        const row = d.data() as Record<string, unknown>;
-        const matchId = normalizeScoutedMatchId(row.matchId);
-        const team = String(row.teamNumber || "").trim();
-        if (!matchId) return;
-        counts[matchId] = (counts[matchId] || 0) + 1;
-        if (!teamsMap.has(matchId)) teamsMap.set(matchId, new Set<string>());
+        const snap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)));
+        const counts: Record<string, number> = {};
+        const teamsMap = new Map<string, Set<string>>();
+        snap.docs.forEach((d) => {
+          const row = d.data() as Record<string, unknown>;
+          const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
+          if (entryType === "sub-in-request") return;
+          const matchId = normalizeScoutedMatchId(row.matchId);
+          const team = String(row.teamNumber || "").trim();
+          if (!matchId) return;
+          counts[matchId] = (counts[matchId] || 0) + 1;
+          if (!teamsMap.has(matchId)) teamsMap.set(matchId, new Set<string>());
         if (team) teamsMap.get(matchId)?.add(team);
       });
       setScoutedCounts(counts);
@@ -1312,15 +1314,11 @@ function ScoutFormContent() {
     if (subInSubmitting) return;
     setSubInSubmitting(true);
     try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) {
-        alert("You must be signed in to request a sub-in.");
-        return;
-      }
       const fallbackTeam = assignedTeam || form.teamNumber;
       const parsedTeam = Number(String(fallbackTeam || "").replace(/[^\d]/g, ""));
-      const payload = {
-        idToken,
+      await addDoc(collection(db, "scouting"), {
+        entryType: "sub-in-request",
+        formType: "sub-in-request",
         teamId: userData.teamId,
         eventKey,
         matchId: match.id,
@@ -1328,38 +1326,10 @@ function ScoutFormContent() {
         matchType: match.type,
         matchNumber: match.matchNumber,
         teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
-        requestedByName: userData.displayName || "Scout",
-      };
-      const response = await fetch("/api/sub-in-requests/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        scoutId: userData.uid,
+        scoutName: userData.displayName || "Scout",
+        submittedAt: Date.now(),
       });
-      if (!response.ok) {
-        let errorMessage = "Unable to submit sub-in request.";
-        try {
-          const errorPayload = (await response.json()) as { error?: string };
-          errorMessage = errorPayload.error || errorMessage;
-        } catch {
-          // ignore parse errors
-        }
-        try {
-          await addDoc(collection(db, "subInRequests"), {
-            teamId: userData.teamId,
-            eventKey,
-            matchId: match.id,
-            matchLabel: getMatchDisplay(match),
-            matchType: match.type,
-            matchNumber: match.matchNumber,
-            teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
-            requestedByUid: userData.uid,
-            requestedByName: userData.displayName || "Scout",
-            requestedAt: Date.now(),
-          });
-        } catch (fallbackError) {
-          throw new Error(errorMessage);
-        }
-      }
       alert(`Sub-in requested for ${getMatchDisplay(match)}.`);
     } catch (error) {
       console.error("Failed to submit sub-in request:", error);
