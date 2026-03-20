@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -348,6 +348,22 @@ function TeamRoleDashboardContent({
     }
   }
 
+  async function deleteSubInRequest(request: SubInRequest) {
+    if (!userData?.teamId || !userData?.uid) {
+      alert("You must be signed in to delete a sub-in request.");
+      return;
+    }
+    if (!request.id) return;
+    try {
+      await deleteDoc(doc(db, "scouting", request.id));
+      await loadSubInRequests(userData.teamId);
+    } catch (error) {
+      console.error("Failed to delete sub-in request:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not delete sub-in request. ${message}`);
+    }
+  }
+
   async function requestNotificationPermission() {
     if (!notificationsSupported) return;
     try {
@@ -582,6 +598,7 @@ function TeamRoleDashboardContent({
                     {visibleSubInRequests.map((request) => {
                       const claimKey = `${request.eventKey || ""}|${request.matchId || ""}|${request.teamNumber || ""}`;
                       const claim = subInClaimsByKey[claimKey];
+                      const isRequester = Boolean(request.requestedById && userData?.uid && request.requestedById === userData.uid);
                       return (
                         <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                           <div className="text-gray-800">
@@ -594,6 +611,14 @@ function TeamRoleDashboardContent({
                               <span className="text-xs font-semibold text-green-700">
                                 Sub Assigned{claim.claimedByName ? ` - ${claim.claimedByName}` : ""}
                               </span>
+                            ) : isRequester ? (
+                              <button
+                                type="button"
+                                onClick={() => void deleteSubInRequest(request)}
+                                className="px-3 py-1 rounded text-xs font-semibold border border-red-200 text-red-700 hover:bg-red-50"
+                              >
+                                Delete Request
+                              </button>
                             ) : (
                               <button
                                 type="button"
