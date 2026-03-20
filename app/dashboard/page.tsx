@@ -10,6 +10,8 @@ import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
 import { TEAM_ROLES, TeamRole, getRoleLabel, normalizeLegacyRole } from "@/app/utils/roles";
 
+type NotificationPermissionState = "default" | "denied" | "granted";
+
 type TeamJoinRequest = {
   id: string;
   teamId: string;
@@ -251,6 +253,8 @@ function NoTeamDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, userData, logOut } = useAuth();
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>("default");
+  const notificationsSupported = typeof window !== "undefined" && "Notification" in window;
   const [loading, setLoading] = useState(true);
   const [pendingRequests, setPendingRequests] = useState<TeamJoinRequest[]>([]);
   const [teamCode, setTeamCode] = useState("");
@@ -261,6 +265,37 @@ function NoTeamDashboardContent() {
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null);
   const [teamLabelByCode, setTeamLabelByCode] = useState<Record<string, string>>({});
   const duplicatePendingText = "you already asked to join that team and your request is still pending.";
+
+  useEffect(() => {
+    if (!notificationsSupported) return;
+    setNotificationPermission(Notification.permission);
+  }, [notificationsSupported]);
+
+  useEffect(() => {
+    if (!notificationsSupported) return;
+    if (notificationPermission !== "default") return;
+    if (typeof window === "undefined") return;
+    try {
+      const key = "cs-notification-prompted";
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, String(Date.now()));
+      void Notification.requestPermission().then((permission) => {
+        setNotificationPermission(permission);
+      });
+    } catch (error) {
+      console.warn("Notification auto-prompt failed:", error);
+    }
+  }, [notificationPermission, notificationsSupported]);
+
+  async function requestNotificationPermission() {
+    if (!notificationsSupported) return;
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+    } catch (error) {
+      console.warn("Notification permission request failed:", error);
+    }
+  }
 
   function ensurePendingVisible(teamId: string, role: TeamRole) {
     const normalizedTeamId = teamId.trim().toUpperCase();
@@ -722,6 +757,28 @@ function NoTeamDashboardContent() {
         <p className="text-gray-600 mb-6">
           Your account is active, but you are not on a team yet.
         </p>
+
+        {notificationsSupported && notificationPermission !== "granted" && (
+          <div className="border rounded p-4 mb-6 bg-gray-50">
+            <h2 className="text-lg font-semibold mb-2">Enable Notifications</h2>
+            <p className="text-sm text-gray-700 mb-3">
+              Turn on device notifications for sub-in requests and upcoming assignments.
+            </p>
+            <button
+              type="button"
+              onClick={() => void requestNotificationPermission()}
+              className="px-4 py-2 rounded text-white text-sm font-semibold"
+              style={{ backgroundColor: "var(--primary-color)" }}
+            >
+              Enable Notifications
+            </button>
+            {notificationPermission === "denied" && (
+              <p className="text-xs text-gray-500 mt-2">
+                Notifications are blocked in your browser settings. Re-enable them to get alerts.
+              </p>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleCreateRequest} className="mb-6 border rounded p-4 bg-gray-50 space-y-3">
           <h2 className="text-lg font-semibold">Request To Join A Team</h2>
