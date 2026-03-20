@@ -445,7 +445,7 @@ function ScoutFormContent() {
         const encryptedKey = String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim();
         const plainKey = String(teamDoc.data()?.tbaApiKey || "").trim();
         const matches = await fetchEventMatchesWithTeamAuth(resolvedEventKey, { encryptedKey, plainKey });
-        const completionNow = teamTimeOverride?.enabled ? getEffectiveNowSec(teamTimeOverride) : undefined;
+        const completionNow = getEffectiveNowSec(teamTimeOverride);
         setTbaCompletedMatches(matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set());
         const qualification = matches
           .filter((match) => match.comp_level === "qm")

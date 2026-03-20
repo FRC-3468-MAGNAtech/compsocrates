@@ -250,6 +250,22 @@ function TeamRoleDashboardContent({
     setNotificationPermission(Notification.permission);
   }, [notificationsSupported]);
 
+  useEffect(() => {
+    if (!notificationsSupported) return;
+    if (notificationPermission !== "default") return;
+    if (typeof window === "undefined") return;
+    try {
+      const key = "cs-notification-prompted";
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, String(Date.now()));
+      void Notification.requestPermission().then((permission) => {
+        setNotificationPermission(permission);
+      });
+    } catch (error) {
+      console.warn("Notification auto-prompt failed:", error);
+    }
+  }, [notificationPermission, notificationsSupported]);
+
   async function loadSubInRequests(teamId: string) {
     try {
       const [requestSnap, claimSnap] = await Promise.all([
