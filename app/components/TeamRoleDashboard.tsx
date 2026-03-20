@@ -227,6 +227,7 @@ function TeamRoleDashboardContent({
   const [subInClaimsByKey, setSubInClaimsByKey] = useState<Record<string, SubInClaim>>({});
   const [subInClaimsForUser, setSubInClaimsForUser] = useState<SubInClaim[]>([]);
   const [subInClaimingId, setSubInClaimingId] = useState<string | null>(null);
+  const [subInClearing, setSubInClearing] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>("default");
   const notificationsSupported = typeof window !== "undefined" && "Notification" in window;
   const notifiedSubInRequestsRef = useRef<Set<string>>(new Set());
@@ -371,6 +372,34 @@ function TeamRoleDashboardContent({
       console.error("Failed to delete sub-in request:", error);
       const message = error instanceof Error ? error.message : String(error);
       alert(`Could not delete sub-in request. ${message}`);
+    }
+  }
+
+  async function clearAllSubInRequests() {
+    if (!userData?.teamId || !userData?.isTeamAdmin) {
+      alert("Only team admins can clear all sub-in requests.");
+      return;
+    }
+    if (subInClearing) return;
+    const confirmed = window.confirm("Delete all sub-in requests and claims for this team?");
+    if (!confirmed) return;
+    setSubInClearing(true);
+    try {
+      const [requestSnap, claimSnap] = await Promise.all([
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", userData.teamId), where("entryType", "==", "sub-in-request"))),
+        getDocs(query(collection(db, "scouting"), where("teamId", "==", userData.teamId), where("entryType", "==", "sub-in-claim"))),
+      ]);
+      const deletions: Promise<void>[] = [];
+      requestSnap.docs.forEach((docSnap) => deletions.push(deleteDoc(doc(db, "scouting", docSnap.id))));
+      claimSnap.docs.forEach((docSnap) => deletions.push(deleteDoc(doc(db, "scouting", docSnap.id))));
+      await Promise.all(deletions);
+      await loadSubInRequests(userData.teamId);
+    } catch (error) {
+      console.error("Failed to clear sub-in requests:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not clear sub-in requests. ${message}`);
+    } finally {
+      setSubInClearing(false);
     }
   }
 
@@ -666,7 +695,19 @@ function TeamRoleDashboardContent({
               )}
               {visibleSubInRequests.length > 0 && (
                 <div className="bg-white rounded-xl shadow-md p-5 mb-6 border-l-4 border-orange-500">
-                  <h2 className="text-xl font-semibold mb-2">Sub-In Requests</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h2 className="text-xl font-semibold">Sub-In Requests</h2>
+                    {userData?.isTeamAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => void clearAllSubInRequests()}
+                        disabled={subInClearing}
+                        className="px-3 py-1 rounded text-xs font-semibold border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      >
+                        {subInClearing ? "Clearing..." : "Clear All"}
+                      </button>
+                    )}
+                  </div>
                   <div className="space-y-2">
                     {visibleSubInRequests.map((request) => {
                       const claimKey = `${request.eventKey || ""}|${request.matchId || ""}|${request.teamNumber || ""}`;

@@ -1268,12 +1268,13 @@ function AssignmentsContent() {
     () => members.filter((member) => String(member.displayName || "").trim().length > 0),
     [members]
   );
-  const canBulkDelete = useMemo(() => {
+  const canManageAssignments = useMemo(() => {
     if (!userData) return false;
     if (userData.isTeamAdmin) return true;
     const roles = getUserRoles(userData);
     return roles.includes("team-coach") || roles.includes("lead-scout");
   }, [userData]);
+  const canBulkDelete = canManageAssignments;
   const selectedEventOption = useMemo(
     () => events.find((event) => event.key === selectedEvent) || null,
     [events, selectedEvent]
@@ -1797,6 +1798,10 @@ function buildMatchScoutOrder(
   }
 
   async function deleteAssignment(id: string) {
+    if (!canManageAssignments) {
+      alert("You do not have permission to delete assignments.");
+      return;
+    }
     if (!confirm("Are you sure you want to delete this assignment?")) return;
     try {
       await deleteDoc(doc(db, "matchAssignments", id));
@@ -1808,6 +1813,10 @@ function buildMatchScoutOrder(
   }
 
   async function deletePitAssignment(id: string) {
+    if (!canManageAssignments) {
+      alert("You do not have permission to delete assignments.");
+      return;
+    }
     if (!confirm("Delete this pit assignment?")) return;
     try {
       await deleteDoc(doc(db, "pitAssignments", id));
@@ -1819,6 +1828,10 @@ function buildMatchScoutOrder(
   }
 
   async function deleteTeamAssignment(id: string) {
+    if (!canManageAssignments) {
+      alert("You do not have permission to delete assignments.");
+      return;
+    }
     if (!confirm("Delete this team assignment?")) return;
     try {
       await deleteDoc(doc(db, "teamAssignments", id));
@@ -1830,6 +1843,10 @@ function buildMatchScoutOrder(
   }
 
   async function deletePracticeAssignment(id: string) {
+    if (!canManageAssignments) {
+      alert("You do not have permission to delete assignments.");
+      return;
+    }
     if (!confirm("Delete this practice assignment?")) return;
     try {
       await deleteDoc(doc(db, "practiceAssignments", id));
@@ -2740,9 +2757,13 @@ function buildMatchScoutOrder(
                             <td className="px-6 py-4 whitespace-nowrap font-medium">Team {assignment.teamNumber}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <button onClick={() => void deletePitAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
-                                <Trash2 size={18} />
-                              </button>
+                              {canManageAssignments ? (
+                                <button onClick={() => void deletePitAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                  <Trash2 size={18} />
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-400">View only</span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2752,9 +2773,13 @@ function buildMatchScoutOrder(
                             <td className="px-6 py-4 whitespace-nowrap font-medium">Team {assignment.teamNumber}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <button onClick={() => void deleteTeamAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
-                                <Trash2 size={18} />
-                              </button>
+                              {canManageAssignments ? (
+                                <button onClick={() => void deleteTeamAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                  <Trash2 size={18} />
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-400">View only</span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2779,9 +2804,13 @@ function buildMatchScoutOrder(
                               Team {assignment.teamNumber}{assignment.scoutHumanPlayer ? " (HP)" : ""}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <button onClick={() => void deleteAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
-                                <Trash2 size={18} />
-                              </button>
+                              {canManageAssignments ? (
+                                <button onClick={() => void deleteAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                  <Trash2 size={18} />
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-400">View only</span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2804,9 +2833,13 @@ function buildMatchScoutOrder(
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">Team {assignment.teamNumber}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
-                                <Trash2 size={18} />
-                              </button>
+                              {canManageAssignments ? (
+                                <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                  <Trash2 size={18} />
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-400">View only</span>
+                              )}
                             </td>
                           </tr>
                         ))}
