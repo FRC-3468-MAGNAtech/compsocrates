@@ -191,6 +191,14 @@ function parseTeamNumber(input: string | undefined | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function subInRequestKey(request: SubInRequest): string {
+  const id = String(request.id || "").trim();
+  if (id) return id;
+  const matchId = String(request.matchId || "").trim();
+  const team = String(request.teamNumber || "").trim();
+  return `${matchId}|${team}`.trim();
+}
+
 function TeamRoleDashboardContent({
   title,
   subtitle,
@@ -223,6 +231,8 @@ function TeamRoleDashboardContent({
   const notificationsSupported = typeof window !== "undefined" && "Notification" in window;
   const notifiedSubInRequestsRef = useRef<Set<string>>(new Set());
   const notifiedUpNextRef = useRef<string>("");
+  const notificationsEnabledAtRef = useRef<number | null>(null);
+  const notificationsInitializedRef = useRef(false);
   const nowMs = getEffectiveNowMs(teamTimeOverride);
 
   useEffect(() => {
@@ -559,10 +569,33 @@ function TeamRoleDashboardContent({
   }, [activeEvent, activeMatches, nowSec, userMatchAssignments, subInAssignmentsForUser]);
 
   useEffect(() => {
+    if (!notificationsSupported) return;
+    if (notificationPermission !== "granted") {
+      notificationsInitializedRef.current = false;
+      notificationsEnabledAtRef.current = null;
+      return;
+    }
+    if (notificationsInitializedRef.current) return;
+    notificationsEnabledAtRef.current = Date.now();
+    const initialKeys = visibleSubInRequests.map(subInRequestKey).filter((key) => key.length > 0);
+    notifiedSubInRequestsRef.current = new Set(initialKeys);
+    if (upNextAssignment) {
+      notifiedUpNextRef.current = `${upNextAssignment.match.key}|${upNextAssignment.assignment.teamNumber || ""}`;
+    } else {
+      notifiedUpNextRef.current = "";
+    }
+    notificationsInitializedRef.current = true;
+  }, [notificationPermission, notificationsSupported, visibleSubInRequests, upNextAssignment]);
+
+  useEffect(() => {
     if (!notificationsSupported || notificationPermission !== "granted") return;
+    if (!notificationsInitializedRef.current) return;
     visibleSubInRequests.forEach((request) => {
-      const key = request.id || `${request.matchId || ""}|${request.teamNumber || ""}`;
+      const key = subInRequestKey(request);
       if (!key || notifiedSubInRequestsRef.current.has(key)) return;
+      const enabledAt = notificationsEnabledAtRef.current;
+      const requestedAt = Number(request.requestedAt || 0);
+      if (enabledAt && (!requestedAt || requestedAt <= enabledAt)) return;
       try {
         const body = `${request.matchLabel || "Match"}${request.teamNumber ? ` - Team ${request.teamNumber}` : ""}`;
         new Notification("Sub-In Requested", { body });
@@ -575,9 +608,15 @@ function TeamRoleDashboardContent({
 
   useEffect(() => {
     if (!notificationsSupported || notificationPermission !== "granted") return;
+    if (!notificationsInitializedRef.current) return;
     if (!upNextAssignment) return;
     const key = `${upNextAssignment.match.key}|${upNextAssignment.assignment.teamNumber || ""}`;
     if (notifiedUpNextRef.current === key) return;
+    const enabledAt = notificationsEnabledAtRef.current;
+    if (enabledAt && upNextAssignment.match.scheduleTime > 0 && upNextAssignment.match.scheduleTime * 1000 <= enabledAt) {
+      notifiedUpNextRef.current = key;
+      return;
+    }
     try {
       const body = `${upNextAssignment.match.label}${upNextAssignment.assignment.teamNumber ? ` - Team ${upNextAssignment.assignment.teamNumber}` : ""}`;
       new Notification("Up Next Assignment", { body });

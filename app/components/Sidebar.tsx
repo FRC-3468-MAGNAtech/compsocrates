@@ -116,7 +116,6 @@ export default function Sidebar() {
     userRoles.includes("lead-strategist") ||
     userRoles.includes("team-coach") ||
     userData.isTeamAdmin;
-  const canManageAssignments = userRoles.includes("lead-scout") || userData.isTeamAdmin;
 
   const navItems = [
     { href: getDashboardRoute(userData), label: "Dashboard", icon: BarChart3 },
@@ -151,7 +150,7 @@ export default function Sidebar() {
         ]
       : []),
     { href: "/match-list", label: "Match List", icon: Calendar },
-    ...(canManageAssignments ? [{ href: "/assignments", label: "Assignments", icon: Calendar }] : []),
+    { href: "/assignments", label: "Assignments", icon: Calendar },
     { href: "/people", label: "People", icon: UserCircle2 },
     ...(isLeadRole ? [{ href: "/team-management", label: "Team Management", icon: Users }] : []),
     ...(userData.isTeamAdmin ? [{ href: "/admin", label: "Admin Panel", icon: Settings }] : []),
