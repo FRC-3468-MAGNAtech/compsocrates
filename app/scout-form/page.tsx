@@ -9,7 +9,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
-import { db } from "@/app/firebase";
+import { auth, db } from "@/app/firebase";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
@@ -1308,20 +1308,32 @@ function ScoutFormContent() {
     if (subInSubmitting) return;
     setSubInSubmitting(true);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        alert("You must be signed in to request a sub-in.");
+        return;
+      }
       const fallbackTeam = assignedTeam || form.teamNumber;
       const parsedTeam = Number(String(fallbackTeam || "").replace(/[^\d]/g, ""));
-      await addDoc(collection(db, "subInRequests"), {
-        teamId: userData.teamId,
-        eventKey,
-        matchId: match.id,
-        matchLabel: getMatchDisplay(match),
-        matchType: match.type,
-        matchNumber: match.matchNumber,
-        teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
-        requestedByUid: userData.uid,
-        requestedByName: userData.displayName || "Scout",
-        requestedAt: Date.now(),
+      const response = await fetch("/api/sub-in-requests/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          teamId: userData.teamId,
+          eventKey,
+          matchId: match.id,
+          matchLabel: getMatchDisplay(match),
+          matchType: match.type,
+          matchNumber: match.matchNumber,
+          teamNumber: Number.isFinite(parsedTeam) && parsedTeam > 0 ? parsedTeam : null,
+          requestedByName: userData.displayName || "Scout",
+        }),
       });
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error || "Unable to submit sub-in request.");
+      }
       alert(`Sub-in requested for ${getMatchDisplay(match)}.`);
     } catch (error) {
       console.error("Failed to submit sub-in request:", error);

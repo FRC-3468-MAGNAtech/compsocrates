@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/app/firebase";
+import { auth, db } from "@/app/firebase";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -222,10 +222,27 @@ function TeamRoleDashboardContent({
       setUserMatchAssignments(
         assignmentSnap.docs.map((docSnap) => docSnap.data() as MatchAssignment).filter((row) => row.eventKey)
       );
-      const subInSnap = await getDocs(query(collection(db, "subInRequests"), where("teamId", "==", userData.teamId)));
-      setSubInRequests(
-        subInSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Omit<SubInRequest, "id">) }))
-      );
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (idToken) {
+          const response = await fetch("/api/sub-in-requests/list", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idToken, teamId: userData.teamId }),
+          });
+          if (response.ok) {
+            const payload = (await response.json()) as { requests?: SubInRequest[] };
+            setSubInRequests(Array.isArray(payload.requests) ? payload.requests : []);
+          } else {
+            setSubInRequests([]);
+          }
+        } else {
+          setSubInRequests([]);
+        }
+      } catch (error) {
+        console.warn("Failed to load sub-in requests:", error);
+        setSubInRequests([]);
+      }
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
       setFormAccessOverrides(normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null));
       const attendanceByEvent = teamDoc.exists()
