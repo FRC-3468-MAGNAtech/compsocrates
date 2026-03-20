@@ -947,6 +947,44 @@ function AssignmentsContent() {
       } catch (error) {
         console.warn("Unable to fetch TBA matches for assignments:", error);
       }
+      const hasQualification = matches.some((match) => match.comp_level === "qm");
+      if (!hasQualification) {
+        let firstQualification = await fetchFirstSchedule(effectiveEvent, "Qualification");
+        if (firstQualification.length === 0) {
+          const lower = await fetchFirstSchedule(effectiveEvent, "qualification");
+          if (lower.length > 0) firstQualification = lower;
+        }
+        if (firstQualification.length === 0) {
+          const fallback = await fetchFirstSchedule(effectiveEvent, "");
+          const filtered = fallback.filter((match) => String(match.tournamentLevel || "").toLowerCase().includes("qual"));
+          firstQualification = filtered.length > 0 ? filtered : fallback;
+        }
+        if (firstQualification.length > 0) {
+          const existingQualNumbers = new Set(
+            matches.filter((match) => match.comp_level === "qm").map((match) => match.match_number)
+          );
+          const firstQualMatches = firstQualification
+            .map((match) => {
+              const { red, blue } = splitFirstAllianceTeams(match);
+              return {
+                key: `${effectiveEvent}_qm${match.matchNumber}`,
+                comp_level: "qm" as const,
+                set_number: 1,
+                match_number: match.matchNumber,
+                alliances: {
+                  red: { team_keys: red.map((team) => `frc${team}`), score: -1 },
+                  blue: { team_keys: blue.map((team) => `frc${team}`), score: -1 },
+                },
+                time: match.startTime || 0,
+                predicted_time: match.startTime || 0,
+                actual_time: 0,
+              } as TBAMatch;
+            })
+            .filter((match) => match.alliances.red.team_keys.length >= 3 && match.alliances.blue.team_keys.length >= 3)
+            .filter((match) => !existingQualNumbers.has(match.match_number));
+          matches = [...matches, ...firstQualMatches];
+        }
+      }
 
       const sorted = [...matches].sort((a, b) => {
         const priorityDiff = compLevelPriority(a.comp_level) - compLevelPriority(b.comp_level);
