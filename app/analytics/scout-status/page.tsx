@@ -50,6 +50,15 @@ type MatchRow = {
   matchNumber: number;
 };
 
+type MatchCategory = "practice" | "qualification" | "semifinals" | "finals";
+
+const CATEGORY_OPTIONS: Array<{ id: MatchCategory; label: string; short: string }> = [
+  { id: "practice", label: "Practice", short: "P" },
+  { id: "qualification", label: "Qualifications", short: "Q" },
+  { id: "semifinals", label: "Semi-Finals", short: "SF" },
+  { id: "finals", label: "Finals", short: "F" },
+];
+
 function entryTime(entry: ScoutingEntry): number {
   const raw = Number(entry.submittedAt ?? entry.timestamp ?? 0);
   return Number.isFinite(raw) ? raw : 0;
@@ -92,6 +101,55 @@ function compLevelPriority(compLevel: string) {
   return 99;
 }
 
+function getMatchCategoryFromRow(match: MatchRow): MatchCategory {
+  if (match.level === "practice") return "practice";
+  if (match.level === "finals") return "finals";
+  if (match.level === "qualification") return "qualification";
+  return "semifinals";
+}
+
+function getEntryCategory(entry: ScoutingEntry): MatchCategory {
+  const matchType = String(entry.matchType || "").toLowerCase();
+  const label = String(entry.matchLabel || entry.matchId || "").toLowerCase();
+  if (matchType.startsWith("p") || label.includes("practice")) return "practice";
+  if (matchType.startsWith("f") || label.includes("final")) return "finals";
+  if (matchType.startsWith("q") || label.includes("qual")) return "qualification";
+  if (
+    matchType.includes("playoff") ||
+    matchType.includes("semi") ||
+    label.includes("semi") ||
+    label.includes("quarter") ||
+    label.includes("octo") ||
+    label.includes("playoff")
+  ) {
+    return "semifinals";
+  }
+  const parsed = normalizeMatchLabel(label);
+  if (parsed.matchType === "practice") return "practice";
+  if (parsed.matchType === "finals") return "finals";
+  return "qualification";
+}
+
+function getEntryMatchNumber(entry: ScoutingEntry): number | null {
+  const raw = String(entry.matchNumber || "").replace(/[^\d]/g, "");
+  if (raw) {
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+  const parsed = normalizeMatchLabel(String(entry.matchLabel || entry.matchId || ""));
+  const num = Number(parsed.matchNumber || 0);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function parseRangeInput(value: string): { start: number; end: number } | null {
+  const nums = String(value || "").match(/\d+/g);
+  if (!nums || nums.length === 0) return null;
+  const start = Number(nums[0]);
+  const end = Number(nums[1] ?? nums[0]);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
 async function fetchMatchesForEvent(eventKey: string, encryptedKey: string, plainKey: string): Promise<TBAMatch[]> {
   try {
     const response = await fetch("/api/tba/matches", {
@@ -121,6 +179,15 @@ function ScoutStatusContent() {
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
+  const [activeCategories, setActiveCategories] = useState<MatchCategory[]>(
+    CATEGORY_OPTIONS.map((option) => option.id)
+  );
+  const [categoryRanges, setCategoryRanges] = useState<Record<MatchCategory, string>>({
+    practice: "",
+    qualification: "",
+    semifinals: "",
+    finals: "",
+  });
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [matches, setMatches] = useState<MatchRow[]>([]);
@@ -181,9 +248,33 @@ function ScoutStatusContent() {
       .filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
 
+  const categoryRangesParsed = useMemo(
+    () => ({
+      practice: parseRangeInput(categoryRanges.practice),
+      qualification: parseRangeInput(categoryRanges.qualification),
+      semifinals: parseRangeInput(categoryRanges.semifinals),
+      finals: parseRangeInput(categoryRanges.finals),
+    }),
+    [categoryRanges]
+  );
+
+  const categoryFilteredEntries = useMemo(() => {
+    if (activeCategories.length === 0) return filteredEntries;
+    const activeSet = new Set(activeCategories);
+    return filteredEntries.filter((entry) => {
+      const category = getEntryCategory(entry);
+      if (!activeSet.has(category)) return false;
+      const range = categoryRangesParsed[category];
+      if (!range) return true;
+      const number = getEntryMatchNumber(entry);
+      if (!number) return false;
+      return number >= range.start && number <= range.end;
+    });
+  }, [filteredEntries, activeCategories, categoryRangesParsed]);
+
   const scoutStats = useMemo(() => {
     const byScout = new Map<string, { id: string; name: string; entries: number; matches: Set<string>; last: number }>();
-    filteredEntries.forEach((entry) => {
+    categoryFilteredEntries.forEach((entry) => {
       const scoutId = String(entry.scoutId || entry.scoutName || "unknown").trim();
       const scoutName = String(entry.scoutName || "Unknown Scout").trim();
       const matchKey = entryMatchKey(entry);
@@ -196,11 +287,11 @@ function ScoutStatusContent() {
       byScout.set(scoutId, current);
     });
     return Array.from(byScout.values()).sort((a, b) => b.entries - a.entries);
-  }, [filteredEntries]);
+  }, [categoryFilteredEntries]);
 
   const coverage = useMemo(() => {
     const counts = new Map<string, number>();
-    filteredEntries.forEach((entry) => {
+    categoryFilteredEntries.forEach((entry) => {
       const team = String(entry.teamNumber || "").trim();
       const matchKey = entryMatchKey(entry);
       if (!team || !matchKey) return;
@@ -208,7 +299,7 @@ function ScoutStatusContent() {
       counts.set(key, (counts.get(key) || 0) + 1);
     });
     return counts;
-  }, [filteredEntries]);
+  }, [categoryFilteredEntries]);
 
   const renderCheckMarks = (count: number) => {
     return Array.from({ length: count }).map((_, index) => (
@@ -300,13 +391,19 @@ function ScoutStatusContent() {
   }, [selectedEvent, tbaKeys.encrypted, tbaKeys.plain]);
 
   const visibleMatches = useMemo(() => {
-    if (practiceMatchesOnly) return matches.filter((match) => match.level === "practice");
-    return matches.filter((match) => match.level !== "practice");
-  }, [matches, practiceMatchesOnly]);
+    const activeSet = new Set(activeCategories);
+    return matches.filter((match) => {
+      const category = getMatchCategoryFromRow(match);
+      if (activeCategories.length > 0 && !activeSet.has(category)) return false;
+      const range = categoryRangesParsed[category];
+      if (!range) return true;
+      return match.matchNumber >= range.start && match.matchNumber <= range.end;
+    });
+  }, [matches, activeCategories, categoryRangesParsed]);
 
   return (
     <AnalyticsShell
-      entriesCount={filteredEntries.length}
+      entriesCount={categoryFilteredEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
       practiceMatchesOnly={practiceMatchesOnly}
@@ -323,6 +420,64 @@ function ScoutStatusContent() {
         <LoadingSpinner message="Loading scouting entries..." />
       ) : (
         <>
+          <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+            <h2 className="text-lg font-semibold mb-3">Match Filters</h2>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {CATEGORY_OPTIONS.map((option) => {
+                const active = activeCategories.includes(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() =>
+                      setActiveCategories((prev) =>
+                        prev.includes(option.id) ? prev.filter((id) => id !== option.id) : [...prev, option.id]
+                      )
+                    }
+                    className={`px-3 py-1 rounded border text-sm ${
+                      active ? "text-white" : "bg-white text-gray-700 border-gray-300"
+                    }`}
+                    style={active ? { backgroundColor: "var(--primary-color)", borderColor: "var(--primary-color)" } : undefined}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setActiveCategories(CATEGORY_OPTIONS.map((option) => option.id))}
+                className="px-3 py-1 rounded border text-sm bg-white text-gray-700 border-gray-300"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCategories([])}
+                className="px-3 py-1 rounded border text-sm bg-white text-gray-700 border-gray-300"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {CATEGORY_OPTIONS.map((option) => (
+                <label key={`range-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
+                  <span>
+                    {option.short} Range (e.g. {option.short}1-{option.short}36)
+                  </span>
+                  <input
+                    type="text"
+                    value={categoryRanges[option.id]}
+                    onChange={(event) =>
+                      setCategoryRanges((prev) => ({ ...prev, [option.id]: event.target.value }))
+                    }
+                    placeholder="1-36"
+                    className="border rounded px-3 py-1.5 text-sm"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="bg-white rounded-xl shadow-md overflow-x-auto mb-6">
             <table className="w-full min-w-[520px]">
               <thead className="bg-gray-50">
@@ -360,7 +515,7 @@ function ScoutStatusContent() {
             <div className="p-4 border-b border-gray-200">
               <h2 className="text-lg font-semibold mb-1">Match Coverage</h2>
               <p className="text-sm text-gray-600">
-                Check whether each scheduled robot has a scouting entry. “OK” means at least one submission exists.
+                Check whether each scheduled robot has a scouting entry. Multiple checkmarks mean multiple submissions.
               </p>
             </div>
             {selectedEvent === "all" ? (
