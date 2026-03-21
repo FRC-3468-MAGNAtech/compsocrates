@@ -210,7 +210,7 @@ function AnalyticsShellInner({
                   Boolean(userData?.isTeamAdmin) ||
                   roles.includes("lead-scout") ||
                   roles.includes("team-coach") ||
-                  roles.includes("coach");
+                  userData?.role === "coach";
                 if (!canSee) return null;
               }
               const active = pathname === item.href;
@@ -276,7 +276,7 @@ function AnalyticsShellInner({
                   Boolean(userData?.isTeamAdmin) ||
                   roles.includes("lead-scout") ||
                   roles.includes("team-coach") ||
-                  roles.includes("coach");
+                  userData?.role === "coach";
                 if (!canSee) return null;
               }
               const active = pathname === item.href;
