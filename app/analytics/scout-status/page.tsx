@@ -406,7 +406,7 @@ function ScoutStatusContent() {
 
 export default function ScoutStatusPage() {
   return (
-    <ProtectedRoute requireAuth={true}>
+    <ProtectedRoute requireAuth={true} allowedRoles={["team-coach", "lead-scout", "coach"]}>
       <ScoutStatusContent />
     </ProtectedRoute>
   );

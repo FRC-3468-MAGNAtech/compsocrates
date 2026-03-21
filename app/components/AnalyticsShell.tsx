@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/app/components/Sidebar";
 import { AnalyticsNotesProvider, useAnalyticsNotesSettings } from "@/app/components/AnalyticsNotesContext";
+import { useAuth } from "@/app/AuthContext";
+import { getUserRoles } from "@/app/utils/roles";
 
 type AnalyticsShellProps = {
   children: React.ReactNode;
@@ -48,6 +50,7 @@ function AnalyticsShellInner({
   eventOptions = [],
   onSelectedEventChange,
 }: AnalyticsShellProps) {
+  const { userData } = useAuth();
   const pathname = usePathname();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => {
@@ -201,6 +204,15 @@ function AnalyticsShellInner({
               if ("divider" in item) {
                 return <hr key={`divider-${index}`} className="my-2 border-gray-300" />;
               }
+              if (item.href === "/analytics/scout-status") {
+                const roles = getUserRoles(userData);
+                const canSee =
+                  Boolean(userData?.isTeamAdmin) ||
+                  roles.includes("lead-scout") ||
+                  roles.includes("team-coach") ||
+                  roles.includes("coach");
+                if (!canSee) return null;
+              }
               const active = pathname === item.href;
               return (
                 <Link
@@ -257,6 +269,15 @@ function AnalyticsShellInner({
             {analyticsLinks.map((item, index) => {
               if ("divider" in item) {
                 return <hr key={`mobile-divider-${index}`} className="my-2 border-gray-300" />;
+              }
+              if (item.href === "/analytics/scout-status") {
+                const roles = getUserRoles(userData);
+                const canSee =
+                  Boolean(userData?.isTeamAdmin) ||
+                  roles.includes("lead-scout") ||
+                  roles.includes("team-coach") ||
+                  roles.includes("coach");
+                if (!canSee) return null;
               }
               const active = pathname === item.href;
               return (
