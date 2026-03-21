@@ -1348,7 +1348,7 @@ function ScoutFormContent() {
           const currentStillExists = resolved.some((match) => match.id === current.id);
           if (!currentStillExists) return nextMatch;
           if (completedSet.has(current.id)) return nextMatch;
-          if (current.type === "practice" && nextMatch.type === "qualification") return nextMatch;
+          if (current.type === "practice" && nextMatch.type !== "practice") return nextMatch;
           return current;
         });
       } catch (error) {
