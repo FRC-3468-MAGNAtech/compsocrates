@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { useSearchParams } from "next/navigation";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -176,6 +177,10 @@ function MatchPickerModal({
 
 function MatchStrategyFormContent() {
   const { userData, teamTimeOverride } = useAuth();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("editId");
+  const editCollectionParam = searchParams.get("editCollection");
+  const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [notes, setNotes] = useState("");
@@ -190,6 +195,48 @@ function MatchStrategyFormContent() {
   const [robot2, setRobot2] = useState<RobotPlan>({ teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" });
   const [robot3, setRobot3] = useState<RobotPlan>({ teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" });
   const [pitByTeam, setPitByTeam] = useState<Record<string, PitCapabilityDoc>>({});
+  const [editEventKey, setEditEventKey] = useState<string | null>(null);
+  const [editMatchKey, setEditMatchKey] = useState<string>("");
+
+  useEffect(() => {
+    if (!editId) return;
+    let isActive = true;
+    const collectionName = editCollectionParam || "matchStrategyPlans";
+    async function loadEditEntry() {
+      try {
+        const snap = await getDoc(doc(db, collectionName, editId));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (!isActive) return;
+        const entryEventKey = String(data.eventKey || "").trim();
+        setEditEventKey(entryEventKey || null);
+        const entryMatchKey = String(data.matchKey || data.matchLabel || "").trim();
+        setEditMatchKey(entryMatchKey);
+        const robots = Array.isArray(data.robots) ? data.robots : [];
+        const toRobot = (robot: unknown): RobotPlan => {
+          if (!robot || typeof robot !== "object") return { teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" };
+          const row = robot as Record<string, unknown>;
+          return {
+            teamNumber: String(row.teamNumber || ""),
+            startingPosition: String(row.startingPosition || ""),
+            role: String(row.role || ""),
+            autoClimb: Boolean(row.autoClimb),
+            endgameClimb: String(row.endgameClimb || ""),
+          };
+        };
+        setRobot1(toRobot(robots[0]));
+        setRobot2(toRobot(robots[1]));
+        setRobot3(toRobot(robots[2]));
+        setNotes(String(data.notes || ""));
+      } catch (error) {
+        console.error("Failed to load match strategy edit entry:", error);
+      }
+    }
+    void loadEditEntry();
+    return () => {
+      isActive = false;
+    };
+  }, [editId, editCollectionParam]);
 
   useEffect(() => {
     async function loadMatches() {
@@ -201,17 +248,20 @@ function MatchStrategyFormContent() {
         return;
       }
       try {
+        const overrideEvent = editMode ? editEventKey : null;
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const teamData = teamDoc.data() as Record<string, unknown> | undefined;
-        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+        const assignmentSnap = overrideEvent
+          ? null
+          : await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
         const assignedEventCounts = new Map<string, number>();
-        assignmentSnap.docs.forEach((row) => {
+        assignmentSnap?.docs.forEach((row) => {
           const data = row.data() as Record<string, unknown>;
           const key = String(data.eventKey || "").trim().toLowerCase();
           if (!key) return;
           assignedEventCounts.set(key, (assignedEventCounts.get(key) || 0) + 1);
         });
-        const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
+        const resolvedEvent = overrideEvent ? overrideEvent : await resolveDetectedTeamEventKey(userData.teamId);
         const normalizedResolved = String(resolvedEvent || "").trim().toLowerCase();
         const assignedEvent =
           assignedEventCounts.size === 0
@@ -282,11 +332,13 @@ function MatchStrategyFormContent() {
         };
 
         const assignedMatchKeys = new Set(
-          assignmentSnap.docs
-            .map((row) => row.data() as Record<string, unknown>)
-            .filter((row) => String(row.eventKey || "").trim().toLowerCase() === assignedEvent)
-            .map((row) => String(row.matchKey || row.matchLabel || "").trim())
-            .filter(Boolean)
+          assignmentSnap
+            ? assignmentSnap.docs
+                .map((row) => row.data() as Record<string, unknown>)
+                .filter((row) => String(row.eventKey || "").trim().toLowerCase() === assignedEvent)
+                .map((row) => String(row.matchKey || row.matchLabel || "").trim())
+                .filter(Boolean)
+            : []
         );
         const assignedMatches = resolvedOptions.filter(
           (match) => assignedMatchKeys.has(match.key) || assignedMatchKeys.has(match.label)
@@ -325,18 +377,26 @@ function MatchStrategyFormContent() {
         let next: MatchOption | null = null;
         const teamMatches = ourTeamNumber > 0 ? resolvedOptions.filter((match) => match.teams.includes(String(ourTeamNumber))) : [];
         const teamFirst = teamMatches.length > 0 ? pickFirstIncomplete(teamMatches) || pickNextBySchedule(teamMatches) || pickFirstByNumber(teamMatches) : null;
-        if (teamFirst) {
-          next = teamFirst;
-        } else if (assignedMatches.length > 0) {
-          next = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
-        } else if (!isAttending) {
+        if (editMode && editMatchKey) {
           next =
-            resolvedOptions.find((match) => /_qm1$/i.test(match.key) || /^Q1$/i.test(match.label)) ||
-            resolvedOptions.find((match) => /_qm\d+$/i.test(match.key) || /^Q\d+/i.test(match.label)) ||
-            resolvedOptions[0] ||
+            resolvedOptions.find((match) => match.key === editMatchKey) ||
+            resolvedOptions.find((match) => match.label === editMatchKey) ||
             null;
-        } else {
-          next = pickFirstIncomplete(resolvedOptions) || pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
+        }
+        if (!next) {
+          if (teamFirst) {
+            next = teamFirst;
+          } else if (assignedMatches.length > 0) {
+            next = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
+          } else if (!isAttending) {
+            next =
+              resolvedOptions.find((match) => /_qm1$/i.test(match.key) || /^Q1$/i.test(match.label)) ||
+              resolvedOptions.find((match) => /_qm\d+$/i.test(match.key) || /^Q\d+/i.test(match.label)) ||
+              resolvedOptions[0] ||
+              null;
+          } else {
+            next = pickFirstIncomplete(resolvedOptions) || pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
+          }
         }
         const currentMatch = selectedMatchKey
           ? resolvedOptions.find((match) => match.key === selectedMatchKey) || null
@@ -349,7 +409,7 @@ function MatchStrategyFormContent() {
         const finalMatch = shouldReplace ? next : currentMatch;
         if (finalMatch) {
           setSelectedMatchKey(finalMatch.key);
-          if (shouldReplace) {
+          if (shouldReplace && !editMode) {
             setRobotTeamDefaults(finalMatch, ourTeamNumber > 0 ? String(ourTeamNumber) : "");
           }
         } else {
@@ -369,7 +429,7 @@ function MatchStrategyFormContent() {
     }
 
     void loadMatches();
-  }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
+  }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchKey]);
 
   function setRobotTeamDefaults(match: MatchOption, ourTeamNumber: string) {
     if (!match) return;
@@ -534,7 +594,7 @@ function MatchStrategyFormContent() {
 
     setSaving(true);
     try {
-      await addDoc(collection(db, "matchStrategyPlans"), {
+      const payload = {
         eventKey,
         matchKey: selectedMatch.key,
         matchLabel: displayMatchLabel(selectedMatch),
@@ -545,10 +605,17 @@ function MatchStrategyFormContent() {
         robots: [robot1, robot2, robot3],
         notes: notes.trim(),
         createdAt: Date.now(),
-      });
-      alert("Match Strategy Form submitted.");
-      if (typeof window !== "undefined") {
-        window.location.reload();
+        submittedAt: Date.now(),
+      };
+      if (editMode && editId && editCollectionParam) {
+        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+        alert("Match Strategy Form updated.");
+      } else {
+        await addDoc(collection(db, "matchStrategyPlans"), payload);
+        alert("Match Strategy Form submitted.");
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
       }
     } catch (error) {
       console.error("Failed to submit match strategy form:", error);
@@ -638,7 +705,7 @@ function MatchStrategyFormContent() {
           {robotBlock("Robot 3", robot3, setRobot3, pitSyncStatusByRobot[2])}
 
           <button type="submit" disabled={saving || !selectedMatch} className="w-full py-3 rounded text-white font-semibold disabled:opacity-60" style={{ backgroundColor: "var(--primary-color)" }}>
-            {saving ? "Submitting..." : "Submit Match Strategy Form"}
+            {saving ? "Submitting..." : editMode ? "Update Match Strategy Form" : "Submit Match Strategy Form"}
           </button>
         </form>
 

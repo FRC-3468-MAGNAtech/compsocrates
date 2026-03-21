@@ -8,6 +8,7 @@ import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 
 type TeamPick = {
   teamNumber: string;
@@ -85,6 +86,7 @@ function PickListContent() {
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [pickedTeams, setPickedTeams] = useState<TeamPick[]>([]);
   const [loading, setLoading] = useState(true);
+  const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -131,13 +133,26 @@ function PickListContent() {
   }, [pickedTeams, userData?.uid]);
 
   const filteredEntries = useMemo(() => {
-    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+    const gameFiltered = entries.filter((entry) =>
+      entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
+    );
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
-  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly]);
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
+
+  const dedupedEntries = useMemo(
+    () =>
+      dedupeEntriesByMatchTeam(filteredEntries, {
+        game: selectedGame,
+        eventOptions,
+        selectedEvent,
+        preferLatest: true,
+      }),
+    [filteredEntries, selectedGame, eventOptions, selectedEvent]
+  );
 
   const teams = useMemo(() => {
     const grouped: Record<string, number[]> = {};
-    filteredEntries.forEach((e) => {
+    dedupedEntries.forEach((e) => {
       if (!e.teamNumber) return;
       const score = scoreEntry(e, selectedGame);
       if (!grouped[e.teamNumber]) grouped[e.teamNumber] = [];
@@ -153,7 +168,7 @@ function PickListContent() {
         pickOrder: pickedTeams.find((p) => p.teamNumber === teamNumber)?.pickOrder,
       }))
       .sort((a, b) => b.avgScore - a.avgScore);
-  }, [filteredEntries, pickedTeams, selectedGame]);
+  }, [dedupedEntries, pickedTeams, selectedGame]);
 
   function pickTeam(team: TeamPick) {
     if (!canEditPickList) return;
@@ -169,13 +184,13 @@ function PickListContent() {
 
   return (
     <AnalyticsShell
-      entriesCount={filteredEntries.length}
+      entriesCount={dedupedEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(entries, selectedGame)]}
+      eventOptions={[{ id: "all", name: "All Events" }, ...eventOptions]}
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Pick List</h1>

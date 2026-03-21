@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
-import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -15,7 +14,7 @@ import {
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
-import { flagStateDocId, shouldExcludeEntryFromStats, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 
 type ScoutingEntry = {
   id?: string;
@@ -25,7 +24,9 @@ type ScoutingEntry = {
   accuracy?: number;
   game?: string;
   matchId?: string;
+  matchKey?: string;
   matchNumber?: string;
+  matchLabel?: string;
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
@@ -82,7 +83,7 @@ function formatMatchLabel(matchId: string): string {
 }
 
 function normalizeMatchId(entry: ScoutingEntry): string {
-  const direct = String(entry.matchId || "").toLowerCase();
+  const direct = String(entry.matchId || entry.matchKey || "").toLowerCase();
   if (direct) {
     const qm = direct.match(/_qm(\d+)/);
     if (qm) return `q${qm[1]}`;
@@ -91,9 +92,9 @@ function normalizeMatchId(entry: ScoutingEntry): string {
     const short = direct.match(/^([pqf])\D*(\d+)/);
     if (short) return `${short[1]}${short[2]}`;
   }
-
-  const byLabel = normalizeMatchLabel(String(entry.matchNumber || ""));
-  if (String(entry.matchNumber || "").trim()) return byLabel.matchId;
+  const labelSource = String(entry.matchNumber || entry.matchLabel || "");
+  const byLabel = normalizeMatchLabel(labelSource);
+  if (labelSource.trim()) return byLabel.matchId;
 
   const num = String(entry.matchNumber || "").replace(/\D/g, "");
   const prefix = entry.matchType === "practice" ? "p" : entry.matchType === "finals" ? "f" : "q";
@@ -134,9 +135,7 @@ function inferAlliance(entry: ScoutingEntry): "red" | "blue" | null {
 }
 
 function MatchBreakdownContent() {
-  const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
@@ -171,46 +170,30 @@ function MatchBreakdownContent() {
     void loadEntries();
   }, []);
 
-  useEffect(() => {
-    async function loadFlagStates() {
-      if (!userData?.teamId) {
-        setFlagStates({});
-        return;
-      }
-      try {
-        const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
-        const next: Record<string, StoredFlagState> = {};
-        snap.docs.forEach((d) => {
-          const row = d.data() as StoredFlagState;
-          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-          const entityId = String(row.entityId || "").trim();
-          if (!entityId) return;
-          next[flagStateDocId(entityType, entityId)] = row;
-        });
-        setFlagStates(next);
-      } catch (error) {
-        console.warn("Unable to load scouting flag states for match breakdown. Continuing without flag states.", error);
-        setFlagStates({});
-      }
-    }
-    void loadFlagStates();
-  }, [userData?.teamId]);
+  const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
 
   const filteredEntries = useMemo(() => {
-    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
-    return gameFiltered
-      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
-      .filter((entry) => {
-        const entryId = String(entry.id || "").trim();
-        const state = entryId ? flagStates[flagStateDocId("scoutingEntry", entryId)] : undefined;
-        return !shouldExcludeEntryFromStats(entry as Record<string, unknown>, state);
-      });
-  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, flagStates]);
+    const gameFiltered = entries.filter((entry) =>
+      entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
+    );
+    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
+
+  const dedupedEntries = useMemo(
+    () =>
+      dedupeEntriesByMatchTeam(filteredEntries, {
+        game: selectedGame,
+        eventOptions,
+        selectedEvent,
+        preferLatest: true,
+      }),
+    [filteredEntries, selectedGame, eventOptions, selectedEvent]
+  );
 
   const matches = useMemo(() => {
-    const ids = filteredEntries.map((entry) => normalizeMatchId(entry)).filter(Boolean);
+    const ids = dedupedEntries.map((entry) => normalizeMatchId(entry)).filter(Boolean);
     return sortMatches([...new Set(ids)].map((matchId) => ({ matchId }))).map((row) => row.matchId);
-  }, [filteredEntries]);
+  }, [dedupedEntries]);
 
   useEffect(() => {
     if (matches.length === 0) {
@@ -223,7 +206,7 @@ function MatchBreakdownContent() {
   }, [matches, selectedMatch]);
 
   const allianceBreakdown = useMemo(() => {
-    const selectedRows = filteredEntries.filter((entry) => normalizeMatchId(entry) === selectedMatch);
+    const selectedRows = dedupedEntries.filter((entry) => normalizeMatchId(entry) === selectedMatch);
     const teamScores = new Map<string, { score: number; alliance: "red" | "blue" | null }>();
 
     selectedRows.forEach((entry) => {
@@ -231,9 +214,8 @@ function MatchBreakdownContent() {
       if (!team) return;
       const score = scoreEntry(entry, selectedGame);
       const alliance = inferAlliance(entry);
-      const existing = teamScores.get(team);
-      if (!existing || score > existing.score) {
-        teamScores.set(team, { score, alliance: alliance || existing?.alliance || null });
+      if (!teamScores.has(team)) {
+        teamScores.set(team, { score, alliance });
       }
     });
 
@@ -260,17 +242,17 @@ function MatchBreakdownContent() {
     const blueTotal = blue.reduce((sum, row) => sum + row.totalScore, 0);
 
     return { red, blue, redTotal, blueTotal };
-  }, [filteredEntries, selectedMatch, selectedGame]);
+  }, [dedupedEntries, selectedMatch, selectedGame]);
 
   return (
     <AnalyticsShell
-      entriesCount={filteredEntries.length}
+      entriesCount={dedupedEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(entries, selectedGame)]}
+      eventOptions={[{ id: "all", name: "All Events" }, ...eventOptions]}
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Match Breakdown</h1>

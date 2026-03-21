@@ -307,8 +307,9 @@ function AnalyticsShellInner({
           >
             {mobileSidebarOpen ? "X" : ">"}
           </button>
-          <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="bg-white border-b border-gray-200 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={() => setCollapsed((v) => !v)}
                 className="hidden md:inline-block px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
@@ -322,10 +323,10 @@ function AnalyticsShellInner({
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search this analytics page"
-                className="ml-2 border rounded px-3 py-1.5 text-sm w-64 max-w-[45vw]"
+                className="ml-0 md:ml-2 border rounded px-3 py-1.5 text-sm w-full md:w-64 max-w-full md:max-w-[45vw]"
               />
-            </div>
-            <div className="flex items-center gap-2">
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
               <NotesToggle />
               {onPracticeMatchesOnlyChange && (
                 <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
@@ -346,6 +347,7 @@ function AnalyticsShellInner({
                 {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
                 {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
               </select>
+              </div>
             </div>
           </div>
           <div ref={contentRef} className="flex-1 overflow-y-auto p-6">{children}</div>

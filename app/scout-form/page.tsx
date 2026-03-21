@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -891,6 +891,12 @@ function ScoutFormContent() {
   const router = useRouter();
   const { userData, teamTimeOverride } = useAuth();
   const searchParams = useSearchParams();
+  const editId = searchParams.get("editId");
+  const editCollectionParam = searchParams.get("editCollection");
+  const editMode = Boolean(editId);
+  const [editEntry, setEditEntry] = useState<Record<string, unknown> | null>(null);
+  const [editEventKey, setEditEventKey] = useState<string | null>(null);
+  const [editMatchId, setEditMatchId] = useState<string>("");
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
   const [modalOpen, setModalOpen] = useState(false);
@@ -995,9 +1001,105 @@ function ScoutFormContent() {
 
   useEffect(() => {
     if (!userData?.displayName) return;
-    setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
-    setLeadForm((prev) => ({ ...prev, scoutName: userData.displayName }));
+    if (!editMode) {
+      setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
+      setLeadForm((prev) => ({ ...prev, scoutName: userData.displayName }));
+    }
   }, [userData?.displayName]);
+
+  useEffect(() => {
+    if (!editId) return;
+    let isActive = true;
+    const collectionName = editCollectionParam || (searchParams.get("lead") === "1" ? "leadScouting" : "scouting");
+    async function loadEditEntry() {
+      try {
+        const snap = await getDoc(doc(db, collectionName, editId));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (!isActive) return;
+        setEditEntry(data);
+        const entryEventKey = String(data.eventKey || "").trim();
+        setEditEventKey(entryEventKey || null);
+        const matchId = normalizeScoutedMatchId(data.matchId || data.matchKey || data.matchLabel || "");
+        setEditMatchId(matchId);
+        if (searchParams.get("lead") === "1") {
+          const robots = Array.isArray(data.robots) ? data.robots : [];
+          const overall = (data.overallAlliance || {}) as Record<string, unknown>;
+          setLeadForm((prev) => ({
+            ...prev,
+            scoutName: String(data.scoutName || prev.scoutName || ""),
+            alliance: String(data.alliance || ""),
+            robot1TeamNumber: String((robots[0] as { teamNumber?: string } | undefined)?.teamNumber || ""),
+            robot1Notes: String((robots[0] as { notes?: string } | undefined)?.notes || ""),
+            robot1SkillLevel: Number((robots[0] as { skillLevel?: number } | undefined)?.skillLevel || 1),
+            robot2TeamNumber: String((robots[1] as { teamNumber?: string } | undefined)?.teamNumber || ""),
+            robot2Notes: String((robots[1] as { notes?: string } | undefined)?.notes || ""),
+            robot2SkillLevel: Number((robots[1] as { skillLevel?: number } | undefined)?.skillLevel || 1),
+            robot3TeamNumber: String((robots[2] as { teamNumber?: string } | undefined)?.teamNumber || ""),
+            robot3Notes: String((robots[2] as { notes?: string } | undefined)?.notes || ""),
+            robot3SkillLevel: Number((robots[2] as { skillLevel?: number } | undefined)?.skillLevel || 1),
+            overallAllianceTeams: String(overall.teams || data.overallAllianceTeams || ""),
+            overallAllianceNotes: String(overall.notes || ""),
+            overallAllianceSkillLevel: Number(overall.skillLevel || 1),
+          }));
+          setOverallAllianceTeamsTouched(true);
+        } else {
+          const auto = (data.auto || {}) as Record<string, unknown>;
+          const teleop = (data.teleop || {}) as Record<string, unknown>;
+          const endgame = (data.endgame || {}) as Record<string, unknown>;
+          setForm((prev) => ({
+            ...prev,
+            scoutName: String(data.scoutName || prev.scoutName || ""),
+            teamNumber: String(data.teamNumber || ""),
+            startingPosition: String(data.startingPosition || ""),
+            autoPreloadScale: Number(auto.preloadScale ?? prev.autoPreloadScale ?? 0),
+            autoBpsScale: Number(auto.bpsScale ?? prev.autoBpsScale ?? 0),
+            autoCarryScale: Number(auto.carryingScale ?? prev.autoCarryScale ?? 0),
+            autoHumanPlayerFuel: Number(auto.humanPlayerFuel ?? prev.autoHumanPlayerFuel ?? 0),
+            autoCounterOverride: Number(auto.counterOverride ?? prev.autoCounterOverride ?? 0),
+            autoCounterMissedFuel: Number(auto.counterOverrideMissedFuel ?? prev.autoCounterMissedFuel ?? 0),
+            autoFailedClimb: Number(auto.failedClimb ?? prev.autoFailedClimb ?? 0),
+            autoSuccessfulClimb: Boolean(auto.successfulClimb),
+            wonAuto: Boolean(auto.wonAuto),
+            hubActivationOverride: Boolean(auto.hubActivationOverride),
+            teleBpsScale: Number(teleop.bpsScale ?? prev.teleBpsScale ?? 0),
+            teleCarryScale: Number(teleop.carryingScale ?? prev.teleCarryScale ?? 0),
+            transitionCounterOverride: Number(teleop.transitionOverride ?? prev.transitionCounterOverride ?? 0),
+            transitionCounterMissedFuel: Number(teleop.transitionMissedFuel ?? prev.transitionCounterMissedFuel ?? 0),
+            shift1CounterOverride: Number(teleop.shift1Override ?? prev.shift1CounterOverride ?? 0),
+            shift1CounterMissedFuel: Number(teleop.shift1MissedFuel ?? prev.shift1CounterMissedFuel ?? 0),
+            shift2CounterOverride: Number(teleop.shift2Override ?? prev.shift2CounterOverride ?? 0),
+            shift2CounterMissedFuel: Number(teleop.shift2MissedFuel ?? prev.shift2CounterMissedFuel ?? 0),
+            shift3CounterOverride: Number(teleop.shift3Override ?? prev.shift3CounterOverride ?? 0),
+            shift3CounterMissedFuel: Number(teleop.shift3MissedFuel ?? prev.shift3CounterMissedFuel ?? 0),
+            shift4CounterOverride: Number(teleop.shift4Override ?? prev.shift4CounterOverride ?? 0),
+            shift4CounterMissedFuel: Number(teleop.shift4MissedFuel ?? prev.shift4CounterMissedFuel ?? 0),
+            teleopHumanPlayerFuel: Number(teleop.humanPlayerFuel ?? prev.teleopHumanPlayerFuel ?? 0),
+            endgameCounterOverride: Number(endgame.counterOverride ?? prev.endgameCounterOverride ?? 0),
+            endgameCounterMissedFuel: Number(endgame.counterOverrideMissedFuel ?? prev.endgameCounterMissedFuel ?? 0),
+            endgameHumanPlayerFuel: Number(endgame.humanPlayerFuel ?? prev.endgameHumanPlayerFuel ?? 0),
+            endgameFailedClimb: Number(endgame.failedClimb ?? prev.endgameFailedClimb ?? 0),
+            endgameStatus: String(endgame.status || prev.endgameStatus || ""),
+            incidents: Array.isArray(data.incidents) ? data.incidents.map((value) => String(value)) : [],
+            notes: String(data.notes || ""),
+          }));
+          setAutoCycles(Array.isArray(auto.cycleTimes) ? auto.cycleTimes.map(Number) : []);
+          setTransitionCycles(Array.isArray(teleop.transitionCycles) ? teleop.transitionCycles.map(Number) : []);
+          setShift1Cycles(Array.isArray(teleop.shift1Cycles) ? teleop.shift1Cycles.map(Number) : []);
+          setShift2Cycles(Array.isArray(teleop.shift2Cycles) ? teleop.shift2Cycles.map(Number) : []);
+          setShift3Cycles(Array.isArray(teleop.shift3Cycles) ? teleop.shift3Cycles.map(Number) : []);
+          setShift4Cycles(Array.isArray(teleop.shift4Cycles) ? teleop.shift4Cycles.map(Number) : []);
+          setEndgameCycles(Array.isArray(endgame.cycleTimes) ? endgame.cycleTimes.map(Number) : []);
+        }
+      } catch (error) {
+        console.error("Failed to load edit entry:", error);
+      }
+    }
+    void loadEditEntry();
+    return () => {
+      isActive = false;
+    };
+  }, [editId, editCollectionParam, searchParams]);
 
   useEffect(() => {
     async function loadEventContext() {
@@ -1013,11 +1115,14 @@ function ScoutFormContent() {
         return;
       }
       try {
-        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
-        const currentEvent = await resolveDetectedTeamEventKey(userData.teamId);
+        const overrideEvent = editMode ? editEventKey : null;
+        const assignmentSnap = overrideEvent
+          ? null
+          : await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+        const currentEvent = overrideEvent ? overrideEvent : await resolveDetectedTeamEventKey(userData.teamId);
         const normalizedCurrent = String(currentEvent || "").trim().toLowerCase();
         const assignedEventCounts = new Map<string, number>();
-        assignmentSnap.docs.forEach((row) => {
+        assignmentSnap?.docs.forEach((row) => {
           const data = row.data() as AssignmentRow;
           const key = String(data.eventKey || "").trim().toLowerCase();
           if (!key) return;
@@ -1130,45 +1235,55 @@ function ScoutFormContent() {
         const completedSet = matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set<string>();
         setModalCompleted(completedSet);
 
-        const assignmentSnapByEvent = await getDocs(
-          query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent), where("scoutId", "==", userData.uid))
-        );
-        const assigned: Record<string, string> = {};
-        const assignedMatchIds = new Set<string>();
-        const assignedHumanPlayer = new Set<string>();
-        assignmentSnapByEvent.docs.forEach((row) => {
-          const data = row.data() as AssignmentRow;
-          const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
-          const team = String(data.teamNumber || "").trim();
-          if (matchId) {
-            assignedMatchIds.add(matchId);
-            if (team) assigned[matchId] = team;
-            if (data.scoutHumanPlayer) assignedHumanPlayer.add(matchId);
-          }
-        });
-        setAssignedTeams(assigned);
-        setAssignedMatchIds(assignedMatchIds);
-        setAssignedHumanPlayerMatches(assignedHumanPlayer);
-
-        try {
-          const assignmentSnapAll = await getDocs(
-            query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent))
+        if (overrideEvent) {
+          setAssignedTeams({});
+          setAssignedMatchIds(new Set());
+          setAssignedHumanPlayerMatches(new Set());
+        } else {
+          const assignmentSnapByEvent = await getDocs(
+            query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent), where("scoutId", "==", userData.uid))
           );
-          const byMatch = new Map<string, Set<string>>();
-          assignmentSnapAll.docs.forEach((row) => {
+          const assigned: Record<string, string> = {};
+          const assignedMatchIds = new Set<string>();
+          const assignedHumanPlayer = new Set<string>();
+          assignmentSnapByEvent.docs.forEach((row) => {
             const data = row.data() as AssignmentRow;
             const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
             const team = String(data.teamNumber || "").trim();
-            if (!matchId || !team) return;
-            if (!byMatch.has(matchId)) byMatch.set(matchId, new Set<string>());
-            byMatch.get(matchId)?.add(team);
+            if (matchId) {
+              assignedMatchIds.add(matchId);
+              if (team) assigned[matchId] = team;
+              if (data.scoutHumanPlayer) assignedHumanPlayer.add(matchId);
+            }
           });
-          setAssignedTeamsByMatch(
-            Object.fromEntries(Array.from(byMatch.entries()).map(([key, value]) => [key, Array.from(value)]))
-          );
-        } catch (error) {
-          console.warn("Unable to load assigned teams for match list:", error);
+          setAssignedTeams(assigned);
+          setAssignedMatchIds(assignedMatchIds);
+          setAssignedHumanPlayerMatches(assignedHumanPlayer);
+        }
+
+        if (overrideEvent) {
           setAssignedTeamsByMatch({});
+        } else {
+          try {
+            const assignmentSnapAll = await getDocs(
+              query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent))
+            );
+            const byMatch = new Map<string, Set<string>>();
+            assignmentSnapAll.docs.forEach((row) => {
+              const data = row.data() as AssignmentRow;
+              const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
+              const team = String(data.teamNumber || "").trim();
+              if (!matchId || !team) return;
+              if (!byMatch.has(matchId)) byMatch.set(matchId, new Set<string>());
+              byMatch.get(matchId)?.add(team);
+            });
+            setAssignedTeamsByMatch(
+              Object.fromEntries(Array.from(byMatch.entries()).map(([key, value]) => [key, Array.from(value)]))
+            );
+          } catch (error) {
+            console.warn("Unable to load assigned teams for match list:", error);
+            setAssignedTeamsByMatch({});
+          }
         }
 
         const now = getEffectiveNowSec(teamTimeOverride);
@@ -1204,19 +1319,28 @@ function ScoutFormContent() {
           return ordered.find((match) => !completedSet.has(match.id)) || null;
         };
 
-        const assignedMatches = resolved.filter((match) => assignedMatchIds.has(match.id));
-        const isAttending = assignedMatchIds.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
         let nextMatch: MatchOption | null = null;
-        if (assignedMatches.length > 0) {
-          nextMatch = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
-        } else if (!isAttending) {
-          nextMatch =
-            resolved.find((match) => match.type === "qualification" && match.matchNumber === 1) ||
-            resolved.find((match) => match.type === "qualification") ||
-            resolved[0] ||
-            null;
+        if (overrideEvent) {
+          if (editMatchId) {
+            nextMatch = resolved.find((match) => match.id === editMatchId) || null;
+          }
+          if (!nextMatch) {
+            nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
+          }
         } else {
-          nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
+          const assignedMatches = resolved.filter((match) => assignedMatchIds.has(match.id));
+          const isAttending = assignedMatchIds.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
+          if (assignedMatches.length > 0) {
+            nextMatch = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
+          } else if (!isAttending) {
+            nextMatch =
+              resolved.find((match) => match.type === "qualification" && match.matchNumber === 1) ||
+              resolved.find((match) => match.type === "qualification") ||
+              resolved[0] ||
+              null;
+          } else {
+            nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
+          }
         }
         setSelectedMatch((current) => {
           if (!nextMatch) return current || null;
@@ -1239,7 +1363,7 @@ function ScoutFormContent() {
       }
     }
     void loadEventContext();
-  }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
+  }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchId]);
   useEffect(() => {
     async function loadScouted() {
       if (!eventKey) return;
@@ -1512,8 +1636,9 @@ function ScoutFormContent() {
   }, [subInRequestOpen, selectedMatch?.type]);
 
   useEffect(() => {
+    if (editMode) return;
     if (assignedTeam) setForm((prev) => ({ ...prev, teamNumber: assignedTeam }));
-  }, [assignedTeam]);
+  }, [assignedTeam, editMode]);
 
   useEffect(() => {
     if (!leadForm.alliance) return;
@@ -1667,7 +1792,7 @@ function ScoutFormContent() {
     }
     if (!selectedMatch) return alert("Select a match first.");
     if (!form.teamNumber.trim()) return alert("Team number required.");
-    if (selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
+    if (!editMode && selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
     if (pitMismatchMessages.length > 0) {
       const proceed = window.confirm(
         `Warning: match scout scales do not match synced pit scout values for this event:\n${pitMismatchMessages.join("\n")}\n\nSubmit anyway?`
@@ -1677,7 +1802,7 @@ function ScoutFormContent() {
 
     setSaving(true);
     try {
-      await addDoc(collection(db, "scouting"), {
+      const payload = {
         scoutName: userData.displayName || "",
         scoutId: userData.uid,
         teamId: userData.teamId || "",
@@ -1738,10 +1863,16 @@ function ScoutFormContent() {
         scoringWeights: { autoFuel: 1, autoClimbLevel1: 15, teleopFuel: 1, teleopClimbLevel1: 10, teleopClimbLevel2: 20, teleopClimbLevel3: 30 },
         submittedAt: Date.now(),
         timestamp: Date.now(),
-      });
-      alert("Match scout form submitted.");
-      if (typeof window !== "undefined") {
-        window.location.reload();
+      };
+      if (editMode && editId && editCollectionParam) {
+        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+        alert("Match scout form updated.");
+      } else {
+        await addDoc(collection(db, "scouting"), payload);
+        alert("Match scout form submitted.");
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
       }
       setScoutedCounts((prev) => ({ ...prev, [selectedMatch.id]: (prev[selectedMatch.id] || 0) + 1 }));
       setScoutedTeamsByMatch((prev) => {
@@ -1749,37 +1880,39 @@ function ScoutFormContent() {
         now.add(form.teamNumber.trim());
         return { ...prev, [selectedMatch.id]: Array.from(now) };
       });
-      setForm((prev) => ({
-        ...prev,
-        teamNumber: assignedTeam || "",
-        startingPosition: "",
-        autoHumanPlayerFuel: 0,
-        autoCounterOverride: 0,
-        autoCounterMissedFuel: 0,
-        autoFailedClimb: 0,
-        autoSuccessfulClimb: false,
-        wonAuto: false,
-        hubActivationOverride: false,
-        transitionCounterOverride: 0,
-        transitionCounterMissedFuel: 0,
-        shift1CounterOverride: 0,
-        shift1CounterMissedFuel: 0,
-        shift2CounterOverride: 0,
-        shift2CounterMissedFuel: 0,
-        shift3CounterOverride: 0,
-        shift3CounterMissedFuel: 0,
-        shift4CounterOverride: 0,
-        shift4CounterMissedFuel: 0,
-        teleopHumanPlayerFuel: 0,
-        endgameCounterOverride: 0,
-        endgameCounterMissedFuel: 0,
-        endgameHumanPlayerFuel: 0,
-        endgameFailedClimb: 0,
-        endgameStatus: "",
-        incidents: [],
-        notes: "",
-      }));
-      setAutoCycles([]); setTransitionCycles([]); setShift1Cycles([]); setShift2Cycles([]); setShift3Cycles([]); setShift4Cycles([]); setEndgameCycles([]);
+      if (!editMode) {
+        setForm((prev) => ({
+          ...prev,
+          teamNumber: assignedTeam || "",
+          startingPosition: "",
+          autoHumanPlayerFuel: 0,
+          autoCounterOverride: 0,
+          autoCounterMissedFuel: 0,
+          autoFailedClimb: 0,
+          autoSuccessfulClimb: false,
+          wonAuto: false,
+          hubActivationOverride: false,
+          transitionCounterOverride: 0,
+          transitionCounterMissedFuel: 0,
+          shift1CounterOverride: 0,
+          shift1CounterMissedFuel: 0,
+          shift2CounterOverride: 0,
+          shift2CounterMissedFuel: 0,
+          shift3CounterOverride: 0,
+          shift3CounterMissedFuel: 0,
+          shift4CounterOverride: 0,
+          shift4CounterMissedFuel: 0,
+          teleopHumanPlayerFuel: 0,
+          endgameCounterOverride: 0,
+          endgameCounterMissedFuel: 0,
+          endgameHumanPlayerFuel: 0,
+          endgameFailedClimb: 0,
+          endgameStatus: "",
+          incidents: [],
+          notes: "",
+        }));
+        setAutoCycles([]); setTransitionCycles([]); setShift1Cycles([]); setShift2Cycles([]); setShift3Cycles([]); setShift4Cycles([]); setEndgameCycles([]);
+      }
     } catch (error) {
       console.error(error);
       alert("Could not submit match scout form.");
@@ -1857,39 +1990,46 @@ function ScoutFormContent() {
         submittedAt: Date.now(),
         timestamp: Date.now(),
       };
-      try {
-        await addDoc(collection(db, "leadScouting"), payload);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!/missing or insufficient permissions/i.test(message)) {
-          throw error;
+      if (editMode && editId && editCollectionParam) {
+        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+        alert("Lead scout form updated.");
+      } else {
+        try {
+          await addDoc(collection(db, "leadScouting"), payload);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!/missing or insufficient permissions/i.test(message)) {
+            throw error;
+          }
+          await addDoc(collection(db, "scouting"), payload);
         }
-        await addDoc(collection(db, "scouting"), payload);
+        alert("Lead scout form submitted.");
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
       }
-      alert("Lead scout form submitted.");
-      if (typeof window !== "undefined") {
-        window.location.reload();
+      if (!editMode) {
+        setLeadForm((prev) => ({
+          ...prev,
+          alliance: "",
+          robot1TeamNumber: "",
+          robot1PickNumber: "",
+          robot1Notes: "",
+          robot1SkillLevel: 1,
+          robot2TeamNumber: "",
+          robot2PickNumber: "",
+          robot2Notes: "",
+          robot2SkillLevel: 1,
+          robot3TeamNumber: "",
+          robot3PickNumber: "",
+          robot3Notes: "",
+          robot3SkillLevel: 1,
+          overallAllianceTeams: "",
+          overallAllianceNotes: "",
+          overallAllianceSkillLevel: 1,
+        }));
+        setOverallAllianceTeamsTouched(false);
       }
-      setLeadForm((prev) => ({
-        ...prev,
-        alliance: "",
-        robot1TeamNumber: "",
-        robot1PickNumber: "",
-        robot1Notes: "",
-        robot1SkillLevel: 1,
-        robot2TeamNumber: "",
-        robot2PickNumber: "",
-        robot2Notes: "",
-        robot2SkillLevel: 1,
-        robot3TeamNumber: "",
-        robot3PickNumber: "",
-        robot3Notes: "",
-        robot3SkillLevel: 1,
-        overallAllianceTeams: "",
-        overallAllianceNotes: "",
-        overallAllianceSkillLevel: 1,
-      }));
-      setOverallAllianceTeamsTouched(false);
     } catch (error) {
       console.error("Error submitting lead scout form:", error);
       const message = error instanceof Error ? error.message : String(error);
@@ -2181,7 +2321,7 @@ function ScoutFormContent() {
                 </div>
 
                 <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
-                  {saving ? "Submitting..." : "Submit Match Scout Form"}
+                  {saving ? "Submitting..." : editMode ? "Update Match Scout Form" : "Submit Match Scout Form"}
                 </button>
               </form>
             )}
@@ -2325,7 +2465,7 @@ function ScoutFormContent() {
               </div>
 
               <button type="submit" disabled={leadSaving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
-                {leadSaving ? "Submitting..." : "Submit Lead Scout Form"}
+                {leadSaving ? "Submitting..." : editMode ? "Update Lead Scout Form" : "Submit Lead Scout Form"}
               </button>
               </form>
             )}

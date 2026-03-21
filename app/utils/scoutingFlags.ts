@@ -161,9 +161,7 @@ export function isEntryFlaggedForStats(
 export function shouldExcludeEntryFromStats(
   entry: AnyEntry,
   state?: Pick<StoredFlagState, "dismissed" | "manualFlagged"> | null,
-  minimumAccuracy = 75
+  _minimumAccuracy = 75
 ): boolean {
-  if (isEntryFlaggedForStats(entry, state)) return true;
-  const accuracy = getEntryAccuracyPercent(entry);
-  return accuracy !== null && accuracy < minimumAccuracy;
+  return Boolean(state?.manualFlagged);
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { useSearchParams } from "next/navigation";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -199,6 +200,10 @@ function MatchPickerModal({
 
 function DriveReflectionFormContent() {
   const { userData, teamTimeOverride } = useAuth();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("editId");
+  const editCollectionParam = searchParams.get("editCollection");
+  const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [notes, setNotes] = useState("");
@@ -231,6 +236,50 @@ function DriveReflectionFormContent() {
     endgameClimb: "",
   });
   const [syncedPlan, setSyncedPlan] = useState<StrategyPlanDoc | null>(null);
+  const [editEventKey, setEditEventKey] = useState<string | null>(null);
+  const [editMatchKey, setEditMatchKey] = useState<string>("");
+
+  useEffect(() => {
+    if (!editId) return;
+    let isActive = true;
+    const collectionName = editCollectionParam || "driveScouting";
+    async function loadEditEntry() {
+      try {
+        const snap = await getDoc(doc(db, collectionName, editId));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (!isActive) return;
+        const entryEventKey = String(data.eventKey || "").trim();
+        setEditEventKey(entryEventKey || null);
+        const entryMatchKey = String(data.matchKey || data.matchLabel || "").trim();
+        setEditMatchKey(entryMatchKey);
+        const robots = Array.isArray(data.robots) ? data.robots : [];
+        const toRobot = (robot: unknown): RobotReflection => {
+          if (!robot || typeof robot !== "object") {
+            return { teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" };
+          }
+          const row = robot as Record<string, unknown>;
+          return {
+            teamNumber: String(row.teamNumber || ""),
+            startingPosition: String(row.startingPosition || ""),
+            role: String(row.role || ""),
+            autoClimb: Boolean(row.autoClimb),
+            endgameClimb: String(row.endgameClimb || ""),
+          };
+        };
+        setRobot1(toRobot(robots[0]));
+        setRobot2(toRobot(robots[1]));
+        setRobot3(toRobot(robots[2]));
+        setNotes(String(data.notes || ""));
+      } catch (error) {
+        console.error("Failed to load drive reflection edit entry:", error);
+      }
+    }
+    void loadEditEntry();
+    return () => {
+      isActive = false;
+    };
+  }, [editId, editCollectionParam]);
 
   useEffect(() => {
     async function loadMatches() {
@@ -242,17 +291,20 @@ function DriveReflectionFormContent() {
         return;
       }
       try {
+        const overrideEvent = editMode ? editEventKey : null;
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const teamData = teamDoc.data() as Record<string, unknown> | undefined;
-        const assignmentSnap = await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
+        const assignmentSnap = overrideEvent
+          ? null
+          : await getDocs(query(collection(db, "matchAssignments"), where("scoutId", "==", userData.uid)));
         const assignedEventCounts = new Map<string, number>();
-        assignmentSnap.docs.forEach((row) => {
+        assignmentSnap?.docs.forEach((row) => {
           const data = row.data() as Record<string, unknown>;
           const key = String(data.eventKey || "").trim().toLowerCase();
           if (!key) return;
           assignedEventCounts.set(key, (assignedEventCounts.get(key) || 0) + 1);
         });
-        const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
+        const resolvedEvent = overrideEvent ? overrideEvent : await resolveDetectedTeamEventKey(userData.teamId);
         const normalizedResolved = String(resolvedEvent || "").trim().toLowerCase();
         const assignedEvent =
           assignedEventCounts.size === 0
@@ -326,11 +378,13 @@ function DriveReflectionFormContent() {
           return Boolean(modalId && completedSet.has(modalId));
         };
         const assignedMatchKeys = new Set(
-          assignmentSnap.docs
-            .map((row) => row.data() as Record<string, unknown>)
-            .filter((row) => String(row.eventKey || "").trim().toLowerCase() === assignedEvent)
-            .map((row) => String(row.matchKey || row.matchLabel || "").trim())
-            .filter(Boolean)
+          assignmentSnap
+            ? assignmentSnap.docs
+                .map((row) => row.data() as Record<string, unknown>)
+                .filter((row) => String(row.eventKey || "").trim().toLowerCase() === assignedEvent)
+                .map((row) => String(row.matchKey || row.matchLabel || "").trim())
+                .filter(Boolean)
+            : []
         );
         const assignedMatches = resolvedOptions.filter(
           (match) => assignedMatchKeys.has(match.key) || assignedMatchKeys.has(match.label)
@@ -369,18 +423,26 @@ function DriveReflectionFormContent() {
         let next: MatchOption | null = null;
         const teamMatches = ourTeamStr ? resolvedOptions.filter((match) => match.teams.includes(ourTeamStr)) : [];
         const teamFirst = teamMatches.length > 0 ? pickFirstIncomplete(teamMatches) || pickNextBySchedule(teamMatches) || pickFirstByNumber(teamMatches) : null;
-        if (teamFirst) {
-          next = teamFirst;
-        } else if (assignedMatches.length > 0) {
-          next = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
-        } else if (!isAttending) {
+        if (editMode && editMatchKey) {
           next =
-            resolvedOptions.find((match) => /_qm1$/i.test(match.key) || /^Q1$/i.test(match.label)) ||
-            resolvedOptions.find((match) => /_qm\d+$/i.test(match.key) || /^Q\d+/i.test(match.label)) ||
-            resolvedOptions[0] ||
+            resolvedOptions.find((match) => match.key === editMatchKey) ||
+            resolvedOptions.find((match) => match.label === editMatchKey) ||
             null;
-        } else {
-          next = pickFirstIncomplete(resolvedOptions) || pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
+        }
+        if (!next) {
+          if (teamFirst) {
+            next = teamFirst;
+          } else if (assignedMatches.length > 0) {
+            next = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
+          } else if (!isAttending) {
+            next =
+              resolvedOptions.find((match) => /_qm1$/i.test(match.key) || /^Q1$/i.test(match.label)) ||
+              resolvedOptions.find((match) => /_qm\d+$/i.test(match.key) || /^Q\d+/i.test(match.label)) ||
+              resolvedOptions[0] ||
+              null;
+          } else {
+            next = pickFirstIncomplete(resolvedOptions) || pickNextBySchedule(resolvedOptions) || resolvedOptions[0] || null;
+          }
         }
         const currentMatch = selectedMatchKey
           ? resolvedOptions.find((match) => match.key === selectedMatchKey) || null
@@ -393,7 +455,7 @@ function DriveReflectionFormContent() {
         const finalMatch = shouldReplace ? next : currentMatch;
         if (finalMatch) {
           setSelectedMatchKey(finalMatch.key);
-          if (shouldReplace) {
+          if (shouldReplace && !editMode) {
             setRobotTeamDefaults(finalMatch, ourTeamStr);
           }
         } else {
@@ -413,7 +475,7 @@ function DriveReflectionFormContent() {
     }
 
     void loadMatches();
-  }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
+  }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchKey]);
 
   function setRobotTeamDefaults(match: MatchOption, ourTeam: string) {
     const redTeams = match.redTeams && match.redTeams.length > 0 ? match.redTeams : match.teams.slice(0, 3);
@@ -592,7 +654,7 @@ function DriveReflectionFormContent() {
         }
       }
 
-      await addDoc(collection(db, "driveScouting"), {
+      const payload = {
         eventKey,
         matchKey: selectedMatch.key,
         matchLabel: displayMatchLabel(selectedMatch),
@@ -603,10 +665,17 @@ function DriveReflectionFormContent() {
         robots: [robot1, robot2, robot3],
         notes: notes.trim(),
         createdAt: Date.now(),
-      });
-      alert("Drive Reflection Form submitted.");
-      if (typeof window !== "undefined") {
-        window.location.reload();
+        submittedAt: Date.now(),
+      };
+      if (editMode && editId && editCollectionParam) {
+        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+        alert("Drive Reflection Form updated.");
+      } else {
+        await addDoc(collection(db, "driveScouting"), payload);
+        alert("Drive Reflection Form submitted.");
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
       }
     } catch (error) {
       console.error("Failed to submit drive reflection form:", error);
@@ -741,7 +810,7 @@ function DriveReflectionFormContent() {
             className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
             style={{ backgroundColor: "var(--primary-color)" }}
           >
-            {saving ? "Submitting..." : "Submit Drive Reflection Form"}
+            {saving ? "Submitting..." : editMode ? "Update Drive Reflection Form" : "Submit Drive Reflection Form"}
           </button>
         </form>
 

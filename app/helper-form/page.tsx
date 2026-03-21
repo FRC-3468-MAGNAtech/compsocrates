@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { addDoc, collection } from "firebase/firestore";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { addDoc, collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -9,6 +10,10 @@ import { useAuth } from "@/app/AuthContext";
 
 function HelperFormContent() {
   const { userData } = useAuth();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("editId");
+  const editCollectionParam = searchParams.get("editCollection");
+  const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [teamNumber, setTeamNumber] = useState("");
@@ -16,12 +21,36 @@ function HelperFormContent() {
   const [issueSolved, setIssueSolved] = useState("");
   const [notes, setNotes] = useState("");
 
+  useEffect(() => {
+    if (!editId) return;
+    let isActive = true;
+    const collectionName = editCollectionParam || "helperReports";
+    async function loadEditEntry() {
+      try {
+        const snap = await getDoc(doc(db, collectionName, editId));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (!isActive) return;
+        setTeamNumber(String(data.assistedTeamNumber || data.teamNumber || ""));
+        setSuccessful(Boolean(data.wasSuccessful));
+        setIssueSolved(String(data.issueSolved || ""));
+        setNotes(String(data.notes || ""));
+      } catch (error) {
+        console.error("Failed to load helper edit entry:", error);
+      }
+    }
+    void loadEditEntry();
+    return () => {
+      isActive = false;
+    };
+  }, [editId, editCollectionParam]);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid || !userData.teamId || !teamNumber.trim()) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, "helperReports"), {
+      const payload = {
         helperName: userData.displayName || "",
         helperId: userData.uid,
         teamId: userData.teamId,
@@ -31,15 +60,22 @@ function HelperFormContent() {
         notes: notes.trim(),
         game: "REBUILT",
         createdAt: Date.now(),
-      });
-      alert("Helper Form submitted.");
-      if (typeof window !== "undefined") {
-        window.location.reload();
+        submittedAt: Date.now(),
+      };
+      if (editMode && editId && editCollectionParam) {
+        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+        alert("Helper Form updated.");
+      } else {
+        await addDoc(collection(db, "helperReports"), payload);
+        alert("Helper Form submitted.");
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+        setTeamNumber("");
+        setSuccessful(false);
+        setIssueSolved("");
+        setNotes("");
       }
-      setTeamNumber("");
-      setSuccessful(false);
-      setIssueSolved("");
-      setNotes("");
     } catch (error) {
       console.error("Error submitting helper form:", error);
       alert("Could not submit form.");
@@ -96,7 +132,7 @@ function HelperFormContent() {
             className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
             style={{ backgroundColor: "var(--primary-color)" }}
           >
-            {saving ? "Submitting..." : "Submit Helper Form"}
+            {saving ? "Submitting..." : editMode ? "Update Helper Form" : "Submit Helper Form"}
           </button>
         </form>
 
