@@ -199,15 +199,32 @@ function ScoutStatusContent() {
   }, [filteredEntries]);
 
   const coverage = useMemo(() => {
-    const set = new Set<string>();
+    const counts = new Map<string, number>();
     filteredEntries.forEach((entry) => {
       const team = String(entry.teamNumber || "").trim();
       const matchKey = entryMatchKey(entry);
       if (!team || !matchKey) return;
-      set.add(`${matchKey}::${team}`);
+      const key = `${matchKey}::${team}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
     });
-    return set;
+    return counts;
   }, [filteredEntries]);
+
+  const renderCheckMarks = (count: number) => {
+    return Array.from({ length: count }).map((_, index) => (
+      <svg
+        key={`check-${index}`}
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+        className="h-4 w-4 text-green-700"
+      >
+        <path
+          fill="currentColor"
+          d="M7.7 13.3 4.9 10.5 3.5 11.9 7.7 16.1 17 6.8 15.6 5.4z"
+        />
+      </svg>
+    ));
+  };
 
   useEffect(() => {
     async function loadMatches() {
@@ -376,12 +393,21 @@ function ScoutStatusContent() {
                       : "TBD";
                     const allTeams = [...match.red, ...match.blue];
                     const cells = allTeams.map((team) => {
-                      const scouted = coverage.has(`${matchKey}::${team}`);
+                      const count = coverage.get(`${matchKey}::${team}`) || 0;
                       return (
                         <td key={`${match.key}-${team}`} className="px-4 py-3 text-sm">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold">{team}</span>
-                            <span className={scouted ? "text-green-700" : "text-red-600"}>{scouted ? "OK" : "X"}</span>
+                            {count > 0 ? (
+                              <span className="flex items-center gap-1">{renderCheckMarks(count)}</span>
+                            ) : (
+                              <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 text-red-600">
+                                <path
+                                  fill="currentColor"
+                                  d="M5.3 4.3 4.3 5.3 9 10l-4.7 4.7 1 1L10 11l4.7 4.7 1-1L11 10l4.7-4.7-1-1L10 9 5.3 4.3z"
+                                />
+                              </svg>
+                            )}
                           </div>
                         </td>
                       );
