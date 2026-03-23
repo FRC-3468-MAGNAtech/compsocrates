@@ -43,6 +43,7 @@ type ScoutingEntry = {
   endgame?: {
     status?: string;
   };
+  excludeFromStats?: boolean;
   isPracticeScouting?: boolean;
   practiceMode?: string;
   practiceSessionId?: string;
@@ -184,7 +185,9 @@ function TeamBreakdownContent() {
     const gameFiltered = scoutingEntries.filter((entry) =>
       entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
     );
-    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+    return gameFiltered
+      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
+      .filter((entry) => !entry.excludeFromStats);
   }, [scoutingEntries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
 
   const dedupedScoutingEntries = useMemo(

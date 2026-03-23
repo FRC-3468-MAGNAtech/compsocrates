@@ -67,6 +67,7 @@ type ScoutingEntry = {
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
 };
 
 function isPracticeEntry(entry: ScoutingEntry) {
@@ -146,7 +147,8 @@ function TeamAveragesContent() {
       entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
     );
     return gameFiltered
-      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
+      .filter((entry) => !entry.excludeFromStats);
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
 
   const dedupedEntries = useMemo(() => {

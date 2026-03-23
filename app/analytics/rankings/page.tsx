@@ -53,6 +53,7 @@ type ScoutingEntry = {
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
 };
 
 function isPracticeEntry(entry: ScoutingEntry) {
@@ -127,7 +128,9 @@ function RankingsContent() {
     const gameFiltered = entries.filter((entry) =>
       entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
     );
-    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+    return gameFiltered
+      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
+      .filter((entry) => !entry.excludeFromStats);
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
 
   const dedupedEntries = useMemo(

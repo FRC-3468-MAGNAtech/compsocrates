@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -9,6 +9,7 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
+import { getFirstEventCodeFromTbaKey } from "@/app/utils/firstSchedule";
 
 type TeamPick = {
   teamNumber: string;
@@ -18,12 +19,21 @@ type TeamPick = {
   pickOrder?: number;
 };
 
+type FirstRankingRow = {
+  rank?: number;
+  Rank?: number;
+  teamNumber?: number;
+  team?: number;
+  TeamNumber?: number;
+};
+
 type ScoutingEntry = {
   eventKey?: string;
   submittedAt?: number;
   timestamp?: number;
   game?: string;
   teamNumber?: string;
+  excludeFromStats?: boolean;
   matchType?: string;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
@@ -86,6 +96,11 @@ function PickListContent() {
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [pickedTeams, setPickedTeams] = useState<TeamPick[]>([]);
   const [loading, setLoading] = useState(true);
+  const [officialRanks, setOfficialRanks] = useState<Map<string, number>>(new Map());
+  const [officialEpa, setOfficialEpa] = useState<Map<string, number | null>>(new Map());
+  const [officialLoading, setOfficialLoading] = useState(false);
+  const [epaLoading, setEpaLoading] = useState(false);
+  const statboticsCache = useRef(new Map<string, number | null>());
   const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
 
   useEffect(() => {
@@ -136,7 +151,9 @@ function PickListContent() {
     const gameFiltered = entries.filter((entry) =>
       entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
     );
-    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+    return gameFiltered
+      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
+      .filter((entry) => !entry.excludeFromStats);
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
 
   const dedupedEntries = useMemo(
@@ -150,7 +167,131 @@ function PickListContent() {
     [filteredEntries, selectedGame, eventOptions, selectedEvent]
   );
 
-  const teams = useMemo(() => {
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadRankings() {
+      if (selectedEvent === "all") {
+        if (isActive) setOfficialRanks(new Map());
+        return;
+      }
+      const year = Number(String(selectedEvent || "").slice(0, 4));
+      const eventCode = getFirstEventCodeFromTbaKey(selectedEvent);
+      if (!Number.isFinite(year) || !eventCode) {
+        if (isActive) setOfficialRanks(new Map());
+        return;
+      }
+
+      setOfficialLoading(true);
+      try {
+        const response = await fetch("/api/first/rankings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year, eventCode }),
+        });
+        if (!response.ok) {
+          if (isActive) setOfficialRanks(new Map());
+          return;
+        }
+        const payload = await response.json();
+        const rows = Array.isArray(payload.rankings) ? (payload.rankings as FirstRankingRow[]) : [];
+        const map = new Map<string, number>();
+        rows.forEach((row) => {
+          const teamNumber = String(row.teamNumber ?? row.TeamNumber ?? row.team ?? "").trim();
+          const rankValue = Number(row.rank ?? row.Rank ?? 0);
+          if (teamNumber && Number.isFinite(rankValue) && rankValue > 0) {
+            map.set(teamNumber, rankValue);
+          }
+        });
+        if (isActive) setOfficialRanks(map);
+      } catch (error) {
+        console.warn("Failed to load FIRST rankings:", error);
+        if (isActive) setOfficialRanks(new Map());
+      } finally {
+        if (isActive) setOfficialLoading(false);
+      }
+    }
+
+    void loadRankings();
+    return () => {
+      isActive = false;
+    };
+  }, [selectedEvent]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadEpa() {
+      if (dedupedEntries.length === 0) {
+        if (isActive) setOfficialEpa(new Map());
+        return;
+      }
+      const fallbackEvent = dedupedEntries.find((entry) => entry.eventKey)?.eventKey || "";
+      const yearSource = selectedEvent !== "all" ? selectedEvent : fallbackEvent;
+      const year = Number(String(yearSource || "").slice(0, 4));
+      if (!Number.isFinite(year)) {
+        if (isActive) setOfficialEpa(new Map());
+        return;
+      }
+
+      const teamNumbers = Array.from(
+        new Set(dedupedEntries.map((entry) => String(entry.teamNumber || "").trim()).filter(Boolean))
+      );
+      if (teamNumbers.length === 0) {
+        if (isActive) setOfficialEpa(new Map());
+        return;
+      }
+
+      setEpaLoading(true);
+      const map = new Map<string, number | null>();
+      const batchSize = 6;
+      for (let i = 0; i < teamNumbers.length; i += batchSize) {
+        const batch = teamNumbers.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map(async (teamNumber) => {
+            const cacheKey = `${selectedEvent}:${teamNumber}`;
+            if (statboticsCache.current.has(cacheKey)) {
+              return [teamNumber, statboticsCache.current.get(cacheKey) ?? null] as const;
+            }
+            const params = new URLSearchParams({
+              teamNumber,
+              year: String(year),
+            });
+            if (selectedEvent !== "all") params.set("eventKey", selectedEvent);
+            try {
+              const response = await fetch(`/api/statbotics/team?${params.toString()}`);
+              if (!response.ok) {
+                statboticsCache.current.set(cacheKey, null);
+                return [teamNumber, null] as const;
+              }
+              const payload = await response.json();
+              const eventEpa = Number(payload?.teamEvent?.epa?.total_points?.mean);
+              const yearEpa = Number(payload?.teamYear?.epa?.total_points?.mean);
+              const epaValue = Number.isFinite(eventEpa) ? eventEpa : Number.isFinite(yearEpa) ? yearEpa : null;
+              statboticsCache.current.set(cacheKey, epaValue);
+              return [teamNumber, epaValue] as const;
+            } catch (error) {
+              console.warn("Failed to load Statbotics EPA:", error);
+              statboticsCache.current.set(cacheKey, null);
+              return [teamNumber, null] as const;
+            }
+          })
+        );
+        results.forEach(([teamNumber, epa]) => {
+          map.set(teamNumber, epa);
+        });
+      }
+      if (isActive) setOfficialEpa(map);
+      if (isActive) setEpaLoading(false);
+    }
+
+    void loadEpa();
+    return () => {
+      isActive = false;
+    };
+  }, [dedupedEntries, selectedEvent]);
+
+  const teamStats = useMemo(() => {
     const grouped: Record<string, number[]> = {};
     dedupedEntries.forEach((e) => {
       if (!e.teamNumber) return;
@@ -164,11 +305,58 @@ function PickListContent() {
         teamNumber,
         avgScore: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
         highScore: Math.max(...scores),
-        picked: pickedTeams.some((p) => p.teamNumber === teamNumber),
-        pickOrder: pickedTeams.find((p) => p.teamNumber === teamNumber)?.pickOrder,
       }))
       .sort((a, b) => b.avgScore - a.avgScore);
-  }, [dedupedEntries, pickedTeams, selectedGame]);
+  }, [dedupedEntries, selectedGame]);
+
+  const scoutedRankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const sorted = [...teamStats].sort((a, b) => b.avgScore - a.avgScore);
+    sorted.forEach((team, index) => {
+      map.set(team.teamNumber, index + 1);
+    });
+    return map;
+  }, [teamStats]);
+
+  const teamStatsMap = useMemo(() => {
+    const map = new Map<string, { avgScore: number; highScore: number }>();
+    teamStats.forEach((team) => {
+      map.set(team.teamNumber, { avgScore: team.avgScore, highScore: team.highScore });
+    });
+    return map;
+  }, [teamStats]);
+
+  const teams = useMemo(() => {
+    const pickMap = new Map<string, TeamPick>();
+    pickedTeams.forEach((team) => pickMap.set(team.teamNumber, team));
+    return teamStats
+      .map((team) => ({
+        ...team,
+        picked: pickMap.has(team.teamNumber),
+        pickOrder: pickMap.get(team.teamNumber)?.pickOrder,
+      }))
+      .sort((a, b) => {
+        const rankA = officialRanks.get(a.teamNumber);
+        const rankB = officialRanks.get(b.teamNumber);
+        const rankAValue = Number.isFinite(rankA as number) ? (rankA as number) : Number.POSITIVE_INFINITY;
+        const rankBValue = Number.isFinite(rankB as number) ? (rankB as number) : Number.POSITIVE_INFINITY;
+        if (rankAValue !== rankBValue) return rankAValue - rankBValue;
+        if (b.avgScore !== a.avgScore) return b.avgScore - a.avgScore;
+        return a.teamNumber.localeCompare(b.teamNumber, undefined, { numeric: true });
+      });
+  }, [teamStats, pickedTeams, officialRanks]);
+
+  const orderedPickedTeams = useMemo(() => {
+    return [...pickedTeams].sort((a, b) => (a.pickOrder || 0) - (b.pickOrder || 0));
+  }, [pickedTeams]);
+
+  function formatStatLine(teamNumber: string, avgScore: number, highScore: number) {
+    const scoutedRank = scoutedRankMap.get(teamNumber);
+    const officialRank = officialRanks.get(teamNumber);
+    const epaValue = officialEpa.get(teamNumber);
+    const epaText = typeof epaValue === "number" && Number.isFinite(epaValue) ? epaValue.toFixed(2) : "-";
+    return `O. Rank ${officialRank ?? "-"} | S. Rank ${scoutedRank ?? "-"} | S. Avg ${avgScore} | S. High ${highScore} | O. EPA ${epaText}`;
+  }
 
   function pickTeam(team: TeamPick) {
     if (!canEditPickList) return;
@@ -180,6 +368,22 @@ function PickListContent() {
     if (!canEditPickList) return;
     const next = pickedTeams.filter((p) => p.teamNumber !== teamNumber).map((p, i) => ({ ...p, pickOrder: i + 1 }));
     setPickedTeams(next);
+  }
+
+  function movePick(teamNumber: string, direction: "up" | "down") {
+    if (!canEditPickList) return;
+    setPickedTeams((prev) => {
+      const ordered = [...prev].sort((a, b) => (a.pickOrder || 0) - (b.pickOrder || 0));
+      const index = ordered.findIndex((team) => team.teamNumber === teamNumber);
+      if (index === -1) return prev;
+      const target = direction === "up" ? index - 1 : index + 1;
+      if (target < 0 || target >= ordered.length) return prev;
+      const next = [...ordered];
+      const temp = next[index];
+      next[index] = next[target];
+      next[target] = temp;
+      return next.map((team, i) => ({ ...team, pickOrder: i + 1 }));
+    });
   }
 
   return (
@@ -214,7 +418,9 @@ function PickListContent() {
                 <div key={team.teamNumber} data-analytics-search-item="true" className="p-4 border-b flex items-center justify-between">
                   <div>
                     <p className="font-semibold">Team {team.teamNumber}</p>
-                    <p className="text-sm text-gray-600">Avg {team.avgScore} | High {team.highScore}</p>
+                    <p className="text-sm text-gray-600">
+                      {formatStatLine(team.teamNumber, team.avgScore, team.highScore)}
+                    </p>
                   </div>
                   {canEditPickList ? (
                     <button onClick={() => pickTeam(team)} className="px-3 py-1.5 rounded theme-primary text-sm">
@@ -233,26 +439,52 @@ function PickListContent() {
               <h2 className="font-semibold">Selected Picks ({pickedTeams.length})</h2>
             </div>
             <div className="max-h-[60vh] overflow-y-auto">
-              {pickedTeams.map((team) => (
-                <div key={team.teamNumber} data-analytics-search-item="true" className="p-4 border-b flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">
-                      {team.pickOrder}. Team {team.teamNumber}
-                    </p>
-                    <p className="text-sm text-gray-600">Avg {team.avgScore} | High {team.highScore}</p>
+              {orderedPickedTeams.map((team, index) => {
+                const stats = teamStatsMap.get(team.teamNumber);
+                const avgScore = stats?.avgScore ?? team.avgScore ?? 0;
+                const highScore = stats?.highScore ?? team.highScore ?? 0;
+                const order = team.pickOrder ?? index + 1;
+                return (
+                  <div key={team.teamNumber} data-analytics-search-item="true" className="p-4 border-b flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">
+                        #{order} Team {team.teamNumber}
+                      </p>
+                      <p className="text-sm text-gray-600">{formatStatLine(team.teamNumber, avgScore, highScore)}</p>
+                    </div>
+                    {canEditPickList ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={() => movePick(team.teamNumber, "up")}
+                            disabled={index === 0}
+                            className="px-2 py-1 rounded border border-gray-300 text-xs disabled:opacity-40"
+                          >
+                            Up
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePick(team.teamNumber, "down")}
+                            disabled={index === orderedPickedTeams.length - 1}
+                            className="px-2 py-1 rounded border border-gray-300 text-xs disabled:opacity-40"
+                          >
+                            Down
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => removeTeam(team.teamNumber)}
+                          className="px-3 py-1.5 rounded bg-red-100 text-red-700 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-500">Coach/Admin only</span>
+                    )}
                   </div>
-                  {canEditPickList ? (
-                    <button
-                      onClick={() => removeTeam(team.teamNumber)}
-                      className="px-3 py-1.5 rounded bg-red-100 text-red-700 text-sm"
-                    >
-                      Remove
-                    </button>
-                  ) : (
-                    <span className="text-xs text-gray-500">Coach/Admin only</span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

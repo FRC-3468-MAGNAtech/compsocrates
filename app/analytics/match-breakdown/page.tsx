@@ -30,6 +30,7 @@ type ScoutingEntry = {
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
   teamNumber?: string;
   scoutName?: string;
   leftStartingZone?: boolean;
@@ -176,7 +177,9 @@ function MatchBreakdownContent() {
     const gameFiltered = entries.filter((entry) =>
       entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
     );
-    return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)));
+    return gameFiltered
+      .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
+      .filter((entry) => !entry.excludeFromStats);
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
 
   const dedupedEntries = useMemo(

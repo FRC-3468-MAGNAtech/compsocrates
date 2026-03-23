@@ -481,9 +481,11 @@ function AdminPanelContent() {
     return formEntriesRaw
       .filter((row) => {
         const entry = row.data;
+        const normalizedGame =
+          String(entry.game || formGame).toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
         const normalizedEntry = {
           ...entry,
-          game: (entry.game || formGame) as AnalyticsGame,
+          game: normalizedGame as AnalyticsGame,
           submittedAt: entry.submittedAt || entry.timestamp || entry.createdAt || 0,
           timestamp: entry.timestamp || entry.submittedAt || entry.createdAt || 0,
         } as Record<string, unknown>;

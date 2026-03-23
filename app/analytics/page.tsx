@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -74,6 +74,7 @@ type Entry = {
   notes: string;
   timestamp: number;
   estimatedScore?: number;
+  excludeFromStats?: boolean;
   auto?: {
     preloadScale?: number;
     bpsScale?: number;
@@ -742,6 +743,7 @@ function AnalyticsPageContent() {
   const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [flagSavingKey, setFlagSavingKey] = useState("");
   const [flagMenuEntry, setFlagMenuEntry] = useState<Entry | null>(null);
+  const [excludeSavingId, setExcludeSavingId] = useState("");
   const [manualFlagReason, setManualFlagReason] = useState<string>(MANUAL_FLAG_REASONS[0].value);
   const deleteGuardRef = useRef<string | null>(null);
 
@@ -1254,6 +1256,28 @@ function AnalyticsPageContent() {
       manualFlaggedBy: userData?.uid || "",
       manualReason: manualFlagged ? reason ?? manualFlagReason : undefined,
     });
+  }
+
+  async function setScoutingEntryExcluded(entryId: string, excluded: boolean) {
+    if (!canManageFlags) return;
+    setExcludeSavingId(entryId);
+    try {
+      await updateDoc(doc(db, "scouting", entryId), {
+        excludeFromStats: excluded,
+        excludedAt: excluded ? Date.now() : null,
+        excludedBy: excluded ? userData?.uid || "" : null,
+      });
+      setRawData((prev) =>
+        prev.map((entry) =>
+          entry.id === entryId ? { ...entry, excludeFromStats: excluded } : entry
+        )
+      );
+    } catch (error) {
+      console.error("Failed to update exclude-from-stats state:", error);
+      alert("Unable to update stats exclusion for this entry.");
+    } finally {
+      setExcludeSavingId("");
+    }
   }
 
   async function loadAccuracyDetails(entry: Entry) {
@@ -2181,8 +2205,9 @@ function AnalyticsPageContent() {
                 const isManualFlagged = Boolean(flagState?.manualFlagged);
                 const autoFlags = isFlagDismissed ? [] : entryFlags;
                 const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
+                const isExcluded = Boolean(entry.excludeFromStats);
                 return (
-                <tr key={entry.id}>
+                <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                   <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
                   <td className="text-center">{displayEntryText(entry.scoutName)}</td>
@@ -2419,8 +2444,9 @@ function AnalyticsPageContent() {
               const isManualFlagged = Boolean(flagState?.manualFlagged);
               const autoFlags = isFlagDismissed ? [] : entryFlags;
               const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
+              const isExcluded = Boolean(entry.excludeFromStats);
               return (
-              <tr key={entry.id}>
+              <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                 <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
                 <td className="text-center">{displayEntryText(entry.scoutName)}</td>
@@ -2566,6 +2592,7 @@ function AnalyticsPageContent() {
               const entryFlags = evaluateScoutingFlags(flagMenuEntry as unknown as Record<string, unknown>);
               const isDismissed = Boolean(flagState?.dismissed);
               const isManualFlagged = Boolean(flagState?.manualFlagged);
+              const isExcluded = Boolean(flagMenuEntry.excludeFromStats);
               const manualReasonValue = flagState?.manualReason || manualFlagReason;
               const reasonLabel =
                 MANUAL_FLAG_REASONS.find((reason) => reason.value === manualReasonValue)?.label ||
@@ -2648,6 +2675,25 @@ function AnalyticsPageContent() {
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="font-semibold">Stats Exclusion</div>
+                    <p className="text-sm text-gray-600">
+                      Excluded entries stay visible here but will be ignored by stats and averages.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void setScoutingEntryExcluded(flagMenuEntry.id, !isExcluded)}
+                      disabled={excludeSavingId === flagMenuEntry.id}
+                      className={`px-3 py-1 rounded border text-sm disabled:opacity-50 ${
+                        isExcluded
+                          ? "border-green-300 bg-green-50 text-green-900"
+                          : "border-gray-300 bg-gray-50 text-gray-800"
+                      }`}
+                    >
+                      {isExcluded ? "Include In Stats" : "Exclude From Stats"}
+                    </button>
                   </div>
 
                   <div>

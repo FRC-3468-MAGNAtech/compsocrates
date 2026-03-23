@@ -59,6 +59,7 @@ type ScoutingEntry = {
   endgame?: {
     status?: string;
   };
+  excludeFromStats?: boolean;
   matchId?: string;
   matchNumber?: string | number;
   startingPosition?: string;
@@ -467,15 +468,20 @@ function TeamBreakdownDetailContent() {
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
   }, [teamScoutingAllForStats, selectedGame, selectedEvent, practiceMatchesOnly, eventOptions]);
 
+  const teamScoutingFilteredForStats = useMemo(
+    () => teamScoutingFiltered.filter((entry) => !entry.excludeFromStats),
+    [teamScoutingFiltered]
+  );
+
   const teamScoutingDeduped = useMemo(
     () =>
-      dedupeEntriesByMatchTeam(teamScoutingFiltered, {
+      dedupeEntriesByMatchTeam(teamScoutingFilteredForStats, {
         game: selectedGame,
         eventOptions,
         selectedEvent,
         preferLatest: true,
       }),
-    [teamScoutingFiltered, selectedGame, eventOptions, selectedEvent]
+    [teamScoutingFilteredForStats, selectedGame, eventOptions, selectedEvent]
   );
 
   const teamPitFiltered = useMemo(() => {

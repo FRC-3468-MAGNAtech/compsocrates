@@ -44,6 +44,7 @@ type ScoutStatusEntry = {
   isPracticeScouting?: boolean;
   practiceMode?: string;
   practiceSessionId?: string;
+  excludeFromStats?: boolean;
 };
 
 type ScoutStatusFormType =
@@ -389,7 +390,8 @@ function ScoutStatusContent() {
     const includeLead = selectedFormType === "lead-scout";
     return entries
       .filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventFilterOptions, { includeLead }))
-      .filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
+      .filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)))
+      .filter((entry) => !entry.excludeFromStats);
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, selectedFormType]);
 
   const categoryRangesParsed = useMemo(
