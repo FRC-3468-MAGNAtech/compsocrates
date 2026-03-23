@@ -1010,10 +1010,12 @@ function ScoutFormContent() {
   useEffect(() => {
     if (!editId) return;
     let isActive = true;
-    const collectionName = editCollectionParam || (searchParams.get("lead") === "1" ? "leadScouting" : "scouting");
+    const editIdValue = editId;
+    const collectionName: string =
+      editCollectionParam || (searchParams.get("lead") === "1" ? "leadScouting" : "scouting");
     async function loadEditEntry() {
       try {
-        const snap = await getDoc(doc(db, collectionName, editId));
+        const snap = await getDoc(doc(db, collectionName, editIdValue));
         if (!snap.exists()) return;
         const data = snap.data() as Record<string, unknown>;
         if (!isActive) return;
