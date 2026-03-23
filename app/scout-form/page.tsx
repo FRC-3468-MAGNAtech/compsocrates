@@ -1024,13 +1024,16 @@ function ScoutFormContent() {
         setEditEventKey(entryEventKey || null);
         const matchId = normalizeScoutedMatchId(data.matchId || data.matchKey || data.matchLabel || "");
         setEditMatchId(matchId);
-        if (searchParams.get("lead") === "1") {
-          const robots = Array.isArray(data.robots) ? data.robots : [];
-          const overall = (data.overallAlliance || {}) as Record<string, unknown>;
-          setLeadForm((prev) => ({
-            ...prev,
-            scoutName: String(data.scoutName || prev.scoutName || ""),
-            alliance: String(data.alliance || ""),
+          if (searchParams.get("lead") === "1") {
+            const robots = Array.isArray(data.robots) ? data.robots : [];
+            const overall = (data.overallAlliance || {}) as Record<string, unknown>;
+            const rawAlliance = String(data.alliance || "");
+            const normalizedAlliance: LeadFormState["alliance"] =
+              rawAlliance === "red" || rawAlliance === "blue" ? rawAlliance : "";
+            setLeadForm((prev) => ({
+              ...prev,
+              scoutName: String(data.scoutName || prev.scoutName || ""),
+              alliance: normalizedAlliance,
             robot1TeamNumber: String((robots[0] as { teamNumber?: string } | undefined)?.teamNumber || ""),
             robot1Notes: String((robots[0] as { notes?: string } | undefined)?.notes || ""),
             robot1SkillLevel: Number((robots[0] as { skillLevel?: number } | undefined)?.skillLevel || 1),
