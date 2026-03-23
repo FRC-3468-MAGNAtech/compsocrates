@@ -242,10 +242,11 @@ function DriveReflectionFormContent() {
   useEffect(() => {
     if (!editId) return;
     let isActive = true;
-    const collectionName = editCollectionParam || "driveScouting";
+    const editIdValue = editId;
+    const collectionName: string = editCollectionParam || "driveScouting";
     async function loadEditEntry() {
       try {
-        const snap = await getDoc(doc(db, collectionName, editId));
+        const snap = await getDoc(doc(db, collectionName, editIdValue));
         if (!snap.exists()) return;
         const data = snap.data() as Record<string, unknown>;
         if (!isActive) return;
