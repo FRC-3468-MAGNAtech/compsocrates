@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
+import { getUserRoles } from "@/app/utils/roles";
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
@@ -142,13 +143,17 @@ function getMatchCategoryFromRow(match: MatchRow): MatchCategory {
 
 function getEntryCategory(entry: ScoutStatusEntry): MatchCategory {
   const matchType = String(entry.matchType || "").toLowerCase();
-  const label = String(entry.matchLabel || entry.matchId || "").toLowerCase();
+  const label = String(entry.matchLabel || entry.matchId || entry.matchKey || "").toLowerCase();
+  const matchId = String(entry.matchId || entry.matchKey || "").toLowerCase();
+  if (matchId.startsWith("sf") || matchId.startsWith("qf") || matchId.startsWith("ef")) return "semifinals";
+  if (matchId.startsWith("f")) return "finals";
   if (matchType.startsWith("p") || label.includes("practice")) return "practice";
   if (matchType.startsWith("f") || label.includes("final")) return "finals";
   if (matchType.startsWith("q") || label.includes("qual")) return "qualification";
   if (
     matchType.includes("playoff") ||
     matchType.includes("semi") ||
+    matchType.includes("quarter") ||
     label.includes("semi") ||
     label.includes("quarter") ||
     label.includes("octo") ||
@@ -163,6 +168,15 @@ function getEntryCategory(entry: ScoutStatusEntry): MatchCategory {
 }
 
 function getEntryMatchNumber(entry: ScoutStatusEntry): number | null {
+  const matchId = String(entry.matchId || entry.matchKey || "").trim().toLowerCase();
+  const playoff = matchId.match(/^(sf|qf|ef|f)(\d+)(?:m(\d+))?/);
+  if (playoff) {
+    const prefix = playoff[1];
+    const setNumber = Number(playoff[2] || 0);
+    if (!Number.isFinite(setNumber) || setNumber <= 0) return null;
+    if (prefix === "f") return setNumber;
+    return setNumber;
+  }
   const raw = String(entry.matchNumber || "").replace(/[^\d]/g, "");
   if (raw) {
     const num = Number(raw);
@@ -267,6 +281,13 @@ function ScoutStatusContent() {
     semifinals: "",
     finals: "",
   });
+  const [maxMatchesByCategory, setMaxMatchesByCategory] = useState<Record<MatchCategory, string>>({
+    practice: "",
+    qualification: "",
+    semifinals: "",
+    finals: "",
+  });
+  const [maxMatchesSaving, setMaxMatchesSaving] = useState(false);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [matches, setMatches] = useState<MatchRow[]>([]);
@@ -274,6 +295,11 @@ function ScoutStatusContent() {
   const [teamLoadNote, setTeamLoadNote] = useState("");
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [tbaKeys, setTbaKeys] = useState({ encrypted: "", plain: "" });
+  const canManageMaxMatches = useMemo(() => {
+    if (userData?.isTeamAdmin) return true;
+    const roles = getUserRoles(userData);
+    return roles.includes("team-coach") || roles.includes("lead-scout") || roles.includes("lead-strategist");
+  }, [userData]);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -364,6 +390,50 @@ function ScoutStatusContent() {
     }
     void loadEntries();
   }, [selectedFormType]);
+
+  useEffect(() => {
+    async function loadMaxMatches() {
+      if (!userData?.teamId) return;
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (!teamDoc.exists()) return;
+        const data = teamDoc.data() as Record<string, unknown>;
+        const stored = (data.scoutStatusMaxMatches || {}) as Record<string, unknown>;
+        setMaxMatchesByCategory({
+          practice: stored.practice ? String(stored.practice) : "",
+          qualification: stored.qualification ? String(stored.qualification) : "",
+          semifinals: stored.semifinals ? String(stored.semifinals) : "",
+          finals: stored.finals ? String(stored.finals) : "",
+        });
+      } catch (error) {
+        console.warn("Failed to load max match targets:", error);
+      }
+    }
+    void loadMaxMatches();
+  }, [userData?.teamId]);
+
+  async function handleSaveMaxMatches() {
+    if (!userData?.teamId) return;
+    setMaxMatchesSaving(true);
+    const parseValue = (value: string) => {
+      const num = Number(String(value || "").replace(/[^\d]/g, ""));
+      return Number.isFinite(num) && num > 0 ? num : null;
+    };
+    const payload = {
+      practice: parseValue(maxMatchesByCategory.practice),
+      qualification: parseValue(maxMatchesByCategory.qualification),
+      semifinals: parseValue(maxMatchesByCategory.semifinals),
+      finals: parseValue(maxMatchesByCategory.finals),
+    };
+    try {
+      await updateDoc(doc(db, "teams", userData.teamId), { scoutStatusMaxMatches: payload });
+    } catch (error) {
+      console.error("Failed to save max match targets:", error);
+      alert("Could not save max match targets.");
+    } finally {
+      setMaxMatchesSaving(false);
+    }
+  }
 
   useEffect(() => {
     async function loadKeys() {
@@ -813,6 +883,42 @@ function ScoutStatusContent() {
                   </label>
                 ))}
               </div>
+              {(canManageMaxMatches || Object.values(maxMatchesByCategory).some((value) => String(value || "").trim())) && (
+                <div className="mt-4 border-t border-gray-200 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 className="text-sm font-semibold text-gray-800">Max Matches Target (by Category)</h3>
+                    {canManageMaxMatches && (
+                      <button
+                        type="button"
+                        onClick={handleSaveMaxMatches}
+                        disabled={maxMatchesSaving}
+                        className="px-3 py-1.5 rounded text-sm text-white"
+                        style={{ backgroundColor: "var(--primary-color)", opacity: maxMatchesSaving ? 0.7 : 1 }}
+                      >
+                        {maxMatchesSaving ? "Saving..." : "Save Targets"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {CATEGORY_OPTIONS.map((option) => (
+                      <label key={`max-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
+                        <span>{option.short} Max</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={maxMatchesByCategory[option.id]}
+                          onChange={(event) =>
+                            setMaxMatchesByCategory((prev) => ({ ...prev, [option.id]: event.target.value }))
+                          }
+                          placeholder="e.g. 50"
+                          disabled={!canManageMaxMatches}
+                          className="border rounded px-3 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">

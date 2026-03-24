@@ -238,7 +238,7 @@ function matchLabel(entry: Entry) {
     const setNumber = Number(matchIdMatch[2] || 0);
     const matchNumber = Number(matchIdMatch[3] || 0);
     if (prefix === "QF" || prefix === "SF") {
-      return `${prefix}${setNumber || "-"}M${matchNumber || "-"}`;
+      return `${prefix}${setNumber || "-"}`;
     }
     if (prefix === "F") {
       return remapLegacyFinalLabel(`F${matchNumber || setNumber || "-"}`);
@@ -497,8 +497,8 @@ function tbaMatchLabel(row: TbaMatchRow): string {
   const matchNumber = Number(row.match_number || 0);
   if (level === "f") return `F${matchNumber || "-"}`;
   if (level === "qm") return `Q${matchNumber || "-"}`;
-  if (level === "sf") return `SF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
-  if (level === "qf") return `QF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
+  if (level === "sf") return `SF${Number(row.set_number || 0) || "-"}`;
+  if (level === "qf") return `QF${Number(row.set_number || 0) || "-"}`;
   return `M${matchNumber || "-"}`;
 }
 

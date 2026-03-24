@@ -113,6 +113,15 @@ export function classifyRebuiltEventByTimestampWithOptions(
 export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" | "qualification" | "finals"; matchNumber: string; matchId: string } {
   const value = (rawMatch || "").trim().toLowerCase();
   const compact = value.replace(/[^a-z0-9]/g, "");
+  const semiMatch =
+    value.match(/\b(?:sf|semifinal|semi-final)\s*#?\s*(\d+)(?:\s*[-m]\s*(\d+))?/i) ||
+    compact.match(/^(sf)(\d+)(?:m(\d+))?/i);
+  const quarterMatch =
+    value.match(/\b(?:qf|quarterfinal|quarter-final|ef|octofinal|octo-final)\s*#?\s*(\d+)(?:\s*[-m]\s*(\d+))?/i) ||
+    compact.match(/^(qf|ef)(\d+)(?:m(\d+))?/i);
+  const finalMatch =
+    value.match(/\b(?:finals?|f)\s*#?\s*(\d+)(?:\s*[-m]\s*(\d+))?/i) ||
+    compact.match(/^(f)(\d+)(?:m(\d+))?/i);
   const explicitMatchNumber =
     value.match(/\b(?:match|mtch|matc?h|march|marltch)\s*#?\s*(\d+)\b/)?.[1] ||
     value.match(/\bm\s*#?\s*(\d+)\b/)?.[1];
@@ -131,6 +140,29 @@ export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" |
     /pract|prct|pratc|prac|warmup|test/i.test(compact) ||
     /^p[\s#-]*\d+/i.test(value) ||
     /^p\d+/i.test(compact);
+  if (semiMatch) {
+    const isCompact = semiMatch[1] === "sf";
+    const setNumber = (isCompact ? semiMatch[2] : semiMatch[1]) || "1";
+    const matchNumber = (isCompact ? semiMatch[3] : semiMatch[2]) || "1";
+    return { matchType: "finals", matchNumber: setNumber, matchId: `sf${setNumber}m${matchNumber}` };
+  }
+
+  if (quarterMatch) {
+    const prefix = String(quarterMatch[1] || "qf").toLowerCase();
+    const isCompact = prefix === "qf" || prefix === "ef";
+    const setNumber = (isCompact ? quarterMatch[2] : quarterMatch[1]) || "1";
+    const matchNumber = (isCompact ? quarterMatch[3] : quarterMatch[2]) || "1";
+    return { matchType: "finals", matchNumber: setNumber, matchId: `${prefix}${setNumber}m${matchNumber}` };
+  }
+
+  if (finalMatch) {
+    const isCompact = finalMatch[1] === "f";
+    const setNumber = (isCompact ? finalMatch[2] : finalMatch[1]) || "1";
+    const matchNumber = (isCompact ? finalMatch[3] : finalMatch[2]) || "";
+    const matchId = matchNumber ? `f${setNumber}m${matchNumber}` : `f${setNumber}`;
+    return { matchType: "finals", matchNumber: setNumber, matchId };
+  }
+
   const isFinalsLabel =
     value.startsWith("f") ||
     value.includes("final") ||
