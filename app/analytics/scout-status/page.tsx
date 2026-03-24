@@ -18,6 +18,7 @@ import {
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
+import { mapTbaMatchToModalId } from "@/app/utils/reefscapeMatchSync";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 
 type ScoutStatusEntry = {
@@ -66,6 +67,7 @@ type MatchRow = {
   level: "practice" | "qualification" | "playoff" | "finals";
   setNumber: number;
   matchNumber: number;
+  coverageId?: string;
 };
 
 type AllianceMatchRow = MatchRow & {
@@ -99,20 +101,30 @@ function entryTime(entry: ScoutStatusEntry): number {
 
 function entryMatchKey(entry: ScoutStatusEntry): string {
   const rawMatchId = String(entry.matchId || entry.matchKey || "").trim().toLowerCase();
-  if (rawMatchId) return rawMatchId;
+  if (rawMatchId) return simplifyPlayoffId(rawMatchId);
   const label = String(entry.matchLabel || "").trim();
   if (label) {
     const parsed = normalizeMatchLabel(label);
-    return parsed.matchId || `${parsed.matchType}-${parsed.matchNumber}`;
+    const matchId = parsed.matchId || `${parsed.matchType}-${parsed.matchNumber}`;
+    return simplifyPlayoffId(matchId);
   }
   const matchType = String(entry.matchType || "").trim().toLowerCase();
   const matchNumber = String(entry.matchNumber || "").replace(/[^\d]/g, "");
   if (matchType && matchNumber) {
     const prefix = matchType.startsWith("p") ? "p" : matchType.startsWith("f") ? "f" : "q";
-    return `${prefix}${matchNumber}`;
+    return simplifyPlayoffId(`${prefix}${matchNumber}`);
   }
-  if (matchNumber) return `q${matchNumber}`;
+  if (matchNumber) return simplifyPlayoffId(`q${matchNumber}`);
   return "";
+}
+
+function simplifyPlayoffId(matchId: string): string {
+  const raw = String(matchId || "").trim().toLowerCase();
+  const playoff = raw.match(/^(sf|qf|ef)(\d+)(?:m\d+)?$/);
+  if (playoff) return `${playoff[1]}${playoff[2]}`;
+  const finals = raw.match(/^f(\d+)(?:m\d+)?$/);
+  if (finals) return `f${finals[1]}`;
+  return raw;
 }
 
 function matchLabel(match: TBAMatch) {
@@ -288,6 +300,8 @@ function ScoutStatusContent() {
     finals: "",
   });
   const [maxMatchesSaving, setMaxMatchesSaving] = useState(false);
+  const [maxMatchesEditing, setMaxMatchesEditing] = useState(false);
+  const [maxMatchesSnapshot, setMaxMatchesSnapshot] = useState<Record<MatchCategory, string> | null>(null);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [matches, setMatches] = useState<MatchRow[]>([]);
@@ -300,6 +314,10 @@ function ScoutStatusContent() {
     const roles = getUserRoles(userData);
     return roles.includes("team-coach") || roles.includes("lead-scout") || roles.includes("lead-strategist");
   }, [userData]);
+  const hasMaxTargets = useMemo(
+    () => Object.values(maxMatchesByCategory).some((value) => String(value || "").trim()),
+    [maxMatchesByCategory]
+  );
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -427,12 +445,28 @@ function ScoutStatusContent() {
     };
     try {
       await updateDoc(doc(db, "teams", userData.teamId), { scoutStatusMaxMatches: payload });
+      setMaxMatchesEditing(false);
+      setMaxMatchesSnapshot(null);
     } catch (error) {
       console.error("Failed to save max match targets:", error);
       alert("Could not save max match targets.");
     } finally {
       setMaxMatchesSaving(false);
     }
+  }
+
+  function handleStartEditMaxMatches() {
+    if (!canManageMaxMatches) return;
+    setMaxMatchesSnapshot(maxMatchesByCategory);
+    setMaxMatchesEditing(true);
+  }
+
+  function handleCancelEditMaxMatches() {
+    if (maxMatchesSnapshot) {
+      setMaxMatchesByCategory(maxMatchesSnapshot);
+    }
+    setMaxMatchesEditing(false);
+    setMaxMatchesSnapshot(null);
   }
 
   useEffect(() => {
@@ -595,6 +629,7 @@ function ScoutStatusContent() {
                 : match.comp_level === "f"
                 ? "finals"
                 : "playoff";
+            const coverageId = mapTbaMatchToModalId(match);
             return {
               key: match.key,
               label: matchLabel(match),
@@ -604,6 +639,7 @@ function ScoutStatusContent() {
               level,
               setNumber: match.set_number,
               matchNumber: match.match_number,
+              coverageId,
             } as MatchRow;
           });
         const firstSchedule = await fetchFirstSchedule(selectedEvent, "Practice");
@@ -620,6 +656,7 @@ function ScoutStatusContent() {
               level: "practice" as const,
               setNumber: 1,
               matchNumber: match.matchNumber,
+              coverageId: `p${match.matchNumber}`,
             };
           })
           .filter((row) => row.red.length >= 3 && row.blue.length >= 3)
@@ -883,42 +920,6 @@ function ScoutStatusContent() {
                   </label>
                 ))}
               </div>
-              {(canManageMaxMatches || Object.values(maxMatchesByCategory).some((value) => String(value || "").trim())) && (
-                <div className="mt-4 border-t border-gray-200 pt-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <h3 className="text-sm font-semibold text-gray-800">Max Matches Target (by Category)</h3>
-                    {canManageMaxMatches && (
-                      <button
-                        type="button"
-                        onClick={handleSaveMaxMatches}
-                        disabled={maxMatchesSaving}
-                        className="px-3 py-1.5 rounded text-sm text-white"
-                        style={{ backgroundColor: "var(--primary-color)", opacity: maxMatchesSaving ? 0.7 : 1 }}
-                      >
-                        {maxMatchesSaving ? "Saving..." : "Save Targets"}
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {CATEGORY_OPTIONS.map((option) => (
-                      <label key={`max-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
-                        <span>{option.short} Max</span>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={maxMatchesByCategory[option.id]}
-                          onChange={(event) =>
-                            setMaxMatchesByCategory((prev) => ({ ...prev, [option.id]: event.target.value }))
-                          }
-                          placeholder="e.g. 50"
-                          disabled={!canManageMaxMatches}
-                          className="border rounded px-3 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-500"
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
@@ -926,6 +927,72 @@ function ScoutStatusContent() {
               <p className="text-sm text-gray-600">
                 Match-category filters are only applied for match-based forms.
               </p>
+            </div>
+          )}
+
+          {(canManageMaxMatches || hasMaxTargets) && (
+            <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h2 className="text-lg font-semibold">Max Match Targets</h2>
+                {canManageMaxMatches && !maxMatchesEditing && (
+                  <button
+                    type="button"
+                    onClick={handleStartEditMaxMatches}
+                    className="px-3 py-1.5 rounded text-sm text-white"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Edit
+                  </button>
+                )}
+                {canManageMaxMatches && maxMatchesEditing && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveMaxMatches}
+                      disabled={maxMatchesSaving}
+                      className="px-3 py-1.5 rounded text-sm text-white"
+                      style={{ backgroundColor: "var(--primary-color)", opacity: maxMatchesSaving ? 0.7 : 1 }}
+                    >
+                      {maxMatchesSaving ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelEditMaxMatches}
+                      className="px-3 py-1.5 rounded text-sm border border-gray-300 text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+              {maxMatchesEditing ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <label key={`max-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
+                      <span>{option.label}</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={maxMatchesByCategory[option.id]}
+                        onChange={(event) =>
+                          setMaxMatchesByCategory((prev) => ({ ...prev, [option.id]: event.target.value }))
+                        }
+                        placeholder="e.g. 50"
+                        className="border rounded px-3 py-1.5 text-sm"
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-gray-700">
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <div key={`max-display-${option.id}`} className="flex items-center justify-between border rounded px-3 py-2">
+                      <span className="font-medium">{option.label}</span>
+                      <span>{String(maxMatchesByCategory[option.id] || "-")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -994,7 +1061,9 @@ function ScoutStatusContent() {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {visibleMatches.map((match) => {
-                      const matchKey = normalizeMatchLabel(match.label).matchId || `${match.level}-${match.matchNumber}`;
+                      const matchKey = simplifyPlayoffId(
+                        match.coverageId || normalizeMatchLabel(match.label).matchId || `${match.level}-${match.matchNumber}`
+                      );
                       const timeLabel = match.time
                         ? new Date(match.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
                         : "TBD";
@@ -1062,7 +1131,9 @@ function ScoutStatusContent() {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {allianceMatches.map((match) => {
-                      const matchKey = normalizeMatchLabel(match.label).matchId || `${match.level}-${match.matchNumber}`;
+                      const matchKey = simplifyPlayoffId(
+                        match.coverageId || normalizeMatchLabel(match.label).matchId || `${match.level}-${match.matchNumber}`
+                      );
                       const timeLabel = match.time
                         ? new Date(match.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
                         : "TBD";
