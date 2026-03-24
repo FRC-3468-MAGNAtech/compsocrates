@@ -2275,7 +2275,7 @@ function AnalyticsPageContent() {
                             disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
                             className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                           >
-                            {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                            {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                           </button>
                         </div>
                       )}
@@ -2511,7 +2511,7 @@ function AnalyticsPageContent() {
                           disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
                           className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                         >
-                          {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                          {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                         </button>
                       </div>
                     )}
@@ -2602,7 +2602,7 @@ function AnalyticsPageContent() {
               return (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-xl font-semibold">Flags</h2>
+                    <h2 className="text-xl font-semibold">Config</h2>
                     <p className="text-sm text-gray-600">
                       Match {matchLabel(flagMenuEntry)} • Team {displayEntryText(flagMenuEntry.teamNumber)}
                     </p>

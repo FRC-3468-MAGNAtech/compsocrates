@@ -1,4 +1,4 @@
-import { APP_EVENTS } from "@/app/utils/events";
+import { APP_EVENT_BY_KEY, APP_EVENTS, normalizeEventKey } from "@/app/utils/events";
 
 export type AnalyticsGame = "REEFSCAPE" | "REBUILT";
 
@@ -47,9 +47,11 @@ export function getEventOptionsForEntries(
   }
 
   const base = getEventsForGame(game);
-  const byId = new Map<string, AnalyticsEventOption>(base.map((event) => [event.id, event]));
+  const byId = new Map<string, AnalyticsEventOption>(
+    base.map((event) => [normalizeEventKey(event.id), { ...event, id: normalizeEventKey(event.id) }])
+  );
   extraEvents.forEach((event) => {
-    const id = String(event.id || "").trim();
+    const id = normalizeEventKey(String(event.id || "").trim());
     if (!id || byId.has(id)) return;
     byId.set(id, { ...event, id });
   });
@@ -57,13 +59,16 @@ export function getEventOptionsForEntries(
   entries.forEach((entry) => {
     const entryGame = (entry.game || "REEFSCAPE") as AnalyticsGame;
     if (entryGame !== game) return;
-    const key = String(entry.eventKey || "").trim();
+    const key = normalizeEventKey(String(entry.eventKey || "").trim());
     if (!key) return;
     if (byId.has(key)) return;
+    const known = APP_EVENT_BY_KEY[key];
     byId.set(key, {
       id: key,
       key,
-      name: String(entry.eventName || key),
+      name: known?.name || String(entry.eventName || key),
+      startDate: known?.startDate,
+      endDate: known?.endDate,
     });
   });
 
@@ -232,6 +237,7 @@ export function entryMatchesAnalyticsFilters(
   const eventKey =
     entry.eventKey ||
     classifyRebuiltEventByTimestampWithOptions(entry.submittedAt || entry.timestamp || 0, eventOptions);
-  if (eventId === "app-testing") return eventKey === "app-testing";
-  return eventKey === eventId;
+  const normalizedEventKey = normalizeEventKey(String(eventKey || ""));
+  if (eventId === "app-testing") return normalizedEventKey === "app-testing";
+  return normalizedEventKey === normalizeEventKey(eventId);
 }

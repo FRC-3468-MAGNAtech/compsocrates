@@ -7,9 +7,16 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import {
+  entryMatchesAnalyticsFilters,
+  getEventOptionsForEntries,
+  isPracticeScoutedEntry,
+  type AnalyticsEventOption,
+  type AnalyticsGame,
+} from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 import { getFirstEventCodeFromTbaKey } from "@/app/utils/firstSchedule";
+import { getTeamEventOptions } from "@/app/utils/eventDetection";
 
 type TeamPick = {
   teamNumber: string;
@@ -100,8 +107,43 @@ function PickListContent() {
   const [officialEpa, setOfficialEpa] = useState<Map<string, number | null>>(new Map());
   const [officialLoading, setOfficialLoading] = useState(false);
   const [epaLoading, setEpaLoading] = useState(false);
+  const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
   const statboticsCache = useRef(new Map<string, number | null>());
-  const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDetectedEvents() {
+      if (!userData?.teamId) {
+        if (!cancelled) setDetectedEventOptions([]);
+        return;
+      }
+      try {
+        const teamEvents = await getTeamEventOptions(userData.teamId);
+        if (cancelled) return;
+        setDetectedEventOptions(
+          teamEvents.map((event) => ({
+            id: event.key,
+            key: event.key,
+            name: event.name,
+            startDate: event.startDate,
+            endDate: event.endDate,
+          }))
+        );
+      } catch (error) {
+        console.warn("Failed to load team event options for pick list:", error);
+        if (!cancelled) setDetectedEventOptions([]);
+      }
+    }
+    void loadDetectedEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.teamId]);
+
+  const eventOptions = useMemo(
+    () => getEventOptionsForEntries(entries, selectedGame, selectedGame === "REBUILT" ? detectedEventOptions : []),
+    [entries, selectedGame, detectedEventOptions]
+  );
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");

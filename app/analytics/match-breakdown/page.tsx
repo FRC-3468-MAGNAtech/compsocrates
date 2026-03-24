@@ -12,9 +12,12 @@ import {
   getEventOptionsForEntries,
   isPracticeScoutedEntry,
   normalizeMatchLabel,
+  type AnalyticsEventOption,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
+import { useAuth } from "@/app/AuthContext";
+import { getTeamEventOptions } from "@/app/utils/eventDetection";
 
 type ScoutingEntry = {
   id?: string;
@@ -136,12 +139,14 @@ function inferAlliance(entry: ScoutingEntry): "red" | "blue" | null {
 }
 
 function MatchBreakdownContent() {
+  const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -171,7 +176,40 @@ function MatchBreakdownContent() {
     void loadEntries();
   }, []);
 
-  const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDetectedEvents() {
+      if (!userData?.teamId) {
+        if (!cancelled) setDetectedEventOptions([]);
+        return;
+      }
+      try {
+        const teamEvents = await getTeamEventOptions(userData.teamId);
+        if (cancelled) return;
+        setDetectedEventOptions(
+          teamEvents.map((event) => ({
+            id: event.key,
+            key: event.key,
+            name: event.name,
+            startDate: event.startDate,
+            endDate: event.endDate,
+          }))
+        );
+      } catch (error) {
+        console.warn("Failed to load team event options for match breakdown:", error);
+        if (!cancelled) setDetectedEventOptions([]);
+      }
+    }
+    void loadDetectedEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.teamId]);
+
+  const eventOptions = useMemo(
+    () => getEventOptionsForEntries(entries, selectedGame, selectedGame === "REBUILT" ? detectedEventOptions : []),
+    [entries, selectedGame, detectedEventOptions]
+  );
 
   const filteredEntries = useMemo(() => {
     const gameFiltered = entries.filter((entry) =>
