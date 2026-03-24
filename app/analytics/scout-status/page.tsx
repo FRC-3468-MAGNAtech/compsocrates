@@ -100,31 +100,61 @@ function entryTime(entry: ScoutStatusEntry): number {
 }
 
 function entryMatchKey(entry: ScoutStatusEntry): string {
-  const rawMatchId = String(entry.matchId || entry.matchKey || "").trim().toLowerCase();
-  if (rawMatchId) return simplifyPlayoffId(rawMatchId);
+  const rawMatchId = String(entry.matchId || entry.matchKey || "").trim();
+  if (rawMatchId) {
+    const parsed = normalizeMatchLabel(rawMatchId);
+    const matchId = parsed.matchId || rawMatchId;
+    return simplifyPlayoffId(matchId);
+  }
   const label = String(entry.matchLabel || "").trim();
   if (label) {
     const parsed = normalizeMatchLabel(label);
     const matchId = parsed.matchId || `${parsed.matchType}-${parsed.matchNumber}`;
     return simplifyPlayoffId(matchId);
   }
-  const matchType = String(entry.matchType || "").trim().toLowerCase();
-  const matchNumber = String(entry.matchNumber || "").replace(/[^\d]/g, "");
-  if (matchType && matchNumber) {
-    const prefix = matchType.startsWith("p") ? "p" : matchType.startsWith("f") ? "f" : "q";
-    return simplifyPlayoffId(`${prefix}${matchNumber}`);
+  const rawMatchType = String(entry.matchType || "").trim();
+  const rawMatchNumber = String(entry.matchNumber || "").trim();
+  if (rawMatchType || rawMatchNumber) {
+    const parsed = normalizeMatchLabel(`${rawMatchType} ${rawMatchNumber}`.trim());
+    const matchId = parsed.matchId || `${parsed.matchType}-${parsed.matchNumber}`;
+    return simplifyPlayoffId(matchId);
   }
+  const matchNumber = rawMatchNumber.replace(/[^\d]/g, "");
   if (matchNumber) return simplifyPlayoffId(`q${matchNumber}`);
   return "";
 }
 
 function simplifyPlayoffId(matchId: string): string {
   const raw = String(matchId || "").trim().toLowerCase();
+  if (!raw) return "";
+  const prefixMatch =
+    raw.match(/\b(sf|qf|ef|f)\b/) ||
+    (raw.startsWith("sf") ? ["", "sf"] : null) ||
+    (raw.startsWith("qf") ? ["", "qf"] : null) ||
+    (raw.startsWith("ef") ? ["", "ef"] : null) ||
+    (raw.startsWith("f") ? ["", "f"] : null);
+  if (prefixMatch) {
+    const prefix = prefixMatch[1];
+    const numbers = raw.match(/\d+/g);
+    if (numbers && numbers.length > 0) return `${prefix}${numbers[0]}`;
+  }
   const playoff = raw.match(/^(sf|qf|ef)(\d+)(?:m\d+)?$/);
   if (playoff) return `${playoff[1]}${playoff[2]}`;
   const finals = raw.match(/^f(\d+)(?:m\d+)?$/);
   if (finals) return `f${finals[1]}`;
-  return raw;
+  return raw.replace(/\s+/g, "");
+}
+
+function getCoverageKeysForMatch(match: MatchRow): string[] {
+  const keys = new Set<string>();
+  const fromCoverage = simplifyPlayoffId(match.coverageId || "");
+  if (fromCoverage) keys.add(fromCoverage);
+  const parsed = normalizeMatchLabel(match.label);
+  const fromLabel = simplifyPlayoffId(parsed.matchId || `${parsed.matchType}-${parsed.matchNumber}`);
+  if (fromLabel) keys.add(fromLabel);
+  const fallback = simplifyPlayoffId(`${match.level}-${match.matchNumber}`);
+  if (fallback) keys.add(fallback);
+  return Array.from(keys);
 }
 
 function matchLabel(match: TBAMatch) {
@@ -188,6 +218,11 @@ function getEntryMatchNumber(entry: ScoutStatusEntry): number | null {
     if (!Number.isFinite(setNumber) || setNumber <= 0) return null;
     if (prefix === "f") return setNumber;
     return setNumber;
+  }
+  if (matchId) {
+    const parsed = normalizeMatchLabel(matchId);
+    const parsedNumber = Number(parsed.matchNumber || 0);
+    if (Number.isFinite(parsedNumber) && parsedNumber > 0) return parsedNumber;
   }
   const raw = String(entry.matchNumber || "").replace(/[^\d]/g, "");
   if (raw) {
@@ -293,15 +328,10 @@ function ScoutStatusContent() {
     semifinals: "",
     finals: "",
   });
-  const [maxMatchesByCategory, setMaxMatchesByCategory] = useState<Record<MatchCategory, string>>({
-    practice: "",
-    qualification: "",
-    semifinals: "",
-    finals: "",
-  });
+  const [maxMatchesTarget, setMaxMatchesTarget] = useState("");
   const [maxMatchesSaving, setMaxMatchesSaving] = useState(false);
   const [maxMatchesEditing, setMaxMatchesEditing] = useState(false);
-  const [maxMatchesSnapshot, setMaxMatchesSnapshot] = useState<Record<MatchCategory, string> | null>(null);
+  const [maxMatchesSnapshot, setMaxMatchesSnapshot] = useState<string | null>(null);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [matches, setMatches] = useState<MatchRow[]>([]);
@@ -314,10 +344,7 @@ function ScoutStatusContent() {
     const roles = getUserRoles(userData);
     return roles.includes("team-coach") || roles.includes("lead-scout") || roles.includes("lead-strategist");
   }, [userData]);
-  const hasMaxTargets = useMemo(
-    () => Object.values(maxMatchesByCategory).some((value) => String(value || "").trim()),
-    [maxMatchesByCategory]
-  );
+  const hasMaxTargets = useMemo(() => String(maxMatchesTarget || "").trim().length > 0, [maxMatchesTarget]);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -416,13 +443,25 @@ function ScoutStatusContent() {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         if (!teamDoc.exists()) return;
         const data = teamDoc.data() as Record<string, unknown>;
-        const stored = (data.scoutStatusMaxMatches || {}) as Record<string, unknown>;
-        setMaxMatchesByCategory({
-          practice: stored.practice ? String(stored.practice) : "",
-          qualification: stored.qualification ? String(stored.qualification) : "",
-          semifinals: stored.semifinals ? String(stored.semifinals) : "",
-          finals: stored.finals ? String(stored.finals) : "",
-        });
+        const stored = data.scoutStatusMaxMatches;
+        if (typeof stored === "number") {
+          setMaxMatchesTarget(String(stored));
+          return;
+        }
+        if (stored && typeof stored === "object") {
+          const storedRecord = stored as Record<string, unknown>;
+          const fallback =
+            storedRecord.overall ??
+            storedRecord.max ??
+            storedRecord.qualification ??
+            storedRecord.practice ??
+            storedRecord.semifinals ??
+            storedRecord.finals ??
+            "";
+          setMaxMatchesTarget(fallback ? String(fallback) : "");
+          return;
+        }
+        setMaxMatchesTarget("");
       } catch (error) {
         console.warn("Failed to load max match targets:", error);
       }
@@ -437,12 +476,7 @@ function ScoutStatusContent() {
       const num = Number(String(value || "").replace(/[^\d]/g, ""));
       return Number.isFinite(num) && num > 0 ? num : null;
     };
-    const payload = {
-      practice: parseValue(maxMatchesByCategory.practice),
-      qualification: parseValue(maxMatchesByCategory.qualification),
-      semifinals: parseValue(maxMatchesByCategory.semifinals),
-      finals: parseValue(maxMatchesByCategory.finals),
-    };
+    const payload = parseValue(maxMatchesTarget);
     try {
       await updateDoc(doc(db, "teams", userData.teamId), { scoutStatusMaxMatches: payload });
       setMaxMatchesEditing(false);
@@ -457,13 +491,13 @@ function ScoutStatusContent() {
 
   function handleStartEditMaxMatches() {
     if (!canManageMaxMatches) return;
-    setMaxMatchesSnapshot(maxMatchesByCategory);
+    setMaxMatchesSnapshot(maxMatchesTarget);
     setMaxMatchesEditing(true);
   }
 
   function handleCancelEditMaxMatches() {
-    if (maxMatchesSnapshot) {
-      setMaxMatchesByCategory(maxMatchesSnapshot);
+    if (maxMatchesSnapshot !== null) {
+      setMaxMatchesTarget(maxMatchesSnapshot);
     }
     setMaxMatchesEditing(false);
     setMaxMatchesSnapshot(null);
@@ -966,31 +1000,21 @@ function ScoutStatusContent() {
                 )}
               </div>
               {maxMatchesEditing ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <label key={`max-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
-                      <span>{option.label}</span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={maxMatchesByCategory[option.id]}
-                        onChange={(event) =>
-                          setMaxMatchesByCategory((prev) => ({ ...prev, [option.id]: event.target.value }))
-                        }
-                        placeholder="e.g. 50"
-                        className="border rounded px-3 py-1.5 text-sm"
-                      />
-                    </label>
-                  ))}
-                </div>
+                <label className="text-sm text-gray-700 flex flex-col gap-1 max-w-xs">
+                  <span>Max Matches (All Categories)</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={maxMatchesTarget}
+                    onChange={(event) => setMaxMatchesTarget(event.target.value)}
+                    placeholder="e.g. 50"
+                    className="border rounded px-3 py-1.5 text-sm"
+                  />
+                </label>
               ) : (
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-gray-700">
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <div key={`max-display-${option.id}`} className="flex items-center justify-between border rounded px-3 py-2">
-                      <span className="font-medium">{option.label}</span>
-                      <span>{String(maxMatchesByCategory[option.id] || "-")}</span>
-                    </div>
-                  ))}
+                <div className="text-sm text-gray-700 border rounded px-3 py-2 max-w-xs flex items-center justify-between">
+                  <span className="font-medium">Max Matches (All Categories)</span>
+                  <span>{String(maxMatchesTarget || "-")}</span>
                 </div>
               )}
             </div>
@@ -1061,15 +1085,13 @@ function ScoutStatusContent() {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {visibleMatches.map((match) => {
-                      const matchKey = simplifyPlayoffId(
-                        match.coverageId || normalizeMatchLabel(match.label).matchId || `${match.level}-${match.matchNumber}`
-                      );
+                      const matchKeys = getCoverageKeysForMatch(match);
                       const timeLabel = match.time
                         ? new Date(match.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
                         : "TBD";
                       const allTeams = [...match.red, ...match.blue];
                       const cells = allTeams.map((team) => {
-                        const count = coverage.get(`${matchKey}::${team}`) || 0;
+                        const count = matchKeys.reduce((sum, key) => sum + (coverage.get(`${key}::${team}`) || 0), 0);
                         return (
                           <td key={`${match.key}-${team}`} className="px-4 py-3 text-sm">
                             <div className="flex items-center gap-2">
@@ -1131,13 +1153,11 @@ function ScoutStatusContent() {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {allianceMatches.map((match) => {
-                      const matchKey = simplifyPlayoffId(
-                        match.coverageId || normalizeMatchLabel(match.label).matchId || `${match.level}-${match.matchNumber}`
-                      );
+                      const matchKeys = getCoverageKeysForMatch(match);
                       const timeLabel = match.time
                         ? new Date(match.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
                         : "TBD";
-                      const count = coverage.get(matchKey) || 0;
+                      const count = matchKeys.reduce((sum, key) => sum + (coverage.get(key) || 0), 0);
                       return (
                         <tr key={match.key} data-analytics-search-item="true">
                           <td className="px-4 py-3 font-medium">{match.label}</td>
