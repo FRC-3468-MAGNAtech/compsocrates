@@ -231,9 +231,7 @@ function getMatchIdentityKey(entry: ScoutingEntry): string {
 
 function isAccuracyComplete(entry: ScoutingEntry): boolean {
   const status = String(entry.accuracyScriptStatus || "").trim().toLowerCase();
-  if (status === "complete") return true;
-  if (status && status !== "complete") return false;
-  return typeof entry.accuracy === "number";
+  return status === "complete";
 }
 
 function rebuiltEntryScoreCandidates(entry: ScoutingEntry): number[] {

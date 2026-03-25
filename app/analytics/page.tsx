@@ -1160,11 +1160,13 @@ function AnalyticsPageContent() {
         ? ""
         : "complete";
 
+      const normalizedAccuracy = typeof accuracyValue === "number" ? accuracyValue : undefined;
+
       return {
         ...entry,
         score: scoreEntry(entry, selectedGame),
         matchLabel: matchLabel(entry),
-        accuracy: accuracyValue ?? "",
+        accuracy: normalizedAccuracy,
         scriptStatus,
         autoPreloadScale: entry.auto?.preloadScale ?? 0,
         autoBpsScale: entry.auto?.bpsScale ?? 0,
