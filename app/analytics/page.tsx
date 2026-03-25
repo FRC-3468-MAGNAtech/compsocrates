@@ -20,6 +20,7 @@ import {
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { getUserRoles } from "@/app/utils/roles";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 
 type Entry = {
