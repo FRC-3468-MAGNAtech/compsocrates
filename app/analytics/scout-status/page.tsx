@@ -187,8 +187,9 @@ function getEntryCategory(entry: ScoutStatusEntry): MatchCategory {
   const matchType = String(entry.matchType || "").toLowerCase();
   const label = String(entry.matchLabel || entry.matchId || entry.matchKey || "").toLowerCase();
   const matchId = String(entry.matchId || entry.matchKey || "").toLowerCase();
-  if (matchId.startsWith("sf") || matchId.startsWith("qf") || matchId.startsWith("ef")) return "semifinals";
-  if (matchId.startsWith("f")) return "finals";
+  const matchIdShort = matchId.includes("_") ? matchId.split("_").pop() || matchId : matchId;
+  if (matchIdShort.startsWith("sf") || matchIdShort.startsWith("qf") || matchIdShort.startsWith("ef")) return "semifinals";
+  if (matchIdShort.startsWith("f")) return "finals";
   if (matchType.startsWith("p") || label.includes("practice")) return "practice";
   if (matchType.startsWith("f") || label.includes("final")) return "finals";
   if (matchType.startsWith("q") || label.includes("qual")) return "qualification";
@@ -210,7 +211,8 @@ function getEntryCategory(entry: ScoutStatusEntry): MatchCategory {
 }
 
 function getEntryMatchNumber(entry: ScoutStatusEntry): number | null {
-  const matchId = String(entry.matchId || entry.matchKey || "").trim().toLowerCase();
+  const rawMatchId = String(entry.matchId || entry.matchKey || "").trim().toLowerCase();
+  const matchId = rawMatchId.includes("_") ? rawMatchId.split("_").pop() || rawMatchId : rawMatchId;
   const playoff = matchId.match(/^(sf|qf|ef|f)(\d+)(?:m(\d+))?/);
   if (playoff) {
     const prefix = playoff[1];
@@ -348,6 +350,7 @@ function ScoutStatusContent() {
   const [teamLoadNote, setTeamLoadNote] = useState("");
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [tbaKeys, setTbaKeys] = useState({ encrypted: "", plain: "" });
+  const [teamNumberOverride, setTeamNumberOverride] = useState<number | null>(null);
   const canManageMaxMatches = useMemo(() => {
     if (userData?.isTeamAdmin) return true;
     const roles = getUserRoles(userData);
@@ -558,6 +561,10 @@ function ScoutStatusContent() {
       if (!userData?.teamId) return;
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        const teamNumberValue = Number(teamDoc.data()?.teamNumber);
+        setTeamNumberOverride(
+          Number.isFinite(teamNumberValue) && teamNumberValue > 0 ? teamNumberValue : null
+        );
         setTbaKeys({
           encrypted: String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim(),
           plain: String(teamDoc.data()?.tbaApiKey || "").trim(),
@@ -871,7 +878,7 @@ function ScoutStatusContent() {
 
   const allianceMatches = useMemo(() => {
     if (!isAllianceCoverageForm(selectedFormType)) return [] as AllianceMatchRow[];
-    const teamNumber = Number(userData?.teamId || 0);
+    const teamNumber = teamNumberOverride ?? Number(userData?.teamId || 0);
     if (!Number.isFinite(teamNumber) || teamNumber <= 0) return [] as AllianceMatchRow[];
     return visibleMatches
       .map((match) => {
@@ -884,7 +891,7 @@ function ScoutStatusContent() {
         return null;
       })
       .filter((row): row is AllianceMatchRow => Boolean(row));
-  }, [selectedFormType, userData?.teamId, visibleMatches]);
+  }, [selectedFormType, teamNumberOverride, userData?.teamId, visibleMatches]);
 
   const showMatchFilters = isMatchBasedForm(selectedFormType);
   const showMatchCoverage = selectedFormType === "match-scout" || selectedFormType === "lead-scout";

@@ -501,8 +501,7 @@ function MatchStrategyAnalyticsContent() {
                           <button
                             type="button"
                             onClick={() => setConfigEntry(entry)}
-                            className="px-3 py-1 rounded text-white text-sm mr-2"
-                            style={{ backgroundColor: "#6b7280" }}
+                            className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs mr-2 disabled:opacity-50"
                           >
                             Config
                           </button>

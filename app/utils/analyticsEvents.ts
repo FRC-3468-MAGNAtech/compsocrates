@@ -111,7 +111,15 @@ export function classifyRebuiltEventByTimestampWithOptions(
 }
 
 export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" | "qualification" | "finals"; matchNumber: string; matchId: string } {
-  const value = (rawMatch || "").trim().toLowerCase();
+  const rawValue = (rawMatch || "").trim();
+  let normalized = rawValue;
+  if (normalized.includes("_")) {
+    const suffix = normalized.split("_").pop() || "";
+    if (suffix && /[a-z]/i.test(suffix)) {
+      normalized = suffix;
+    }
+  }
+  const value = normalized.toLowerCase();
   const compact = value.replace(/[^a-z0-9]/g, "");
   const semiMatch =
     value.match(/\b(?:sf|semifinal|semi-final)\s*#?\s*(\d+)(?:\s*[-m]\s*(\d+))?/i) ||

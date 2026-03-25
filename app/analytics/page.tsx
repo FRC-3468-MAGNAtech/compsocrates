@@ -755,6 +755,43 @@ function AnalyticsPageContent() {
   const [manualFlagReason, setManualFlagReason] = useState<string>(MANUAL_FLAG_REASONS[0].value);
   const deleteGuardRef = useRef<string | null>(null);
   const accuracyPersistedRef = useRef<Set<string>>(new Set());
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const scoutHeaderRef = useRef<HTMLTableCellElement | null>(null);
+  const startingPosHeaderRef = useRef<HTMLTableCellElement | null>(null);
+  const [startingPosVisible, setStartingPosVisible] = useState(true);
+
+  const preMatchColSpan = startingPosVisible ? 2 : 1;
+  const showStartingPosSpacer = !startingPosVisible;
+
+  useEffect(() => {
+    const container = tableScrollRef.current;
+    if (!container || typeof window === "undefined") return;
+
+    const handleVisibility = () => {
+      if (window.innerWidth < 1024) {
+        setStartingPosVisible(true);
+        return;
+      }
+
+      const scoutCell = scoutHeaderRef.current;
+      const startCell = startingPosHeaderRef.current;
+      if (!scoutCell || !startCell) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const scoutRect = scoutCell.getBoundingClientRect();
+      const startRect = startCell.getBoundingClientRect();
+      const isVisible = startRect.left >= scoutRect.right - 1 && startRect.left < containerRect.right;
+      setStartingPosVisible(isVisible);
+    };
+
+    handleVisibility();
+    container.addEventListener("scroll", handleVisibility);
+    window.addEventListener("resize", handleVisibility);
+    return () => {
+      container.removeEventListener("scroll", handleVisibility);
+      window.removeEventListener("resize", handleVisibility);
+    };
+  }, [selectedGame]);
 
   const rebuiltEventOptions = useMemo(
     () =>
@@ -2144,14 +2181,14 @@ function AnalyticsPageContent() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
+      <div ref={tableScrollRef} className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
         {selectedGame === "REBUILT" ? (
           <table>
             <thead className="sticky-header">
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={1}>Pre-Match</th>
-                <th className="bg-yellow-300 text-center" colSpan={1} />
+                <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+                {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
                 <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
@@ -2160,8 +2197,8 @@ function AnalyticsPageContent() {
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={1}>Pre-Match</th>
-                <th className="bg-yellow-200 text-center" colSpan={1} />
+                <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+                {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
                 <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
@@ -2186,10 +2223,10 @@ function AnalyticsPageContent() {
                 <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
                   {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
                 </th>
-                <th className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                <th ref={scoutHeaderRef} className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                   {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+                <th ref={startingPosHeaderRef} className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
                   {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoPreloadScale")}>
@@ -2409,8 +2446,8 @@ function AnalyticsPageContent() {
           <thead className="sticky-header">
             <tr>
               <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-              <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={1}>Pre-Match</th>
-              <th className="bg-yellow-300 text-center" colSpan={1} />
+              <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+              {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
@@ -2419,8 +2456,8 @@ function AnalyticsPageContent() {
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-              <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={1}>Pre-Match</th>
-              <th className="bg-yellow-200 text-center" colSpan={1} />
+              <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+              {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
               <th className="bg-green-200 text-center" colSpan={2}>Algae Processor</th>
@@ -2444,10 +2481,10 @@ function AnalyticsPageContent() {
               <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
                 {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
               </th>
-              <th className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+              <th ref={scoutHeaderRef} className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                 {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
               </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+              <th ref={startingPosHeaderRef} className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
                 {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
               </th>
               <th className="cursor-pointer text-center" onClick={() => handleSort("leftStartingZone")}>

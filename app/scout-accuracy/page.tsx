@@ -13,6 +13,7 @@ import { calculateAccuracy } from "@/app/utils/practiceTypes";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles, getRoleLabel, TEAM_ROLES, type TeamRole } from "@/app/utils/roles";
 import { evaluateScoutingFlags, flagStateDocId, type FlagEntityType, type StoredFlagState } from "@/app/utils/scoutingFlags";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
+import { normalizeMatchLabel } from "@/app/utils/analyticsEvents";
 
 interface ScoutStats {
   scoutId: string;
@@ -62,9 +63,13 @@ type ScoutingEntry = {
   matchType?: string;
   matchNumber?: string;
   matchKey?: string;
+  matchLabel?: string;
   game?: string;
   matchId?: string;
   scoutId?: string;
+  entryType?: string;
+  formType?: string;
+  isLeadScouting?: boolean;
   practiceMode?: string;
   isPracticeScouting?: boolean;
   isLivePracticeScouting?: boolean;
@@ -212,6 +217,14 @@ function isRealScoutingEntry(entry: ScoutingEntry) {
   return !entry.isPracticeScouting && !entry.isLivePracticeScouting;
 }
 
+function isMatchScoutEntry(entry: ScoutingEntry) {
+  if (entry.isLeadScouting) return false;
+  const entryType = String(entry.entryType || entry.formType || "").toLowerCase().trim();
+  if (entryType === "lead") return false;
+  if (entryType === "sub-in-request" || entryType === "sub-in-claim") return false;
+  return true;
+}
+
 function getEntryTimestamp(entry: ScoutingEntry): number {
   const value = Number(entry.submittedAt || entry.timestamp || 0);
   return Number.isFinite(value) ? value : 0;
@@ -232,6 +245,31 @@ function getMatchIdentityKey(entry: ScoutingEntry): string {
 function isAccuracyComplete(entry: ScoutingEntry): boolean {
   const status = String(entry.accuracyScriptStatus || "").trim().toLowerCase();
   return status === "complete";
+}
+
+function formatRealMatchLabel(entry: ScoutingEntry): string {
+  const rawLabel = String(entry.matchLabel || entry.matchKey || entry.matchId || entry.matchType || "").trim();
+  const normalized = normalizeMatchLabel(rawLabel);
+  const matchId = normalized.matchId.toLowerCase();
+  const semiMatch = matchId.match(/^sf(\d+)m(\d+)/);
+  if (semiMatch) {
+    return `Semifinal ${semiMatch[1]}-${semiMatch[2]}`;
+  }
+  const quarterMatch = matchId.match(/^(qf|ef)(\d+)(?:m(\d+))?/);
+  if (quarterMatch) {
+    const setNumber = quarterMatch[2] || normalized.matchNumber;
+    const matchNumber = quarterMatch[3];
+    return matchNumber ? `Quarterfinal ${setNumber}-${matchNumber}` : `Quarterfinal ${setNumber}`;
+  }
+  const finalMatch = matchId.match(/^f(\d+)(?:m(\d+))?/);
+  if (finalMatch) {
+    const setNumber = finalMatch[1] || normalized.matchNumber;
+    const matchNumber = finalMatch[2];
+    return matchNumber ? `Final ${setNumber}-${matchNumber}` : `Final ${setNumber}`;
+  }
+  if (normalized.matchType === "practice") return `Practice ${normalized.matchNumber}`;
+  if (normalized.matchType === "qualification") return `Qualification ${normalized.matchNumber}`;
+  return `Match ${normalized.matchNumber}`;
 }
 
 function rebuiltEntryScoreCandidates(entry: ScoutingEntry): number[] {
@@ -412,6 +450,7 @@ function ScoutAccuracyContent() {
   const [flagSaveKey, setFlagSaveKey] = useState("");
   const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
+  const [realScoutingEntries, setRealScoutingEntries] = useState<ScoutingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REBUILT");
@@ -479,13 +518,19 @@ function ScoutAccuracyContent() {
   }, [calculationEvent, eventOptions]);
 
   const allRolesSelected = roleFilters.length === TEAM_ROLES.length;
-  const roleFilterSet = useMemo(() => new Set(allRolesSelected ? TEAM_ROLES : roleFilters), [allRolesSelected, roleFilters]);
+  const roleFilterSet = useMemo(() => new Set(roleFilters), [roleFilters]);
 
   useEffect(() => {
     if (rankMode === "role" && allRolesSelected) {
       setRankMode("preserve");
     }
   }, [allRolesSelected, rankMode]);
+
+  useEffect(() => {
+    if (rankMode === "role" && roleFilters.length === 0) {
+      setRankMode("preserve");
+    }
+  }, [rankMode, roleFilters.length]);
 
   useEffect(() => {
     if (attendanceFilter === "all" && rankMode === "event") {
@@ -495,6 +540,9 @@ function ScoutAccuracyContent() {
 
   async function loadScoutStats() {
     setLoading(true);
+    if (selectedMode !== "real") {
+      setRealScoutingEntries([]);
+    }
     try {
       // Get ALL team members (no filtering)
       const teamQuery = query(collection(db, "users"), where("teamId", "==", userData?.teamId));
@@ -548,6 +596,17 @@ function ScoutAccuracyContent() {
           }
         });
 
+        const realEntriesBase = allEntries
+          .filter((entry) => isRealScoutingEntry(entry))
+          .filter((entry) => isMatchScoutEntry(entry))
+          .filter((entry) => getEntryGame(entry) === selectedGame)
+          .filter((entry) => !entry.excludeFromStats);
+        const realEntries =
+          calculationEvent === "all"
+            ? realEntriesBase
+            : realEntriesBase.filter((entry) => String(entry.eventKey || "").trim() === calculationEvent);
+        setRealScoutingEntries(realEntries);
+
         const stats = memberData.map((member) => {
           const combined = new Map<string, ScoutingEntry>();
           (entriesByScoutId.get(member.uid) || []).forEach((entry) => {
@@ -559,6 +618,7 @@ function ScoutAccuracyContent() {
 
           const filteredEntries = Array.from(combined.values())
             .filter((entry) => isRealScoutingEntry(entry))
+            .filter((entry) => isMatchScoutEntry(entry))
             .filter((entry) => getEntryGame(entry) === selectedGame)
             .filter((entry) => !entry.excludeFromStats);
           const calculationEntries =
@@ -798,27 +858,52 @@ function ScoutAccuracyContent() {
       });
     };
 
-    const baseRanks = rankScouts(scoutStats);
-    const filteredByRole = baseRanks.filter(({ scout }) => {
+    const scoutKey = (scout: ScoutStats) =>
+      String(scout.scoutId || scout.scoutName || "").trim().toLowerCase();
+
+    const baseRankMap = new Map(
+      rankScouts(scoutStats).map(({ scout, rank }) => [scoutKey(scout), rank])
+    );
+
+    const attendanceFiltered =
+      attendanceFilter === "all"
+        ? scoutStats
+        : scoutStats.filter((scout) => {
+            const attendees = eventAttendees[attendanceFilter] || [];
+            if (attendees.includes(scout.scoutId)) return true;
+            if (attendees.includes(scout.scoutName)) return true;
+            return attendees.some(
+              (value) => String(value || "").trim().toLowerCase() === scout.scoutName.trim().toLowerCase()
+            );
+          });
+
+    const eventRankMap = new Map(
+      rankScouts(attendanceFiltered).map(({ scout, rank }) => [scoutKey(scout), rank])
+    );
+
+    const roleFiltered = attendanceFiltered.filter((scout) => {
       if (allRolesSelected) return true;
       const roles = getUserRoles({ role: scout.role, roles: scout.roles });
       return roles.some((role) => roleFilterSet.has(role));
     });
 
-    let filtered = filteredByRole;
-    if (attendanceFilter !== "all") {
-      const attendees = eventAttendees[attendanceFilter] || [];
-      filtered = filtered.filter(({ scout }) => {
-        if (attendees.includes(scout.scoutId)) return true;
-        if (attendees.includes(scout.scoutName)) return true;
-        return attendees.some(
-          (value) => String(value || "").trim().toLowerCase() === scout.scoutName.trim().toLowerCase()
-        );
-      });
-    }
+    const roleRankMap = new Map(
+      rankScouts(roleFiltered).map(({ scout, rank }) => [scoutKey(scout), rank])
+    );
 
-    if (rankMode === "preserve") return filtered;
-    return rankScouts(filtered.map((row) => row.scout));
+    const listForDisplay = rankMode === "event" ? attendanceFiltered : roleFiltered;
+
+    return listForDisplay.map((scout) => {
+      const key = scoutKey(scout);
+      const fallbackRank = baseRankMap.get(key) ?? 0;
+      if (rankMode === "event") {
+        return { scout, rank: eventRankMap.get(key) ?? fallbackRank };
+      }
+      if (rankMode === "role") {
+        return { scout, rank: roleRankMap.get(key) ?? fallbackRank };
+      }
+      return { scout, rank: fallbackRank };
+    });
   }, [attendanceFilter, eventAttendees, rankMode, scoutStats, allRolesSelected, roleFilterSet]);
   const visibleRankedScoutStats = useMemo(() => {
     if (canViewFullAccuracy) return rankedScoutStats;
@@ -886,6 +971,33 @@ function ScoutAccuracyContent() {
   }
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
+  const selectedRealEntries = useMemo(() => {
+    if (!isRealMode || !selectedScoutData) return [];
+    const scoutId = String(selectedScoutData.scoutId || "").trim();
+    const scoutName = String(selectedScoutData.scoutName || "").trim().toLowerCase();
+    return realScoutingEntries.filter((entry) => {
+      const entryScoutId = String(entry.scoutId || "").trim();
+      const entryScoutName = String(entry.scoutName || "").trim().toLowerCase();
+      if (scoutId && entryScoutId && entryScoutId === scoutId) return true;
+      return scoutName && entryScoutName === scoutName;
+    });
+  }, [isRealMode, selectedScoutData, realScoutingEntries]);
+
+  const selectedRealMatches = useMemo(() => {
+    if (!isRealMode || selectedRealEntries.length === 0) return [];
+    const matchMap = new Map<string, ScoutingEntry>();
+    selectedRealEntries.forEach((entry) => {
+      const key = getMatchIdentityKey(entry);
+      if (!key) return;
+      const existing = matchMap.get(key);
+      if (!existing || getEntryTimestamp(entry) > getEntryTimestamp(existing)) {
+        matchMap.set(key, entry);
+      }
+    });
+    return Array.from(matchMap.values()).sort(
+      (a, b) => getEntryTimestamp(b) - getEntryTimestamp(a)
+    );
+  }, [isRealMode, selectedRealEntries]);
 
   useEffect(() => {
     setShowAllSessionsModal(false);
@@ -1075,7 +1187,7 @@ function ScoutAccuracyContent() {
       saved = true;
     } catch (error) {
       console.error("Failed updating practice session flag state:", error);
-      alert("Could not update accuracy exclusion.");
+      console.warn("Could not update accuracy exclusion.");
     } finally {
       setFlagSaveKey("");
     }
@@ -1324,6 +1436,11 @@ function ScoutAccuracyContent() {
                           ? `All team members ranked by ${isRealMode ? "real-event accuracy estimates" : "practice accuracy"}`
                           : `Members attending ${selectedEventLabel || "this event"} ranked by ${isRealMode ? "real-event accuracy estimates" : "practice accuracy"}`}
                       </p>
+                      {isRealMode && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Real-event accuracy is an estimate based on match-level alliance accuracy and is not scout-specific.
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-3">
                       <div className="flex flex-col gap-1">
@@ -1351,6 +1468,8 @@ function ScoutAccuracyContent() {
                           <span>
                             {allRolesSelected
                               ? "All roles"
+                              : roleFilters.length === 0
+                              ? "No roles selected"
                               : `${roleFilters.length} role${roleFilters.length === 1 ? "" : "s"}`}
                           </span>
                           <ChevronDown size={16} className="text-gray-500" />
@@ -1361,7 +1480,9 @@ function ScoutAccuracyContent() {
                               <input
                                 type="checkbox"
                                 checked={allRolesSelected}
-                                onChange={() => setRoleFilters([...TEAM_ROLES])}
+                                onChange={(event) =>
+                                  setRoleFilters(event.target.checked ? [...TEAM_ROLES] : [])
+                                }
                               />
                               All roles
                             </label>
@@ -1374,12 +1495,11 @@ function ScoutAccuracyContent() {
                                       type="checkbox"
                                       checked={checked}
                                       onChange={() => {
-                                        setRoleFilters((prev) => {
-                                          const next = prev.includes(role)
+                                        setRoleFilters((prev) =>
+                                          prev.includes(role)
                                             ? prev.filter((value) => value !== role)
-                                            : [...prev, role];
-                                          return next.length === 0 ? [...TEAM_ROLES] : next;
-                                        });
+                                            : [...prev, role]
+                                        );
                                       }}
                                     />
                                     {getRoleLabel(role)}
@@ -1424,7 +1544,7 @@ function ScoutAccuracyContent() {
                           <option value="event" disabled={attendanceFilter === "all"}>
                             Event leaderboard
                           </option>
-                          <option value="role" disabled={allRolesSelected}>
+                          <option value="role" disabled={allRolesSelected || roleFilters.length === 0}>
                             Role leaderboard
                           </option>
                         </select>
@@ -1457,7 +1577,7 @@ function ScoutAccuracyContent() {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Total Entries
                         </th>
-                        {canViewFullAccuracy && !isRealMode && (
+                        {canViewFullAccuracy && (
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Actions
                           </th>
@@ -1500,14 +1620,14 @@ function ScoutAccuracyContent() {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                               {scout.totalEntries}
                             </td>
-                            {canViewFullAccuracy && !isRealMode && (
+                            {canViewFullAccuracy && (
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <button
                                   onClick={() => setSelectedScout(scout.scoutName)}
                                   className="text-sm font-medium hover:underline"
                                   style={{ color: "var(--primary-color)" }}
                                 >
-                                  View Details →
+                                  View Details
                                 </button>
                               </td>
                             )}
@@ -1520,6 +1640,64 @@ function ScoutAccuracyContent() {
               </div>
 
               {/* SCOUT DETAIL MODAL */}
+              {selectedScoutData && isRealMode && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="p-6 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="text-2xl font-bold">{selectedScoutData.scoutName}</h2>
+                          <span
+                            className={`inline-block px-2 py-1 rounded text-xs font-medium mt-2 ${getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).bg} ${getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).text}`}
+                          >
+                            {getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).label}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setSelectedScout(null)}
+                          className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-medium"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-6 space-y-4">
+                      <div className="text-sm text-gray-600">
+                        Alliance accuracy is shown per match and is not scout-specific.
+                      </div>
+                      {selectedRealMatches.length > 0 ? (
+                        <div className="space-y-3">
+                          {selectedRealMatches.map((entry) => {
+                            const timestamp = getEntryTimestamp(entry);
+                            const accuracyValue =
+                              typeof entry.accuracy === "number" ? Math.round(entry.accuracy) : null;
+                            return (
+                              <div
+                                key={String(entry.id || getMatchIdentityKey(entry))}
+                                className="flex items-center justify-between gap-4 border rounded-lg px-4 py-3"
+                              >
+                                <div>
+                                  <div className="font-semibold">{formatRealMatchLabel(entry)}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {timestamp ? new Date(timestamp).toLocaleString() : "Unknown time"}
+                                  </div>
+                                </div>
+                                <div className="text-sm text-gray-700">
+                                  Alliance Accuracy: {accuracyValue !== null ? `${accuracyValue}%` : "-"}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-600">No matches found for this scout.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {selectedScoutData && !isRealMode && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
