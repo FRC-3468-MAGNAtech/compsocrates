@@ -1459,7 +1459,7 @@ function AnalyticsPageContent() {
               : {
                   teamNumber: String(row.teamNumber || "-"),
                   total: scoreEntry(row, entryGame),
-                  source: "reefscape",
+                  source: "reefscape" as const,
                   autoFuel: 0,
                   teleFuel: 0,
                   autoClimb: 0,
