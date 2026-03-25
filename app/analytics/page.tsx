@@ -75,6 +75,11 @@ type Entry = {
   timestamp: number;
   estimatedScore?: number;
   excludeFromStats?: boolean;
+  accuracy?: number;
+  accuracyScriptStatus?: string;
+  accuracyDetails?: AccuracyDetails;
+  accuracyRobotBreakdown?: AccuracyRobotBreakdown[];
+  accuracyUpdatedAt?: number;
   auto?: {
     preloadScale?: number;
     bpsScale?: number;
@@ -693,16 +698,18 @@ type SortKey =
 
 function AnalyticsPageContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach";
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
   const isTeamMember = Boolean(userData?.teamId);
-  const canImportCsv = isCoach || isTeamAdmin;
+  const isLeadStrategist = userRoles.includes("lead-strategist");
+  const canImportCsv = isCoach || isTeamAdmin || isLeadStrategist;
   const canExportCsv = isTeamMember;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
-  const canDeleteEntries = isCoach || isTeamAdmin;
-  const canManageFlags = isCoach || isTeamCoach || isTeamAdmin;
-  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
+  const canDeleteEntries = isCoach || isTeamAdmin || isLeadStrategist;
+  const canManageFlags = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -746,6 +753,7 @@ function AnalyticsPageContent() {
   const [excludeSavingId, setExcludeSavingId] = useState("");
   const [manualFlagReason, setManualFlagReason] = useState<string>(MANUAL_FLAG_REASONS[0].value);
   const deleteGuardRef = useRef<string | null>(null);
+  const accuracyPersistedRef = useRef<Set<string>>(new Set());
 
   const rebuiltEventOptions = useMemo(
     () =>
@@ -1048,9 +1056,52 @@ function AnalyticsPageContent() {
   }, [filtered, selectedEvent, selectedGame, tbaMatchesByEvent]);
 
   useEffect(() => {
+    if (!canViewAdminColumns || !userData?.teamId) return;
+    const updates: Array<Promise<void>> = [];
+    const payloadById: Record<string, Record<string, unknown>> = {};
+    filtered.forEach((entry) => {
+      if (isPracticeScoutingEntry(entry)) return;
+      if (entry.excludeFromStats) return;
+      const computed = allianceAccuracyByEntryId[entry.id];
+      if (!computed) return;
+      const nextStatus = String(computed.scriptStatus || "").trim().toLowerCase();
+      if (!nextStatus) return;
+      const storedStatus = String(entry.accuracyScriptStatus || "").trim().toLowerCase();
+      const storedAccuracy =
+        typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
+          ? Math.round(Number((entry as Entry & { accuracy?: number }).accuracy))
+          : null;
+      const nextAccuracy = typeof computed.accuracy === "number" ? Math.round(computed.accuracy) : null;
+      const needsStatus = storedStatus !== nextStatus;
+      const needsAccuracy = nextAccuracy !== null && storedAccuracy !== nextAccuracy;
+      if (!needsStatus && !needsAccuracy) return;
+      if (accuracyPersistedRef.current.has(entry.id)) return;
+      accuracyPersistedRef.current.add(entry.id);
+      const payload: Record<string, unknown> = {
+        accuracyScriptStatus: nextStatus,
+        accuracyUpdatedAt: Date.now(),
+      };
+      if (nextAccuracy !== null) payload.accuracy = nextAccuracy;
+      payloadById[entry.id] = payload;
+      updates.push(
+        updateDoc(doc(db, "scouting", entry.id), payload).catch((error) => {
+          console.warn("Failed to persist accuracy data for scouting entry:", entry.id, error);
+        })
+      );
+    });
+    if (updates.length === 0) return;
+    Promise.all(updates).then(() => {
+      setRawData((prev) =>
+        prev.map((entry) => (payloadById[entry.id] ? { ...entry, ...payloadById[entry.id] } : entry))
+      );
+    });
+  }, [allianceAccuracyByEntryId, canViewAdminColumns, filtered, userData?.teamId]);
+
+  useEffect(() => {
     if (!userData?.teamId) return;
     const eventKeys = new Set(
       filtered
+        .filter((entry) => !entry.accuracyScriptStatus && typeof entry.accuracy !== "number")
         .map((entry) => (selectedEvent !== "all" ? selectedEvent : String(entry.eventKey || "").trim()))
         .filter((key) => Boolean(key))
     );
@@ -1095,7 +1146,12 @@ function AnalyticsPageContent() {
       const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? Number((entry as Entry & { accuracy?: number }).accuracy)
         : computedAccuracy?.accuracy ?? null;
-      const scriptStatus = computedAccuracy?.scriptStatus
+      const storedStatus = String((entry as Entry & { accuracyScriptStatus?: string }).accuracyScriptStatus || "")
+        .trim()
+        .toLowerCase();
+      const scriptStatus = storedStatus
+        ? storedStatus
+        : computedAccuracy?.scriptStatus
         ? computedAccuracy.scriptStatus === "complete"
           ? "complete"
           : computedAccuracy.scriptStatus
@@ -1292,6 +1348,45 @@ function AnalyticsPageContent() {
       eventKeyUsed: "",
       matchLabelUsed: clickedLabel,
     });
+    if (entry.accuracyDetails && typeof entry.accuracyDetails.scoutedPoints === "number") {
+      setAccuracyRobotBreakdown(Array.isArray(entry.accuracyRobotBreakdown) ? entry.accuracyRobotBreakdown : []);
+      setAccuracyDetails({
+        scoutedPoints: Number(entry.accuracyDetails.scoutedPoints || 0),
+        actualPoints:
+          typeof entry.accuracyDetails.actualPoints === "number" ? entry.accuracyDetails.actualPoints : null,
+        penaltyPoints: Number(entry.accuracyDetails.penaltyPoints || 0),
+        allRobotsScouted: entry.accuracyDetails.allRobotsScouted || "unknown",
+        eventKeyUsed: String(entry.accuracyDetails.eventKeyUsed || ""),
+        matchLabelUsed: String(entry.accuracyDetails.matchLabelUsed || clickedLabel),
+      });
+      setAccuracyModalLoading(false);
+      return;
+    }
+    const persistAccuracySnapshot = async (
+      details: AccuracyDetails,
+      breakdown: AccuracyRobotBreakdown[],
+      isPracticeEntry: boolean
+    ) => {
+      if (!canViewAdminColumns) return;
+      const payload: Record<string, unknown> = {
+        accuracyDetails: details,
+        accuracyRobotBreakdown: breakdown,
+        accuracyUpdatedAt: Date.now(),
+      };
+      if (!isPracticeEntry && typeof details.actualPoints === "number") {
+        const official = Number(details.actualPoints || 0);
+        const scouted = Number(details.scoutedPoints || 0);
+        const accuracy = official > 0 ? Math.max(0, 1 - Math.abs(official - scouted) / official) * 100 : 0;
+        payload.accuracy = Math.round(accuracy);
+        payload.accuracyScriptStatus = details.allRobotsScouted === "yes" ? "complete" : "missing robots";
+      }
+      try {
+        await updateDoc(doc(db, "scouting", entry.id), payload);
+        setRawData((prev) => prev.map((row) => (row.id === entry.id ? { ...row, ...payload } : row)));
+      } catch (error) {
+        console.warn("Unable to persist accuracy details snapshot:", error);
+      }
+    };
     try {
       const selectedTeam = String(entry.teamNumber || "").trim();
       const entryGame = String(entry.game || "REEFSCAPE").toUpperCase() as AnalyticsGame;
@@ -1357,21 +1452,20 @@ function AnalyticsPageContent() {
         if (scopedMatchRows.length > 0) {
           const latestSessionRows = chooseLatestEntryPerTeam(scopedMatchRows);
           let sessionScoutedPoints = latestSessionRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
-          setAccuracyRobotBreakdown(
-            latestSessionRows.map((row) =>
-              entryGame === "REBUILT"
-                ? getRebuiltBreakdown(row)
-                : {
-                    teamNumber: String(row.teamNumber || "-"),
-                    total: scoreEntry(row, entryGame),
-                    source: "reefscape",
-                    autoFuel: 0,
-                    teleFuel: 0,
-                    autoClimb: 0,
-                    endgameClimb: 0,
-                  }
-            )
+          const breakdown = latestSessionRows.map((row) =>
+            entryGame === "REBUILT"
+              ? getRebuiltBreakdown(row)
+              : {
+                  teamNumber: String(row.teamNumber || "-"),
+                  total: scoreEntry(row, entryGame),
+                  source: "reefscape",
+                  autoFuel: 0,
+                  teleFuel: 0,
+                  autoClimb: 0,
+                  endgameClimb: 0,
+                }
           );
+          setAccuracyRobotBreakdown(breakdown);
 
           try {
             const sessionSnap = await getDoc(doc(db, "practiceSessions", practiceSessionId));
@@ -1388,7 +1482,7 @@ function AnalyticsPageContent() {
             console.warn("Could not load practice session while opening accuracy details:", sessionError);
           }
 
-          setAccuracyDetails({
+          const details: AccuracyDetails = {
             scoutedPoints: sessionScoutedPoints,
             actualPoints,
             penaltyPoints:
@@ -1400,7 +1494,9 @@ function AnalyticsPageContent() {
             allRobotsScouted: latestSessionRows.length >= 3 ? "yes" : "no",
             eventKeyUsed: eventKey,
             matchLabelUsed,
-          });
+          };
+          setAccuracyDetails(details);
+          void persistAccuracySnapshot(details, breakdown, true);
           return;
         }
       }
@@ -1412,29 +1508,30 @@ function AnalyticsPageContent() {
             : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
         const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
         const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
-        setAccuracyRobotBreakdown(
-          latestAllianceRows.map((row) =>
-            entryGame === "REBUILT"
-              ? getRebuiltBreakdown(row)
-              : {
-                  teamNumber: String(row.teamNumber || "-"),
-                  total: scoreEntry(row, entryGame),
-                  source: "reefscape",
-                  autoFuel: 0,
-                  teleFuel: 0,
-                  autoClimb: 0,
-                  endgameClimb: 0,
-                }
-          )
+        const breakdown = latestAllianceRows.map((row) =>
+          entryGame === "REBUILT"
+            ? getRebuiltBreakdown(row)
+            : {
+                teamNumber: String(row.teamNumber || "-"),
+                total: scoreEntry(row, entryGame),
+                source: "reefscape",
+                autoFuel: 0,
+                teleFuel: 0,
+                autoClimb: 0,
+                endgameClimb: 0,
+              }
         );
-        setAccuracyDetails({
+        setAccuracyRobotBreakdown(breakdown);
+        const details: AccuracyDetails = {
           scoutedPoints,
           actualPoints,
           penaltyPoints: Number(entry.penaltyPoints || 0),
           allRobotsScouted: "unknown",
           eventKeyUsed: eventKey,
           matchLabelUsed: matchLabelUsed,
-        });
+        };
+        setAccuracyDetails(details);
+        void persistAccuracySnapshot(details, breakdown, false);
         return;
       }
 
@@ -1515,21 +1612,20 @@ function AnalyticsPageContent() {
         latestAllianceRows = latestReferenceRows;
       }
       const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
-      setAccuracyRobotBreakdown(
-        latestAllianceRows.map((row) =>
-          entryGame === "REBUILT"
-            ? getRebuiltBreakdown(row)
-            : {
-                teamNumber: String(row.teamNumber || "-"),
-                total: scoreEntry(row, entryGame),
-                source: "reefscape",
-                autoFuel: 0,
-                teleFuel: 0,
-                autoClimb: 0,
-                endgameClimb: 0,
-              }
-        )
+      const breakdown = latestAllianceRows.map((row) =>
+        entryGame === "REBUILT"
+          ? getRebuiltBreakdown(row)
+          : {
+              teamNumber: String(row.teamNumber || "-"),
+              total: scoreEntry(row, entryGame),
+              source: "reefscape",
+              autoFuel: 0,
+              teleFuel: 0,
+              autoClimb: 0,
+              endgameClimb: 0,
+            }
       );
+      setAccuracyRobotBreakdown(breakdown);
       const scoutedTeams = new Set(latestAllianceRows.map((row) => String(row.teamNumber || "").trim()).filter(Boolean));
       const allRobotsScouted =
         officialTeamsForAlliance.length > 0
@@ -1537,7 +1633,7 @@ function AnalyticsPageContent() {
             ? "yes"
             : "no"
           : "unknown";
-      setAccuracyDetails({
+      const details: AccuracyDetails = {
         scoutedPoints,
         actualPoints,
         penaltyPoints:
@@ -1549,7 +1645,9 @@ function AnalyticsPageContent() {
         allRobotsScouted,
         eventKeyUsed: eventKey,
         matchLabelUsed: matchLabelUsed,
-      });
+      };
+      setAccuracyDetails(details);
+      void persistAccuracySnapshot(details, breakdown, false);
     } catch (error) {
       console.error("Failed to load alliance robot details:", error);
       setAccuracyDetails((prev) => ({ ...prev, allRobotsScouted: "unknown", matchLabelUsed: clickedLabel }));
@@ -1631,7 +1729,11 @@ function AnalyticsPageContent() {
       typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? (entry as Entry & { accuracy?: number }).accuracy
         : "",
-      typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "",
+      String(entry.accuracyScriptStatus || "").trim()
+        ? formatScriptStatus(entry.accuracyScriptStatus)
+        : typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
+        ? "Complete"
+        : "",
     ]);
     const csv = [
       headers.join(","),
@@ -2045,7 +2147,8 @@ function AnalyticsPageContent() {
             <thead className="sticky-header">
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
+                <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={1}>Pre-Match</th>
+                <th className="bg-yellow-300 text-center" colSpan={1} />
                 <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
@@ -2054,7 +2157,8 @@ function AnalyticsPageContent() {
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
+                <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={1}>Pre-Match</th>
+                <th className="bg-yellow-200 text-center" colSpan={1} />
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
                 <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
@@ -2079,7 +2183,7 @@ function AnalyticsPageContent() {
                 <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
                   {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                <th className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                   {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
@@ -2210,7 +2314,7 @@ function AnalyticsPageContent() {
                 <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                   <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
-                  <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                  <td className="sticky-left-2 bg-white text-center">{displayEntryText(entry.scoutName)}</td>
                   <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                   <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
@@ -2302,7 +2406,8 @@ function AnalyticsPageContent() {
           <thead className="sticky-header">
             <tr>
               <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-              <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
+              <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={1}>Pre-Match</th>
+              <th className="bg-yellow-300 text-center" colSpan={1} />
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
@@ -2311,7 +2416,8 @@ function AnalyticsPageContent() {
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-              <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
+              <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={1}>Pre-Match</th>
+              <th className="bg-yellow-200 text-center" colSpan={1} />
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
               <th className="bg-green-200 text-center" colSpan={2}>Algae Processor</th>
@@ -2335,7 +2441,7 @@ function AnalyticsPageContent() {
               <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
                 {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
               </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+              <th className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                 {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
               </th>
               <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
@@ -2449,7 +2555,7 @@ function AnalyticsPageContent() {
               <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                 <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
-                <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                <td className="sticky-left-2 bg-white text-center">{displayEntryText(entry.scoutName)}</td>
                 <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                 <td className="text-center">{entry.leftStartingZone ? "Y" : "N"}</td>
                 <td className="text-center">{entry.autoCoralMissed || 0}</td>

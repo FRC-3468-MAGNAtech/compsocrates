@@ -209,6 +209,7 @@ function AnalyticsShellInner({
                 const canSee =
                   Boolean(userData?.isTeamAdmin) ||
                   roles.includes("lead-scout") ||
+                  roles.includes("lead-strategist") ||
                   roles.includes("team-coach") ||
                   userData?.role === "coach";
                 if (!canSee) return null;
@@ -275,6 +276,7 @@ function AnalyticsShellInner({
                 const canSee =
                   Boolean(userData?.isTeamAdmin) ||
                   roles.includes("lead-scout") ||
+                  roles.includes("lead-strategist") ||
                   roles.includes("team-coach") ||
                   userData?.role === "coach";
                 if (!canSee) return null;

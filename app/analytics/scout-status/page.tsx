@@ -328,6 +328,15 @@ function ScoutStatusContent() {
     semifinals: "",
     finals: "",
   });
+  const emptyTargets = useMemo(
+    () =>
+      FORM_OPTIONS.reduce(
+        (acc, option) => ({ ...acc, [option.id]: "" }),
+        {} as Record<ScoutStatusFormType, string>
+      ),
+    []
+  );
+  const [maxMatchesTargets, setMaxMatchesTargets] = useState<Record<ScoutStatusFormType, string>>(emptyTargets);
   const [maxMatchesTarget, setMaxMatchesTarget] = useState("");
   const [maxMatchesSaving, setMaxMatchesSaving] = useState(false);
   const [maxMatchesEditing, setMaxMatchesEditing] = useState(false);
@@ -344,7 +353,14 @@ function ScoutStatusContent() {
     const roles = getUserRoles(userData);
     return roles.includes("team-coach") || roles.includes("lead-scout") || roles.includes("lead-strategist");
   }, [userData]);
-  const hasMaxTargets = useMemo(() => String(maxMatchesTarget || "").trim().length > 0, [maxMatchesTarget]);
+  const hasMaxTargets = useMemo(
+    () => Object.values(maxMatchesTargets).some((value) => String(value || "").trim().length > 0),
+    [maxMatchesTargets]
+  );
+  const selectedFormLabel = useMemo(
+    () => FORM_OPTIONS.find((option) => option.id === selectedFormType)?.label || "Form",
+    [selectedFormType]
+  );
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -439,35 +455,58 @@ function ScoutStatusContent() {
   useEffect(() => {
     async function loadMaxMatches() {
       if (!userData?.teamId) return;
+      const parseValue = (value: unknown) => {
+        const num = Number(String(value || "").replace(/[^\d]/g, ""));
+        return Number.isFinite(num) && num > 0 ? String(num) : "";
+      };
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         if (!teamDoc.exists()) return;
         const data = teamDoc.data() as Record<string, unknown>;
-        const stored = data.scoutStatusMaxMatches;
-        if (typeof stored === "number") {
-          setMaxMatchesTarget(String(stored));
-          return;
+        const storedByForm = data.scoutStatusMaxMatchesByForm;
+        let nextTargets = { ...emptyTargets };
+
+        if (storedByForm && typeof storedByForm === "object") {
+          const record = storedByForm as Record<string, unknown>;
+          FORM_OPTIONS.forEach((option) => {
+            nextTargets[option.id] = parseValue(record[option.id]);
+          });
+        } else {
+          const stored = data.scoutStatusMaxMatches;
+          let fallback = "";
+          if (typeof stored === "number") {
+            fallback = String(stored);
+          } else if (stored && typeof stored === "object") {
+            const storedRecord = stored as Record<string, unknown>;
+            fallback = parseValue(
+              storedRecord.overall ??
+                storedRecord.max ??
+                storedRecord.qualification ??
+                storedRecord.practice ??
+                storedRecord.semifinals ??
+                storedRecord.finals ??
+                ""
+            );
+          }
+          if (fallback) {
+            FORM_OPTIONS.forEach((option) => {
+              nextTargets[option.id] = fallback;
+            });
+          }
         }
-        if (stored && typeof stored === "object") {
-          const storedRecord = stored as Record<string, unknown>;
-          const fallback =
-            storedRecord.overall ??
-            storedRecord.max ??
-            storedRecord.qualification ??
-            storedRecord.practice ??
-            storedRecord.semifinals ??
-            storedRecord.finals ??
-            "";
-          setMaxMatchesTarget(fallback ? String(fallback) : "");
-          return;
-        }
-        setMaxMatchesTarget("");
+        setMaxMatchesTargets(nextTargets);
+        setMaxMatchesTarget(nextTargets[selectedFormType] || "");
       } catch (error) {
         console.warn("Failed to load max match targets:", error);
       }
     }
     void loadMaxMatches();
-  }, [userData?.teamId]);
+  }, [emptyTargets, selectedFormType, userData?.teamId]);
+
+  useEffect(() => {
+    if (maxMatchesEditing) return;
+    setMaxMatchesTarget(maxMatchesTargets[selectedFormType] || "");
+  }, [maxMatchesEditing, maxMatchesTargets, selectedFormType]);
 
   async function handleSaveMaxMatches() {
     if (!userData?.teamId) return;
@@ -476,9 +515,20 @@ function ScoutStatusContent() {
       const num = Number(String(value || "").replace(/[^\d]/g, ""));
       return Number.isFinite(num) && num > 0 ? num : null;
     };
-    const payload = parseValue(maxMatchesTarget);
+    const parsedValue = parseValue(maxMatchesTarget);
     try {
-      await updateDoc(doc(db, "teams", userData.teamId), { scoutStatusMaxMatches: payload });
+      const nextTargets = {
+        ...maxMatchesTargets,
+        [selectedFormType]: parsedValue ? String(parsedValue) : "",
+      };
+      const payloadByForm = FORM_OPTIONS.reduce((acc, option) => {
+        const rawValue = nextTargets[option.id];
+        const num = Number(String(rawValue || "").replace(/[^\d]/g, ""));
+        acc[option.id] = Number.isFinite(num) && num > 0 ? num : null;
+        return acc;
+      }, {} as Record<ScoutStatusFormType, number | null>);
+      await updateDoc(doc(db, "teams", userData.teamId), { scoutStatusMaxMatchesByForm: payloadByForm });
+      setMaxMatchesTargets(nextTargets);
       setMaxMatchesEditing(false);
       setMaxMatchesSnapshot(null);
     } catch (error) {
@@ -1001,7 +1051,7 @@ function ScoutStatusContent() {
               </div>
               {maxMatchesEditing ? (
                 <label className="text-sm text-gray-700 flex flex-col gap-1 max-w-xs">
-                  <span>Max Matches (All Categories)</span>
+                  <span>Max Matches ({selectedFormLabel})</span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -1013,7 +1063,7 @@ function ScoutStatusContent() {
                 </label>
               ) : (
                 <div className="text-sm text-gray-700 border rounded px-3 py-2 max-w-xs flex items-center justify-between">
-                  <span className="font-medium">Max Matches (All Categories)</span>
+                  <span className="font-medium">Max Matches ({selectedFormLabel})</span>
                   <span>{String(maxMatchesTarget || "-")}</span>
                 </div>
               )}

@@ -115,6 +115,15 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
+.sticky-left-2 {
+  position: sticky !important;
+  left: 192px !important;
+  z-index: 15 !important;
+  background: var(--theme-surface) !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  min-width: 96px;
+}
+
 /* For grouped header cells spanning the two frozen info columns */
 .sticky-left-group {
   position: sticky !important;
@@ -125,8 +134,18 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
+.sticky-left-group-3 {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 29 !important;
+  min-width: 288px;
+  background: var(--theme-surface) !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+}
+
 .sticky-header .sticky-left-0,
-.sticky-header .sticky-left-1 {
+.sticky-header .sticky-left-1,
+.sticky-header .sticky-left-2 {
   z-index: 30 !important;
 }
 
@@ -151,17 +170,21 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sticky-header .sticky-left-group.sticky-row-1,
-.sticky-header .sticky-left-group.sticky-row-2 {
+.sticky-header .sticky-left-group.sticky-row-2,
+.sticky-header .sticky-left-group-3.sticky-row-1,
+.sticky-header .sticky-left-group-3.sticky-row-2 {
   z-index: 46 !important;
 }
 
 .sticky-header .sticky-left-0.sticky-row-3,
-.sticky-header .sticky-left-1.sticky-row-3 {
+.sticky-header .sticky-left-1.sticky-row-3,
+.sticky-header .sticky-left-2.sticky-row-3 {
   z-index: 47 !important;
 }
 
 .table-scroll tbody .sticky-left-0,
-.table-scroll tbody .sticky-left-1 {
+.table-scroll tbody .sticky-left-1,
+.table-scroll tbody .sticky-left-2 {
   z-index: 15 !important;
 }
 
@@ -169,7 +192,9 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 1023px) {
   .table-scroll tbody .sticky-left-0,
   .table-scroll tbody .sticky-left-1,
-  .table-scroll tbody .sticky-left-group {
+  .table-scroll tbody .sticky-left-2,
+  .table-scroll tbody .sticky-left-group,
+  .table-scroll tbody .sticky-left-group-3 {
     position: static !important;
     left: auto !important;
     z-index: auto !important;
@@ -178,7 +203,9 @@ h1, h2, h3, h4, h5, h6 {
 
   .sticky-header .sticky-left-0,
   .sticky-header .sticky-left-1,
-  .sticky-header .sticky-left-group {
+  .sticky-header .sticky-left-2,
+  .sticky-header .sticky-left-group,
+  .sticky-header .sticky-left-group-3 {
     left: auto !important;
     box-shadow: none !important;
   }

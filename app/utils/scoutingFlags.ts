@@ -123,8 +123,18 @@ export function evaluateScoutingFlags(entry: AnyEntry): ScoutingFlag[] {
   return getEntryGame(entry) === "REBUILT" ? evaluateRebuiltFlags(entry) : evaluateReefscapeFlags(entry);
 }
 
+export type FlagEntityType =
+  | "scoutingEntry"
+  | "practiceSession"
+  | "leadScouting"
+  | "pitScouting"
+  | "strategyScouting"
+  | "matchStrategyPlan"
+  | "driveScouting"
+  | "helperReport";
+
 export type StoredFlagState = {
-  entityType: "scoutingEntry" | "practiceSession";
+  entityType: FlagEntityType;
   entityId: string;
   dismissed: boolean;
   manualFlagged?: boolean;
@@ -139,7 +149,7 @@ export type StoredFlagState = {
   dismissedBy?: string;
 };
 
-export function flagStateDocId(entityType: "scoutingEntry" | "practiceSession", entityId: string): string {
+export function flagStateDocId(entityType: FlagEntityType, entityId: string): string {
   return `${entityType}:${String(entityId || "").trim()}`;
 }
 

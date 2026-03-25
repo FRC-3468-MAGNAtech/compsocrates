@@ -7,11 +7,13 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
+import AnalyticsConfigModal from "@/app/components/AnalyticsConfigModal";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText, formatMatchLabelShort, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
+import { getUserRoles } from "@/app/utils/roles";
 
 type DriveReflectionEntry = {
   id: string;
@@ -27,18 +29,23 @@ type DriveReflectionEntry = {
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
 };
 
 function DriveReflectionAnalyticsContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
-  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
-  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin;
+  const isLeadStrategist = userRoles.includes("lead-strategist");
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canManageConfig = canDeleteEntries || userRoles.includes("lead-scout");
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
+  const canShowActions = canManageConfig || canDeleteEntries;
   const [entries, setEntries] = useState<DriveReflectionEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -67,6 +74,7 @@ function DriveReflectionAnalyticsContent() {
     | "id"
   >("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [configEntry, setConfigEntry] = useState<DriveReflectionEntry | null>(null);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -386,23 +394,23 @@ function DriveReflectionAnalyticsContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th className="bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
                 <th className="bg-blue-300 text-center" colSpan={15}>Robots</th>
-                <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 2 : 1}>General</th>
+                <th className="bg-pink-300 text-center" colSpan={canShowActions ? 2 : 1}>General</th>
               </tr>
               <tr>
-                <th className="bg-red-200 text-center" colSpan={2}>Information</th>
+                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 1</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 2</th>
                 <th className="bg-blue-200 text-center" colSpan={5}>Robot 3</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
+                {canShowActions && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
               </tr>
               <tr>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
                   {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                   {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("r1Team")}>
@@ -453,11 +461,11 @@ function DriveReflectionAnalyticsContent() {
                 <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                   {sortLabel(sortKey, sortDir, "notes", "Notes")}
                 </th>
-                {canViewAdminColumns && (
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                    {sortLabel(sortKey, sortDir, "id", "Actions")}
-                  </th>
-                )}
+                  {canShowActions && (
+                    <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                      {sortLabel(sortKey, sortDir, "id", "Actions")}
+                    </th>
+                  )}
               </tr>
             </thead>
             <tbody>
@@ -466,9 +474,9 @@ function DriveReflectionAnalyticsContent() {
                 const r2 = entry.robots?.[1];
                 const r3 = entry.robots?.[2];
                 return (
-                  <tr key={entry.id}>
-                    <td className="font-semibold">{formatMatchLabelShort(entry.matchLabel || "")}</td>
-                    <td>{entry.scoutName || "-"}</td>
+                  <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
+                    <td className="sticky-left-0 font-semibold">{formatMatchLabelShort(entry.matchLabel || "")}</td>
+                    <td className="sticky-left-1">{entry.scoutName || "-"}</td>
                     <td>{r1?.teamNumber || "-"}</td>
                     <td>{formatAnalyticsText(r1?.startingPosition)}</td>
                     <td>{formatAnalyticsText(r1?.role)}</td>
@@ -487,8 +495,18 @@ function DriveReflectionAnalyticsContent() {
                     <td className="align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
                       <ExpandableNotesCell text={entry.notes} />
                     </td>
-                    {canViewAdminColumns && (
+                    {canShowActions && (
                       <td className="text-center">
+                        {canManageConfig && (
+                          <button
+                            type="button"
+                            onClick={() => setConfigEntry(entry)}
+                            className="px-3 py-1 rounded text-white text-sm mr-2"
+                            style={{ backgroundColor: "#6b7280" }}
+                          >
+                            Config
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => void handleDeleteEntry(entry)}
@@ -507,6 +525,24 @@ function DriveReflectionAnalyticsContent() {
             </tbody>
           </table>
         </div>
+      )}
+      {configEntry && canManageConfig && (
+        <AnalyticsConfigModal
+          open={Boolean(configEntry)}
+          onClose={() => setConfigEntry(null)}
+          entryId={configEntry.id}
+          entryLabel={formatMatchLabelShort(configEntry.matchLabel || configEntry.id)}
+          entrySubtitle={configEntry.scoutName ? `Scout: ${configEntry.scoutName}` : undefined}
+          collectionName="driveScouting"
+          entityType="driveScouting"
+          excludeFromStats={Boolean(configEntry.excludeFromStats)}
+          onExcludeChange={(excluded) => {
+            setEntries((prev) =>
+              prev.map((row) => (row.id === configEntry.id ? { ...row, excludeFromStats: excluded } : row))
+            );
+            setConfigEntry((prev) => (prev ? { ...prev, excludeFromStats: excluded } : prev));
+          }}
+        />
       )}
     </AnalyticsShell>
   );
