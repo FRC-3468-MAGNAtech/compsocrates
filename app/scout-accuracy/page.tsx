@@ -143,11 +143,23 @@ type ScoutingEntry = {
   };
 };
 
+function getEntryEventKey(value: ScoutingEntry): string {
+  const explicit = String(
+    value.eventKey || (value as Record<string, unknown>).event || (value as Record<string, unknown>).eventId || ""
+  ).trim();
+  if (explicit) return explicit;
+  const matchKey = String(value.matchKey || "").trim();
+  if (matchKey && matchKey.includes("_")) {
+    return matchKey.split("_")[0] || "";
+  }
+  return "";
+}
+
 function getEntryGame(value: ScoutingEntry): "REEFSCAPE" | "REBUILT" {
   const explicit = String(value.game || "").trim().toUpperCase();
   if (explicit === "REBUILT" || explicit === "REEFSCAPE") return explicit;
-  const eventKey = String(value.eventKey || "").trim().toLowerCase();
-  if (eventKey === "2026week0") return "REBUILT";
+  const eventKey = getEntryEventKey(value).toLowerCase();
+  if (eventKey.startsWith("2026") || eventKey === "2026week0") return "REBUILT";
   return "REEFSCAPE";
 }
 
@@ -236,8 +248,16 @@ function getMatchIdentityKey(entry: ScoutingEntry): string {
   const matchKey = String(entry.matchKey || "").trim();
   if (matchKey) return matchKey;
   const matchId = String(entry.matchId || "").trim();
-  const eventKey = String(entry.eventKey || "").trim();
+  const eventKey = getEntryEventKey(entry);
   if (matchId) return `${eventKey}:${matchId}`;
+  const matchLabel = String(entry.matchLabel || "").trim();
+  if (matchLabel) {
+    const normalized = normalizeMatchLabel(matchLabel);
+    if (normalized.matchId) return `${eventKey}:${normalized.matchId}`;
+    if (normalized.matchType || normalized.matchNumber) {
+      return `${eventKey}:${normalized.matchType}:${normalized.matchNumber}`;
+    }
+  }
   const matchType = String(entry.matchType || "").trim();
   const matchNumber = String(entry.matchNumber || "").trim();
   if (matchType || matchNumber) return `${eventKey}:${matchType}:${matchNumber}`;
@@ -462,6 +482,12 @@ function ScoutAccuracyContent() {
     userData?.role === "coach" ||
     userRoles.includes("team-coach") ||
     userRoles.includes("lead-scout");
+  const canViewRealEventTab =
+    Boolean(userData?.isTeamAdmin) ||
+    userData?.role === "coach" ||
+    userRoles.includes("team-coach") ||
+    userRoles.includes("lead-scout") ||
+    userData?.role === "lead-scout";
   const canViewRestrictedData =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||
@@ -501,6 +527,12 @@ function ScoutAccuracyContent() {
   useEffect(() => {
     loadScoutStats();
   }, [selectedMode, selectedGame, userData?.teamId, calculationEvent]);
+
+  useEffect(() => {
+    if (!canViewRealEventTab && selectedMode === "real") {
+      setSelectedMode("trial");
+    }
+  }, [canViewRealEventTab, selectedMode]);
 
   useEffect(() => {
     setSelectedScout(null);
@@ -649,7 +681,7 @@ function ScoutAccuracyContent() {
         const baseByEvent =
           calculationEventKey === "all"
             ? realEntriesBase
-            : realEntriesBase.filter((entry) => String(entry.eventKey || "").trim() === calculationEventKey);
+            : realEntriesBase.filter((entry) => getEntryEventKey(entry) === calculationEventKey);
         const matchBuckets = new Map<string, ScoutingEntry[]>();
         baseByEvent.forEach((entry) => {
           const key = getMatchIdentityKey(entry);
@@ -729,7 +761,7 @@ function ScoutAccuracyContent() {
           const calculationEntries =
             calculationEventKey === "all"
               ? filteredEntries
-              : filteredEntries.filter((entry) => String(entry.eventKey || "").trim() === calculationEventKey);
+              : filteredEntries.filter((entry) => getEntryEventKey(entry) === calculationEventKey);
           const eligibleEntries = calculationEntries.filter((entry) =>
             completeMatchKeys.has(getMatchIdentityKey(entry))
           );
@@ -1454,18 +1486,20 @@ function ScoutAccuracyContent() {
             >
               Competitive Mode
             </button>
-            <button
-              onClick={() => {
-                setSelectedMode("real");
-              }}
-              className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
-                selectedMode === "real"
-                  ? "bg-red-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Real Event
-            </button>
+            {canViewRealEventTab && (
+              <button
+                onClick={() => {
+                  setSelectedMode("real");
+                }}
+                className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                  selectedMode === "real"
+                    ? "bg-red-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                Real Event
+              </button>
+            )}
           </div>
           {selectedMode !== "real" && canViewRestrictedData && canResetScoutData && (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
