@@ -245,6 +245,14 @@ function parseRangeInput(value: string): { start: number; end: number } | null {
   return { start: Math.min(start, end), end: Math.max(start, end) };
 }
 
+function parseTeamNumber(value: unknown): number | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const digits = raw.match(/\d+/)?.[0];
+  const num = Number(digits ?? raw);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
 function getScoutIdentity(entry: ScoutStatusEntry): { id: string; name: string } {
   const name = String(entry.scoutName || entry.helperName || "Unknown Scout").trim() || "Unknown Scout";
   const id = String(entry.scoutId || entry.scoutName || entry.helperName || "unknown").trim() || "unknown";
@@ -878,7 +886,10 @@ function ScoutStatusContent() {
 
   const allianceMatches = useMemo(() => {
     if (!isAllianceCoverageForm(selectedFormType)) return [] as AllianceMatchRow[];
-    const teamNumber = teamNumberOverride ?? Number(userData?.teamId || 0);
+    const teamNumber =
+      teamNumberOverride ??
+      parseTeamNumber(userData?.teamNumber) ??
+      parseTeamNumber(userData?.teamId);
     if (!Number.isFinite(teamNumber) || teamNumber <= 0) return [] as AllianceMatchRow[];
     return visibleMatches
       .map((match) => {
@@ -891,7 +902,7 @@ function ScoutStatusContent() {
         return null;
       })
       .filter((row): row is AllianceMatchRow => Boolean(row));
-  }, [selectedFormType, teamNumberOverride, userData?.teamId, visibleMatches]);
+  }, [selectedFormType, teamNumberOverride, userData?.teamId, userData?.teamNumber, visibleMatches]);
 
   const showMatchFilters = isMatchBasedForm(selectedFormType);
   const showMatchCoverage = selectedFormType === "match-scout" || selectedFormType === "lead-scout";

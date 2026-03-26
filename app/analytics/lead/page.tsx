@@ -25,6 +25,7 @@ type LeadScoutEntry = {
   game?: string;
   eventKey?: string;
   matchId?: string;
+  matchKey?: string;
   matchType?: string;
   matchNumber?: string;
   matchLabel?: string;
@@ -67,6 +68,23 @@ type SortKey =
   | "r3Notes"
   | "r3Skill"
   | "id";
+
+function resolveLeadMatchLabel(entry: LeadScoutEntry): string {
+  const primary = String(entry.matchLabel || "").trim();
+  const primaryMeta = getMatchLabelMeta(primary);
+  const isGeneric = !primary || (primaryMeta.category === "unknown" && /^match\b/i.test(primary));
+  if (!isGeneric && primaryMeta.shortLabel) return primaryMeta.shortLabel;
+  const fallback = String(entry.matchId || entry.matchKey || "").trim();
+  if (fallback) return formatMatchLabelShort(fallback);
+  return primaryMeta.shortLabel || primary || "-";
+}
+
+function resolveLeadMatchSortLabel(entry: LeadScoutEntry): string {
+  const label = resolveLeadMatchLabel(entry);
+  if (label && !/^match\b/i.test(label)) return label;
+  const fallback = String(entry.matchId || entry.matchKey || "").trim();
+  return fallback ? formatMatchLabelShort(fallback) : label;
+}
 
 function LeadNotesCell({ text }: { text?: string | null }) {
   const { autoExpandNotes, setAutoExpandNotes } = useAnalyticsNotesSettings();
@@ -212,10 +230,10 @@ function LeadAnalyticsContent() {
       const r1 = entry.robots?.[0];
       const r2 = entry.robots?.[1];
       const r3 = entry.robots?.[2];
-      const overall = entry.overallAlliance;
+        const overall = entry.overallAlliance;
       switch (sortKey) {
         case "matchLabel":
-          return entry.matchLabel || entry.matchId || "";
+          return resolveLeadMatchSortLabel(entry);
         case "alliance":
           return entry.alliance || "";
         case "scoutName":
@@ -252,8 +270,8 @@ function LeadAnalyticsContent() {
     };
     return filtered.slice().sort((a, b) => {
       if (sortKey === "matchLabel") {
-        const aMeta = getMatchLabelMeta(String(a.matchLabel || a.matchId || ""));
-        const bMeta = getMatchLabelMeta(String(b.matchLabel || b.matchId || ""));
+        const aMeta = getMatchLabelMeta(resolveLeadMatchSortLabel(a));
+        const bMeta = getMatchLabelMeta(resolveLeadMatchSortLabel(b));
         if (aMeta.order !== bMeta.order) return sortDir === "asc" ? aMeta.order - bMeta.order : bMeta.order - aMeta.order;
         if (aMeta.matchNumber !== bMeta.matchNumber) {
           return sortDir === "asc" ? aMeta.matchNumber - bMeta.matchNumber : bMeta.matchNumber - aMeta.matchNumber;
@@ -381,7 +399,7 @@ function LeadAnalyticsContent() {
                 const overall = entry.overallAlliance;
                 return (
                   <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
-                    <td className="sticky-left-0 bg-white font-semibold">{formatMatchLabelShort(entry.matchLabel || entry.matchId || "")}</td>
+                    <td className="sticky-left-0 bg-white font-semibold">{resolveLeadMatchLabel(entry)}</td>
                     <td className="sticky-left-1 bg-white">{entry.alliance ? entry.alliance.toUpperCase() : "-"}</td>
                     <td className="sticky-left-2 bg-white">{entry.scoutName || "-"}</td>
                     <td>{formatAnalyticsText(overall?.teams) || "-"}</td>
@@ -449,7 +467,7 @@ function LeadAnalyticsContent() {
           open={Boolean(configEntry)}
           onClose={() => setConfigEntry(null)}
           entryId={configEntry.id}
-          entryLabel={`Match ${formatMatchLabelShort(configEntry.matchLabel || configEntry.matchId || "-")}`}
+          entryLabel={`Match ${resolveLeadMatchLabel(configEntry)}`}
           entrySubtitle={configEntry.alliance ? `Alliance ${String(configEntry.alliance).toUpperCase()}` : undefined}
           collectionName={configEntry.sourceCollection === "scouting" ? "scouting" : "leadScouting"}
           entityType={configEntry.sourceCollection === "scouting" ? "scoutingEntry" : "leadScouting"}
