@@ -187,9 +187,11 @@ export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" |
     value.includes("qual") ||
     /\bqm\b/.test(value) ||
     /qual|qm|quali|qul|qulification/i.test(compact);
+  const isGenericMatchLabel = /^match\b/i.test(value) || compact.startsWith("match");
   if (isPracticeLabel) return { matchType: "practice", matchNumber: number, matchId: `p${number}` };
   if (isFinalsLabel) return { matchType: "finals", matchNumber: number, matchId: `f${number}` };
   if (isQualificationLabel) return { matchType: "qualification", matchNumber: number, matchId: `q${number}` };
+  if (isGenericMatchLabel) return { matchType: "finals", matchNumber: number, matchId: `sf${number}` };
   return { matchType: "qualification", matchNumber: number, matchId: `q${number}` };
 }
 

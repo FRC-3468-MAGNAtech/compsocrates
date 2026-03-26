@@ -20,6 +20,7 @@ import {
 import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import { mapTbaMatchToModalId } from "@/app/utils/reefscapeMatchSync";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { formatMatchLabelShort } from "@/app/utils/displayFormat";
 
 type ScoutStatusEntry = {
   id?: string;
@@ -158,11 +159,13 @@ function getCoverageKeysForMatch(match: MatchRow): string[] {
 }
 
 function matchLabel(match: TBAMatch) {
-  if (match.comp_level === "qm") return `Qualification ${match.match_number}`;
-  if (match.comp_level === "f") return `Finals ${match.match_number}`;
-  if (match.comp_level === "sf") return `Semifinal ${match.set_number}-${match.match_number}`;
-  if (match.comp_level === "qf") return `Quarterfinal ${match.set_number}-${match.match_number}`;
-  if (match.comp_level === "ef") return `Octofinal ${match.set_number}-${match.match_number}`;
+  const modalId = mapTbaMatchToModalId(match);
+  if (modalId) return formatMatchLabelShort(modalId);
+  if (match.comp_level === "qm") return `Q${match.match_number}`;
+  if (match.comp_level === "f") return `F${match.match_number}`;
+  if (match.comp_level === "sf") return `SF${match.set_number}`;
+  if (match.comp_level === "qf") return `QF${match.set_number}`;
+  if (match.comp_level === "ef") return `EF${match.set_number}`;
   return match.key;
 }
 
@@ -205,6 +208,9 @@ function getEntryCategory(entry: ScoutStatusEntry): MatchCategory {
     return "semifinals";
   }
   const parsed = normalizeMatchLabel(label);
+  const parsedId = String(parsed.matchId || "").toLowerCase();
+  if (parsedId.startsWith("sf") || parsedId.startsWith("qf") || parsedId.startsWith("ef")) return "semifinals";
+  if (parsedId.startsWith("f")) return "finals";
   if (parsed.matchType === "practice") return "practice";
   if (parsed.matchType === "finals") return "finals";
   return "qualification";
@@ -569,10 +575,13 @@ function ScoutStatusContent() {
       if (!userData?.teamId) return;
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-        const teamNumberValue = Number(teamDoc.data()?.teamNumber);
-        setTeamNumberOverride(
-          Number.isFinite(teamNumberValue) && teamNumberValue > 0 ? teamNumberValue : null
-        );
+        const teamData = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
+        const teamNumberValue =
+          parseTeamNumber(teamData.teamNumber) ??
+          parseTeamNumber(teamData.teamName) ??
+          parseTeamNumber(userData.teamId) ??
+          null;
+        setTeamNumberOverride(teamNumberValue);
         setTbaKeys({
           encrypted: String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim(),
           plain: String(teamDoc.data()?.tbaApiKey || "").trim(),

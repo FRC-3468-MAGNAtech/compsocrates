@@ -74,6 +74,7 @@ export function getMatchLabelMeta(rawMatch: string): {
     lower.includes("elim") ||
     /\bf\b/.test(lower) ||
     compact.startsWith("final");
+  const isGenericMatch = /^\s*match\b/.test(lower) || compact.startsWith("match");
 
   let category: MatchLabelCategory = "unknown";
   if (isPractice) category = "practice";
@@ -81,6 +82,7 @@ export function getMatchLabelMeta(rawMatch: string): {
   else if (isQuarter) category = "quarterfinals";
   else if (isSemi) category = "semifinals";
   else if (isFinals) category = "finals";
+  else if (isGenericMatch) category = "semifinals";
 
   const orderMap: Record<MatchLabelCategory, number> = {
     practice: 0,
