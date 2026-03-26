@@ -497,25 +497,27 @@ function MatchStrategyAnalyticsContent() {
                     </td>
                     {canShowActions && (
                       <td className="text-center">
-                        {canManageConfig && (
+                        <div className="flex items-center justify-center gap-2">
+                          {canManageConfig && (
+                            <button
+                              type="button"
+                              onClick={() => setConfigEntry(entry)}
+                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                            >
+                              Config
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => setConfigEntry(entry)}
-                            className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs mr-2 disabled:opacity-50"
+                            onClick={() => void handleDeleteEntry(entry)}
+                            className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                            style={{ backgroundColor: "#dc2626" }}
+                            disabled={!canDeleteEntries}
+                            title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
                           >
-                            Config
+                            Delete
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteEntry(entry)}
-                          className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                          style={{ backgroundColor: "#dc2626" }}
-                          disabled={!canDeleteEntries}
-                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                        >
-                          Delete
-                        </button>
+                        </div>
                       </td>
                     )}
                   </tr>

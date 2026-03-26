@@ -2187,7 +2187,13 @@ function AnalyticsPageContent() {
             <thead className="sticky-header">
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+                <th
+                  className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center"
+                  colSpan={preMatchColSpan}
+                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
+                >
+                  Pre-Match
+                </th>
                 {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
                 <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
@@ -2197,7 +2203,13 @@ function AnalyticsPageContent() {
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+                <th
+                  className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center"
+                  colSpan={preMatchColSpan}
+                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
+                >
+                  Pre-Match
+                </th>
                 {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
                 <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
@@ -2411,8 +2423,8 @@ function AnalyticsPageContent() {
                   {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
                   {canViewAdminColumns && (
                     <td className="text-center">
-                      {canManageFlags && (
-                        <div className="mb-2">
+                      <div className="flex items-center justify-center gap-2">
+                        {canManageFlags && (
                           <button
                             type="button"
                             onClick={() => setFlagMenuEntry(entry)}
@@ -2421,19 +2433,19 @@ function AnalyticsPageContent() {
                           >
                             {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                           </button>
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(event) => triggerDeleteEntry(entry, event)}
-                        onPointerUp={(event) => triggerDeleteEntry(entry, event)}
-                        className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                        style={{ backgroundColor: "#dc2626" }}
-                        disabled={!canDeleteEntries}
-                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                      >
-                        Delete
-                      </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(event) => triggerDeleteEntry(entry, event)}
+                          onPointerUp={(event) => triggerDeleteEntry(entry, event)}
+                          className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                          style={{ backgroundColor: "#dc2626" }}
+                          disabled={!canDeleteEntries}
+                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -2446,7 +2458,13 @@ function AnalyticsPageContent() {
           <thead className="sticky-header">
             <tr>
               <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-              <th className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+              <th
+                className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center"
+                colSpan={preMatchColSpan}
+                style={{ minWidth: startingPosVisible ? 192 : 96 }}
+              >
+                Pre-Match
+              </th>
               {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
@@ -2456,7 +2474,13 @@ function AnalyticsPageContent() {
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-              <th className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center" colSpan={preMatchColSpan}>Pre-Match</th>
+              <th
+                className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center"
+                colSpan={preMatchColSpan}
+                style={{ minWidth: startingPosVisible ? 192 : 96 }}
+              >
+                Pre-Match
+              </th>
               {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
@@ -2649,8 +2673,8 @@ function AnalyticsPageContent() {
                 {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
                 {canViewAdminColumns && (
                   <td className="text-center">
-                    {canManageFlags && (
-                      <div className="mb-2">
+                    <div className="flex items-center justify-center gap-2">
+                      {canManageFlags && (
                         <button
                           type="button"
                           onClick={() => setFlagMenuEntry(entry)}
@@ -2659,19 +2683,19 @@ function AnalyticsPageContent() {
                         >
                           {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                         </button>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(event) => triggerDeleteEntry(entry, event)}
-                      onPointerUp={(event) => triggerDeleteEntry(entry, event)}
-                      className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                      style={{ backgroundColor: "#dc2626" }}
-                      disabled={!canDeleteEntries}
-                      title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                    >
-                      Delete
-                    </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(event) => triggerDeleteEntry(entry, event)}
+                        onPointerUp={(event) => triggerDeleteEntry(entry, event)}
+                        className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                        style={{ backgroundColor: "#dc2626" }}
+                        disabled={!canDeleteEntries}
+                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>
