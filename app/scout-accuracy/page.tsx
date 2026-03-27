@@ -1875,7 +1875,10 @@ function ScoutAccuracyContent() {
                                 typeof entry.accuracy === "number" ? Math.round(entry.accuracy) : null;
                               const displayAccuracy = accuracyValue !== null ? accuracyValue : 0;
                               return (
-                                <div key={String(entry.id || getMatchIdentityKey(entry))} className="flex items-center gap-4">
+                                <div
+                                  key={String(entry.id || getMatchIdentityKey(entry))}
+                                  className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg"
+                                >
                                   <div className="text-sm text-gray-600 w-40">
                                     <div className="font-semibold">{formatRealMatchLabel(entry)}</div>
                                     <div className="text-xs text-gray-500">
