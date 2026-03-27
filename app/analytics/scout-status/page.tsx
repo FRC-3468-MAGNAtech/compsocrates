@@ -895,8 +895,7 @@ function ScoutStatusContent() {
 
   const allianceMatches = useMemo(() => {
     if (!isAllianceCoverageForm(selectedFormType)) return [] as AllianceMatchRow[];
-    const teamNumber =
-      teamNumberOverride ?? parseTeamNumber(userData?.teamId);
+    const teamNumber = Number(teamNumberOverride ?? parseTeamNumber(userData?.teamId) ?? 0);
     if (!Number.isFinite(teamNumber) || teamNumber <= 0) return [] as AllianceMatchRow[];
     return visibleMatches
       .map((match) => {
