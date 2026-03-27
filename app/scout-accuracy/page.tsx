@@ -13,7 +13,8 @@ import { calculateAccuracy } from "@/app/utils/practiceTypes";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles, getRoleLabel, TEAM_ROLES, type TeamRole } from "@/app/utils/roles";
 import { evaluateScoutingFlags, flagStateDocId, type FlagEntityType, type StoredFlagState } from "@/app/utils/scoutingFlags";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
-import { normalizeMatchLabel } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventsForGame, normalizeMatchLabel } from "@/app/utils/analyticsEvents";
+import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 interface ScoutStats {
   scoutId: string;
@@ -280,40 +281,17 @@ function isAllRobotsScouted(entry: ScoutingEntry): boolean {
 function formatRealMatchLabel(entry: ScoutingEntry): string {
   const rawLabel = String(entry.matchLabel || "").trim();
   const fallbackLabel = String(entry.matchKey || entry.matchId || entry.matchType || "").trim();
-  const isGenericLabel = !rawLabel || /^match\b/i.test(rawLabel) || /^m\s*#?\s*\d+/i.test(rawLabel);
-  const normalizedPrimary = normalizeMatchLabel(rawLabel || fallbackLabel);
-  const normalizedFallback = fallbackLabel ? normalizeMatchLabel(fallbackLabel) : normalizedPrimary;
-  const fallbackLooksFinals = /^(sf|qf|ef|f)/i.test(normalizedFallback.matchId || "");
-  const useFallback =
-    Boolean(fallbackLabel) &&
-    (isGenericLabel || (normalizedPrimary.matchId.startsWith("q") && fallbackLooksFinals));
-  const normalized = useFallback ? normalizedFallback : normalizedPrimary;
-  const matchId = normalized.matchId.toLowerCase();
-  const semiMatch = matchId.match(/^sf(\d+)m(\d+)/);
-  if (semiMatch) {
-    return `Semifinal ${semiMatch[1]}-${semiMatch[2]}`;
-  }
-  const quarterMatch = matchId.match(/^(qf|ef)(\d+)(?:m(\d+))?/);
-  if (quarterMatch) {
-    const setNumber = quarterMatch[2] || normalized.matchNumber;
-    const matchNumber = quarterMatch[3];
-    return matchNumber ? `Quarterfinal ${setNumber}-${matchNumber}` : `Quarterfinal ${setNumber}`;
-  }
-  const finalMatch = matchId.match(/^f(\d+)(?:m(\d+))?/);
-  if (finalMatch) {
-    const setNumber = finalMatch[1] || normalized.matchNumber;
-    const matchNumber = finalMatch[2];
-    return matchNumber ? `Final ${setNumber}-${matchNumber}` : `Final ${setNumber}`;
-  }
-  if (normalized.matchType === "practice") return `Practice ${normalized.matchNumber}`;
-  if (normalized.matchType === "qualification") return `Qualification ${normalized.matchNumber}`;
-  return `Match ${normalized.matchNumber}`;
+  const primary = rawLabel || fallbackLabel;
+  if (!primary) return "Match";
+  return formatMatchLabelLong(primary);
 }
 
 type CalculationScope = {
   eventKey: string;
   practiceMode: "trial" | "competitive" | null;
 };
+
+const PRACTICE_WEIGHT = 0.25;
 
 function parseCalculationScope(value: string): CalculationScope {
   const trimmed = String(value || "").trim();
@@ -493,7 +471,6 @@ function ScoutAccuracyContent() {
   const canViewRealEventTab =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||
-    userRoles.includes("team-coach") ||
     userRoles.includes("lead-scout") ||
     userData?.role === "lead-scout";
   const canViewRestrictedData =
@@ -686,10 +663,14 @@ function ScoutAccuracyContent() {
           .filter((entry) => isMatchScoutEntry(entry))
           .filter((entry) => getEntryGame(entry) === selectedGame)
           .filter((entry) => !entry.excludeFromStats);
-        const baseByEvent =
+        const eventOptions = getEventsForGame(selectedGame);
+        const matchesCalculationEvent = (entry: ScoutingEntry) =>
           calculationEventKey === "all"
-            ? realEntriesBase
-            : realEntriesBase.filter((entry) => getEntryEventKey(entry) === calculationEventKey);
+            ? true
+            : entryMatchesAnalyticsFilters(entry, selectedGame, calculationEventKey, eventOptions);
+        const baseByEvent = realEntriesBase.filter((entry) =>
+          matchesCalculationEvent(entry)
+        );
         const matchBuckets = new Map<string, ScoutingEntry[]>();
         baseByEvent.forEach((entry) => {
           const key = getMatchIdentityKey(entry);
@@ -699,12 +680,6 @@ function ScoutAccuracyContent() {
         });
         const completeMatchKeys = new Set<string>();
         matchBuckets.forEach((entries, key) => {
-          const teams = new Set(
-            entries
-              .map((entry) => String(entry.teamNumber || "").trim())
-              .filter((team) => team.length > 0)
-          );
-          if (teams.size < 6) return;
           if (!entries.every((entry) => isAccuracyComplete(entry))) return;
           completeMatchKeys.add(key);
         });
@@ -766,10 +741,7 @@ function ScoutAccuracyContent() {
             .filter((entry) => isMatchScoutEntry(entry))
             .filter((entry) => getEntryGame(entry) === selectedGame)
             .filter((entry) => !entry.excludeFromStats);
-          const calculationEntries =
-            calculationEventKey === "all"
-              ? filteredEntries
-              : filteredEntries.filter((entry) => getEntryEventKey(entry) === calculationEventKey);
+          const calculationEntries = filteredEntries.filter((entry) => matchesCalculationEvent(entry));
           const eligibleEntries = calculationEntries.filter((entry) =>
             completeMatchKeys.has(getMatchIdentityKey(entry))
           );
@@ -785,9 +757,12 @@ function ScoutAccuracyContent() {
           const practiceByName = practiceByScoutName.get(scoutNameKey) || { sum: 0, count: 0 };
           const practiceSum = includePractice ? practiceById.sum + practiceByName.sum : 0;
           const practiceCount = includePractice ? practiceById.count + practiceByName.count : 0;
-          const combinedCount = realAccuracyCount + practiceCount;
+          const practiceWeight = includePractice ? PRACTICE_WEIGHT : 0;
+          const weightedPracticeSum = practiceSum * practiceWeight;
+          const weightedPracticeCount = practiceCount * practiceWeight;
+          const combinedCount = realAccuracyCount + weightedPracticeCount;
           const averageAccuracy =
-            combinedCount > 0 ? Math.round((realAccuracySum + practiceSum) / combinedCount) : 0;
+            combinedCount > 0 ? Math.round((realAccuracySum + weightedPracticeSum) / combinedCount) : 0;
           const lastSubmit = eligibleEntries.reduce((max, entry) => Math.max(max, getEntryTimestamp(entry)), 0);
 
           return {

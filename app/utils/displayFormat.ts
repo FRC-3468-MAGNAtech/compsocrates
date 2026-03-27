@@ -113,3 +113,21 @@ export function getMatchLabelMeta(rawMatch: string): {
 export function formatMatchLabelShort(rawMatch: string): string {
   return getMatchLabelMeta(rawMatch).shortLabel || "-";
 }
+
+export function formatMatchLabelLong(rawMatch: string): string {
+  const rawValue = String(rawMatch || "").trim();
+  if (!rawValue) return "-";
+  const meta = getMatchLabelMeta(rawValue);
+  const labelMap: Record<MatchLabelCategory, string> = {
+    practice: "Practice",
+    qualification: "Qualification",
+    quarterfinals: "Quarterfinal",
+    semifinals: "Semi-Final",
+    finals: "Final",
+    unknown: "Match",
+  };
+  const baseLabel = labelMap[meta.category] || "Match";
+  if (meta.category === "unknown") return rawValue;
+  const matchNumber = meta.matchNumber || Number(rawValue.replace(/\D/g, "")) || 0;
+  return matchNumber > 0 ? `${baseLabel} ${matchNumber}` : baseLabel;
+}
