@@ -2423,13 +2423,13 @@ function AnalyticsPageContent() {
                   {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
                   {canViewAdminColumns && (
                     <td className="text-center">
-                      <div className="flex items-center justify-center gap-2 flex-nowrap">
+                      <div className="flex items-center justify-center gap-2">
                         {canManageFlags && (
                           <button
                             type="button"
                             onClick={() => setFlagMenuEntry(entry)}
                             disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                            className="order-1 px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                            className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                           >
                             {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                           </button>
@@ -2438,7 +2438,7 @@ function AnalyticsPageContent() {
                           type="button"
                           onClick={(event) => triggerDeleteEntry(entry, event)}
                           onPointerUp={(event) => triggerDeleteEntry(entry, event)}
-                          className="order-2 px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                          className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
                           style={{ backgroundColor: "#dc2626" }}
                           disabled={!canDeleteEntries}
                           title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
@@ -2673,13 +2673,13 @@ function AnalyticsPageContent() {
                 {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
                 {canViewAdminColumns && (
                   <td className="text-center">
-                    <div className="flex items-center justify-center gap-2 flex-nowrap">
+                    <div className="flex items-center justify-center gap-2">
                       {canManageFlags && (
                         <button
                           type="button"
                           onClick={() => setFlagMenuEntry(entry)}
                           disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                          className="order-1 px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                          className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                         >
                           {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                         </button>
@@ -2688,7 +2688,7 @@ function AnalyticsPageContent() {
                         type="button"
                         onClick={(event) => triggerDeleteEntry(entry, event)}
                         onPointerUp={(event) => triggerDeleteEntry(entry, event)}
-                        className="order-2 px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                        className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
                         style={{ backgroundColor: "#dc2626" }}
                         disabled={!canDeleteEntries}
                         title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
