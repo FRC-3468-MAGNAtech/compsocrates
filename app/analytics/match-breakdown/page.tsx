@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
@@ -18,6 +18,9 @@ import {
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 import { useAuth } from "@/app/AuthContext";
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
+import { fetchEventMatchesWithTeamAuth, mapTbaMatchToModalId } from "@/app/utils/reefscapeMatchSync";
+import { type TBAMatch } from "@/app/utils/tba-api";
+import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 type ScoutingEntry = {
   id?: string;
@@ -73,17 +76,7 @@ function isPracticeEntry(entry: ScoutingEntry) {
 }
 
 function formatMatchLabel(matchId: string): string {
-  const id = matchId.toLowerCase();
-  const num = id.replace(/\D/g, "");
-  if (id.startsWith("p")) return `Practice ${num}`;
-  if (id.startsWith("q")) return `Qualification ${num}`;
-  if (id.startsWith("f")) {
-    const n = Number(num || 0);
-    if (n >= 1 && n <= 13) return `Semifinal ${n}`;
-    if (n >= 14 && n <= 16) return `Finals ${n - 13}`;
-    return `Finals ${num}`;
-  }
-  return `Match ${matchId}`;
+  return formatMatchLabelLong(matchId);
 }
 
 function normalizeMatchId(entry: ScoutingEntry): string {
@@ -147,6 +140,13 @@ function MatchBreakdownContent() {
   const [selectedMatch, setSelectedMatch] = useState("");
   const [loading, setLoading] = useState(true);
   const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
+  const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({
+    encryptedKey: "",
+    plainKey: "",
+  });
+  const [scheduleByMatchId, setScheduleByMatchId] = useState<
+    Record<string, { red: number[]; blue: number[] }>
+  >({});
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -206,6 +206,71 @@ function MatchBreakdownContent() {
     };
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTeamTbaAuth() {
+      if (!userData?.teamId) {
+        if (!cancelled) setTbaAuth({ encryptedKey: "", plainKey: "" });
+        return;
+      }
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (cancelled) return;
+        setTbaAuth({
+          encryptedKey: String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim(),
+          plainKey: String(teamDoc.data()?.tbaApiKey || "").trim(),
+        });
+      } catch (error) {
+        console.warn("Failed loading team TBA auth for match breakdown:", error);
+        if (!cancelled) setTbaAuth({ encryptedKey: "", plainKey: "" });
+      }
+    }
+    void loadTeamTbaAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.teamId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSchedule() {
+      if (!selectedEvent || selectedEvent === "all" || selectedEvent === "app-testing") {
+        if (!cancelled) setScheduleByMatchId({});
+        return;
+      }
+      try {
+        const matches = await fetchEventMatchesWithTeamAuth(selectedEvent, {
+          encryptedKey: tbaAuth.encryptedKey,
+          plainKey: tbaAuth.plainKey,
+        });
+        if (cancelled) return;
+        const map: Record<string, { red: number[]; blue: number[] }> = {};
+        const parseTeamKey = (teamKey: string) => Number(String(teamKey || "").replace(/^frc/i, ""));
+        matches.forEach((match: TBAMatch) => {
+          const matchId = mapTbaMatchToModalId(match);
+          if (!matchId) return;
+          const red = (match.alliances?.red?.team_keys || [])
+            .map(parseTeamKey)
+            .filter((value) => Number.isFinite(value) && value > 0);
+          const blue = (match.alliances?.blue?.team_keys || [])
+            .map(parseTeamKey)
+            .filter((value) => Number.isFinite(value) && value > 0);
+          if (red.length || blue.length) {
+            map[matchId] = { red, blue };
+          }
+        });
+        setScheduleByMatchId(map);
+      } catch (error) {
+        console.warn("Failed loading TBA schedule for match breakdown:", error);
+        if (!cancelled) setScheduleByMatchId({});
+      }
+    }
+    void loadSchedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEvent, tbaAuth.encryptedKey, tbaAuth.plainKey]);
+
   const eventOptions = useMemo(
     () => getEventOptionsForEntries(entries, selectedGame, selectedGame === "REBUILT" ? detectedEventOptions : []),
     [entries, selectedGame, detectedEventOptions]
@@ -249,12 +314,22 @@ function MatchBreakdownContent() {
   const allianceBreakdown = useMemo(() => {
     const selectedRows = dedupedEntries.filter((entry) => normalizeMatchId(entry) === selectedMatch);
     const teamScores = new Map<string, { score: number; alliance: "red" | "blue" | null }>();
+    const scheduled = scheduleByMatchId[selectedMatch];
+    const scheduledAllianceByTeam = new Map<number, "red" | "blue">();
+    if (scheduled) {
+      scheduled.red.forEach((team) => scheduledAllianceByTeam.set(team, "red"));
+      scheduled.blue.forEach((team) => scheduledAllianceByTeam.set(team, "blue"));
+    }
 
     selectedRows.forEach((entry) => {
       const team = String(entry.teamNumber || "").trim();
       if (!team) return;
+      const teamNumber = Number(team);
+      const scheduledAlliance = Number.isFinite(teamNumber)
+        ? scheduledAllianceByTeam.get(teamNumber) || null
+        : null;
       const score = scoreEntry(entry, selectedGame);
-      const alliance = inferAlliance(entry);
+      const alliance = scheduledAlliance || inferAlliance(entry);
       if (!teamScores.has(team)) {
         teamScores.set(team, { score, alliance });
       }
@@ -273,17 +348,19 @@ function MatchBreakdownContent() {
         else unknown.push(row);
       });
 
-    // Fill missing alliances when source does not include explicit alliance tags.
-    unknown.forEach((row) => {
-      if (red.length < 3) red.push(row);
-      else blue.push(row);
-    });
+    if (!scheduled) {
+      // Fill missing alliances when source does not include explicit alliance tags.
+      unknown.forEach((row) => {
+        if (red.length < 3) red.push(row);
+        else blue.push(row);
+      });
+    }
 
     const redTotal = red.reduce((sum, row) => sum + row.totalScore, 0);
     const blueTotal = blue.reduce((sum, row) => sum + row.totalScore, 0);
 
     return { red, blue, redTotal, blueTotal };
-  }, [dedupedEntries, selectedMatch, selectedGame]);
+  }, [dedupedEntries, selectedMatch, selectedGame, scheduleByMatchId]);
 
   return (
     <AnalyticsShell
