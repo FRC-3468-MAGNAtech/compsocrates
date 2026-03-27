@@ -269,6 +269,14 @@ function isAccuracyComplete(entry: ScoutingEntry): boolean {
   return status === "complete";
 }
 
+function isAllRobotsScouted(entry: ScoutingEntry): boolean {
+  const details = (entry as ScoutingEntry & { accuracyDetails?: { allRobotsScouted?: string } }).accuracyDetails;
+  if (details && typeof details.allRobotsScouted === "string") {
+    return details.allRobotsScouted.toLowerCase() === "yes";
+  }
+  return isAccuracyComplete(entry);
+}
+
 function formatRealMatchLabel(entry: ScoutingEntry): string {
   const rawLabel = String(entry.matchLabel || "").trim();
   const fallbackLabel = String(entry.matchKey || entry.matchId || entry.matchType || "").trim();
@@ -1138,7 +1146,7 @@ function ScoutAccuracyContent() {
       const entryScoutName = String(entry.scoutName || "").trim().toLowerCase();
       if (scoutId && entryScoutId && entryScoutId === scoutId) return true;
       return scoutName && entryScoutName === scoutName;
-    });
+    }).filter((entry) => isAllRobotsScouted(entry));
   }, [isRealMode, selectedScoutData, realScoutingEntries]);
 
   const selectedRealMatches = useMemo(() => {
