@@ -162,12 +162,13 @@ function AccuracyVerificationContent() {
   const [savingRescout, setSavingRescout] = useState(false);
 
   useEffect(() => {
-    if (!userData?.teamId || !canSee) return;
+    const teamId = userData?.teamId;
+    if (!teamId || !canSee) return;
     let isActive = true;
     async function loadData() {
       setLoading(true);
       try {
-        const snap = await getDocs(query(collection(db, "scouting"), where("teamId", "==", userData.teamId)));
+        const snap = await getDocs(query(collection(db, "scouting"), where("teamId", "==", teamId)));
         const rows: ScoutingEntry[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as Omit<ScoutingEntry, "id">),
@@ -175,7 +176,7 @@ function AccuracyVerificationContent() {
         if (!isActive) return;
         setEntries(rows);
         setEventOptions(getEventOptionsForEntries(rows, selectedGame));
-        const rescoutSnap = await getDocs(query(collection(db, "accuracyRescouts"), where("teamId", "==", userData.teamId)));
+        const rescoutSnap = await getDocs(query(collection(db, "accuracyRescouts"), where("teamId", "==", teamId)));
         if (!isActive) return;
         const rescoutRows: RescoutEntry[] = rescoutSnap.docs.map((docSnap) => ({
           id: docSnap.id,
