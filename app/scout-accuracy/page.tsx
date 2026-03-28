@@ -763,7 +763,7 @@ function ScoutAccuracyContent() {
             recentSessions: [],
             allSessions: [],
           } as ScoutStats;
-        }).filter((row) => row.totalEntries > 0);
+        });
 
         setScoutStats(
           stats.sort((a, b) => {
