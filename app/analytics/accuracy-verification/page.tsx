@@ -204,7 +204,7 @@ function AccuracyVerificationContent() {
 
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
-      if (isPracticeScoutedEntry(entry)) return false;
+      if (isPracticeScoutedEntry(entry as Parameters<typeof isPracticeScoutedEntry>[0])) return false;
       const eventId = selectedEvent === "all" ? "all" : selectedEvent;
       return entryMatchesAnalyticsFilters(entry, selectedGame, eventId, getEventsForGame(selectedGame));
     });
