@@ -1346,6 +1346,7 @@ function ScoutFormContent() {
           }
         }
         setSelectedMatch((current) => {
+          if (editMode && editTarget) return editTarget;
           if (!nextMatch) return current || null;
           if (!current) return nextMatch;
           const currentStillExists = resolved.some((match) => match.id === current.id);
