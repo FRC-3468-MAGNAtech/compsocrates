@@ -36,6 +36,7 @@ const analyticsLinks: Array<{ href: string; label: string } | { divider: true }>
   { href: "/analytics/team-breakdown", label: "Team Breakdown" },
   { href: "/analytics/pick-list", label: "Pick List" },
   { href: "/analytics/scout-status", label: "Scout Status" },
+  { href: "/analytics/accuracy-verification", label: "Accuracy Verification" },
 ];
 
 function AnalyticsShellInner({
@@ -214,6 +215,17 @@ function AnalyticsShellInner({
                   userData?.role === "coach";
                 if (!canSee) return null;
               }
+              if (item.href === "/analytics/accuracy-verification") {
+                const roles = getUserRoles(userData);
+                const canSee =
+                  Boolean(userData?.isTeamAdmin) ||
+                  roles.includes("lead-scout") ||
+                  roles.includes("lead-strategist") ||
+                  roles.includes("team-coach") ||
+                  userData?.role === "coach" ||
+                  Boolean(userData?.experiencedScout);
+                if (!canSee) return null;
+              }
               const active = pathname === item.href;
               return (
                 <Link
@@ -279,6 +291,17 @@ function AnalyticsShellInner({
                   roles.includes("lead-strategist") ||
                   roles.includes("team-coach") ||
                   userData?.role === "coach";
+                if (!canSee) return null;
+              }
+              if (item.href === "/analytics/accuracy-verification") {
+                const roles = getUserRoles(userData);
+                const canSee =
+                  Boolean(userData?.isTeamAdmin) ||
+                  roles.includes("lead-scout") ||
+                  roles.includes("lead-strategist") ||
+                  roles.includes("team-coach") ||
+                  userData?.role === "coach" ||
+                  Boolean(userData?.experiencedScout);
                 if (!canSee) return null;
               }
               const active = pathname === item.href;

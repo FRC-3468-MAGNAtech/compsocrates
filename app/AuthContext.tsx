@@ -42,6 +42,7 @@ export type UserData = {
   emailVerificationExempt?: boolean;
   accountThemeId?: string;
   accountFontId?: string;
+  experiencedScout?: boolean;
 };
 
 type AuthContextType = {
@@ -111,6 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       photoURL: currentUser.photoURL || "",
       emailVerificationExempt: false,
       profileComplete: true,
+      experiencedScout: false,
     };
   }
 

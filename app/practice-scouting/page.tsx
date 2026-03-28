@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { auth } from "@/app/firebase";
@@ -272,6 +272,14 @@ function createEmptyScoutedData(teamNumber = "", notes = ""): ScoutedData {
     incidents: [] as string[],
     notes,
   };
+}
+
+function parseTeamNumber(value: unknown): number | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const digits = raw.match(/\d+/)?.[0];
+  const num = Number(digits ?? raw);
+  return Number.isFinite(num) && num > 0 ? num : null;
 }
 
 function sanitizeAllianceTeams(candidate: unknown): number[] {
@@ -1051,7 +1059,17 @@ function resolvePracticeEvent(
 
 function PracticeScoutingContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { userData, teamTimeOverride } = useAuth();
+  const [rescoutId, setRescoutId] = useState<string | null>(null);
+  const [rescoutTarget, setRescoutTarget] = useState<{
+    id: string;
+    matchKey: string;
+    alliance: "red" | "blue";
+    teamNumber: number;
+    game: "REEFSCAPE" | "REBUILT";
+  } | null>(null);
+  const [rescoutLoaded, setRescoutLoaded] = useState(false);
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
@@ -1109,6 +1127,48 @@ function PracticeScoutingContent() {
     ? "hard"
     : (selectedDifficulty || "easy");
 
+  useEffect(() => {
+    const id = searchParams.get("rescoutId");
+    setRescoutId(id);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!rescoutId || !userData?.teamId || rescoutLoaded) return;
+    let isActive = true;
+    async function loadRescout() {
+      try {
+        const snap = await getDoc(doc(db, "accuracyRescouts", rescoutId));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (String(data.teamId || "") !== String(userData.teamId || "")) return;
+        const alliance = String(data.alliance || "").toLowerCase() === "blue" ? "blue" : "red";
+        const teamNumber = parseTeamNumber(data.teamNumber);
+        const matchKey = String(data.matchKey || data.matchLabel || "").trim();
+        const game = String(data.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+        if (!matchKey || !teamNumber) return;
+        if (!isActive) return;
+        setRescoutTarget({
+          id: rescoutId,
+          matchKey,
+          alliance,
+          teamNumber,
+          game,
+        });
+        setSelectedMode((prev) => prev || "competitive");
+        setSelectedDifficulty((prev) => prev || "easy");
+        setActiveMatchGame(game);
+      } catch (error) {
+        console.error("Failed to load rescout request:", error);
+      } finally {
+        if (isActive) setRescoutLoaded(true);
+      }
+    }
+    void loadRescout();
+    return () => {
+      isActive = false;
+    };
+  }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty]);
+
   const liveLobbyPlayers = useMemo(() => {
     if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
     return Object.entries(liveLobby.playersByUid)
@@ -1119,6 +1179,28 @@ function PracticeScoutingContent() {
       }))
       .sort((a, b) => a.joinedAt - b.joinedAt);
   }, [liveLobby]);
+
+  useEffect(() => {
+    if (!rescoutTarget || candidateMatches.length === 0) return;
+    const existingKey = String(currentMatch?.matchKey || currentMatch?.id || "");
+    if (existingKey && existingKey === rescoutTarget.matchKey) return;
+    const targetMatch =
+      candidateMatches.find(
+        (match) =>
+          String(match.matchKey || "").trim() === rescoutTarget.matchKey &&
+          normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
+      ) ||
+      candidateMatches.find(
+        (match) =>
+          String(match.id || "").trim() === rescoutTarget.matchKey &&
+          normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
+      );
+    if (!targetMatch) return;
+    setCurrentMatch(targetMatch);
+    setCurrentStep("practice");
+    const teamIndex = targetMatch.allianceTeams.findIndex((team) => Number(team) === rescoutTarget.teamNumber);
+    if (teamIndex >= 0) setCurrentRobotIndex(teamIndex);
+  }, [rescoutTarget, candidateMatches, currentMatch]);
 
   const liveLobbyParticipants = useMemo(() => {
     if (!liveLobby) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
@@ -2883,6 +2965,32 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       };
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
+
+      if (rescoutTarget?.id) {
+        await updateDoc(doc(db, "accuracyRescouts", rescoutTarget.id), {
+          status: "submitted",
+          updatedAt: Date.now(),
+          submittedAt: now,
+          practiceSessionId: docRef.id,
+          scoutedScore: totalScoutedScore,
+          matchKey: currentMatch.matchKey || rescoutTarget.matchKey,
+          teamNumber: rescoutTarget.teamNumber,
+          alliance: normalizeAllianceSide(currentMatch.alliance),
+        });
+      }
+
+      if (rescoutTarget?.id) {
+        await updateDoc(doc(db, "accuracyRescouts", rescoutTarget.id), {
+          status: "submitted",
+          updatedAt: Date.now(),
+          submittedAt: now,
+          practiceSessionId: docRef.id,
+          scoutedScore: totalScoutedScore,
+          matchKey: currentMatch.matchKey || rescoutTarget.matchKey,
+          teamNumber: rescoutTarget.teamNumber,
+          alliance: normalizeAllianceSide(currentMatch.alliance),
+        });
+      }
 
       await Promise.all(
         allRobotData.map((robotData) => {
