@@ -564,7 +564,7 @@ function ScoutAccuracyContent() {
   const roleFilterSet = useMemo(() => new Set(roleFilters), [roleFilters]);
   const calculationScope = useMemo(() => parseCalculationScope(calculationEvent), [calculationEvent]);
   const includePracticeInReal = Boolean(calculationScope.practiceMode);
-  const realModeMatchesLabel = includePracticeInReal ? "Matches + Practice" : "Matches";
+  const realModeMatchesLabel = "Matches";
   const calculationOptions = useMemo(() => {
     const options: Array<{ value: string; label: string }> = [
       { value: "all", label: "All Events" },
@@ -741,12 +741,13 @@ function ScoutAccuracyContent() {
           const practiceByName = practiceByScoutName.get(scoutNameKey) || { sum: 0, count: 0 };
           const practiceSum = includePractice ? practiceById.sum + practiceByName.sum : 0;
           const practiceCount = includePractice ? practiceById.count + practiceByName.count : 0;
-          const practiceWeight = includePractice ? PRACTICE_WEIGHT : 0;
-          const weightedPracticeSum = practiceSum * practiceWeight;
-          const weightedPracticeCount = practiceCount * practiceWeight;
-          const combinedCount = realAccuracyCount + weightedPracticeCount;
+          const practiceAvg = practiceCount > 0 ? practiceSum / practiceCount : 0;
+          const practiceWeight = includePractice && practiceCount > 0 ? PRACTICE_WEIGHT : 0;
+          const realAvg = realAccuracyCount > 0 ? realAccuracySum / realAccuracyCount : 0;
           const averageAccuracy =
-            combinedCount > 0 ? Math.round((realAccuracySum + weightedPracticeSum) / combinedCount) : 0;
+            realAccuracyCount > 0
+              ? Math.round((realAvg + practiceAvg * practiceWeight) / (1 + practiceWeight))
+              : 0;
           const lastSubmit = eligibleEntries.reduce((max, entry) => Math.max(max, getEntryTimestamp(entry)), 0);
 
           return {
@@ -754,15 +755,15 @@ function ScoutAccuracyContent() {
             scoutName: member.scoutName,
             role: member.role,
             roles: member.roles,
-            totalEntries: eligibleEntries.length + (includePractice ? practiceCount : 0),
-            practiceSessionsCompleted: matchKeys.size + (includePractice ? practiceCount : 0),
+            totalEntries: eligibleEntries.length,
+            practiceSessionsCompleted: matchKeys.size,
             averageAccuracy,
             lastPracticeDate: lastSubmit || 0,
             recentAccuracies: [],
             recentSessions: [],
             allSessions: [],
           } as ScoutStats;
-        });
+        }).filter((row) => row.totalEntries > 0);
 
         setScoutStats(
           stats.sort((a, b) => {

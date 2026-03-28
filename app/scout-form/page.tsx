@@ -832,6 +832,8 @@ function normalizeScoutedMatchId(value: unknown): string {
   if (!raw) return "";
   const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
   if (direct) return `${direct[1]}${Number(direct[2])}`;
+  const playoffSet = raw.match(/^(qf|sf|f)(\d+)m(\d+)$/);
+  if (playoffSet) return `${playoffSet[1]}${Number(playoffSet[2])}`;
 
   const fromQmKey = raw.match(/_qm(\d+)/);
   if (fromQmKey) return `q${Number(fromQmKey[1])}`;
@@ -859,6 +861,8 @@ function normalizeScoutedMatchId(value: unknown): string {
     const n = Number(finalsLabel[1]);
     return `f${n >= 14 && n <= 16 ? n - 13 : n}`;
   }
+  const genericMatch = raw.match(/\bmatch\s+(\d+)\b/);
+  if (genericMatch) return `sf${Number(genericMatch[1])}`;
   return raw.replace(/\s+/g, "");
 }
 
@@ -894,6 +898,8 @@ function ScoutFormContent() {
   const editId = searchParams.get("editId");
   const editCollectionParam = searchParams.get("editCollection");
   const editMode = Boolean(editId);
+  const editCollectionName =
+    editCollectionParam || (searchParams.get("lead") === "1" ? "leadScouting" : "scouting");
   const [editEntry, setEditEntry] = useState<Record<string, unknown> | null>(null);
   const [editEventKey, setEditEventKey] = useState<string | null>(null);
   const [editMatchId, setEditMatchId] = useState<string>("");
@@ -1011,8 +1017,7 @@ function ScoutFormContent() {
     if (!editId) return;
     let isActive = true;
     const editIdValue = editId;
-    const collectionName: string =
-      editCollectionParam || (searchParams.get("lead") === "1" ? "leadScouting" : "scouting");
+    const collectionName: string = editCollectionName;
     async function loadEditEntry() {
       try {
         const snap = await getDoc(doc(db, collectionName, editIdValue));
@@ -1325,7 +1330,14 @@ function ScoutFormContent() {
         };
 
         let nextMatch: MatchOption | null = null;
-        const editTarget = editMatchId ? resolved.find((match) => match.id === editMatchId) || null : null;
+        const editKey = editMatchId ? editMatchId.replace(/m\d+$/i, "") : "";
+        const editTarget = editMatchId
+          ? resolved.find((match) => {
+              if (match.id === editMatchId || match.id === editKey) return true;
+              const normalizedLabel = normalizeScoutedMatchId(match.label);
+              return normalizedLabel === editMatchId || normalizedLabel === editKey;
+            }) || null
+          : null;
         if (editMode && editTarget) {
           nextMatch = editTarget;
         } else if (overrideEvent) {
@@ -1346,7 +1358,10 @@ function ScoutFormContent() {
           }
         }
         setSelectedMatch((current) => {
-          if (editMode && editTarget) return editTarget;
+          if (editMode) {
+            if (editTarget) return editTarget;
+            return current || null;
+          }
           if (!nextMatch) return current || null;
           if (!current) return nextMatch;
           const currentStillExists = resolved.some((match) => match.id === current.id);
@@ -1868,8 +1883,8 @@ function ScoutFormContent() {
         submittedAt: Date.now(),
         timestamp: Date.now(),
       };
-      if (editMode && editId && editCollectionParam) {
-        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+      if (editMode && editId) {
+        await setDoc(doc(db, editCollectionName, editId), payload, { merge: true });
         alert("Match scout form updated.");
       } else {
         await addDoc(collection(db, "scouting"), payload);
@@ -1994,8 +2009,8 @@ function ScoutFormContent() {
         submittedAt: Date.now(),
         timestamp: Date.now(),
       };
-      if (editMode && editId && editCollectionParam) {
-        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+      if (editMode && editId) {
+        await setDoc(doc(db, editCollectionName, editId), payload, { merge: true });
         alert("Lead scout form updated.");
       } else {
         try {
