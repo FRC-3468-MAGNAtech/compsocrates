@@ -671,21 +671,7 @@ function ScoutAccuracyContent() {
         const baseByEvent = realEntriesBase.filter((entry) =>
           matchesCalculationEvent(entry)
         );
-        const matchBuckets = new Map<string, ScoutingEntry[]>();
-        baseByEvent.forEach((entry) => {
-          const key = getMatchIdentityKey(entry);
-          if (!key) return;
-          if (!matchBuckets.has(key)) matchBuckets.set(key, []);
-          matchBuckets.get(key)?.push(entry);
-        });
-        const completeMatchKeys = new Set<string>();
-        matchBuckets.forEach((entries, key) => {
-          if (!entries.every((entry) => isAccuracyComplete(entry))) return;
-          completeMatchKeys.add(key);
-        });
-        const realEntries = baseByEvent.filter((entry) =>
-          completeMatchKeys.has(getMatchIdentityKey(entry))
-        );
+        const realEntries = baseByEvent.filter((entry) => isAccuracyComplete(entry));
         setRealScoutingEntries(realEntries);
 
         const practiceByScoutId = new Map<string, { sum: number; count: number }>();
@@ -742,11 +728,9 @@ function ScoutAccuracyContent() {
             .filter((entry) => getEntryGame(entry) === selectedGame)
             .filter((entry) => !entry.excludeFromStats);
           const calculationEntries = filteredEntries.filter((entry) => matchesCalculationEvent(entry));
-          const eligibleEntries = calculationEntries.filter((entry) =>
-            completeMatchKeys.has(getMatchIdentityKey(entry))
-          );
+          const eligibleEntries = calculationEntries.filter((entry) => isAccuracyComplete(entry));
           const matchKeys = new Set(eligibleEntries.map(getMatchIdentityKey).filter(Boolean));
-          const accuracyEntries = eligibleEntries.filter((entry) => isAccuracyComplete(entry));
+          const accuracyEntries = eligibleEntries;
           const accuracyValues = accuracyEntries
             .map((entry) => (typeof entry.accuracy === "number" ? Number(entry.accuracy) : NaN))
             .filter((value) => Number.isFinite(value));
@@ -1839,8 +1823,8 @@ function ScoutAccuracyContent() {
                       <div>
                         <h3 className="text-lg font-semibold mb-4">Recent Match Accuracy</h3>
                         <p className="text-xs text-gray-500 mb-2">
-                          Alliance accuracy is shown per match and is not scout-specific. Only matches with all robots
-                          scouted and a complete accuracy script are listed.
+                          Alliance accuracy is shown per match and is not scout-specific. Only matches with a complete
+                          accuracy script are listed.
                         </p>
                         {selectedRealMatches.length > 0 ? (
                           <div className="space-y-2">

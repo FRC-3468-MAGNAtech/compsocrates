@@ -20,7 +20,7 @@ import {
 import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import { mapTbaMatchToModalId } from "@/app/utils/reefscapeMatchSync";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
-import { formatMatchLabelShort } from "@/app/utils/displayFormat";
+import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 type ScoutStatusEntry = {
   id?: string;
@@ -160,12 +160,13 @@ function getCoverageKeysForMatch(match: MatchRow): string[] {
 
 function matchLabel(match: TBAMatch) {
   const modalId = mapTbaMatchToModalId(match);
-  if (modalId) return formatMatchLabelShort(modalId);
-  if (match.comp_level === "qm") return `Q${match.match_number}`;
-  if (match.comp_level === "f") return `F${match.match_number}`;
-  if (match.comp_level === "sf") return `SF${match.set_number}`;
-  if (match.comp_level === "qf") return `QF${match.set_number}`;
-  if (match.comp_level === "ef") return `EF${match.set_number}`;
+  if (modalId) return formatMatchLabelLong(modalId);
+  if (match.comp_level === "pr") return `Practice ${match.match_number}`;
+  if (match.comp_level === "qm") return `Qualification ${match.match_number}`;
+  if (match.comp_level === "f") return `Finals ${match.match_number}`;
+  if (match.comp_level === "sf") return `Semi-Final ${match.set_number}`;
+  if (match.comp_level === "qf") return `Quarterfinal ${match.set_number}`;
+  if (match.comp_level === "ef") return `Octofinal ${match.set_number}`;
   return match.key;
 }
 
