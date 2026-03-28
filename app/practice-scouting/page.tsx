@@ -1133,7 +1133,8 @@ function PracticeScoutingContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!rescoutId || !userData?.teamId || rescoutLoaded) return;
+    const teamId = userData?.teamId;
+    if (!rescoutId || !teamId || rescoutLoaded) return;
     let isActive = true;
     async function loadRescout() {
       try {
@@ -1142,7 +1143,7 @@ function PracticeScoutingContent() {
         const snap = await getDoc(doc(db, "accuracyRescouts", id));
         if (!snap.exists()) return;
         const data = snap.data() as Record<string, unknown>;
-        if (String(data.teamId || "") !== String(userData.teamId || "")) return;
+        if (String(data.teamId || "") !== String(teamId || "")) return;
         const alliance = String(data.alliance || "").toLowerCase() === "blue" ? "blue" : "red";
         const teamNumber = parseTeamNumber(data.teamNumber);
         const matchKey = String(data.matchKey || data.matchLabel || "").trim();
