@@ -1137,7 +1137,9 @@ function PracticeScoutingContent() {
     let isActive = true;
     async function loadRescout() {
       try {
-        const snap = await getDoc(doc(db, "accuracyRescouts", rescoutId));
+        const id = rescoutId;
+        if (!id) return;
+        const snap = await getDoc(doc(db, "accuracyRescouts", id));
         if (!snap.exists()) return;
         const data = snap.data() as Record<string, unknown>;
         if (String(data.teamId || "") !== String(userData.teamId || "")) return;
@@ -1148,7 +1150,7 @@ function PracticeScoutingContent() {
         if (!matchKey || !teamNumber) return;
         if (!isActive) return;
         setRescoutTarget({
-          id: rescoutId,
+          id,
           matchKey,
           alliance,
           teamNumber,
