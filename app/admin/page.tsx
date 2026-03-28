@@ -16,6 +16,7 @@ import {
   isPracticeScoutedEntry,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
+import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 type OwnerManagedUser = {
   uid: string;
@@ -62,10 +63,18 @@ function entrySortTime(entry: Record<string, unknown>): number {
 }
 
 function entryMatchLabel(entry: Record<string, unknown>): string {
-  return String(
-    entry.matchLabel || entry.matchId || entry.matchKey || entry.matchNumber || ""
-  )
-    .trim();
+  const rawLabel = String(entry.matchLabel || "").trim();
+  const rawKey = String(entry.matchKey || entry.matchId || "").trim();
+  const keyLabel = rawKey ? formatMatchLabelLong(rawKey) : "";
+  const keyLooksUseful =
+    keyLabel &&
+    keyLabel !== rawKey &&
+    !/^match\s*\d*$/i.test(keyLabel);
+  if (keyLooksUseful) return keyLabel;
+  if (rawLabel) return rawLabel;
+  if (keyLabel) return keyLabel;
+  const rawNumber = String(entry.matchNumber || "").trim();
+  return rawNumber ? `Match ${rawNumber}` : "";
 }
 
 function entryTeamLabel(entry: Record<string, unknown>): string {

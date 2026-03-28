@@ -1325,13 +1325,11 @@ function ScoutFormContent() {
         };
 
         let nextMatch: MatchOption | null = null;
-        if (overrideEvent) {
-          if (editMatchId) {
-            nextMatch = resolved.find((match) => match.id === editMatchId) || null;
-          }
-          if (!nextMatch) {
-            nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
-          }
+        const editTarget = editMatchId ? resolved.find((match) => match.id === editMatchId) || null : null;
+        if (editMode && editTarget) {
+          nextMatch = editTarget;
+        } else if (overrideEvent) {
+          nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
         } else {
           const assignedMatches = resolved.filter((match) => assignedMatchIds.has(match.id));
           const isAttending = assignedMatchIds.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
