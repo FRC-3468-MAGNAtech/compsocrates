@@ -41,8 +41,8 @@ type ScoutingEntry = {
   createdAt?: number;
   accuracyScriptStatus?: string;
   scriptStatus?: string;
-  allianceAccuracy?: number;
-  accuracy?: number;
+  allianceAccuracy?: number | string;
+  accuracy?: number | string;
 };
 
 type RescoutEntry = {
