@@ -165,10 +165,11 @@ function AccuracyVerificationContent() {
   useEffect(() => {
     const teamId = userData?.teamId;
     if (!teamId) return;
+    const resolvedTeamId = String(teamId);
     let isActive = true;
     async function loadOverrides() {
       try {
-        const teamSnap = await getDoc(doc(db, "teams", teamId));
+        const teamSnap = await getDoc(doc(db, "teams", resolvedTeamId));
         if (!isActive) return;
         if (teamSnap.exists()) {
           const data = teamSnap.data() as Record<string, unknown>;
