@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, getDoc, getDocs, query, where, doc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
-import { getUserRoles } from "@/app/utils/roles";
+import { FormAccessOverrides, canAccessForm, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
@@ -117,7 +117,13 @@ function resolveMatchLabel(entry: ScoutingEntry): string {
 }
 
 function resolveAccuracy(entry: ScoutingEntry): number | null {
-  const raw = Number(entry.allianceAccuracy ?? entry.accuracy ?? NaN);
+  const candidate = entry.allianceAccuracy ?? entry.accuracy;
+  if (typeof candidate === "string") {
+    const cleaned = candidate.replace(/%/g, "").trim();
+    const parsed = Number.parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const raw = Number(candidate ?? NaN);
   return Number.isFinite(raw) ? raw : null;
 }
 
@@ -138,14 +144,9 @@ function AccuracyVerificationContent() {
   const router = useRouter();
   const { userData } = useAuth();
   const roles = getUserRoles(userData);
-  const canSee =
-    Boolean(userData?.isTeamAdmin) ||
-    roles.includes("lead-scout") ||
-    roles.includes("lead-strategist") ||
-    roles.includes("team-coach") ||
-    userData?.role === "coach" ||
-    Boolean(userData?.experiencedScout);
-  const canManageAll = Boolean(userData?.isTeamAdmin) || userData?.role === "coach" || roles.includes("team-coach");
+  const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
+  const canSee = canAccessForm({ formKey: "accuracy-verification", user: userData, formAccessOverrides });
+  const canManageAll = Boolean(userData?.isTeamAdmin) || roles.includes("team-coach");
 
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
@@ -160,6 +161,31 @@ function AccuracyVerificationContent() {
   const [activeRescout, setActiveRescout] = useState<HighAccuracyMatch | null>(null);
   const [activeAlliance, setActiveAlliance] = useState<AllianceGroup | null>(null);
   const [savingRescout, setSavingRescout] = useState(false);
+
+  useEffect(() => {
+    const teamId = userData?.teamId;
+    if (!teamId) return;
+    let isActive = true;
+    async function loadOverrides() {
+      try {
+        const teamSnap = await getDoc(doc(db, "teams", teamId));
+        if (!isActive) return;
+        if (teamSnap.exists()) {
+          const data = teamSnap.data() as Record<string, unknown>;
+          setFormAccessOverrides(normalizeFormAccessOverrides(data.formAccessOverrides));
+        } else {
+          setFormAccessOverrides({});
+        }
+      } catch (error) {
+        console.error("Failed loading permissions overrides:", error);
+        setFormAccessOverrides({});
+      }
+    }
+    void loadOverrides();
+    return () => {
+      isActive = false;
+    };
+  }, [userData?.teamId]);
 
   useEffect(() => {
     const teamId = userData?.teamId;
@@ -206,7 +232,11 @@ function AccuracyVerificationContent() {
     return entries.filter((entry) => {
       if (isPracticeScoutedEntry(entry as Parameters<typeof isPracticeScoutedEntry>[0])) return false;
       const eventId = selectedEvent === "all" ? "all" : selectedEvent;
-      return entryMatchesAnalyticsFilters(entry, selectedGame, eventId, getEventsForGame(selectedGame));
+      const normalizedEntry = {
+        ...entry,
+        game: entry.game || selectedGame,
+      } as ScoutingEntry;
+      return entryMatchesAnalyticsFilters(normalizedEntry, selectedGame, eventId, getEventsForGame(selectedGame));
     });
   }, [entries, selectedEvent, selectedGame]);
 
@@ -253,8 +283,12 @@ function AccuracyVerificationContent() {
       .filter((match) => {
         const red = match.alliances.find((alliance) => alliance.alliance === "red");
         const blue = match.alliances.find((alliance) => alliance.alliance === "blue");
-        return red?.teams.length === 3 && blue?.teams.length === 3;
-      })
+      const redAccuracy = red?.accuracy ?? null;
+      const blueAccuracy = blue?.accuracy ?? null;
+      if (!(redAccuracy !== null && blueAccuracy !== null)) return false;
+      if (redAccuracy < 75 || blueAccuracy < 75) return false;
+      return red?.teams.length === 3 && blue?.teams.length === 3;
+    })
       .map((match) => ({
         ...match,
         alliances: match.alliances

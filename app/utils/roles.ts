@@ -27,6 +27,7 @@ export type FormKey =
   | "match-strategy-form"
   | "drive-scout-form"
   | "helper-form"
+  | "accuracy-verification"
   | "judge-book-edit";
 
 export type FormAccessOverrides = Partial<Record<FormKey, string[]>>;
@@ -39,6 +40,7 @@ export const FORM_LABELS: Record<FormKey, string> = {
   "match-strategy-form": "Match Strategy Form",
   "drive-scout-form": "Drive Reflection Form",
   "helper-form": "Helper Form",
+  "accuracy-verification": "Accuracy Verification Page",
   "judge-book-edit": "Judge Book Edit",
 };
 
@@ -50,6 +52,7 @@ export const FORM_ROLE_REQUIREMENT: Record<FormKey, TeamRole | null> = {
   "match-strategy-form": "lead-strategist",
   "drive-scout-form": "drive-team",
   "helper-form": "pit-team",
+  "accuracy-verification": "team-coach",
   "judge-book-edit": "judge-awards",
 };
 

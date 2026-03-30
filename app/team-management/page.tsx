@@ -33,7 +33,6 @@ interface TeamMember {
   roles?: string[];
   isTeamAdmin: boolean;
   teamId: string;
-  experiencedScout?: boolean;
 }
 
 interface JoinRequest {
@@ -67,8 +66,6 @@ function TeamManagementContent() {
   const [draftFormAccessOverrides, setDraftFormAccessOverrides] = useState<FormAccessOverrides>({});
 
   const isUserAdmin = userData?.isTeamAdmin || false;
-  const canManageExperienced =
-    isUserAdmin || userData?.role === "coach" || String(userData?.role || "").toLowerCase() === "team-coach";
 
   useEffect(() => {
     void loadTeamData();
@@ -283,17 +280,6 @@ function TeamManagementContent() {
     }
   }
 
-  async function handleExperiencedToggle(uid: string, checked: boolean) {
-    if (!canManageExperienced) return;
-    try {
-      await updateSecureUserDoc(uid, { experiencedScout: checked });
-      await loadTeamData();
-    } catch (error) {
-      console.error("Error updating experienced scout:", error);
-      alert("Error updating experienced scout status.");
-    }
-  }
-
   async function handleKickMember(uid: string) {
     if (!confirm("Are you sure you want to remove this member from the team?")) return;
     try {
@@ -471,7 +457,6 @@ function TeamManagementContent() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admin</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Experienced</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -499,20 +484,6 @@ function TeamManagementContent() {
                           </div>
                         </td>
                         <td className="px-6 py-4">{member.isTeamAdmin ? "Yes" : "No"}</td>
-                        <td className="px-6 py-4">
-                          {canManageExperienced ? (
-                            <label className="inline-flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(member.experiencedScout)}
-                                onChange={(event) => void handleExperiencedToggle(member.uid, event.target.checked)}
-                              />
-                              {member.experiencedScout ? "Yes" : "No"}
-                            </label>
-                          ) : (
-                            <span>{member.experiencedScout ? "Yes" : "No"}</span>
-                          )}
-                        </td>
                         <td className="px-6 py-4">
                           <div className="flex flex-wrap gap-2">
                             <button
