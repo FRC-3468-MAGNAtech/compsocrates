@@ -419,16 +419,20 @@ function AccuracyVerificationContent() {
     });
 
     const matches = Array.from(byMatch.values())
-      .filter((match) => {
-        if (!match.matchAccuracy || match.matchAccuracy < 75) return false;
-        return match.alliances.some((alliance) => alliance.teams.length === 3);
+      .map((match) => {
+        const eligibleAlliances = match.alliances
+          .filter((alliance) => alliance.teams.length === 3 && (alliance.accuracy ?? 0) >= 75)
+          .sort((a, b) => (a.alliance === "red" ? -1 : 1));
+        const bestAccuracy = eligibleAlliances.reduce(
+          (max, alliance) => Math.max(max, alliance.accuracy ?? 0),
+          0
+        );
+        return {
+          ...match,
+          alliances: eligibleAlliances,
+          matchAccuracy: bestAccuracy || null,
+        };
       })
-      .map((match) => ({
-        ...match,
-        alliances: match.alliances
-          .filter((alliance) => alliance.teams.length === 3)
-          .sort((a, b) => (a.alliance === "red" ? -1 : 1)),
-      }))
       .filter((match) => match.alliances.length > 0)
       .sort((a, b) => {
         const accDiff = (b.matchAccuracy ?? -1) - (a.matchAccuracy ?? -1);
@@ -592,7 +596,7 @@ function AccuracyVerificationContent() {
                   <div key={`${match.key}-${alliance.alliance}`} className="bg-gray-50 rounded p-3">
                     <p className="text-sm font-semibold">
                       {alliance.alliance === "red" ? "Red Alliance" : "Blue Alliance"} - Accuracy{" "}
-                      {(alliance.accuracy ?? match.matchAccuracy) ?? "-"}%
+                      {alliance.accuracy ?? "-"}%
                     </p>
                     <p className="text-xs text-gray-600">
                       Scouts: {alliance.scouts.join(", ") || "Unknown"}
