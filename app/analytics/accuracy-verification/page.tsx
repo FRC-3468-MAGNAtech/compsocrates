@@ -19,6 +19,8 @@ import {
 } from "@/app/utils/analyticsEvents";
 import { normalizeEventKey } from "@/app/utils/events";
 import { formatMatchLabelLong, getMatchLabelMeta } from "@/app/utils/displayFormat";
+import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
+import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 
 type ScoutingEntry = {
   id: string;
@@ -84,6 +86,8 @@ type HighAccuracyMatch = {
   matchAccuracy: number | null;
   alliances: AllianceGroup[];
 };
+
+type MatchAllianceMap = Record<string, { red: number[]; blue: number[] }>;
 
 type HighAccuracyDebug = {
   totalEntries: number;
@@ -154,6 +158,20 @@ function isAccuracyComplete(entry: ScoutingEntry): boolean {
   return status === "complete";
 }
 
+function resolveAllianceFromSchedule(entry: ScoutingEntry, matchAllianceMap: MatchAllianceMap): "red" | "blue" | null {
+  const teamNumber = parseTeamNumber(entry.teamNumber);
+  if (!teamNumber) return null;
+  const matchKey = resolveMatchKey(entry);
+  if (!matchKey) return null;
+  const eventKey = normalizeEventKey(String(entry.eventKey || "").trim());
+  if (!eventKey) return null;
+  const schedule = matchAllianceMap[`${eventKey}::${matchKey}`];
+  if (!schedule) return null;
+  if (schedule.red.includes(teamNumber)) return "red";
+  if (schedule.blue.includes(teamNumber)) return "blue";
+  return null;
+}
+
 function normalizeName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -187,6 +205,7 @@ function AccuracyVerificationContent() {
   const [activeRescout, setActiveRescout] = useState<HighAccuracyMatch | null>(null);
   const [activeAlliance, setActiveAlliance] = useState<AllianceGroup | null>(null);
   const [savingRescout, setSavingRescout] = useState(false);
+  const [matchAllianceMap, setMatchAllianceMap] = useState<MatchAllianceMap>({});
 
   useEffect(() => {
     const teamId = userData?.teamId;
@@ -280,10 +299,98 @@ function AccuracyVerificationContent() {
     });
   }, [entries, selectedEvent, selectedGame]);
 
+  const matchListEventKeys = useMemo(() => {
+    if (selectedEvent !== "all") return [selectedEvent];
+    const keys = new Set<string>();
+    filteredEntries.forEach((entry) => {
+      const key = normalizeEventKey(String(entry.eventKey || "").trim());
+      if (key) keys.add(key);
+    });
+    return Array.from(keys);
+  }, [filteredEntries, selectedEvent]);
+
+  useEffect(() => {
+    const teamId = userData?.teamId;
+    if (!teamId || !canSee) return;
+    if (matchListEventKeys.length === 0) {
+      setMatchAllianceMap({});
+      return;
+    }
+    let isActive = true;
+    async function loadMatchAlliances() {
+      try {
+        const teamSnap = await getDoc(doc(db, "teams", String(teamId)));
+        const encryptedKey = String(teamSnap.data()?.tbaApiKeyEncrypted || "").trim();
+        const plainKey = String(teamSnap.data()?.tbaApiKey || "").trim();
+        const map: MatchAllianceMap = {};
+
+        for (const rawEventKey of matchListEventKeys) {
+          const eventKey = normalizeEventKey(String(rawEventKey || "").trim());
+          if (!eventKey) continue;
+          let matches: TBAMatch[] = [];
+          try {
+            const response = await fetch("/api/tba/matches", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ eventKey, encryptedKey, plainKey }),
+            });
+            if (response.ok) {
+              const payload = (await response.json()) as { matches?: TBAMatch[] };
+              if (Array.isArray(payload.matches)) matches = payload.matches;
+            }
+          } catch (error) {
+            console.warn("Accuracy verification TBA proxy failed:", error);
+          }
+
+          if (matches.length === 0) {
+            try {
+              matches = await getEventMatches(eventKey, plainKey || undefined);
+            } catch (error) {
+              console.warn("Accuracy verification direct TBA fetch failed:", error);
+            }
+          }
+
+          matches.forEach((match) => {
+            const parsed = normalizeMatchLabel(match.key || "");
+            const matchId = parsed.matchId || "";
+            if (!matchId) return;
+            const red = match.alliances?.red?.team_keys
+              ?.map((k) => Number(String(k).replace("frc", "")))
+              .filter((n) => Number.isFinite(n)) as number[] | undefined;
+            const blue = match.alliances?.blue?.team_keys
+              ?.map((k) => Number(String(k).replace("frc", "")))
+              .filter((n) => Number.isFinite(n)) as number[] | undefined;
+            if (!red && !blue) return;
+            map[`${eventKey}::${matchId}`] = { red: red || [], blue: blue || [] };
+          });
+
+          const firstPractice = await fetchFirstSchedule(eventKey, "Practice");
+          firstPractice.forEach((match) => {
+            const { red, blue } = splitFirstAllianceTeams(match);
+            if (red.length === 0 && blue.length === 0) return;
+            const matchId = normalizeMatchLabel(`Practice ${match.matchNumber}`).matchId || "";
+            if (!matchId) return;
+            const key = `${eventKey}::${matchId}`;
+            if (!map[key]) map[key] = { red, blue };
+          });
+        }
+
+        if (isActive) setMatchAllianceMap(map);
+      } catch (error) {
+        console.warn("Failed loading match list alliances:", error);
+        if (isActive) setMatchAllianceMap({});
+      }
+    }
+    void loadMatchAlliances();
+    return () => {
+      isActive = false;
+    };
+  }, [userData?.teamId, canSee, matchListEventKeys]);
+
   const highAccuracyMatches = useMemo<HighAccuracyMatch[]>(() => {
     const byMatch = new Map<string, HighAccuracyMatch>();
     filteredEntries.forEach((entry) => {
-      const alliance = resolveAlliance(entry);
+      const alliance = resolveAlliance(entry) || resolveAllianceFromSchedule(entry, matchAllianceMap);
       if (!alliance) return;
       const matchKey = resolveMatchKey(entry);
       if (!matchKey) return;
@@ -336,7 +443,7 @@ function AccuracyVerificationContent() {
       .filter((match) => match.alliances.length > 0)
       .sort((a, b) => (a.eventName || "").localeCompare(b.eventName || "") || b.sortOrder - a.sortOrder);
     return matches;
-  }, [filteredEntries]);
+  }, [filteredEntries, matchAllianceMap]);
 
   const highAccuracyDebug = useMemo<HighAccuracyDebug>(() => {
     const debug: HighAccuracyDebug = {
@@ -356,7 +463,7 @@ function AccuracyVerificationContent() {
     >();
 
     filteredEntries.forEach((entry) => {
-      const alliance = resolveAlliance(entry);
+      const alliance = resolveAlliance(entry) || resolveAllianceFromSchedule(entry, matchAllianceMap);
       if (!alliance) {
         debug.missingAlliance += 1;
         return;
@@ -414,7 +521,7 @@ function AccuracyVerificationContent() {
     });
 
     return debug;
-  }, [filteredEntries]);
+  }, [filteredEntries, matchAllianceMap]);
 
   const criticalFlags = useMemo(() => rescouts.filter((row) => row.criticalFlag), [rescouts]);
 
