@@ -316,10 +316,8 @@ function AccuracyVerificationContent() {
 
     const matches = Array.from(byMatch.values())
       .filter((match) => {
-        const red = match.alliances.find((alliance) => alliance.alliance === "red");
-        const blue = match.alliances.find((alliance) => alliance.alliance === "blue");
         if (!match.matchAccuracy || match.matchAccuracy < 75) return false;
-        return red?.teams.length === 3 && blue?.teams.length === 3;
+        return match.alliances.some((alliance) => alliance.teams.length === 3);
       })
       .map((match) => ({
         ...match,
@@ -327,7 +325,7 @@ function AccuracyVerificationContent() {
           .filter((alliance) => alliance.teams.length === 3)
           .sort((a, b) => (a.alliance === "red" ? -1 : 1)),
       }))
-      .filter((match) => match.alliances.length === 2)
+      .filter((match) => match.alliances.length > 0)
       .sort((a, b) => (a.eventName || "").localeCompare(b.eventName || "") || b.sortOrder - a.sortOrder);
     return matches;
   }, [filteredEntries]);
