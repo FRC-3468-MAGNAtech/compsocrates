@@ -272,7 +272,6 @@ function AccuracyVerificationContent() {
   const highAccuracyMatches = useMemo<HighAccuracyMatch[]>(() => {
     const byMatch = new Map<string, HighAccuracyMatch>();
     filteredEntries.forEach((entry) => {
-      if (!isAccuracyComplete(entry)) return;
       const alliance = resolveAlliance(entry);
       if (!alliance) return;
       const matchKey = resolveMatchKey(entry);
@@ -305,12 +304,10 @@ function AccuracyVerificationContent() {
       if (teamNumber && !allianceGroup.teams.includes(teamNumber)) allianceGroup.teams.push(teamNumber);
       const scoutName = String(entry.scoutName || "").trim();
       if (scoutName && !allianceGroup.scouts.includes(scoutName)) allianceGroup.scouts.push(scoutName);
-      if (isAccuracyComplete(entry)) {
-        const accuracy = resolveAccuracy(entry);
-        if (accuracy !== null) {
-          allianceGroup.accuracy = Math.max(allianceGroup.accuracy ?? 0, accuracy);
-          group.matchAccuracy = Math.max(group.matchAccuracy ?? 0, accuracy);
-        }
+      const accuracy = resolveAccuracy(entry);
+      if (accuracy !== null) {
+        allianceGroup.accuracy = Math.max(allianceGroup.accuracy ?? 0, accuracy);
+        group.matchAccuracy = Math.max(group.matchAccuracy ?? 0, accuracy);
       }
     });
 
@@ -454,7 +451,7 @@ function AccuracyVerificationContent() {
 
         <SectionCard
           title="High Accuracy Matches"
-          description="Matches with completed accuracy scripts and full team coverage."
+          description="Matches with ≥75% alliance accuracy and a full 3-team alliance."
           items={highAccuracyVisible}
           emptyLabel="No high-accuracy matches available yet."
           showToggle={highAccuracyMatches.length > 6}
