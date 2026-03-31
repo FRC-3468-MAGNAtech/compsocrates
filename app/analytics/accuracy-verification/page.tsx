@@ -89,17 +89,6 @@ type HighAccuracyMatch = {
 
 type MatchAllianceMap = Record<string, { red: number[]; blue: number[] }>;
 
-type HighAccuracyDebug = {
-  totalEntries: number;
-  missingAlliance: number;
-  missingMatchKey: number;
-  missingAccuracy: number;
-  belowThreshold: number;
-  alliancesWithThreeTeams: number;
-  alliancesEligible: number;
-  matchesEligible: number;
-};
-
 function normalizeAlliance(value: unknown): "red" | "blue" | null {
   const raw = String(value || "").toLowerCase().trim();
   if (raw.startsWith("r")) return "red";
@@ -441,86 +430,12 @@ function AccuracyVerificationContent() {
           .sort((a, b) => (a.alliance === "red" ? -1 : 1)),
       }))
       .filter((match) => match.alliances.length > 0)
-      .sort((a, b) => (a.eventName || "").localeCompare(b.eventName || "") || b.sortOrder - a.sortOrder);
-    return matches;
-  }, [filteredEntries, matchAllianceMap]);
-
-  const highAccuracyDebug = useMemo<HighAccuracyDebug>(() => {
-    const debug: HighAccuracyDebug = {
-      totalEntries: filteredEntries.length,
-      missingAlliance: 0,
-      missingMatchKey: 0,
-      missingAccuracy: 0,
-      belowThreshold: 0,
-      alliancesWithThreeTeams: 0,
-      alliancesEligible: 0,
-      matchesEligible: 0,
-    };
-
-    const byMatch = new Map<
-      string,
-      { matchKey: string; eventKey: string; alliances: Record<"red" | "blue", { teams: Set<number>; accuracy: number | null }> }
-    >();
-
-    filteredEntries.forEach((entry) => {
-      const alliance = resolveAlliance(entry) || resolveAllianceFromSchedule(entry, matchAllianceMap);
-      if (!alliance) {
-        debug.missingAlliance += 1;
-        return;
-      }
-      const matchKey = resolveMatchKey(entry);
-      if (!matchKey) {
-        debug.missingMatchKey += 1;
-        return;
-      }
-      const eventKey = normalizeEventKey(String(entry.eventKey || "").trim());
-      const key = `${eventKey}::${matchKey}`;
-      if (!byMatch.has(key)) {
-        byMatch.set(key, {
-          matchKey,
-          eventKey,
-          alliances: {
-            red: { teams: new Set<number>(), accuracy: null },
-            blue: { teams: new Set<number>(), accuracy: null },
-          },
-        });
-      }
-      const group = byMatch.get(key)!;
-      const teamNumber = parseTeamNumber(entry.teamNumber);
-      if (teamNumber) group.alliances[alliance].teams.add(teamNumber);
-
-      const accuracy = resolveAccuracy(entry);
-      if (accuracy === null) {
-        debug.missingAccuracy += 1;
-      } else {
-        const prev = group.alliances[alliance].accuracy ?? 0;
-        group.alliances[alliance].accuracy = Math.max(prev, accuracy);
-      }
-    });
-
-    byMatch.forEach((match) => {
-      (["red", "blue"] as const).forEach((side) => {
-        const alliance = match.alliances[side];
-        if (alliance.teams.size === 3) {
-          debug.alliancesWithThreeTeams += 1;
-          if (typeof alliance.accuracy === "number") {
-            if (alliance.accuracy >= 75) {
-              debug.alliancesEligible += 1;
-            } else {
-              debug.belowThreshold += 1;
-            }
-          } else {
-            debug.missingAccuracy += 1;
-          }
-        }
+      .sort((a, b) => {
+        const accDiff = (b.matchAccuracy ?? -1) - (a.matchAccuracy ?? -1);
+        if (accDiff !== 0) return accDiff;
+        return (a.eventName || "").localeCompare(b.eventName || "") || b.sortOrder - a.sortOrder;
       });
-      const eligibleAlliance =
-        (match.alliances.red.teams.size === 3 && (match.alliances.red.accuracy ?? 0) >= 75) ||
-        (match.alliances.blue.teams.size === 3 && (match.alliances.blue.accuracy ?? 0) >= 75);
-      if (eligibleAlliance) debug.matchesEligible += 1;
-    });
-
-    return debug;
+    return matches;
   }, [filteredEntries, matchAllianceMap]);
 
   const criticalFlags = useMemo(() => rescouts.filter((row) => row.criticalFlag), [rescouts]);
@@ -650,21 +565,6 @@ function AccuracyVerificationContent() {
           description="Matches with ≥75% alliance accuracy and a full 3-team alliance."
           items={highAccuracyVisible}
           emptyLabel="No high-accuracy matches available yet."
-          emptyContent={
-            <div className="space-y-2">
-              <p className="text-sm text-gray-500">No high-accuracy matches available yet.</p>
-              <div className="text-xs text-gray-500 space-y-1">
-                <p>Debug: {highAccuracyDebug.totalEntries} entries in current filters.</p>
-                <p>Missing alliance: {highAccuracyDebug.missingAlliance}</p>
-                <p>Missing match key: {highAccuracyDebug.missingMatchKey}</p>
-                <p>Missing accuracy: {highAccuracyDebug.missingAccuracy}</p>
-                <p>Alliances with 3 teams: {highAccuracyDebug.alliancesWithThreeTeams}</p>
-                <p>Alliances ≥75%: {highAccuracyDebug.alliancesEligible}</p>
-                <p>Alliances below 75%: {highAccuracyDebug.belowThreshold}</p>
-                <p>Matches eligible: {highAccuracyDebug.matchesEligible}</p>
-              </div>
-            </div>
-          }
           showToggle={highAccuracyMatches.length > 6}
           onToggle={() => setShowAllHighAccuracy((v) => !v)}
           showAll={showAllHighAccuracy}
