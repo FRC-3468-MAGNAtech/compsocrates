@@ -79,6 +79,7 @@ type HighAccuracyMatch = {
   matchKey: string;
   matchLabel: string;
   sortOrder: number;
+  matchAccuracy: number | null;
   alliances: AllianceGroup[];
 };
 
@@ -130,6 +131,10 @@ function resolveAccuracy(entry: ScoutingEntry): number | null {
 function isAccuracyComplete(entry: ScoutingEntry): boolean {
   const status = String(entry.accuracyScriptStatus || entry.scriptStatus || "").toLowerCase().trim();
   return status === "complete";
+}
+
+function normalizeName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 export default function AccuracyVerificationPage() {
@@ -237,7 +242,20 @@ function AccuracyVerificationContent() {
         ...entry,
         game: entry.game || selectedGame,
       } as ScoutingEntry;
-      return entryMatchesAnalyticsFilters(normalizedEntry, selectedGame, eventId, getEventsForGame(selectedGame));
+      const eventOptionsForGame = getEventsForGame(selectedGame);
+      const matchesFilters = entryMatchesAnalyticsFilters(
+        normalizedEntry,
+        selectedGame,
+        eventId,
+        eventOptionsForGame
+      );
+      if (matchesFilters) return true;
+      if (eventId === "all") return true;
+      const option = eventOptionsForGame.find((event) => normalizeEventKey(event.id) === normalizeEventKey(eventId));
+      if (!option) return false;
+      const entryName = normalizeName(String(entry.eventName || ""));
+      const optionName = normalizeName(String(option.name || ""));
+      return Boolean(entryName && optionName && entryName === optionName);
     });
   }, [entries, selectedEvent, selectedGame]);
 
@@ -263,6 +281,7 @@ function AccuracyVerificationContent() {
           matchKey,
           matchLabel,
           sortOrder,
+          matchAccuracy: null,
           alliances: [],
         });
       }
@@ -276,18 +295,20 @@ function AccuracyVerificationContent() {
       if (teamNumber && !allianceGroup.teams.includes(teamNumber)) allianceGroup.teams.push(teamNumber);
       const scoutName = String(entry.scoutName || "").trim();
       if (scoutName && !allianceGroup.scouts.includes(scoutName)) allianceGroup.scouts.push(scoutName);
-      const accuracy = resolveAccuracy(entry);
-      if (accuracy !== null) allianceGroup.accuracy = accuracy;
+      if (isAccuracyComplete(entry)) {
+        const accuracy = resolveAccuracy(entry);
+        if (accuracy !== null) {
+          allianceGroup.accuracy = Math.max(allianceGroup.accuracy ?? 0, accuracy);
+          group.matchAccuracy = Math.max(group.matchAccuracy ?? 0, accuracy);
+        }
+      }
     });
 
     const matches = Array.from(byMatch.values())
       .filter((match) => {
         const red = match.alliances.find((alliance) => alliance.alliance === "red");
         const blue = match.alliances.find((alliance) => alliance.alliance === "blue");
-      const redAccuracy = red?.accuracy ?? null;
-      const blueAccuracy = blue?.accuracy ?? null;
-      if (!(redAccuracy !== null && blueAccuracy !== null)) return false;
-      if (redAccuracy < 75 || blueAccuracy < 75) return false;
+      if (!match.matchAccuracy || match.matchAccuracy < 75) return false;
       return red?.teams.length === 3 && blue?.teams.length === 3;
     })
       .map((match) => ({
@@ -448,7 +469,7 @@ function AccuracyVerificationContent() {
                   <div key={`${match.key}-${alliance.alliance}`} className="bg-gray-50 rounded p-3">
                     <p className="text-sm font-semibold">
                       {alliance.alliance === "red" ? "Red Alliance" : "Blue Alliance"} - Accuracy{" "}
-                      {alliance.accuracy ?? "-"}%
+                      {(alliance.accuracy ?? match.matchAccuracy) ?? "-"}%
                     </p>
                     <p className="text-xs text-gray-600">
                       Scouts: {alliance.scouts.join(", ") || "Unknown"}
