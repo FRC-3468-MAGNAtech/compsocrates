@@ -543,22 +543,25 @@ function AccuracyVerificationContent() {
           description="Matches with ≥75% alliance accuracy and a full 3-team alliance."
           items={highAccuracyVisible}
           emptyLabel="No high-accuracy matches available yet."
+          emptyContent={
+            <div className="space-y-2">
+              <p className="text-sm text-gray-500">No high-accuracy matches available yet.</p>
+              <div className="text-xs text-gray-500 space-y-1">
+                <p>Debug: {highAccuracyDebug.totalEntries} entries in current filters.</p>
+                <p>Missing alliance: {highAccuracyDebug.missingAlliance}</p>
+                <p>Missing match key: {highAccuracyDebug.missingMatchKey}</p>
+                <p>Missing accuracy: {highAccuracyDebug.missingAccuracy}</p>
+                <p>Alliances with 3 teams: {highAccuracyDebug.alliancesWithThreeTeams}</p>
+                <p>Alliances ≥75%: {highAccuracyDebug.alliancesEligible}</p>
+                <p>Alliances below 75%: {highAccuracyDebug.belowThreshold}</p>
+                <p>Matches eligible: {highAccuracyDebug.matchesEligible}</p>
+              </div>
+            </div>
+          }
           showToggle={highAccuracyMatches.length > 6}
           onToggle={() => setShowAllHighAccuracy((v) => !v)}
           showAll={showAllHighAccuracy}
         >
-          {highAccuracyVisible.length === 0 && (
-            <div className="text-xs text-gray-500 space-y-1">
-              <p>Debug: {highAccuracyDebug.totalEntries} entries in current filters.</p>
-              <p>Missing alliance: {highAccuracyDebug.missingAlliance}</p>
-              <p>Missing match key: {highAccuracyDebug.missingMatchKey}</p>
-              <p>Missing accuracy: {highAccuracyDebug.missingAccuracy}</p>
-              <p>Alliances with 3 teams: {highAccuracyDebug.alliancesWithThreeTeams}</p>
-              <p>Alliances ≥75%: {highAccuracyDebug.alliancesEligible}</p>
-              <p>Alliances below 75%: {highAccuracyDebug.belowThreshold}</p>
-              <p>Matches eligible: {highAccuracyDebug.matchesEligible}</p>
-            </div>
-          )}
           {highAccuracyVisible.map((match) => (
             <div key={match.key} className="border rounded-lg p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -684,6 +687,7 @@ type SectionCardProps = {
   description?: string;
   items: unknown[];
   emptyLabel: string;
+  emptyContent?: React.ReactNode;
   showToggle: boolean;
   showAll: boolean;
   onToggle: () => void;
@@ -695,6 +699,7 @@ function SectionCard({
   description,
   items,
   emptyLabel,
+  emptyContent,
   showToggle,
   showAll,
   onToggle,
@@ -714,7 +719,7 @@ function SectionCard({
         )}
       </div>
       <div className="mt-4 space-y-3">
-        {items.length === 0 ? <p className="text-sm text-gray-500">{emptyLabel}</p> : children}
+        {items.length === 0 ? emptyContent ?? <p className="text-sm text-gray-500">{emptyLabel}</p> : children}
       </div>
     </div>
   );
