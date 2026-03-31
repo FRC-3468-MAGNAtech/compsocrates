@@ -31,6 +31,8 @@ type ScoutingEntry = {
   matchNumber?: string;
   teamNumber?: string;
   alliance?: string;
+  allianceColor?: string;
+  assignedAlliance?: string;
   scoutName?: string;
   scoutId?: string;
   entryType?: string;
@@ -88,6 +90,14 @@ function normalizeAlliance(value: unknown): "red" | "blue" | null {
   if (raw.startsWith("r")) return "red";
   if (raw.startsWith("b")) return "blue";
   return null;
+}
+
+function resolveAlliance(entry: ScoutingEntry): "red" | "blue" | null {
+  return (
+    normalizeAlliance(entry.alliance) ||
+    normalizeAlliance(entry.allianceColor) ||
+    normalizeAlliance(entry.assignedAlliance)
+  );
 }
 
 function getEntryTime(entry: ScoutingEntry): number {
@@ -263,7 +273,7 @@ function AccuracyVerificationContent() {
     const byMatch = new Map<string, HighAccuracyMatch>();
     filteredEntries.forEach((entry) => {
       if (!isAccuracyComplete(entry)) return;
-      const alliance = normalizeAlliance(entry.alliance);
+      const alliance = resolveAlliance(entry);
       if (!alliance) return;
       const matchKey = resolveMatchKey(entry);
       if (!matchKey) return;
@@ -308,9 +318,9 @@ function AccuracyVerificationContent() {
       .filter((match) => {
         const red = match.alliances.find((alliance) => alliance.alliance === "red");
         const blue = match.alliances.find((alliance) => alliance.alliance === "blue");
-      if (!match.matchAccuracy || match.matchAccuracy < 75) return false;
-      return red?.teams.length === 3 && blue?.teams.length === 3;
-    })
+        if (!match.matchAccuracy || match.matchAccuracy < 75) return false;
+        return red?.teams.length === 3 && blue?.teams.length === 3;
+      })
       .map((match) => ({
         ...match,
         alliances: match.alliances
@@ -384,11 +394,18 @@ function AccuracyVerificationContent() {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-gray-100">
-        <div className="m-auto">
+      <AnalyticsShell
+        entriesCount={filteredEntries.length}
+        selectedGame={selectedGame}
+        onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+        selectedEvent={selectedEvent}
+        eventOptions={eventOptions}
+        onSelectedEventChange={(eventId) => setSelectedEvent(eventId)}
+      >
+        <div className="py-10">
           <LoadingSpinner message="Loading accuracy verification..." />
         </div>
-      </div>
+      </AnalyticsShell>
     );
   }
 
