@@ -1076,7 +1076,8 @@ function PracticeScoutingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { userData, teamTimeOverride } = useAuth();
-  const [rescoutId, setRescoutId] = useState<string | null>(null);
+  const initialRescoutId = searchParams.get("rescoutId");
+  const [rescoutId, setRescoutId] = useState<string | null>(() => initialRescoutId);
   const [rescoutTarget, setRescoutTarget] = useState<{
     id: string;
     matchKey: string;
@@ -1089,6 +1090,8 @@ function PracticeScoutingContent() {
   const [rescoutLoaded, setRescoutLoaded] = useState(false);
   const [rescoutAutoStarted, setRescoutAutoStarted] = useState(false);
   const [rescoutCompleted, setRescoutCompleted] = useState(false);
+  const [rescoutSubmitInFlight, setRescoutSubmitInFlight] = useState(false);
+  const [rescoutError, setRescoutError] = useState("");
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
@@ -1141,8 +1144,9 @@ function PracticeScoutingContent() {
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
   const REBUILT_WEEK0_EVENT_KEY = "2026week0";
-  const isRescoutIntent = Boolean(rescoutId);
-  const isRescoutFlow = Boolean(rescoutTarget);
+  const hasRescoutTarget = Boolean(rescoutTarget);
+  const isRescoutIntent = Boolean(rescoutId || hasRescoutTarget);
+  const isRescoutFlow = Boolean(rescoutId || hasRescoutTarget);
 
   const persistedDifficulty: "easy" | "medium" | "hard" = selectedDifficulty === "live"
     ? "hard"
@@ -1171,6 +1175,7 @@ function PracticeScoutingContent() {
       eventKey: eventKey || undefined,
       eventName: eventName || undefined,
     });
+    setRescoutError("");
     setSelectedMode("trial");
     setSelectedDifficulty((prev) => prev || "easy");
     setActiveMatchGame(game);
@@ -1206,6 +1211,7 @@ function PracticeScoutingContent() {
           eventKey: eventKey || undefined,
           eventName: eventName || undefined,
         });
+        setRescoutError("");
         setSelectedMode("trial");
         setSelectedDifficulty((prev) => prev || "easy");
         setActiveMatchGame(game);
@@ -1222,12 +1228,23 @@ function PracticeScoutingContent() {
   }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty]);
 
   useEffect(() => {
-    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || !activeMatchGame) return;
+    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || !activeMatchGame) return;
     const target = rescoutTarget;
     let isActive = true;
 
     async function fetchRescoutTbaMatch() {
-      const eventKey = normalizeEventKey(String(target.eventKey || "").trim());
+      const eventKeyFromMatchKey = String(target.matchKey || "")
+        .split("_")[0]
+        .trim();
+      const eventKeyFromName =
+        teamEventCatalog.find(
+          (event) =>
+            String(event.name || "").trim().toLowerCase() ===
+            String(target.eventName || "").trim().toLowerCase()
+        )?.id || "";
+      const eventKey = normalizeEventKey(
+        String(target.eventKey || eventKeyFromMatchKey || eventKeyFromName || "").trim()
+      );
       if (!eventKey) return null;
       let matches: TBAMatch[] = [];
       try {
@@ -1258,14 +1275,28 @@ function PracticeScoutingContent() {
       }
 
       const targetId = normalizeMatchId(target.matchKey);
+      const byKey = matches.find((match) => normalizeMatchId(match.key) === targetId);
+      if (byKey) return byKey;
+      const parsedTarget = normalizeMatchLabel(String(target.matchKey || target.matchKey || ""));
+      const targetNumber = Number(parsedTarget.matchNumber || 0);
+      if (!targetNumber) return null;
+      const expectedLevel = parsedTarget.matchType === "practice"
+        ? "pm"
+        : parsedTarget.matchType === "finals"
+        ? "sf"
+        : "qm";
       return (
-        matches.find((match) => normalizeMatchId(match.key) === targetId) ||
-        null
+        matches.find(
+          (match) =>
+            String(match.comp_level || "") === expectedLevel &&
+            Number(match.match_number || 0) === targetNumber
+        ) || null
       );
     }
 
     async function startRescoutFlow() {
       try {
+        setRescoutError("");
         clearPracticeDraft();
         setPendingDraft(null);
         setSelectedMode("trial");
@@ -1290,15 +1321,37 @@ function PracticeScoutingContent() {
         let matchToUse: PracticeMatch | null = targetMatch ? { ...targetMatch } : null;
         const tbaMatch = await fetchRescoutTbaMatch();
 
+        if (!tbaMatch) {
+          setRescoutError("Rescout match unavailable.");
+          return;
+        }
+        const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
+        if (!videoUrl) {
+          setRescoutError("Rescout video unavailable.");
+          return;
+        }
+
         if (tbaMatch) {
           const allianceTeams = (tbaMatch.alliances?.[target.alliance]?.team_keys || [])
             .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
             .filter((team) => Number.isFinite(team) && team > 0)
             .slice(0, 3);
           const allianceScore = Number(tbaMatch.alliances?.[target.alliance]?.score || 0);
-          const eventKey = normalizeEventKey(String(target.eventKey || "")) || normalizeEventKey(String(tbaMatch.key || "").split("_")[0]);
+          const eventKey =
+            normalizeEventKey(
+              String(
+                target.eventKey ||
+                String(target.matchKey || "").split("_")[0] ||
+                teamEventCatalog.find(
+                  (event) =>
+                    String(event.name || "").trim().toLowerCase() ===
+                    String(target.eventName || "").trim().toLowerCase()
+                )?.id ||
+                ""
+              )
+            ) ||
+            normalizeEventKey(String(tbaMatch.key || "").split("_")[0]);
           const eventName = target.eventName || eventKey || "Event";
-          const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
           const tbaPayload: PracticeMatch = {
             id: `${tbaMatch.key}:${target.alliance}`,
             matchKey: tbaMatch.key,
@@ -1332,7 +1385,7 @@ function PracticeScoutingContent() {
                 allianceScore: tbaPayload.allianceScore,
                 actualScore: tbaPayload.actualScore,
                 officialData: tbaPayload.officialData,
-                videoUrl: tbaPayload.videoUrl || matchToUse.videoUrl,
+                videoUrl: tbaPayload.videoUrl,
                 difficulty: tbaPayload.difficulty,
               }
             : tbaPayload;
@@ -1358,7 +1411,26 @@ function PracticeScoutingContent() {
     return () => {
       isActive = false;
     };
-  }, [activeMatchGame, fetchLobbyMatchCandidates, rescoutAutoStarted, rescoutCompleted, rescoutTarget, selectedDifficulty, startPracticeMatch, tbaAuth.encryptedKey, tbaAuth.plainKey]);
+  }, [
+    activeMatchGame,
+    fetchLobbyMatchCandidates,
+    rescoutAutoStarted,
+    rescoutCompleted,
+    rescoutSubmitInFlight,
+    rescoutTarget,
+    selectedDifficulty,
+    startPracticeMatch,
+    tbaAuth.encryptedKey,
+    tbaAuth.plainKey,
+    teamEventCatalog,
+  ]);
+
+  useEffect(() => {
+    if (!isRescoutFlow || !rescoutCompleted) return;
+    if (currentStep !== "results") {
+      setCurrentStep("results");
+    }
+  }, [currentStep, isRescoutFlow, rescoutCompleted]);
 
   const liveLobbyPlayers = useMemo(() => {
     if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
@@ -1373,7 +1445,7 @@ function PracticeScoutingContent() {
 
   useEffect(() => {
     if (!rescoutTarget || candidateMatches.length === 0) return;
-    if (rescoutAutoStarted || rescoutCompleted || currentStep === "results") return;
+    if (rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || currentStep === "results") return;
     const existingKey = normalizeMatchId(String(currentMatch?.matchKey || currentMatch?.id || ""));
     if (existingKey && existingKey === normalizeMatchId(rescoutTarget.matchKey)) return;
     const targetMatch =
@@ -2388,7 +2460,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   useEffect(() => {
     if (!currentMatch) return;
     if (selectedDifficulty === "live" && liveLobby) return;
-    if (isRescoutFlow) {
+    if (hasRescoutTarget) {
       const lockedTeam = String(rescoutTarget?.teamNumber || "");
       if (lockedTeam) {
         if (activeMatchGame === "REBUILT") {
@@ -2753,7 +2825,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const initialTeamNumber = hasExplicitTeam ? String(options?.teamNumber) : (isLiveSession && liveLobby ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
-    if (isRescoutFlow) {
+    if (hasRescoutTarget) {
       setHumanPlayerRobot(null);
     } else {
       setHumanPlayerRobot(Math.floor(Math.random() * 3));
@@ -3043,6 +3115,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
+    if (isRescoutFlow && rescoutSubmitInFlight) return;
     if (selectedDifficulty === "live") {
       await submitLiveRobot();
       return;
@@ -3054,6 +3127,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       setRebuiltRobotSessions(nextRobotSessions);
 
       if (isRescoutFlow || currentRobotIndex === 2) {
+        if (isRescoutFlow) setRescoutSubmitInFlight(true);
         await submitRebuiltPracticeSession(nextRobotSessions);
         return;
       }
@@ -3075,6 +3149,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setRobotSessions(nextRobotSessions);
 
     if (isRescoutFlow || currentRobotIndex === 2) {
+      if (isRescoutFlow) setRescoutSubmitInFlight(true);
       await submitPracticeSession(nextRobotSessions);
       return;
     }
@@ -3120,6 +3195,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const baseScoutedScore = calculateBestRebuiltSessionBaseScore(allRobotData, officialAllianceScore, penaltyPoints);
       const totalScoutedScore = baseScoutedScore + penaltyPoints;
       const sessionAccuracy = calculateAccuracy(totalScoutedScore, officialAllianceScore);
+      const rescoutRobotScore = calculateRebuiltScoutedScore(allRobotData[allRobotData.length - 1]);
 
       const now = Date.now();
       const device = getScoutDevice();
@@ -3179,20 +3255,9 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           updatedAt: Date.now(),
           submittedAt: now,
           practiceSessionId: docRef.id,
-          scoutedScore: totalScoutedScore,
-          matchKey: currentMatch.matchKey || rescoutTarget.matchKey,
-          teamNumber: rescoutTarget.teamNumber,
-          alliance: normalizeAllianceSide(currentMatch.alliance),
-        });
-      }
-
-      if (rescoutTarget?.id) {
-        await updateDoc(doc(db, "accuracyRescouts", rescoutTarget.id), {
-          status: "submitted",
-          updatedAt: Date.now(),
-          submittedAt: now,
-          practiceSessionId: docRef.id,
-          scoutedScore: totalScoutedScore,
+          scoutedScore: rescoutRobotScore,
+          officialScore: officialAllianceScore,
+          penaltyPoints,
           matchKey: currentMatch.matchKey || rescoutTarget.matchKey,
           teamNumber: rescoutTarget.teamNumber,
           alliance: normalizeAllianceSide(currentMatch.alliance),
@@ -3313,6 +3378,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
       if (isRescoutFlow) setRescoutCompleted(true);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
       clearPracticeDraft();
       setPendingDraft(null);
     } catch (error) {
@@ -3320,6 +3386,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       alert('Error submitting practice session: ' + (error as Error).message);
     } finally {
       setLoading(false);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
     }
   }
 
@@ -3385,6 +3452,22 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
 
+      const rescoutRobotScore = calculateScoutedScore(allRobotData[allRobotData.length - 1]);
+      if (rescoutTarget?.id) {
+        await updateDoc(doc(db, "accuracyRescouts", rescoutTarget.id), {
+          status: "submitted",
+          updatedAt: Date.now(),
+          submittedAt: now,
+          practiceSessionId: docRef.id,
+          scoutedScore: rescoutRobotScore,
+          officialScore: officialAllianceScore,
+          penaltyPoints,
+          matchKey: currentMatch.matchKey || rescoutTarget.matchKey,
+          teamNumber: rescoutTarget.teamNumber,
+          alliance: normalizeAllianceSide(currentMatch.alliance),
+        });
+      }
+
       await Promise.all(
         allRobotData.map((robotData) =>
           addDoc(collection(db, "scouting"), {
@@ -3419,6 +3502,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
       if (isRescoutFlow) setRescoutCompleted(true);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
       clearPracticeDraft();
       setPendingDraft(null);
     } catch (error) {
@@ -3426,6 +3510,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       alert('Error submitting practice session: ' + (error as Error).message);
     } finally {
       setLoading(false);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
     }
   }
 
@@ -4434,7 +4519,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         )}
         {currentStep === 'select' && isRescoutIntent && (
           <div className="p-6 md:p-10 max-w-3xl mx-auto">
-            <LoadingSpinner message={rescoutLoaded && !rescoutTarget ? "Rescout match unavailable." : "Loading rescout match..."} />
+            <LoadingSpinner
+              message={
+                rescoutError
+                  ? rescoutError
+                  : rescoutLoaded && !rescoutTarget
+                  ? "Rescout match unavailable."
+                  : "Loading rescout match..."
+              }
+            />
           </div>
         )}
 
@@ -4702,7 +4795,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </div>
               )}
 
-              {humanPlayerRobot === currentRobotIndex && (
+              {humanPlayerRobot === currentRobotIndex && !isRescoutFlow && (
                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
                   <div className="flex items-center">
                     <div className="flex-shrink-0">

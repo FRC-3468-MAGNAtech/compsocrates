@@ -29,6 +29,7 @@ export type UserData = {
   displayName: string;
   role: UserRole;
   roles?: TeamRole[];
+  secondaryRoles?: TeamRole[];
   specialRole?: string | null;
   specialRoles?: string[];
   teamId: string;
@@ -105,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: fallbackName,
       role: "match-scout",
       roles: ["match-scout"],
+      secondaryRoles: [],
       teamId: "",
       isTeamAdmin: false,
       profileVisibility: "team",

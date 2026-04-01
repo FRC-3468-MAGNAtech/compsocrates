@@ -462,7 +462,11 @@ function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE
 
 function ScoutAccuracyContent() {
   const { userData } = useAuth();
-  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const userRoles = getUserRoles({
+    role: userData?.role,
+    roles: userData?.roles,
+    secondaryRoles: userData?.secondaryRoles,
+  });
   const canViewFullAccuracy =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||
@@ -949,7 +953,11 @@ function ScoutAccuracyContent() {
 
   // Count active scouts only: dedicated match scouts (lead roles are excluded from scout counts).
   const actualScoutCount = scoutStats.filter((s) => {
-    const roles = getUserRoles({ role: s.role, roles: s.roles });
+    const roles = getUserRoles({
+      role: s.role,
+      roles: s.roles,
+      secondaryRoles: s.secondaryRoles,
+    });
     return roles.includes("match-scout") || roles.includes("media");
   }).length;
   const membersWithAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
@@ -997,7 +1005,11 @@ function ScoutAccuracyContent() {
 
     const roleFiltered = attendanceFiltered.filter((scout) => {
       if (allRolesSelected) return true;
-      const roles = getUserRoles({ role: scout.role, roles: scout.roles });
+      const roles = getUserRoles({
+        role: scout.role,
+        roles: scout.roles,
+        secondaryRoles: scout.secondaryRoles,
+      });
       return roles.some((role) => roleFilterSet.has(role));
     });
 

@@ -31,7 +31,11 @@ type TeamDoc = {
 function ProfileContent() {
   const params = useParams<{ userId: string }>();
   const { userData } = useAuth();
-  const viewerRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const viewerRoles = getUserRoles({
+    role: userData?.role,
+    roles: userData?.roles,
+    secondaryRoles: userData?.secondaryRoles,
+  });
   const canViewAccuracy =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||

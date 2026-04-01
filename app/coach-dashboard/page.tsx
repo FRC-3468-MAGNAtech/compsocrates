@@ -467,7 +467,11 @@ function CoachDashboardContent() {
 
       const scouts = usersSnap.docs.filter((userDoc) => {
         const data = userDoc.data();
-        const roles = getUserRoles({ role: String(data.role || ""), roles: data.roles as string[] | undefined });
+        const roles = getUserRoles({
+          role: String(data.role || ""),
+          roles: data.roles as string[] | undefined,
+          secondaryRoles: data.secondaryRoles as string[] | undefined,
+        });
         return roles.includes("match-scout") || roles.includes("lead-scout");
       });
       const scoutDocs = scouts.map((docSnap) => ({ uid: docSnap.id, displayName: String(docSnap.data().displayName || "") }));
