@@ -3052,7 +3052,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const nextRobotSessions = [...rebuiltRobotSessions, robotData];
       setRebuiltRobotSessions(nextRobotSessions);
 
-      if (currentRobotIndex === 2) {
+      if (isRescoutFlow || currentRobotIndex === 2) {
         await submitRebuiltPracticeSession(nextRobotSessions);
         return;
       }
@@ -3073,7 +3073,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const nextRobotSessions = [...robotSessions, robotData];
     setRobotSessions(nextRobotSessions);
 
-    if (currentRobotIndex === 2) {
+    if (isRescoutFlow || currentRobotIndex === 2) {
       await submitPracticeSession(nextRobotSessions);
       return;
     }
@@ -4464,7 +4464,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           </div>
         )}
 
-        {currentStep === 'break' && currentMatch && breakCompletedRobotIndex !== null && (
+        {currentStep === 'break' && currentMatch && breakCompletedRobotIndex !== null && !isRescoutFlow && (
           <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
             <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8">
               <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
@@ -4514,6 +4514,34 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
                 >
                   End Session
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentStep === "results" && isRescoutFlow && (
+          <div className="p-4 md:p-8 max-w-2xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
+            <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8 text-center">
+              <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
+                Re-scout Complete
+              </h1>
+              <p className="text-gray-700 mb-6">
+                Your rescout has been submitted successfully.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => router.push("/analytics/accuracy-verification")}
+                  className="flex-1 py-3 rounded-lg text-white font-semibold"
+                  style={{ backgroundColor: "var(--primary-color)" }}
+                >
+                  Re-scout Another Match
+                </button>
+                <button
+                  onClick={() => router.push("/dashboard")}
+                  className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
+                >
+                  Go To Dashboard
                 </button>
               </div>
             </div>
@@ -5200,6 +5228,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 >
                   {loading
                     ? "Submitting..."
+                    : isRescoutFlow
+                    ? "Submit Robot"
                     : selectedDifficulty === "live"
                     ? "Submit Robot"
                     : currentRobotIndex === 2
