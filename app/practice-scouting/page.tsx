@@ -1139,6 +1139,7 @@ function PracticeScoutingContent() {
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
   const REBUILT_WEEK0_EVENT_KEY = "2026week0";
+  const isRescoutFlow = Boolean(rescoutTarget);
 
   const persistedDifficulty: "easy" | "medium" | "hard" = selectedDifficulty === "live"
     ? "hard"
@@ -1242,6 +1243,10 @@ function PracticeScoutingContent() {
         setPendingDraft(null);
         setSelectedMode("trial");
         if (!selectedDifficulty) setSelectedDifficulty("easy");
+        setShowMatchSelectModal(false);
+        setShowDifficultyMatchModal(false);
+        setShowLiveRobotModal(false);
+        setPendingLiveMatchPick(null);
 
         const candidates = await fetchLobbyMatchCandidates();
         if (!isActive) return;
@@ -3950,7 +3955,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         {/* STEP 1: MODE & DIFFICULTY SELECTION */}
-        {currentStep === 'select' && (
+        {currentStep === 'select' && !isRescoutFlow && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto">
             <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Practice Scouting
@@ -4368,6 +4373,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </div>
               </>
             )}
+          </div>
+        )}
+        {currentStep === 'select' && isRescoutFlow && (
+          <div className="p-6 md:p-10 max-w-3xl mx-auto">
+            <LoadingSpinner message="Loading rescout match..." />
           </div>
         )}
 
