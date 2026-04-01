@@ -1241,7 +1241,7 @@ function PracticeScoutingContent() {
           (event) =>
             String(event.name || "").trim().toLowerCase() ===
             String(target.eventName || "").trim().toLowerCase()
-        )?.id || "";
+        )?.key || "";
       const eventKey = normalizeEventKey(
         String(target.eventKey || eventKeyFromMatchKey || eventKeyFromName || "").trim()
       );
@@ -1346,7 +1346,7 @@ function PracticeScoutingContent() {
                   (event) =>
                     String(event.name || "").trim().toLowerCase() ===
                     String(target.eventName || "").trim().toLowerCase()
-                )?.id ||
+                )?.key ||
                 ""
               )
             ) ||
