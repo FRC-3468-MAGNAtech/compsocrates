@@ -23,6 +23,9 @@ type Entry = {
   matchType?: "qualification" | "practice" | "finals";
   teamNumber?: string;
   scoutName?: string;
+  isPracticeScouting?: boolean;
+  practiceMode?: string;
+  practiceSessionId?: string;
   startingPosition?: string;
   leftStartingZone?: boolean;
   autoCoralMissed?: number;
