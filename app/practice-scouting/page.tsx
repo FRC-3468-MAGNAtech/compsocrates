@@ -1289,16 +1289,16 @@ function PracticeScoutingContent() {
         let matchToUse: PracticeMatch | null = targetMatch ? { ...targetMatch } : null;
         const tbaMatch = await fetchRescoutTbaMatch();
 
-        if (!matchToUse && tbaMatch) {
+        if (tbaMatch) {
           const allianceTeams = (tbaMatch.alliances?.[target.alliance]?.team_keys || [])
             .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
             .filter((team) => Number.isFinite(team) && team > 0)
             .slice(0, 3);
           const allianceScore = Number(tbaMatch.alliances?.[target.alliance]?.score || 0);
-          const eventKey = normalizeEventKey(String(target.eventKey || ""));
+          const eventKey = normalizeEventKey(String(target.eventKey || "")) || normalizeEventKey(String(tbaMatch.key || "").split("_")[0]);
           const eventName = target.eventName || eventKey || "Event";
           const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
-          matchToUse = {
+          const tbaPayload: PracticeMatch = {
             id: `${tbaMatch.key}:${target.alliance}`,
             matchKey: tbaMatch.key,
             eventKey,
@@ -1318,14 +1318,26 @@ function PracticeScoutingContent() {
             },
             createdAt: (Number(tbaMatch.actual_time || tbaMatch.time || 0) || Date.now() / 1000) * 1000,
           };
+
+          matchToUse = matchToUse
+            ? {
+                ...matchToUse,
+                eventKey: tbaPayload.eventKey,
+                eventName: tbaPayload.eventName,
+                matchKey: tbaPayload.matchKey,
+                matchNumber: tbaPayload.matchNumber,
+                matchType: tbaPayload.matchType,
+                allianceTeams: tbaPayload.allianceTeams.length >= 3 ? tbaPayload.allianceTeams : matchToUse.allianceTeams,
+                allianceScore: tbaPayload.allianceScore,
+                actualScore: tbaPayload.actualScore,
+                officialData: tbaPayload.officialData,
+                videoUrl: tbaPayload.videoUrl || matchToUse.videoUrl,
+                difficulty: tbaPayload.difficulty,
+              }
+            : tbaPayload;
         }
 
         if (!matchToUse) return;
-
-        if (!matchToUse.videoUrl || !matchToUse.videoUrl.trim()) {
-          const videoUrl = tbaMatch ? getYouTubeUrlFromMatch(tbaMatch) : "";
-          if (videoUrl) matchToUse = { ...matchToUse, videoUrl };
-        }
 
         const teamIndex = matchToUse.allianceTeams.findIndex((team) => Number(team) === target.teamNumber);
         startPracticeMatch(
