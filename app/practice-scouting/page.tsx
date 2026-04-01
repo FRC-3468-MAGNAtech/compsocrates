@@ -1153,8 +1153,32 @@ function PracticeScoutingContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (!rescoutId || rescoutTarget) return;
+    const matchKey = String(searchParams.get("matchKey") || "").trim();
+    const teamNumber = parseTeamNumber(searchParams.get("teamNumber"));
+    const alliance = String(searchParams.get("alliance") || "").toLowerCase() === "blue" ? "blue" : "red";
+    const game = String(searchParams.get("game") || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+    const eventKey = normalizeEventKey(String(searchParams.get("eventKey") || "").trim());
+    const eventName = String(searchParams.get("eventName") || "").trim();
+    if (!matchKey || !teamNumber) return;
+    setRescoutTarget({
+      id: rescoutId,
+      matchKey,
+      alliance,
+      teamNumber,
+      game,
+      eventKey: eventKey || undefined,
+      eventName: eventName || undefined,
+    });
+    setSelectedMode("trial");
+    setSelectedDifficulty((prev) => prev || "easy");
+    setActiveMatchGame(game);
+    setRescoutLoaded(true);
+  }, [rescoutId, searchParams, rescoutTarget, setSelectedMode, setSelectedDifficulty]);
+
+  useEffect(() => {
     const teamId = userData?.teamId;
-    if (!rescoutId || !teamId || rescoutLoaded) return;
+    if (!rescoutId || !teamId || rescoutLoaded || rescoutTarget) return;
     let isActive = true;
     async function loadRescout() {
       try {

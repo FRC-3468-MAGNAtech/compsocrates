@@ -504,7 +504,16 @@ function AccuracyVerificationContent() {
       });
       setActiveRescout(null);
       setActiveAlliance(null);
-      router.push(`/practice-scouting?rescoutId=${docRef.id}`);
+      const params = new URLSearchParams({
+        rescoutId: docRef.id,
+        matchKey: safeMatchKey,
+        teamNumber: String(teamNumber),
+        alliance: safeAlliance,
+        game: selectedGame,
+        eventKey: safeEventKey,
+        eventName: safeEventName,
+      });
+      router.push(`/practice-scouting?${params.toString()}`);
     } catch (error) {
       console.error("Failed to create rescout entry:", error);
       const message = error instanceof Error ? error.message : String(error);
