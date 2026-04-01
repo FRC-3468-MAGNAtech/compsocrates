@@ -12,11 +12,12 @@ import PracticeDifficultyMatchModal, { type PracticeDifficultyModalOption } from
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { getEventsForGame, normalizeMatchLabel, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { buildCompletedModalIdsFromTba, buildReefscapeModalOptions, isTbaMatchCompleted } from "@/app/utils/reefscapeMatchSync";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
+import { normalizeEventKey } from "@/app/utils/events";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -280,6 +281,19 @@ function parseTeamNumber(value: unknown): number | null {
   const digits = raw.match(/\d+/)?.[0];
   const num = Number(digits ?? raw);
   return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function getYouTubeUrlFromMatch(match: TBAMatch): string {
+  const youtube = match.videos?.find((video) => video.type === "youtube");
+  if (!youtube?.key) return "";
+  return `https://www.youtube.com/watch?v=${youtube.key}`;
+}
+
+function normalizeMatchId(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parsed = normalizeMatchLabel(raw);
+  return parsed.matchId || raw;
 }
 
 function sanitizeAllianceTeams(candidate: unknown): number[] {
@@ -1068,8 +1082,11 @@ function PracticeScoutingContent() {
     alliance: "red" | "blue";
     teamNumber: number;
     game: "REEFSCAPE" | "REBUILT";
+    eventKey?: string;
+    eventName?: string;
   } | null>(null);
   const [rescoutLoaded, setRescoutLoaded] = useState(false);
+  const [rescoutAutoStarted, setRescoutAutoStarted] = useState(false);
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
@@ -1148,6 +1165,8 @@ function PracticeScoutingContent() {
         const teamNumber = parseTeamNumber(data.teamNumber);
         const matchKey = String(data.matchKey || data.matchLabel || "").trim();
         const game = String(data.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+        const eventKey = normalizeEventKey(String(data.eventKey || "").trim());
+        const eventName = String(data.eventName || "").trim();
         if (!matchKey || !teamNumber) return;
         if (!isActive) return;
         setRescoutTarget({
@@ -1156,8 +1175,10 @@ function PracticeScoutingContent() {
           alliance,
           teamNumber,
           game,
+          eventKey: eventKey || undefined,
+          eventName: eventName || undefined,
         });
-        setSelectedMode((prev) => prev || "competitive");
+        setSelectedMode("trial");
         setSelectedDifficulty((prev) => prev || "easy");
         setActiveMatchGame(game);
       } catch (error) {
@@ -1172,6 +1193,128 @@ function PracticeScoutingContent() {
     };
   }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty]);
 
+  useEffect(() => {
+    if (!rescoutTarget || rescoutAutoStarted || !activeMatchGame) return;
+    let isActive = true;
+
+    async function fetchRescoutTbaMatch() {
+      const eventKey = normalizeEventKey(String(rescoutTarget.eventKey || "").trim());
+      if (!eventKey) return null;
+      let matches: TBAMatch[] = [];
+      try {
+        const response = await fetch("/api/tba/matches", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventKey,
+            encryptedKey: tbaAuth.encryptedKey,
+            plainKey: tbaAuth.plainKey,
+          }),
+        });
+        if (response.ok) {
+          const payload = (await response.json()) as { matches?: TBAMatch[] };
+          if (Array.isArray(payload.matches)) matches = payload.matches;
+        }
+      } catch (error) {
+        console.warn("Rescout TBA proxy failed:", error);
+      }
+
+      if (matches.length === 0) {
+        try {
+          matches = await getEventMatches(eventKey, tbaAuth.plainKey || undefined);
+        } catch (error) {
+          console.warn("Rescout TBA fetch failed:", error);
+          return null;
+        }
+      }
+
+      const targetId = normalizeMatchId(rescoutTarget.matchKey);
+      return (
+        matches.find((match) => normalizeMatchId(match.key) === targetId) ||
+        null
+      );
+    }
+
+    async function startRescoutFlow() {
+      try {
+        clearPracticeDraft();
+        setPendingDraft(null);
+        setSelectedMode("trial");
+        if (!selectedDifficulty) setSelectedDifficulty("easy");
+
+        const candidates = await fetchLobbyMatchCandidates();
+        if (!isActive) return;
+        if (candidates.length > 0) setCandidateMatches(candidates);
+
+        const targetId = normalizeMatchId(rescoutTarget.matchKey);
+        const targetMatch =
+          candidates.find(
+            (match) =>
+              normalizeMatchId(String(match.matchKey || match.id || "")) === targetId &&
+              normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
+          ) || null;
+
+        let matchToUse: PracticeMatch | null = targetMatch ? { ...targetMatch } : null;
+        const tbaMatch = await fetchRescoutTbaMatch();
+
+        if (!matchToUse && tbaMatch) {
+          const allianceTeams = (tbaMatch.alliances?.[rescoutTarget.alliance]?.team_keys || [])
+            .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
+            .filter((team) => Number.isFinite(team) && team > 0)
+            .slice(0, 3);
+          const allianceScore = Number(tbaMatch.alliances?.[rescoutTarget.alliance]?.score || 0);
+          const eventKey = normalizeEventKey(String(rescoutTarget.eventKey || ""));
+          const eventName = rescoutTarget.eventName || eventKey || "Event";
+          const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
+          matchToUse = {
+            id: `${tbaMatch.key}:${rescoutTarget.alliance}`,
+            matchKey: tbaMatch.key,
+            eventKey,
+            eventName,
+            matchNumber: Number(tbaMatch.match_number || 0),
+            matchType: normalizePracticeMatchType(undefined, tbaMatch.key, tbaMatch.comp_level),
+            videoUrl,
+            difficulty: scoreToDifficulty(allianceScore),
+            alliance: rescoutTarget.alliance,
+            allianceScore,
+            allianceTeams,
+            actualScore: allianceScore,
+            officialData: {
+              score: allianceScore,
+              penaltyPoints: Number(tbaMatch.score_breakdown?.[rescoutTarget.alliance]?.foulPoints || 0),
+              breakdown: tbaMatch.score_breakdown?.[rescoutTarget.alliance] || {},
+            },
+            createdAt: (Number(tbaMatch.actual_time || tbaMatch.time || 0) || Date.now() / 1000) * 1000,
+          };
+        }
+
+        if (!matchToUse) return;
+
+        if (!matchToUse.videoUrl || !matchToUse.videoUrl.trim()) {
+          const videoUrl = tbaMatch ? getYouTubeUrlFromMatch(tbaMatch) : "";
+          if (videoUrl) matchToUse = { ...matchToUse, videoUrl };
+        }
+
+        const teamIndex = matchToUse.allianceTeams.findIndex((team) => Number(team) === rescoutTarget.teamNumber);
+        startPracticeMatch(
+          { ...matchToUse, progress: "fresh" as const },
+          {
+            robotIndex: teamIndex >= 0 ? teamIndex : 0,
+            teamNumber: String(rescoutTarget.teamNumber),
+          }
+        );
+        if (isActive) setRescoutAutoStarted(true);
+      } catch (error) {
+        console.error("Failed to auto-start rescout flow:", error);
+      }
+    }
+
+    void startRescoutFlow();
+    return () => {
+      isActive = false;
+    };
+  }, [activeMatchGame, fetchLobbyMatchCandidates, rescoutAutoStarted, rescoutTarget, selectedDifficulty, startPracticeMatch, tbaAuth.encryptedKey, tbaAuth.plainKey]);
+
   const liveLobbyPlayers = useMemo(() => {
     if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
     return Object.entries(liveLobby.playersByUid)
@@ -1185,17 +1328,17 @@ function PracticeScoutingContent() {
 
   useEffect(() => {
     if (!rescoutTarget || candidateMatches.length === 0) return;
-    const existingKey = String(currentMatch?.matchKey || currentMatch?.id || "");
-    if (existingKey && existingKey === rescoutTarget.matchKey) return;
+    const existingKey = normalizeMatchId(String(currentMatch?.matchKey || currentMatch?.id || ""));
+    if (existingKey && existingKey === normalizeMatchId(rescoutTarget.matchKey)) return;
     const targetMatch =
       candidateMatches.find(
         (match) =>
-          String(match.matchKey || "").trim() === rescoutTarget.matchKey &&
+          normalizeMatchId(String(match.matchKey || "")) === normalizeMatchId(rescoutTarget.matchKey) &&
           normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
       ) ||
       candidateMatches.find(
         (match) =>
-          String(match.id || "").trim() === rescoutTarget.matchKey &&
+          normalizeMatchId(String(match.id || "")) === normalizeMatchId(rescoutTarget.matchKey) &&
           normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
       );
     if (!targetMatch) return;
