@@ -15,6 +15,7 @@ export type TeamRole = (typeof TEAM_ROLES)[number];
 export type RoleAwareUser = {
   role?: string;
   roles?: string[];
+  secondaryRoles?: string[];
   uid?: string;
   isTeamAdmin?: boolean;
 };
@@ -77,7 +78,9 @@ export function sanitizeRoles(inputRoles: unknown, fallbackRole?: string | null)
   return [normalizeLegacyRole(fallbackRole)];
 }
 
-export function getPrimaryRole(roles: TeamRole[]): TeamRole {
+export function getPrimaryRole(roles: TeamRole[], primaryRole?: string | null): TeamRole {
+  const rawPrimary = typeof primaryRole === "string" && primaryRole.trim() ? primaryRole : "";
+  if (rawPrimary) return normalizeLegacyRole(rawPrimary);
   if (roles.includes("drive-team")) return "drive-team";
   return roles[0] || "match-scout";
 }
@@ -96,7 +99,11 @@ export function getRoleLabel(role: TeamRole): string {
 
 export function getUserRoles(user: RoleAwareUser | null | undefined): TeamRole[] {
   if (!user) return ["match-scout"];
-  return sanitizeRoles(user.roles, user.role);
+  const merged = [
+    ...(Array.isArray(user.roles) ? user.roles : []),
+    ...(Array.isArray(user.secondaryRoles) ? user.secondaryRoles : []),
+  ];
+  return sanitizeRoles(merged, user.role);
 }
 
 export function hasRole(user: RoleAwareUser | null | undefined, role: TeamRole): boolean {
@@ -105,7 +112,7 @@ export function hasRole(user: RoleAwareUser | null | undefined, role: TeamRole):
 
 export function getRoleBadge(roleInput: string | null | undefined, rolesInput?: string[]) {
   const roles = sanitizeRoles(rolesInput, roleInput);
-  const primaryRole = getPrimaryRole(roles);
+  const primaryRole = getPrimaryRole(roles, roleInput);
   if (primaryRole === "drive-team") {
     return { bg: "bg-blue-100", text: "text-blue-800", label: "Drive Team" };
   }
