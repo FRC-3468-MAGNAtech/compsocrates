@@ -507,7 +507,8 @@ function AccuracyVerificationContent() {
       router.push(`/practice-scouting?rescoutId=${docRef.id}`);
     } catch (error) {
       console.error("Failed to create rescout entry:", error);
-      alert("Could not start rescout request.");
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not start rescout request: ${message}`);
     } finally {
       setSavingRescout(false);
     }
