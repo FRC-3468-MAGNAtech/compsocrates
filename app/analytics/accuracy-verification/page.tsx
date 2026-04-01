@@ -65,6 +65,8 @@ type RescoutEntry = {
   criticalFlag?: boolean;
   createdAt?: number;
   updatedAt?: number;
+  submittedAt?: number;
+  practiceSessionId?: string;
   originalScouts?: string[];
 };
 
