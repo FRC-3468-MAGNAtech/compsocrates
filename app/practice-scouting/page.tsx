@@ -1372,6 +1372,7 @@ function PracticeScoutingContent() {
 
   useEffect(() => {
     if (!rescoutTarget || candidateMatches.length === 0) return;
+    if (rescoutAutoStarted) return;
     const existingKey = normalizeMatchId(String(currentMatch?.matchKey || currentMatch?.id || ""));
     if (existingKey && existingKey === normalizeMatchId(rescoutTarget.matchKey)) return;
     const targetMatch =
@@ -2386,6 +2387,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   useEffect(() => {
     if (!currentMatch) return;
     if (selectedDifficulty === "live" && liveLobby) return;
+    if (isRescoutFlow) {
+      const lockedTeam = String(rescoutTarget?.teamNumber || "");
+      if (lockedTeam) {
+        if (activeMatchGame === "REBUILT") {
+          setRebuiltFormData((prev) => (prev.teamNumber === lockedTeam ? prev : { ...prev, teamNumber: lockedTeam }));
+        } else {
+          setFormData((prev) => (prev.teamNumber === lockedTeam ? prev : { ...prev, teamNumber: lockedTeam }));
+        }
+        return;
+      }
+    }
     const expectedTeam = currentMatch.allianceTeams[currentRobotIndex]?.toString() || "";
     if (activeMatchGame === "REBUILT") {
       setRebuiltFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
@@ -2740,7 +2752,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const initialTeamNumber = hasExplicitTeam ? String(options?.teamNumber) : (isLiveSession && liveLobby ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
-    setHumanPlayerRobot(Math.floor(Math.random() * 3));
+    if (isRescoutFlow) {
+      setHumanPlayerRobot(null);
+    } else {
+      setHumanPlayerRobot(Math.floor(Math.random() * 3));
+    }
     setCurrentStep("practice");
     setShowDifficultyMatchModal(false);
   }
