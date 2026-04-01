@@ -32,6 +32,7 @@ export type UserData = {
   secondaryRoles?: TeamRole[];
   specialRole?: string | null;
   specialRoles?: string[];
+  formAccessOverrides?: Record<string, string[]>;
   teamId: string;
   isTeamAdmin: boolean;
   photoURL?: string;
