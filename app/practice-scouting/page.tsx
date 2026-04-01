@@ -1088,6 +1088,7 @@ function PracticeScoutingContent() {
   } | null>(null);
   const [rescoutLoaded, setRescoutLoaded] = useState(false);
   const [rescoutAutoStarted, setRescoutAutoStarted] = useState(false);
+  const [rescoutCompleted, setRescoutCompleted] = useState(false);
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
@@ -1221,7 +1222,7 @@ function PracticeScoutingContent() {
   }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty]);
 
   useEffect(() => {
-    if (!rescoutTarget || rescoutAutoStarted || !activeMatchGame) return;
+    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || !activeMatchGame) return;
     const target = rescoutTarget;
     let isActive = true;
 
@@ -1357,7 +1358,7 @@ function PracticeScoutingContent() {
     return () => {
       isActive = false;
     };
-  }, [activeMatchGame, fetchLobbyMatchCandidates, rescoutAutoStarted, rescoutTarget, selectedDifficulty, startPracticeMatch, tbaAuth.encryptedKey, tbaAuth.plainKey]);
+  }, [activeMatchGame, fetchLobbyMatchCandidates, rescoutAutoStarted, rescoutCompleted, rescoutTarget, selectedDifficulty, startPracticeMatch, tbaAuth.encryptedKey, tbaAuth.plainKey]);
 
   const liveLobbyPlayers = useMemo(() => {
     if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
@@ -1372,7 +1373,7 @@ function PracticeScoutingContent() {
 
   useEffect(() => {
     if (!rescoutTarget || candidateMatches.length === 0) return;
-    if (rescoutAutoStarted) return;
+    if (rescoutAutoStarted || rescoutCompleted || currentStep === "results") return;
     const existingKey = normalizeMatchId(String(currentMatch?.matchKey || currentMatch?.id || ""));
     if (existingKey && existingKey === normalizeMatchId(rescoutTarget.matchKey)) return;
     const targetMatch =
@@ -1391,7 +1392,7 @@ function PracticeScoutingContent() {
     setCurrentStep("practice");
     const teamIndex = targetMatch.allianceTeams.findIndex((team) => Number(team) === rescoutTarget.teamNumber);
     if (teamIndex >= 0) setCurrentRobotIndex(teamIndex);
-  }, [rescoutTarget, candidateMatches, currentMatch]);
+  }, [rescoutTarget, candidateMatches, currentMatch, rescoutAutoStarted, rescoutCompleted, currentStep]);
 
   const liveLobbyParticipants = useMemo(() => {
     if (!liveLobby) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
@@ -3311,6 +3312,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
+      if (isRescoutFlow) setRescoutCompleted(true);
       clearPracticeDraft();
       setPendingDraft(null);
     } catch (error) {
@@ -3416,6 +3418,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
+      if (isRescoutFlow) setRescoutCompleted(true);
       clearPracticeDraft();
       setPendingDraft(null);
     } catch (error) {
