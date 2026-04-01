@@ -5375,7 +5375,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             </div>
           </div>
         )}
-        {currentStep === 'results' && selectedDifficulty !== "live" && sessionResults && (
+        {currentStep === 'results' && !isRescoutFlow && selectedDifficulty !== "live" && sessionResults && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto">
             <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Practice Complete!
