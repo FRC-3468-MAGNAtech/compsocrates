@@ -1195,10 +1195,11 @@ function PracticeScoutingContent() {
 
   useEffect(() => {
     if (!rescoutTarget || rescoutAutoStarted || !activeMatchGame) return;
+    const target = rescoutTarget;
     let isActive = true;
 
     async function fetchRescoutTbaMatch() {
-      const eventKey = normalizeEventKey(String(rescoutTarget.eventKey || "").trim());
+      const eventKey = normalizeEventKey(String(target.eventKey || "").trim());
       if (!eventKey) return null;
       let matches: TBAMatch[] = [];
       try {
@@ -1228,7 +1229,7 @@ function PracticeScoutingContent() {
         }
       }
 
-      const targetId = normalizeMatchId(rescoutTarget.matchKey);
+      const targetId = normalizeMatchId(target.matchKey);
       return (
         matches.find((match) => normalizeMatchId(match.key) === targetId) ||
         null
@@ -1246,28 +1247,28 @@ function PracticeScoutingContent() {
         if (!isActive) return;
         if (candidates.length > 0) setCandidateMatches(candidates);
 
-        const targetId = normalizeMatchId(rescoutTarget.matchKey);
+        const targetId = normalizeMatchId(target.matchKey);
         const targetMatch =
           candidates.find(
             (match) =>
               normalizeMatchId(String(match.matchKey || match.id || "")) === targetId &&
-              normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
+              normalizeAllianceSide(match.alliance) === target.alliance
           ) || null;
 
         let matchToUse: PracticeMatch | null = targetMatch ? { ...targetMatch } : null;
         const tbaMatch = await fetchRescoutTbaMatch();
 
         if (!matchToUse && tbaMatch) {
-          const allianceTeams = (tbaMatch.alliances?.[rescoutTarget.alliance]?.team_keys || [])
+          const allianceTeams = (tbaMatch.alliances?.[target.alliance]?.team_keys || [])
             .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
             .filter((team) => Number.isFinite(team) && team > 0)
             .slice(0, 3);
-          const allianceScore = Number(tbaMatch.alliances?.[rescoutTarget.alliance]?.score || 0);
-          const eventKey = normalizeEventKey(String(rescoutTarget.eventKey || ""));
-          const eventName = rescoutTarget.eventName || eventKey || "Event";
+          const allianceScore = Number(tbaMatch.alliances?.[target.alliance]?.score || 0);
+          const eventKey = normalizeEventKey(String(target.eventKey || ""));
+          const eventName = target.eventName || eventKey || "Event";
           const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
           matchToUse = {
-            id: `${tbaMatch.key}:${rescoutTarget.alliance}`,
+            id: `${tbaMatch.key}:${target.alliance}`,
             matchKey: tbaMatch.key,
             eventKey,
             eventName,
@@ -1275,14 +1276,14 @@ function PracticeScoutingContent() {
             matchType: normalizePracticeMatchType(undefined, tbaMatch.key, tbaMatch.comp_level),
             videoUrl,
             difficulty: scoreToDifficulty(allianceScore),
-            alliance: rescoutTarget.alliance,
+            alliance: target.alliance,
             allianceScore,
             allianceTeams,
             actualScore: allianceScore,
             officialData: {
               score: allianceScore,
-              penaltyPoints: Number(tbaMatch.score_breakdown?.[rescoutTarget.alliance]?.foulPoints || 0),
-              breakdown: tbaMatch.score_breakdown?.[rescoutTarget.alliance] || {},
+              penaltyPoints: Number(tbaMatch.score_breakdown?.[target.alliance]?.foulPoints || 0),
+              breakdown: tbaMatch.score_breakdown?.[target.alliance] || {},
             },
             createdAt: (Number(tbaMatch.actual_time || tbaMatch.time || 0) || Date.now() / 1000) * 1000,
           };
@@ -1295,12 +1296,12 @@ function PracticeScoutingContent() {
           if (videoUrl) matchToUse = { ...matchToUse, videoUrl };
         }
 
-        const teamIndex = matchToUse.allianceTeams.findIndex((team) => Number(team) === rescoutTarget.teamNumber);
+        const teamIndex = matchToUse.allianceTeams.findIndex((team) => Number(team) === target.teamNumber);
         startPracticeMatch(
           { ...matchToUse, progress: "fresh" as const },
           {
             robotIndex: teamIndex >= 0 ? teamIndex : 0,
-            teamNumber: String(rescoutTarget.teamNumber),
+            teamNumber: String(target.teamNumber),
           }
         );
         if (isActive) setRescoutAutoStarted(true);
