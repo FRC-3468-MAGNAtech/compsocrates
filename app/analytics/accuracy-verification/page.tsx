@@ -465,14 +465,33 @@ function AccuracyVerificationContent() {
     if (savingRescout) return;
     setSavingRescout(true);
     try {
-      const docRef = await addDoc(collection(db, "accuracyRescouts"), {
-        teamId: userData.teamId,
-        eventKey: activeRescout.eventKey,
-        eventName: activeRescout.eventName,
+      const safeTeamId = String(userData.teamId);
+      const safeEventKey = normalizeEventKey(String(activeRescout.eventKey || selectedEvent || "").trim());
+      const safeMatchKey = resolveMatchKey({
+        matchId: activeRescout.matchKey,
         matchKey: activeRescout.matchKey,
         matchLabel: activeRescout.matchLabel,
+      } as ScoutingEntry);
+      const safeMatchLabel = activeRescout.matchLabel || resolveMatchLabel({
+        matchId: activeRescout.matchKey,
+        matchKey: activeRescout.matchKey,
+        matchLabel: activeRescout.matchLabel,
+      } as ScoutingEntry);
+      const safeEventName =
+        activeRescout.eventName ||
+        eventOptions.find((event) => normalizeEventKey(event.id) === normalizeEventKey(selectedEvent))?.name ||
+        safeEventKey ||
+        "Event";
+      const safeAlliance = activeAlliance.alliance || "red";
+
+      const docRef = await addDoc(collection(db, "accuracyRescouts"), {
+        teamId: safeTeamId,
+        eventKey: safeEventKey,
+        eventName: safeEventName,
+        matchKey: safeMatchKey,
+        matchLabel: safeMatchLabel,
         game: selectedGame,
-        alliance: activeAlliance.alliance,
+        alliance: safeAlliance,
         teamNumber,
         scoutId: userData.uid,
         scoutName: userData.displayName || "",
@@ -481,7 +500,7 @@ function AccuracyVerificationContent() {
         criticalFlag: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        originalScouts: activeAlliance.scouts,
+        originalScouts: activeAlliance.scouts || [],
       });
       setActiveRescout(null);
       setActiveAlliance(null);
