@@ -447,6 +447,11 @@ function AccuracyVerificationContent() {
   const rescoutsByTeam = useMemo(() => {
     const map = new Map<string, RescoutEntry>();
     rescouts.forEach((row) => {
+      const isSubmitted =
+        String(row.status || "").toLowerCase() === "submitted" ||
+        Boolean(row.practiceSessionId) ||
+        Boolean(row.submittedAt);
+      if (!isSubmitted) return;
       const key = `${row.matchKey || ""}::${row.teamNumber || ""}`;
       map.set(key, row);
     });
@@ -710,7 +715,7 @@ function AccuracyVerificationContent() {
                       exists ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "hover:bg-gray-50"
                     }`}
                   >
-                    Team {team} {exists ? "(Already re-scouted)" : ""}
+                    Team {team} {exists ? "(Already Re-Scouted)" : ""}
                   </button>
                 );
               })}
