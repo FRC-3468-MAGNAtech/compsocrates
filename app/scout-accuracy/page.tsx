@@ -21,6 +21,7 @@ interface ScoutStats {
   scoutName: string;
   role: string;
   roles?: string[];
+  secondaryRoles?: string[];
   totalEntries: number;
   practiceSessionsCompleted: number;
   averageAccuracy: number;
