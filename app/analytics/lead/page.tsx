@@ -12,7 +12,7 @@ import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
   isLeadScoutingEntry,
-  isPracticeScoutedEntry,
+  isPracticeMatchEntry,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText, formatMatchLabelShort, getMatchLabelMeta } from "@/app/utils/displayFormat";
@@ -228,7 +228,7 @@ function LeadAnalyticsContent() {
       entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, undefined, { includeLead: true })
     );
     const leadOnly = gameFiltered.filter((entry) => isLeadScoutingEntry(entry));
-    return leadOnly.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
+    return leadOnly.filter((entry) => (practiceMatchesOnly ? isPracticeMatchEntry(entry) : !isPracticeMatchEntry(entry)));
   }, [normalized, practiceMatchesOnly, selectedEvent, selectedGame]);
 
   const sorted = useMemo(() => {

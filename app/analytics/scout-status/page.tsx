@@ -13,7 +13,7 @@ import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
   getEventsForGame,
-  isPracticeScoutedEntry,
+  isPracticeMatchEntry,
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
@@ -668,7 +668,7 @@ function ScoutStatusContent() {
     const includeLead = selectedFormType === "lead-scout";
     return entries
       .filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventFilterOptions, { includeLead }))
-      .filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)))
+      .filter((entry) => (practiceMatchesOnly ? isPracticeMatchEntry(entry) : !isPracticeMatchEntry(entry)))
       .filter((entry) => !entry.excludeFromStats);
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, selectedFormType]);
 
