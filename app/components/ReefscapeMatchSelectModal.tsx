@@ -216,6 +216,9 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
   allowManualOverride?: boolean;
   allowCompletedPick?: boolean;
 }) {
+  const debugEnabled =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("debug") === "1";
   const [step, setStep] = useState<"type" | MatchType>("type");
   const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
   const [manualMatchNumber, setManualMatchNumber] = useState("");
@@ -369,6 +372,16 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                       scheduledNext[0]?.matchNum ??
                       rows.find((row) => !completed.has(row.matchId))?.matchNum ??
                       -1;
+                    if (debugEnabled) {
+                      const completedIds = Array.from(completed).slice(0, 12).join(", ");
+                      const nextLabel = resolvedNextNum > 0 ? `${step} ${resolvedNextNum}` : "none";
+                      return (
+                        <div className="col-span-3 text-[11px] text-gray-600 mb-2">
+                          <div>Debug: next={nextLabel} completed={completed.size}</div>
+                          <div>Completed IDs: {completedIds || "none"}</div>
+                        </div>
+                      );
+                    }
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
                       const isAssigned = assigned.has(matchId);
