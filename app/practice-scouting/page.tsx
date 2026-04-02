@@ -1358,19 +1358,32 @@ function PracticeScoutingContent() {
           ) || null;
 
         let matchToUse: PracticeMatch | null = targetMatch ? { ...targetMatch } : null;
-        const tbaMatch = await fetchRescoutTbaMatch();
+        const hasVideo = Boolean(matchToUse?.videoUrl);
+        const hasTeams = (matchToUse?.allianceTeams || []).length >= 3;
 
-        if (!tbaMatch) {
+        let tbaMatch: TBAMatch | null = null;
+        if (!hasVideo || !hasTeams) {
+          tbaMatch = await fetchRescoutTbaMatch();
+        }
+
+        if (!tbaMatch && !matchToUse) {
           if (isActive) setRescoutError("Rescout match unavailable.");
           return;
         }
-        const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
-        if (!videoUrl) {
+
+        if (!tbaMatch && matchToUse && !hasVideo) {
           if (isActive) setRescoutError("Rescout video unavailable.");
           return;
         }
 
         if (tbaMatch) {
+          const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
+          if (!videoUrl) {
+            if (!hasVideo) {
+              if (isActive) setRescoutError("Rescout video unavailable.");
+              return;
+            }
+          }
           const allianceTeams = (tbaMatch.alliances?.[target.alliance]?.team_keys || [])
             .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
             .filter((team) => Number.isFinite(team) && team > 0)
@@ -1398,7 +1411,7 @@ function PracticeScoutingContent() {
             eventName,
             matchNumber: Number(tbaMatch.match_number || 0),
             matchType: normalizePracticeMatchType(undefined, tbaMatch.key, tbaMatch.comp_level),
-            videoUrl,
+            videoUrl: videoUrl || matchToUse?.videoUrl || "",
             difficulty: scoreToDifficulty(allianceScore),
             alliance: target.alliance,
             allianceScore,
