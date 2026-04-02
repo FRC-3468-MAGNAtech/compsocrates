@@ -98,6 +98,43 @@ function parseTeamNumber(raw: string) {
   return digits ? Number(digits) : 0;
 }
 
+function normalizeScoutedMatchId(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  const direct = raw.match(/^(p|q|qf|sf|f)(\d+)$/);
+  if (direct) return `${direct[1]}${Number(direct[2])}`;
+  const playoffSet = raw.match(/^(qf|sf|f)(\d+)m(\d+)$/);
+  if (playoffSet) return `${playoffSet[1]}${Number(playoffSet[2])}`;
+
+  const fromQmKey = raw.match(/_qm(\d+)/);
+  if (fromQmKey) return `q${Number(fromQmKey[1])}`;
+  const fromPracticeKey = raw.match(/_(?:pr|pm)(\d+)/);
+  if (fromPracticeKey) return `p${Number(fromPracticeKey[1])}`;
+  const fromPractice = raw.match(/practice(?:\s+match)?\s+(\d+)/);
+  if (fromPractice) return `p${Number(fromPractice[1])}`;
+  const fromQual = raw.match(/qualification(?:\s+match)?\s+(\d+)/);
+  if (fromQual) return `q${Number(fromQual[1])}`;
+
+  const sfKey = raw.match(/_sf(\d+)m(\d+)/);
+  if (sfKey) return `sf${Number(sfKey[1])}`;
+  const sfLabel = raw.match(/semifinal\s+(\d+)(?:-(\d+))?/);
+  if (sfLabel) return `sf${Number(sfLabel[1])}`;
+
+  const qfKey = raw.match(/_qf(\d+)m(\d+)/);
+  if (qfKey) return `qf${Number(qfKey[1])}`;
+  const qfLabel = raw.match(/quarterfinal\s+(\d+)(?:-(\d+))?/);
+  if (qfLabel) return `qf${Number(qfLabel[1])}`;
+
+  const finalsKey = raw.match(/_f(\d+)m(\d+)/);
+  if (finalsKey) return `f${Number(finalsKey[2])}`;
+  const finalsLabel = raw.match(/finals\s+(\d+)/);
+  if (finalsLabel) {
+    const n = Number(finalsLabel[1]);
+    return `f${n >= 14 && n <= 16 ? n - 13 : n}`;
+  }
+  return raw.replace(/\s+/g, "");
+}
+
 function labelForMatch(match: TBAMatch) {
   if (match.comp_level === "qm") return `Q${match.match_number}`;
   if (match.comp_level === "sf") return `SF${match.set_number}-${match.match_number}`;
@@ -334,6 +371,22 @@ function DriveReflectionFormContent() {
         setEventTbaMatches(matches);
         const completionNow = getEffectiveNowSec(teamTimeOverride);
         const completedSet = buildCompletedModalIdsFromTba(matches, completionNow);
+        const scoutingCompleted = new Set<string>();
+        try {
+          const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", assignedEvent)));
+          scoutingSnap.docs.forEach((docSnap) => {
+            const row = docSnap.data() as Record<string, unknown>;
+            const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
+            if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
+            const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
+            if (matchId) scoutingCompleted.add(matchId);
+          });
+        } catch (error) {
+          console.warn("Unable to load scouting completions:", error);
+        }
+        if (scoutingCompleted.size > 0) {
+          scoutingCompleted.forEach((id) => completedSet.add(id));
+        }
         setModalCompleted(completedSet);
         const options: MatchOption[] = matches
           .map((match) => {

@@ -1394,6 +1394,7 @@ function ScoutFormContent() {
       const teamsMap = new Map<string, Set<string>>();
       const subStatuses: Record<string, Record<string, "requested" | "assigned">> = {};
       const userClaims: Record<string, string> = {};
+      const completedFromScouting = new Set<string>();
       snap.docs.forEach((d) => {
         const row = d.data() as Record<string, unknown>;
         const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
@@ -1417,10 +1418,18 @@ function ScoutFormContent() {
           return;
         }
         if (!matchId) return;
+        completedFromScouting.add(matchId);
         counts[matchId] = (counts[matchId] || 0) + 1;
         if (!teamsMap.has(matchId)) teamsMap.set(matchId, new Set<string>());
         if (team) teamsMap.get(matchId)?.add(team);
       });
+      if (completedFromScouting.size > 0) {
+        setModalCompleted((prev) => {
+          const next = new Set(prev);
+          completedFromScouting.forEach((id) => next.add(id));
+          return next;
+        });
+      }
       setScoutedCounts(counts);
       setScoutedTeamsByMatch(Object.fromEntries(Array.from(teamsMap.entries()).map(([k, v]) => [k, Array.from(v)])));
       setSubInStatusByMatch(subStatuses);
