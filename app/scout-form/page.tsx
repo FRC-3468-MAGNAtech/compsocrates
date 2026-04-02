@@ -2202,7 +2202,6 @@ function ScoutFormContent() {
     closeLeadTeamPicker();
   }
   const fromPractice = searchParams.get("practice") === "1";
-  const leadMode = searchParams.get("lead") === "1";
 
   return (
     <div className="flex h-screen bg-gray-100">
