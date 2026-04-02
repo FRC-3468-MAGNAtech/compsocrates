@@ -130,6 +130,7 @@ async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promis
 }
 
 function labelForMatch(match: TBAMatch) {
+  if (match.comp_level === "pr") return `Practice ${match.match_number}`;
   if (match.comp_level === "qm") return `Q${match.match_number}`;
   if (match.comp_level === "sf") return `SF${match.set_number}-${match.match_number}`;
   if (match.comp_level === "qf") return `QF${match.set_number}-${match.match_number}`;
@@ -464,7 +465,10 @@ function MatchStrategyFormContent() {
         const isAttending = assignedMatchKeys.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
         let next: MatchOption | null = null;
         const teamMatches = ourTeamNumber > 0 ? resolvedOptions.filter((match) => match.teams.includes(String(ourTeamNumber))) : [];
-        const teamFirst = teamMatches.length > 0 ? pickFirstIncomplete(teamMatches) || pickNextBySchedule(teamMatches) || pickFirstByNumber(teamMatches) : null;
+        const teamFirst =
+          teamMatches.length > 0
+            ? pickNextBySchedule(teamMatches) || pickFirstIncomplete(teamMatches) || pickFirstByNumber(teamMatches)
+            : null;
         if (editMode && editMatchKey) {
           next =
             resolvedOptions.find((match) => match.key === editMatchKey) ||

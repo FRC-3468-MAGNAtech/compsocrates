@@ -1396,7 +1396,10 @@ function ScoutFormContent() {
           : null;
         if (editMode && editTarget) {
           nextMatch = editTarget;
-        } else if (overrideEvent || leadMode) {
+        } else if (leadMode) {
+          // Lead scout always goes to the next match, never assignment-locked.
+          nextMatch = pickNextBySchedule(resolved) || pickFirstIncomplete(resolved);
+        } else if (overrideEvent) {
           nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
         } else {
           const assignedMatches = resolved.filter((match) => assignedMatchIds.has(match.id));
@@ -1544,7 +1547,7 @@ function ScoutFormContent() {
     };
     const assignedMatches = options.filter((match) => assignedMatchIds.has(match.id));
     const next = leadMode
-      ? pickFirstIncomplete(options) || pickNextBySchedule(options)
+      ? pickNextBySchedule(options) || pickFirstIncomplete(options)
       : assignedMatches.length > 0
         ? pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches)
         : pickFirstIncomplete(options) || pickNextBySchedule(options);
