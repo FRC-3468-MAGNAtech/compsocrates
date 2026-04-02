@@ -952,6 +952,7 @@ function ScoutFormContent() {
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [options, setOptions] = useState<MatchOption[]>([]);
   const [modalCompleted, setModalCompleted] = useState<Set<string>>(new Set());
+  const leadMode = searchParams.get("lead") === "1";
   const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
   const [assignedTeams, setAssignedTeams] = useState<Record<string, string>>({});
   const [assignedTeamsByMatch, setAssignedTeamsByMatch] = useState<Record<string, string[]>>({});
@@ -1285,7 +1286,7 @@ function ScoutFormContent() {
         completedFromForms.forEach((id) => completedSet.add(id));
         setModalCompleted(completedSet);
 
-        if (overrideEvent) {
+        if (overrideEvent || leadMode) {
           setAssignedTeams({});
           setAssignedMatchIds(new Set());
           setAssignedHumanPlayerMatches(new Set());
@@ -1321,7 +1322,7 @@ function ScoutFormContent() {
           setAssignedHumanPlayerMatches(assignedHumanPlayer);
         }
 
-        if (overrideEvent) {
+        if (overrideEvent || leadMode) {
           setAssignedTeamsByMatch({});
         } else {
           try {
@@ -1395,7 +1396,7 @@ function ScoutFormContent() {
           : null;
         if (editMode && editTarget) {
           nextMatch = editTarget;
-        } else if (overrideEvent) {
+        } else if (overrideEvent || leadMode) {
           nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
         } else {
           const assignedMatches = resolved.filter((match) => assignedMatchIds.has(match.id));
@@ -1422,7 +1423,7 @@ function ScoutFormContent() {
           if (!current) return nextMatch;
           const currentStillExists = resolved.some((match) => match.id === current.id);
           if (!currentStillExists) return nextMatch;
-          if (forceAssignedMatch && nextMatch && !assignedMatchIds.has(current.id)) return nextMatch;
+          if (!leadMode && forceAssignedMatch && nextMatch && !assignedMatchIds.has(current.id)) return nextMatch;
           if (completedSet.has(current.id)) return nextMatch;
           if (current.type === "practice" && nextMatch.type !== "practice") return nextMatch;
           return current;
@@ -1439,7 +1440,7 @@ function ScoutFormContent() {
       }
     }
     void loadEventContext();
-  }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchId]);
+  }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchId, leadMode]);
   useEffect(() => {
     async function loadScouted() {
       if (!eventKey) return;
@@ -1542,8 +1543,9 @@ function ScoutFormContent() {
       return rows.slice().sort(sortByTypeAndNumber)[0] || null;
     };
     const assignedMatches = options.filter((match) => assignedMatchIds.has(match.id));
-    const next =
-      assignedMatches.length > 0
+    const next = leadMode
+      ? pickFirstIncomplete(options) || pickNextBySchedule(options)
+      : assignedMatches.length > 0
         ? pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches)
         : pickFirstIncomplete(options) || pickNextBySchedule(options);
     if (!next) return;
@@ -1551,10 +1553,10 @@ function ScoutFormContent() {
       if (!current) return next;
       if (!options.some((match) => match.id === current.id)) return next;
       if (modalCompleted.has(current.id)) return next;
-      if (assignedMatches.length > 0 && !assignedMatchIds.has(current.id)) return next;
+      if (!leadMode && assignedMatches.length > 0 && !assignedMatchIds.has(current.id)) return next;
       return current;
     });
-  }, [modalCompleted, options, assignedMatchIds, editMode]);
+  }, [modalCompleted, options, assignedMatchIds, editMode, leadMode]);
 
   const selectedMatchId = selectedMatch?.id || "";
   const selectedTeams = selectedMatch?.teams || [];

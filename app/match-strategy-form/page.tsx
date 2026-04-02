@@ -11,6 +11,7 @@ import { useAuth } from "@/app/AuthContext";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
+import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import {
   buildCompletedModalIdsFromTba,
   buildReefscapeModalOptions,
@@ -338,7 +339,32 @@ function MatchStrategyFormContent() {
         const encryptedKey = String(teamData?.tbaApiKeyEncrypted || "").trim();
         const plainKey = String(teamData?.tbaApiKey || "").trim();
         const attendeesByEvent = (teamData?.eventAttendees || {}) as Record<string, string[]>;
-        const matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
+        let matches = await fetchEventMatchesWithTeamAuth(assignedEvent, { encryptedKey, plainKey });
+        const firstSchedule = await fetchFirstSchedule(assignedEvent, "Practice");
+        const practiceFromFirst = firstSchedule
+          .map((match) => {
+            const { red, blue } = splitFirstAllianceTeams(match);
+            const redScore = typeof match.redScore === "number" && Number.isFinite(match.redScore) ? match.redScore : -1;
+            const blueScore = typeof match.blueScore === "number" && Number.isFinite(match.blueScore) ? match.blueScore : -1;
+            const hasScore = redScore >= 0 && blueScore >= 0;
+            return {
+              key: `${assignedEvent}_pr${match.matchNumber}`,
+              comp_level: "pr",
+              set_number: 1,
+              match_number: match.matchNumber,
+              alliances: {
+                red: { team_keys: red.map((team) => `frc${team}`), score: redScore },
+                blue: { team_keys: blue.map((team) => `frc${team}`), score: blueScore },
+              },
+              time: match.startTime || 0,
+              predicted_time: match.startTime || 0,
+              actual_time: hasScore && match.startTime ? match.startTime : 0,
+            } as TBAMatch;
+          })
+          .filter((match) => match.alliances.red.team_keys.length >= 3 && match.alliances.blue.team_keys.length >= 3);
+        if (practiceFromFirst.length > 0) {
+          matches = [...matches.filter((match) => match.comp_level !== "pr"), ...practiceFromFirst];
+        }
         setEventTbaMatches(matches);
         const completionNow = getEffectiveNowSec(teamTimeOverride);
         const completedSet = buildCompletedModalIdsFromTba(matches, completionNow);
