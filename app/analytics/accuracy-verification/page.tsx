@@ -184,6 +184,11 @@ function normalizeName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function inferEventKeyFromMatchKey(matchKey: string): string {
+  const parsed = String(matchKey || "").trim().match(/^(\d{4}[a-z0-9]+)_/i);
+  return parsed?.[1] || "";
+}
+
 export default function AccuracyVerificationPage() {
   return (
     <ProtectedRoute>
@@ -734,7 +739,19 @@ function AccuracyVerificationContent() {
     setSavingRescout(true);
     try {
       const safeTeamId = String(userData.teamId);
-      const safeEventKey = normalizeEventKey(String(activeRescout.eventKey || selectedEvent || "").trim());
+      const rawEventKey = normalizeEventKey(String(activeRescout.eventKey || "").trim());
+      const eventKeyFromMatch = normalizeEventKey(inferEventKeyFromMatchKey(safeMatchKey));
+      const eventKeyFromName =
+        eventOptions.find(
+          (event) => normalizeName(String(event.name || "")) === normalizeName(String(activeRescout.eventName || ""))
+        )?.id || "";
+      const fallbackEventKey = normalizeEventKey(String(eventKeyFromMatch || eventKeyFromName || "").trim());
+      const safeEventKey =
+        rawEventKey && rawEventKey !== "all"
+          ? rawEventKey
+          : fallbackEventKey && fallbackEventKey !== "all"
+          ? fallbackEventKey
+          : "";
       const safeMatchKey = resolveMatchKey({
         matchId: activeRescout.matchKey,
         matchKey: activeRescout.matchKey,
@@ -751,6 +768,10 @@ function AccuracyVerificationContent() {
         safeEventKey ||
         "Event";
       const safeAlliance = activeAlliance.alliance || "red";
+      if (!safeEventKey) {
+        alert("Unable to determine event key for this match. Please select a specific event and try again.");
+        return;
+      }
 
       const docRef = await addDoc(collection(db, "accuracyRescouts"), {
         teamId: safeTeamId,

@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
+import { useAuth } from "@/app/AuthContext";
 
 type TeamRanking = {
   teamNumber: string;
@@ -91,12 +92,15 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
 }
 
 function RankingsContent() {
+  const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeScoutTeam, setActiveScoutTeam] = useState<string | null>(null);
+  const [officialRanks, setOfficialRanks] = useState<Record<string, number>>({});
+  const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({ encryptedKey: "", plainKey: "" });
   const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
 
   useEffect(() => {
@@ -126,6 +130,75 @@ function RankingsContent() {
     }
     loadEntries();
   }, []);
+
+  useEffect(() => {
+    const teamId = userData?.teamId;
+    if (!teamId) return;
+    let isActive = true;
+    async function loadTbaKey() {
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", teamId));
+        if (!isActive) return;
+        const data = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
+        setTbaAuth({
+          encryptedKey: String(data.tbaApiKeyEncrypted || "").trim(),
+          plainKey: String(data.tbaApiKey || "").trim(),
+        });
+      } catch (error) {
+        console.warn("Unable to load TBA key for rankings:", error);
+        if (isActive) setTbaAuth({ encryptedKey: "", plainKey: "" });
+      }
+    }
+    void loadTbaKey();
+    return () => {
+      isActive = false;
+    };
+  }, [userData?.teamId]);
+
+  useEffect(() => {
+    if (!selectedEvent || selectedEvent === "all") {
+      setOfficialRanks({});
+      return;
+    }
+    let isActive = true;
+    async function loadOfficialRanks() {
+      try {
+        const response = await fetch("/api/tba/rankings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventKey: selectedEvent,
+            encryptedKey: tbaAuth.encryptedKey,
+            plainKey: tbaAuth.plainKey,
+          }),
+        });
+        if (!response.ok) {
+          if (isActive) setOfficialRanks({});
+          return;
+        }
+        const payload = (await response.json()) as { rankings?: Array<Record<string, unknown>> };
+        const map: Record<string, number> = {};
+        (payload.rankings || []).forEach((row) => {
+          const teamKey = String(row.team_key || row.teamKey || row.team || "").trim();
+          const teamNumber = teamKey.startsWith("frc")
+            ? Number(teamKey.replace("frc", ""))
+            : Number(teamKey || row.teamNumber || row.team_number || 0);
+          const rank = Number(row.rank || row.rankNumber || row.Rank || 0);
+          if (Number.isFinite(teamNumber) && teamNumber > 0 && Number.isFinite(rank) && rank > 0) {
+            map[String(teamNumber)] = rank;
+          }
+        });
+        if (isActive) setOfficialRanks(map);
+      } catch (error) {
+        console.warn("Unable to load official TBA rankings:", error);
+        if (isActive) setOfficialRanks({});
+      }
+    }
+    void loadOfficialRanks();
+    return () => {
+      isActive = false;
+    };
+  }, [selectedEvent, tbaAuth.encryptedKey, tbaAuth.plainKey]);
 
   const filteredEntries = useMemo(() => {
     const gameFiltered = entries.filter((entry) =>
@@ -214,7 +287,12 @@ function RankingsContent() {
             <tbody className="divide-y divide-gray-200">
               {rankings.map((team, i) => (
                 <tr key={team.teamNumber}>
-                  <td className="px-6 py-4">#{i + 1}</td>
+                  <td className="px-6 py-4">
+                    <div className="font-medium">#{i + 1}</div>
+                    <div className="text-xs text-gray-500">
+                      Official Rank: {officialRanks[team.teamNumber] ? `#${officialRanks[team.teamNumber]}` : "-"}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 font-semibold">{team.teamNumber}</td>
                   <td className="px-6 py-4 text-xl font-bold theme-text">{team.avgScore}</td>
                   <td className="px-6 py-4">{team.highScore}</td>

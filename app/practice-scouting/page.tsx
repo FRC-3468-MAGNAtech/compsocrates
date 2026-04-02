@@ -297,6 +297,17 @@ function normalizeMatchId(value: string): string {
   return parsed.matchId || raw;
 }
 
+function isValidEventKey(value: string): boolean {
+  const trimmed = String(value || "").trim();
+  return /^\d{4}[a-z0-9]+$/i.test(trimmed);
+}
+
+function extractEventKeyFromMatchKey(matchKey: string): string {
+  const trimmed = String(matchKey || "").trim();
+  const parsed = trimmed.match(/^(\d{4}[a-z0-9]+)_/i);
+  return parsed?.[1] || "";
+}
+
 function sanitizeAllianceTeams(candidate: unknown): number[] {
   const parseValues = (values: unknown[]): number[] =>
     values
@@ -1158,21 +1169,32 @@ function PracticeScoutingContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (rescoutTarget && !activeMatchGame) {
+      setActiveMatchGame(rescoutTarget.game || "REBUILT");
+    }
+  }, [rescoutTarget, activeMatchGame]);
+
+  useEffect(() => {
     if (!rescoutId || rescoutTarget) return;
     const matchKey = String(searchParams.get("matchKey") || "").trim();
     const teamNumber = parseTeamNumber(searchParams.get("teamNumber"));
     const alliance = String(searchParams.get("alliance") || "").toLowerCase() === "blue" ? "blue" : "red";
     const game = String(searchParams.get("game") || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
-    const eventKey = normalizeEventKey(String(searchParams.get("eventKey") || "").trim());
+    const rawEventKey = normalizeEventKey(String(searchParams.get("eventKey") || "").trim());
+    let eventKey = rawEventKey === "all" ? "" : rawEventKey;
     const eventName = String(searchParams.get("eventName") || "").trim();
     if (!matchKey || !teamNumber) return;
+    if (!isValidEventKey(eventKey)) {
+      const fallbackKey = extractEventKeyFromMatchKey(matchKey);
+      eventKey = normalizeEventKey(fallbackKey);
+    }
     setRescoutTarget({
       id: rescoutId,
       matchKey,
       alliance,
       teamNumber,
       game,
-      eventKey: eventKey || undefined,
+      eventKey: isValidEventKey(eventKey) ? eventKey : undefined,
       eventName: eventName || undefined,
     });
     setRescoutError("");
@@ -1198,7 +1220,17 @@ function PracticeScoutingContent() {
         const teamNumber = parseTeamNumber(data.teamNumber);
         const matchKey = String(data.matchKey || data.matchLabel || "").trim();
         const game = String(data.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
-        const eventKey = normalizeEventKey(String(data.eventKey || "").trim());
+        let eventKey = normalizeEventKey(String(data.eventKey || "").trim());
+        if (!isValidEventKey(eventKey)) {
+          eventKey = normalizeEventKey(extractEventKeyFromMatchKey(matchKey));
+        }
+        if (!isValidEventKey(eventKey) && teamEventCatalog.length > 0 && eventName) {
+          const fromName =
+            teamEventCatalog.find(
+              (event) => String(event.name || "").trim().toLowerCase() === String(eventName).trim().toLowerCase()
+            )?.key || "";
+          eventKey = normalizeEventKey(fromName);
+        }
         const eventName = String(data.eventName || "").trim();
         if (!matchKey || !teamNumber) return;
         if (!isActive) return;
@@ -1208,7 +1240,7 @@ function PracticeScoutingContent() {
           alliance,
           teamNumber,
           game,
-          eventKey: eventKey || undefined,
+          eventKey: isValidEventKey(eventKey) ? eventKey : undefined,
           eventName: eventName || undefined,
         });
         setRescoutError("");
@@ -1225,7 +1257,7 @@ function PracticeScoutingContent() {
     return () => {
       isActive = false;
     };
-  }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty]);
+  }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty, teamEventCatalog]);
 
   useEffect(() => {
     if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || !activeMatchGame || rescoutError) return;
@@ -1233,18 +1265,18 @@ function PracticeScoutingContent() {
     let isActive = true;
 
     async function fetchRescoutTbaMatch() {
-      const eventKeyFromMatchKey = String(target.matchKey || "")
-        .split("_")[0]
-        .trim();
-      const eventKeyFromName =
-        teamEventCatalog.find(
-          (event) =>
-            String(event.name || "").trim().toLowerCase() ===
-            String(target.eventName || "").trim().toLowerCase()
-        )?.key || "";
-      const eventKey = normalizeEventKey(
-        String(target.eventKey || eventKeyFromMatchKey || eventKeyFromName || "").trim()
+        const eventKeyFromMatchKey = extractEventKeyFromMatchKey(String(target.matchKey || ""));
+        const eventKeyFromName =
+          teamEventCatalog.find(
+            (event) =>
+              String(event.name || "").trim().toLowerCase() ===
+              String(target.eventName || "").trim().toLowerCase()
+          )?.key || "";
+      const fallbackEventKey = normalizeEventKey(
+        String(eventKeyFromMatchKey || eventKeyFromName || "").trim()
       );
+      const candidate = normalizeEventKey(String(target.eventKey || "").trim()) || fallbackEventKey;
+      const eventKey = isValidEventKey(candidate) ? candidate : "";
       if (!eventKey) return null;
       let matches: TBAMatch[] = [];
       try {

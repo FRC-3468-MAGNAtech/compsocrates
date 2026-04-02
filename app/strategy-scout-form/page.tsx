@@ -201,6 +201,20 @@ function TeamStrategyFormContent() {
         } catch (error) {
           console.warn("Unable to load team assignments:", error);
         }
+        if (teamAssignments.length === 0) {
+          try {
+            const fallbackSnap = await getDocs(
+              query(
+                collection(db, "matchAssignments"),
+                where("scoutId", "==", userData.uid),
+                where("assignmentType", "==", "team")
+              )
+            );
+            teamAssignments = fallbackSnap.docs.map((row) => row.data() as Record<string, unknown>);
+          } catch (error) {
+            console.warn("Unable to load fallback team assignments:", error);
+          }
+        }
 
         const assignmentForEvent =
           teamAssignments.find((assignment) => String(assignment.eventKey || "").trim() === resolvedKey) ||

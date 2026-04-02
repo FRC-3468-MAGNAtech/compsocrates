@@ -36,7 +36,7 @@ interface Assignment {
   scoutName: string;
   teamNumber: number;
   scoutHumanPlayer?: boolean;
-  assignmentType?: "match" | "event-practice";
+  assignmentType?: "match" | "event-practice" | "team";
   assignedBy: string;
   assignedAt: number;
 }
@@ -59,6 +59,8 @@ interface TeamAssignment {
   teamNumber: number;
   scoutId: string;
   scoutName: string;
+  assignmentType?: "team";
+  sourceCollection?: "teamAssignments" | "matchAssignments";
   assignedBy: string;
   assignedAt: number;
 }
@@ -557,6 +559,15 @@ function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string
   const key = String(row.matchKey || "").toLowerCase();
   const label = String(row.matchLabel || "").toLowerCase();
   return key.includes("_pm") || /^p\d+$/.test(key) || label.includes("practice ");
+}
+
+function isTeamAssignmentRow(row: { assignmentType?: string }) {
+  return row.assignmentType === "team";
+}
+
+function isPermissionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.toLowerCase().includes("permission") || message.toLowerCase().includes("insufficient");
 }
 
 function resolvePracticeTeamsFromData(data: Record<string, unknown>): number[] {
@@ -1082,18 +1093,29 @@ function AssignmentsContent() {
         }
       }
 
+      let teamAssignmentsFromMatch: TeamAssignment[] = [];
       if (assignmentsSnap) {
-        setAssignments(
-          assignmentsSnap.docs.map((assignmentDoc) => ({
-            id: assignmentDoc.id,
-            ...assignmentDoc.data(),
-          })) as Assignment[]
-        );
         const assignmentRows = assignmentsSnap.docs.map((assignmentDoc) => ({
           id: assignmentDoc.id,
           ...assignmentDoc.data(),
         })) as Assignment[];
-        const eventPracticeAssignments = assignmentRows.filter((row) => isEventPracticeAssignment(row));
+        teamAssignmentsFromMatch = assignmentRows
+          .filter((row) => isTeamAssignmentRow(row))
+          .map((row) => ({
+            id: row.id,
+            teamId: row.teamId,
+            eventKey: row.eventKey,
+            teamNumber: row.teamNumber,
+            scoutId: row.scoutId,
+            scoutName: row.scoutName,
+            assignmentType: "team",
+            sourceCollection: "matchAssignments",
+            assignedBy: row.assignedBy,
+            assignedAt: row.assignedAt,
+          }));
+        const matchRows = assignmentRows.filter((row) => !isTeamAssignmentRow(row));
+        setAssignments(matchRows);
+        const eventPracticeAssignments = matchRows.filter((row) => isEventPracticeAssignment(row));
         setPracticeScheduleAssignmentsByEvent((prev) => ({ ...prev, [activeEventKey]: eventPracticeAssignments }));
       } else {
         setAssignments([]);
@@ -1108,14 +1130,17 @@ function AssignmentsContent() {
             })) as PitAssignment[])
           : []
       );
-      setTeamAssignments(
-        teamAssignmentsSnap
-          ? (teamAssignmentsSnap.docs.map((assignmentDoc) => ({
-              id: assignmentDoc.id,
-              ...assignmentDoc.data(),
-            })) as TeamAssignment[])
-          : []
+      const teamFromPrimary = teamAssignmentsSnap
+        ? (teamAssignmentsSnap.docs.map((assignmentDoc) => ({
+            id: assignmentDoc.id,
+            sourceCollection: "teamAssignments",
+            ...assignmentDoc.data(),
+          })) as TeamAssignment[])
+        : [];
+      const mergedTeamAssignments = [...teamFromPrimary, ...teamAssignmentsFromMatch].sort(
+        (a, b) => a.teamNumber - b.teamNumber
       );
+      setTeamAssignments(mergedTeamAssignments);
       setPracticeAssignments(
         practiceAssignmentsDocs.map((row) => ({
           id: row.id,
@@ -1852,7 +1877,7 @@ function buildBalancedIntervalSchedule(
     }
 
     try {
-      await addDoc(collection(db, "teamAssignments"), {
+      const payload = {
         teamId: userData.teamId || "",
         eventKey: selectedEvent,
         teamNumber,
@@ -1860,7 +1885,19 @@ function buildBalancedIntervalSchedule(
         scoutName: scout.displayName,
         assignedBy: userData.uid,
         assignedAt: Date.now(),
-      });
+      };
+      try {
+        await addDoc(collection(db, "teamAssignments"), payload);
+      } catch (error) {
+        if (!isPermissionError(error)) throw error;
+        await addDoc(collection(db, "matchAssignments"), {
+          ...payload,
+          assignmentType: "team",
+          matchKey: "team",
+          matchLabel: "Team Strategy",
+          scoutHumanPlayer: false,
+        });
+      }
       setSelectedTeamScoutId("");
       setSelectedTeamAssignmentNumber("");
       setShowAssignModal(false);
@@ -1943,14 +1980,16 @@ function buildBalancedIntervalSchedule(
     }
   }
 
-  async function deleteTeamAssignment(id: string) {
+  async function deleteTeamAssignment(assignment: TeamAssignment) {
     if (!canManageAssignments) {
       alert("You do not have permission to delete assignments.");
       return;
     }
     if (!confirm("Delete this team assignment?")) return;
     try {
-      await deleteDoc(doc(db, "teamAssignments", id));
+      const source = assignment.sourceCollection || "teamAssignments";
+      const collectionName = source === "matchAssignments" ? "matchAssignments" : "teamAssignments";
+      await deleteDoc(doc(db, collectionName, assignment.id));
       await loadData();
     } catch (error) {
       console.error("Error deleting team assignment:", error);
@@ -1997,7 +2036,7 @@ function buildBalancedIntervalSchedule(
 
     setBulkDeleteInProgress(true);
     try {
-    const collectionName =
+      const collectionName =
         target === "pit"
           ? "pitAssignments"
           : target === "team"
@@ -2007,13 +2046,29 @@ function buildBalancedIntervalSchedule(
           : "matchAssignments";
       const snap = await getDocs(query(collection(db, collectionName), where("eventKey", "==", eventKey)));
       const docsToDelete = snap.docs;
-      if (docsToDelete.length === 0) {
+      if (docsToDelete.length === 0 && target !== "team") {
         alert(`No ${targetLabel} found for ${eventLabel}.`);
         return;
       }
       await Promise.all(docsToDelete.map((assignmentDoc) => deleteDoc(doc(db, collectionName, assignmentDoc.id))));
+      let extraDeletes = 0;
+      if (target === "team") {
+        const fallbackSnap = await getDocs(
+          query(collection(db, "matchAssignments"), where("eventKey", "==", eventKey), where("assignmentType", "==", "team"))
+        );
+        const fallbackDeletes = fallbackSnap.docs.map((assignmentDoc) =>
+          deleteDoc(doc(db, "matchAssignments", assignmentDoc.id))
+        );
+        await Promise.all(fallbackDeletes);
+        extraDeletes = fallbackDeletes.length;
+        if (docsToDelete.length === 0 && extraDeletes === 0) {
+          alert(`No ${targetLabel} found for ${eventLabel}.`);
+          return;
+        }
+      }
       await loadData();
-      alert(`Deleted ${docsToDelete.length} ${targetLabel} for ${eventLabel}.`);
+      const deletedCount = docsToDelete.length + extraDeletes;
+      alert(`Deleted ${deletedCount} ${targetLabel} for ${eventLabel}.`);
     } catch (error) {
       console.error("Error deleting assignments:", error);
       alert("Error deleting assignments.");
@@ -2534,7 +2589,11 @@ function buildBalancedIntervalSchedule(
     try {
       const existing = teamAssignments.filter((assignment) => assignment.eventKey === selectedEvent);
       const deleteResults = await Promise.allSettled(
-        existing.map((assignment) => deleteDoc(doc(db, "teamAssignments", assignment.id)))
+        existing.map((assignment) => {
+          const source = assignment.sourceCollection || "teamAssignments";
+          const collectionName = source === "matchAssignments" ? "matchAssignments" : "teamAssignments";
+          return deleteDoc(doc(db, collectionName, assignment.id));
+        })
       );
       if (deleteResults.some((result) => result.status === "rejected")) {
         console.warn("Some team assignments could not be deleted due to permissions.");
@@ -2603,7 +2662,22 @@ function buildBalancedIntervalSchedule(
         });
       }
 
-      await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "teamAssignments"), assignment)));
+      try {
+        await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "teamAssignments"), assignment)));
+      } catch (error) {
+        if (!isPermissionError(error)) throw error;
+        await Promise.all(
+          newAssignments.map((assignment) =>
+            addDoc(collection(db, "matchAssignments"), {
+              ...assignment,
+              assignmentType: "team",
+              matchKey: "team",
+              matchLabel: "Team Strategy",
+              scoutHumanPlayer: false,
+            })
+          )
+        );
+      }
       await loadData();
       alert(`Randomized ${newAssignments.length} team assignments across ${sortedTeams.length} teams.`);
     } catch (error) {
@@ -2693,7 +2767,10 @@ function buildBalancedIntervalSchedule(
 
   const matchAssignmentsSorted = useMemo(
     () => {
-      const merged = assignments.slice().filter((assignment) => !isEventPracticeAssignment(assignment));
+    const merged = assignments
+      .slice()
+      .filter((assignment) => !isEventPracticeAssignment(assignment))
+      .filter((assignment) => !isTeamAssignmentRow(assignment));
       return merged.sort((a, b) => {
           const aKey = getAssignmentMatchSortKey(a);
           const bKey = getAssignmentMatchSortKey(b);
@@ -3008,7 +3085,7 @@ function buildBalancedIntervalSchedule(
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.scoutName}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               {canManageAssignments ? (
-                                <button onClick={() => void deleteTeamAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                <button onClick={() => void deleteTeamAssignment(assignment)} className="text-red-600 hover:text-red-800">
                                   <Trash2 size={18} />
                                 </button>
                               ) : (
