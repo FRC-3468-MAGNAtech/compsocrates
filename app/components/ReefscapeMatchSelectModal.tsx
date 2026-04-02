@@ -385,7 +385,9 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
                       const isAssigned = assigned.has(matchId);
-                      const status: MatchStatus = done ? "completed" : matchNum === resolvedNextNum ? "next" : "upcoming";
+                      const isBeforeNext = resolvedNextNum > 0 && matchNum < resolvedNextNum;
+                      const status: MatchStatus =
+                        done || isBeforeNext ? "completed" : matchNum === resolvedNextNum ? "next" : "upcoming";
                       const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
                       const displayLabel = step === "practice" ? `Practice ${matchNum}` : `Qualification ${matchNum}`;
                       const borderColor = color;
