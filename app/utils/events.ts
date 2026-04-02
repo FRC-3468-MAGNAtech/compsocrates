@@ -67,3 +67,14 @@ export function dedupeEventKeys(eventKeys: string[]): string[] {
   return deduped;
 }
 
+export function dedupeEventOptionsByKey<T extends { key: string }>(options: T[]): T[] {
+  const map = new Map<string, T>();
+  options.forEach((option) => {
+    const normalizedKey = normalizeEventKey(option.key);
+    if (!normalizedKey) return;
+    if (map.has(normalizedKey)) return;
+    map.set(normalizedKey, { ...option, key: normalizedKey });
+  });
+  return Array.from(map.values());
+}
+

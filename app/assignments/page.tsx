@@ -22,7 +22,7 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getRoleLabel, getUserRoles, normalizeLegacyRole } from "@/app/utils/roles";
-import { APP_EVENTS, dedupeEventKeys, normalizeEventKey } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys, dedupeEventOptionsByKey, normalizeEventKey } from "@/app/utils/events";
 import { getEffectiveNowDate, getEffectiveNowMs, getEffectiveNowSec } from "@/app/utils/teamTime";
 import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
@@ -853,8 +853,10 @@ function AssignmentsContent() {
       responses.flat().forEach((event) => {
         const key = String(event.key || "").trim();
         if (!key || !selected.includes(key)) return;
-        fromTba.set(key, {
-          key,
+        const normalizedKey = normalizeEventKey(key);
+        if (!normalizedKey || !selected.includes(normalizedKey)) return;
+        fromTba.set(normalizedKey, {
+          key: normalizedKey,
           name: String(event.name || key),
           startDate: String(event.start_date || `${new Date(nowMs).getFullYear()}-01-01`),
           endDate: String(event.end_date || event.start_date || `${new Date(nowMs).getFullYear()}-01-01`),
@@ -870,7 +872,7 @@ function AssignmentsContent() {
         startDate: `${new Date(nowMs).getFullYear()}-01-01`,
         endDate: `${new Date(nowMs).getFullYear()}-01-01`,
       });
-    return sortEventOptions(dedupeEventOptionsByName(resolved), nowMs);
+    return sortEventOptions(dedupeEventOptionsByName(dedupeEventOptionsByKey(resolved)), nowMs);
   }
 
   async function loadData() {
@@ -935,16 +937,16 @@ function AssignmentsContent() {
           })
         );
         const tbaOptions = tbaResponses.flat().map((event) => ({
-          key: String(event.key || "").trim(),
+          key: normalizeEventKey(String(event.key || "").trim()),
           name: String(event.name || event.key || "").trim(),
           startDate: String(event.start_date || `${effectiveYear}-01-01`),
           endDate: String(event.end_date || event.start_date || `${effectiveYear}-01-01`),
         })).filter((event) => Boolean(event.key));
         if (tbaOptions.length > 0) {
-          practiceUniverse = dedupeEventOptionsByName([...practiceUniverse, ...tbaOptions]);
+          practiceUniverse = dedupeEventOptionsByName(dedupeEventOptionsByKey([...practiceUniverse, ...tbaOptions]));
         }
       }
-      let availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(practiceUniverse), nowMs);
+      let availablePracticeEvents = sortEventOptions(dedupeEventOptionsByName(dedupeEventOptionsByKey(practiceUniverse)), nowMs);
       if (!isPrivileged) {
         const allowedKeys = new Set(accessibleEvents.map((event) => event.key));
         availablePracticeEvents = availablePracticeEvents.filter((event) => allowedKeys.has(event.key));

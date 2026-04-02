@@ -7,7 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { useAuth } from "@/app/AuthContext";
-import { APP_EVENTS, dedupeEventKeys, normalizeEventKey } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys, dedupeEventOptionsByKey, normalizeEventKey } from "@/app/utils/events";
 import { filterEventsByLocation, type TBAEvent } from "@/app/utils/tba-api";
 
 function EventSelectionContent() {
@@ -57,11 +57,19 @@ function EventSelectionContent() {
           throw new Error(`Unable to load events (${response.status})`);
         }
         const payload = await response.json();
-        setEvents(Array.isArray(payload.events) ? payload.events : []);
+        const rawEvents = Array.isArray(payload.events) ? payload.events : [];
+        const normalized = dedupeEventOptionsByKey(
+          rawEvents.map((event) => ({
+            ...event,
+            key: normalizeEventKey(String(event.key || "").trim()),
+          }))
+        );
+        setEvents(normalized);
       } catch (error) {
         console.error("Falling back to static event list:", error);
         setEvents(
-          APP_EVENTS.map((event) => ({
+          dedupeEventOptionsByKey(
+            APP_EVENTS.map((event) => ({
             key: event.key,
             name: event.name,
             event_code: event.key,
@@ -74,6 +82,7 @@ function EventSelectionContent() {
             country: event.country,
             week: event.week,
           }))
+          )
         );
       }
       setLoadingEvents(false);
