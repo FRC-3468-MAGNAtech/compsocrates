@@ -264,7 +264,7 @@ export function isPracticeMatchEntry(entry: {
   matchId?: string;
   matchKey?: string;
   isPracticeScouting?: boolean;
-  practiceMode?: boolean;
+  practiceMode?: boolean | string;
   practiceSessionId?: string;
 }): boolean {
   if (isPracticeScoutedEntry(entry)) return true;
