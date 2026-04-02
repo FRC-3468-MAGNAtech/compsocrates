@@ -124,7 +124,9 @@ async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promis
       return Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))));
     })
   );
-  const docs = snaps.flat().flatMap((snap) => ("docs" in snap ? snap.docs : snap.flatMap((s) => s.docs)));
+  const docs = snaps
+    .flat()
+    .flatMap((snap) => ("docs" in snap ? snap.docs : snap.flat().flatMap((s) => s.docs)));
   docs.forEach((docSnap) => {
     const row = docSnap.data() as Record<string, unknown>;
     const rowEventKey = normalizeEventKey(String(row.eventKey || "").trim());
