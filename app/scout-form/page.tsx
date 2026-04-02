@@ -1467,6 +1467,31 @@ function ScoutFormContent() {
     void loadScouted();
   }, [eventKey, userData?.uid]);
 
+  useEffect(() => {
+    if (editMode) return;
+    if (options.length === 0) return;
+    const matchTypeOrder: Record<MatchType, number> = { practice: 0, qualification: 1, finals: 2 };
+    const sortByTypeAndNumber = (a: MatchOption, b: MatchOption) => {
+      const typeDiff = matchTypeOrder[a.type] - matchTypeOrder[b.type];
+      if (typeDiff !== 0) return typeDiff;
+      return a.matchNumber - b.matchNumber;
+    };
+    const pickFirstIncomplete = (rows: MatchOption[]) => {
+      const ordered = rows.slice().sort(sortByTypeAndNumber);
+      return ordered.find((match) => !modalCompleted.has(match.id)) || null;
+    };
+    const assignedMatches = options.filter((match) => assignedMatchIds.has(match.id));
+    const next = assignedMatches.length > 0 ? pickFirstIncomplete(assignedMatches) : pickFirstIncomplete(options);
+    if (!next) return;
+    setSelectedMatch((current) => {
+      if (!current) return next;
+      if (!options.some((match) => match.id === current.id)) return next;
+      if (modalCompleted.has(current.id)) return next;
+      if (assignedMatches.length > 0 && !assignedMatchIds.has(current.id)) return next;
+      return current;
+    });
+  }, [modalCompleted, options, assignedMatchIds, editMode]);
+
   const selectedMatchId = selectedMatch?.id || "";
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);

@@ -492,6 +492,33 @@ function MatchStrategyFormContent() {
     void loadMatches();
   }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchKey]);
 
+  useEffect(() => {
+    if (editMode) return;
+    if (matchOptions.length === 0) return;
+    const matchTypeOrder: Record<MatchType, number> = { qualification: 0, practice: 1, finals: 2 };
+    const sortByTypeAndNumber = (a: MatchOption, b: MatchOption) => {
+      const typeDiff = matchTypeOrder[getMatchType(a)] - matchTypeOrder[getMatchType(b)];
+      if (typeDiff !== 0) return typeDiff;
+      return extractMatchNumber(a) - extractMatchNumber(b);
+    };
+    const isCompleted = (match: MatchOption) => {
+      const id = normalizeScoutedMatchId(match.key || match.label);
+      return Boolean(id && modalCompleted.has(id));
+    };
+    const pickFirstIncomplete = (rows: MatchOption[]) => {
+      const ordered = rows.slice().sort(sortByTypeAndNumber);
+      return ordered.find((match) => !isCompleted(match)) || null;
+    };
+    const next = pickFirstIncomplete(matchOptions);
+    if (!next) return;
+    setSelectedMatchKey((currentKey) => {
+      const currentMatch = currentKey ? matchOptions.find((match) => match.key === currentKey) || null : null;
+      if (!currentMatch) return next.key;
+      if (isCompleted(currentMatch)) return next.key;
+      return currentKey;
+    });
+  }, [modalCompleted, matchOptions, editMode]);
+
   function setRobotTeamDefaults(match: MatchOption, ourTeamNumber: string) {
     if (!match) return;
     const redTeams = match.redTeams && match.redTeams.length > 0 ? match.redTeams : match.teams.slice(0, 3);
