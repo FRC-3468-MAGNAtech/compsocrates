@@ -534,8 +534,10 @@ function ScoutStatusContent() {
           }
         }
         const eventKey = selectedEvent || "all";
-        if (nextByEvent[eventKey]) {
+        if (eventKey !== "all" && nextByEvent[eventKey]) {
           nextTargets = nextByEvent[eventKey];
+        } else if (eventKey !== "all") {
+          nextTargets = { ...emptyTargets };
         }
         setMaxMatchesTargetsByEvent(nextByEvent);
         setMaxMatchesTargets(nextTargets);
@@ -551,9 +553,14 @@ function ScoutStatusContent() {
     if (maxMatchesEditing) return;
     const eventKey = selectedEvent || "all";
     const eventTargets = maxMatchesTargetsByEvent[eventKey];
-    if (eventTargets) {
+    if (eventTargets && eventKey !== "all") {
       setMaxMatchesTargets(eventTargets);
       setMaxMatchesTarget(eventTargets[selectedFormType] || "");
+      return;
+    }
+    if (eventKey !== "all") {
+      setMaxMatchesTargets({ ...emptyTargets });
+      setMaxMatchesTarget("");
       return;
     }
     setMaxMatchesTarget(maxMatchesTargets[selectedFormType] || "");

@@ -677,17 +677,30 @@ function AccuracyVerificationContent() {
 
   const rescoutsByTeam = useMemo(() => {
     const map = new Map<string, RescoutEntry>();
+    rescouts.forEach((row) => {
+      const isSubmitted =
+        String(row.status || "").toLowerCase() === "submitted" ||
+        Boolean(row.practiceSessionId) ||
+        Boolean(row.submittedAt);
+      if (!isSubmitted) return;
+      const eventKey = normalizeEventKey(String(row.eventKey || "").trim());
+      const matchKey = normalizeMatchId(String(row.matchKey || "").trim());
+      const teamNumber = Number(row.teamNumber || 0);
+      if (!eventKey || !matchKey || !Number.isFinite(teamNumber) || teamNumber <= 0) return;
+      const key = `${eventKey}::${matchKey}::${teamNumber}`;
+      map.set(key, row);
+    });
+
     rescoutGroups.forEach((group) => {
       if (group.teamNumbers.length < 3) return;
-      if ((group.accuracy ?? 0) < 95) return;
+      if ((group.accuracy ?? 0) >= 95) return;
       group.teamNumbers.forEach((teamNumber) => {
         const key = `${group.eventKey}::${group.matchKey}::${teamNumber}`;
-        const entry = group.rescouts.find((row) => Number(row.teamNumber || 0) === teamNumber);
-        if (entry) map.set(key, entry);
+        map.delete(key);
       });
     });
     return map;
-  }, [rescoutGroups]);
+  }, [rescoutGroups, rescouts]);
 
   const myRescouts = useMemo(() => {
     const myId = userData?.uid;

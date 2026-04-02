@@ -17,6 +17,7 @@ type UserProfile = {
   email: string;
   role: string;
   roles?: string[];
+  secondaryRoles?: string[];
   profileVisibility?: "team" | "public" | "private";
   bio?: string;
   teamId?: string;
@@ -313,6 +314,14 @@ function ProfileContent() {
       ? "Practice Entries"
       : "Scouting Entries";
   const roleBadge = profile ? getRoleBadge(profile.role, profile.roles) : null;
+  const roleBadges = useMemo(() => {
+    if (!profile) return [];
+    const merged = new Set<string>();
+    if (profile.role) merged.add(profile.role);
+    (profile.roles || []).forEach((role) => merged.add(role));
+    (profile.secondaryRoles || []).forEach((role) => merged.add(role));
+    return Array.from(merged).map((role) => getRoleBadge(role, [role]));
+  }, [profile]);
   const initials = profile?.displayName
     ?.split(/\s+/)
     .filter(Boolean)
@@ -345,9 +354,16 @@ function ProfileContent() {
                   <h1 className="text-3xl font-bold theme-text mb-1">{profile.displayName}</h1>
                   <p className="text-gray-600">{profile.email}</p>
                   {roleBadge && (
-                    <p className={`inline-block mt-1 px-2 py-0.5 rounded text-xs ${roleBadge.bg} ${roleBadge.text}`}>
-                      {roleBadge.label}
-                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {roleBadges.map((badge, index) => (
+                        <span
+                          key={`${badge.label}-${index}`}
+                          className={`inline-block px-2 py-0.5 rounded text-xs ${badge.bg} ${badge.text}`}
+                        >
+                          {badge.label}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   <p className="text-xs text-gray-500 mt-1">Visibility: {profile.profileVisibility || "team"}</p>
                 </div>

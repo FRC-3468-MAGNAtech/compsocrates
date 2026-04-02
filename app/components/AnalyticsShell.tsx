@@ -343,15 +343,17 @@ function AnalyticsShellInner({
                     Practice Scouted Matches
                   </label>
                 )}
-                <label className="text-sm text-gray-600 whitespace-nowrap">Game:</label>
-                <select
-                  value={selectedGame}
-                  onChange={(e) => onSelectedGameChange(e.target.value)}
-                  className="border rounded px-3 py-1.5 text-sm"
-                >
-                  {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
-                  {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
-                </select>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600 whitespace-nowrap">Game:</label>
+                  <select
+                    value={selectedGame}
+                    onChange={(e) => onSelectedGameChange(e.target.value)}
+                    className="border rounded px-3 py-1.5 text-sm"
+                  >
+                    {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
+                    {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
