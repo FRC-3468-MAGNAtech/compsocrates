@@ -180,9 +180,7 @@ function AccountContent() {
 
   const displayName = userData?.displayName || user?.displayName || "User";
   const displayEmail = userData?.email || user?.email || "";
-  const displayRoleRaw = userData
-    ? (userData.roles && userData.roles.length ? userData.roles.join(", ") : userData.role)
-    : "match-scout";
+  const displayRoleRaw = userData?.role || "match-scout";
   const displayRole = String(displayRoleRaw).replace(/-/g, " ");
   const hasUserDoc = Boolean(userData);
   const hasGoogleProvider = Boolean(user?.providerData?.some((provider) => provider.providerId === "google.com"));
