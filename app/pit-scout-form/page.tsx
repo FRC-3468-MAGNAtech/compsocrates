@@ -34,12 +34,14 @@ type PitFormState = {
 function TeamPickerModal({
   open,
   teams,
+  assignedTeams,
   scoutedTeams,
   onClose,
   onSelect,
 }: {
   open: boolean;
   teams: string[];
+  assignedTeams: Set<string>;
   scoutedTeams: Set<string>;
   onClose: () => void;
   onSelect: (team: string) => void;
@@ -54,6 +56,7 @@ function TeamPickerModal({
             <div className="grid grid-cols-3 gap-2">
               {teams.map((team) => {
                 const done = scoutedTeams.has(team);
+                const assigned = assignedTeams.has(team);
                 return (
                   <button
                     key={team}
@@ -65,7 +68,7 @@ function TeamPickerModal({
                     }}
                     className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
                   >
-                    {done ? `${team} (Scouted)` : team}
+                    {done ? `${team} (Scouted)` : assigned ? `${team} (Assigned)` : team}
                   </button>
                 );
               })}
@@ -371,6 +374,8 @@ function PitScoutFormContent() {
     return form.teamNumber.trim().length > 0;
   }, [form.teamNumber]);
 
+  const assignedTeamSet = useMemo(() => new Set(assignedPitTeams), [assignedPitTeams]);
+
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid || !userData.teamId) return;
@@ -649,6 +654,7 @@ function PitScoutFormContent() {
       <TeamPickerModal
         open={showTeamPicker}
         teams={availableTeams}
+        assignedTeams={assignedTeamSet}
         scoutedTeams={scoutedTeams}
         onClose={() => setShowTeamPicker(false)}
         onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}

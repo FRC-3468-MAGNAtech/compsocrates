@@ -14,11 +14,12 @@ type TeamPickerProps = {
   open: boolean;
   onClose: () => void;
   teams: string[];
+  assignedTeams: Set<string>;
   scoutedTeams: Set<string>;
   onSelect: (team: string) => void;
 };
 
-function TeamPickerModal({ open, onClose, teams, scoutedTeams, onSelect }: TeamPickerProps) {
+function TeamPickerModal({ open, onClose, teams, assignedTeams, scoutedTeams, onSelect }: TeamPickerProps) {
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
         <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
@@ -29,6 +30,7 @@ function TeamPickerModal({ open, onClose, teams, scoutedTeams, onSelect }: TeamP
             <div className="grid grid-cols-3 gap-2">
               {teams.map((team) => {
                 const done = scoutedTeams.has(team);
+                const assigned = assignedTeams.has(team);
                 return (
                   <button
                     key={team}
@@ -40,7 +42,7 @@ function TeamPickerModal({ open, onClose, teams, scoutedTeams, onSelect }: TeamP
                     }}
                     className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
                   >
-                    {done ? `${team} (Scouted)` : team}
+                    {done ? `${team} (Scouted)` : assigned ? `${team} (Assigned)` : team}
                   </button>
                 );
               })}
@@ -331,6 +333,8 @@ function TeamStrategyFormContent() {
     return teamNumber.trim().length > 0 && startingPosition && bestAt;
   }, [teamNumber, startingPosition, bestAt]);
 
+  const assignedTeamSet = useMemo(() => new Set(assignedTeamNumbers), [assignedTeamNumbers]);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid || !userData.teamId || !canSubmit) return;
@@ -505,6 +509,7 @@ function TeamStrategyFormContent() {
         open={showTeamPicker}
         onClose={() => setShowTeamPicker(false)}
         teams={availableTeams}
+        assignedTeams={assignedTeamSet}
         scoutedTeams={scoutedTeams}
         onSelect={setTeamNumber}
       />
