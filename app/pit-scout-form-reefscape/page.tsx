@@ -14,6 +14,7 @@ type PitFormState = {
   scoutName: string;
   teamNumber: string;
   robotWeight: string;
+  rookieTeam: boolean;
   robotPictureUrl: string;
   pitDisposition: boolean;
   driveDisposition: boolean;
@@ -50,6 +51,7 @@ function PitScoutFormContent() {
     scoutName: userData?.displayName || "",
     teamNumber: "",
     robotWeight: "",
+    rookieTeam: false,
     robotPictureUrl: "",
     pitDisposition: false,
     driveDisposition: false,
@@ -181,6 +183,15 @@ function PitScoutFormContent() {
                 className="w-full border rounded p-3"
                 placeholder="Robot Weight"
               />
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1">
+                <input
+                  type="checkbox"
+                  checked={form.rookieTeam}
+                  onChange={(event) => setForm({ ...form, rookieTeam: event.target.checked })}
+                  className="w-4 h-4"
+                />
+                Rookie Team
+              </label>
               <label className="block text-sm font-medium text-gray-700 mb-1">Picture of Robot</label>
               <div className="rounded-lg border p-3 space-y-3">
                 <div className="flex items-center gap-3">

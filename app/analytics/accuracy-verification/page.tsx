@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, getDoc, getDocs, query, where, doc } from "firebase/firestore";
+import { addDoc, collection, getDoc, getDocs, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
@@ -21,6 +21,7 @@ import { normalizeEventKey } from "@/app/utils/events";
 import { formatMatchLabelLong, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
+import { computeRescoutDiff } from "@/app/utils/rescoutComparison";
 
 type ScoutingEntry = {
   id: string;
@@ -62,6 +63,11 @@ type RescoutEntry = {
   scoutName?: string;
   status?: string;
   accuracy?: number;
+  scoutedScore?: number;
+  officialScore?: number;
+  penaltyPoints?: number;
+  comparisonDiffPercent?: number;
+  comparisonComputedAt?: number;
   criticalFlag?: boolean;
   createdAt?: number;
   updatedAt?: number;
@@ -149,6 +155,17 @@ function isAccuracyComplete(entry: ScoutingEntry): boolean {
   return status === "complete";
 }
 
+function calculateAccuracy(scottedScore: number, officialScore: number): number {
+  if (!officialScore) return 0;
+  const error = Math.abs(officialScore - scottedScore);
+  return Math.round(Math.max(0, (1 - error / officialScore) * 100));
+}
+
+function normalizeMatchId(value: string): string {
+  const parsed = normalizeMatchLabel(value || "");
+  return parsed.matchId || String(value || "").trim();
+}
+
 function resolveAllianceFromSchedule(entry: ScoutingEntry, matchAllianceMap: MatchAllianceMap): "red" | "blue" | null {
   const teamNumber = parseTeamNumber(entry.teamNumber);
   if (!teamNumber) return null;
@@ -181,7 +198,7 @@ function AccuracyVerificationContent() {
   const roles = getUserRoles(userData);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const canSee = canAccessForm({ formKey: "accuracy-verification", user: userData, formAccessOverrides });
-  const canManageAll = Boolean(userData?.isTeamAdmin) || roles.includes("team-coach");
+  const canManageAll = Boolean(userData?.isTeamAdmin);
 
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
@@ -446,19 +463,207 @@ function AccuracyVerificationContent() {
 
   const criticalFlags = useMemo(() => rescouts.filter((row) => row.criticalFlag), [rescouts]);
 
-  const rescoutsByTeam = useMemo(() => {
-    const map = new Map<string, RescoutEntry>();
+  const originalScoutingByKey = useMemo(() => {
+    const map = new Map<string, Record<string, unknown>>();
+    entries.forEach((entry) => {
+      if (isPracticeScoutedEntry(entry as Parameters<typeof isPracticeScoutedEntry>[0])) return;
+      const alliance = resolveAlliance(entry);
+      if (!alliance) return;
+      const teamNumber = parseTeamNumber(entry.teamNumber);
+      if (!teamNumber) return;
+      const eventKey = normalizeEventKey(String(entry.eventKey || "").trim());
+      const matchKey = normalizeMatchId(resolveMatchKey(entry));
+      if (!eventKey || !matchKey) return;
+      const key = `${eventKey}::${matchKey}::${alliance}::${teamNumber}`;
+      const existing = map.get(key);
+      if (!existing || getEntryTime(entry) < getEntryTime(existing as ScoutingEntry)) {
+        map.set(key, entry as unknown as Record<string, unknown>);
+      }
+    });
+    return map;
+  }, [entries]);
+
+  const practiceScoutingBySessionId = useMemo(() => {
+    const map = new Map<string, Record<string, unknown>[]>();
+    entries.forEach((entry) => {
+      if (!isPracticeScoutedEntry(entry as Parameters<typeof isPracticeScoutedEntry>[0])) return;
+      const sessionId = String((entry as unknown as Record<string, unknown>).practiceSessionId || "").trim();
+      if (!sessionId) return;
+      const list = map.get(sessionId) || [];
+      list.push(entry as unknown as Record<string, unknown>);
+      map.set(sessionId, list);
+    });
+    return map;
+  }, [entries]);
+
+  const comparisonByGroup = useMemo(() => {
+    const map = new Map<string, { diffPercent: number }>();
+    rescoutGroups.forEach((group) => {
+      if (group.teamNumbers.length < 3) return;
+      if ((group.accuracy ?? 0) < 95) return;
+      let totalDiff = 0;
+      let count = 0;
+      group.rescouts.forEach((row) => {
+        const sessionId = String(row.practiceSessionId || "").trim();
+        if (!sessionId) return;
+        const teamNumber = Number(row.teamNumber || 0);
+        const candidates = practiceScoutingBySessionId.get(sessionId) || [];
+        const exemplar = candidates.find((entry) => Number(entry.teamNumber || 0) === teamNumber);
+        if (!exemplar) return;
+        const originalKey = `${group.eventKey}::${group.matchKey}::${group.alliance}::${teamNumber}`;
+        const original = originalScoutingByKey.get(originalKey);
+        if (!original) return;
+        const diff = computeRescoutDiff(original, exemplar).diffPercent;
+        totalDiff += diff;
+        count += 1;
+      });
+      if (count === 0) return;
+      map.set(group.key, { diffPercent: Math.round((totalDiff / count) * 10) / 10 });
+    });
+    return map;
+  }, [rescoutGroups, practiceScoutingBySessionId, originalScoutingByKey]);
+
+  useEffect(() => {
+    const updates: Array<Promise<void>> = [];
+    rescoutGroups.forEach((group) => {
+      if (group.teamNumbers.length < 3) return;
+
+      // Persist group accuracy for visibility, even if below threshold.
+      group.rescouts.forEach((row) => {
+        const nextAccuracy = typeof group.accuracy === "number" ? group.accuracy : null;
+        const needsAccuracyUpdate = row.accuracy !== nextAccuracy;
+        if (!needsAccuracyUpdate) return;
+        updates.push(
+          updateDoc(doc(db, "accuracyRescouts", row.id), {
+            accuracy: nextAccuracy,
+          }).then(() => {})
+        );
+      });
+
+      if ((group.accuracy ?? 0) < 95) {
+        group.rescouts.forEach((row) => {
+          if (row.criticalFlag) {
+            updates.push(
+              updateDoc(doc(db, "accuracyRescouts", row.id), {
+                criticalFlag: false,
+              }).then(() => {})
+            );
+          }
+        });
+        return;
+      }
+      const comparison = comparisonByGroup.get(group.key);
+      if (!comparison) return;
+      const isCritical = comparison.diffPercent > 5;
+      group.rescouts.forEach((row) => {
+        const needsUpdate =
+          row.criticalFlag !== isCritical ||
+          typeof row.comparisonDiffPercent !== "number";
+        if (!needsUpdate) return;
+        updates.push(
+          updateDoc(doc(db, "accuracyRescouts", row.id), {
+            criticalFlag: isCritical,
+            comparisonDiffPercent: comparison.diffPercent,
+            comparisonComputedAt: Date.now(),
+          }).then(() => {})
+        );
+      });
+    });
+    if (updates.length > 0) {
+      void Promise.allSettled(updates);
+    }
+  }, [rescoutGroups, comparisonByGroup]);
+
+  const rescoutGroups = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      eventKey: string;
+      matchKey: string;
+      alliance: "red" | "blue";
+      rescouts: RescoutEntry[];
+      teamNumbers: number[];
+      officialScore: number | null;
+      totalScoutedScore: number | null;
+      accuracy: number | null;
+      penaltyPoints: number | null;
+    }>();
     rescouts.forEach((row) => {
       const isSubmitted =
         String(row.status || "").toLowerCase() === "submitted" ||
         Boolean(row.practiceSessionId) ||
         Boolean(row.submittedAt);
       if (!isSubmitted) return;
-      const key = `${row.matchKey || ""}::${row.teamNumber || ""}`;
-      map.set(key, row);
+      const alliance = String(row.alliance || "").toLowerCase() === "blue" ? "blue" : "red";
+      const teamNumber = typeof row.teamNumber === "number" ? row.teamNumber : Number(row.teamNumber || 0);
+      if (!Number.isFinite(teamNumber) || teamNumber <= 0) return;
+      const eventKey = normalizeEventKey(String(row.eventKey || "").trim());
+      const matchKey = normalizeMatchId(String(row.matchKey || "").trim());
+      if (!matchKey || !eventKey) return;
+      const key = `${eventKey}::${matchKey}::${alliance}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          eventKey,
+          matchKey,
+          alliance,
+          rescouts: [],
+          teamNumbers: [],
+          officialScore: null,
+          totalScoutedScore: null,
+          accuracy: null,
+          penaltyPoints: null,
+        });
+      }
+      const group = map.get(key)!;
+      const existing = group.rescouts.find((entry) => Number(entry.teamNumber || 0) === teamNumber);
+      if (existing) {
+        const existingTime = Number(existing.submittedAt || existing.updatedAt || existing.createdAt || 0);
+        const currentTime = Number(row.submittedAt || row.updatedAt || row.createdAt || 0);
+        if (currentTime > 0 && (existingTime === 0 || currentTime < existingTime)) {
+          group.rescouts = group.rescouts.filter((entry) => Number(entry.teamNumber || 0) !== teamNumber);
+          group.rescouts.push(row);
+        }
+      } else {
+        group.rescouts.push(row);
+        group.teamNumbers.push(teamNumber);
+      }
+      if (typeof row.officialScore === "number" && Number.isFinite(row.officialScore)) {
+        group.officialScore = Math.max(group.officialScore ?? 0, row.officialScore);
+      }
+      if (typeof row.penaltyPoints === "number" && Number.isFinite(row.penaltyPoints)) {
+        group.penaltyPoints = Math.max(group.penaltyPoints ?? 0, row.penaltyPoints);
+      }
     });
+
+    map.forEach((group) => {
+      if (group.teamNumbers.length < 3) return;
+      const totalScoutedScore = group.rescouts.reduce((sum, row) => {
+        const score = typeof row.scoutedScore === "number" ? row.scoutedScore : Number(row.scoutedScore || 0);
+        return sum + (Number.isFinite(score) ? score : 0);
+      }, 0);
+      const penalty = typeof group.penaltyPoints === "number" ? group.penaltyPoints : 0;
+      group.totalScoutedScore = totalScoutedScore + penalty;
+      if (group.officialScore && Number.isFinite(group.officialScore)) {
+        group.accuracy = calculateAccuracy(group.totalScoutedScore ?? 0, group.officialScore);
+      }
+    });
+
     return map;
   }, [rescouts]);
+
+  const rescoutsByTeam = useMemo(() => {
+    const map = new Map<string, RescoutEntry>();
+    rescoutGroups.forEach((group) => {
+      if (group.teamNumbers.length < 3) return;
+      if ((group.accuracy ?? 0) < 95) return;
+      group.teamNumbers.forEach((teamNumber) => {
+        const key = `${group.eventKey}::${group.matchKey}::${teamNumber}`;
+        const entry = group.rescouts.find((row) => Number(row.teamNumber || 0) === teamNumber);
+        if (entry) map.set(key, entry);
+      });
+    });
+    return map;
+  }, [rescoutGroups]);
 
   const myRescouts = useMemo(() => {
     const myId = userData?.uid;
@@ -530,6 +735,26 @@ function AccuracyVerificationContent() {
     }
   }
 
+  async function handleDeleteRescout(rescoutId: string) {
+    if (!confirm("Delete this rescout entry?")) return;
+    try {
+      await deleteDoc(doc(db, "accuracyRescouts", rescoutId));
+      setRescouts((prev) => prev.filter((row) => row.id !== rescoutId));
+    } catch (error) {
+      console.error("Failed deleting rescout:", error);
+      alert("Could not delete rescout entry.");
+    }
+  }
+
+  function openComparison(eventKey: string, matchKey: string, alliance: "red" | "blue") {
+    const params = new URLSearchParams({
+      eventKey: normalizeEventKey(eventKey),
+      matchKey: normalizeMatchId(matchKey),
+      alliance,
+    });
+    router.push(`/analytics/accuracy-compare?${params.toString()}`);
+  }
+
   if (!canSee) {
     return (
       <div className="flex h-screen bg-gray-100">
@@ -596,6 +821,15 @@ function AccuracyVerificationContent() {
               <p className="text-xs text-gray-600">
                 {row.eventName || row.eventKey || "Event"} - {row.scoutName || "Rescout"}
               </p>
+              {row.eventKey && row.matchKey && row.alliance && (
+                <button
+                  type="button"
+                  onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
+                  className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-50"
+                >
+                  Compare
+                </button>
+              )}
             </div>
           ))}
         </SectionCard>
@@ -640,6 +874,13 @@ function AccuracyVerificationContent() {
                     <p className="text-xs text-gray-600">
                       Teams: {alliance.teams.join(", ") || "-"}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => openComparison(match.eventKey, match.matchKey, alliance.alliance)}
+                      className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-100"
+                    >
+                      Compare
+                    </button>
                   </div>
                 ))}
               </div>
@@ -664,11 +905,20 @@ function AccuracyVerificationContent() {
               <p className="text-xs text-gray-600">
                 {row.eventName || row.eventKey || "Event"} - {row.status || "pending"}
               </p>
+              {row.eventKey && row.matchKey && row.alliance && (
+                <button
+                  type="button"
+                  onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
+                  className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-50"
+                >
+                  Compare
+                </button>
+              )}
             </div>
           ))}
         </SectionCard>
 
-        {canManageAll && (
+          {canManageAll && (
           <SectionCard
             title="All Re-scouted Matches"
             description="All re-scout submissions for this team."
@@ -686,6 +936,26 @@ function AccuracyVerificationContent() {
                 <p className="text-xs text-gray-600">
                   {row.eventName || row.eventKey || "Event"} - {row.scoutName || "Scout"} - {row.status || "pending"}
                 </p>
+                {row.eventKey && row.matchKey && row.alliance && (
+                  <button
+                    type="button"
+                    onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
+                    className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-50"
+                  >
+                    Compare
+                  </button>
+                )}
+                {canManageAll && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRescout(row.id)}
+                      className="px-2 py-1 rounded border text-xs text-red-700 border-red-200 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </SectionCard>
@@ -706,7 +976,7 @@ function AccuracyVerificationContent() {
             </p>
             <div className="grid grid-cols-1 gap-2">
               {activeAlliance.teams.map((team) => {
-                const key = `${activeRescout.matchKey}::${team}`;
+                const key = `${normalizeEventKey(activeRescout.eventKey)}::${normalizeMatchId(activeRescout.matchKey)}::${team}`;
                 const exists = rescoutsByTeam.has(key);
                 return (
                   <button

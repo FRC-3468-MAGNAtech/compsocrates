@@ -699,18 +699,20 @@ type SortKey =
 
 function AnalyticsPageContent() {
   const { userData } = useAuth();
-  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach";
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
   const isTeamMember = Boolean(userData?.teamId);
   const isLeadStrategist = userRoles.includes("lead-strategist");
+  const isLeadScout = userRoles.includes("lead-scout");
   const canImportCsv = isCoach || isTeamAdmin || isLeadStrategist;
   const canExportCsv = isTeamMember;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canDeleteEntries = isCoach || isTeamAdmin || isLeadStrategist;
   const canManageFlags = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canViewScoutNames = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || isLeadScout;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -728,6 +730,7 @@ function AnalyticsPageContent() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importMatchMode, setImportMatchMode] = useState<"official" | "practice-scouted">("official");
   const [importing, setImporting] = useState(false);
+  const [hideNames, setHideNames] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
@@ -2082,6 +2085,18 @@ function AnalyticsPageContent() {
       selectedEvent={selectedEvent}
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <div className="mb-4">
         <h1 className="text-3xl font-bold mb-1 theme-text">Match Analytics</h1>
@@ -2366,7 +2381,9 @@ function AnalyticsPageContent() {
                 <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                   <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
-                  <td className="sticky-left-2 bg-white text-center">{displayEntryText(entry.scoutName)}</td>
+                  <td className="sticky-left-2 bg-white text-center">
+                    {canViewScoutNames && !hideNames ? displayEntryText(entry.scoutName) : "-"}
+                  </td>
                   <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                   <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
@@ -2619,7 +2636,9 @@ function AnalyticsPageContent() {
               <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                 <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
-                <td className="sticky-left-2 bg-white text-center">{displayEntryText(entry.scoutName)}</td>
+                <td className="sticky-left-2 bg-white text-center">
+                  {canViewScoutNames && !hideNames ? displayEntryText(entry.scoutName) : "-"}
+                </td>
                 <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                 <td className="text-center">{entry.leftStartingZone ? "Y" : "N"}</td>
                 <td className="text-center">{entry.autoCoralMissed || 0}</td>

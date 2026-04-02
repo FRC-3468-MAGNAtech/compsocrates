@@ -643,10 +643,14 @@ function MatchStrategyFormContent() {
         <label className="block text-sm font-medium text-gray-700">Starting Position</label>
         <select className="w-full border rounded p-3" value={robot.startingPosition} onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}>
           <option value="">Select Position</option>
-          <option value="any">Any</option>
+          <option value="not-there">Not There</option>
+          <option value="outpost-trench">Outpost Trench</option>
           <option value="outpost-side">Outpost Side</option>
+          <option value="outpost-bump">Outpost Bump</option>
           <option value="middle">Middle</option>
+          <option value="depot-bump">Depot Bump</option>
           <option value="depot-side">Depot Side</option>
+          <option value="depot-trench">Depot Trench</option>
         </select>
 
       <label className="block text-sm font-medium text-gray-700">Role</label>

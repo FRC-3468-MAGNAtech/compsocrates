@@ -36,6 +36,11 @@ export function pickDetectedEventKey(events: DetectedEventOption[], now = Date.n
     .sort((a, b) => a.startMs - b.startMs)[0];
   if (active?.key) return active.key;
 
+  const upcoming = withTime
+    .filter((event) => event.startMs > 0 && event.startMs > now)
+    .sort((a, b) => a.startMs - b.startMs)[0];
+  if (upcoming?.key) return upcoming.key;
+
   const latestPast = withTime
     .filter((event) => event.endMs > 0 && event.endMs < now)
     .sort((a, b) => b.endMs - a.endMs)[0];

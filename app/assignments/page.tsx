@@ -1288,7 +1288,7 @@ function AssignmentsContent() {
   const randomizeRoleKeys = useMemo(() => {
     const set = new Set<string>();
     randomizeEligibleMembers.forEach((member) => {
-      const roles = getUserRoles({ role: member.role });
+      const roles = getUserRoles(member);
       if (roles.length === 0) {
         set.add(normalizeLegacyRole(member.role));
         return;
@@ -1328,7 +1328,7 @@ function AssignmentsContent() {
   function presetRandomizeScoutsByRoles(roleKeys: string[]) {
     const next = randomizeEligibleMembers
       .filter((member) => {
-        const roles = getUserRoles({ role: member.role });
+        const roles = getUserRoles(member);
         const normalizedFallback = normalizeLegacyRole(member.role);
         const roleSet = new Set(roles.map((role) => String(role)));
         return roleKeys.some((role) => roleSet.has(role) || normalizedFallback === role);

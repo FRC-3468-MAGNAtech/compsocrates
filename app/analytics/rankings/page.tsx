@@ -24,6 +24,8 @@ type ScoutingEntry = {
   accuracy?: number;
   game?: string;
   teamNumber?: string;
+  scoutName?: string;
+  scoutId?: string;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
   autoCoralL2?: number;
@@ -94,6 +96,7 @@ function RankingsContent() {
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeScoutTeam, setActiveScoutTeam] = useState<string | null>(null);
   const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
 
   useEffect(() => {
@@ -163,6 +166,22 @@ function RankingsContent() {
     return rows.sort((a, b) => b.avgScore - a.avgScore);
   }, [dedupedEntries, selectedGame]);
 
+  const scoutBreakdown = useMemo(() => {
+    const map = new Map<string, { total: number; scouts: Map<string, number> }>();
+    filteredEntries.forEach((entry) => {
+      const team = String(entry.teamNumber || "").trim();
+      if (!team) return;
+      const scout = String(entry.scoutName || "Unknown").trim() || "Unknown";
+      const existing = map.get(team) || { total: 0, scouts: new Map<string, number>() };
+      existing.total += 1;
+      existing.scouts.set(scout, (existing.scouts.get(scout) || 0) + 1);
+      map.set(team, existing);
+    });
+    return map;
+  }, [filteredEntries]);
+
+  const activeScoutBreakdown = activeScoutTeam ? scoutBreakdown.get(activeScoutTeam) || null : null;
+
   return (
     <AnalyticsShell
       entriesCount={dedupedEntries.length}
@@ -189,6 +208,7 @@ function RankingsContent() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">High</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matches</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scouts</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -199,10 +219,58 @@ function RankingsContent() {
                   <td className="px-6 py-4 text-xl font-bold theme-text">{team.avgScore}</td>
                   <td className="px-6 py-4">{team.highScore}</td>
                   <td className="px-6 py-4">{team.matches}</td>
+                  <td className="px-6 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setActiveScoutTeam(team.teamNumber)}
+                      className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
+                    >
+                      Scouts
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeScoutTeam && (
+        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Team {activeScoutTeam} Scouts</h2>
+              <button
+                type="button"
+                onClick={() => setActiveScoutTeam(null)}
+                className="px-3 py-1 rounded border hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+            {activeScoutBreakdown ? (
+              <div className="space-y-2">
+                {Array.from(activeScoutBreakdown.scouts.entries())
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([scout, count]) => {
+                    const percent = activeScoutBreakdown.total
+                      ? Math.round((count / activeScoutBreakdown.total) * 100)
+                      : 0;
+                    return (
+                      <div key={scout} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                        <div>
+                          <p className="font-medium">{scout}</p>
+                          <p className="text-xs text-gray-500">{count} scout(s)</p>
+                        </div>
+                        <div className="text-sm font-semibold text-gray-700">{percent}%</div>
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600">No scout data found for this team.</p>
+            )}
+          </div>
         </div>
       )}
     </AnalyticsShell>

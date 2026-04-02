@@ -713,9 +713,14 @@ function DriveReflectionFormContent() {
         onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}
       >
         <option value="">Select Position</option>
+        <option value="not-there">Not There</option>
+        <option value="outpost-trench">Outpost Trench</option>
         <option value="outpost-side">Outpost Side</option>
+        <option value="outpost-bump">Outpost Bump</option>
         <option value="middle">Middle</option>
+        <option value="depot-bump">Depot Bump</option>
         <option value="depot-side">Depot Side</option>
+        <option value="depot-trench">Depot Trench</option>
       </select>
       {mismatch.startingPosition && (
         <p className="text-xs text-red-700">Does not match synced match strategy starting position.</p>

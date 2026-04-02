@@ -34,7 +34,7 @@ type MatchStrategyEntry = {
 
 function MatchStrategyAnalyticsContent() {
   const { userData } = useAuth();
-  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
@@ -42,6 +42,8 @@ function MatchStrategyAnalyticsContent() {
   const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canManageConfig = canDeleteEntries || userRoles.includes("lead-scout");
+  const canViewScoutNames =
+    isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || userRoles.includes("lead-scout");
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
@@ -75,6 +77,7 @@ function MatchStrategyAnalyticsContent() {
   >("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [configEntry, setConfigEntry] = useState<MatchStrategyEntry | null>(null);
+  const [hideNames, setHideNames] = useState(false);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -367,6 +370,18 @@ function MatchStrategyAnalyticsContent() {
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Match Strategy Analytics</h1>
       <p className="text-gray-600 mb-4">Per-match strategic plans.</p>
@@ -476,7 +491,9 @@ function MatchStrategyAnalyticsContent() {
                   return (
                   <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
                     <td className="sticky-left-0 font-semibold">{formatMatchLabelShort(entry.matchLabel || "")}</td>
-                    <td className="sticky-left-1">{entry.scoutName || "-"}</td>
+                    <td className="sticky-left-1">
+                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
+                    </td>
                     <td>{r1?.teamNumber || "-"}</td>
                     <td>{formatAnalyticsText(r1?.startingPosition)}</td>
                     <td>{formatAnalyticsText(r1?.role)}</td>

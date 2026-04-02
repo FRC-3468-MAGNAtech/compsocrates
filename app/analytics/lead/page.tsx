@@ -139,12 +139,13 @@ function LeadNotesCell({ text }: { text?: string | null }) {
 
 function LeadAnalyticsContent() {
   const { userData } = useAuth();
-  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
   const canManageAnalytics = isCoach || isTeamCoach || isTeamAdmin || userRoles.includes("lead-scout") || userRoles.includes("lead-strategist");
   const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || userRoles.includes("lead-strategist");
+  const canViewScoutNames = isCoach || isTeamCoach || isTeamAdmin || userRoles.includes("lead-scout") || userRoles.includes("lead-strategist");
   const columnCount = canManageAnalytics ? 16 : 15;
   const canOpenConfig = canManageAnalytics;
   const [entries, setEntries] = useState<LeadScoutEntry[]>([]);
@@ -155,6 +156,7 @@ function LeadAnalyticsContent() {
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [hideNames, setHideNames] = useState(false);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -312,6 +314,18 @@ function LeadAnalyticsContent() {
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
       allowedGames={["REBUILT"]}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <div className="mb-4">
         <h1 className="text-3xl font-bold mb-1 theme-text">Lead Analytics</h1>
@@ -401,7 +415,9 @@ function LeadAnalyticsContent() {
                   <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
                     <td className="sticky-left-0 bg-white font-semibold">{resolveLeadMatchLabel(entry)}</td>
                     <td className="sticky-left-1 bg-white">{entry.alliance ? entry.alliance.toUpperCase() : "-"}</td>
-                    <td className="sticky-left-2 bg-white">{entry.scoutName || "-"}</td>
+                    <td className="sticky-left-2 bg-white">
+                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
+                    </td>
                     <td>{formatAnalyticsText(overall?.teams) || "-"}</td>
                     <td className="min-w-[180px]">
                       <LeadNotesCell text={formatAnalyticsText(overall?.notes)} />

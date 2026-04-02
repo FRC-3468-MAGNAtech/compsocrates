@@ -25,6 +25,7 @@ type PitEntry = {
   teamNumber?: string;
   scoutName?: string;
   robotWeight?: string;
+  rookieTeam?: boolean | string;
   robotPictureUrl?: string;
   pitDisposition?: boolean | string;
   driveDisposition?: boolean | string;
@@ -93,7 +94,7 @@ function fuelScaleDisplay(value: number | string | undefined): string {
 
 function PitAnalyticsContent() {
   const { userData } = useAuth();
-  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
@@ -101,6 +102,8 @@ function PitAnalyticsContent() {
   const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canManageConfig = canDeleteEntries || userRoles.includes("lead-scout");
+  const canViewScoutNames =
+    isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || userRoles.includes("lead-scout");
   const canImportCsv = userData?.role === "coach" || Boolean(userData?.isTeamAdmin) || isLeadStrategist;
   const canExportCsv = canImportCsv;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
@@ -116,10 +119,12 @@ function PitAnalyticsContent() {
   const [importGame, setImportGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [importEvent, setImportEvent] = useState("app-testing");
   const [configEntry, setConfigEntry] = useState<PitEntry | null>(null);
+  const [hideNames, setHideNames] = useState(false);
   const [sortKey, setSortKey] = useState<
     | "teamNumber"
     | "scoutName"
     | "robotWeight"
+    | "rookieTeam"
     | "robotPictureUrl"
     | "pitDisposition"
     | "driveDisposition"
@@ -215,6 +220,8 @@ function PitAnalyticsContent() {
           return entry.scoutName || "";
         case "robotWeight":
           return entry.robotWeight || "";
+        case "rookieTeam":
+          return entry.rookieTeam ? 1 : 0;
         case "robotPictureUrl":
           return entry.robotPictureUrl ? 1 : 0;
         case "pitDisposition":
@@ -289,6 +296,7 @@ function PitAnalyticsContent() {
       "Scout",
       "Robot Picture",
       "Robot Weight",
+      "Rookie",
       "Disposition",
       "Drive Base",
       "Center of Gravity",
@@ -317,6 +325,7 @@ function PitAnalyticsContent() {
         entry.scoutName || "",
         entry.robotPictureUrl || "",
         entry.robotWeight || "",
+        entry.rookieTeam ? "Y" : "N",
         dispositionToCsv(entry.pitDisposition),
         entry.driveBaseType || "",
         entry.centerOfGravity || "",
@@ -401,6 +410,7 @@ function PitAnalyticsContent() {
         const idxScout = headers.findIndex((h) => h === "scout" || h === "scoutname");
         const idxRobotPicture = headers.findIndex((h) => h === "robotpicture");
         const idxRobotWeight = headers.findIndex((h) => h === "robotweight");
+        const idxRookie = headers.findIndex((h) => h === "rookie");
         const idxDisposition = headers.findIndex((h) => h === "disposition");
         const idxDriveBase = headers.findIndex((h) => h === "drivebase" || h === "drivebasetype");
         const idxCog = headers.findIndex((h) => h === "centerofgravity");
@@ -442,6 +452,7 @@ function PitAnalyticsContent() {
             scoutName: scout,
             robotPictureUrl: get(idxRobotPicture),
             robotWeight: get(idxRobotWeight),
+            rookieTeam: toBoolean(get(idxRookie)),
             pitDisposition: toBoolean(dispositionRaw) || dispositionRaw.length > 0,
             driveDisposition: false,
             driveBaseType: get(idxDriveBase),
@@ -512,6 +523,18 @@ function PitAnalyticsContent() {
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Pit Analytics</h1>
       <p className="text-gray-600 mb-4">Pit scouting breakdown with sticky team/scout columns.</p>
@@ -602,7 +625,7 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
@@ -610,7 +633,7 @@ function PitAnalyticsContent() {
                   <th className="bg-pink-300 text-center" colSpan={canShowActions ? 2 : 1}>General</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-200 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-200 text-center" colSpan={3}>Climb</th>
@@ -627,6 +650,9 @@ function PitAnalyticsContent() {
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
                     {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("rookieTeam")}>
+                    {sortLabel(sortKey, sortDir, "rookieTeam", "Rookie")}
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
                     {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
@@ -678,8 +704,11 @@ function PitAnalyticsContent() {
                 {sorted.map((entry) => (
                   <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
-                    <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td className="sticky-left-1 bg-white">
+                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
+                    </td>
                     <td>{formatAnalyticsText(entry.robotWeight)}</td>
+                    <td>{entry.rookieTeam ? "Y" : "N"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>
@@ -726,7 +755,7 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-300 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
@@ -735,7 +764,7 @@ function PitAnalyticsContent() {
                   <th className="bg-pink-300 text-center" colSpan={canShowActions ? 3 : 2}>General</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-200 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-200 text-center" colSpan={2}>Coral</th>
@@ -754,6 +783,9 @@ function PitAnalyticsContent() {
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
                     {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("rookieTeam")}>
+                    {sortLabel(sortKey, sortDir, "rookieTeam", "Rookie")}
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
                     {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
@@ -811,8 +843,11 @@ function PitAnalyticsContent() {
                 {sorted.map((entry) => (
                   <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
-                    <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td className="sticky-left-1 bg-white">
+                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
+                    </td>
                     <td>{formatAnalyticsText(entry.robotWeight)}</td>
+                    <td>{entry.rookieTeam ? "Y" : "N"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>

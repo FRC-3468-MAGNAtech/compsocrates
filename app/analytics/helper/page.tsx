@@ -35,7 +35,7 @@ type HelperEntry = {
 
 function HelperAnalyticsContent() {
   const { userData } = useAuth();
-  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
@@ -43,6 +43,8 @@ function HelperAnalyticsContent() {
   const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canManageConfig = canDeleteEntries || userRoles.includes("lead-scout");
+  const canViewScoutNames =
+    isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || userRoles.includes("lead-scout");
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
@@ -58,6 +60,7 @@ function HelperAnalyticsContent() {
   );
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [configEntry, setConfigEntry] = useState<HelperEntry | null>(null);
+  const [hideNames, setHideNames] = useState(false);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -238,6 +241,18 @@ function HelperAnalyticsContent() {
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Helper Report Analytics</h1>
       <p className="text-gray-600 mb-4">Support reports from helper form submissions.</p>
@@ -301,7 +316,9 @@ function HelperAnalyticsContent() {
             <tbody>
               {sorted.map((entry) => (
                 <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
-                  <td className="sticky-left-0 font-semibold">{entry.helperName || "-"}</td>
+                  <td className="sticky-left-0 font-semibold">
+                    {canViewScoutNames && !hideNames ? entry.helperName || "-" : "-"}
+                  </td>
                   <td className="sticky-left-1">{entry.assistedTeamNumber || "-"}</td>
                   <td>{entry.wasSuccessful ? "Y" : "N"}</td>
                   <td>{formatAnalyticsText(entry.issueSolved)}</td>

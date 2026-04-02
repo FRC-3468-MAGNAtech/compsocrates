@@ -1,31 +1,53 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { TeamRole, TEAM_ROLES, getRoleLabel } from "@/app/utils/roles";
 
 interface RoleSelectorProps {
   currentRoles: TeamRole[];
+  currentPrimaryRole?: TeamRole;
   isTeamAdmin: boolean;
   memberName?: string;
-  onSave: (roles: TeamRole[], isTeamAdmin: boolean) => void;
+  onSave: (primaryRole: TeamRole, secondaryRoles: TeamRole[], isTeamAdmin: boolean) => void;
   onClose: () => void;
 }
 
-export default function RoleSelector({ currentRoles, isTeamAdmin, memberName, onSave, onClose }: RoleSelectorProps) {
-  const initialPrimary = currentRoles.includes("drive-team")
-    ? "drive-team"
-    : currentRoles.includes("pit-team")
-    ? "pit-team"
-    : currentRoles[0] || "match-scout";
+export default function RoleSelector({
+  currentRoles,
+  currentPrimaryRole,
+  isTeamAdmin,
+  memberName,
+  onSave,
+  onClose,
+}: RoleSelectorProps) {
+  const initialPrimary = currentPrimaryRole || currentRoles[0] || "match-scout";
   const [primaryRole, setPrimaryRole] = useState<TeamRole>(initialPrimary);
+  const [secondaryRoles, setSecondaryRoles] = useState<TeamRole[]>(() => {
+    const base = currentRoles.filter((role) => role !== initialPrimary);
+    if (initialPrimary === "drive-team" && !base.includes("pit-team")) {
+      return [...base, "pit-team"];
+    }
+    return base;
+  });
+  const [pitAutoOptOut, setPitAutoOptOut] = useState(false);
   const [teamAdmin, setTeamAdmin] = useState(isTeamAdmin);
 
+  useEffect(() => {
+    if (primaryRole !== "drive-team") {
+      setPitAutoOptOut(false);
+      return;
+    }
+    if (!secondaryRoles.includes("pit-team") && !pitAutoOptOut) {
+      setSecondaryRoles((prev) => [...prev, "pit-team"]);
+    }
+  }, [pitAutoOptOut, primaryRole, secondaryRoles]);
+
   const resolvedRoles = useMemo(() => {
-    if (primaryRole === "drive-team") return ["drive-team", "pit-team"] as TeamRole[];
-    return [primaryRole] as TeamRole[];
-  }, [primaryRole]);
+    const merged = [primaryRole, ...secondaryRoles];
+    return Array.from(new Set(merged));
+  }, [primaryRole, secondaryRoles]);
 
   function handleSave() {
-    onSave(resolvedRoles, teamAdmin);
+    onSave(primaryRole, secondaryRoles, teamAdmin);
   }
 
   return (
@@ -59,6 +81,39 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, memberName, on
                 <div className="font-semibold">{getRoleLabel(role)}</div>
               </label>
             ))}
+          </div>
+          <label className="block text-sm font-semibold text-gray-700 mt-6 mb-3">Secondary Roles</label>
+          <div className="grid gap-2">
+            {TEAM_ROLES.filter((role) => role !== primaryRole).map((role) => {
+              const checked = secondaryRoles.includes(role);
+              return (
+                <label
+                  key={`secondary-${role}`}
+                  className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  style={{ borderColor: checked ? "var(--primary-color)" : "#e5e7eb" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => {
+                      const nextChecked = event.target.checked;
+                      setSecondaryRoles((prev) => {
+                        if (nextChecked) return Array.from(new Set([...prev, role]));
+                        return prev.filter((item) => item !== role);
+                      });
+                      if (role === "pit-team" && !nextChecked) {
+                        setPitAutoOptOut(true);
+                      }
+                      if (role === "pit-team" && nextChecked) {
+                        setPitAutoOptOut(false);
+                      }
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <div className="font-semibold">{getRoleLabel(role)}</div>
+                </label>
+              );
+            })}
             <label
               className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
               style={{ borderColor: teamAdmin ? "var(--primary-color)" : "#e5e7eb" }}
@@ -74,7 +129,7 @@ export default function RoleSelector({ currentRoles, isTeamAdmin, memberName, on
           </div>
           {primaryRole === "drive-team" && (
             <p className="mt-3 text-sm text-gray-600">
-              `Drive Team` automatically includes `Pit Team`.
+              Drive Team suggests Pit Team as a secondary role. You can uncheck it if needed.
             </p>
           )}
           <div className="mt-3 flex flex-wrap gap-2">

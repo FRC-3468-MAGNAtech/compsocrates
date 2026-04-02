@@ -19,6 +19,7 @@ type AnalyticsShellProps = {
   selectedEvent?: string;
   eventOptions?: Array<{ id: string; name: string }>;
   onSelectedEventChange?: (eventId: string) => void;
+  extraControls?: React.ReactNode;
 };
 
 const analyticsLinks: Array<{ href: string; label: string } | { divider: true }> = [
@@ -49,6 +50,7 @@ function AnalyticsShellInner({
   selectedEvent,
   eventOptions = [],
   onSelectedEventChange,
+  extraControls,
 }: AnalyticsShellProps) {
   const { userData } = useAuth();
   const pathname = usePathname();
@@ -330,6 +332,7 @@ function AnalyticsShellInner({
               </div>
               <div className="flex flex-wrap items-center gap-2">
               <NotesToggle />
+              {extraControls}
               {onPracticeMatchesOnlyChange && (
                 <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
                   <input
