@@ -1220,6 +1220,7 @@ function PracticeScoutingContent() {
         const teamNumber = parseTeamNumber(data.teamNumber);
         const matchKey = String(data.matchKey || data.matchLabel || "").trim();
         const game = String(data.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+        const eventName = String(data.eventName || "").trim();
         let eventKey = normalizeEventKey(String(data.eventKey || "").trim());
         if (!isValidEventKey(eventKey)) {
           eventKey = normalizeEventKey(extractEventKeyFromMatchKey(matchKey));
@@ -1231,7 +1232,6 @@ function PracticeScoutingContent() {
             )?.key || "";
           eventKey = normalizeEventKey(fromName);
         }
-        const eventName = String(data.eventName || "").trim();
         if (!matchKey || !teamNumber) return;
         if (!isActive) return;
         setRescoutTarget({
