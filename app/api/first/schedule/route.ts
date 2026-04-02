@@ -39,7 +39,11 @@ export async function POST(request: NextRequest) {
       }
     }
     if (!Number.isFinite(year) || !eventCode) {
-      return NextResponse.json({ error: "Missing year or eventCode", received: body }, { status: 400 });
+      console.warn("FIRST schedule request missing year/eventCode:", body);
+      return NextResponse.json(
+        { schedule: [], warning: "Missing year or eventCode", received: body },
+        { status: 200 }
+      );
     }
 
     const { username, token } = resolveFirstCredentials();
