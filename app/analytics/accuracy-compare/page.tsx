@@ -107,10 +107,14 @@ type RescoutEntry = {
   id: string;
   teamId?: string;
   eventKey?: string;
+  eventName?: string;
   matchKey?: string;
   matchLabel?: string;
   alliance?: "red" | "blue";
   teamNumber?: number;
+  scoutId?: string;
+  scoutName?: string;
+  game?: string;
   status?: string;
   submittedAt?: number;
   updatedAt?: number;
