@@ -1272,22 +1272,22 @@ function AssignmentsContent() {
   }, [matchOptions, teamTimeOverride]);
   const matchScheduleOptions = useMemo(() => {
     const filtered = matchOptions.filter((match) => match.compLevel !== "pr");
-    const extraPractice = assignments
+    const extraPractice: MatchOption[] = [];
+    assignments
       .filter((assignment) => !isEventPracticeAssignment(assignment))
-      .map((assignment) => {
+      .forEach((assignment) => {
         const parts = parseMatchKeyParts(assignment.matchKey) || parseMatchLabelParts(assignment.matchLabel);
-        if (!parts || parts.compLevel !== "pm") return null;
-        return {
+        if (!parts || parts.compLevel !== "pm") return;
+        extraPractice.push({
           key: assignment.matchKey || `p${parts.matchNumber}`,
           label: assignment.matchLabel || `Practice ${parts.matchNumber}`,
           teams: [],
-          compLevel: "pm" as const,
+          compLevel: "pm",
           matchNumber: parts.matchNumber,
           setNumber: parts.setNumber || 1,
           scheduleTime: 0,
-        };
-      })
-      .filter((row): row is MatchOption => Boolean(row));
+        });
+      });
     const merged = [...filtered, ...extraPractice];
     const seen = new Map<string, MatchOption>();
     merged.forEach((row) => {
