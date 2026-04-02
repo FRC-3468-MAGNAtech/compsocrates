@@ -11,7 +11,7 @@ import { useAuth } from "@/app/AuthContext";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
-import { expandEventKeyAliases } from "@/app/utils/events";
+import { expandEventKeyAliases, normalizeEventKey } from "@/app/utils/events";
 import {
   buildCompletedModalIdsFromTba,
   buildReefscapeModalOptions,
@@ -136,18 +136,24 @@ function normalizeScoutedMatchId(value: unknown): string {
   return raw.replace(/\s+/g, "");
 }
 
-async function fetchCompletedMatchIds(eventKey: string): Promise<Set<string>> {
+async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promise<Set<string>> {
   const completed = new Set<string>();
-  const keys = expandEventKeyAliases(eventKey);
-  if (keys.length === 0) return completed;
   const collections = ["scouting", "leadScouting", "matchStrategyPlans", "driveScouting"];
+  const normalizedTarget = normalizeEventKey(eventKey);
   const snaps = await Promise.all(
-    collections.map((name) =>
-      Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))))
-    )
+    collections.map((name) => {
+      if (teamId) {
+        return getDocs(query(collection(db, name), where("teamId", "==", teamId)));
+      }
+      const keys = expandEventKeyAliases(eventKey);
+      return Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))));
+    })
   );
-  snaps.flat().flatMap((snap) => snap.docs).forEach((docSnap) => {
+  const docs = snaps.flat().flatMap((snap) => ("docs" in snap ? snap.docs : snap.flatMap((s) => s.docs)));
+  docs.forEach((docSnap) => {
     const row = docSnap.data() as Record<string, unknown>;
+    const rowEventKey = normalizeEventKey(String(row.eventKey || "").trim());
+    if (normalizedTarget && rowEventKey && rowEventKey !== normalizedTarget) return;
     const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
     if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
     const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
@@ -393,7 +399,7 @@ function DriveReflectionFormContent() {
         const completionNow = getEffectiveNowSec(teamTimeOverride);
         const completedSet = buildCompletedModalIdsFromTba(matches, completionNow);
         try {
-          const completedFromForms = await fetchCompletedMatchIds(assignedEvent);
+          const completedFromForms = await fetchCompletedMatchIds(assignedEvent, userData?.teamId || "");
           completedFromForms.forEach((id) => completedSet.add(id));
         } catch (error) {
           console.warn("Unable to load scouting completions:", error);
