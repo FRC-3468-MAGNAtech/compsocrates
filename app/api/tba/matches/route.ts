@@ -6,12 +6,15 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const eventKey = String(body?.eventKey || "").trim();
+    const eventKey = String(body?.eventKey || "").trim().toLowerCase();
     const encryptedKey = typeof body?.encryptedKey === "string" ? body.encryptedKey : "";
     const plainKey = typeof body?.plainKey === "string" ? body.plainKey.trim() : "";
     const fallbackKey = String(process.env.NEXT_PUBLIC_TBA_API_KEY || process.env.TBA_API_KEY || "").trim();
     if (!eventKey || (!encryptedKey && !plainKey && !fallbackKey)) {
       return NextResponse.json({ error: "Missing event key or API key" }, { status: 400 });
+    }
+    if (!/^\d{4}[a-z0-9]+$/.test(eventKey)) {
+      return NextResponse.json({ error: "Invalid event key" }, { status: 400 });
     }
 
     const key = encryptedKey ? decryptTbaKey(encryptedKey) : plainKey || fallbackKey;
