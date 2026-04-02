@@ -110,13 +110,46 @@ async function runTeamQuery(
   return Array.isArray(payload) ? payload : [];
 }
 
+async function runEventQuery(
+  projectId: string,
+  token: string,
+  collectionId: string,
+  eventKey: string
+): Promise<RunQueryResult[]> {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "eventKey" },
+          op: "EQUAL",
+          value: { stringValue: eventKey },
+        },
+      },
+    },
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: token ? `Bearer ${token}` : "",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!response.ok) return [];
+  const payload = (await response.json()) as RunQueryResult[];
+  return Array.isArray(payload) ? payload : [];
+}
+
 export async function POST(request: NextRequest) {
   try {
     const payload = (await request.json()) as { eventKey?: string; teamId?: string };
     const eventKey = String(payload.eventKey || "").trim();
     const teamId = String(payload.teamId || "").trim();
-    if (!eventKey || !teamId) {
-      return NextResponse.json({ completedIds: [], error: "Missing eventKey or teamId" }, { status: 400 });
+    if (!eventKey) {
+      return NextResponse.json({ completedIds: [], error: "Missing eventKey" }, { status: 400 });
     }
 
     const projectId = String(
@@ -140,7 +173,15 @@ export async function POST(request: NextRequest) {
     const completed = new Set<string>();
 
     for (const name of collections) {
-      const results = await runTeamQuery(projectId, token, name, teamId);
+      const results: RunQueryResult[] = [];
+      if (aliasSet.size > 0) {
+        for (const key of aliasSet) {
+          results.push(...(await runEventQuery(projectId, token, name, key)));
+        }
+      }
+      if (teamId) {
+        results.push(...(await runTeamQuery(projectId, token, name, teamId)));
+      }
       results.forEach((row) => {
         const doc = row.document;
         if (!doc?.fields) return;

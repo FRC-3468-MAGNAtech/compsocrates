@@ -899,12 +899,12 @@ async function fetchCompletedMatchIds(
   debug?: { enabled: boolean; label?: string }
 ): Promise<Set<string>> {
   const completed = new Set<string>();
-  if (!eventKey || !teamId) return completed;
+  if (!eventKey) return completed;
 
   const response = await fetch("/api/scout/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ eventKey, teamId }),
+    body: JSON.stringify({ eventKey }),
     cache: "no-store",
   });
   if (!response.ok) return completed;
