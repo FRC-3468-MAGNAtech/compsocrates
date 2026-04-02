@@ -22,9 +22,10 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getRoleLabel, getUserRoles, normalizeLegacyRole } from "@/app/utils/roles";
-import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys, normalizeEventKey } from "@/app/utils/events";
 import { getEffectiveNowDate, getEffectiveNowMs, getEffectiveNowSec } from "@/app/utils/teamTime";
 import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
+import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 
 interface Assignment {
   id: string;
@@ -112,6 +113,29 @@ type EventOption = {
   startDate: string;
   endDate: string;
 };
+
+function parseEventDate(value: string): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function pickUpcomingEvent(options: EventOption[], nowMs: number): EventOption | null {
+  if (options.length === 0) return null;
+  const upcoming = options
+    .map((event) => {
+      const startMs = parseEventDate(event.startDate) ?? 0;
+      const endMs = parseEventDate(event.endDate) ?? startMs;
+      return { event, startMs, endMs };
+    })
+    .filter((row) => row.endMs >= nowMs)
+    .sort((a, b) => a.startMs - b.startMs);
+  if (upcoming.length > 0) return upcoming[0].event;
+  const fallback = options
+    .map((event) => ({ event, startMs: parseEventDate(event.startDate) ?? 0 }))
+    .sort((a, b) => b.startMs - a.startMs);
+  return fallback[0]?.event || null;
+}
 
 type PracticeMatchOption = {
   id: string;
@@ -929,13 +953,18 @@ function AssignmentsContent() {
       }
       setPracticeEventOptions(availablePracticeEvents);
       const scheduleOptionsBase = sortEventOptions(dedupeEventOptionsByName(eventsWithPracticeSchedule), nowMs);
+      const detectedKeyRaw = await resolveDetectedTeamEventKey(userData.teamId);
+      const detectedKey = detectedKeyRaw ? normalizeEventKey(String(detectedKeyRaw).trim()) : "";
+      const upcomingEvent = pickUpcomingEvent(accessibleEvents, nowMs);
       let activeEventKey = accessibleEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
-        : (accessibleEvents[0]?.key || "");
+        : detectedKey && accessibleEvents.some((event) => event.key === detectedKey)
+        ? detectedKey
+        : upcomingEvent?.key || (accessibleEvents[0]?.key || "");
       const isInitialSelection = !selectedEvent;
       let preFetchedMatches: TBAMatch[] = [];
       if (activeEventKey) {
-        if (isInitialSelection && accessibleEvents.length > 0) {
+        if (isInitialSelection && accessibleEvents.length > 0 && !detectedKey) {
           const matchBatches = await Promise.all(
             accessibleEvents.map(async (event) => ({
               key: event.key,
@@ -1137,9 +1166,50 @@ function AssignmentsContent() {
             ...assignmentDoc.data(),
           })) as TeamAssignment[])
         : [];
-      const mergedTeamAssignments = [...teamFromPrimary, ...teamAssignmentsFromMatch].sort(
-        (a, b) => a.teamNumber - b.teamNumber
-      );
+      if (teamFromPrimary.length > 0 && isAssignmentsAdmin(userData)) {
+        const mirrorKeys = new Set(
+          teamAssignmentsFromMatch.map((assignment) => `${assignment.eventKey}|${assignment.teamNumber}`)
+        );
+        const missingMirrors = teamFromPrimary.filter(
+          (assignment) => !mirrorKeys.has(`${assignment.eventKey}|${assignment.teamNumber}`)
+        );
+        if (missingMirrors.length > 0) {
+          try {
+            await Promise.all(
+              missingMirrors.map((assignment) =>
+                addDoc(collection(db, "matchAssignments"), {
+                  teamId: assignment.teamId || "",
+                  eventKey: assignment.eventKey,
+                  teamNumber: assignment.teamNumber,
+                  scoutId: assignment.scoutId,
+                  scoutName: assignment.scoutName,
+                  assignedBy: assignment.assignedBy,
+                  assignedAt: assignment.assignedAt || Date.now(),
+                  assignmentType: "team",
+                  matchKey: "team",
+                  matchLabel: "Team Strategy",
+                  scoutHumanPlayer: false,
+                })
+              )
+            );
+          } catch (error) {
+            console.warn("Unable to mirror team assignments into matchAssignments:", error);
+          }
+        }
+      }
+      const mergedByKey = new Map<string, TeamAssignment>();
+      [...teamAssignmentsFromMatch, ...teamFromPrimary].forEach((assignment) => {
+        const key = `${assignment.eventKey}|${assignment.teamNumber}`;
+        const existing = mergedByKey.get(key);
+        if (!existing) {
+          mergedByKey.set(key, assignment);
+          return;
+        }
+        if (existing.sourceCollection !== "teamAssignments" && assignment.sourceCollection === "teamAssignments") {
+          mergedByKey.set(key, assignment);
+        }
+      });
+      const mergedTeamAssignments = Array.from(mergedByKey.values()).sort((a, b) => a.teamNumber - b.teamNumber);
       setTeamAssignments(mergedTeamAssignments);
       setPracticeAssignments(
         practiceAssignmentsDocs.map((row) => ({
@@ -1991,6 +2061,33 @@ function buildBalancedIntervalSchedule(
       const source = assignment.sourceCollection || "teamAssignments";
       const collectionName = source === "matchAssignments" ? "matchAssignments" : "teamAssignments";
       await deleteDoc(doc(db, collectionName, assignment.id));
+      try {
+        const mirrorSnap = await getDocs(
+          query(
+            collection(db, "matchAssignments"),
+            where("eventKey", "==", assignment.eventKey),
+            where("assignmentType", "==", "team"),
+            where("teamNumber", "==", assignment.teamNumber)
+          )
+        );
+        await Promise.all(mirrorSnap.docs.map((docSnap) => deleteDoc(doc(db, "matchAssignments", docSnap.id))));
+      } catch (error) {
+        console.warn("Unable to delete mirrored matchAssignments:", error);
+      }
+      if (source === "matchAssignments") {
+        try {
+          const primarySnap = await getDocs(
+            query(
+              collection(db, "teamAssignments"),
+              where("eventKey", "==", assignment.eventKey),
+              where("teamNumber", "==", assignment.teamNumber)
+            )
+          );
+          await Promise.all(primarySnap.docs.map((docSnap) => deleteDoc(doc(db, "teamAssignments", docSnap.id))));
+        } catch (error) {
+          console.warn("Unable to delete primary teamAssignments:", error);
+        }
+      }
       await loadData();
     } catch (error) {
       console.error("Error deleting team assignment:", error);
