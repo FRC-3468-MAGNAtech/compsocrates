@@ -117,7 +117,7 @@ async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promis
   const response = await fetch("/api/scout/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ eventKey }),
+    body: JSON.stringify({ eventKey, teamId }),
     cache: "no-store",
   });
   if (!response.ok) return completed;

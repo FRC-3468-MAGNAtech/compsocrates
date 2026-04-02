@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { expandEventKeyAliases, normalizeEventKey } from "@/app/utils/events";
+import { classifyRebuiltEventByTimestampWithOptions, getEventsForGame } from "@/app/utils/analyticsEvents";
 
 type FirestoreValue =
   | { stringValue?: string }
@@ -19,6 +20,13 @@ function readStringValue(value: FirestoreValue | undefined): string {
   if ("stringValue" in value && typeof value.stringValue === "string") return value.stringValue;
   if ("integerValue" in value && typeof value.integerValue === "string") return value.integerValue;
   return "";
+}
+
+function readNumberValue(value: FirestoreValue | undefined): number {
+  if (!value) return 0;
+  if ("integerValue" in value && typeof value.integerValue === "string") return Number(value.integerValue) || 0;
+  if ("stringValue" in value && typeof value.stringValue === "string") return Number(value.stringValue) || 0;
+  return 0;
 }
 
 async function fetchServerToken(): Promise<string> {
@@ -186,7 +194,17 @@ export async function POST(request: NextRequest) {
         const doc = row.document;
         if (!doc?.fields) return;
         const rowEventKey = normalizeEventKey(readStringValue(doc.fields.eventKey));
-        if (rowEventKey && aliasSet.size > 0 && !aliasSet.has(rowEventKey)) return;
+        const inferredEventKey =
+          rowEventKey ||
+          normalizeEventKey(
+            classifyRebuiltEventByTimestampWithOptions(
+              readNumberValue(doc.fields.submittedAt) ||
+                readNumberValue(doc.fields.timestamp) ||
+                readNumberValue(doc.fields.createdAt),
+              getEventsForGame("REBUILT")
+            )
+          );
+        if (aliasSet.size > 0 && inferredEventKey && !aliasSet.has(inferredEventKey)) return;
         const entryType = readStringValue(doc.fields.entryType || doc.fields.formType).toLowerCase().trim();
         if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
         const matchId = normalizeScoutedMatchId(
