@@ -1260,18 +1260,21 @@ function PracticeScoutingContent() {
   }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty, teamEventCatalog]);
 
   useEffect(() => {
-    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || !activeMatchGame || rescoutError) return;
+    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || rescoutError) return;
     const target = rescoutTarget;
+    if (!activeMatchGame) {
+      setActiveMatchGame(target.game || "REBUILT");
+    }
     let isActive = true;
 
     async function fetchRescoutTbaMatch() {
-        const eventKeyFromMatchKey = extractEventKeyFromMatchKey(String(target.matchKey || ""));
-        const eventKeyFromName =
-          teamEventCatalog.find(
-            (event) =>
-              String(event.name || "").trim().toLowerCase() ===
-              String(target.eventName || "").trim().toLowerCase()
-          )?.key || "";
+      const eventKeyFromMatchKey = extractEventKeyFromMatchKey(String(target.matchKey || ""));
+      const eventKeyFromName =
+        teamEventCatalog.find(
+          (event) =>
+            String(event.name || "").trim().toLowerCase() ===
+            String(target.eventName || "").trim().toLowerCase()
+        )?.key || "";
       const fallbackEventKey = normalizeEventKey(
         String(eventKeyFromMatchKey || eventKeyFromName || "").trim()
       );
