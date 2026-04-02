@@ -1506,7 +1506,7 @@ function ScoutFormContent() {
       setScoutedTeamsByMatch(Object.fromEntries(Array.from(teamsMap.entries()).map(([k, v]) => [k, Array.from(v)])));
       setSubInStatusByMatch(subStatuses);
       setSubInClaimsForUser(userClaims);
-      if (Object.keys(userClaims).length > 0) {
+      if (!leadMode && Object.keys(userClaims).length > 0) {
         setAssignedTeams((prev) => ({ ...prev, ...userClaims }));
         setAssignedMatchIds((prev) => {
           const next = new Set(prev);
@@ -1516,7 +1516,7 @@ function ScoutFormContent() {
       }
     }
     void loadScouted();
-  }, [eventKey, userData?.uid]);
+  }, [eventKey, userData?.uid, leadMode]);
 
   useEffect(() => {
     if (editMode) return;

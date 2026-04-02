@@ -142,6 +142,7 @@ function extractMatchNumber(option: MatchOption): number {
   const key = String(option.key || "").toLowerCase();
   const fromKey =
     key.match(/_qm(\d+)$/)?.[1] ||
+    key.match(/_pr(\d+)$/)?.[1] ||
     key.match(/_sf\d+m(\d+)$/)?.[1] ||
     key.match(/_qf\d+m(\d+)$/)?.[1] ||
     key.match(/_f\d+m(\d+)$/)?.[1];
@@ -168,13 +169,11 @@ function getMatchType(option: MatchOption): MatchType {
 function displayMatchLabel(option: MatchOption | null): string {
   if (!option) return "No match selected";
   const rawKey = String(option.key || "").toLowerCase();
-  const number = extractMatchNumber(option) || 0;
-  if (rawKey.startsWith("p")) return `Practice Match ${number || 1}`;
-  if (rawKey.startsWith("q")) return `Qualification Match ${number || 1}`;
-  if (rawKey.startsWith("f")) return `Finals ${number || 1}`;
-  if (/^q/i.test(option.label)) return `Qualification Match ${number || 1}`;
-  if (/^f/i.test(option.label)) return `Finals ${number || 1}`;
-  if (/practice/i.test(option.label)) return `Practice Match ${number || 1}`;
+  const number = extractMatchNumber(option) || 1;
+  const type = getMatchType(option);
+  if (type === "practice" || rawKey.includes("_pr")) return `Practice Match ${number}`;
+  if (type === "qualification") return `Qualification Match ${number}`;
+  if (type === "finals") return `Finals ${number}`;
   return option.label || "No match selected";
 }
 
