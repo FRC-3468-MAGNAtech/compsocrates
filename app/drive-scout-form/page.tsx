@@ -11,6 +11,7 @@ import { useAuth } from "@/app/AuthContext";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
+import { expandEventKeyAliases } from "@/app/utils/events";
 import {
   buildCompletedModalIdsFromTba,
   buildReefscapeModalOptions,
@@ -373,8 +374,14 @@ function DriveReflectionFormContent() {
         const completedSet = buildCompletedModalIdsFromTba(matches, completionNow);
         const scoutingCompleted = new Set<string>();
         try {
-          const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", assignedEvent)));
-          scoutingSnap.docs.forEach((docSnap) => {
+          const scoutingDocs = (
+            await Promise.all(
+              expandEventKeyAliases(assignedEvent).map((eventKey) =>
+                getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)))
+              )
+            )
+          ).flatMap((snap) => snap.docs);
+          scoutingDocs.forEach((docSnap) => {
             const row = docSnap.data() as Record<string, unknown>;
             const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
             if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;

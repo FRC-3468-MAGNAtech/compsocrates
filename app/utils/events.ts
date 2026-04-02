@@ -78,3 +78,15 @@ export function dedupeEventOptionsByKey<T extends { key: string }>(options: T[])
   return Array.from(map.values());
 }
 
+export function expandEventKeyAliases(eventKey: string): string[] {
+  const canonical = normalizeEventKey(eventKey);
+  const variants = new Set<string>();
+  if (canonical) variants.add(canonical);
+  const raw = String(eventKey || "").trim();
+  if (raw) variants.add(raw);
+  Object.entries(EVENT_KEY_ALIASES).forEach(([legacy, canonicalKey]) => {
+    if (canonicalKey === canonical) variants.add(legacy);
+  });
+  return Array.from(variants);
+}
+

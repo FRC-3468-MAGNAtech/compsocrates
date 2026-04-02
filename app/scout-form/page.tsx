@@ -14,6 +14,7 @@ import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
+import { expandEventKeyAliases } from "@/app/utils/events";
 import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import {
   buildCompletedModalIdsFromTba,
@@ -1250,13 +1251,23 @@ function ScoutFormContent() {
           setAssignedMatchIds(new Set());
           setAssignedHumanPlayerMatches(new Set());
         } else {
-          const assignmentSnapByEvent = await getDocs(
-            query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent), where("scoutId", "==", userData.uid))
-          );
+          const assignmentDocsByEvent = (
+            await Promise.all(
+              expandEventKeyAliases(assignedEvent).map((eventKey) =>
+                getDocs(
+                  query(
+                    collection(db, "matchAssignments"),
+                    where("eventKey", "==", eventKey),
+                    where("scoutId", "==", userData.uid)
+                  )
+                )
+              )
+            )
+          ).flatMap((snap) => snap.docs);
           const assigned: Record<string, string> = {};
           const assignedMatchIds = new Set<string>();
           const assignedHumanPlayer = new Set<string>();
-          assignmentSnapByEvent.docs.forEach((row) => {
+          assignmentDocsByEvent.forEach((row) => {
             const data = row.data() as AssignmentRow;
             const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
             const team = String(data.teamNumber || "").trim();
@@ -1275,11 +1286,15 @@ function ScoutFormContent() {
           setAssignedTeamsByMatch({});
         } else {
           try {
-            const assignmentSnapAll = await getDocs(
-              query(collection(db, "matchAssignments"), where("eventKey", "==", assignedEvent))
-            );
+            const assignmentDocsAll = (
+              await Promise.all(
+                expandEventKeyAliases(assignedEvent).map((eventKey) =>
+                  getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", eventKey)))
+                )
+              )
+            ).flatMap((snap) => snap.docs);
             const byMatch = new Map<string, Set<string>>();
-            assignmentSnapAll.docs.forEach((row) => {
+            assignmentDocsAll.forEach((row) => {
               const data = row.data() as AssignmentRow;
               const matchId = mapAssignmentToMatchId(String(data.matchKey || data.matchLabel || ""));
               const team = String(data.teamNumber || "").trim();
@@ -1389,13 +1404,19 @@ function ScoutFormContent() {
   useEffect(() => {
     async function loadScouted() {
       if (!eventKey) return;
-      const snap = await getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)));
+      const scoutingDocs = (
+        await Promise.all(
+          expandEventKeyAliases(eventKey).map((key) =>
+            getDocs(query(collection(db, "scouting"), where("eventKey", "==", key)))
+          )
+        )
+      ).flatMap((snap) => snap.docs);
       const counts: Record<string, number> = {};
       const teamsMap = new Map<string, Set<string>>();
       const subStatuses: Record<string, Record<string, "requested" | "assigned">> = {};
       const userClaims: Record<string, string> = {};
       const completedFromScouting = new Set<string>();
-      snap.docs.forEach((d) => {
+      scoutingDocs.forEach((d) => {
         const row = d.data() as Record<string, unknown>;
         const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
         const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
