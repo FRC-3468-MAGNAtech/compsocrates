@@ -134,10 +134,11 @@ function RankingsContent() {
   useEffect(() => {
     const teamId = userData?.teamId;
     if (!teamId) return;
+    const resolvedTeamId = String(teamId);
     let isActive = true;
     async function loadTbaKey() {
       try {
-        const teamDoc = await getDoc(doc(db, "teams", teamId));
+        const teamDoc = await getDoc(doc(db, "teams", resolvedTeamId));
         if (!isActive) return;
         const data = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
         setTbaAuth({
