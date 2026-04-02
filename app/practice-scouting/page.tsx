@@ -1228,7 +1228,7 @@ function PracticeScoutingContent() {
   }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty]);
 
   useEffect(() => {
-    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || !activeMatchGame) return;
+    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || !activeMatchGame || rescoutError) return;
     const target = rescoutTarget;
     let isActive = true;
 
@@ -1307,7 +1307,13 @@ function PracticeScoutingContent() {
         setShowLiveRobotModal(false);
         setPendingLiveMatchPick(null);
 
-        const candidates = await fetchLobbyMatchCandidates();
+        let candidates: CandidatePracticeMatch[] = [];
+        try {
+          candidates = await fetchLobbyMatchCandidates();
+        } catch (error) {
+          console.warn("Rescout candidate match load failed; falling back to TBA-only match.", error);
+          candidates = [];
+        }
         if (!isActive) return;
         if (candidates.length > 0) setCandidateMatches(candidates);
 
@@ -1323,12 +1329,12 @@ function PracticeScoutingContent() {
         const tbaMatch = await fetchRescoutTbaMatch();
 
         if (!tbaMatch) {
-          setRescoutError("Rescout match unavailable.");
+          if (isActive) setRescoutError("Rescout match unavailable.");
           return;
         }
         const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
         if (!videoUrl) {
-          setRescoutError("Rescout video unavailable.");
+          if (isActive) setRescoutError("Rescout video unavailable.");
           return;
         }
 
@@ -1392,7 +1398,10 @@ function PracticeScoutingContent() {
             : tbaPayload;
         }
 
-        if (!matchToUse) return;
+        if (!matchToUse) {
+          if (isActive) setRescoutError("Rescout match unavailable.");
+          return;
+        }
 
         const teamIndex = matchToUse.allianceTeams.findIndex((team) => Number(team) === target.teamNumber);
         startPracticeMatch(
@@ -1404,6 +1413,7 @@ function PracticeScoutingContent() {
         );
       } catch (error) {
         console.error("Failed to auto-start rescout flow:", error);
+        if (isActive) setRescoutError("Rescout match unavailable.");
       }
     }
 
