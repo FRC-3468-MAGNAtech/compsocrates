@@ -893,31 +893,56 @@ function mapAssignmentToMatchId(labelOrKey: string) {
   return "";
 }
 
-async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promise<Set<string>> {
+async function fetchCompletedMatchIds(
+  eventKey: string,
+  teamId?: string,
+  debug?: { enabled: boolean; label?: string }
+): Promise<Set<string>> {
   const completed = new Set<string>();
   const collections = ["scouting", "leadScouting", "matchStrategyPlans", "driveScouting"];
   const normalizedTarget = normalizeEventKey(eventKey);
+  const stats: Record<string, number> = {};
+  const eventKeyCounts: Record<string, number> = {};
   const docs: QueryDocumentSnapshot[] = [];
   for (const name of collections) {
     if (teamId) {
       const teamSnap = await getDocs(query(collection(db, name), where("teamId", "==", teamId)));
       docs.push(...teamSnap.docs);
+      stats[`${name}:teamId`] = teamSnap.docs.length;
     }
     const keys = expandEventKeyAliases(eventKey);
     for (const key of keys) {
       const eventSnap = await getDocs(query(collection(db, name), where("eventKey", "==", key)));
       docs.push(...eventSnap.docs);
+      stats[`${name}:eventKey:${key}`] = eventSnap.docs.length;
     }
   }
   docs.forEach((docSnap) => {
     const row = docSnap.data() as Record<string, unknown>;
     const rowEventKey = normalizeEventKey(String(row.eventKey || "").trim());
+    if (rowEventKey) {
+      eventKeyCounts[rowEventKey] = (eventKeyCounts[rowEventKey] || 0) + 1;
+    }
     if (normalizedTarget && rowEventKey && rowEventKey !== normalizedTarget) return;
     const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
     if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
     const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
     if (matchId) completed.add(matchId);
   });
+  if (debug?.enabled && typeof window !== "undefined") {
+    const payload = {
+      label: debug.label || "completion",
+      eventKey,
+      normalizedTarget,
+      totalDocs: docs.length,
+      stats,
+      eventKeyCounts,
+      completedCount: completed.size,
+      completed: Array.from(completed).slice(0, 50),
+    };
+    (window as unknown as { __scoutCompletionDebug?: unknown }).__scoutCompletionDebug = payload;
+    console.log("Scout completion debug:", payload);
+  }
   return completed;
 }
 function ScoutFormContent() {
@@ -1268,7 +1293,13 @@ function ScoutFormContent() {
         setTargets(next.length > 0 ? nextTargets : {});
         const completionNow = getEffectiveNowSec(teamTimeOverride);
         const completedSet = matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set<string>();
-        const completedFromForms = await fetchCompletedMatchIds(assignedEvent, userData.teamId || "");
+        const debugEnabled =
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("debug") === "1";
+        const completedFromForms = await fetchCompletedMatchIds(assignedEvent, userData.teamId || "", {
+          enabled: debugEnabled,
+          label: "loadEventContext",
+        });
         completedFromForms.forEach((id) => completedSet.add(id));
         setModalCompleted(completedSet);
 
@@ -1470,7 +1501,13 @@ function ScoutFormContent() {
         if (!teamsMap.has(matchId)) teamsMap.set(matchId, new Set<string>());
         if (team) teamsMap.get(matchId)?.add(team);
       });
-      const completedFromForms = await fetchCompletedMatchIds(eventKey, userData?.teamId || "");
+      const debugEnabled =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("debug") === "1";
+      const completedFromForms = await fetchCompletedMatchIds(eventKey, userData?.teamId || "", {
+        enabled: debugEnabled,
+        label: "loadScouted",
+      });
       completedFromForms.forEach((id) => completedFromScouting.add(id));
       if (completedFromScouting.size > 0) {
         setModalCompleted((prev) => {
