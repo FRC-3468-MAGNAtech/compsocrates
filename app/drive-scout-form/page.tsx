@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where, type QueryDocumentSnapshot } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -11,7 +11,6 @@ import { useAuth } from "@/app/AuthContext";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
-import { expandEventKeyAliases, normalizeEventKey } from "@/app/utils/events";
 import {
   buildCompletedModalIdsFromTba,
   buildReefscapeModalOptions,
@@ -138,27 +137,17 @@ function normalizeScoutedMatchId(value: unknown): string {
 
 async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promise<Set<string>> {
   const completed = new Set<string>();
-  const collections = ["scouting", "leadScouting", "matchStrategyPlans", "driveScouting"];
-  const normalizedTarget = normalizeEventKey(eventKey);
-  const docs: QueryDocumentSnapshot[] = [];
-  for (const name of collections) {
-    if (teamId) {
-      const teamSnap = await getDocs(query(collection(db, name), where("teamId", "==", teamId)));
-      docs.push(...teamSnap.docs);
-    }
-    const keys = expandEventKeyAliases(eventKey);
-    for (const key of keys) {
-      const eventSnap = await getDocs(query(collection(db, name), where("eventKey", "==", key)));
-      docs.push(...eventSnap.docs);
-    }
-  }
-  docs.forEach((docSnap) => {
-    const row = docSnap.data() as Record<string, unknown>;
-    const rowEventKey = normalizeEventKey(String(row.eventKey || "").trim());
-    if (normalizedTarget && rowEventKey && rowEventKey !== normalizedTarget) return;
-    const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
-    if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
-    const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
+  if (!eventKey || !teamId) return completed;
+  const response = await fetch("/api/scout/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventKey, teamId }),
+    cache: "no-store",
+  });
+  if (!response.ok) return completed;
+  const payload = (await response.json()) as { completedIds?: string[] };
+  (payload.completedIds || []).forEach((id) => {
+    const matchId = normalizeScoutedMatchId(id);
     if (matchId) completed.add(matchId);
   });
   return completed;
