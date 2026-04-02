@@ -496,6 +496,83 @@ function AccuracyVerificationContent() {
     return map;
   }, [entries]);
 
+  const rescoutGroups = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      eventKey: string;
+      matchKey: string;
+      alliance: "red" | "blue";
+      rescouts: RescoutEntry[];
+      teamNumbers: number[];
+      officialScore: number | null;
+      totalScoutedScore: number | null;
+      accuracy: number | null;
+      penaltyPoints: number | null;
+    }>();
+    rescouts.forEach((row) => {
+      const isSubmitted =
+        String(row.status || "").toLowerCase() === "submitted" ||
+        Boolean(row.practiceSessionId) ||
+        Boolean(row.submittedAt);
+      if (!isSubmitted) return;
+      const alliance = String(row.alliance || "").toLowerCase() === "blue" ? "blue" : "red";
+      const teamNumber = typeof row.teamNumber === "number" ? row.teamNumber : Number(row.teamNumber || 0);
+      if (!Number.isFinite(teamNumber) || teamNumber <= 0) return;
+      const eventKey = normalizeEventKey(String(row.eventKey || "").trim());
+      const matchKey = normalizeMatchId(String(row.matchKey || "").trim());
+      if (!matchKey || !eventKey) return;
+      const key = `${eventKey}::${matchKey}::${alliance}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          eventKey,
+          matchKey,
+          alliance,
+          rescouts: [],
+          teamNumbers: [],
+          officialScore: null,
+          totalScoutedScore: null,
+          accuracy: null,
+          penaltyPoints: null,
+        });
+      }
+      const group = map.get(key)!;
+      const existing = group.rescouts.find((entry) => Number(entry.teamNumber || 0) === teamNumber);
+      if (existing) {
+        const existingTime = Number(existing.submittedAt || existing.updatedAt || existing.createdAt || 0);
+        const currentTime = Number(row.submittedAt || row.updatedAt || row.createdAt || 0);
+        if (currentTime > 0 && (existingTime === 0 || currentTime < existingTime)) {
+          group.rescouts = group.rescouts.filter((entry) => Number(entry.teamNumber || 0) !== teamNumber);
+          group.rescouts.push(row);
+        }
+      } else {
+        group.rescouts.push(row);
+        group.teamNumbers.push(teamNumber);
+      }
+      if (typeof row.officialScore === "number" && Number.isFinite(row.officialScore)) {
+        group.officialScore = Math.max(group.officialScore ?? 0, row.officialScore);
+      }
+      if (typeof row.penaltyPoints === "number" && Number.isFinite(row.penaltyPoints)) {
+        group.penaltyPoints = Math.max(group.penaltyPoints ?? 0, row.penaltyPoints);
+      }
+    });
+
+    map.forEach((group) => {
+      if (group.teamNumbers.length < 3) return;
+      const totalScoutedScore = group.rescouts.reduce((sum, row) => {
+        const score = typeof row.scoutedScore === "number" ? row.scoutedScore : Number(row.scoutedScore || 0);
+        return sum + (Number.isFinite(score) ? score : 0);
+      }, 0);
+      const penalty = typeof group.penaltyPoints === "number" ? group.penaltyPoints : 0;
+      group.totalScoutedScore = totalScoutedScore + penalty;
+      if (group.officialScore && Number.isFinite(group.officialScore)) {
+        group.accuracy = calculateAccuracy(group.totalScoutedScore ?? 0, group.officialScore);
+      }
+    });
+
+    return map;
+  }, [rescouts]);
+
   const comparisonByGroup = useMemo(() => {
     const map = new Map<string, { diffPercent: number }>();
     rescoutGroups.forEach((group) => {
@@ -573,83 +650,6 @@ function AccuracyVerificationContent() {
       void Promise.allSettled(updates);
     }
   }, [rescoutGroups, comparisonByGroup]);
-
-  const rescoutGroups = useMemo(() => {
-    const map = new Map<string, {
-      key: string;
-      eventKey: string;
-      matchKey: string;
-      alliance: "red" | "blue";
-      rescouts: RescoutEntry[];
-      teamNumbers: number[];
-      officialScore: number | null;
-      totalScoutedScore: number | null;
-      accuracy: number | null;
-      penaltyPoints: number | null;
-    }>();
-    rescouts.forEach((row) => {
-      const isSubmitted =
-        String(row.status || "").toLowerCase() === "submitted" ||
-        Boolean(row.practiceSessionId) ||
-        Boolean(row.submittedAt);
-      if (!isSubmitted) return;
-      const alliance = String(row.alliance || "").toLowerCase() === "blue" ? "blue" : "red";
-      const teamNumber = typeof row.teamNumber === "number" ? row.teamNumber : Number(row.teamNumber || 0);
-      if (!Number.isFinite(teamNumber) || teamNumber <= 0) return;
-      const eventKey = normalizeEventKey(String(row.eventKey || "").trim());
-      const matchKey = normalizeMatchId(String(row.matchKey || "").trim());
-      if (!matchKey || !eventKey) return;
-      const key = `${eventKey}::${matchKey}::${alliance}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          eventKey,
-          matchKey,
-          alliance,
-          rescouts: [],
-          teamNumbers: [],
-          officialScore: null,
-          totalScoutedScore: null,
-          accuracy: null,
-          penaltyPoints: null,
-        });
-      }
-      const group = map.get(key)!;
-      const existing = group.rescouts.find((entry) => Number(entry.teamNumber || 0) === teamNumber);
-      if (existing) {
-        const existingTime = Number(existing.submittedAt || existing.updatedAt || existing.createdAt || 0);
-        const currentTime = Number(row.submittedAt || row.updatedAt || row.createdAt || 0);
-        if (currentTime > 0 && (existingTime === 0 || currentTime < existingTime)) {
-          group.rescouts = group.rescouts.filter((entry) => Number(entry.teamNumber || 0) !== teamNumber);
-          group.rescouts.push(row);
-        }
-      } else {
-        group.rescouts.push(row);
-        group.teamNumbers.push(teamNumber);
-      }
-      if (typeof row.officialScore === "number" && Number.isFinite(row.officialScore)) {
-        group.officialScore = Math.max(group.officialScore ?? 0, row.officialScore);
-      }
-      if (typeof row.penaltyPoints === "number" && Number.isFinite(row.penaltyPoints)) {
-        group.penaltyPoints = Math.max(group.penaltyPoints ?? 0, row.penaltyPoints);
-      }
-    });
-
-    map.forEach((group) => {
-      if (group.teamNumbers.length < 3) return;
-      const totalScoutedScore = group.rescouts.reduce((sum, row) => {
-        const score = typeof row.scoutedScore === "number" ? row.scoutedScore : Number(row.scoutedScore || 0);
-        return sum + (Number.isFinite(score) ? score : 0);
-      }, 0);
-      const penalty = typeof group.penaltyPoints === "number" ? group.penaltyPoints : 0;
-      group.totalScoutedScore = totalScoutedScore + penalty;
-      if (group.officialScore && Number.isFinite(group.officialScore)) {
-        group.accuracy = calculateAccuracy(group.totalScoutedScore ?? 0, group.officialScore);
-      }
-    });
-
-    return map;
-  }, [rescouts]);
 
   const rescoutsByTeam = useMemo(() => {
     const map = new Map<string, RescoutEntry>();
