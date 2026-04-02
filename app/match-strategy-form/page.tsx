@@ -111,6 +111,26 @@ function normalizeScoutedMatchId(value: unknown): string {
   return raw.replace(/\s+/g, "");
 }
 
+async function fetchCompletedMatchIds(eventKey: string): Promise<Set<string>> {
+  const completed = new Set<string>();
+  const keys = expandEventKeyAliases(eventKey);
+  if (keys.length === 0) return completed;
+  const collections = ["scouting", "leadScouting", "matchStrategyPlans", "driveScouting"];
+  const snaps = await Promise.all(
+    collections.map((name) =>
+      Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))))
+    )
+  );
+  snaps.flat().flat().forEach((docSnap) => {
+    const row = docSnap.data() as Record<string, unknown>;
+    const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
+    if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
+    const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
+    if (matchId) completed.add(matchId);
+  });
+  return completed;
+}
+
 function labelForMatch(match: TBAMatch) {
   if (match.comp_level === "qm") return `Q${match.match_number}`;
   if (match.comp_level === "sf") return `SF${match.set_number}-${match.match_number}`;
@@ -325,27 +345,11 @@ function MatchStrategyFormContent() {
         setEventTbaMatches(matches);
         const completionNow = getEffectiveNowSec(teamTimeOverride);
         const completedSet = buildCompletedModalIdsFromTba(matches, completionNow);
-        const scoutingCompleted = new Set<string>();
         try {
-          const scoutingDocs = (
-            await Promise.all(
-              expandEventKeyAliases(assignedEvent).map((eventKey) =>
-                getDocs(query(collection(db, "scouting"), where("eventKey", "==", eventKey)))
-              )
-            )
-          ).flatMap((snap) => snap.docs);
-          scoutingDocs.forEach((docSnap) => {
-            const row = docSnap.data() as Record<string, unknown>;
-            const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
-            if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
-            const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
-            if (matchId) scoutingCompleted.add(matchId);
-          });
+          const completedFromForms = await fetchCompletedMatchIds(assignedEvent);
+          completedFromForms.forEach((id) => completedSet.add(id));
         } catch (error) {
           console.warn("Unable to load scouting completions:", error);
-        }
-        if (scoutingCompleted.size > 0) {
-          scoutingCompleted.forEach((id) => completedSet.add(id));
         }
         setModalCompleted(completedSet);
         const options: MatchOption[] = matches

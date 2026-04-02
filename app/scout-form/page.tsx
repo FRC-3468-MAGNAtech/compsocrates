@@ -15,6 +15,7 @@ import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
 import { expandEventKeyAliases } from "@/app/utils/events";
+import { expandEventKeyAliases } from "@/app/utils/events";
 import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import {
   buildCompletedModalIdsFromTba,
@@ -892,6 +893,26 @@ function mapAssignmentToMatchId(labelOrKey: string) {
   }
   return "";
 }
+
+async function fetchCompletedMatchIds(eventKey: string): Promise<Set<string>> {
+  const completed = new Set<string>();
+  const keys = expandEventKeyAliases(eventKey);
+  if (keys.length === 0) return completed;
+  const collections = ["scouting", "leadScouting", "matchStrategyPlans", "driveScouting"];
+  const snaps = await Promise.all(
+    collections.map((name) =>
+      Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))))
+    )
+  );
+  snaps.flat().flat().forEach((docSnap) => {
+    const row = docSnap.data() as Record<string, unknown>;
+    const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
+    if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
+    const matchId = normalizeScoutedMatchId(row.matchId || row.matchKey || row.matchLabel);
+    if (matchId) completed.add(matchId);
+  });
+  return completed;
+}
 function ScoutFormContent() {
   const router = useRouter();
   const { userData, teamTimeOverride } = useAuth();
@@ -1244,6 +1265,8 @@ function ScoutFormContent() {
         setTargets(next.length > 0 ? nextTargets : {});
         const completionNow = getEffectiveNowSec(teamTimeOverride);
         const completedSet = matches.length > 0 ? buildCompletedModalIdsFromTba(matches, completionNow) : new Set<string>();
+        const completedFromForms = await fetchCompletedMatchIds(assignedEvent);
+        completedFromForms.forEach((id) => completedSet.add(id));
         setModalCompleted(completedSet);
 
         if (overrideEvent) {
@@ -1444,6 +1467,8 @@ function ScoutFormContent() {
         if (!teamsMap.has(matchId)) teamsMap.set(matchId, new Set<string>());
         if (team) teamsMap.get(matchId)?.add(team);
       });
+      const completedFromForms = await fetchCompletedMatchIds(eventKey);
+      completedFromForms.forEach((id) => completedFromScouting.add(id));
       if (completedFromScouting.size > 0) {
         setModalCompleted((prev) => {
           const next = new Set(prev);
