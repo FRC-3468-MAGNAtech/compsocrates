@@ -28,6 +28,7 @@ import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeam
 
 interface Assignment {
   id: string;
+  teamId?: string;
   eventKey: string;
   matchKey: string;
   matchLabel: string;
