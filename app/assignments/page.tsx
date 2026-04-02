@@ -80,9 +80,6 @@ interface PracticeAssignment {
   assignedAt: number;
 }
 
-type PracticeAssignmentRow = (PracticeAssignment | Assignment) & {
-  sourceCollection: "practiceAssignments" | "matchAssignments";
-};
 
 interface SubInClaim {
   matchId: string;
@@ -582,11 +579,8 @@ async function buildPracticeRowsFromMatchListStyle(
   return [...firstPractice, ...tbaPractice].sort((a, b) => a.matchNumber - b.matchNumber);
 }
 
-function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string; assignmentType?: string }) {
-  if (row.assignmentType) return row.assignmentType === "event-practice";
-  const key = String(row.matchKey || "").toLowerCase();
-  const label = String(row.matchLabel || "").toLowerCase();
-  return key.includes("_pm") || /^p\d+$/.test(key) || label.includes("practice ");
+function isEventPracticeAssignment(row: { assignmentType?: string }) {
+  return row.assignmentType === "event-practice";
 }
 
 function isTeamAssignmentRow(row: { assignmentType?: string }) {
@@ -2142,14 +2136,6 @@ function buildBalancedIntervalSchedule(
     }
   }
 
-  async function deletePracticeAssignmentRow(assignment: PracticeAssignmentRow) {
-    if (assignment.sourceCollection === "matchAssignments") {
-      await deleteAssignment(assignment.id);
-      return;
-    }
-    await deletePracticeAssignment(assignment.id);
-  }
-
   async function deleteAssignmentsByCategory(target: "match" | "pit" | "practice" | "team") {
     if (!userData?.teamId) return;
     if (!canBulkDelete) {
@@ -2917,7 +2903,6 @@ function buildBalancedIntervalSchedule(
     () => {
     const merged = assignments
       .slice()
-      .filter((assignment) => !isEventPracticeAssignment(assignment))
       .filter((assignment) => !isTeamAssignmentRow(assignment));
       return merged.sort((a, b) => {
           const aKey = getAssignmentMatchSortKey(a);
@@ -2932,32 +2917,19 @@ function buildBalancedIntervalSchedule(
     },
     [assignments]
   );
-  const eventPracticeAssignments = useMemo<PracticeAssignmentRow[]>(
+  const practiceAssignmentsSorted = useMemo(
     () =>
-      assignments
-        .filter((assignment) => isEventPracticeAssignment(assignment))
-        .map((assignment) => ({
-          ...assignment,
-          sourceCollection: "matchAssignments" as const,
-        })),
-    [assignments]
+      practiceAssignments
+        .slice()
+        .sort((a, b) => {
+          const eventDiff = String(a.eventKey || "").localeCompare(String(b.eventKey || ""));
+          if (eventDiff !== 0) return eventDiff;
+          const labelDiff = String(a.matchLabel || a.matchKey || "").localeCompare(String(b.matchLabel || b.matchKey || ""));
+          if (labelDiff !== 0) return labelDiff;
+          return a.teamNumber - b.teamNumber;
+        }),
+    [practiceAssignments]
   );
-  const practiceAssignmentsCombined = useMemo<PracticeAssignmentRow[]>(() => {
-    const combined: PracticeAssignmentRow[] = [
-      ...practiceAssignments.map((assignment) => ({
-        ...assignment,
-        sourceCollection: "practiceAssignments" as const,
-      })),
-      ...eventPracticeAssignments,
-    ];
-    return combined.sort((a, b) => {
-      const eventDiff = String(a.eventKey || "").localeCompare(String(b.eventKey || ""));
-      if (eventDiff !== 0) return eventDiff;
-      const labelDiff = String(a.matchLabel || a.matchKey || "").localeCompare(String(b.matchLabel || b.matchKey || ""));
-      if (labelDiff !== 0) return labelDiff;
-      return a.teamNumber - b.teamNumber;
-    });
-  }, [practiceAssignments, eventPracticeAssignments]);
   const pitAssignmentsSorted = useMemo(
     () => pitAssignments.slice().sort((a, b) => a.teamNumber - b.teamNumber),
     [pitAssignments]
@@ -3287,7 +3259,7 @@ function buildBalancedIntervalSchedule(
                           </tr>
                         ))}
                       {assignmentView === "practice" &&
-                        practiceAssignmentsCombined.map((assignment) => (
+                        practiceAssignmentsSorted.map((assignment) => (
                           <tr key={assignment.id}>
                             <td className="px-6 py-4 whitespace-nowrap font-medium">{assignment.matchLabel || assignment.matchKey}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.eventKey}</td>
@@ -3306,7 +3278,7 @@ function buildBalancedIntervalSchedule(
                             <td className="px-6 py-4 whitespace-nowrap">Team {assignment.teamNumber}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               {canManageAssignments ? (
-                                <button onClick={() => void deletePracticeAssignmentRow(assignment)} className="text-red-600 hover:text-red-800">
+                                <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
                                   <Trash2 size={18} />
                                 </button>
                               ) : (
@@ -3330,7 +3302,7 @@ function buildBalancedIntervalSchedule(
                           <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">No match assignments yet.</td>
                         </tr>
                       )}
-                      {assignmentView === "practice" && practiceAssignmentsCombined.length === 0 && (
+                      {assignmentView === "practice" && practiceAssignmentsSorted.length === 0 && (
                         <tr>
                           <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">No practice assignments yet.</td>
                         </tr>
