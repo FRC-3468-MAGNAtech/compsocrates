@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decryptTbaKey } from "@/app/api/tba/_crypto";
+import { normalizeEventKey } from "@/app/utils/events";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const eventKey = String(body?.eventKey || "").trim().toLowerCase();
+    const rawEventKey = String(body?.eventKey || "").trim().toLowerCase();
+    const eventKey = normalizeEventKey(rawEventKey);
     const encryptedKey = typeof body?.encryptedKey === "string" ? body.encryptedKey : "";
     const plainKey = typeof body?.plainKey === "string" ? body.plainKey.trim() : "";
     if (!eventKey || (!encryptedKey && !plainKey)) {

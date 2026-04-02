@@ -1,6 +1,8 @@
 // TBA (The Blue Alliance) API Integration
 // This file provides functions to fetch real FRC event data
 
+import { normalizeEventKey } from "@/app/utils/events";
+
 const TBA_BASE_URL = "https://www.thebluealliance.com/api/v3";
 const TBA_API_KEY = process.env.NEXT_PUBLIC_TBA_API_KEY || ""; // Fallback key from .env.local
 
@@ -84,17 +86,20 @@ export async function getEventsByYear(year: number, apiKey?: string): Promise<TB
 
 // Get a specific event by key (e.g., "2026arli" for 2026 Arkansas Regional at Little Rock)
 export async function getEvent(eventKey: string, apiKey?: string): Promise<TBAEvent> {
-  return tbaFetch(`/event/${eventKey}`, apiKey);
+  const safeKey = normalizeEventKey(eventKey);
+  return tbaFetch(`/event/${safeKey}`, apiKey);
 }
 
 // Get all teams at an event
 export async function getEventTeams(eventKey: string, apiKey?: string): Promise<TBATeam[]> {
-  return tbaFetch(`/event/${eventKey}/teams`, apiKey);
+  const safeKey = normalizeEventKey(eventKey);
+  return tbaFetch(`/event/${safeKey}/teams`, apiKey);
 }
 
 // Get all matches at an event
 export async function getEventMatches(eventKey: string, apiKey?: string): Promise<TBAMatch[]> {
-  return tbaFetch(`/event/${eventKey}/matches`, apiKey);
+  const safeKey = normalizeEventKey(eventKey);
+  return tbaFetch(`/event/${safeKey}/matches`, apiKey);
 }
 
 // Get team info
