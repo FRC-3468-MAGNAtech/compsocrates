@@ -177,10 +177,14 @@ function LeadAnalyticsContent() {
     async function load() {
       setLoading(true);
       try {
-        const results = await Promise.allSettled([
-          getDocs(collection(db, "leadScouting")),
-          getDocs(query(collection(db, "scouting"), where("entryType", "==", "lead"))),
-        ]);
+        const teamId = String(userData?.teamId || "").trim();
+        const leadQuery = teamId
+          ? query(collection(db, "leadScouting"), where("teamId", "==", teamId))
+          : collection(db, "leadScouting");
+        const scoutingQuery = teamId
+          ? query(collection(db, "scouting"), where("entryType", "==", "lead"), where("teamId", "==", teamId))
+          : query(collection(db, "scouting"), where("entryType", "==", "lead"));
+        const results = await Promise.allSettled([getDocs(leadQuery), getDocs(scoutingQuery)]);
         const leadEntries =
           results[0].status === "fulfilled"
             ? results[0].value.docs.map((doc) => ({
@@ -207,7 +211,7 @@ function LeadAnalyticsContent() {
       }
     }
     void load();
-  }, []);
+  }, [userData?.teamId]);
 
   const normalized = useMemo(
     () =>
