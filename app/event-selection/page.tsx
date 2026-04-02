@@ -57,9 +57,9 @@ function EventSelectionContent() {
           throw new Error(`Unable to load events (${response.status})`);
         }
         const payload = await response.json();
-        const rawEvents = Array.isArray(payload.events) ? payload.events : [];
+        const rawEvents = Array.isArray(payload.events) ? (payload.events as TBAEvent[]) : [];
         const normalized = dedupeEventOptionsByKey(
-          rawEvents.map((event) => ({
+          rawEvents.map((event: TBAEvent) => ({
             ...event,
             key: normalizeEventKey(String(event.key || "").trim()),
           }))
