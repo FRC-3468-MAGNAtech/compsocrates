@@ -15,7 +15,6 @@ import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
 import { expandEventKeyAliases } from "@/app/utils/events";
-import { expandEventKeyAliases } from "@/app/utils/events";
 import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import {
   buildCompletedModalIdsFromTba,
