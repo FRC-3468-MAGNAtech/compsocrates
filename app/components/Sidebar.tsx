@@ -141,9 +141,7 @@ export default function Sidebar() {
       ? [{ href: "/helper-form", label: "Helper Form", icon: ClipboardList }]
       : []),
     { href: "/analytics", label: "Analytics", icon: TrendingUp },
-    ...(canAccessForm({ formKey: "accuracy-verification", user: userData, formAccessOverrides })
-      ? [{ href: "/analytics/accuracy-verification", label: "Accuracy Verification", icon: TrendingUp }]
-      : []),
+    // Accuracy Verification temporarily hidden from all users.
     { href: "/practice-scouting", label: "Practice Scouting", icon: Target },
     { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
     { href: "/judge-book", label: "Judge Book", icon: BookOpen },

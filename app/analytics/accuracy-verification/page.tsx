@@ -205,6 +205,10 @@ function AccuracyVerificationContent() {
   const canSee = canAccessForm({ formKey: "accuracy-verification", user: userData, formAccessOverrides });
   const canManageAll = Boolean(userData?.isTeamAdmin);
 
+  useEffect(() => {
+    router.replace("/dashboard");
+  }, [router]);
+
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [rescouts, setRescouts] = useState<RescoutEntry[]>([]);
@@ -841,13 +845,7 @@ function AccuracyVerificationContent() {
     router.push(`/analytics/accuracy-compare?${params.toString()}`);
   }
 
-  if (!canSee) {
-    return (
-      <div className="flex h-screen bg-gray-100">
-        <div className="m-auto text-center text-gray-600">You do not have access to Accuracy Verification.</div>
-      </div>
-    );
-  }
+  return null;
 
   if (loading) {
     return (
