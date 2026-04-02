@@ -80,7 +80,7 @@ function TeamPickerModal({
                     {done
                       ? `${team} (Scouted)`
                       : mine
-                      ? `${team} (Your Robot)`
+                      ? `${team} (Assigned)`
                       : assigned
                       ? `${team} (Assigned)`
                       : team}
