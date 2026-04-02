@@ -24,12 +24,22 @@ function resolveFirstCredentials() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const year = Number(body?.year);
-    const eventCode = String(body?.eventCode || "").trim().toUpperCase();
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    let year = Number(body?.year);
+    let eventCode = String(body?.eventCode || "").trim().toUpperCase();
     const tournamentLevel = String(body?.tournamentLevel || "").trim();
     if (!Number.isFinite(year) || !eventCode) {
-      return NextResponse.json({ error: "Missing year or eventCode" }, { status: 400 });
+      const eventKey = String(body?.eventKey || body?.key || "").trim();
+      if (eventKey) {
+        const derivedYear = Number(eventKey.slice(0, 4));
+        if (Number.isFinite(derivedYear)) year = derivedYear;
+        if (!eventCode) {
+          eventCode = eventKey.slice(4).toUpperCase() || eventKey.toUpperCase();
+        }
+      }
+    }
+    if (!Number.isFinite(year) || !eventCode) {
+      return NextResponse.json({ error: "Missing year or eventCode", received: body }, { status: 400 });
     }
 
     const { username, token } = resolveFirstCredentials();
