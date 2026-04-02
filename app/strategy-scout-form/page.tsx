@@ -15,11 +15,12 @@ type TeamPickerProps = {
   onClose: () => void;
   teams: string[];
   assignedTeams: Set<string>;
+  userTeams: Set<string>;
   scoutedTeams: Set<string>;
   onSelect: (team: string) => void;
 };
 
-function TeamPickerModal({ open, onClose, teams, assignedTeams, scoutedTeams, onSelect }: TeamPickerProps) {
+function TeamPickerModal({ open, onClose, teams, assignedTeams, userTeams, scoutedTeams, onSelect }: TeamPickerProps) {
   return (
     <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
         <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
@@ -31,6 +32,7 @@ function TeamPickerModal({ open, onClose, teams, assignedTeams, scoutedTeams, on
               {teams.map((team) => {
                 const done = scoutedTeams.has(team);
                 const assigned = assignedTeams.has(team);
+                const mine = userTeams.has(team);
                 return (
                   <button
                     key={team}
@@ -40,9 +42,21 @@ function TeamPickerModal({ open, onClose, teams, assignedTeams, scoutedTeams, on
                       onSelect(team);
                       onClose();
                     }}
-                    className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
+                    className={`rounded-lg border p-3 text-sm text-left ${
+                      done
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
+                        : mine
+                        ? "bg-indigo-50 border-indigo-400 text-indigo-900"
+                        : "hover:bg-gray-50 border-red-400"
+                    }`}
                   >
-                    {done ? `${team} (Scouted)` : assigned ? `${team} (Assigned)` : team}
+                    {done
+                      ? `${team} (Scouted)`
+                      : mine
+                      ? `${team} (Your Robot)`
+                      : assigned
+                      ? `${team} (Assigned)`
+                      : team}
                   </button>
                 );
               })}
@@ -121,6 +135,7 @@ function TeamStrategyFormContent() {
   const [notes, setNotes] = useState("");
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [assignedTeamNumbers, setAssignedTeamNumbers] = useState<string[]>([]);
+  const [allAssignedTeamNumbers, setAllAssignedTeamNumbers] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
   const [teamLoadNote, setTeamLoadNote] = useState("");
   const [editEventKey, setEditEventKey] = useState<string | null>(null);
@@ -232,6 +247,37 @@ function TeamStrategyFormContent() {
         const sortedAssignedTeams = Array.from(new Set(assignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b));
         setAssignedTeamNumbers(sortedAssignedTeams);
 
+        let allAssignments: Record<string, unknown>[] = [];
+        try {
+          const allTeamSnap = await getDocs(
+            query(collection(db, "teamAssignments"), where("eventKey", "==", effectiveEvent))
+          );
+          allAssignments = allTeamSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        } catch (error) {
+          console.warn("Unable to load all team assignments:", error);
+        }
+        if (allAssignments.length === 0) {
+          try {
+            const fallbackSnap = await getDocs(
+              query(
+                collection(db, "matchAssignments"),
+                where("eventKey", "==", effectiveEvent),
+                where("assignmentType", "==", "team")
+              )
+            );
+            allAssignments = fallbackSnap.docs.map((row) => row.data() as Record<string, unknown>);
+          } catch (error) {
+            console.warn("Unable to load fallback team assignments:", error);
+          }
+        }
+        const allAssignedTeamsForEvent = allAssignments
+          .filter((assignment) => String(assignment.eventKey || "").trim() === effectiveEvent)
+          .map((assignment) => String(assignment.teamNumber || "").replace(/[^\d]/g, ""))
+          .filter(Boolean);
+        setAllAssignedTeamNumbers(
+          Array.from(new Set(allAssignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b))
+        );
+
         const manualByEvent = (teamData.manualTeamListsByEvent || {}) as Record<string, unknown>;
         const storedManualTeams = parseManualTeamList(manualByEvent[effectiveEvent]);
 
@@ -333,7 +379,8 @@ function TeamStrategyFormContent() {
     return teamNumber.trim().length > 0 && startingPosition && bestAt;
   }, [teamNumber, startingPosition, bestAt]);
 
-  const assignedTeamSet = useMemo(() => new Set(assignedTeamNumbers), [assignedTeamNumbers]);
+  const assignedTeamSet = useMemo(() => new Set(allAssignedTeamNumbers), [allAssignedTeamNumbers]);
+  const userTeamSet = useMemo(() => new Set(assignedTeamNumbers), [assignedTeamNumbers]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -510,6 +557,7 @@ function TeamStrategyFormContent() {
         onClose={() => setShowTeamPicker(false)}
         teams={availableTeams}
         assignedTeams={assignedTeamSet}
+        userTeams={userTeamSet}
         scoutedTeams={scoutedTeams}
         onSelect={setTeamNumber}
       />

@@ -35,6 +35,7 @@ function TeamPickerModal({
   open,
   teams,
   assignedTeams,
+  userTeams,
   scoutedTeams,
   onClose,
   onSelect,
@@ -42,6 +43,7 @@ function TeamPickerModal({
   open: boolean;
   teams: string[];
   assignedTeams: Set<string>;
+  userTeams: Set<string>;
   scoutedTeams: Set<string>;
   onClose: () => void;
   onSelect: (team: string) => void;
@@ -57,6 +59,7 @@ function TeamPickerModal({
               {teams.map((team) => {
                 const done = scoutedTeams.has(team);
                 const assigned = assignedTeams.has(team);
+                const mine = userTeams.has(team);
                 return (
                   <button
                     key={team}
@@ -66,9 +69,21 @@ function TeamPickerModal({
                       onSelect(team);
                       onClose();
                     }}
-                    className={`rounded-lg border p-3 text-sm text-left ${done ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300" : "hover:bg-gray-50 border-red-400"}`}
+                    className={`rounded-lg border p-3 text-sm text-left ${
+                      done
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
+                        : mine
+                        ? "bg-indigo-50 border-indigo-400 text-indigo-900"
+                        : "hover:bg-gray-50 border-red-400"
+                    }`}
                   >
-                    {done ? `${team} (Scouted)` : assigned ? `${team} (Assigned)` : team}
+                    {done
+                      ? `${team} (Scouted)`
+                      : mine
+                      ? `${team} (Your Robot)`
+                      : assigned
+                      ? `${team} (Assigned)`
+                      : team}
                   </button>
                 );
               })}
@@ -129,6 +144,7 @@ function PitScoutFormContent() {
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
   const [assignedPitTeams, setAssignedPitTeams] = useState<string[]>([]);
+  const [allAssignedPitTeams, setAllAssignedPitTeams] = useState<string[]>([]);
   const [teamLoadNote, setTeamLoadNote] = useState("");
   const [form, setForm] = useState<PitFormState>({
     scoutName: userData?.displayName || "",
@@ -273,6 +289,23 @@ function PitScoutFormContent() {
         const sortedAssignedTeams = Array.from(new Set(assignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b));
         setAssignedPitTeams(sortedAssignedTeams);
 
+        let allPitAssignments: Record<string, unknown>[] = [];
+        try {
+          const allPitSnap = await getDocs(
+            query(collection(db, "pitAssignments"), where("eventKey", "==", effectiveEvent))
+          );
+          allPitAssignments = allPitSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        } catch (error) {
+          console.warn("Unable to load all pit assignments:", error);
+        }
+        const allAssignedTeamsForEvent = allPitAssignments
+          .filter((assignment) => String(assignment.eventKey || "").trim() === effectiveEvent)
+          .map((assignment) => String(assignment.teamNumber || "").replace(/[^\d]/g, ""))
+          .filter(Boolean);
+        setAllAssignedPitTeams(
+          Array.from(new Set(allAssignedTeamsForEvent)).sort((a, b) => Number(a) - Number(b))
+        );
+
         const manualByEvent = (teamData.manualTeamListsByEvent || {}) as Record<string, unknown>;
         const storedManualTeams = parseManualTeamList(manualByEvent[effectiveEvent]);
 
@@ -374,7 +407,8 @@ function PitScoutFormContent() {
     return form.teamNumber.trim().length > 0;
   }, [form.teamNumber]);
 
-  const assignedTeamSet = useMemo(() => new Set(assignedPitTeams), [assignedPitTeams]);
+  const assignedTeamSet = useMemo(() => new Set(allAssignedPitTeams), [allAssignedPitTeams]);
+  const userTeamSet = useMemo(() => new Set(assignedPitTeams), [assignedPitTeams]);
 
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
@@ -655,6 +689,7 @@ function PitScoutFormContent() {
         open={showTeamPicker}
         teams={availableTeams}
         assignedTeams={assignedTeamSet}
+        userTeams={userTeamSet}
         scoutedTeams={scoutedTeams}
         onClose={() => setShowTeamPicker(false)}
         onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
