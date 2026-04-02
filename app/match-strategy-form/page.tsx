@@ -121,7 +121,7 @@ async function fetchCompletedMatchIds(eventKey: string): Promise<Set<string>> {
       Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))))
     )
   );
-  snaps.flat().flat().forEach((docSnap) => {
+  snaps.flat().flatMap((snap) => snap.docs).forEach((docSnap) => {
     const row = docSnap.data() as Record<string, unknown>;
     const entryType = String(row.entryType || row.formType || "").toLowerCase().trim();
     if (entryType === "sub-in-request" || entryType === "sub-in-claim") return;
