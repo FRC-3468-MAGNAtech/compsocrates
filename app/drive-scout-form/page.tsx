@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where, type QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -149,14 +149,14 @@ async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promis
       return Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))));
     })
   );
-  const docs = snaps.reduce<typeof snaps[number] extends (infer T)[] ? T[] : never[]>((acc, snap) => {
+  const docs: QueryDocumentSnapshot[] = [];
+  snaps.forEach((snap) => {
     if (Array.isArray(snap)) {
-      snap.forEach((inner) => acc.push(...inner.docs));
-      return acc;
+      snap.forEach((inner) => docs.push(...inner.docs));
+      return;
     }
-    acc.push(...snap.docs);
-    return acc;
-  }, []);
+    docs.push(...snap.docs);
+  });
   docs.forEach((docSnap) => {
     const row = docSnap.data() as Record<string, unknown>;
     const rowEventKey = normalizeEventKey(String(row.eventKey || "").trim());
