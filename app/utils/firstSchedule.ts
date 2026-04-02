@@ -87,6 +87,7 @@ function readScore(row: Record<string, unknown>, alliance: "red" | "blue"): numb
 export function getFirstEventCodeFromTbaKey(key: string): string {
   const normalized = String(key || "").toLowerCase();
   const specialMap: Record<string, string> = {
+    "2026lake": "LAKE",
     "2026labr": "LAKE",
     "2025lake": "LAKE",
   };
@@ -172,3 +173,4 @@ export function splitFirstAllianceTeams(match: FirstScheduleMatch): { red: numbe
 
   return { red, blue };
 }
+

@@ -25,7 +25,7 @@ function classifyRebuiltEventByTimestamp(timestamp) {
   const date = new Date(time);
   const windows = [
     { key: "2026arli", start: "2026-03-18", end: "2026-03-21" },
-    { key: "2026labr", start: "2026-04-01", end: "2026-04-04" },
+    { key: "2026lake", start: "2026-04-01", end: "2026-04-04" },
   ];
   for (const window of windows) {
     const start = new Date(`${window.start}T00:00:00`);
@@ -171,4 +171,5 @@ run().catch((error) => {
   console.error("Migration failed:", error);
   process.exit(1);
 });
+
 

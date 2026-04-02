@@ -25,7 +25,7 @@ export const APP_EVENTS: AppEvent[] = [
     event_type: "Regional",
   },
   {
-    key: "2026labr",
+    key: "2026lake",
     name: "Bayou Regional",
     location: "Kenner, LA",
     city: "Kenner",
@@ -45,7 +45,9 @@ export const APP_EVENT_BY_KEY = APP_EVENTS.reduce<Record<string, AppEvent>>((acc
 
 const EVENT_KEY_ALIASES: Record<string, string> = {
   // Legacy Bayou key used during 2025 data seeding.
-  "2025lake": "2026labr",
+  "2025lake": "2026lake",
+  // Mistyped Bayou key used in early 2026 configs.
+  "2026labr": "2026lake",
 };
 
 export function normalizeEventKey(eventKey: string): string {
@@ -64,3 +66,4 @@ export function dedupeEventKeys(eventKeys: string[]): string[] {
   });
   return deduped;
 }
+

@@ -105,7 +105,7 @@ function TeamPickerModal({
 function getFirstEventCodeFromTbaKey(key: string): string {
   const normalized = String(key || "").toLowerCase();
   const specialMap: Record<string, string> = {
-    "2026labr": "LAKE",
+    "2026lake": "LAKE",
     "2025lake": "LAKE",
   };
   if (specialMap[normalized]) return specialMap[normalized];
@@ -705,3 +705,4 @@ export default function PitScoutFormPage() {
     </ProtectedRoute>
   );
 }
+
