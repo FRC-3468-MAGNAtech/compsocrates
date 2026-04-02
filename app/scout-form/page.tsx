@@ -1330,6 +1330,7 @@ function ScoutFormContent() {
         };
 
         let nextMatch: MatchOption | null = null;
+        let forceAssignedMatch = false;
         const editKey = editMatchId ? editMatchId.replace(/m\d+$/i, "") : "";
         const editTarget = editMatchId
           ? resolved.find((match) => {
@@ -1347,6 +1348,7 @@ function ScoutFormContent() {
           const isAttending = assignedMatchIds.size > 0 || isUserAttendingEvent(attendeesByEvent, assignedEvent, userData);
           if (assignedMatches.length > 0) {
             nextMatch = pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches);
+            forceAssignedMatch = true;
           } else if (!isAttending) {
             nextMatch =
               resolved.find((match) => match.type === "qualification" && match.matchNumber === 1) ||
@@ -1366,6 +1368,7 @@ function ScoutFormContent() {
           if (!current) return nextMatch;
           const currentStillExists = resolved.some((match) => match.id === current.id);
           if (!currentStillExists) return nextMatch;
+          if (forceAssignedMatch && nextMatch && !assignedMatchIds.has(current.id)) return nextMatch;
           if (completedSet.has(current.id)) return nextMatch;
           if (current.type === "practice" && nextMatch.type !== "practice") return nextMatch;
           return current;
