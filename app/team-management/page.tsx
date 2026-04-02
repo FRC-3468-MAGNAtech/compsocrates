@@ -31,6 +31,7 @@ interface TeamMember {
   email: string;
   role: string;
   roles?: string[];
+  secondaryRoles?: string[];
   isTeamAdmin: boolean;
   teamId: string;
 }
@@ -159,6 +160,8 @@ function TeamManagementContent() {
 
   async function handleApproveRequest(request: JoinRequest) {
     const resolvedRole = normalizeLegacyRole(request.requestedRole || request.userRole || "match-scout");
+    const resolvedSecondary = resolvedRole === "drive-team" ? ["pit-team"] : [];
+    const resolvedRoles = Array.from(new Set([resolvedRole, ...resolvedSecondary]));
     async function approveViaClientFallback() {
       const targetUserId = String(request.userId || "").trim();
       let profileSyncPending = false;
@@ -166,23 +169,25 @@ function TeamManagementContent() {
         await updateDoc(doc(db, "users", targetUserId), {
           teamId: request.teamId,
           role: resolvedRole,
-          roles: [resolvedRole],
+          roles: resolvedRoles,
+          secondaryRoles: resolvedSecondary,
           specialRole: null,
           specialRoles: [],
         });
       } catch {
         try {
           await setDoc(
-            doc(db, "users", targetUserId),
-            {
-              uid: targetUserId,
-              teamId: request.teamId,
-              role: resolvedRole,
-              roles: [resolvedRole],
-              specialRole: null,
-              specialRoles: [],
-              isTeamAdmin: false,
-            },
+          doc(db, "users", targetUserId),
+          {
+            uid: targetUserId,
+            teamId: request.teamId,
+            role: resolvedRole,
+            roles: resolvedRoles,
+            secondaryRoles: resolvedSecondary,
+            specialRole: null,
+            specialRoles: [],
+            isTeamAdmin: false,
+          },
             { merge: true }
           );
         } catch {
@@ -257,16 +262,17 @@ function TeamManagementContent() {
     }
   }
 
-  async function handleUpdateRole(uid: string, roles: TeamRole[], isTeamAdmin: boolean) {
+  async function handleUpdateRole(uid: string, primaryRole: TeamRole, secondaryRoles: TeamRole[], isTeamAdmin: boolean) {
     if (!isUserAdmin) {
       alert("Only team admins can change roles.");
       return;
     }
     try {
-      const primaryRole = roles.includes("drive-team") ? "drive-team" : roles[0] || "match-scout";
+      const roles = Array.from(new Set([primaryRole, ...secondaryRoles]));
       await updateSecureUserDoc(uid, {
         role: primaryRole,
         roles,
+        secondaryRoles,
         specialRole: null,
         specialRoles: [],
         isTeamAdmin,
@@ -287,6 +293,7 @@ function TeamManagementContent() {
         teamId: "",
         role: "match-scout",
         roles: ["match-scout"],
+        secondaryRoles: [],
         specialRoles: [],
         specialRole: null,
         isTeamAdmin: false,
@@ -299,7 +306,10 @@ function TeamManagementContent() {
   }
 
   function getMemberRoles(member: TeamMember): TeamRole[] {
-    return sanitizeRoles(member.roles, member.role);
+    return sanitizeRoles(
+      [...(member.roles || []), ...(member.secondaryRoles || [])],
+      member.role
+    );
   }
 
   function hasPermissionByRole(formKey: FormKey, memberRoles: TeamRole[]): boolean {
@@ -464,7 +474,8 @@ function TeamManagementContent() {
                   {members.map((member) => {
                     const badge = getRoleBadge(member.role, member.roles);
                     const memberRoles = getMemberRoles(member);
-                    const isDriveWithPit = memberRoles.includes("drive-team") && memberRoles.includes("pit-team");
+                    const primaryRole = normalizeLegacyRole(member.role);
+                    const secondaryRoles = memberRoles.filter((role) => role !== primaryRole);
                     return (
                       <tr key={member.uid}>
                         <td className="px-6 py-4">
@@ -476,11 +487,11 @@ function TeamManagementContent() {
                             <span className={`px-2 py-1 rounded text-xs font-medium ${badge.bg} ${badge.text}`}>
                               {badge.label}
                             </span>
-                            {isDriveWithPit && (
-                              <span className="px-2 py-1 rounded text-xs font-medium bg-cyan-100 text-cyan-800">
-                                Pit Team (auto)
+                            {secondaryRoles.map((role) => (
+                              <span key={`${member.uid}-${role}`} className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 border">
+                                {getRoleLabel(role)}
                               </span>
-                            )}
+                            ))}
                           </div>
                         </td>
                         <td className="px-6 py-4">{member.isTeamAdmin ? "Yes" : "No"}</td>
@@ -518,9 +529,12 @@ function TeamManagementContent() {
           {showRoleSelector && selectedMember && (
             <RoleSelector
               currentRoles={getMemberRoles(selectedMember)}
+              currentPrimaryRole={normalizeLegacyRole(selectedMember.role)}
               isTeamAdmin={selectedMember.isTeamAdmin}
               memberName={selectedMember.displayName}
-              onSave={(roles, memberIsAdmin) => void handleUpdateRole(selectedMember.uid, roles, memberIsAdmin)}
+              onSave={(primaryRole, secondaryRoles, memberIsAdmin) =>
+                void handleUpdateRole(selectedMember.uid, primaryRole, secondaryRoles, memberIsAdmin)
+              }
               onClose={() => {
                 setShowRoleSelector(false);
                 setSelectedMember(null);

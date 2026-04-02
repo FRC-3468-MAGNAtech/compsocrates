@@ -22,7 +22,7 @@ interface FormField {
 const REEFSCAPE_MATCH_PRESET_FIELDS: FormField[] = [
   { id: "scoutName", label: "Scout Name", type: "text", section: "Pre-Match", required: true },
   { id: "team", label: "Team Number", type: "number", section: "Pre-Match", required: true },
-  { id: "startingPosition", label: "Starting Position", type: "select", section: "Pre-Match", options: ["Not There", "Processor Side", "Middle", "Opposite Side"], required: true },
+  { id: "startingPosition", label: "Starting Position", type: "select", section: "Pre-Match", options: ["Not There", "Outpost Trench", "Outpost Side", "Outpost Bump", "Middle", "Depot Bump", "Depot Side", "Depot Trench"], required: true },
   { id: "leftStartingZone", label: "Left Starting Zone", type: "checkbox", section: "Autonomous", required: false },
   { id: "autoCoralMissed", label: "Auto Coral Missed", type: "number", section: "Autonomous", required: false },
   { id: "autoCoralL1", label: "Auto Coral L1", type: "number", section: "Autonomous", required: false },

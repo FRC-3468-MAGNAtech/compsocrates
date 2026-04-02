@@ -3,6 +3,7 @@ import { TeamRole, getPrimaryRole, sanitizeRoles } from "@/app/utils/roles";
 type DashboardUser = {
   role?: string;
   roles?: string[];
+  secondaryRoles?: string[];
   teamId?: string;
   preferredDashboard?: string;
 };
@@ -36,6 +37,12 @@ export function getDashboardRoute(user: DashboardUser | null | undefined): strin
     "/coach-dashboard",
   ]);
   if (allowed.has(preferred)) return preferred;
-  const roles = sanitizeRoles(user.roles, user.role);
-  return getRoleDashboard(getPrimaryRole(roles));
+  const roles = sanitizeRoles(
+    [
+      ...(Array.isArray(user.roles) ? user.roles : []),
+      ...(Array.isArray(user.secondaryRoles) ? user.secondaryRoles : []),
+    ],
+    user.role
+  );
+  return getRoleDashboard(getPrimaryRole(roles, user.role));
 }

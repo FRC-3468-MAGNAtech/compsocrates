@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { useRouter, useSearchParams } from "next/navigation";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { Image as ImageIcon, Link as LinkIcon, Trash2 } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -15,6 +15,7 @@ type PitFormState = {
   scoutName: string;
   teamNumber: string;
   robotWeight: string;
+  rookieTeam: boolean;
   robotPictureUrl: string;
   pitDisposition: boolean;
   driveDisposition: boolean;
@@ -111,11 +112,16 @@ function parseManualTeamCsv(raw: string): string[] {
 function PitScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("editId");
+  const editCollectionParam = searchParams.get("editCollection");
+  const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [robotPictureUrlInput, setRobotPictureUrlInput] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
+  const [editEventKey, setEditEventKey] = useState<string | null>(null);
   const [apiTeams, setApiTeams] = useState<string[]>([]);
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
@@ -125,6 +131,7 @@ function PitScoutFormContent() {
     scoutName: userData?.displayName || "",
     teamNumber: "",
     robotWeight: "",
+    rookieTeam: false,
     robotPictureUrl: "",
     pitDisposition: false,
     driveDisposition: false,
@@ -192,12 +199,55 @@ function PitScoutFormContent() {
   }, [userData?.displayName]);
 
   useEffect(() => {
+    if (!editId) return;
+    let isActive = true;
+    const editIdValue = editId;
+    const collectionName: string = editCollectionParam || "pitScouting";
+    async function loadEditEntry() {
+      try {
+        const snap = await getDoc(doc(db, collectionName, editIdValue));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (!isActive) return;
+        const entryEventKey = String(data.eventKey || "").trim();
+        setEditEventKey(entryEventKey || null);
+        setForm((prev) => ({
+          ...prev,
+          scoutName: String(data.scoutName || prev.scoutName || ""),
+          teamNumber: String(data.teamNumber || ""),
+          robotWeight: String(data.robotWeight || ""),
+          robotPictureUrl: String(data.robotPictureUrl || ""),
+          pitDisposition: Boolean(data.pitDisposition),
+          driveDisposition: Boolean(data.driveDisposition),
+          fuelPreloadCapacity: String(data.fuelPreloadCapacity || ""),
+          fuelBallsPerSecond: String(data.fuelBallsPerSecond || ""),
+          fuelCarryingCapacity: String(data.fuelCarryingCapacity || ""),
+          climbLevel1: Boolean(data.climbLevel1),
+          climbLevel2: Boolean(data.climbLevel2),
+          climbLevel3: Boolean(data.climbLevel3),
+          typicalFuelCycleTime: String(data.typicalFuelCycleTime || ""),
+          typicalClimbTime: String(data.typicalClimbTime || ""),
+          autoCycleDescription: String(data.autoCycleDescription || ""),
+          notes: String(data.notes || ""),
+        }));
+        setRobotPictureUrlInput(String(data.robotPictureUrl || ""));
+      } catch (error) {
+        console.error("Failed to load pit scout edit entry:", error);
+      }
+    }
+    void loadEditEntry();
+    return () => {
+      isActive = false;
+    };
+  }, [editId, editCollectionParam]);
+
+  useEffect(() => {
     async function loadEventTeams() {
       if (!userData?.teamId) return;
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         const teamData = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
-        const resolvedEvent = await resolveDetectedTeamEventKey(userData.teamId);
+        const resolvedEvent = editEventKey || (await resolveDetectedTeamEventKey(userData.teamId));
         let pitAssignments: Record<string, unknown>[] = [];
         try {
           const pitAssignmentsSnap = await getDocs(
@@ -303,9 +353,10 @@ function PitScoutFormContent() {
       }
     }
     void loadEventTeams();
-  }, [userData?.teamId, userData?.uid]);
+  }, [userData?.teamId, userData?.uid, editEventKey]);
 
   useEffect(() => {
+    if (editMode) return;
     if (assignedPitTeams.length === 0) return;
     const nextTeam = assignedPitTeams.find((team) => !scoutedTeams.has(team));
     if (!nextTeam) return;
@@ -314,7 +365,7 @@ function PitScoutFormContent() {
       if (prev.teamNumber === nextTeam) return prev;
       return { ...prev, teamNumber: nextTeam };
     });
-  }, [assignedPitTeams, form.teamNumber, scoutedTeams]);
+  }, [assignedPitTeams, form.teamNumber, scoutedTeams, editMode]);
 
   const canSubmit = useMemo(() => {
     return form.teamNumber.trim().length > 0;
@@ -326,6 +377,10 @@ function PitScoutFormContent() {
 
     setSaving(true);
     try {
+      const existingCreatedAt =
+        typeof (form as unknown as { createdAt?: number }).createdAt === "number"
+          ? (form as unknown as { createdAt?: number }).createdAt
+          : undefined;
       const payload = {
         ...form,
         scoutName: userData.displayName || "",
@@ -334,25 +389,32 @@ function PitScoutFormContent() {
         eventKey,
         teamId: userData.teamId,
         submittedBy: userData.uid,
-        createdAt: Date.now(),
+        createdAt: editMode && existingCreatedAt ? existingCreatedAt : Date.now(),
+        submittedAt: Date.now(),
       };
-      await addDoc(collection(db, "pitScouting"), payload);
-      alert("Pit Scout Form submitted.");
-      if (typeof window !== "undefined") {
-        window.location.reload();
+      if (editMode && editId && editCollectionParam) {
+        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+        alert("Pit Scout Form updated.");
+      } else {
+        await addDoc(collection(db, "pitScouting"), payload);
+        alert("Pit Scout Form submitted.");
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+        setScoutedTeams((prev) => new Set(prev).add(form.teamNumber.trim()));
+        setForm((prev) => ({
+          ...prev,
+          teamNumber: "",
+          robotWeight: "",
+          rookieTeam: false,
+          robotPictureUrl: "",
+          notes: "",
+          typicalFuelCycleTime: "",
+          typicalClimbTime: "",
+          autoCycleDescription: "",
+        }));
+        setRobotPictureUrlInput("");
       }
-      setScoutedTeams((prev) => new Set(prev).add(form.teamNumber.trim()));
-      setForm((prev) => ({
-        ...prev,
-        teamNumber: "",
-        robotWeight: "",
-        robotPictureUrl: "",
-        notes: "",
-        typicalFuelCycleTime: "",
-        typicalClimbTime: "",
-        autoCycleDescription: "",
-      }));
-      setRobotPictureUrlInput("");
     } catch (error) {
       console.error("Error submitting pit form:", error);
       alert("Could not submit pit form.");
@@ -411,6 +473,15 @@ function PitScoutFormContent() {
                 onChange={(event) => setForm({ ...form, robotWeight: event.target.value })}
                 placeholder="Robot Weight"
               />
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.rookieTeam}
+                  onChange={(event) => setForm({ ...form, rookieTeam: event.target.checked })}
+                  className="w-4 h-4"
+                />
+                Rookie Team
+              </label>
 
               <label className="block text-sm font-medium text-gray-700">Picture of Robot</label>
               <div className="rounded-lg border p-3 space-y-3">
@@ -528,7 +599,7 @@ function PitScoutFormContent() {
                 className="w-full py-3 rounded text-white font-semibold disabled:opacity-50"
                 style={{ backgroundColor: "var(--primary-color)" }}
               >
-                {saving ? "Submitting..." : "Submit Pit Scout Form"}
+                {saving ? "Submitting..." : editMode ? "Update Pit Scout Form" : "Submit Pit Scout Form"}
               </button>
             </div>
           </form>

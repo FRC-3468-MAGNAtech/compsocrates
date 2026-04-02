@@ -29,8 +29,10 @@ export type UserData = {
   displayName: string;
   role: UserRole;
   roles?: TeamRole[];
+  secondaryRoles?: TeamRole[];
   specialRole?: string | null;
   specialRoles?: string[];
+  formAccessOverrides?: Record<string, string[]>;
   teamId: string;
   isTeamAdmin: boolean;
   photoURL?: string;
@@ -42,6 +44,7 @@ export type UserData = {
   emailVerificationExempt?: boolean;
   accountThemeId?: string;
   accountFontId?: string;
+  experiencedScout?: boolean;
 };
 
 type AuthContextType = {
@@ -104,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: fallbackName,
       role: "match-scout",
       roles: ["match-scout"],
+      secondaryRoles: [],
       teamId: "",
       isTeamAdmin: false,
       profileVisibility: "team",
@@ -111,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       photoURL: currentUser.photoURL || "",
       emailVerificationExempt: false,
       profileComplete: true,
+      experiencedScout: false,
     };
   }
 

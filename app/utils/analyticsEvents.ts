@@ -1,4 +1,4 @@
-import { APP_EVENTS } from "@/app/utils/events";
+import { APP_EVENT_BY_KEY, APP_EVENTS, normalizeEventKey } from "@/app/utils/events";
 
 export type AnalyticsGame = "REEFSCAPE" | "REBUILT";
 
@@ -47,9 +47,11 @@ export function getEventOptionsForEntries(
   }
 
   const base = getEventsForGame(game);
-  const byId = new Map<string, AnalyticsEventOption>(base.map((event) => [event.id, event]));
+  const byId = new Map<string, AnalyticsEventOption>(
+    base.map((event) => [normalizeEventKey(event.id), { ...event, id: normalizeEventKey(event.id) }])
+  );
   extraEvents.forEach((event) => {
-    const id = String(event.id || "").trim();
+    const id = normalizeEventKey(String(event.id || "").trim());
     if (!id || byId.has(id)) return;
     byId.set(id, { ...event, id });
   });
@@ -57,13 +59,16 @@ export function getEventOptionsForEntries(
   entries.forEach((entry) => {
     const entryGame = (entry.game || "REEFSCAPE") as AnalyticsGame;
     if (entryGame !== game) return;
-    const key = String(entry.eventKey || "").trim();
+    const key = normalizeEventKey(String(entry.eventKey || "").trim());
     if (!key) return;
     if (byId.has(key)) return;
+    const known = APP_EVENT_BY_KEY[key];
     byId.set(key, {
       id: key,
       key,
-      name: String(entry.eventName || key),
+      name: known?.name || String(entry.eventName || key),
+      startDate: known?.startDate,
+      endDate: known?.endDate,
     });
   });
 
@@ -106,8 +111,25 @@ export function classifyRebuiltEventByTimestampWithOptions(
 }
 
 export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" | "qualification" | "finals"; matchNumber: string; matchId: string } {
-  const value = (rawMatch || "").trim().toLowerCase();
+  const rawValue = (rawMatch || "").trim();
+  let normalized = rawValue;
+  if (normalized.includes("_")) {
+    const suffix = normalized.split("_").pop() || "";
+    if (suffix && /[a-z]/i.test(suffix)) {
+      normalized = suffix;
+    }
+  }
+  const value = normalized.toLowerCase();
   const compact = value.replace(/[^a-z0-9]/g, "");
+  const semiMatch =
+    value.match(/\b(?:sf|semifinal|semi-final)\s*#?\s*(\d+)(?:\s*[-m]\s*(\d+))?/i) ||
+    compact.match(/^(sf)(\d+)(?:m(\d+))?/i);
+  const quarterMatch =
+    value.match(/\b(?:qf|quarterfinal|quarter-final|ef|octofinal|octo-final)\s*#?\s*(\d+)(?:\s*[-m]\s*(\d+))?/i) ||
+    compact.match(/^(qf|ef)(\d+)(?:m(\d+))?/i);
+  const finalMatch =
+    value.match(/\b(?:finals?|f)\s*#?\s*(\d+)(?:\s*[-m]\s*(\d+))?/i) ||
+    compact.match(/^(f)(\d+)(?:m(\d+))?/i);
   const explicitMatchNumber =
     value.match(/\b(?:match|mtch|matc?h|march|marltch)\s*#?\s*(\d+)\b/)?.[1] ||
     value.match(/\bm\s*#?\s*(\d+)\b/)?.[1];
@@ -126,6 +148,29 @@ export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" |
     /pract|prct|pratc|prac|warmup|test/i.test(compact) ||
     /^p[\s#-]*\d+/i.test(value) ||
     /^p\d+/i.test(compact);
+  if (semiMatch) {
+    const isCompact = semiMatch[1] === "sf";
+    const setNumber = (isCompact ? semiMatch[2] : semiMatch[1]) || "1";
+    const matchNumber = (isCompact ? semiMatch[3] : semiMatch[2]) || "1";
+    return { matchType: "finals", matchNumber: setNumber, matchId: `sf${setNumber}m${matchNumber}` };
+  }
+
+  if (quarterMatch) {
+    const prefix = String(quarterMatch[1] || "qf").toLowerCase();
+    const isCompact = prefix === "qf" || prefix === "ef";
+    const setNumber = (isCompact ? quarterMatch[2] : quarterMatch[1]) || "1";
+    const matchNumber = (isCompact ? quarterMatch[3] : quarterMatch[2]) || "1";
+    return { matchType: "finals", matchNumber: setNumber, matchId: `${prefix}${setNumber}m${matchNumber}` };
+  }
+
+  if (finalMatch) {
+    const isCompact = finalMatch[1] === "f";
+    const setNumber = (isCompact ? finalMatch[2] : finalMatch[1]) || "1";
+    const matchNumber = (isCompact ? finalMatch[3] : finalMatch[2]) || "";
+    const matchId = matchNumber ? `f${setNumber}m${matchNumber}` : `f${setNumber}`;
+    return { matchType: "finals", matchNumber: setNumber, matchId };
+  }
+
   const isFinalsLabel =
     value.startsWith("f") ||
     value.includes("final") ||
@@ -142,9 +187,11 @@ export function normalizeMatchLabel(rawMatch: string): { matchType: "practice" |
     value.includes("qual") ||
     /\bqm\b/.test(value) ||
     /qual|qm|quali|qul|qulification/i.test(compact);
+  const isGenericMatchLabel = /^match\b/i.test(value) || compact.startsWith("match");
   if (isPracticeLabel) return { matchType: "practice", matchNumber: number, matchId: `p${number}` };
   if (isFinalsLabel) return { matchType: "finals", matchNumber: number, matchId: `f${number}` };
   if (isQualificationLabel) return { matchType: "qualification", matchNumber: number, matchId: `q${number}` };
+  if (isGenericMatchLabel) return { matchType: "finals", matchNumber: number, matchId: `sf${number}` };
   return { matchType: "qualification", matchNumber: number, matchId: `q${number}` };
 }
 
@@ -232,6 +279,7 @@ export function entryMatchesAnalyticsFilters(
   const eventKey =
     entry.eventKey ||
     classifyRebuiltEventByTimestampWithOptions(entry.submittedAt || entry.timestamp || 0, eventOptions);
-  if (eventId === "app-testing") return eventKey === "app-testing";
-  return eventKey === eventId;
+  const normalizedEventKey = normalizeEventKey(String(eventKey || ""));
+  if (eventId === "app-testing") return normalizedEventKey === "app-testing";
+  return normalizedEventKey === normalizeEventKey(eventId);
 }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -19,7 +19,7 @@ import {
 } from "@/app/utils/analyticsEvents";
 import { getTeamEvents } from "@/app/utils/tba-api";
 import { dedupeEventKeys } from "@/app/utils/events";
-import { flagStateDocId, shouldExcludeEntryFromStats, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 
 type ScoutingEntry = {
   id?: string;
@@ -59,6 +59,7 @@ type ScoutingEntry = {
   endgame?: {
     status?: string;
   };
+  excludeFromStats?: boolean;
   matchId?: string;
   matchNumber?: string | number;
   startingPosition?: string;
@@ -287,7 +288,6 @@ function TeamBreakdownDetailContent() {
   const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
   const [strategyEntries, setStrategyEntries] = useState<StrategyPlanEntry[]>([]);
   const [driveEntries, setDriveEntries] = useState<DriveEntry[]>([]);
-  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
@@ -337,31 +337,6 @@ function TeamBreakdownDetailContent() {
     }
     void load();
   }, []);
-
-  useEffect(() => {
-    async function loadFlagStates() {
-      if (!userData?.teamId) {
-        setFlagStates({});
-        return;
-      }
-      try {
-        const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
-        const next: Record<string, StoredFlagState> = {};
-        snap.docs.forEach((d) => {
-          const row = d.data() as StoredFlagState;
-          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-          const entityId = String(row.entityId || "").trim();
-          if (!entityId) return;
-          next[flagStateDocId(entityType, entityId)] = row;
-        });
-        setFlagStates(next);
-      } catch (error) {
-        console.warn("Unable to load scouting flag states for team detail breakdown. Continuing without flag states.", error);
-        setFlagStates({});
-      }
-    }
-    void loadFlagStates();
-  }, [userData?.teamId]);
 
   useEffect(() => {
     async function loadTeamEvents() {
@@ -464,15 +439,7 @@ function TeamBreakdownDetailContent() {
     [scoutingEntries, teamNumber]
   );
 
-  const teamScoutingAllForStats = useMemo(
-    () =>
-      teamScoutingAll.filter((entry) => {
-        const entryId = String(entry.id || "").trim();
-        const state = entryId ? flagStates[flagStateDocId("scoutingEntry", entryId)] : undefined;
-        return !shouldExcludeEntryFromStats(entry as Record<string, unknown>, state);
-      }),
-    [teamScoutingAll, flagStates]
-  );
+  const teamScoutingAllForStats = useMemo(() => teamScoutingAll, [teamScoutingAll]);
 
   const eventSeedEntries = useMemo(
     () => [
@@ -500,6 +467,22 @@ function TeamBreakdownDetailContent() {
     );
     return gameFiltered.filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)));
   }, [teamScoutingAllForStats, selectedGame, selectedEvent, practiceMatchesOnly, eventOptions]);
+
+  const teamScoutingFilteredForStats = useMemo(
+    () => teamScoutingFiltered.filter((entry) => !entry.excludeFromStats),
+    [teamScoutingFiltered]
+  );
+
+  const teamScoutingDeduped = useMemo(
+    () =>
+      dedupeEntriesByMatchTeam(teamScoutingFilteredForStats, {
+        game: selectedGame,
+        eventOptions,
+        selectedEvent,
+        preferLatest: true,
+      }),
+    [teamScoutingFilteredForStats, selectedGame, eventOptions, selectedEvent]
+  );
 
   const teamPitFiltered = useMemo(() => {
     if (practiceMatchesOnly) return [] as PitEntry[];
@@ -579,15 +562,15 @@ function TeamBreakdownDetailContent() {
 
   const matchAverages = useMemo(() => {
     return {
-      preloadScale: avg(teamScoutingFiltered.map((entry) => toNumber(entry.auto?.preloadScale))),
-      autoBpsScale: avg(teamScoutingFiltered.map((entry) => toNumber(entry.auto?.bpsScale))),
-      autoCarryScale: avg(teamScoutingFiltered.map((entry) => toNumber(entry.auto?.carryingScale))),
-      teleBpsScale: avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleop?.bpsScale))),
-      teleCarryScale: avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleop?.carryingScale))),
-      autoFuel: avg(teamScoutingFiltered.map((entry) => toNumber(entry.auto?.estimatedFuel))),
-      teleFuel: avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleop?.estimatedFuel))),
+      preloadScale: avg(teamScoutingDeduped.map((entry) => toNumber(entry.auto?.preloadScale))),
+      autoBpsScale: avg(teamScoutingDeduped.map((entry) => toNumber(entry.auto?.bpsScale))),
+      autoCarryScale: avg(teamScoutingDeduped.map((entry) => toNumber(entry.auto?.carryingScale))),
+      teleBpsScale: avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleop?.bpsScale))),
+      teleCarryScale: avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleop?.carryingScale))),
+      autoFuel: avg(teamScoutingDeduped.map((entry) => toNumber(entry.auto?.estimatedFuel))),
+      teleFuel: avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleop?.estimatedFuel))),
     };
-  }, [teamScoutingFiltered]);
+  }, [teamScoutingDeduped]);
 
   const strategyRobots = useMemo(
     () =>
@@ -716,7 +699,7 @@ function TeamBreakdownDetailContent() {
 
   const pastEvents = useMemo(() => {
     const byEvent = new Map<string, { count: number; totalScore: number }>();
-    teamScoutingAllForStats.forEach((entry) => {
+    teamScoutingDeduped.forEach((entry) => {
       const key = String(entry.eventKey || "").trim();
       if (!key || !isPastEventKey(key, eventOptions)) return;
       const existing = byEvent.get(key) || { count: 0, totalScore: 0 };
@@ -730,9 +713,9 @@ function TeamBreakdownDetailContent() {
       matches: value.count,
       avgScore: value.count > 0 ? value.totalScore / value.count : 0,
     }));
-  }, [teamScoutingAllForStats, eventOptions, selectedGame]);
+  }, [teamScoutingDeduped, eventOptions, selectedGame]);
 
-  const filteredEntryCount = teamScoutingFiltered.length + teamPitFiltered.length + teamStrategyFiltered.length + teamDriveFiltered.length;
+  const filteredEntryCount = teamScoutingDeduped.length + teamPitFiltered.length + teamStrategyFiltered.length + teamDriveFiltered.length;
 
   return (
     <AnalyticsShell
@@ -777,7 +760,7 @@ function TeamBreakdownDetailContent() {
             </div>
             <div className="bg-white rounded-xl shadow p-4" data-analytics-search-item="true">
               <p className="text-sm text-gray-500">Scouted Matches (Filtered)</p>
-              <p className="text-xl font-semibold">{teamScoutingFiltered.length}</p>
+              <p className="text-xl font-semibold">{teamScoutingDeduped.length}</p>
             </div>
             <div className="bg-white rounded-xl shadow p-4" data-analytics-search-item="true">
               <p className="text-sm text-gray-500">Pit Entries (Filtered)</p>
@@ -835,14 +818,14 @@ function TeamBreakdownDetailContent() {
                   <p>
                     Avg Match Score:{" "}
                     <span className="font-semibold">
-                      {displayNumber(avg(teamScoutingFiltered.map((entry) => scoreEntry(entry, selectedGame))), 2)}
+                      {displayNumber(avg(teamScoutingDeduped.map((entry) => scoreEntry(entry, selectedGame))), 2)}
                     </span>
                   </p>
-                  <p>Avg Auto L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoCoralL4))))}</span></p>
-                  <p>Avg Teleop L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL4))))}</span></p>
-                  <p>Avg Auto Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.autoAlgaeProcessorScored))))}</span></p>
-                  <p>Avg Teleop Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopProcessorScored))))}</span></p>
-                  <p>Avg Penalty Points: <span className="font-semibold">{displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.penaltyPoints))))}</span></p>
+                  <p>Avg Auto L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.autoCoralL4))))}</span></p>
+                  <p>Avg Teleop L4 Coral: <span className="font-semibold">{displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleopCoralL4))))}</span></p>
+                  <p>Avg Auto Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.autoAlgaeProcessorScored))))}</span></p>
+                  <p>Avg Teleop Processor Algae: <span className="font-semibold">{displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleopProcessorScored))))}</span></p>
+                  <p>Avg Penalty Points: <span className="font-semibold">{displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.penaltyPoints))))}</span></p>
                 </div>
               ) : (
                 <div className="grid md:grid-cols-3 gap-3 text-sm">
@@ -915,7 +898,7 @@ function TeamBreakdownDetailContent() {
                   <td className="px-3 py-2 font-medium">{isReefscape ? "Coral Scoring (L1/L2/L3/L4)" : "Preload / BPS / Carry"}</td>
                   <td className="px-3 py-2 text-sm">
                     {isReefscape
-                      ? `${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL1))))} / ${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL2))))} / ${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL3))))} / ${displayNumber(avg(teamScoutingFiltered.map((entry) => toNumber(entry.teleopCoralL4))))}`
+                      ? `${displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleopCoralL1))))} / ${displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleopCoralL2))))} / ${displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleopCoralL3))))} / ${displayNumber(avg(teamScoutingDeduped.map((entry) => toNumber(entry.teleopCoralL4))))}`
                       : `${displayNumber(matchAverages.preloadScale)} / ${displayNumber(matchAverages.autoBpsScale)} / ${displayNumber(matchAverages.autoCarryScale)}`}
                   </td>
                   <td className="px-3 py-2 text-sm">
@@ -934,13 +917,13 @@ function TeamBreakdownDetailContent() {
                     <td className="px-3 py-2 text-sm">
                       {`${displayNumber(
                         avg(
-                          teamScoutingFiltered.map(
+                          teamScoutingDeduped.map(
                             (entry) => Number(toNumber(entry.autoAlgaeProcessorScored) || 0) + Number(toNumber(entry.teleopProcessorScored) || 0)
                           )
                         )
                       )} / ${displayNumber(
                         avg(
-                          teamScoutingFiltered.map(
+                          teamScoutingDeduped.map(
                             (entry) => Number(toNumber(entry.teleopNetRobotScored) || 0) + Number(toNumber(entry.teleopNetHumanScored) || 0)
                           )
                         )
@@ -969,14 +952,14 @@ function TeamBreakdownDetailContent() {
                 )}
                 <tr>
                   <td className="px-3 py-2 font-medium">Auto Climb</td>
-                  <td className="px-3 py-2 text-sm">{percentTrue(teamScoutingFiltered.map((entry) => entry.auto?.successfulClimb))}</td>
+                  <td className="px-3 py-2 text-sm">{percentTrue(teamScoutingDeduped.map((entry) => entry.auto?.successfulClimb))}</td>
                   <td className="px-3 py-2 text-sm">-</td>
                   {!isReefscape && <td className="px-3 py-2 text-sm">{percentTrue(strategyRobots.map((row) => row.autoClimb))}</td>}
                   {!isReefscape && <td className="px-3 py-2 text-sm">{percentTrue(driveRobots.map((row) => row.autoClimb))}</td>}
                 </tr>
                 <tr>
                   <td className="px-3 py-2 font-medium">Endgame Climb</td>
-                  <td className="px-3 py-2 text-sm">{mode(teamScoutingFiltered.map((entry) => entry.endgame?.status))}</td>
+                  <td className="px-3 py-2 text-sm">{mode(teamScoutingDeduped.map((entry) => entry.endgame?.status))}</td>
                   <td className="px-3 py-2 text-sm">-</td>
                   {!isReefscape && <td className="px-3 py-2 text-sm">{mode(strategyRobots.map((row) => row.endgameClimb))}</td>}
                   {!isReefscape && <td className="px-3 py-2 text-sm">{mode(driveRobots.map((row) => row.endgameClimb))}</td>}
@@ -984,7 +967,7 @@ function TeamBreakdownDetailContent() {
                 {isReefscape && (
                   <tr>
                     <td className="px-3 py-2 font-medium">Starting Position</td>
-                    <td className="px-3 py-2 text-sm">{mode(teamScoutingFiltered.map((entry) => entry.startingPosition))}</td>
+                    <td className="px-3 py-2 text-sm">{mode(teamScoutingDeduped.map((entry) => entry.startingPosition))}</td>
                     <td className="px-3 py-2 text-sm">
                       {`Opposite:${yesNo(reefscapePitSummary.startingOpposite)} | Middle:${yesNo(reefscapePitSummary.startingMiddle)} | Processor:${yesNo(reefscapePitSummary.startingProcessor)}`}
                     </td>
@@ -993,14 +976,14 @@ function TeamBreakdownDetailContent() {
                 {isReefscape && (
                   <tr>
                     <td className="px-3 py-2 font-medium">Barge / Endgame</td>
-                    <td className="px-3 py-2 text-sm">{mode(teamScoutingFiltered.map((entry) => entry.stageStatus || entry.endgame?.status))}</td>
+                    <td className="px-3 py-2 text-sm">{mode(teamScoutingDeduped.map((entry) => entry.stageStatus || entry.endgame?.status))}</td>
                     <td className="px-3 py-2 text-sm">{reefscapePitSummary.bargeCapability}</td>
                   </tr>
                 )}
                 {isReefscape && (
                   <tr>
                     <td className="px-3 py-2 font-medium">Left Starting Zone</td>
-                    <td className="px-3 py-2 text-sm">{percentTrue(teamScoutingFiltered.map((entry) => Boolean(entry.leftStartingZone)))}</td>
+                    <td className="px-3 py-2 text-sm">{percentTrue(teamScoutingDeduped.map((entry) => Boolean(entry.leftStartingZone)))}</td>
                     <td className="px-3 py-2 text-sm">-</td>
                   </tr>
                 )}

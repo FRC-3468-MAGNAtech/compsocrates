@@ -17,6 +17,7 @@ type UserProfile = {
   email: string;
   role: string;
   roles?: string[];
+  secondaryRoles?: string[];
   profileVisibility?: "team" | "public" | "private";
   bio?: string;
   teamId?: string;
@@ -31,7 +32,11 @@ type TeamDoc = {
 function ProfileContent() {
   const params = useParams<{ userId: string }>();
   const { userData } = useAuth();
-  const viewerRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const viewerRoles = getUserRoles({
+    role: userData?.role,
+    roles: userData?.roles,
+    secondaryRoles: userData?.secondaryRoles,
+  });
   const canViewAccuracy =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||
@@ -308,7 +313,29 @@ function ProfileContent() {
     stats.totalEntries > 0 && stats.practiceEntries === stats.totalEntries
       ? "Practice Entries"
       : "Scouting Entries";
-  const roleBadge = profile ? getRoleBadge(profile.role, profile.roles) : null;
+  const roleBadge = profile
+    ? getRoleBadge(
+        typeof profile.role === "string" ? profile.role : "",
+        Array.isArray(profile.roles) ? profile.roles.map((role) => String(role || "").trim()).filter(Boolean) : []
+      )
+    : null;
+  const roleBadges = useMemo(() => {
+    if (!profile) return [];
+    const merged = new Set<string>();
+    const primaryRole = typeof profile.role === "string" ? profile.role.trim() : "";
+    if (primaryRole) merged.add(primaryRole);
+    const primaryRoles = Array.isArray(profile.roles) ? profile.roles : [];
+    const secondaryRoles = Array.isArray(profile.secondaryRoles) ? profile.secondaryRoles : [];
+    primaryRoles.forEach((role) => {
+      const safe = String(role || "").trim();
+      if (safe) merged.add(safe);
+    });
+    secondaryRoles.forEach((role) => {
+      const safe = String(role || "").trim();
+      if (safe) merged.add(safe);
+    });
+    return Array.from(merged).map((role) => getRoleBadge(role, [role]));
+  }, [profile]);
   const initials = profile?.displayName
     ?.split(/\s+/)
     .filter(Boolean)
@@ -341,9 +368,16 @@ function ProfileContent() {
                   <h1 className="text-3xl font-bold theme-text mb-1">{profile.displayName}</h1>
                   <p className="text-gray-600">{profile.email}</p>
                   {roleBadge && (
-                    <p className={`inline-block mt-1 px-2 py-0.5 rounded text-xs ${roleBadge.bg} ${roleBadge.text}`}>
-                      {roleBadge.label}
-                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {roleBadges.map((badge, index) => (
+                        <span
+                          key={`${badge.label}-${index}`}
+                          className={`inline-block px-2 py-0.5 rounded text-xs ${badge.bg} ${badge.text}`}
+                        >
+                          {badge.label}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   <p className="text-xs text-gray-500 mt-1">Visibility: {profile.profileVisibility || "team"}</p>
                 </div>

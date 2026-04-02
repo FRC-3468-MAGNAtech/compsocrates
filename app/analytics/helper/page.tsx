@@ -7,11 +7,13 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
+import AnalyticsConfigModal from "@/app/components/AnalyticsConfigModal";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
 import { compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
+import { getUserRoles } from "@/app/utils/roles";
 
 type HelperEntry = {
   id: string;
@@ -28,18 +30,25 @@ type HelperEntry = {
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
 };
 
 function HelperAnalyticsContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
-  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
-  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin;
+  const isLeadStrategist = userRoles.includes("lead-strategist");
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canManageConfig = canDeleteEntries || userRoles.includes("lead-scout");
+  const canViewScoutNames =
+    isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || userRoles.includes("lead-scout");
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
+  const canShowActions = canManageConfig || canDeleteEntries;
   const [entries, setEntries] = useState<HelperEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -50,6 +59,8 @@ function HelperAnalyticsContent() {
     "assistedTeamNumber"
   );
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [configEntry, setConfigEntry] = useState<HelperEntry | null>(null);
+  const [hideNames, setHideNames] = useState(false);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -230,6 +241,18 @@ function HelperAnalyticsContent() {
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Helper Report Analytics</h1>
       <p className="text-gray-600 mb-4">Support reports from helper form submissions.</p>
@@ -257,21 +280,21 @@ function HelperAnalyticsContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th className="bg-red-300 text-center" colSpan={2}>Information</th>
+                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
                 <th className="bg-green-300 text-center" colSpan={2}>Outcome</th>
-                <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 2 : 1}>General</th>
+                <th className="bg-pink-300 text-center" colSpan={canShowActions ? 2 : 1}>General</th>
               </tr>
               <tr>
-                <th className="bg-red-200 text-center" colSpan={2}>Information</th>
+                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
                 <th className="bg-green-200 text-center" colSpan={2}>Outcome</th>
                 <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
+                {canShowActions && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
               </tr>
               <tr>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("helperName")}>
+                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("helperName")}>
                   {sortLabel(sortKey, sortDir, "helperName", "Helper")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("assistedTeamNumber")}>
+                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("assistedTeamNumber")}>
                   {sortLabel(sortKey, sortDir, "assistedTeamNumber", "Team Helped")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("wasSuccessful")}>
@@ -283,42 +306,73 @@ function HelperAnalyticsContent() {
                 <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                   {sortLabel(sortKey, sortDir, "notes", "Notes")}
                 </th>
-                {canViewAdminColumns && (
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                    {sortLabel(sortKey, sortDir, "id", "Actions")}
-                  </th>
-                )}
+                  {canShowActions && (
+                    <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                      {sortLabel(sortKey, sortDir, "id", "Actions")}
+                    </th>
+                  )}
               </tr>
             </thead>
             <tbody>
               {sorted.map((entry) => (
-                <tr key={entry.id}>
-                  <td className="font-semibold">{entry.helperName || "-"}</td>
-                  <td>{entry.assistedTeamNumber || "-"}</td>
+                <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
+                  <td className="sticky-left-0 font-semibold">
+                    {canViewScoutNames && !hideNames ? entry.helperName || "-" : "-"}
+                  </td>
+                  <td className="sticky-left-1">{entry.assistedTeamNumber || "-"}</td>
                   <td>{entry.wasSuccessful ? "Y" : "N"}</td>
                   <td>{formatAnalyticsText(entry.issueSolved)}</td>
                   <td className="align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
                     <ExpandableNotesCell text={entry.notes} />
                   </td>
-                  {canViewAdminColumns && (
-                    <td className="text-center">
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteEntry(entry)}
-                        className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                        style={{ backgroundColor: "#dc2626" }}
-                        disabled={!canDeleteEntries}
-                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  )}
+                    {canShowActions && (
+                      <td className="text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          {canManageConfig && (
+                            <button
+                              type="button"
+                              onClick={() => setConfigEntry(entry)}
+                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                            >
+                              Config
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteEntry(entry)}
+                            className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                            style={{ backgroundColor: "#dc2626" }}
+                            disabled={!canDeleteEntries}
+                            title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {configEntry && canManageConfig && (
+        <AnalyticsConfigModal
+          open={Boolean(configEntry)}
+          onClose={() => setConfigEntry(null)}
+          entryId={configEntry.id}
+          entryLabel={`Helper: ${configEntry.helperName || "-"}`}
+          entrySubtitle={configEntry.assistedTeamNumber ? `Team ${configEntry.assistedTeamNumber}` : undefined}
+          collectionName="helperReports"
+          entityType="helperReport"
+          excludeFromStats={Boolean(configEntry.excludeFromStats)}
+          onExcludeChange={(excluded) => {
+            setEntries((prev) =>
+              prev.map((row) => (row.id === configEntry.id ? { ...row, excludeFromStats: excluded } : row))
+            );
+            setConfigEntry((prev) => (prev ? { ...prev, excludeFromStats: excluded } : prev));
+          }}
+        />
       )}
     </AnalyticsShell>
   );

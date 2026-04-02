@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAnalyticsNotesSettings } from "@/app/components/AnalyticsNotesContext";
+import AnalyticsConfigModal from "@/app/components/AnalyticsConfigModal";
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
@@ -17,12 +18,14 @@ import {
 import { formatAnalyticsText, formatMatchLabelShort, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 import { useAuth } from "@/app/AuthContext";
+import { getUserRoles } from "@/app/utils/roles";
 
 type LeadScoutEntry = {
   id: string;
   game?: string;
   eventKey?: string;
   matchId?: string;
+  matchKey?: string;
   matchType?: string;
   matchNumber?: string;
   matchLabel?: string;
@@ -45,6 +48,7 @@ type LeadScoutEntry = {
   entryType?: string;
   isLeadScouting?: boolean;
   sourceCollection?: "leadScouting" | "scouting";
+  excludeFromStats?: boolean;
 };
 
 type SortKey =
@@ -64,6 +68,23 @@ type SortKey =
   | "r3Notes"
   | "r3Skill"
   | "id";
+
+function resolveLeadMatchLabel(entry: LeadScoutEntry): string {
+  const primary = String(entry.matchLabel || "").trim();
+  const primaryMeta = getMatchLabelMeta(primary);
+  const isGeneric = !primary || (primaryMeta.category === "unknown" && /^match\b/i.test(primary));
+  if (!isGeneric && primaryMeta.shortLabel) return primaryMeta.shortLabel;
+  const fallback = String(entry.matchId || entry.matchKey || "").trim();
+  if (fallback) return formatMatchLabelShort(fallback);
+  return primaryMeta.shortLabel || primary || "-";
+}
+
+function resolveLeadMatchSortLabel(entry: LeadScoutEntry): string {
+  const label = resolveLeadMatchLabel(entry);
+  if (label && !/^match\b/i.test(label)) return label;
+  const fallback = String(entry.matchId || entry.matchKey || "").trim();
+  return fallback ? formatMatchLabelShort(fallback) : label;
+}
 
 function LeadNotesCell({ text }: { text?: string | null }) {
   const { autoExpandNotes, setAutoExpandNotes } = useAnalyticsNotesSettings();
@@ -118,18 +139,24 @@ function LeadNotesCell({ text }: { text?: string | null }) {
 
 function LeadAnalyticsContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
-  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin;
-  const columnCount = canDeleteEntries ? 16 : 15;
+  const canManageAnalytics = isCoach || isTeamCoach || isTeamAdmin || userRoles.includes("lead-scout") || userRoles.includes("lead-strategist");
+  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || userRoles.includes("lead-strategist");
+  const canViewScoutNames = isCoach || isTeamCoach || isTeamAdmin || userRoles.includes("lead-scout") || userRoles.includes("lead-strategist");
+  const columnCount = canManageAnalytics ? 16 : 15;
+  const canOpenConfig = canManageAnalytics;
   const [entries, setEntries] = useState<LeadScoutEntry[]>([]);
+  const [configEntry, setConfigEntry] = useState<LeadScoutEntry | null>(null);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [hideNames, setHideNames] = useState(false);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -205,10 +232,10 @@ function LeadAnalyticsContent() {
       const r1 = entry.robots?.[0];
       const r2 = entry.robots?.[1];
       const r3 = entry.robots?.[2];
-      const overall = entry.overallAlliance;
+        const overall = entry.overallAlliance;
       switch (sortKey) {
         case "matchLabel":
-          return entry.matchLabel || entry.matchId || "";
+          return resolveLeadMatchSortLabel(entry);
         case "alliance":
           return entry.alliance || "";
         case "scoutName":
@@ -245,8 +272,8 @@ function LeadAnalyticsContent() {
     };
     return filtered.slice().sort((a, b) => {
       if (sortKey === "matchLabel") {
-        const aMeta = getMatchLabelMeta(String(a.matchLabel || a.matchId || ""));
-        const bMeta = getMatchLabelMeta(String(b.matchLabel || b.matchId || ""));
+        const aMeta = getMatchLabelMeta(resolveLeadMatchSortLabel(a));
+        const bMeta = getMatchLabelMeta(resolveLeadMatchSortLabel(b));
         if (aMeta.order !== bMeta.order) return sortDir === "asc" ? aMeta.order - bMeta.order : bMeta.order - aMeta.order;
         if (aMeta.matchNumber !== bMeta.matchNumber) {
           return sortDir === "asc" ? aMeta.matchNumber - bMeta.matchNumber : bMeta.matchNumber - aMeta.matchNumber;
@@ -287,6 +314,18 @@ function LeadAnalyticsContent() {
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
       allowedGames={["REBUILT"]}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <div className="mb-4">
         <h1 className="text-3xl font-bold mb-1 theme-text">Lead Analytics</h1>
@@ -300,27 +339,27 @@ function LeadAnalyticsContent() {
           <table>
             <thead className="sticky-header">
               <tr>
-                <th className="bg-red-300 text-center" colSpan={3}>Pre-Match</th>
+                <th className="sticky-left-group-3 sticky-row-1 bg-red-300 text-center" colSpan={3}>Pre-Match</th>
                 <th className="bg-pink-300 text-center" colSpan={3}>Overall Alliance</th>
                 <th className="bg-blue-300 text-center" colSpan={9}>Robots</th>
-                {canDeleteEntries && <th className="bg-pink-300 text-center" colSpan={1}>Actions</th>}
+                {canManageAnalytics && <th className="bg-pink-300 text-center" colSpan={1}>Actions</th>}
               </tr>
               <tr>
-                <th className="bg-red-200 text-center" colSpan={3}>Pre-Match</th>
+                <th className="sticky-left-group-3 sticky-row-2 bg-red-200 text-center" colSpan={3}>Pre-Match</th>
                 <th className="bg-pink-200 text-center" colSpan={3}>Overall Alliance</th>
                 <th className="bg-blue-200 text-center" colSpan={3}>Robot 1</th>
                 <th className="bg-blue-200 text-center" colSpan={3}>Robot 2</th>
                 <th className="bg-blue-200 text-center" colSpan={3}>Robot 3</th>
-                {canDeleteEntries && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
+                {canManageAnalytics && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
               </tr>
               <tr>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
                   {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("alliance")}>
+                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("alliance")}>
                   {sortLabel(sortKey, sortDir, "alliance", "Alliance")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                <th className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                   {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("overallTeams")}>
@@ -359,7 +398,7 @@ function LeadAnalyticsContent() {
                 <th className="cursor-pointer text-center" onClick={() => handleSort("r3Skill")}>
                   {sortLabel(sortKey, sortDir, "r3Skill", "Skill Level")}
                 </th>
-                {canDeleteEntries && (
+                {canManageAnalytics && (
                   <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
                     {sortLabel(sortKey, sortDir, "id", "Actions")}
                   </th>
@@ -373,10 +412,12 @@ function LeadAnalyticsContent() {
                 const r3 = entry.robots?.[2];
                 const overall = entry.overallAlliance;
                 return (
-                  <tr key={entry.id}>
-                    <td className="font-semibold">{formatMatchLabelShort(entry.matchLabel || entry.matchId || "")}</td>
-                    <td>{entry.alliance ? entry.alliance.toUpperCase() : "-"}</td>
-                    <td>{entry.scoutName || "-"}</td>
+                  <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
+                    <td className="sticky-left-0 bg-white font-semibold">{resolveLeadMatchLabel(entry)}</td>
+                    <td className="sticky-left-1 bg-white">{entry.alliance ? entry.alliance.toUpperCase() : "-"}</td>
+                    <td className="sticky-left-2 bg-white">
+                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
+                    </td>
                     <td>{formatAnalyticsText(overall?.teams) || "-"}</td>
                     <td className="min-w-[180px]">
                       <LeadNotesCell text={formatAnalyticsText(overall?.notes)} />
@@ -397,17 +438,30 @@ function LeadAnalyticsContent() {
                       <LeadNotesCell text={formatAnalyticsText(r3?.notes)} />
                     </td>
                     <td>{r3?.skillLevel || "-"}</td>
-                    {canDeleteEntries && (
+                    {canManageAnalytics && (
                       <td className="text-center">
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(entry)}
-                          className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                          style={{ backgroundColor: "#dc2626" }}
-                          title="Delete entry"
-                        >
-                          Delete
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          {canOpenConfig && (
+                            <button
+                              type="button"
+                              onClick={() => setConfigEntry(entry)}
+                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                            >
+                              Config
+                            </button>
+                          )}
+                          {canDeleteEntries && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDelete(entry)}
+                              className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
+                              style={{ backgroundColor: "#dc2626" }}
+                              title="Delete entry"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -423,6 +477,22 @@ function LeadAnalyticsContent() {
             </tbody>
           </table>
         </div>
+      )}
+      {configEntry && canOpenConfig && (
+        <AnalyticsConfigModal
+          open={Boolean(configEntry)}
+          onClose={() => setConfigEntry(null)}
+          entryId={configEntry.id}
+          entryLabel={`Match ${resolveLeadMatchLabel(configEntry)}`}
+          entrySubtitle={configEntry.alliance ? `Alliance ${String(configEntry.alliance).toUpperCase()}` : undefined}
+          collectionName={configEntry.sourceCollection === "scouting" ? "scouting" : "leadScouting"}
+          entityType={configEntry.sourceCollection === "scouting" ? "scoutingEntry" : "leadScouting"}
+          excludeFromStats={Boolean(configEntry.excludeFromStats)}
+          onExcludeChange={(excluded) => {
+            setEntries((prev) => prev.map((row) => (row.id === configEntry.id ? { ...row, excludeFromStats: excluded } : row)));
+            setConfigEntry((prev) => (prev ? { ...prev, excludeFromStats: excluded } : prev));
+          }}
+        />
       )}
     </AnalyticsShell>
   );

@@ -123,8 +123,18 @@ export function evaluateScoutingFlags(entry: AnyEntry): ScoutingFlag[] {
   return getEntryGame(entry) === "REBUILT" ? evaluateRebuiltFlags(entry) : evaluateReefscapeFlags(entry);
 }
 
+export type FlagEntityType =
+  | "scoutingEntry"
+  | "practiceSession"
+  | "leadScouting"
+  | "pitScouting"
+  | "strategyScouting"
+  | "matchStrategyPlan"
+  | "driveScouting"
+  | "helperReport";
+
 export type StoredFlagState = {
-  entityType: "scoutingEntry" | "practiceSession";
+  entityType: FlagEntityType;
   entityId: string;
   dismissed: boolean;
   manualFlagged?: boolean;
@@ -139,7 +149,7 @@ export type StoredFlagState = {
   dismissedBy?: string;
 };
 
-export function flagStateDocId(entityType: "scoutingEntry" | "practiceSession", entityId: string): string {
+export function flagStateDocId(entityType: FlagEntityType, entityId: string): string {
   return `${entityType}:${String(entityId || "").trim()}`;
 }
 
@@ -161,9 +171,7 @@ export function isEntryFlaggedForStats(
 export function shouldExcludeEntryFromStats(
   entry: AnyEntry,
   state?: Pick<StoredFlagState, "dismissed" | "manualFlagged"> | null,
-  minimumAccuracy = 75
+  _minimumAccuracy = 75
 ): boolean {
-  if (isEntryFlaggedForStats(entry, state)) return true;
-  const accuracy = getEntryAccuracyPercent(entry);
-  return accuracy !== null && accuracy < minimumAccuracy;
+  return Boolean(state?.manualFlagged);
 }

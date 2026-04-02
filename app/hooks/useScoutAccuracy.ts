@@ -36,7 +36,11 @@ export function useScoutAccuracy(teamId?: string) {
         // Count match scouts + lead scouts from the new role model.
         const totalScouts = users.filter((u: Record<string, unknown>) => 
           (() => {
-            const roles = getUserRoles({ role: String(u.role || ''), roles: u.roles as string[] | undefined });
+            const roles = getUserRoles({
+              role: String(u.role || ''),
+              roles: u.roles as string[] | undefined,
+              secondaryRoles: u.secondaryRoles as string[] | undefined,
+            });
             return roles.includes('match-scout') || roles.includes('media') || roles.includes('lead-scout');
           })()
         ).length;

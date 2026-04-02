@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
-import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -13,9 +12,15 @@ import {
   getEventOptionsForEntries,
   isPracticeScoutedEntry,
   normalizeMatchLabel,
+  type AnalyticsEventOption,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
-import { flagStateDocId, shouldExcludeEntryFromStats, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
+import { useAuth } from "@/app/AuthContext";
+import { getTeamEventOptions } from "@/app/utils/eventDetection";
+import { fetchEventMatchesWithTeamAuth, mapTbaMatchToModalId } from "@/app/utils/reefscapeMatchSync";
+import { type TBAMatch } from "@/app/utils/tba-api";
+import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 type ScoutingEntry = {
   id?: string;
@@ -25,10 +30,13 @@ type ScoutingEntry = {
   accuracy?: number;
   game?: string;
   matchId?: string;
+  matchKey?: string;
   matchNumber?: string;
+  matchLabel?: string;
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
   teamNumber?: string;
   scoutName?: string;
   leftStartingZone?: boolean;
@@ -68,21 +76,11 @@ function isPracticeEntry(entry: ScoutingEntry) {
 }
 
 function formatMatchLabel(matchId: string): string {
-  const id = matchId.toLowerCase();
-  const num = id.replace(/\D/g, "");
-  if (id.startsWith("p")) return `Practice ${num}`;
-  if (id.startsWith("q")) return `Qualification ${num}`;
-  if (id.startsWith("f")) {
-    const n = Number(num || 0);
-    if (n >= 1 && n <= 13) return `Semifinal ${n}`;
-    if (n >= 14 && n <= 16) return `Finals ${n - 13}`;
-    return `Finals ${num}`;
-  }
-  return `Match ${matchId}`;
+  return formatMatchLabelLong(matchId);
 }
 
 function normalizeMatchId(entry: ScoutingEntry): string {
-  const direct = String(entry.matchId || "").toLowerCase();
+  const direct = String(entry.matchId || entry.matchKey || "").toLowerCase();
   if (direct) {
     const qm = direct.match(/_qm(\d+)/);
     if (qm) return `q${qm[1]}`;
@@ -91,9 +89,9 @@ function normalizeMatchId(entry: ScoutingEntry): string {
     const short = direct.match(/^([pqf])\D*(\d+)/);
     if (short) return `${short[1]}${short[2]}`;
   }
-
-  const byLabel = normalizeMatchLabel(String(entry.matchNumber || ""));
-  if (String(entry.matchNumber || "").trim()) return byLabel.matchId;
+  const labelSource = String(entry.matchNumber || entry.matchLabel || "");
+  const byLabel = normalizeMatchLabel(labelSource);
+  if (labelSource.trim()) return byLabel.matchId;
 
   const num = String(entry.matchNumber || "").replace(/\D/g, "");
   const prefix = entry.matchType === "practice" ? "p" : entry.matchType === "finals" ? "f" : "q";
@@ -136,12 +134,19 @@ function inferAlliance(entry: ScoutingEntry): "red" | "blue" | null {
 function MatchBreakdownContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
+  const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({
+    encryptedKey: "",
+    plainKey: "",
+  });
+  const [scheduleByMatchId, setScheduleByMatchId] = useState<
+    Record<string, { red: number[]; blue: number[] }>
+  >({});
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -172,45 +177,129 @@ function MatchBreakdownContent() {
   }, []);
 
   useEffect(() => {
-    async function loadFlagStates() {
+    let cancelled = false;
+    async function loadDetectedEvents() {
       if (!userData?.teamId) {
-        setFlagStates({});
+        if (!cancelled) setDetectedEventOptions([]);
         return;
       }
       try {
-        const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
-        const next: Record<string, StoredFlagState> = {};
-        snap.docs.forEach((d) => {
-          const row = d.data() as StoredFlagState;
-          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-          const entityId = String(row.entityId || "").trim();
-          if (!entityId) return;
-          next[flagStateDocId(entityType, entityId)] = row;
-        });
-        setFlagStates(next);
+        const teamEvents = await getTeamEventOptions(userData.teamId);
+        if (cancelled) return;
+        setDetectedEventOptions(
+          teamEvents.map((event) => ({
+            id: event.key,
+            key: event.key,
+            name: event.name,
+            startDate: event.startDate,
+            endDate: event.endDate,
+          }))
+        );
       } catch (error) {
-        console.warn("Unable to load scouting flag states for match breakdown. Continuing without flag states.", error);
-        setFlagStates({});
+        console.warn("Failed to load team event options for match breakdown:", error);
+        if (!cancelled) setDetectedEventOptions([]);
       }
     }
-    void loadFlagStates();
+    void loadDetectedEvents();
+    return () => {
+      cancelled = true;
+    };
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTeamTbaAuth() {
+      if (!userData?.teamId) {
+        if (!cancelled) setTbaAuth({ encryptedKey: "", plainKey: "" });
+        return;
+      }
+      try {
+        const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
+        if (cancelled) return;
+        setTbaAuth({
+          encryptedKey: String(teamDoc.data()?.tbaApiKeyEncrypted || "").trim(),
+          plainKey: String(teamDoc.data()?.tbaApiKey || "").trim(),
+        });
+      } catch (error) {
+        console.warn("Failed loading team TBA auth for match breakdown:", error);
+        if (!cancelled) setTbaAuth({ encryptedKey: "", plainKey: "" });
+      }
+    }
+    void loadTeamTbaAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.teamId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSchedule() {
+      if (!selectedEvent || selectedEvent === "all" || selectedEvent === "app-testing") {
+        if (!cancelled) setScheduleByMatchId({});
+        return;
+      }
+      try {
+        const matches = await fetchEventMatchesWithTeamAuth(selectedEvent, {
+          encryptedKey: tbaAuth.encryptedKey,
+          plainKey: tbaAuth.plainKey,
+        });
+        if (cancelled) return;
+        const map: Record<string, { red: number[]; blue: number[] }> = {};
+        const parseTeamKey = (teamKey: string) => Number(String(teamKey || "").replace(/^frc/i, ""));
+        matches.forEach((match: TBAMatch) => {
+          const matchId = mapTbaMatchToModalId(match);
+          if (!matchId) return;
+          const red = (match.alliances?.red?.team_keys || [])
+            .map(parseTeamKey)
+            .filter((value) => Number.isFinite(value) && value > 0);
+          const blue = (match.alliances?.blue?.team_keys || [])
+            .map(parseTeamKey)
+            .filter((value) => Number.isFinite(value) && value > 0);
+          if (red.length || blue.length) {
+            map[matchId] = { red, blue };
+          }
+        });
+        setScheduleByMatchId(map);
+      } catch (error) {
+        console.warn("Failed loading TBA schedule for match breakdown:", error);
+        if (!cancelled) setScheduleByMatchId({});
+      }
+    }
+    void loadSchedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEvent, tbaAuth.encryptedKey, tbaAuth.plainKey]);
+
+  const eventOptions = useMemo(
+    () => getEventOptionsForEntries(entries, selectedGame, selectedGame === "REBUILT" ? detectedEventOptions : []),
+    [entries, selectedGame, detectedEventOptions]
+  );
+
   const filteredEntries = useMemo(() => {
-    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+    const gameFiltered = entries.filter((entry) =>
+      entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
+    );
     return gameFiltered
       .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
-      .filter((entry) => {
-        const entryId = String(entry.id || "").trim();
-        const state = entryId ? flagStates[flagStateDocId("scoutingEntry", entryId)] : undefined;
-        return !shouldExcludeEntryFromStats(entry as Record<string, unknown>, state);
-      });
-  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, flagStates]);
+      .filter((entry) => !entry.excludeFromStats);
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
+
+  const dedupedEntries = useMemo(
+    () =>
+      dedupeEntriesByMatchTeam(filteredEntries, {
+        game: selectedGame,
+        eventOptions,
+        selectedEvent,
+        preferLatest: true,
+      }),
+    [filteredEntries, selectedGame, eventOptions, selectedEvent]
+  );
 
   const matches = useMemo(() => {
-    const ids = filteredEntries.map((entry) => normalizeMatchId(entry)).filter(Boolean);
+    const ids = dedupedEntries.map((entry) => normalizeMatchId(entry)).filter(Boolean);
     return sortMatches([...new Set(ids)].map((matchId) => ({ matchId }))).map((row) => row.matchId);
-  }, [filteredEntries]);
+  }, [dedupedEntries]);
 
   useEffect(() => {
     if (matches.length === 0) {
@@ -223,17 +312,26 @@ function MatchBreakdownContent() {
   }, [matches, selectedMatch]);
 
   const allianceBreakdown = useMemo(() => {
-    const selectedRows = filteredEntries.filter((entry) => normalizeMatchId(entry) === selectedMatch);
+    const selectedRows = dedupedEntries.filter((entry) => normalizeMatchId(entry) === selectedMatch);
     const teamScores = new Map<string, { score: number; alliance: "red" | "blue" | null }>();
+    const scheduled = scheduleByMatchId[selectedMatch];
+    const scheduledAllianceByTeam = new Map<number, "red" | "blue">();
+    if (scheduled) {
+      scheduled.red.forEach((team) => scheduledAllianceByTeam.set(team, "red"));
+      scheduled.blue.forEach((team) => scheduledAllianceByTeam.set(team, "blue"));
+    }
 
     selectedRows.forEach((entry) => {
       const team = String(entry.teamNumber || "").trim();
       if (!team) return;
+      const teamNumber = Number(team);
+      const scheduledAlliance = Number.isFinite(teamNumber)
+        ? scheduledAllianceByTeam.get(teamNumber) || null
+        : null;
       const score = scoreEntry(entry, selectedGame);
-      const alliance = inferAlliance(entry);
-      const existing = teamScores.get(team);
-      if (!existing || score > existing.score) {
-        teamScores.set(team, { score, alliance: alliance || existing?.alliance || null });
+      const alliance = scheduledAlliance || inferAlliance(entry);
+      if (!teamScores.has(team)) {
+        teamScores.set(team, { score, alliance });
       }
     });
 
@@ -250,27 +348,29 @@ function MatchBreakdownContent() {
         else unknown.push(row);
       });
 
-    // Fill missing alliances when source does not include explicit alliance tags.
-    unknown.forEach((row) => {
-      if (red.length < 3) red.push(row);
-      else blue.push(row);
-    });
+    if (!scheduled) {
+      // Fill missing alliances when source does not include explicit alliance tags.
+      unknown.forEach((row) => {
+        if (red.length < 3) red.push(row);
+        else blue.push(row);
+      });
+    }
 
     const redTotal = red.reduce((sum, row) => sum + row.totalScore, 0);
     const blueTotal = blue.reduce((sum, row) => sum + row.totalScore, 0);
 
     return { red, blue, redTotal, blueTotal };
-  }, [filteredEntries, selectedMatch, selectedGame]);
+  }, [dedupedEntries, selectedMatch, selectedGame, scheduleByMatchId]);
 
   return (
     <AnalyticsShell
-      entriesCount={filteredEntries.length}
+      entriesCount={dedupedEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(entries, selectedGame)]}
+      eventOptions={[{ id: "all", name: "All Events" }, ...eventOptions]}
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Match Breakdown</h1>

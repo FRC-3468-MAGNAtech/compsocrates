@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
-import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
-import { flagStateDocId, shouldExcludeEntryFromStats, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
+import { useAuth } from "@/app/AuthContext";
 
 type TeamRanking = {
   teamNumber: string;
@@ -25,6 +25,8 @@ type ScoutingEntry = {
   accuracy?: number;
   game?: string;
   teamNumber?: string;
+  scoutName?: string;
+  scoutId?: string;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
   autoCoralL2?: number;
@@ -54,6 +56,7 @@ type ScoutingEntry = {
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
 };
 
 function isPracticeEntry(entry: ScoutingEntry) {
@@ -91,11 +94,14 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
 function RankingsContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeScoutTeam, setActiveScoutTeam] = useState<string | null>(null);
+  const [officialRanks, setOfficialRanks] = useState<Record<string, number>>({});
+  const [tbaAuth, setTbaAuth] = useState<{ encryptedKey: string; plainKey: string }>({ encryptedKey: "", plainKey: "" });
+  const eventOptions = useMemo(() => getEventOptionsForEntries(entries, selectedGame), [entries, selectedGame]);
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -126,44 +132,98 @@ function RankingsContent() {
   }, []);
 
   useEffect(() => {
-    async function loadFlagStates() {
-      if (!userData?.teamId) {
-        setFlagStates({});
-        return;
-      }
+    const teamId = userData?.teamId;
+    if (!teamId) return;
+    const resolvedTeamId = String(teamId);
+    let isActive = true;
+    async function loadTbaKey() {
       try {
-        const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId)));
-        const next: Record<string, StoredFlagState> = {};
-        snap.docs.forEach((d) => {
-          const row = d.data() as StoredFlagState;
-          const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
-          const entityId = String(row.entityId || "").trim();
-          if (!entityId) return;
-          next[flagStateDocId(entityType, entityId)] = row;
+        const teamDoc = await getDoc(doc(db, "teams", resolvedTeamId));
+        if (!isActive) return;
+        const data = teamDoc.exists() ? (teamDoc.data() as Record<string, unknown>) : {};
+        setTbaAuth({
+          encryptedKey: String(data.tbaApiKeyEncrypted || "").trim(),
+          plainKey: String(data.tbaApiKey || "").trim(),
         });
-        setFlagStates(next);
       } catch (error) {
-        console.warn("Unable to load scouting flag states for rankings. Continuing without flag states.", error);
-        setFlagStates({});
+        console.warn("Unable to load TBA key for rankings:", error);
+        if (isActive) setTbaAuth({ encryptedKey: "", plainKey: "" });
       }
     }
-    void loadFlagStates();
+    void loadTbaKey();
+    return () => {
+      isActive = false;
+    };
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    if (!selectedEvent || selectedEvent === "all") {
+      setOfficialRanks({});
+      return;
+    }
+    let isActive = true;
+    async function loadOfficialRanks() {
+      try {
+        const response = await fetch("/api/tba/rankings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventKey: selectedEvent,
+            encryptedKey: tbaAuth.encryptedKey,
+            plainKey: tbaAuth.plainKey,
+          }),
+        });
+        if (!response.ok) {
+          if (isActive) setOfficialRanks({});
+          return;
+        }
+        const payload = (await response.json()) as { rankings?: Array<Record<string, unknown>> };
+        const map: Record<string, number> = {};
+        (payload.rankings || []).forEach((row) => {
+          const teamKey = String(row.team_key || row.teamKey || row.team || "").trim();
+          const teamNumber = teamKey.startsWith("frc")
+            ? Number(teamKey.replace("frc", ""))
+            : Number(teamKey || row.teamNumber || row.team_number || 0);
+          const rank = Number(row.rank || row.rankNumber || row.Rank || 0);
+          if (Number.isFinite(teamNumber) && teamNumber > 0 && Number.isFinite(rank) && rank > 0) {
+            map[String(teamNumber)] = rank;
+          }
+        });
+        if (isActive) setOfficialRanks(map);
+      } catch (error) {
+        console.warn("Unable to load official TBA rankings:", error);
+        if (isActive) setOfficialRanks({});
+      }
+    }
+    void loadOfficialRanks();
+    return () => {
+      isActive = false;
+    };
+  }, [selectedEvent, tbaAuth.encryptedKey, tbaAuth.plainKey]);
+
   const filteredEntries = useMemo(() => {
-    const gameFiltered = entries.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
+    const gameFiltered = entries.filter((entry) =>
+      entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventOptions)
+    );
     return gameFiltered
       .filter((entry) => (practiceMatchesOnly ? isPracticeEntry(entry) : !isPracticeEntry(entry)))
-      .filter((entry) => {
-        const entryId = String(entry.id || "").trim();
-        const state = entryId ? flagStates[flagStateDocId("scoutingEntry", entryId)] : undefined;
-        return !shouldExcludeEntryFromStats(entry as Record<string, unknown>, state);
-      });
-  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, flagStates]);
+      .filter((entry) => !entry.excludeFromStats);
+  }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, eventOptions]);
+
+  const dedupedEntries = useMemo(
+    () =>
+      dedupeEntriesByMatchTeam(filteredEntries, {
+        game: selectedGame,
+        eventOptions,
+        selectedEvent,
+        preferLatest: true,
+      }),
+    [filteredEntries, selectedGame, eventOptions, selectedEvent]
+  );
 
   const rankings = useMemo(() => {
     const teamScores: Record<string, number[]> = {};
-    filteredEntries.forEach((e) => {
+    dedupedEntries.forEach((e) => {
       const team = e.teamNumber;
       if (!team) return;
       const score = scoreEntry(e, selectedGame);
@@ -178,17 +238,33 @@ function RankingsContent() {
       matches: scores.length,
     }));
     return rows.sort((a, b) => b.avgScore - a.avgScore);
-  }, [filteredEntries, selectedGame]);
+  }, [dedupedEntries, selectedGame]);
+
+  const scoutBreakdown = useMemo(() => {
+    const map = new Map<string, { total: number; scouts: Map<string, number> }>();
+    filteredEntries.forEach((entry) => {
+      const team = String(entry.teamNumber || "").trim();
+      if (!team) return;
+      const scout = String(entry.scoutName || "Unknown").trim() || "Unknown";
+      const existing = map.get(team) || { total: 0, scouts: new Map<string, number>() };
+      existing.total += 1;
+      existing.scouts.set(scout, (existing.scouts.get(scout) || 0) + 1);
+      map.set(team, existing);
+    });
+    return map;
+  }, [filteredEntries]);
+
+  const activeScoutBreakdown = activeScoutTeam ? scoutBreakdown.get(activeScoutTeam) || null : null;
 
   return (
     <AnalyticsShell
-      entriesCount={filteredEntries.length}
+      entriesCount={dedupedEntries.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(entries, selectedGame)]}
+      eventOptions={[{ id: "all", name: "All Events" }, ...eventOptions]}
       onSelectedEventChange={setSelectedEvent}
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Rankings</h1>
@@ -206,20 +282,74 @@ function RankingsContent() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">High</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matches</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scouts</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {rankings.map((team, i) => (
                 <tr key={team.teamNumber}>
-                  <td className="px-6 py-4">#{i + 1}</td>
+                  <td className="px-6 py-4">
+                    <div className="font-medium">#{i + 1}</div>
+                    <div className="text-xs text-gray-500">
+                      Official Rank: {officialRanks[team.teamNumber] ? `#${officialRanks[team.teamNumber]}` : "-"}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 font-semibold">{team.teamNumber}</td>
                   <td className="px-6 py-4 text-xl font-bold theme-text">{team.avgScore}</td>
                   <td className="px-6 py-4">{team.highScore}</td>
                   <td className="px-6 py-4">{team.matches}</td>
+                  <td className="px-6 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setActiveScoutTeam(team.teamNumber)}
+                      className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
+                    >
+                      Scouts
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeScoutTeam && (
+        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Team {activeScoutTeam} Scouts</h2>
+              <button
+                type="button"
+                onClick={() => setActiveScoutTeam(null)}
+                className="px-3 py-1 rounded border hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+            {activeScoutBreakdown ? (
+              <div className="space-y-2">
+                {Array.from(activeScoutBreakdown.scouts.entries())
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([scout, count]) => {
+                    const percent = activeScoutBreakdown.total
+                      ? Math.round((count / activeScoutBreakdown.total) * 100)
+                      : 0;
+                    return (
+                      <div key={scout} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                        <div>
+                          <p className="font-medium">{scout}</p>
+                          <p className="text-xs text-gray-500">{count} scout(s)</p>
+                        </div>
+                        <div className="text-sm font-semibold text-gray-700">{percent}%</div>
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600">No scout data found for this team.</p>
+            )}
+          </div>
         </div>
       )}
     </AnalyticsShell>

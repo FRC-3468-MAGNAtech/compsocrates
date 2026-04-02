@@ -21,9 +21,16 @@ export function getMatchLabelMeta(rawMatch: string): {
   order: number;
   matchNumber: number;
 } {
-  const value = String(rawMatch || "").trim();
-  if (!value) {
+  const rawValue = String(rawMatch || "").trim();
+  if (!rawValue) {
     return { shortLabel: "-", category: "unknown", order: 99, matchNumber: 0 };
+  }
+  let value = rawValue;
+  if (value.includes("_")) {
+    const suffix = value.split("_").pop() || "";
+    if (suffix && /[a-z]/i.test(suffix)) {
+      value = suffix;
+    }
   }
   const lower = value.toLowerCase();
   const compact = lower.replace(/[^a-z0-9]/g, "");
@@ -67,6 +74,7 @@ export function getMatchLabelMeta(rawMatch: string): {
     lower.includes("elim") ||
     /\bf\b/.test(lower) ||
     compact.startsWith("final");
+  const isGenericMatch = /^\s*match\b/.test(lower) || compact.startsWith("match");
 
   let category: MatchLabelCategory = "unknown";
   if (isPractice) category = "practice";
@@ -74,6 +82,7 @@ export function getMatchLabelMeta(rawMatch: string): {
   else if (isQuarter) category = "quarterfinals";
   else if (isSemi) category = "semifinals";
   else if (isFinals) category = "finals";
+  else if (isGenericMatch) category = "semifinals";
 
   const orderMap: Record<MatchLabelCategory, number> = {
     practice: 0,
@@ -103,4 +112,22 @@ export function getMatchLabelMeta(rawMatch: string): {
 
 export function formatMatchLabelShort(rawMatch: string): string {
   return getMatchLabelMeta(rawMatch).shortLabel || "-";
+}
+
+export function formatMatchLabelLong(rawMatch: string): string {
+  const rawValue = String(rawMatch || "").trim();
+  if (!rawValue) return "-";
+  const meta = getMatchLabelMeta(rawValue);
+  const labelMap: Record<MatchLabelCategory, string> = {
+    practice: "Practice",
+    qualification: "Qualification",
+    quarterfinals: "Quarterfinal",
+    semifinals: "Semi-Final",
+    finals: "Final",
+    unknown: "Match",
+  };
+  const baseLabel = labelMap[meta.category] || "Match";
+  if (meta.category === "unknown") return rawValue;
+  const matchNumber = meta.matchNumber || Number(rawValue.replace(/\D/g, "")) || 0;
+  return matchNumber > 0 ? `${baseLabel} ${matchNumber}` : baseLabel;
 }

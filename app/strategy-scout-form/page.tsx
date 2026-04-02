@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDocs, getDoc, query, where } from "firebase/firestore";
+import { useSearchParams } from "next/navigation";
+import { addDoc, collection, doc, getDocs, getDoc, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
@@ -99,6 +100,10 @@ function parseManualTeamList(input: unknown): string[] {
 
 function TeamStrategyFormContent() {
   const { userData } = useAuth();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("editId");
+  const editCollectionParam = searchParams.get("editCollection");
+  const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
@@ -116,6 +121,7 @@ function TeamStrategyFormContent() {
   const [assignedTeamNumbers, setAssignedTeamNumbers] = useState<string[]>([]);
   const [scoutedTeams, setScoutedTeams] = useState<Set<string>>(new Set());
   const [teamLoadNote, setTeamLoadNote] = useState("");
+  const [editEventKey, setEditEventKey] = useState<string | null>(null);
 
   const eventLabel = useMemo(() => {
     if (!eventKey || eventKey === "app-testing") return "Practice Event";
@@ -125,6 +131,37 @@ function TeamStrategyFormContent() {
   useEffect(() => {
     if (!userData?.displayName) return;
   }, [userData?.displayName]);
+
+  useEffect(() => {
+    if (!editId) return;
+    let isActive = true;
+    const editIdValue = editId;
+    const collectionName: string = editCollectionParam || "strategyScouting";
+    async function loadEditEntry() {
+      try {
+        const snap = await getDoc(doc(db, collectionName, editIdValue));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (!isActive) return;
+        const entryEventKey = String(data.eventKey || "").trim();
+        setEditEventKey(entryEventKey || null);
+        setTeamNumber(String(data.teamNumber || ""));
+        setStartingPosition(String(data.preferredStartingPosition || data.startingPosition || ""));
+        setBestAt(String(data.bestAt || ""));
+        setClearsBump(Boolean(data.clearsBump));
+        setClearsTrench(Boolean(data.clearsTrench));
+        setShootWhileIntaking(Boolean(data.canShootWhileIntaking));
+        setMoveAndShoot(Boolean(data.canMoveAndShootSimultaneously));
+        setNotes(String(data.notes || ""));
+      } catch (error) {
+        console.error("Failed to load team strategy edit entry:", error);
+      }
+    }
+    void loadEditEntry();
+    return () => {
+      isActive = false;
+    };
+  }, [editId, editCollectionParam]);
 
   useEffect(() => {
     async function loadContext() {
@@ -141,10 +178,15 @@ function TeamStrategyFormContent() {
         let resolvedKey = "app-testing";
         let resolvedName = "Practice Event";
         try {
-          const resolvedEvent = await resolveDetectedTeamEvent(userData.teamId);
-          if (resolvedEvent?.key) {
-            resolvedKey = resolvedEvent.key;
-            resolvedName = resolvedEvent.name || resolvedKey;
+          if (editEventKey) {
+            resolvedKey = editEventKey;
+            resolvedName = editEventKey;
+          } else {
+            const resolvedEvent = await resolveDetectedTeamEvent(userData.teamId);
+            if (resolvedEvent?.key) {
+              resolvedKey = resolvedEvent.key;
+              resolvedName = resolvedEvent.name || resolvedKey;
+            }
           }
         } catch (error) {
           console.warn("Unable to resolve event for strategy form:", error);
@@ -158,6 +200,20 @@ function TeamStrategyFormContent() {
           teamAssignments = teamAssignmentsSnap.docs.map((row) => row.data() as Record<string, unknown>);
         } catch (error) {
           console.warn("Unable to load team assignments:", error);
+        }
+        if (teamAssignments.length === 0) {
+          try {
+            const fallbackSnap = await getDocs(
+              query(
+                collection(db, "matchAssignments"),
+                where("scoutId", "==", userData.uid),
+                where("assignmentType", "==", "team")
+              )
+            );
+            teamAssignments = fallbackSnap.docs.map((row) => row.data() as Record<string, unknown>);
+          } catch (error) {
+            console.warn("Unable to load fallback team assignments:", error);
+          }
         }
 
         const assignmentForEvent =
@@ -257,9 +313,10 @@ function TeamStrategyFormContent() {
     }
 
     void loadContext();
-  }, [userData?.teamId, userData?.uid]);
+  }, [userData?.teamId, userData?.uid, editEventKey]);
 
   useEffect(() => {
+    if (editMode) return;
     if (assignedTeamNumbers.length === 0) return;
     const nextTeam = assignedTeamNumbers.find((team) => !scoutedTeams.has(team));
     if (!nextTeam) return;
@@ -268,7 +325,7 @@ function TeamStrategyFormContent() {
       if (prev === nextTeam) return prev;
       return nextTeam;
     });
-  }, [assignedTeamNumbers, scoutedTeams]);
+  }, [assignedTeamNumbers, scoutedTeams, editMode]);
 
   const canSubmit = useMemo(() => {
     return teamNumber.trim().length > 0 && startingPosition && bestAt;
@@ -279,7 +336,7 @@ function TeamStrategyFormContent() {
     if (!userData?.uid || !userData.teamId || !canSubmit) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, "strategyScouting"), {
+      const payload = {
         scoutName: userData.displayName || "",
         scoutId: userData.uid,
         teamId: userData.teamId,
@@ -294,20 +351,27 @@ function TeamStrategyFormContent() {
         canMoveAndShootSimultaneously: moveAndShoot,
         notes: notes.trim(),
         createdAt: Date.now(),
-      });
-      alert("Team Strategy Form submitted.");
-      if (typeof window !== "undefined") {
-        window.location.reload();
+        submittedAt: Date.now(),
+      };
+      if (editMode && editId && editCollectionParam) {
+        await setDoc(doc(db, editCollectionParam, editId), payload, { merge: true });
+        alert("Team Strategy Form updated.");
+      } else {
+        await addDoc(collection(db, "strategyScouting"), payload);
+        alert("Team Strategy Form submitted.");
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+        setTeamNumber("");
+        setStartingPosition("");
+        setBestAt("");
+        setClearsBump(false);
+        setClearsTrench(false);
+        setShootWhileIntaking(false);
+        setMoveAndShoot(false);
+        setNotes("");
+        setScoutedTeams((prev) => new Set(prev).add(teamNumber.trim()));
       }
-      setTeamNumber("");
-      setStartingPosition("");
-      setBestAt("");
-      setClearsBump(false);
-      setClearsTrench(false);
-      setShootWhileIntaking(false);
-      setMoveAndShoot(false);
-      setNotes("");
-      setScoutedTeams((prev) => new Set(prev).add(teamNumber.trim()));
     } catch (error) {
       console.error("Error submitting team strategy form:", error);
       alert("Could not submit form.");
@@ -358,10 +422,14 @@ function TeamStrategyFormContent() {
             <label className="block text-sm font-medium text-gray-700">Preferred Starting Position</label>
             <select className="w-full border rounded p-3" value={startingPosition} onChange={(e) => setStartingPosition(e.target.value)} required>
               <option value="">Select Position</option>
-              <option value="any">Any</option>
+              <option value="not-there">Not There</option>
+              <option value="outpost-trench">Outpost Trench</option>
               <option value="outpost-side">Outpost Side</option>
+              <option value="outpost-bump">Outpost Bump</option>
               <option value="middle">Middle</option>
+              <option value="depot-bump">Depot Bump</option>
               <option value="depot-side">Depot Side</option>
+              <option value="depot-trench">Depot Trench</option>
             </select>
 
             <label className="block text-sm font-medium text-gray-700">Best At</label>
@@ -386,7 +454,7 @@ function TeamStrategyFormContent() {
               className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
               style={{ backgroundColor: "var(--primary-color)" }}
             >
-              {saving ? "Submitting..." : "Submit Team Strategy Form"}
+              {saving ? "Submitting..." : editMode ? "Update Team Strategy Form" : "Submit Team Strategy Form"}
             </button>
           </div>
         </form>

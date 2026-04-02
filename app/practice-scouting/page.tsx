@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { auth } from "@/app/firebase";
@@ -9,14 +9,16 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import PracticeDifficultyMatchModal, { type PracticeDifficultyModalOption } from "@/app/components/PracticeDifficultyMatchModal";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { PracticeMatch, PracticeSession, calculateScoutedScore, calculateAccuracy } from "@/app/utils/practiceTypes";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { getEventsForGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { getEventsForGame, normalizeMatchLabel, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions, pickDetectedEventKey, type DetectedEventOption } from "@/app/utils/eventDetection";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { buildCompletedModalIdsFromTba, buildReefscapeModalOptions, isTbaMatchCompleted } from "@/app/utils/reefscapeMatchSync";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
+import { normalizeEventKey } from "@/app/utils/events";
 
 // Counter component
 const Counter = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => (
@@ -272,6 +274,38 @@ function createEmptyScoutedData(teamNumber = "", notes = ""): ScoutedData {
     incidents: [] as string[],
     notes,
   };
+}
+
+function parseTeamNumber(value: unknown): number | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const digits = raw.match(/\d+/)?.[0];
+  const num = Number(digits ?? raw);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function getYouTubeUrlFromMatch(match: TBAMatch): string {
+  const youtube = match.videos?.find((video) => video.type === "youtube");
+  if (!youtube?.key) return "";
+  return `https://www.youtube.com/watch?v=${youtube.key}`;
+}
+
+function normalizeMatchId(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parsed = normalizeMatchLabel(raw);
+  return parsed.matchId || raw;
+}
+
+function isValidEventKey(value: string): boolean {
+  const trimmed = String(value || "").trim();
+  return /^\d{4}[a-z0-9]+$/i.test(trimmed);
+}
+
+function extractEventKeyFromMatchKey(matchKey: string): string {
+  const trimmed = String(matchKey || "").trim();
+  const parsed = trimmed.match(/^(\d{4}[a-z0-9]+)_/i);
+  return parsed?.[1] || "";
 }
 
 function sanitizeAllianceTeams(candidate: unknown): number[] {
@@ -1051,7 +1085,24 @@ function resolvePracticeEvent(
 
 function PracticeScoutingContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { userData, teamTimeOverride } = useAuth();
+  const initialRescoutId = searchParams.get("rescoutId");
+  const [rescoutId, setRescoutId] = useState<string | null>(() => initialRescoutId);
+  const [rescoutTarget, setRescoutTarget] = useState<{
+    id: string;
+    matchKey: string;
+    alliance: "red" | "blue";
+    teamNumber: number;
+    game: "REEFSCAPE" | "REBUILT";
+    eventKey?: string;
+    eventName?: string;
+  } | null>(null);
+  const [rescoutLoaded, setRescoutLoaded] = useState(false);
+  const [rescoutAutoStarted, setRescoutAutoStarted] = useState(false);
+  const [rescoutCompleted, setRescoutCompleted] = useState(false);
+  const [rescoutSubmitInFlight, setRescoutSubmitInFlight] = useState(false);
+  const [rescoutError, setRescoutError] = useState("");
   const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
@@ -1104,10 +1155,340 @@ function PracticeScoutingContent() {
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
   const REBUILT_WEEK0_EVENT_KEY = "2026week0";
+  const hasRescoutTarget = Boolean(rescoutTarget);
+  const isRescoutIntent = Boolean(rescoutId || hasRescoutTarget);
+  const isRescoutFlow = Boolean(rescoutId || hasRescoutTarget);
 
   const persistedDifficulty: "easy" | "medium" | "hard" = selectedDifficulty === "live"
     ? "hard"
     : (selectedDifficulty || "easy");
+
+  useEffect(() => {
+    const id = searchParams.get("rescoutId");
+    setRescoutId(id);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (rescoutTarget && !activeMatchGame) {
+      setActiveMatchGame(rescoutTarget.game || "REBUILT");
+    }
+  }, [rescoutTarget, activeMatchGame]);
+
+  useEffect(() => {
+    if (!rescoutId || rescoutTarget) return;
+    const matchKey = String(searchParams.get("matchKey") || "").trim();
+    const teamNumber = parseTeamNumber(searchParams.get("teamNumber"));
+    const alliance = String(searchParams.get("alliance") || "").toLowerCase() === "blue" ? "blue" : "red";
+    const game = String(searchParams.get("game") || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+    const rawEventKey = normalizeEventKey(String(searchParams.get("eventKey") || "").trim());
+    let eventKey = rawEventKey === "all" ? "" : rawEventKey;
+    const eventName = String(searchParams.get("eventName") || "").trim();
+    if (!matchKey || !teamNumber) return;
+    if (!isValidEventKey(eventKey)) {
+      const fallbackKey = extractEventKeyFromMatchKey(matchKey);
+      eventKey = normalizeEventKey(fallbackKey);
+    }
+    setRescoutTarget({
+      id: rescoutId,
+      matchKey,
+      alliance,
+      teamNumber,
+      game,
+      eventKey: isValidEventKey(eventKey) ? eventKey : undefined,
+      eventName: eventName || undefined,
+    });
+    setRescoutError("");
+    setSelectedMode("trial");
+    setSelectedDifficulty((prev) => prev || "easy");
+    setActiveMatchGame(game);
+    setRescoutLoaded(true);
+  }, [rescoutId, searchParams, rescoutTarget, setSelectedMode, setSelectedDifficulty]);
+
+  useEffect(() => {
+    const teamId = userData?.teamId;
+    if (!rescoutId || !teamId || rescoutLoaded || rescoutTarget) return;
+    let isActive = true;
+    async function loadRescout() {
+      try {
+        const id = rescoutId;
+        if (!id) return;
+        const snap = await getDoc(doc(db, "accuracyRescouts", id));
+        if (!snap.exists()) return;
+        const data = snap.data() as Record<string, unknown>;
+        if (String(data.teamId || "") !== String(teamId || "")) return;
+        const alliance = String(data.alliance || "").toLowerCase() === "blue" ? "blue" : "red";
+        const teamNumber = parseTeamNumber(data.teamNumber);
+        const matchKey = String(data.matchKey || data.matchLabel || "").trim();
+        const game = String(data.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+        const eventName = String(data.eventName || "").trim();
+        let eventKey = normalizeEventKey(String(data.eventKey || "").trim());
+        if (!isValidEventKey(eventKey)) {
+          eventKey = normalizeEventKey(extractEventKeyFromMatchKey(matchKey));
+        }
+        if (!isValidEventKey(eventKey) && teamEventCatalog.length > 0 && eventName) {
+          const fromName =
+            teamEventCatalog.find(
+              (event) => String(event.name || "").trim().toLowerCase() === String(eventName).trim().toLowerCase()
+            )?.key || "";
+          eventKey = normalizeEventKey(fromName);
+        }
+        if (!matchKey || !teamNumber) return;
+        if (!isActive) return;
+        setRescoutTarget({
+          id,
+          matchKey,
+          alliance,
+          teamNumber,
+          game,
+          eventKey: isValidEventKey(eventKey) ? eventKey : undefined,
+          eventName: eventName || undefined,
+        });
+        setRescoutError("");
+        setSelectedMode("trial");
+        setSelectedDifficulty((prev) => prev || "easy");
+        setActiveMatchGame(game);
+      } catch (error) {
+        console.error("Failed to load rescout request:", error);
+      } finally {
+        if (isActive) setRescoutLoaded(true);
+      }
+    }
+    void loadRescout();
+    return () => {
+      isActive = false;
+    };
+  }, [rescoutId, rescoutLoaded, userData?.teamId, setSelectedMode, setSelectedDifficulty, teamEventCatalog]);
+
+  useEffect(() => {
+    if (!rescoutTarget || rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || rescoutError) return;
+    const target = rescoutTarget;
+    if (!activeMatchGame) {
+      setActiveMatchGame(target.game || "REBUILT");
+    }
+    let isActive = true;
+
+    async function fetchRescoutTbaMatch() {
+      const eventKeyFromMatchKey = extractEventKeyFromMatchKey(String(target.matchKey || ""));
+      const eventKeyFromName =
+        teamEventCatalog.find(
+          (event) =>
+            String(event.name || "").trim().toLowerCase() ===
+            String(target.eventName || "").trim().toLowerCase()
+        )?.key || "";
+      const fallbackEventKey = normalizeEventKey(
+        String(eventKeyFromMatchKey || eventKeyFromName || "").trim()
+      );
+      const candidate = normalizeEventKey(String(target.eventKey || "").trim()) || fallbackEventKey;
+      const eventKey = isValidEventKey(candidate) ? candidate : "";
+      if (!eventKey) return null;
+      let matches: TBAMatch[] = [];
+      try {
+        const response = await fetch("/api/tba/matches", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventKey,
+            encryptedKey: tbaAuth.encryptedKey,
+            plainKey: tbaAuth.plainKey,
+          }),
+        });
+        if (response.ok) {
+          const payload = (await response.json()) as { matches?: TBAMatch[] };
+          if (Array.isArray(payload.matches)) matches = payload.matches;
+        }
+      } catch (error) {
+        console.warn("Rescout TBA proxy failed:", error);
+      }
+
+      if (matches.length === 0) {
+        try {
+          matches = await getEventMatches(eventKey, tbaAuth.plainKey || undefined);
+        } catch (error) {
+          console.warn("Rescout TBA fetch failed:", error);
+          return null;
+        }
+      }
+
+      const targetId = normalizeMatchId(target.matchKey);
+      const byKey = matches.find((match) => normalizeMatchId(match.key) === targetId);
+      if (byKey) return byKey;
+      const parsedTarget = normalizeMatchLabel(String(target.matchKey || target.matchKey || ""));
+      const targetNumber = Number(parsedTarget.matchNumber || 0);
+      if (!targetNumber) return null;
+      const expectedLevel = parsedTarget.matchType === "practice"
+        ? "pm"
+        : parsedTarget.matchType === "finals"
+        ? "sf"
+        : "qm";
+      return (
+        matches.find(
+          (match) =>
+            String(match.comp_level || "") === expectedLevel &&
+            Number(match.match_number || 0) === targetNumber
+        ) || null
+      );
+    }
+
+    async function startRescoutFlow() {
+      try {
+        if (isActive) setRescoutAutoStarted(true);
+        setRescoutError("");
+        clearPracticeDraft();
+        setPendingDraft(null);
+        setSelectedMode("trial");
+        if (!selectedDifficulty) setSelectedDifficulty("easy");
+        setShowMatchSelectModal(false);
+        setShowDifficultyMatchModal(false);
+        setShowLiveRobotModal(false);
+        setPendingLiveMatchPick(null);
+
+        let candidates: CandidatePracticeMatch[] = [];
+        try {
+          candidates = await fetchLobbyMatchCandidates();
+        } catch (error) {
+          console.warn("Rescout candidate match load failed; falling back to TBA-only match.", error);
+          candidates = [];
+        }
+        if (!isActive) return;
+        if (candidates.length > 0) setCandidateMatches(candidates);
+
+        const targetId = normalizeMatchId(target.matchKey);
+        const targetMatch =
+          candidates.find(
+            (match) =>
+              normalizeMatchId(String(match.matchKey || match.id || "")) === targetId &&
+              normalizeAllianceSide(match.alliance) === target.alliance
+          ) || null;
+
+        let matchToUse: PracticeMatch | null = targetMatch ? { ...targetMatch } : null;
+        const hasVideo = Boolean(matchToUse?.videoUrl);
+        const hasTeams = (matchToUse?.allianceTeams || []).length >= 3;
+
+        let tbaMatch: TBAMatch | null = null;
+        if (!hasVideo || !hasTeams) {
+          tbaMatch = await fetchRescoutTbaMatch();
+        }
+
+        if (!tbaMatch && !matchToUse) {
+          if (isActive) setRescoutError("Rescout match unavailable.");
+          return;
+        }
+
+        if (!tbaMatch && matchToUse && !hasVideo) {
+          if (isActive) setRescoutError("Rescout video unavailable.");
+          return;
+        }
+
+        if (tbaMatch) {
+          const videoUrl = getYouTubeUrlFromMatch(tbaMatch);
+          if (!videoUrl) {
+            if (!hasVideo) {
+              if (isActive) setRescoutError("Rescout video unavailable.");
+              return;
+            }
+          }
+          const allianceTeams = (tbaMatch.alliances?.[target.alliance]?.team_keys || [])
+            .map((teamKey) => parseInt(String(teamKey || "").replace(/[^\d]/g, ""), 10))
+            .filter((team) => Number.isFinite(team) && team > 0)
+            .slice(0, 3);
+          const allianceScore = Number(tbaMatch.alliances?.[target.alliance]?.score || 0);
+          const eventKey =
+            normalizeEventKey(
+              String(
+                target.eventKey ||
+                String(target.matchKey || "").split("_")[0] ||
+                teamEventCatalog.find(
+                  (event) =>
+                    String(event.name || "").trim().toLowerCase() ===
+                    String(target.eventName || "").trim().toLowerCase()
+                )?.key ||
+                ""
+              )
+            ) ||
+            normalizeEventKey(String(tbaMatch.key || "").split("_")[0]);
+          const eventName = target.eventName || eventKey || "Event";
+          const tbaPayload: PracticeMatch = {
+            id: `${tbaMatch.key}:${target.alliance}`,
+            matchKey: tbaMatch.key,
+            eventKey,
+            eventName,
+            matchNumber: Number(tbaMatch.match_number || 0),
+            matchType: normalizePracticeMatchType(undefined, tbaMatch.key, tbaMatch.comp_level),
+            videoUrl: videoUrl || matchToUse?.videoUrl || "",
+            difficulty: scoreToDifficulty(allianceScore),
+            alliance: target.alliance,
+            allianceScore,
+            allianceTeams,
+            actualScore: allianceScore,
+            officialData: {
+              score: allianceScore,
+              penaltyPoints: Number(tbaMatch.score_breakdown?.[target.alliance]?.foulPoints || 0),
+              breakdown: tbaMatch.score_breakdown?.[target.alliance] || {},
+            },
+            createdAt: (Number(tbaMatch.actual_time || tbaMatch.time || 0) || Date.now() / 1000) * 1000,
+          };
+
+          matchToUse = matchToUse
+            ? {
+                ...matchToUse,
+                eventKey: tbaPayload.eventKey,
+                eventName: tbaPayload.eventName,
+                matchKey: tbaPayload.matchKey,
+                matchNumber: tbaPayload.matchNumber,
+                matchType: tbaPayload.matchType,
+                allianceTeams: tbaPayload.allianceTeams.length >= 3 ? tbaPayload.allianceTeams : matchToUse.allianceTeams,
+                allianceScore: tbaPayload.allianceScore,
+                actualScore: tbaPayload.actualScore,
+                officialData: tbaPayload.officialData,
+                videoUrl: tbaPayload.videoUrl,
+                difficulty: tbaPayload.difficulty,
+              }
+            : tbaPayload;
+        }
+
+        if (!matchToUse) {
+          if (isActive) setRescoutError("Rescout match unavailable.");
+          return;
+        }
+
+        const teamIndex = matchToUse.allianceTeams.findIndex((team) => Number(team) === target.teamNumber);
+        startPracticeMatch(
+          { ...matchToUse, progress: "fresh" as const },
+          {
+            robotIndex: teamIndex >= 0 ? teamIndex : 0,
+            teamNumber: String(target.teamNumber),
+          }
+        );
+      } catch (error) {
+        console.error("Failed to auto-start rescout flow:", error);
+        if (isActive) setRescoutError("Rescout match unavailable.");
+      }
+    }
+
+    void startRescoutFlow();
+    return () => {
+      isActive = false;
+    };
+  }, [
+    activeMatchGame,
+    fetchLobbyMatchCandidates,
+    rescoutAutoStarted,
+    rescoutCompleted,
+    rescoutSubmitInFlight,
+    rescoutTarget,
+    selectedDifficulty,
+    startPracticeMatch,
+    tbaAuth.encryptedKey,
+    tbaAuth.plainKey,
+    teamEventCatalog,
+  ]);
+
+  useEffect(() => {
+    if (!isRescoutFlow || !rescoutCompleted) return;
+    if (currentStep !== "results") {
+      setCurrentStep("results");
+    }
+  }, [currentStep, isRescoutFlow, rescoutCompleted]);
 
   const liveLobbyPlayers = useMemo(() => {
     if (!liveLobby?.playersByUid) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
@@ -1119,6 +1500,29 @@ function PracticeScoutingContent() {
       }))
       .sort((a, b) => a.joinedAt - b.joinedAt);
   }, [liveLobby]);
+
+  useEffect(() => {
+    if (!rescoutTarget || candidateMatches.length === 0) return;
+    if (rescoutAutoStarted || rescoutCompleted || rescoutSubmitInFlight || currentStep === "results") return;
+    const existingKey = normalizeMatchId(String(currentMatch?.matchKey || currentMatch?.id || ""));
+    if (existingKey && existingKey === normalizeMatchId(rescoutTarget.matchKey)) return;
+    const targetMatch =
+      candidateMatches.find(
+        (match) =>
+          normalizeMatchId(String(match.matchKey || "")) === normalizeMatchId(rescoutTarget.matchKey) &&
+          normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
+      ) ||
+      candidateMatches.find(
+        (match) =>
+          normalizeMatchId(String(match.id || "")) === normalizeMatchId(rescoutTarget.matchKey) &&
+          normalizeAllianceSide(match.alliance) === rescoutTarget.alliance
+      );
+    if (!targetMatch) return;
+    setCurrentMatch(targetMatch);
+    setCurrentStep("practice");
+    const teamIndex = targetMatch.allianceTeams.findIndex((team) => Number(team) === rescoutTarget.teamNumber);
+    if (teamIndex >= 0) setCurrentRobotIndex(teamIndex);
+  }, [rescoutTarget, candidateMatches, currentMatch, rescoutAutoStarted, rescoutCompleted, currentStep]);
 
   const liveLobbyParticipants = useMemo(() => {
     if (!liveLobby) return [] as Array<{ uid: string; name: string; joinedAt: number }>;
@@ -2114,6 +2518,17 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   useEffect(() => {
     if (!currentMatch) return;
     if (selectedDifficulty === "live" && liveLobby) return;
+    if (hasRescoutTarget) {
+      const lockedTeam = String(rescoutTarget?.teamNumber || "");
+      if (lockedTeam) {
+        if (activeMatchGame === "REBUILT") {
+          setRebuiltFormData((prev) => (prev.teamNumber === lockedTeam ? prev : { ...prev, teamNumber: lockedTeam }));
+        } else {
+          setFormData((prev) => (prev.teamNumber === lockedTeam ? prev : { ...prev, teamNumber: lockedTeam }));
+        }
+        return;
+      }
+    }
     const expectedTeam = currentMatch.allianceTeams[currentRobotIndex]?.toString() || "";
     if (activeMatchGame === "REBUILT") {
       setRebuiltFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
@@ -2468,7 +2883,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const initialTeamNumber = hasExplicitTeam ? String(options?.teamNumber) : (isLiveSession && liveLobby ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
-    setHumanPlayerRobot(Math.floor(Math.random() * 3));
+    if (hasRescoutTarget) {
+      setHumanPlayerRobot(null);
+    } else {
+      setHumanPlayerRobot(Math.floor(Math.random() * 3));
+    }
     setCurrentStep("practice");
     setShowDifficultyMatchModal(false);
   }
@@ -2754,6 +3173,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
   async function submitCurrentRobot() {
     if (!currentMatch || !userData) return;
+    if (isRescoutFlow && rescoutSubmitInFlight) return;
     if (selectedDifficulty === "live") {
       await submitLiveRobot();
       return;
@@ -2764,7 +3184,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const nextRobotSessions = [...rebuiltRobotSessions, robotData];
       setRebuiltRobotSessions(nextRobotSessions);
 
-      if (currentRobotIndex === 2) {
+      if (isRescoutFlow || currentRobotIndex === 2) {
+        if (isRescoutFlow) setRescoutSubmitInFlight(true);
         await submitRebuiltPracticeSession(nextRobotSessions);
         return;
       }
@@ -2785,7 +3206,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const nextRobotSessions = [...robotSessions, robotData];
     setRobotSessions(nextRobotSessions);
 
-    if (currentRobotIndex === 2) {
+    if (isRescoutFlow || currentRobotIndex === 2) {
+      if (isRescoutFlow) setRescoutSubmitInFlight(true);
       await submitPracticeSession(nextRobotSessions);
       return;
     }
@@ -2831,6 +3253,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       const baseScoutedScore = calculateBestRebuiltSessionBaseScore(allRobotData, officialAllianceScore, penaltyPoints);
       const totalScoutedScore = baseScoutedScore + penaltyPoints;
       const sessionAccuracy = calculateAccuracy(totalScoutedScore, officialAllianceScore);
+      const rescoutRobotScore = calculateRebuiltScoutedScore(allRobotData[allRobotData.length - 1]);
 
       const now = Date.now();
       const device = getScoutDevice();
@@ -2846,6 +3269,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       );
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
+        teamId: userData.teamId || "",
         scoutName: userData.displayName,
         scoutId: userData.uid,
         matchId: currentMatch.id || '',
@@ -2884,6 +3308,21 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
 
+      if (rescoutTarget?.id) {
+        await updateDoc(doc(db, "accuracyRescouts", rescoutTarget.id), {
+          status: "submitted",
+          updatedAt: Date.now(),
+          submittedAt: now,
+          practiceSessionId: docRef.id,
+          scoutedScore: rescoutRobotScore,
+          officialScore: officialAllianceScore,
+          penaltyPoints,
+          matchKey: currentMatch.matchKey || rescoutTarget.matchKey,
+          teamNumber: rescoutTarget.teamNumber,
+          alliance: normalizeAllianceSide(currentMatch.alliance),
+        });
+      }
+
       await Promise.all(
         allRobotData.map((robotData) => {
           const preloadCap = REBUILT_PRELOAD[Math.max(0, Math.min(4, robotData.autoPreloadScale))] || 0;
@@ -2919,6 +3358,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           const endgameFuelWithHuman = endgameFuelSection + Number(robotData.endgameHumanPlayerFuel || 0);
 
           return addDoc(collection(db, "scouting"), {
+            teamId: userData.teamId || "",
             scoutName: userData.displayName,
             scoutId: userData.uid,
             teamNumber: robotData.teamNumber,
@@ -2997,6 +3437,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
+      if (isRescoutFlow) setRescoutCompleted(true);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
       clearPracticeDraft();
       setPendingDraft(null);
     } catch (error) {
@@ -3004,6 +3446,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       alert('Error submitting practice session: ' + (error as Error).message);
     } finally {
       setLoading(false);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
     }
   }
 
@@ -3039,6 +3482,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       );
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
+        teamId: userData.teamId || "",
         scoutName: userData.displayName,
         scoutId: userData.uid,
         matchId: currentMatch.id || '',
@@ -3069,9 +3513,26 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       const docRef = await addDoc(collection(db, 'practiceSessions'), session);
 
+      const rescoutRobotScore = calculateScoutedScore(allRobotData[allRobotData.length - 1]);
+      if (rescoutTarget?.id) {
+        await updateDoc(doc(db, "accuracyRescouts", rescoutTarget.id), {
+          status: "submitted",
+          updatedAt: Date.now(),
+          submittedAt: now,
+          practiceSessionId: docRef.id,
+          scoutedScore: rescoutRobotScore,
+          officialScore: officialAllianceScore,
+          penaltyPoints,
+          matchKey: currentMatch.matchKey || rescoutTarget.matchKey,
+          teamNumber: rescoutTarget.teamNumber,
+          alliance: normalizeAllianceSide(currentMatch.alliance),
+        });
+      }
+
       await Promise.all(
         allRobotData.map((robotData) =>
           addDoc(collection(db, "scouting"), {
+            teamId: userData.teamId || "",
             ...robotData,
             scoutName: userData.displayName,
             scoutId: userData.uid,
@@ -3102,6 +3563,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
       setSessionResults({ ...(session as PracticeSession), id: docRef.id });
       setCurrentStep('results');
+      if (isRescoutFlow) setRescoutCompleted(true);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
       clearPracticeDraft();
       setPendingDraft(null);
     } catch (error) {
@@ -3109,6 +3572,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       alert('Error submitting practice session: ' + (error as Error).message);
     } finally {
       setLoading(false);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
     }
   }
 
@@ -3695,7 +4159,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
         {/* STEP 1: MODE & DIFFICULTY SELECTION */}
-        {currentStep === 'select' && (
+        {currentStep === 'select' && !isRescoutIntent && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto">
             <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Practice Scouting
@@ -4115,6 +4579,19 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             )}
           </div>
         )}
+        {currentStep === 'select' && isRescoutIntent && (
+          <div className="p-6 md:p-10 max-w-3xl mx-auto">
+            <LoadingSpinner
+              message={
+                rescoutError
+                  ? rescoutError
+                  : rescoutLoaded && !rescoutTarget
+                  ? "Rescout match unavailable."
+                  : "Loading rescout match..."
+              }
+            />
+          </div>
+        )}
 
         {currentStep === "live_reveal" && liveLobby && myLiveAssignment && (
           <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
@@ -4145,7 +4622,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           </div>
         )}
 
-        {currentStep === 'break' && currentMatch && breakCompletedRobotIndex !== null && (
+        {currentStep === 'break' && currentMatch && breakCompletedRobotIndex !== null && !isRescoutFlow && (
           <div className="p-4 md:p-8 max-w-3xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
             <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8">
               <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
@@ -4195,6 +4672,34 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
                 >
                   End Session
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentStep === "results" && isRescoutFlow && (
+          <div className="p-4 md:p-8 max-w-2xl mx-auto min-h-[calc(100vh-4rem)] flex items-center">
+            <div className="w-full bg-white rounded-2xl shadow-md border border-gray-200 p-8 text-center">
+              <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
+                Re-scout Complete
+              </h1>
+              <p className="text-gray-700 mb-6">
+                Your rescout has been submitted successfully.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => router.push("/analytics/accuracy-verification")}
+                  className="flex-1 py-3 rounded-lg text-white font-semibold"
+                  style={{ backgroundColor: "var(--primary-color)" }}
+                >
+                  Re-scout Another Match
+                </button>
+                <button
+                  onClick={() => router.push("/dashboard")}
+                  className="flex-1 py-3 rounded-lg border-2 border-gray-300 font-semibold hover:bg-gray-50"
+                >
+                  Go To Dashboard
                 </button>
               </div>
             </div>
@@ -4352,7 +4857,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </div>
               )}
 
-              {humanPlayerRobot === currentRobotIndex && (
+              {humanPlayerRobot === currentRobotIndex && !isRescoutFlow && (
                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
                   <div className="flex items-center">
                     <div className="flex-shrink-0">
@@ -4881,6 +5386,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 >
                   {loading
                     ? "Submitting..."
+                    : isRescoutFlow
+                    ? "Submit Robot"
                     : selectedDifficulty === "live"
                     ? "Submit Robot"
                     : currentRobotIndex === 2
@@ -5023,7 +5530,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             </div>
           </div>
         )}
-        {currentStep === 'results' && selectedDifficulty !== "live" && sessionResults && (
+        {currentStep === 'results' && !isRescoutFlow && selectedDifficulty !== "live" && sessionResults && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto">
             <h1 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Practice Complete!

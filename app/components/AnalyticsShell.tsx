@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/app/components/Sidebar";
 import { AnalyticsNotesProvider, useAnalyticsNotesSettings } from "@/app/components/AnalyticsNotesContext";
+import { useAuth } from "@/app/AuthContext";
+import { getUserRoles } from "@/app/utils/roles";
 
 type AnalyticsShellProps = {
   children: React.ReactNode;
@@ -17,6 +19,7 @@ type AnalyticsShellProps = {
   selectedEvent?: string;
   eventOptions?: Array<{ id: string; name: string }>;
   onSelectedEventChange?: (eventId: string) => void;
+  extraControls?: React.ReactNode;
 };
 
 const analyticsLinks: Array<{ href: string; label: string } | { divider: true }> = [
@@ -33,6 +36,7 @@ const analyticsLinks: Array<{ href: string; label: string } | { divider: true }>
   { href: "/analytics/rankings", label: "Rankings" },
   { href: "/analytics/team-breakdown", label: "Team Breakdown" },
   { href: "/analytics/pick-list", label: "Pick List" },
+  { href: "/analytics/scout-status", label: "Scout Status" },
 ];
 
 function AnalyticsShellInner({
@@ -46,7 +50,9 @@ function AnalyticsShellInner({
   selectedEvent,
   eventOptions = [],
   onSelectedEventChange,
+  extraControls,
 }: AnalyticsShellProps) {
+  const { userData } = useAuth();
   const pathname = usePathname();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => {
@@ -200,6 +206,16 @@ function AnalyticsShellInner({
               if ("divider" in item) {
                 return <hr key={`divider-${index}`} className="my-2 border-gray-300" />;
               }
+              if (item.href === "/analytics/scout-status") {
+                const roles = getUserRoles(userData);
+                const canSee =
+                  Boolean(userData?.isTeamAdmin) ||
+                  roles.includes("lead-scout") ||
+                  roles.includes("lead-strategist") ||
+                  roles.includes("team-coach") ||
+                  userData?.role === "coach";
+                if (!canSee) return null;
+              }
               const active = pathname === item.href;
               return (
                 <Link
@@ -257,6 +273,16 @@ function AnalyticsShellInner({
               if ("divider" in item) {
                 return <hr key={`mobile-divider-${index}`} className="my-2 border-gray-300" />;
               }
+              if (item.href === "/analytics/scout-status") {
+                const roles = getUserRoles(userData);
+                const canSee =
+                  Boolean(userData?.isTeamAdmin) ||
+                  roles.includes("lead-scout") ||
+                  roles.includes("lead-strategist") ||
+                  roles.includes("team-coach") ||
+                  userData?.role === "coach";
+                if (!canSee) return null;
+              }
               const active = pathname === item.href;
               return (
                 <Link
@@ -285,45 +311,50 @@ function AnalyticsShellInner({
           >
             {mobileSidebarOpen ? "X" : ">"}
           </button>
-          <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setCollapsed((v) => !v)}
-                className="hidden md:inline-block px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
-                title={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
-              >
-                {collapsed ? ">" : "<"}
-              </button>
-              <span className="text-sm text-gray-600">{entriesCount} entries</span>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search this analytics page"
-                className="ml-2 border rounded px-3 py-1.5 text-sm w-64 max-w-[45vw]"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <NotesToggle />
-              {onPracticeMatchesOnlyChange && (
-                <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
-                  <input
-                    type="checkbox"
-                    checked={practiceMatchesOnly}
-                    onChange={(event) => onPracticeMatchesOnlyChange(event.target.checked)}
-                  />
-                  Practice Scouted Matches
-                </label>
-              )}
-              <label className="text-sm text-gray-600">Game:</label>
-              <select
-                value={selectedGame}
-                onChange={(e) => onSelectedGameChange(e.target.value)}
-                className="border rounded px-3 py-1.5 text-sm"
-              >
-                {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
-                {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
-              </select>
+          <div className="bg-white border-b border-gray-200 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap items-center gap-3 min-w-0">
+                <button
+                  onClick={() => setCollapsed((v) => !v)}
+                  className="hidden md:inline-block px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                  title={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
+                >
+                  {collapsed ? ">" : "<"}
+                </button>
+                <span className="text-sm text-gray-600 whitespace-nowrap">{entriesCount} entries</span>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search this analytics page"
+                  className="border rounded px-3 py-1.5 text-sm w-full md:w-64 max-w-full md:max-w-[45vw] min-w-[180px]"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
+                <NotesToggle />
+                {extraControls}
+                {onPracticeMatchesOnlyChange && (
+                  <label className="text-sm text-gray-600 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={practiceMatchesOnly}
+                      onChange={(event) => onPracticeMatchesOnlyChange(event.target.checked)}
+                    />
+                    Practice Scouted Matches
+                  </label>
+                )}
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600 whitespace-nowrap">Game:</label>
+                  <select
+                    value={selectedGame}
+                    onChange={(e) => onSelectedGameChange(e.target.value)}
+                    className="border rounded px-3 py-1.5 text-sm"
+                  >
+                    {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
+                    {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
           <div ref={contentRef} className="flex-1 overflow-y-auto p-6">{children}</div>

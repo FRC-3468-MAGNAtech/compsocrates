@@ -7,11 +7,13 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
+import AnalyticsConfigModal from "@/app/components/AnalyticsConfigModal";
 import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, getEventsForGame, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean, toNumber } from "@/app/utils/csvHelpers";
 import { compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
+import { getUserRoles } from "@/app/utils/roles";
 
 type PitEntry = {
   id: string;
@@ -23,6 +25,7 @@ type PitEntry = {
   teamNumber?: string;
   scoutName?: string;
   robotWeight?: string;
+  rookieTeam?: boolean | string;
   robotPictureUrl?: string;
   pitDisposition?: boolean | string;
   driveDisposition?: boolean | string;
@@ -58,6 +61,7 @@ type PitEntry = {
   matchType?: string;
   practiceMode?: string;
   isPracticeScouting?: boolean;
+  excludeFromStats?: boolean;
 };
 
 function isPracticeEntry(entry: PitEntry) {
@@ -90,14 +94,20 @@ function fuelScaleDisplay(value: number | string | undefined): string {
 
 function PitAnalyticsContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
-  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
-  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin;
-  const canImportCsv = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
+  const isLeadStrategist = userRoles.includes("lead-strategist");
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canManageConfig = canDeleteEntries || userRoles.includes("lead-scout");
+  const canViewScoutNames =
+    isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || userRoles.includes("lead-scout");
+  const canImportCsv = userData?.role === "coach" || Boolean(userData?.isTeamAdmin) || isLeadStrategist;
   const canExportCsv = canImportCsv;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
+  const canShowActions = canManageConfig || canDeleteEntries;
   const [entries, setEntries] = useState<PitEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -108,10 +118,13 @@ function PitAnalyticsContent() {
   const [importing, setImporting] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [importEvent, setImportEvent] = useState("app-testing");
+  const [configEntry, setConfigEntry] = useState<PitEntry | null>(null);
+  const [hideNames, setHideNames] = useState(false);
   const [sortKey, setSortKey] = useState<
     | "teamNumber"
     | "scoutName"
     | "robotWeight"
+    | "rookieTeam"
     | "robotPictureUrl"
     | "pitDisposition"
     | "driveDisposition"
@@ -207,6 +220,8 @@ function PitAnalyticsContent() {
           return entry.scoutName || "";
         case "robotWeight":
           return entry.robotWeight || "";
+        case "rookieTeam":
+          return entry.rookieTeam ? 1 : 0;
         case "robotPictureUrl":
           return entry.robotPictureUrl ? 1 : 0;
         case "pitDisposition":
@@ -281,6 +296,7 @@ function PitAnalyticsContent() {
       "Scout",
       "Robot Picture",
       "Robot Weight",
+      "Rookie",
       "Disposition",
       "Drive Base",
       "Center of Gravity",
@@ -309,6 +325,7 @@ function PitAnalyticsContent() {
         entry.scoutName || "",
         entry.robotPictureUrl || "",
         entry.robotWeight || "",
+        typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-",
         dispositionToCsv(entry.pitDisposition),
         entry.driveBaseType || "",
         entry.centerOfGravity || "",
@@ -393,6 +410,7 @@ function PitAnalyticsContent() {
         const idxScout = headers.findIndex((h) => h === "scout" || h === "scoutname");
         const idxRobotPicture = headers.findIndex((h) => h === "robotpicture");
         const idxRobotWeight = headers.findIndex((h) => h === "robotweight");
+        const idxRookie = headers.findIndex((h) => h === "rookie");
         const idxDisposition = headers.findIndex((h) => h === "disposition");
         const idxDriveBase = headers.findIndex((h) => h === "drivebase" || h === "drivebasetype");
         const idxCog = headers.findIndex((h) => h === "centerofgravity");
@@ -434,6 +452,7 @@ function PitAnalyticsContent() {
             scoutName: scout,
             robotPictureUrl: get(idxRobotPicture),
             robotWeight: get(idxRobotWeight),
+            rookieTeam: toBoolean(get(idxRookie)),
             pitDisposition: toBoolean(dispositionRaw) || dispositionRaw.length > 0,
             driveDisposition: false,
             driveBaseType: get(idxDriveBase),
@@ -504,6 +523,18 @@ function PitAnalyticsContent() {
       selectedEvent={selectedEvent}
       eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)]}
       onSelectedEventChange={setSelectedEvent}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <h1 className="text-3xl font-bold mb-2 theme-text">Pit Analytics</h1>
       <p className="text-gray-600 mb-4">Pit scouting breakdown with sticky team/scout columns.</p>
@@ -594,21 +625,21 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
                   <th className="bg-yellow-300 text-center" colSpan={3}>Cycles</th>
-                  <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 2 : 1}>General</th>
+                  <th className="bg-pink-300 text-center" colSpan={canShowActions ? 2 : 1}>General</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-blue-200 text-center" colSpan={3}>Fuel</th>
                   <th className="bg-purple-200 text-center" colSpan={3}>Climb</th>
                   <th className="bg-yellow-200 text-center" colSpan={3}>Cycles</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                  {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
+                  {canShowActions && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
                 </tr>
                 <tr>
                   <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
@@ -619,6 +650,9 @@ function PitAnalyticsContent() {
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
                     {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("rookieTeam")}>
+                    {sortLabel(sortKey, sortDir, "rookieTeam", "Rookie")}
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
                     {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
@@ -659,7 +693,7 @@ function PitAnalyticsContent() {
                   <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                     {sortLabel(sortKey, sortDir, "notes", "Comments")}
                   </th>
-                  {canViewAdminColumns && (
+                  {canShowActions && (
                     <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
                       {sortLabel(sortKey, sortDir, "id", "Actions")}
                     </th>
@@ -668,10 +702,13 @@ function PitAnalyticsContent() {
               </thead>
               <tbody>
                 {sorted.map((entry) => (
-                  <tr key={entry.id}>
+                  <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
-                    <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td className="sticky-left-1 bg-white">
+                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
+                    </td>
                     <td>{formatAnalyticsText(entry.robotWeight)}</td>
+                    <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>
@@ -685,18 +722,29 @@ function PitAnalyticsContent() {
                     <td>{formatAnalyticsText(entry.typicalClimbTime)}</td>
                     <td>{formatAnalyticsText(entry.autoCycleDescription)}</td>
                     <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
-                    {canViewAdminColumns && (
+                    {canShowActions && (
                       <td className="text-center">
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteEntry(entry)}
-                          className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                          style={{ backgroundColor: "#dc2626" }}
-                          disabled={!canDeleteEntries}
-                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                        >
-                          Delete
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          {canManageConfig && (
+                            <button
+                              type="button"
+                              onClick={() => setConfigEntry(entry)}
+                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                            >
+                              Config
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteEntry(entry)}
+                            className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                            style={{ backgroundColor: "#dc2626" }}
+                            disabled={!canDeleteEntries}
+                            title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -707,16 +755,16 @@ function PitAnalyticsContent() {
             <table>
               <thead className="sticky-header">
                 <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-300 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
                   <th className="bg-green-300 text-center" colSpan={2}>Algae</th>
                   <th className="bg-blue-300 text-center" colSpan={4}>Field Plan</th>
-                  <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 3 : 2}>General</th>
+                  <th className="bg-pink-300 text-center" colSpan={canShowActions ? 3 : 2}>General</th>
                 </tr>
                 <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={3}>Information</th>
+                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={4}>Information</th>
                   <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
                   <th className="bg-yellow-200 text-center" colSpan={2}>Drive</th>
                   <th className="bg-orange-200 text-center" colSpan={2}>Coral</th>
@@ -724,7 +772,7 @@ function PitAnalyticsContent() {
                   <th className="bg-blue-200 text-center" colSpan={4}>Field Plan</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Rating</th>
                   <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                  {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
+                  {canShowActions && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
                 </tr>
                 <tr>
                   <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
@@ -735,6 +783,9 @@ function PitAnalyticsContent() {
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
                     {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
+                  </th>
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("rookieTeam")}>
+                    {sortLabel(sortKey, sortDir, "rookieTeam", "Rookie")}
                   </th>
                   <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
                     {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
@@ -781,7 +832,7 @@ function PitAnalyticsContent() {
                   <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
                     {sortLabel(sortKey, sortDir, "notes", "Comments")}
                   </th>
-                  {canViewAdminColumns && (
+                  {canShowActions && (
                     <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
                       {sortLabel(sortKey, sortDir, "id", "Actions")}
                     </th>
@@ -790,10 +841,13 @@ function PitAnalyticsContent() {
               </thead>
               <tbody>
                 {sorted.map((entry) => (
-                  <tr key={entry.id}>
+                  <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
                     <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
-                    <td className="sticky-left-1 bg-white">{entry.scoutName || "-"}</td>
+                    <td className="sticky-left-1 bg-white">
+                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
+                    </td>
                     <td>{formatAnalyticsText(entry.robotWeight)}</td>
+                    <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>
@@ -809,18 +863,29 @@ function PitAnalyticsContent() {
                     <td>{formatAnalyticsText(entry.betterAt)}</td>
                     <td>{entry.rating || "-"}</td>
                     <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
-                    {canViewAdminColumns && (
+                    {canShowActions && (
                       <td className="text-center">
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteEntry(entry)}
-                          className="px-3 py-1 rounded text-white text-sm disabled:opacity-60"
-                          style={{ backgroundColor: "#dc2626" }}
-                          disabled={!canDeleteEntries}
-                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                        >
-                          Delete
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          {canManageConfig && (
+                            <button
+                              type="button"
+                              onClick={() => setConfigEntry(entry)}
+                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                            >
+                              Config
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteEntry(entry)}
+                            className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                            style={{ backgroundColor: "#dc2626" }}
+                            disabled={!canDeleteEntries}
+                            title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -829,6 +894,24 @@ function PitAnalyticsContent() {
             </table>
           )}
         </div>
+      )}
+      {configEntry && canManageConfig && (
+        <AnalyticsConfigModal
+          open={Boolean(configEntry)}
+          onClose={() => setConfigEntry(null)}
+          entryId={configEntry.id}
+          entryLabel={`Team ${configEntry.teamNumber || "-"}`}
+          entrySubtitle={configEntry.scoutName ? `Scout: ${configEntry.scoutName}` : undefined}
+          collectionName="pitScouting"
+          entityType="pitScouting"
+          excludeFromStats={Boolean(configEntry.excludeFromStats)}
+          onExcludeChange={(excluded) => {
+            setEntries((prev) =>
+              prev.map((row) => (row.id === configEntry.id ? { ...row, excludeFromStats: excluded } : row))
+            );
+            setConfigEntry((prev) => (prev ? { ...prev, excludeFromStats: excluded } : prev));
+          }}
+        />
       )}
     </AnalyticsShell>
   );

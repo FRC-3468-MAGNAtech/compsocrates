@@ -8,17 +8,20 @@ import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
-import { Users, Target, ClipboardList } from "lucide-react";
+import { Users, Target, ClipboardList, ChevronDown } from "lucide-react";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
-import { getRoleBadge as getTeamRoleBadge, getUserRoles } from "@/app/utils/roles";
-import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { getRoleBadge as getTeamRoleBadge, getUserRoles, getRoleLabel, TEAM_ROLES, type TeamRole } from "@/app/utils/roles";
+import { evaluateScoutingFlags, flagStateDocId, type FlagEntityType, type StoredFlagState } from "@/app/utils/scoutingFlags";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
+import { entryMatchesAnalyticsFilters, getEventsForGame, normalizeMatchLabel } from "@/app/utils/analyticsEvents";
+import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 interface ScoutStats {
   scoutId: string;
   scoutName: string;
   role: string;
   roles?: string[];
+  secondaryRoles?: string[];
   totalEntries: number;
   practiceSessionsCompleted: number;
   averageAccuracy: number;
@@ -58,15 +61,28 @@ type ScoutingEntry = {
   practiceSessionId?: string;
   scoutName?: string;
   eventKey?: string;
+  eventName?: string;
   matchType?: string;
+  matchNumber?: string;
+  matchKey?: string;
+  matchLabel?: string;
   game?: string;
   matchId?: string;
   scoutId?: string;
+  entryType?: string;
+  formType?: string;
+  isLeadScouting?: boolean;
   practiceMode?: string;
   isPracticeScouting?: boolean;
   isLivePracticeScouting?: boolean;
   deviceType?: "mobile" | "pc";
   teamNumber?: string;
+  accuracy?: number;
+  accuracyScriptStatus?: string;
+  scriptStatus?: string;
+  excludeFromStats?: boolean;
+  submittedAt?: number;
+  timestamp?: number;
   leftStartingZone?: boolean;
   autoCoralL1?: number;
   autoCoralL2?: number;
@@ -129,11 +145,23 @@ type ScoutingEntry = {
   };
 };
 
+function getEntryEventKey(value: ScoutingEntry): string {
+  const explicit = String(
+    value.eventKey || (value as Record<string, unknown>).event || (value as Record<string, unknown>).eventId || ""
+  ).trim();
+  if (explicit) return explicit;
+  const matchKey = String(value.matchKey || "").trim();
+  if (matchKey && matchKey.includes("_")) {
+    return matchKey.split("_")[0] || "";
+  }
+  return "";
+}
+
 function getEntryGame(value: ScoutingEntry): "REEFSCAPE" | "REBUILT" {
   const explicit = String(value.game || "").trim().toUpperCase();
   if (explicit === "REBUILT" || explicit === "REEFSCAPE") return explicit;
-  const eventKey = String(value.eventKey || "").trim().toLowerCase();
-  if (eventKey === "2026week0") return "REBUILT";
+  const eventKey = getEntryEventKey(value).toLowerCase();
+  if (eventKey.startsWith("2026") || eventKey === "2026week0") return "REBUILT";
   return "REEFSCAPE";
 }
 
@@ -198,6 +226,82 @@ function resolveSectionFuel(estimated: number, scoredOverride: unknown, missedFu
   const override = toNumber(scoredOverride);
   if (override > 0) return override;
   return Math.max(0, estimated - Math.max(0, toNumber(missedFuel)));
+}
+
+function isRealScoutingEntry(entry: ScoutingEntry) {
+  return !entry.isPracticeScouting && !entry.isLivePracticeScouting;
+}
+
+function isMatchScoutEntry(entry: ScoutingEntry) {
+  if (entry.isLeadScouting) return false;
+  const entryType = String(entry.entryType || entry.formType || "").toLowerCase().trim();
+  if (!entryType) return true;
+  if (entryType === "lead" || entryType.includes("lead")) return false;
+  if (entryType === "sub-in-request" || entryType === "sub-in-claim") return false;
+  return true;
+}
+
+function getEntryTimestamp(entry: ScoutingEntry): number {
+  const value = Number(entry.submittedAt || entry.timestamp || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getMatchIdentityKey(entry: ScoutingEntry): string {
+  const matchKey = String(entry.matchKey || "").trim();
+  if (matchKey) return matchKey;
+  const matchId = String(entry.matchId || "").trim();
+  const eventKey = getEntryEventKey(entry);
+  if (matchId) return `${eventKey}:${matchId}`;
+  const matchLabel = String(entry.matchLabel || "").trim();
+  if (matchLabel) {
+    const normalized = normalizeMatchLabel(matchLabel);
+    if (normalized.matchId) return `${eventKey}:${normalized.matchId}`;
+    if (normalized.matchType || normalized.matchNumber) {
+      return `${eventKey}:${normalized.matchType}:${normalized.matchNumber}`;
+    }
+  }
+  const matchType = String(entry.matchType || "").trim();
+  const matchNumber = String(entry.matchNumber || "").trim();
+  if (matchType || matchNumber) return `${eventKey}:${matchType}:${matchNumber}`;
+  return String(entry.id || "");
+}
+
+function isAccuracyComplete(entry: ScoutingEntry): boolean {
+  const status = String(entry.accuracyScriptStatus || entry.scriptStatus || "").trim().toLowerCase();
+  return status === "complete";
+}
+
+function isAllRobotsScouted(entry: ScoutingEntry): boolean {
+  const details = (entry as ScoutingEntry & { accuracyDetails?: { allRobotsScouted?: string } }).accuracyDetails;
+  if (details && typeof details.allRobotsScouted === "string") {
+    return details.allRobotsScouted.toLowerCase() === "yes";
+  }
+  return isAccuracyComplete(entry);
+}
+
+function formatRealMatchLabel(entry: ScoutingEntry): string {
+  const rawLabel = String(entry.matchLabel || "").trim();
+  const fallbackLabel = String(entry.matchKey || entry.matchId || entry.matchType || "").trim();
+  const primary = rawLabel || fallbackLabel;
+  if (!primary) return "Match";
+  return formatMatchLabelLong(primary);
+}
+
+type CalculationScope = {
+  eventKey: string;
+  practiceMode: "trial" | "competitive" | null;
+};
+
+const PRACTICE_WEIGHT = 0.25;
+
+function parseCalculationScope(value: string): CalculationScope {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return { eventKey: "all", practiceMode: null };
+  const [eventKeyRaw, practiceModeRaw] = trimmed.split(":");
+  const eventKey = eventKeyRaw || "all";
+  const practiceMode =
+    practiceModeRaw === "trial" || practiceModeRaw === "competitive" ? practiceModeRaw : null;
+  return { eventKey, practiceMode };
 }
 
 function rebuiltEntryScoreCandidates(entry: ScoutingEntry): number[] {
@@ -359,12 +463,21 @@ function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE
 
 function ScoutAccuracyContent() {
   const { userData } = useAuth();
-  const userRoles = getUserRoles({ role: userData?.role, roles: userData?.roles });
+  const userRoles = getUserRoles({
+    role: userData?.role,
+    roles: userData?.roles,
+    secondaryRoles: userData?.secondaryRoles,
+  });
   const canViewFullAccuracy =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||
     userRoles.includes("team-coach") ||
     userRoles.includes("lead-scout");
+  const canViewRealEventTab =
+    Boolean(userData?.isTeamAdmin) ||
+    userData?.role === "coach" ||
+    userRoles.includes("lead-scout") ||
+    userData?.role === "lead-scout";
   const canViewRestrictedData =
     Boolean(userData?.isTeamAdmin) ||
     userData?.role === "coach" ||
@@ -378,10 +491,11 @@ function ScoutAccuracyContent() {
   const [flagSaveKey, setFlagSaveKey] = useState("");
   const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [scoutStats, setScoutStats] = useState<ScoutStats[]>([]);
+  const [realScoutingEntries, setRealScoutingEntries] = useState<ScoutingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REBUILT");
-  const [selectedMode, setSelectedMode] = useState<"trial" | "competitive">("trial");
+  const [selectedMode, setSelectedMode] = useState<"trial" | "competitive" | "real">("trial");
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
   const [rerunSessionId, setRerunSessionId] = useState("");
   const [rerunResultModal, setRerunResultModal] = useState<{
@@ -395,11 +509,25 @@ function ScoutAccuracyContent() {
   const [eventOptions, setEventOptions] = useState<UpcomingEvent[]>([]);
   const [eventAttendees, setEventAttendees] = useState<Record<string, string[]>>({});
   const [attendanceFilter, setAttendanceFilter] = useState<string>("all");
-  const [rankMode, setRankMode] = useState<"preserve" | "event">("preserve");
+  const [rankMode, setRankMode] = useState<"preserve" | "event" | "role">("preserve");
+  const [roleFilters, setRoleFilters] = useState<TeamRole[]>([...TEAM_ROLES]);
+  const [rolesDropdownOpen, setRolesDropdownOpen] = useState(false);
+  const [calculationEvent, setCalculationEvent] = useState<string>("all");
 
   useEffect(() => {
     loadScoutStats();
-  }, [selectedMode, selectedGame, userData?.teamId]);
+  }, [selectedMode, selectedGame, userData?.teamId, calculationEvent]);
+
+  useEffect(() => {
+    if (!canViewRealEventTab && selectedMode === "real") {
+      setSelectedMode("trial");
+    }
+  }, [canViewRealEventTab, selectedMode]);
+
+  useEffect(() => {
+    setSelectedScout(null);
+    setShowAllSessionsModal(false);
+  }, [selectedMode]);
 
   useEffect(() => {
     async function loadEventFilters() {
@@ -428,8 +556,57 @@ function ScoutAccuracyContent() {
     void loadEventFilters();
   }, [userData?.teamId]);
 
+  useEffect(() => {
+    const scope = parseCalculationScope(calculationEvent);
+    if (scope.eventKey === "all") return;
+    const validKeys = new Set(eventOptions.map((event) => event.key));
+    if (!validKeys.has(scope.eventKey)) {
+      setCalculationEvent("all");
+    }
+  }, [calculationEvent, eventOptions]);
+
+  const allRolesSelected = roleFilters.length === TEAM_ROLES.length;
+  const roleFilterSet = useMemo(() => new Set(roleFilters), [roleFilters]);
+  const calculationScope = useMemo(() => parseCalculationScope(calculationEvent), [calculationEvent]);
+  const includePracticeInReal = Boolean(calculationScope.practiceMode);
+  const realModeMatchesLabel = "Matches";
+  const calculationOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = [
+      { value: "all", label: "All Events" },
+      { value: "all:trial", label: "All Events (Trial Practice)" },
+      { value: "all:competitive", label: "All Events (Competitive Practice)" },
+    ];
+    eventOptions.forEach((event) => {
+      options.push({ value: event.key, label: event.name });
+      options.push({ value: `${event.key}:trial`, label: `${event.name} (Trial Practice)` });
+      options.push({ value: `${event.key}:competitive`, label: `${event.name} (Competitive Practice)` });
+    });
+    return options;
+  }, [eventOptions]);
+
+  useEffect(() => {
+    if (rankMode === "role" && allRolesSelected) {
+      setRankMode("preserve");
+    }
+  }, [allRolesSelected, rankMode]);
+
+  useEffect(() => {
+    if (rankMode === "role" && roleFilters.length === 0) {
+      setRankMode("preserve");
+    }
+  }, [rankMode, roleFilters.length]);
+
+  useEffect(() => {
+    if (attendanceFilter === "all" && rankMode === "event") {
+      setRankMode("preserve");
+    }
+  }, [attendanceFilter, rankMode]);
+
   async function loadScoutStats() {
     setLoading(true);
+    if (selectedMode !== "real") {
+      setRealScoutingEntries([]);
+    }
     try {
       // Get ALL team members (no filtering)
       const teamQuery = query(collection(db, "users"), where("teamId", "==", userData?.teamId));
@@ -451,7 +628,7 @@ function ScoutAccuracyContent() {
             query(collection(db, "scoutingFlagStates"), where("teamId", "==", userData.teamId))
           );
           flagSnap.docs.forEach((docSnap) => {
-            const row = docSnap.data() as StoredFlagState & { entityId?: string; entityType?: "scoutingEntry" | "practiceSession" };
+            const row = docSnap.data() as StoredFlagState & { entityId?: string; entityType?: FlagEntityType };
             const entityId = String(row.entityId || "");
             const entityType = row.entityType === "practiceSession" ? "practiceSession" : "scoutingEntry";
             if (!entityId) return;
@@ -462,6 +639,148 @@ function ScoutAccuracyContent() {
           console.warn("Unable to load scouting flag states for scout accuracy. Continuing without flag states.", error);
           setFlagStates({});
         }
+      }
+      if (selectedMode === "real") {
+        const calculationScope = parseCalculationScope(calculationEvent);
+        const calculationEventKey = calculationScope.eventKey;
+        const includePractice = Boolean(calculationScope.practiceMode);
+        const entriesSnap = await getDocs(collection(db, "scouting"));
+        const allEntries = entriesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as ScoutingEntry) }));
+        const entriesByScoutId = new Map<string, ScoutingEntry[]>();
+        const entriesByScoutName = new Map<string, ScoutingEntry[]>();
+        allEntries.forEach((entry) => {
+          const scoutId = String(entry.scoutId || "").trim();
+          const scoutName = String(entry.scoutName || "").trim().toLowerCase();
+          if (scoutId) {
+            const bucket = entriesByScoutId.get(scoutId) || [];
+            bucket.push(entry);
+            entriesByScoutId.set(scoutId, bucket);
+          }
+          if (scoutName) {
+            const bucket = entriesByScoutName.get(scoutName) || [];
+            bucket.push(entry);
+            entriesByScoutName.set(scoutName, bucket);
+          }
+        });
+
+        const realEntriesBase = allEntries
+          .filter((entry) => isRealScoutingEntry(entry))
+          .filter((entry) => isMatchScoutEntry(entry))
+          .filter((entry) => getEntryGame(entry) === selectedGame)
+          .filter((entry) => !entry.excludeFromStats);
+        const eventOptions = getEventsForGame(selectedGame);
+        const matchesCalculationEvent = (entry: ScoutingEntry) =>
+          calculationEventKey === "all"
+            ? true
+            : entryMatchesAnalyticsFilters(entry, selectedGame, calculationEventKey, eventOptions);
+        const baseByEvent = realEntriesBase.filter((entry) =>
+          matchesCalculationEvent(entry)
+        );
+        const realEntries = baseByEvent.filter((entry) => isAccuracyComplete(entry));
+        setRealScoutingEntries(realEntries);
+
+        const practiceByScoutId = new Map<string, { sum: number; count: number }>();
+        const practiceByScoutName = new Map<string, { sum: number; count: number }>();
+        if (includePractice && calculationScope.practiceMode) {
+          try {
+            const practiceSnap = await getDocs(
+              query(collection(db, "practiceSessions"), where("mode", "==", calculationScope.practiceMode))
+            );
+            practiceSnap.docs.forEach((docSnap) => {
+              const data = docSnap.data() as Record<string, unknown>;
+              const accuracy = Number(data.accuracy);
+              if (!Number.isFinite(accuracy)) return;
+              const game = String(data.game || "REEFSCAPE").toUpperCase();
+              if (game !== selectedGame) return;
+              if (Boolean(data.isLivePracticeScouting)) return;
+              const sessionTeamId = String(data.teamId || data.team || "").trim();
+              if (userData?.teamId && sessionTeamId && sessionTeamId !== String(userData.teamId)) return;
+              const excluded =
+                Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", docSnap.id))?.excludeFromAccuracy) ||
+                Boolean((data as Record<string, unknown>).excludeFromAccuracy);
+              if (excluded) return;
+              const scoutId = String(data.scoutId || "").trim();
+              const scoutName = String(data.scoutName || "").trim().toLowerCase();
+              if (scoutId) {
+                const current = practiceByScoutId.get(scoutId) || { sum: 0, count: 0 };
+                current.sum += accuracy;
+                current.count += 1;
+                practiceByScoutId.set(scoutId, current);
+              } else if (scoutName) {
+                const current = practiceByScoutName.get(scoutName) || { sum: 0, count: 0 };
+                current.sum += accuracy;
+                current.count += 1;
+                practiceByScoutName.set(scoutName, current);
+              }
+            });
+          } catch (error) {
+            console.warn("Unable to load practice sessions for real-event calculations:", error);
+          }
+        }
+
+        const stats = memberData.map((member) => {
+          const combined = new Map<string, ScoutingEntry>();
+          (entriesByScoutId.get(member.uid) || []).forEach((entry) => {
+            combined.set(String(entry.id || ""), entry);
+          });
+          (entriesByScoutName.get(String(member.scoutName || "").trim().toLowerCase()) || []).forEach((entry) => {
+            combined.set(String(entry.id || ""), entry);
+          });
+
+          const filteredEntries = Array.from(combined.values())
+            .filter((entry) => isRealScoutingEntry(entry))
+            .filter((entry) => isMatchScoutEntry(entry))
+            .filter((entry) => getEntryGame(entry) === selectedGame)
+            .filter((entry) => !entry.excludeFromStats);
+          const calculationEntries = filteredEntries.filter((entry) => matchesCalculationEvent(entry));
+          const eligibleEntries = calculationEntries.filter((entry) => isAccuracyComplete(entry));
+          const matchKeys = new Set(eligibleEntries.map(getMatchIdentityKey).filter(Boolean));
+          const accuracyEntries = eligibleEntries;
+          const accuracyValues = accuracyEntries
+            .map((entry) => (typeof entry.accuracy === "number" ? Number(entry.accuracy) : NaN))
+            .filter((value) => Number.isFinite(value));
+          const realAccuracySum = accuracyValues.reduce((sum, value) => sum + value, 0);
+          const realAccuracyCount = accuracyValues.length;
+          const scoutNameKey = String(member.scoutName || "").trim().toLowerCase();
+          const practiceById = practiceByScoutId.get(member.uid) || { sum: 0, count: 0 };
+          const practiceByName = practiceByScoutName.get(scoutNameKey) || { sum: 0, count: 0 };
+          const practiceSum = includePractice ? practiceById.sum + practiceByName.sum : 0;
+          const practiceCount = includePractice ? practiceById.count + practiceByName.count : 0;
+          const practiceAvg = practiceCount > 0 ? practiceSum / practiceCount : 0;
+          const practiceWeight = includePractice && practiceCount > 0 ? PRACTICE_WEIGHT : 0;
+          const realAvg = realAccuracyCount > 0 ? realAccuracySum / realAccuracyCount : 0;
+          const averageAccuracy =
+            realAccuracyCount > 0
+              ? Math.round((realAvg + practiceAvg * practiceWeight) / (1 + practiceWeight))
+              : 0;
+          const lastSubmit = eligibleEntries.reduce((max, entry) => Math.max(max, getEntryTimestamp(entry)), 0);
+
+          return {
+            scoutId: member.uid,
+            scoutName: member.scoutName,
+            role: member.role,
+            roles: member.roles,
+            totalEntries: eligibleEntries.length,
+            practiceSessionsCompleted: matchKeys.size,
+            averageAccuracy,
+            lastPracticeDate: lastSubmit || 0,
+            recentAccuracies: [],
+            recentSessions: [],
+            allSessions: [],
+          } as ScoutStats;
+        });
+
+        setScoutStats(
+          stats.sort((a, b) => {
+            const aHasSessions = a.practiceSessionsCompleted > 0 ? 1 : 0;
+            const bHasSessions = b.practiceSessionsCompleted > 0 ? 1 : 0;
+            if (aHasSessions !== bHasSessions) return bHasSessions - aHasSessions;
+            if (b.averageAccuracy !== a.averageAccuracy) return b.averageAccuracy - a.averageAccuracy;
+            if (b.totalEntries !== a.totalEntries) return b.totalEntries - a.totalEntries;
+            return a.scoutName.localeCompare(b.scoutName);
+          })
+        );
+        return;
       }
       const statsPromises = memberData.map(async (member) => {
         const [scoutEntriesByNameSnap, scoutEntriesByUidSnap] = await Promise.all([
@@ -549,7 +868,9 @@ function ScoutAccuracyContent() {
               ])
             );
             const dismissed = Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", id))?.dismissed);
-            const excluded = Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", id))?.excludeFromAccuracy);
+            const excluded =
+              Boolean(teamFlagStateById.get(flagStateDocId("practiceSession", id))?.excludeFromAccuracy) ||
+              Boolean((data as Record<string, unknown>).excludeFromAccuracy);
             accuracyTimeline.push({
               accuracy: Number(data.accuracy || 0),
               timestamp: Number.isFinite(rowTimestamp) ? rowTimestamp : 0,
@@ -633,10 +954,15 @@ function ScoutAccuracyContent() {
 
   // Count active scouts only: dedicated match scouts (lead roles are excluded from scout counts).
   const actualScoutCount = scoutStats.filter((s) => {
-    const roles = getUserRoles({ role: s.role, roles: s.roles });
+    const roles = getUserRoles({
+      role: s.role,
+      roles: s.roles,
+      secondaryRoles: s.secondaryRoles,
+    });
     return roles.includes("match-scout") || roles.includes("media");
   }).length;
-  const membersWithPracticeAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
+  const membersWithAccuracy = scoutStats.filter((s) => s.practiceSessionsCompleted > 0 && s.averageAccuracy > 0);
+  const isRealMode = selectedMode === "real";
   const selectedEventLabel = useMemo(() => {
     if (attendanceFilter === "all") return "";
     return eventOptions.find((event) => event.key === attendanceFilter)?.name || attendanceFilter;
@@ -655,18 +981,69 @@ function ScoutAccuracyContent() {
       });
     };
 
-    const baseRanks = rankScouts(scoutStats);
-    if (attendanceFilter === "all") return baseRanks;
+    const scoutKey = (scout: ScoutStats) =>
+      String(scout.scoutId || scout.scoutName || "").trim().toLowerCase();
 
-    const attendees = eventAttendees[attendanceFilter] || [];
-    const filtered = baseRanks.filter(({ scout }) => {
-      if (attendees.includes(scout.scoutId)) return true;
-      if (attendees.includes(scout.scoutName)) return true;
-      return attendees.some((value) => String(value || "").trim().toLowerCase() === scout.scoutName.trim().toLowerCase());
+    const baseRankMap = new Map(
+      rankScouts(scoutStats).map(({ scout, rank }) => [scoutKey(scout), rank])
+    );
+
+    const attendanceFiltered =
+      attendanceFilter === "all"
+        ? scoutStats
+        : scoutStats.filter((scout) => {
+            const attendees = eventAttendees[attendanceFilter] || [];
+            if (attendees.includes(scout.scoutId)) return true;
+            if (attendees.includes(scout.scoutName)) return true;
+            return attendees.some(
+              (value) => String(value || "").trim().toLowerCase() === scout.scoutName.trim().toLowerCase()
+            );
+          });
+
+    const eventRankMap = new Map(
+      rankScouts(attendanceFiltered).map(({ scout, rank }) => [scoutKey(scout), rank])
+    );
+
+    const roleFiltered = attendanceFiltered.filter((scout) => {
+      if (allRolesSelected) return true;
+      const roles = getUserRoles({
+        role: scout.role,
+        roles: scout.roles,
+        secondaryRoles: scout.secondaryRoles,
+      });
+      return roles.some((role) => roleFilterSet.has(role));
     });
-    if (rankMode === "preserve") return filtered;
-    return rankScouts(filtered.map((row) => row.scout));
-  }, [attendanceFilter, eventAttendees, rankMode, scoutStats]);
+
+    const roleRankMap = new Map(
+      rankScouts(roleFiltered).map(({ scout, rank }) => [scoutKey(scout), rank])
+    );
+
+    const listForDisplay = allRolesSelected ? attendanceFiltered : roleFiltered;
+
+    const withRanks = listForDisplay.map((scout) => {
+      const key = scoutKey(scout);
+      const fallbackRank = baseRankMap.get(key) ?? 0;
+      if (rankMode === "event") {
+        return { scout, rank: eventRankMap.get(key) ?? fallbackRank };
+      }
+      if (rankMode === "role") {
+        return { scout, rank: roleRankMap.get(key) ?? fallbackRank };
+      }
+      return { scout, rank: fallbackRank };
+    });
+
+    if (rankMode === "event" || rankMode === "role") {
+      return withRanks
+        .slice()
+        .sort((a, b) => {
+          const aRank = a.rank || Number.MAX_SAFE_INTEGER;
+          const bRank = b.rank || Number.MAX_SAFE_INTEGER;
+          if (aRank !== bRank) return aRank - bRank;
+          return a.scout.scoutName.localeCompare(b.scout.scoutName);
+        });
+    }
+    return withRanks;
+  }, [attendanceFilter, eventAttendees, rankMode, scoutStats, allRolesSelected, roleFilterSet]);
   const visibleRankedScoutStats = useMemo(() => {
     if (canViewFullAccuracy) return rankedScoutStats;
     return rankedScoutStats.filter(({ scout, rank }) => scout.practiceSessionsCompleted > 0 && rank <= 5);
@@ -733,6 +1110,37 @@ function ScoutAccuracyContent() {
   }
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
+  const selectedRealEntries = useMemo(() => {
+    if (!isRealMode || !selectedScoutData) return [];
+    const scoutId = String(selectedScoutData.scoutId || "").trim();
+    const scoutName = String(selectedScoutData.scoutName || "").trim().toLowerCase();
+    return realScoutingEntries.filter((entry) => {
+      const entryScoutId = String(entry.scoutId || "").trim();
+      const entryScoutName = String(entry.scoutName || "").trim().toLowerCase();
+      if (scoutId && entryScoutId && entryScoutId === scoutId) return true;
+      return scoutName && entryScoutName === scoutName;
+    }).filter((entry) => isAllRobotsScouted(entry));
+  }, [isRealMode, selectedScoutData, realScoutingEntries]);
+
+  const selectedRealMatches = useMemo(() => {
+    if (!isRealMode || selectedRealEntries.length === 0) return [];
+    const matchMap = new Map<string, ScoutingEntry>();
+    selectedRealEntries.forEach((entry) => {
+      const key = getMatchIdentityKey(entry);
+      if (!key) return;
+      const existing = matchMap.get(key);
+      if (!existing || getEntryTimestamp(entry) > getEntryTimestamp(existing)) {
+        matchMap.set(key, entry);
+      }
+    });
+    return Array.from(matchMap.values()).sort(
+      (a, b) => getEntryTimestamp(b) - getEntryTimestamp(a)
+    );
+  }, [isRealMode, selectedRealEntries]);
+  const selectedRealLastSubmit = useMemo(() => {
+    if (!isRealMode || selectedRealEntries.length === 0) return 0;
+    return selectedRealEntries.reduce((max, entry) => Math.max(max, getEntryTimestamp(entry)), 0);
+  }, [isRealMode, selectedRealEntries]);
 
   useEffect(() => {
     setShowAllSessionsModal(false);
@@ -922,7 +1330,6 @@ function ScoutAccuracyContent() {
       saved = true;
     } catch (error) {
       console.error("Failed updating practice session flag state:", error);
-      alert("Could not update accuracy exclusion.");
     } finally {
       setFlagSaveKey("");
     }
@@ -977,6 +1384,15 @@ function ScoutAccuracyContent() {
       excludedAt: Date.now(),
       excludedBy: excludedBy || undefined,
     });
+    try {
+      await updateDoc(doc(db, "practiceSessions", sessionId), {
+        excludeFromAccuracy: excluded,
+        excludedAt: Date.now(),
+        excludedBy: excludedBy || undefined,
+      });
+    } catch (error) {
+      console.warn("Unable to update practice session exclusion on session record:", error);
+    }
   }
 
   return (
@@ -990,7 +1406,9 @@ function ScoutAccuracyContent() {
           <p className="text-gray-600 mb-8">
             Track and verify the accuracy of your team members&apos; data
             <span className="text-sm text-gray-500 ml-2">
-              ({`Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode`})
+              {selectedMode === "real"
+                ? "(Real event accuracy estimates)"
+                : `(Showing ${selectedMode === "trial" ? "Trial" : "Competitive"} practice mode)`}
             </span>
           </p>
           <DataSourceCredits className="mb-6" />
@@ -1049,8 +1467,22 @@ function ScoutAccuracyContent() {
             >
               Competitive Mode
             </button>
+            {canViewRealEventTab && (
+              <button
+                onClick={() => {
+                  setSelectedMode("real");
+                }}
+                className={`flex-1 px-4 py-2 rounded font-medium transition-colors ${
+                  selectedMode === "real"
+                    ? "bg-red-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                Real Event
+              </button>
+            )}
           </div>
-          {canViewRestrictedData && canResetScoutData && (
+          {selectedMode !== "real" && canViewRestrictedData && canResetScoutData && (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
@@ -1076,6 +1508,18 @@ function ScoutAccuracyContent() {
               </div>
             </div>
           )}
+          {isRealMode && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-xl p-4 mb-6">
+              <p className="text-sm">
+                Real event accuracy is an estimate based on completed match analytics and may not be 100% exact.
+              </p>
+              {includePracticeInReal && (
+                <p className="text-xs text-yellow-700 mt-1">
+                  Practice sessions are blended into this estimate based on the selected calculation mode.
+                </p>
+              )}
+            </div>
+          )}
               {canViewRestrictedData && (
                 <div className="grid md:grid-cols-4 gap-6 mb-6">
                   <div className="bg-white rounded-xl shadow-md p-6">
@@ -1097,10 +1541,10 @@ function ScoutAccuracyContent() {
                       <Target size={22} className="text-gray-500" />
                     </div>
                     <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
-                      {membersWithPracticeAccuracy.length > 0
+                      {membersWithAccuracy.length > 0
                         ? Math.round(
-                            membersWithPracticeAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) /
-                              membersWithPracticeAccuracy.length
+                            membersWithAccuracy.reduce((sum, s) => sum + s.averageAccuracy, 0) /
+                              membersWithAccuracy.length
                           )
                         : 0}%
                     </p>
@@ -1108,7 +1552,9 @@ function ScoutAccuracyContent() {
 
                   <div className="bg-white rounded-xl shadow-md p-6">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-gray-700">Practice Sessions</h3>
+                      <h3 className="font-semibold text-gray-700">
+                        {isRealMode ? realModeMatchesLabel : "Practice Sessions"}
+                      </h3>
                       <ClipboardList size={22} className="text-gray-500" />
                     </div>
                     <p className="text-3xl font-bold" style={{ color: "var(--primary-color)" }}>
@@ -1129,16 +1575,26 @@ function ScoutAccuracyContent() {
               )}
 
               {/* LEADERBOARD */}
-              <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
+              <div className="bg-white rounded-xl shadow-md overflow-visible mb-6">
                 <div className="p-6 border-b border-gray-200">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <h2 className="text-xl font-semibold">Team Member Accuracy Rankings</h2>
                       <p className="text-sm text-gray-500 mt-1">
                         {attendanceFilter === "all"
-                          ? "All team members ranked by practice accuracy"
-                          : `Members attending ${selectedEventLabel || "this event"} ranked by practice accuracy`}
+                          ? `All team members ranked by ${isRealMode ? "real-event accuracy estimates" : "practice accuracy"}`
+                          : `Members attending ${selectedEventLabel || "this event"} ranked by ${isRealMode ? "real-event accuracy estimates" : "practice accuracy"}`}
                       </p>
+                      {isRealMode && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Real-event accuracy is an estimate based on match-level alliance accuracy and is not scout-specific.
+                          {includePracticeInReal && (
+                            <span className="block">
+                              Practice session accuracy is blended in for the selected calculation mode.
+                            </span>
+                          )}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-3">
                       <div className="flex flex-col gap-1">
@@ -1154,18 +1610,96 @@ function ScoutAccuracyContent() {
                               {event.name}
                             </option>
                           ))}
-                        </select>
+                          </select>
                       </div>
+                      <div className="flex flex-col gap-1 relative">
+                        <label className="text-[11px] font-semibold uppercase text-gray-500">Roles</label>
+                        <button
+                          type="button"
+                          onClick={() => setRolesDropdownOpen((prev) => !prev)}
+                          className="border rounded px-2 py-1.5 text-sm min-w-[220px] flex items-center justify-between gap-2 bg-white"
+                        >
+                          <span>
+                            {allRolesSelected
+                              ? "All roles"
+                              : roleFilters.length === 0
+                              ? "No roles selected"
+                              : `${roleFilters.length} role${roleFilters.length === 1 ? "" : "s"}`}
+                          </span>
+                          <ChevronDown size={16} className="text-gray-500" />
+                        </button>
+                        {rolesDropdownOpen && (
+                          <div className="absolute z-20 mt-1 top-full left-0 w-64 bg-white border rounded-lg shadow-lg p-3 max-h-72 overflow-y-auto">
+                            <label className="flex items-center gap-2 text-sm font-medium">
+                              <input
+                                type="checkbox"
+                                checked={allRolesSelected}
+                                onChange={(event) =>
+                                  setRoleFilters(event.target.checked ? [...TEAM_ROLES] : [])
+                                }
+                              />
+                              All roles
+                            </label>
+                            <div className="mt-2 space-y-1">
+                              {TEAM_ROLES.map((role) => {
+                                const checked = roleFilterSet.has(role);
+                                return (
+                                  <label key={role} className="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        setRoleFilters((prev) =>
+                                          prev.includes(role)
+                                            ? prev.filter((value) => value !== role)
+                                            : [...prev, role]
+                                        );
+                                      }}
+                                    />
+                                    {getRoleLabel(role)}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {isRealMode && (
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[11px] font-semibold uppercase text-gray-500">Calculations</label>
+                          <select
+                            value={calculationEvent}
+                            onChange={(event) => setCalculationEvent(event.target.value)}
+                            className="border rounded px-2 py-1.5 text-sm min-w-[220px]"
+                          >
+                            {calculationOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       <div className="flex flex-col gap-1">
                         <label className="text-[11px] font-semibold uppercase text-gray-500">Rank</label>
                         <select
                           value={rankMode}
-                          onChange={(event) => setRankMode(event.target.value === "event" ? "event" : "preserve")}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value === "event") setRankMode("event");
+                            else if (value === "role") setRankMode("role");
+                            else setRankMode("preserve");
+                          }}
                           className="border rounded px-2 py-1.5 text-sm min-w-[200px]"
-                          disabled={attendanceFilter === "all"}
+                          disabled={attendanceFilter === "all" && allRolesSelected}
                         >
                           <option value="preserve">Preserve original ranks</option>
-                          <option value="event">Event leaderboard</option>
+                          <option value="event" disabled={attendanceFilter === "all"}>
+                            Event leaderboard
+                          </option>
+                          <option value="role" disabled={allRolesSelected || roleFilters.length === 0}>
+                            Role leaderboard
+                          </option>
                         </select>
                       </div>
                     </div>
@@ -1191,7 +1725,7 @@ function ScoutAccuracyContent() {
                           Status
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Sessions
+                          {isRealMode ? realModeMatchesLabel : "Sessions"}
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Total Entries
@@ -1246,7 +1780,7 @@ function ScoutAccuracyContent() {
                                   className="text-sm font-medium hover:underline"
                                   style={{ color: "var(--primary-color)" }}
                                 >
-                                  View Details →
+                                  View Details
                                 </button>
                               </td>
                             )}
@@ -1259,7 +1793,150 @@ function ScoutAccuracyContent() {
               </div>
 
               {/* SCOUT DETAIL MODAL */}
-              {selectedScoutData && (
+              {selectedScoutData && isRealMode && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="p-6 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="text-2xl font-bold">{selectedScoutData.scoutName}</h2>
+                          <span
+                            className={`inline-block px-2 py-1 rounded text-xs font-medium mt-2 ${getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).bg} ${getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).text}`}
+                          >
+                            {getTeamRoleBadge(selectedScoutData.role, selectedScoutData.roles).label}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setSelectedScout(null)}
+                          className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-medium"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4">Accuracy Overview</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="p-4 bg-gray-50 rounded-lg">
+                            <p className="text-sm text-gray-600 mb-1">Average Accuracy</p>
+                            <p className={`text-4xl font-bold ${getAccuracyColor(selectedScoutData.averageAccuracy)}`}>
+                              {selectedScoutData.averageAccuracy}%
+                            </p>
+                          </div>
+                          <div className="p-4 bg-gray-50 rounded-lg">
+                            <p className="text-sm text-gray-600 mb-1">{realModeMatchesLabel}</p>
+                            <p className="text-4xl font-bold" style={{ color: "var(--primary-color)" }}>
+                              {selectedScoutData.practiceSessionsCompleted}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4">Recent Match Accuracy</h3>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Alliance accuracy is shown per match and is not scout-specific. Only matches with a complete
+                          accuracy script are listed.
+                        </p>
+                        {selectedRealMatches.length > 0 ? (
+                          <div className="space-y-2">
+                            {selectedRealMatches.map((entry) => {
+                              const timestamp = getEntryTimestamp(entry);
+                              const accuracyValue =
+                                typeof entry.accuracy === "number" ? Math.round(entry.accuracy) : null;
+                              const displayAccuracy = accuracyValue !== null ? accuracyValue : 0;
+                              return (
+                                <div
+                                  key={String(entry.id || getMatchIdentityKey(entry))}
+                                  className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg"
+                                >
+                                  <div className="text-sm text-gray-600 w-40">
+                                    <div className="font-semibold">{formatRealMatchLabel(entry)}</div>
+                                    <div className="text-xs text-gray-500">
+                                      {timestamp ? new Date(timestamp).toLocaleString() : "Unknown time"}
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 bg-gray-200 rounded-full h-8 overflow-hidden">
+                                    <div
+                                      className="h-full flex items-center justify-end pr-3 text-white text-sm font-semibold transition-all"
+                                      style={{
+                                        width: `${displayAccuracy}%`,
+                                        backgroundColor:
+                                          displayAccuracy >= 90 ? "#10b981" :
+                                          displayAccuracy >= 75 ? "#15803d" :
+                                          displayAccuracy >= 50 ? "#f97316" : "#ef4444"
+                                      }}
+                                    >
+                                      {accuracyValue !== null ? `${accuracyValue}%` : "-"}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 text-center py-4">No complete matches found for this scout</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4">Statistics</h3>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <span className="text-gray-700">Total Match Entries</span>
+                            <span className="text-lg font-bold">{selectedRealEntries.length}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <span className="text-gray-700">Last Submit</span>
+                            <span className="text-lg font-bold">
+                              {selectedRealLastSubmit ? new Date(selectedRealLastSubmit).toLocaleDateString() : "-"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const badge = getAccuracyBadge(
+                          selectedScoutData.averageAccuracy,
+                          selectedScoutData.practiceSessionsCompleted
+                        );
+                        return (
+                          <div className={`p-4 rounded-lg ${badge.bg} ${badge.text} border ${
+                            badge.label === "Excellent" ? "border-green-200" :
+                            badge.label === "Good" ? "border-green-700" :
+                            badge.label === "Student Intervention" ? "border-orange-200" :
+                            badge.label === "Undetermined" ? "border-gray-200" :
+                            "border-red-200"
+                          }`}>
+                            <h3 className="font-semibold mb-2">
+                              {badge.label === "Excellent" ? "Excellent Performance" :
+                               badge.label === "Good" ? "Good Performance" :
+                               badge.label === "Student Intervention" ? "Needs Improvement" :
+                               badge.label === "Undetermined" ? "Status Pending" :
+                               "Immediate Action Required"}
+                            </h3>
+                            <p className="text-sm">
+                              {badge.label === "Excellent"
+                                ? `${selectedScoutData.scoutName} is performing excellently across completed matches.`
+                                : badge.label === "Good"
+                                ? `${selectedScoutData.scoutName} is performing well. Continued reps should improve consistency.`
+                                : badge.label === "Student Intervention"
+                                ? `${selectedScoutData.scoutName} needs additional practice and review before key matches.`
+                                : badge.label === "Undetermined"
+                                ? `${selectedScoutData.scoutName} has not completed enough matches for a stable estimate.`
+                                : `${selectedScoutData.scoutName} requires immediate mentor intervention and focused review.`}
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedScoutData && !isRealMode && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                     <div className="p-6 border-b border-gray-200">
@@ -1471,7 +2148,7 @@ function ScoutAccuracyContent() {
                   </div>
                 </div>
               )}
-              {selectedScoutData && showAllSessionsModal && (
+              {selectedScoutData && showAllSessionsModal && !isRealMode && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                     <div className="p-6 border-b border-gray-200 flex items-center justify-between">

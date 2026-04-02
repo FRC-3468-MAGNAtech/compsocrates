@@ -16,6 +16,7 @@ import {
   isPracticeScoutedEntry,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
+import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 type OwnerManagedUser = {
   uid: string;
@@ -62,10 +63,18 @@ function entrySortTime(entry: Record<string, unknown>): number {
 }
 
 function entryMatchLabel(entry: Record<string, unknown>): string {
-  return String(
-    entry.matchLabel || entry.matchId || entry.matchKey || entry.matchNumber || ""
-  )
-    .trim();
+  const rawLabel = String(entry.matchLabel || "").trim();
+  const rawKey = String(entry.matchKey || entry.matchId || "").trim();
+  const keyLabel = rawKey ? formatMatchLabelLong(rawKey) : "";
+  const keyLooksUseful =
+    keyLabel &&
+    keyLabel !== rawKey &&
+    !/^match\s*\d*$/i.test(keyLabel);
+  if (keyLooksUseful) return keyLabel;
+  if (rawLabel) return rawLabel;
+  if (keyLabel) return keyLabel;
+  const rawNumber = String(entry.matchNumber || "").trim();
+  return rawNumber ? `Match ${rawNumber}` : "";
 }
 
 function entryTeamLabel(entry: Record<string, unknown>): string {
@@ -117,6 +126,29 @@ function buildEntrySummary(entry: Record<string, unknown>, formType: FormTypeId)
     };
   }
   return { title: matchLabel || teamLabel || "Entry", subtitle: scoutLabel };
+}
+
+function buildFormEditHref(
+  entry: FormEditorEntry,
+  formType: FormTypeId,
+  formGame: AnalyticsGame
+): string {
+  const params = new URLSearchParams();
+  params.set("edit", "1");
+  params.set("editId", entry.id);
+  params.set("editCollection", entry.collection);
+  params.set("editGame", formGame);
+  if (formType === "lead-scout") {
+    params.set("lead", "1");
+  }
+  const query = params.toString();
+  if (formType === "match-scout") return `/scout-form?${query}`;
+  if (formType === "lead-scout") return `/scout-form?${query}`;
+  if (formType === "pit-scout") return `/pit-scout-form?${query}`;
+  if (formType === "team-strategy") return `/strategy-scout-form?${query}`;
+  if (formType === "match-strategy") return `/match-strategy-form?${query}`;
+  if (formType === "drive-reflection") return `/drive-scout-form?${query}`;
+  return `/scout-form?${query}`;
 }
 
 function AdminPanelContent() {
@@ -390,6 +422,7 @@ function AdminPanelContent() {
             seenIds.add(seenKey);
             rows.push({ id: docSnap.id, collection: collectionName, data });
           });
+          if (isActive) setFormEntriesRaw(rows);
           return;
         }
         await Promise.all(
@@ -457,14 +490,21 @@ function AdminPanelContent() {
     return formEntriesRaw
       .filter((row) => {
         const entry = row.data;
+        const normalizedGame =
+          String(entry.game || formGame).toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
         const normalizedEntry = {
           ...entry,
-          game: (entry.game || formGame) as AnalyticsGame,
+          game: normalizedGame as AnalyticsGame,
           submittedAt: entry.submittedAt || entry.timestamp || entry.createdAt || 0,
           timestamp: entry.timestamp || entry.submittedAt || entry.createdAt || 0,
         } as Record<string, unknown>;
         const includeLead = selectedFormType.id === "lead-scout";
-        if (selectedFormType.id === "lead-scout" && !isLeadScoutingEntry(entry)) return false;
+        if (
+          selectedFormType.id === "lead-scout" &&
+          !isLeadScoutingEntry(entry) &&
+          row.collection !== "leadScouting"
+        )
+          return false;
         if (!entryMatchesAnalyticsFilters(normalizedEntry, formGame, formEvent, eventOptions, { includeLead })) {
           return false;
         }
@@ -747,20 +787,31 @@ function AdminPanelContent() {
                             <p className="text-xs text-gray-500">
                               Editing ID: <span className="font-mono text-gray-700">{selectedFormEntry.id}</span>
                             </p>
+                            <div className="flex flex-wrap gap-2">
+                              <Link
+                                href={buildFormEditHref(selectedFormEntry, selectedFormType.id, formGame)}
+                                className="px-4 py-2 rounded text-white font-semibold"
+                                style={{ backgroundColor: "var(--primary-color)" }}
+                              >
+                                Open Form Editor
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => void saveFormEdits()}
+                                disabled={entrySaving}
+                                className="px-4 py-2 rounded border border-gray-300 text-gray-700 disabled:opacity-60"
+                              >
+                                {entrySaving ? "Saving..." : "Save JSON Changes"}
+                              </button>
+                            </div>
                             <textarea
                               className="w-full border rounded p-2 h-72 font-mono text-xs"
                               value={entryDraftJson}
                               onChange={(event) => setEntryDraftJson(event.target.value)}
                             />
-                            <button
-                              type="button"
-                              onClick={() => void saveFormEdits()}
-                              disabled={entrySaving}
-                              className="px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
-                              style={{ backgroundColor: "var(--primary-color)" }}
-                            >
-                              {entrySaving ? "Saving..." : "Save Form Changes"}
-                            </button>
+                            <p className="text-xs text-gray-500">
+                              Prefer editing in the actual form? Use “Open Form Editor” above.
+                            </p>
                           </div>
                         ) : (
                           <p className="text-sm text-gray-600">Select a form entry to edit.</p>

@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -20,6 +20,7 @@ import {
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
+import { getUserRoles } from "@/app/utils/roles";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 
 type Entry = {
@@ -74,6 +75,12 @@ type Entry = {
   notes: string;
   timestamp: number;
   estimatedScore?: number;
+  excludeFromStats?: boolean;
+  accuracy?: number;
+  accuracyScriptStatus?: string;
+  accuracyDetails?: AccuracyDetails;
+  accuracyRobotBreakdown?: AccuracyRobotBreakdown[];
+  accuracyUpdatedAt?: number;
   auto?: {
     preloadScale?: number;
     bpsScale?: number;
@@ -237,7 +244,7 @@ function matchLabel(entry: Entry) {
     const setNumber = Number(matchIdMatch[2] || 0);
     const matchNumber = Number(matchIdMatch[3] || 0);
     if (prefix === "QF" || prefix === "SF") {
-      return `${prefix}${setNumber || "-"}M${matchNumber || "-"}`;
+      return `${prefix}${setNumber || "-"}`;
     }
     if (prefix === "F") {
       return remapLegacyFinalLabel(`F${matchNumber || setNumber || "-"}`);
@@ -496,8 +503,8 @@ function tbaMatchLabel(row: TbaMatchRow): string {
   const matchNumber = Number(row.match_number || 0);
   if (level === "f") return `F${matchNumber || "-"}`;
   if (level === "qm") return `Q${matchNumber || "-"}`;
-  if (level === "sf") return `SF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
-  if (level === "qf") return `QF${Number(row.set_number || 0)}M${matchNumber || "-"}`;
+  if (level === "sf") return `SF${Number(row.set_number || 0) || "-"}`;
+  if (level === "qf") return `QF${Number(row.set_number || 0) || "-"}`;
   return `M${matchNumber || "-"}`;
 }
 
@@ -692,16 +699,20 @@ type SortKey =
 
 function AnalyticsPageContent() {
   const { userData } = useAuth();
+  const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach";
   const isTeamAdmin = Boolean(userData?.isTeamAdmin);
   const isTeamMember = Boolean(userData?.teamId);
-  const canImportCsv = isCoach || isTeamAdmin;
+  const isLeadStrategist = userRoles.includes("lead-strategist");
+  const isLeadScout = userRoles.includes("lead-scout");
+  const canImportCsv = isCoach || isTeamAdmin || isLeadStrategist;
   const canExportCsv = isTeamMember;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
-  const canDeleteEntries = isCoach || isTeamAdmin;
-  const canManageFlags = isCoach || isTeamCoach || isTeamAdmin;
-  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin;
+  const canDeleteEntries = isCoach || isTeamAdmin || isLeadStrategist;
+  const canManageFlags = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
+  const canViewScoutNames = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || isLeadScout;
   const [rawData, setRawData] = useState<Entry[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -719,6 +730,7 @@ function AnalyticsPageContent() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importMatchMode, setImportMatchMode] = useState<"official" | "practice-scouted">("official");
   const [importing, setImporting] = useState(false);
+  const [hideNames, setHideNames] = useState(false);
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
@@ -742,8 +754,47 @@ function AnalyticsPageContent() {
   const [flagStates, setFlagStates] = useState<Record<string, StoredFlagState>>({});
   const [flagSavingKey, setFlagSavingKey] = useState("");
   const [flagMenuEntry, setFlagMenuEntry] = useState<Entry | null>(null);
+  const [excludeSavingId, setExcludeSavingId] = useState("");
   const [manualFlagReason, setManualFlagReason] = useState<string>(MANUAL_FLAG_REASONS[0].value);
   const deleteGuardRef = useRef<string | null>(null);
+  const accuracyPersistedRef = useRef<Set<string>>(new Set());
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const scoutHeaderRef = useRef<HTMLTableCellElement | null>(null);
+  const startingPosHeaderRef = useRef<HTMLTableCellElement | null>(null);
+  const [startingPosVisible, setStartingPosVisible] = useState(true);
+
+  const preMatchColSpan = startingPosVisible ? 2 : 1;
+  const showStartingPosSpacer = !startingPosVisible;
+
+  useEffect(() => {
+    const container = tableScrollRef.current;
+    if (!container || typeof window === "undefined") return;
+
+    const handleVisibility = () => {
+      if (window.innerWidth < 1024) {
+        setStartingPosVisible(true);
+        return;
+      }
+
+      const scoutCell = scoutHeaderRef.current;
+      const startCell = startingPosHeaderRef.current;
+      if (!scoutCell || !startCell) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const scoutRect = scoutCell.getBoundingClientRect();
+      const startRect = startCell.getBoundingClientRect();
+      const isVisible = startRect.left >= scoutRect.right - 1 && startRect.left < containerRect.right;
+      setStartingPosVisible(isVisible);
+    };
+
+    handleVisibility();
+    container.addEventListener("scroll", handleVisibility);
+    window.addEventListener("resize", handleVisibility);
+    return () => {
+      container.removeEventListener("scroll", handleVisibility);
+      window.removeEventListener("resize", handleVisibility);
+    };
+  }, [selectedGame]);
 
   const rebuiltEventOptions = useMemo(
     () =>
@@ -1046,9 +1097,52 @@ function AnalyticsPageContent() {
   }, [filtered, selectedEvent, selectedGame, tbaMatchesByEvent]);
 
   useEffect(() => {
+    if (!canViewAdminColumns || !userData?.teamId) return;
+    const updates: Array<Promise<void>> = [];
+    const payloadById: Record<string, Record<string, unknown>> = {};
+    filtered.forEach((entry) => {
+      if (isPracticeScoutingEntry(entry)) return;
+      if (entry.excludeFromStats) return;
+      const computed = allianceAccuracyByEntryId[entry.id];
+      if (!computed) return;
+      const nextStatus = String(computed.scriptStatus || "").trim().toLowerCase();
+      if (!nextStatus) return;
+      const storedStatus = String(entry.accuracyScriptStatus || "").trim().toLowerCase();
+      const storedAccuracy =
+        typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
+          ? Math.round(Number((entry as Entry & { accuracy?: number }).accuracy))
+          : null;
+      const nextAccuracy = typeof computed.accuracy === "number" ? Math.round(computed.accuracy) : null;
+      const needsStatus = storedStatus !== nextStatus;
+      const needsAccuracy = nextAccuracy !== null && storedAccuracy !== nextAccuracy;
+      if (!needsStatus && !needsAccuracy) return;
+      if (accuracyPersistedRef.current.has(entry.id)) return;
+      accuracyPersistedRef.current.add(entry.id);
+      const payload: Record<string, unknown> = {
+        accuracyScriptStatus: nextStatus,
+        accuracyUpdatedAt: Date.now(),
+      };
+      if (nextAccuracy !== null) payload.accuracy = nextAccuracy;
+      payloadById[entry.id] = payload;
+      updates.push(
+        updateDoc(doc(db, "scouting", entry.id), payload).catch((error) => {
+          console.warn("Failed to persist accuracy data for scouting entry:", entry.id, error);
+        })
+      );
+    });
+    if (updates.length === 0) return;
+    Promise.all(updates).then(() => {
+      setRawData((prev) =>
+        prev.map((entry) => (payloadById[entry.id] ? { ...entry, ...payloadById[entry.id] } : entry))
+      );
+    });
+  }, [allianceAccuracyByEntryId, canViewAdminColumns, filtered, userData?.teamId]);
+
+  useEffect(() => {
     if (!userData?.teamId) return;
     const eventKeys = new Set(
       filtered
+        .filter((entry) => !entry.accuracyScriptStatus && typeof entry.accuracy !== "number")
         .map((entry) => (selectedEvent !== "all" ? selectedEvent : String(entry.eventKey || "").trim()))
         .filter((key) => Boolean(key))
     );
@@ -1093,7 +1187,12 @@ function AnalyticsPageContent() {
       const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? Number((entry as Entry & { accuracy?: number }).accuracy)
         : computedAccuracy?.accuracy ?? null;
-      const scriptStatus = computedAccuracy?.scriptStatus
+      const storedStatus = String((entry as Entry & { accuracyScriptStatus?: string }).accuracyScriptStatus || "")
+        .trim()
+        .toLowerCase();
+      const scriptStatus = storedStatus
+        ? storedStatus
+        : computedAccuracy?.scriptStatus
         ? computedAccuracy.scriptStatus === "complete"
           ? "complete"
           : computedAccuracy.scriptStatus
@@ -1101,11 +1200,13 @@ function AnalyticsPageContent() {
         ? ""
         : "complete";
 
+      const normalizedAccuracy = typeof accuracyValue === "number" ? accuracyValue : undefined;
+
       return {
         ...entry,
         score: scoreEntry(entry, selectedGame),
         matchLabel: matchLabel(entry),
-        accuracy: accuracyValue ?? "",
+        accuracy: normalizedAccuracy,
         scriptStatus,
         autoPreloadScale: entry.auto?.preloadScale ?? 0,
         autoBpsScale: entry.auto?.bpsScale ?? 0,
@@ -1256,6 +1357,28 @@ function AnalyticsPageContent() {
     });
   }
 
+  async function setScoutingEntryExcluded(entryId: string, excluded: boolean) {
+    if (!canManageFlags) return;
+    setExcludeSavingId(entryId);
+    try {
+      await updateDoc(doc(db, "scouting", entryId), {
+        excludeFromStats: excluded,
+        excludedAt: excluded ? Date.now() : null,
+        excludedBy: excluded ? userData?.uid || "" : null,
+      });
+      setRawData((prev) =>
+        prev.map((entry) =>
+          entry.id === entryId ? { ...entry, excludeFromStats: excluded } : entry
+        )
+      );
+    } catch (error) {
+      console.error("Failed to update exclude-from-stats state:", error);
+      alert("Unable to update stats exclusion for this entry.");
+    } finally {
+      setExcludeSavingId("");
+    }
+  }
+
   async function loadAccuracyDetails(entry: Entry) {
     setAccuracyModalLoading(true);
     const clickedLabel = matchLabel(entry);
@@ -1268,6 +1391,45 @@ function AnalyticsPageContent() {
       eventKeyUsed: "",
       matchLabelUsed: clickedLabel,
     });
+    if (entry.accuracyDetails && typeof entry.accuracyDetails.scoutedPoints === "number") {
+      setAccuracyRobotBreakdown(Array.isArray(entry.accuracyRobotBreakdown) ? entry.accuracyRobotBreakdown : []);
+      setAccuracyDetails({
+        scoutedPoints: Number(entry.accuracyDetails.scoutedPoints || 0),
+        actualPoints:
+          typeof entry.accuracyDetails.actualPoints === "number" ? entry.accuracyDetails.actualPoints : null,
+        penaltyPoints: Number(entry.accuracyDetails.penaltyPoints || 0),
+        allRobotsScouted: entry.accuracyDetails.allRobotsScouted || "unknown",
+        eventKeyUsed: String(entry.accuracyDetails.eventKeyUsed || ""),
+        matchLabelUsed: String(entry.accuracyDetails.matchLabelUsed || clickedLabel),
+      });
+      setAccuracyModalLoading(false);
+      return;
+    }
+    const persistAccuracySnapshot = async (
+      details: AccuracyDetails,
+      breakdown: AccuracyRobotBreakdown[],
+      isPracticeEntry: boolean
+    ) => {
+      if (!canViewAdminColumns) return;
+      const payload: Record<string, unknown> = {
+        accuracyDetails: details,
+        accuracyRobotBreakdown: breakdown,
+        accuracyUpdatedAt: Date.now(),
+      };
+      if (!isPracticeEntry && typeof details.actualPoints === "number") {
+        const official = Number(details.actualPoints || 0);
+        const scouted = Number(details.scoutedPoints || 0);
+        const accuracy = official > 0 ? Math.max(0, 1 - Math.abs(official - scouted) / official) * 100 : 0;
+        payload.accuracy = Math.round(accuracy);
+        payload.accuracyScriptStatus = details.allRobotsScouted === "yes" ? "complete" : "missing robots";
+      }
+      try {
+        await updateDoc(doc(db, "scouting", entry.id), payload);
+        setRawData((prev) => prev.map((row) => (row.id === entry.id ? { ...row, ...payload } : row)));
+      } catch (error) {
+        console.warn("Unable to persist accuracy details snapshot:", error);
+      }
+    };
     try {
       const selectedTeam = String(entry.teamNumber || "").trim();
       const entryGame = String(entry.game || "REEFSCAPE").toUpperCase() as AnalyticsGame;
@@ -1333,21 +1495,20 @@ function AnalyticsPageContent() {
         if (scopedMatchRows.length > 0) {
           const latestSessionRows = chooseLatestEntryPerTeam(scopedMatchRows);
           let sessionScoutedPoints = latestSessionRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
-          setAccuracyRobotBreakdown(
-            latestSessionRows.map((row) =>
-              entryGame === "REBUILT"
-                ? getRebuiltBreakdown(row)
-                : {
-                    teamNumber: String(row.teamNumber || "-"),
-                    total: scoreEntry(row, entryGame),
-                    source: "reefscape",
-                    autoFuel: 0,
-                    teleFuel: 0,
-                    autoClimb: 0,
-                    endgameClimb: 0,
-                  }
-            )
+          const breakdown = latestSessionRows.map((row) =>
+            entryGame === "REBUILT"
+              ? getRebuiltBreakdown(row)
+              : {
+                  teamNumber: String(row.teamNumber || "-"),
+                  total: scoreEntry(row, entryGame),
+                  source: "reefscape" as const,
+                  autoFuel: 0,
+                  teleFuel: 0,
+                  autoClimb: 0,
+                  endgameClimb: 0,
+                }
           );
+          setAccuracyRobotBreakdown(breakdown);
 
           try {
             const sessionSnap = await getDoc(doc(db, "practiceSessions", practiceSessionId));
@@ -1364,7 +1525,7 @@ function AnalyticsPageContent() {
             console.warn("Could not load practice session while opening accuracy details:", sessionError);
           }
 
-          setAccuracyDetails({
+          const details: AccuracyDetails = {
             scoutedPoints: sessionScoutedPoints,
             actualPoints,
             penaltyPoints:
@@ -1376,7 +1537,9 @@ function AnalyticsPageContent() {
             allRobotsScouted: latestSessionRows.length >= 3 ? "yes" : "no",
             eventKeyUsed: eventKey,
             matchLabelUsed,
-          });
+          };
+          setAccuracyDetails(details);
+          void persistAccuracySnapshot(details, breakdown, true);
           return;
         }
       }
@@ -1388,29 +1551,30 @@ function AnalyticsPageContent() {
             : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
         const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
         const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
-        setAccuracyRobotBreakdown(
-          latestAllianceRows.map((row) =>
-            entryGame === "REBUILT"
-              ? getRebuiltBreakdown(row)
-              : {
-                  teamNumber: String(row.teamNumber || "-"),
-                  total: scoreEntry(row, entryGame),
-                  source: "reefscape",
-                  autoFuel: 0,
-                  teleFuel: 0,
-                  autoClimb: 0,
-                  endgameClimb: 0,
-                }
-          )
+        const breakdown = latestAllianceRows.map((row) =>
+          entryGame === "REBUILT"
+            ? getRebuiltBreakdown(row)
+            : {
+                teamNumber: String(row.teamNumber || "-"),
+                total: scoreEntry(row, entryGame),
+                source: "reefscape" as const,
+                autoFuel: 0,
+                teleFuel: 0,
+                autoClimb: 0,
+                endgameClimb: 0,
+              }
         );
-        setAccuracyDetails({
+        setAccuracyRobotBreakdown(breakdown);
+        const details: AccuracyDetails = {
           scoutedPoints,
           actualPoints,
           penaltyPoints: Number(entry.penaltyPoints || 0),
           allRobotsScouted: "unknown",
           eventKeyUsed: eventKey,
           matchLabelUsed: matchLabelUsed,
-        });
+        };
+        setAccuracyDetails(details);
+        void persistAccuracySnapshot(details, breakdown, false);
         return;
       }
 
@@ -1491,21 +1655,20 @@ function AnalyticsPageContent() {
         latestAllianceRows = latestReferenceRows;
       }
       const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
-      setAccuracyRobotBreakdown(
-        latestAllianceRows.map((row) =>
-          entryGame === "REBUILT"
-            ? getRebuiltBreakdown(row)
-            : {
-                teamNumber: String(row.teamNumber || "-"),
-                total: scoreEntry(row, entryGame),
-                source: "reefscape",
-                autoFuel: 0,
-                teleFuel: 0,
-                autoClimb: 0,
-                endgameClimb: 0,
-              }
-        )
+      const breakdown = latestAllianceRows.map((row) =>
+        entryGame === "REBUILT"
+          ? getRebuiltBreakdown(row)
+          : {
+              teamNumber: String(row.teamNumber || "-"),
+              total: scoreEntry(row, entryGame),
+              source: "reefscape" as const,
+              autoFuel: 0,
+              teleFuel: 0,
+              autoClimb: 0,
+              endgameClimb: 0,
+            }
       );
+      setAccuracyRobotBreakdown(breakdown);
       const scoutedTeams = new Set(latestAllianceRows.map((row) => String(row.teamNumber || "").trim()).filter(Boolean));
       const allRobotsScouted =
         officialTeamsForAlliance.length > 0
@@ -1513,7 +1676,7 @@ function AnalyticsPageContent() {
             ? "yes"
             : "no"
           : "unknown";
-      setAccuracyDetails({
+      const details: AccuracyDetails = {
         scoutedPoints,
         actualPoints,
         penaltyPoints:
@@ -1525,7 +1688,9 @@ function AnalyticsPageContent() {
         allRobotsScouted,
         eventKeyUsed: eventKey,
         matchLabelUsed: matchLabelUsed,
-      });
+      };
+      setAccuracyDetails(details);
+      void persistAccuracySnapshot(details, breakdown, false);
     } catch (error) {
       console.error("Failed to load alliance robot details:", error);
       setAccuracyDetails((prev) => ({ ...prev, allRobotsScouted: "unknown", matchLabelUsed: clickedLabel }));
@@ -1607,7 +1772,11 @@ function AnalyticsPageContent() {
       typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? (entry as Entry & { accuracy?: number }).accuracy
         : "",
-      typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? "Complete" : "",
+      String(entry.accuracyScriptStatus || "").trim()
+        ? formatScriptStatus(entry.accuracyScriptStatus)
+        : typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
+        ? "Complete"
+        : "",
     ]);
     const csv = [
       headers.join(","),
@@ -1916,6 +2085,18 @@ function AnalyticsPageContent() {
       selectedEvent={selectedEvent}
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
+      extraControls={
+        canViewScoutNames ? (
+          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
+            <input
+              type="checkbox"
+              checked={hideNames}
+              onChange={(event) => setHideNames(event.target.checked)}
+            />
+            Hide Names
+          </label>
+        ) : null
+      }
     >
       <div className="mb-4">
         <h1 className="text-3xl font-bold mb-1 theme-text">Match Analytics</h1>
@@ -2015,13 +2196,20 @@ function AnalyticsPageContent() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
+      <div ref={tableScrollRef} className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
         {selectedGame === "REBUILT" ? (
           <table>
             <thead className="sticky-header">
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
+                <th
+                  className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center"
+                  colSpan={preMatchColSpan}
+                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
+                >
+                  Pre-Match
+                </th>
+                {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
                 <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
                 <th className="bg-blue-300 text-center" colSpan={14}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={5}>Endgame</th>
@@ -2030,7 +2218,14 @@ function AnalyticsPageContent() {
               </tr>
               <tr>
                 <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
+                <th
+                  className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center"
+                  colSpan={preMatchColSpan}
+                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
+                >
+                  Pre-Match
+                </th>
+                {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
                 <th className="bg-green-200 text-center" colSpan={3}>Stats</th>
                 <th className="bg-green-200 text-center" colSpan={2}>Fuel</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Climb</th>
@@ -2055,10 +2250,10 @@ function AnalyticsPageContent() {
                 <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
                   {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                <th ref={scoutHeaderRef} className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                   {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
                 </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+                <th ref={startingPosHeaderRef} className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
                   {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
                 </th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("autoPreloadScale")}>
@@ -2181,11 +2376,14 @@ function AnalyticsPageContent() {
                 const isManualFlagged = Boolean(flagState?.manualFlagged);
                 const autoFlags = isFlagDismissed ? [] : entryFlags;
                 const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
+                const isExcluded = Boolean(entry.excludeFromStats);
                 return (
-                <tr key={entry.id}>
+                <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                   <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                   <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
-                  <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                  <td className="sticky-left-2 bg-white text-center">
+                    {canViewScoutNames && !hideNames ? displayEntryText(entry.scoutName) : "-"}
+                  </td>
                   <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                   <td className="text-center">{rebuiltPreloadRange(entry.auto?.preloadScale)}</td>
                   <td className="text-center">{rebuiltBpsRange(entry.auto?.bpsScale)}</td>
@@ -2242,29 +2440,29 @@ function AnalyticsPageContent() {
                   {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
                   {canViewAdminColumns && (
                     <td className="text-center">
-                      {canManageFlags && (
-                        <div className="mb-2">
+                      <div className="flex items-center justify-center gap-2">
+                        {canManageFlags && (
                           <button
                             type="button"
                             onClick={() => setFlagMenuEntry(entry)}
                             disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
                             className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                           >
-                            {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                            {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                           </button>
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(event) => triggerDeleteEntry(entry, event)}
-                        onPointerUp={(event) => triggerDeleteEntry(entry, event)}
-                        className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                        style={{ backgroundColor: "#dc2626" }}
-                        disabled={!canDeleteEntries}
-                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                      >
-                        Delete
-                      </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(event) => triggerDeleteEntry(entry, event)}
+                          onPointerUp={(event) => triggerDeleteEntry(entry, event)}
+                          className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                          style={{ backgroundColor: "#dc2626" }}
+                          disabled={!canDeleteEntries}
+                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -2277,7 +2475,14 @@ function AnalyticsPageContent() {
           <thead className="sticky-header">
             <tr>
               <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-              <th className="bg-yellow-300 text-center" colSpan={2}>Pre-Match</th>
+              <th
+                className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center"
+                colSpan={preMatchColSpan}
+                style={{ minWidth: startingPosVisible ? 192 : 96 }}
+              >
+                Pre-Match
+              </th>
+              {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
               <th className="bg-green-300 text-center" colSpan={10}>Autonomous</th>
               <th className="bg-blue-300 text-center" colSpan={13}>Teleoperated</th>
               <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
@@ -2286,7 +2491,14 @@ function AnalyticsPageContent() {
             </tr>
             <tr>
               <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-              <th className="bg-yellow-200 text-center" colSpan={2}>Pre-Match</th>
+              <th
+                className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center"
+                colSpan={preMatchColSpan}
+                style={{ minWidth: startingPosVisible ? 192 : 96 }}
+              >
+                Pre-Match
+              </th>
+              {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
               <th className="bg-green-200 text-center" colSpan={1}>Leave</th>
               <th className="bg-green-200 text-center" colSpan={5}>Coral</th>
               <th className="bg-green-200 text-center" colSpan={2}>Algae Processor</th>
@@ -2310,10 +2522,10 @@ function AnalyticsPageContent() {
               <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
                 {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
               </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+              <th ref={scoutHeaderRef} className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
                 {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
               </th>
-              <th className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+              <th ref={startingPosHeaderRef} className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
                 {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
               </th>
               <th className="cursor-pointer text-center" onClick={() => handleSort("leftStartingZone")}>
@@ -2419,11 +2631,14 @@ function AnalyticsPageContent() {
               const isManualFlagged = Boolean(flagState?.manualFlagged);
               const autoFlags = isFlagDismissed ? [] : entryFlags;
               const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
+              const isExcluded = Boolean(entry.excludeFromStats);
               return (
-              <tr key={entry.id}>
+              <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
                 <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
                 <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
-                <td className="text-center">{displayEntryText(entry.scoutName)}</td>
+                <td className="sticky-left-2 bg-white text-center">
+                  {canViewScoutNames && !hideNames ? displayEntryText(entry.scoutName) : "-"}
+                </td>
                 <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
                 <td className="text-center">{entry.leftStartingZone ? "Y" : "N"}</td>
                 <td className="text-center">{entry.autoCoralMissed || 0}</td>
@@ -2477,29 +2692,29 @@ function AnalyticsPageContent() {
                 {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
                 {canViewAdminColumns && (
                   <td className="text-center">
-                    {canManageFlags && (
-                      <div className="mb-2">
+                    <div className="flex items-center justify-center gap-2">
+                      {canManageFlags && (
                         <button
                           type="button"
                           onClick={() => setFlagMenuEntry(entry)}
                           disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
                           className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
                         >
-                          {`Flags${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                          {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
                         </button>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(event) => triggerDeleteEntry(entry, event)}
-                      onPointerUp={(event) => triggerDeleteEntry(entry, event)}
-                      className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                      style={{ backgroundColor: "#dc2626" }}
-                      disabled={!canDeleteEntries}
-                      title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                    >
-                      Delete
-                    </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(event) => triggerDeleteEntry(entry, event)}
+                        onPointerUp={(event) => triggerDeleteEntry(entry, event)}
+                        className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                        style={{ backgroundColor: "#dc2626" }}
+                        disabled={!canDeleteEntries}
+                        title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>
@@ -2566,6 +2781,7 @@ function AnalyticsPageContent() {
               const entryFlags = evaluateScoutingFlags(flagMenuEntry as unknown as Record<string, unknown>);
               const isDismissed = Boolean(flagState?.dismissed);
               const isManualFlagged = Boolean(flagState?.manualFlagged);
+              const isExcluded = Boolean(flagMenuEntry.excludeFromStats);
               const manualReasonValue = flagState?.manualReason || manualFlagReason;
               const reasonLabel =
                 MANUAL_FLAG_REASONS.find((reason) => reason.value === manualReasonValue)?.label ||
@@ -2575,7 +2791,7 @@ function AnalyticsPageContent() {
               return (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-xl font-semibold">Flags</h2>
+                    <h2 className="text-xl font-semibold">Config</h2>
                     <p className="text-sm text-gray-600">
                       Match {matchLabel(flagMenuEntry)} • Team {displayEntryText(flagMenuEntry.teamNumber)}
                     </p>
@@ -2648,6 +2864,25 @@ function AnalyticsPageContent() {
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="font-semibold">Stats Exclusion</div>
+                    <p className="text-sm text-gray-600">
+                      Excluded entries stay visible here but will be ignored by stats and averages.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void setScoutingEntryExcluded(flagMenuEntry.id, !isExcluded)}
+                      disabled={excludeSavingId === flagMenuEntry.id}
+                      className={`px-3 py-1 rounded border text-sm disabled:opacity-50 ${
+                        isExcluded
+                          ? "border-green-300 bg-green-50 text-green-900"
+                          : "border-gray-300 bg-gray-50 text-gray-800"
+                      }`}
+                    >
+                      {isExcluded ? "Include In Stats" : "Exclude From Stats"}
+                    </button>
                   </div>
 
                   <div>
