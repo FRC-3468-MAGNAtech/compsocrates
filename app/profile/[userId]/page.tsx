@@ -313,15 +313,27 @@ function ProfileContent() {
     stats.totalEntries > 0 && stats.practiceEntries === stats.totalEntries
       ? "Practice Entries"
       : "Scouting Entries";
-  const roleBadge = profile ? getRoleBadge(profile.role, Array.isArray(profile.roles) ? profile.roles : []) : null;
+  const roleBadge = profile
+    ? getRoleBadge(
+        typeof profile.role === "string" ? profile.role : "",
+        Array.isArray(profile.roles) ? profile.roles.map((role) => String(role || "").trim()).filter(Boolean) : []
+      )
+    : null;
   const roleBadges = useMemo(() => {
     if (!profile) return [];
     const merged = new Set<string>();
-    if (profile.role) merged.add(profile.role);
+    const primaryRole = typeof profile.role === "string" ? profile.role.trim() : "";
+    if (primaryRole) merged.add(primaryRole);
     const primaryRoles = Array.isArray(profile.roles) ? profile.roles : [];
     const secondaryRoles = Array.isArray(profile.secondaryRoles) ? profile.secondaryRoles : [];
-    primaryRoles.forEach((role) => merged.add(role));
-    secondaryRoles.forEach((role) => merged.add(role));
+    primaryRoles.forEach((role) => {
+      const safe = String(role || "").trim();
+      if (safe) merged.add(safe);
+    });
+    secondaryRoles.forEach((role) => {
+      const safe = String(role || "").trim();
+      if (safe) merged.add(safe);
+    });
     return Array.from(merged).map((role) => getRoleBadge(role, [role]));
   }, [profile]);
   const initials = profile?.displayName

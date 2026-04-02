@@ -195,6 +195,7 @@ export default function AccuracyVerificationPage() {
 function AccuracyVerificationContent() {
   const router = useRouter();
   const { userData } = useAuth();
+  const [blockedNotice, setBlockedNotice] = useState(true);
   const roles = getUserRoles(userData);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const canSee = canAccessForm({ formKey: "accuracy-verification", user: userData, formAccessOverrides });
@@ -825,6 +826,43 @@ function AccuracyVerificationContent() {
       <div className="flex h-screen bg-gray-100">
         <div className="m-auto text-center text-gray-600">You do not have access to Accuracy Verification.</div>
       </div>
+    );
+  }
+
+  if (blockedNotice) {
+    return (
+      <AnalyticsShell
+        entriesCount={filteredEntries.length}
+        selectedGame={selectedGame}
+        onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
+        selectedEvent={selectedEvent}
+        eventOptions={eventOptions}
+        onSelectedEventChange={(eventId) => setSelectedEvent(eventId)}
+      >
+        <div className="flex items-center justify-center min-h-[60vh] px-4">
+          <div className="max-w-lg w-full bg-white rounded-xl shadow-lg p-6 text-center">
+            <h2 className="text-2xl font-semibold mb-3 theme-text">Temporarily Blocked</h2>
+            <p className="text-gray-600 mb-6">Accuracy Verification is coming soon.</p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                className="px-4 py-2 rounded text-white font-semibold"
+                style={{ backgroundColor: "var(--primary-color)" }}
+              >
+                Go to Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={() => setBlockedNotice(false)}
+                className="px-4 py-2 rounded border border-gray-300 text-gray-700 font-semibold"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      </AnalyticsShell>
     );
   }
 

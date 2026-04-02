@@ -377,7 +377,13 @@ function AccuracyCompareContent() {
       setLoading(true);
       try {
         const scoutingSnap = await getDocs(query(collection(db, "scouting"), where("teamId", "==", teamId)));
-        const rows = scoutingSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as Entry[];
+        let rows = scoutingSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as Entry[];
+        if (rows.length === 0 && eventKey && matchKey) {
+          const fallbackSnap = await getDocs(
+            query(collection(db, "scouting"), where("eventKey", "==", eventKey), where("matchKey", "==", matchKey))
+          );
+          rows = fallbackSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as Entry[];
+        }
         const rescoutSnap = await getDocs(query(collection(db, "accuracyRescouts"), where("teamId", "==", teamId)));
         const rescoutRows = rescoutSnap.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -460,7 +466,10 @@ function AccuracyCompareContent() {
       .filter((entry) => !isPracticeScoutedEntry(entry))
       .filter((entry) => normalizeEventKey(String(entry.eventKey || "").trim()) === eventKey)
       .filter((entry) => normalizeMatchId(String(entry.matchKey || entry.matchId || "")) === matchKey)
-      .filter((entry) => resolveAlliance(entry) === alliance)
+      .filter((entry) => {
+        const resolved = resolveAlliance(entry);
+        return resolved === alliance || resolved === null;
+      })
       .map((entry) => Number(entry.teamNumber || 0))
       .filter((num) => Number.isFinite(num) && num > 0);
     return Array.from(new Set(fallback)).sort((a, b) => a - b);
@@ -472,7 +481,10 @@ function AccuracyCompareContent() {
       .filter((entry) => !isPracticeScoutedEntry(entry))
       .filter((entry) => normalizeEventKey(String(entry.eventKey || "").trim()) === eventKey)
       .filter((entry) => normalizeMatchId(String(entry.matchKey || entry.matchId || "")) === matchKey)
-      .filter((entry) => resolveAlliance(entry) === alliance)
+      .filter((entry) => {
+        const resolved = resolveAlliance(entry);
+        return resolved === alliance || resolved === null;
+      })
       .forEach((entry) => {
         const teamNumber = Number(entry.teamNumber || 0);
         if (!Number.isFinite(teamNumber) || teamNumber <= 0) return;

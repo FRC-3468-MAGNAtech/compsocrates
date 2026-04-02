@@ -42,6 +42,7 @@ interface Assignment {
 
 interface PitAssignment {
   id: string;
+  teamId?: string;
   eventKey: string;
   teamNumber: number;
   scoutId: string;
@@ -52,6 +53,7 @@ interface PitAssignment {
 
 interface TeamAssignment {
   id: string;
+  teamId?: string;
   eventKey: string;
   teamNumber: number;
   scoutId: string;
@@ -62,6 +64,7 @@ interface TeamAssignment {
 
 interface PracticeAssignment {
   id: string;
+  teamId?: string;
   eventKey: string;
   practiceMatchId: string;
   matchKey: string;
@@ -1625,27 +1628,66 @@ function buildMatchScoutOrder(
   if (pattern === "constant") return scouts.slice(0, targetSlots);
 
   if (pattern === "interval") {
-    const safeInterval = Math.max(1, interval);
-    const blockIndex = Math.floor(matchIndex / safeInterval);
-    const indexInBlock = matchIndex % safeInterval;
-    const blockSlots = safeInterval * targetSlots;
-    const baseCount = Math.floor(blockSlots / scouts.length);
-    const remainder = blockSlots % scouts.length;
-    const offset = blockIndex % scouts.length;
-    const rotated = scouts.slice(offset).concat(scouts.slice(0, offset));
-    const blockOrder: TeamMember[] = [];
-    for (let i = 0; i < baseCount; i += 1) {
-      blockOrder.push(...rotated);
-    }
-    if (remainder > 0) {
-      blockOrder.push(...rotated.slice(0, remainder));
-    }
-    const start = indexInBlock * targetSlots;
-    return blockOrder.slice(start, start + targetSlots);
+    return takeSequentialScouts(scouts, matchIndex % scouts.length, targetSlots);
   }
 
   const startIndex = matchIndex % scouts.length;
   return takeSequentialScouts(scouts, startIndex, targetSlots);
+}
+
+function buildBalancedIntervalSchedule(
+  scouts: TeamMember[],
+  slotsPerMatch: number[],
+  interval: number
+): TeamMember[][] {
+  if (scouts.length === 0) return [];
+  const safeInterval = Math.max(1, interval);
+  const totalSlots = slotsPerMatch.reduce((sum, value) => sum + Math.max(0, value), 0);
+  const base = Math.floor(totalSlots / scouts.length);
+  const remainder = totalSlots % scouts.length;
+  const remaining = new Map<string, number>();
+  scouts.forEach((scout, index) => {
+    remaining.set(scout.uid, base + (index < remainder ? 1 : 0));
+  });
+  let currentGroup: TeamMember[] = [];
+  let blockRemaining = 0;
+  const schedule: TeamMember[][] = [];
+
+  slotsPerMatch.forEach((slots) => {
+    const targetSlots = Math.min(slots, scouts.length);
+    currentGroup = currentGroup.filter((scout) => (remaining.get(scout.uid) || 0) > 0);
+    if (blockRemaining <= 0 || currentGroup.length === 0) {
+      const candidates = scouts
+        .filter((scout) => (remaining.get(scout.uid) || 0) > 0)
+        .sort((a, b) => {
+          const diff = (remaining.get(b.uid) || 0) - (remaining.get(a.uid) || 0);
+          if (diff !== 0) return diff;
+          return a.uid.localeCompare(b.uid);
+        });
+      currentGroup = candidates.slice(0, targetSlots);
+      blockRemaining = safeInterval;
+    }
+
+    if (currentGroup.length < targetSlots) {
+      const currentIds = new Set(currentGroup.map((scout) => scout.uid));
+      const fillers = scouts
+        .filter((scout) => !currentIds.has(scout.uid) && (remaining.get(scout.uid) || 0) > 0)
+        .sort((a, b) => {
+          const diff = (remaining.get(b.uid) || 0) - (remaining.get(a.uid) || 0);
+          if (diff !== 0) return diff;
+          return a.uid.localeCompare(b.uid);
+        });
+      currentGroup = [...currentGroup, ...fillers.slice(0, targetSlots - currentGroup.length)];
+    }
+
+    const selected = currentGroup.slice(0, targetSlots);
+    selected.forEach((scout) => {
+      remaining.set(scout.uid, Math.max(0, (remaining.get(scout.uid) || 0) - 1));
+    });
+    schedule.push(selected);
+    blockRemaining -= 1;
+  });
+  return schedule;
 }
 
   async function generateManualPracticeMatches(targetEventKey?: string) {
@@ -1742,6 +1784,7 @@ function buildMatchScoutOrder(
 
     try {
       await addDoc(collection(db, "matchAssignments"), {
+        teamId: userData.teamId || "",
         eventKey: selectedEvent,
         matchKey: selectedMatch.key,
         matchLabel: selectedMatch.label,
@@ -1778,6 +1821,7 @@ function buildMatchScoutOrder(
 
     try {
       await addDoc(collection(db, "pitAssignments"), {
+        teamId: userData.teamId || "",
         eventKey: selectedEvent,
         teamNumber,
         scoutId: selectedPitScoutId,
@@ -1808,6 +1852,7 @@ function buildMatchScoutOrder(
 
     try {
       await addDoc(collection(db, "teamAssignments"), {
+        teamId: userData.teamId || "",
         eventKey: selectedEvent,
         teamNumber,
         scoutId: selectedTeamScoutId,
@@ -2151,22 +2196,38 @@ function buildMatchScoutOrder(
         ? await buildPerformanceMapsForTeams(allTeams, yearFromEvent, selectedEvent)
         : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
 
-      targetMatches.forEach((match, matchIndex) => {
+      const teamsByMatch = targetMatches.map((match) => {
         const rankedTeams = lowScoutMode
           ? computeTeamPriorityOrder(match.teams, manualPriorityTeams, historyMap, statboticsMap)
           : [...match.teams];
-        const teamsToAssign = lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
-        const matchScouts = buildMatchScoutOrder(
-          scoutOrder,
-          matchIndex,
-          teamsToAssign.length,
-          config?.pattern || "rotate-each-match",
-          Number(config?.interval || 5)
-        );
+        return lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
+      });
+      const intervalSchedule =
+        (config?.pattern || "rotate-each-match") === "interval"
+          ? buildBalancedIntervalSchedule(
+              scoutOrder,
+              teamsByMatch.map((teams) => teams.length),
+              Number(config?.interval || 5)
+            )
+          : [];
+
+      targetMatches.forEach((match, matchIndex) => {
+        const teamsToAssign = teamsByMatch[matchIndex] || [];
+        const matchScouts =
+          (config?.pattern || "rotate-each-match") === "interval"
+            ? intervalSchedule[matchIndex] || []
+            : buildMatchScoutOrder(
+                scoutOrder,
+                matchIndex,
+                teamsToAssign.length,
+                config?.pattern || "rotate-each-match",
+                Number(config?.interval || 5)
+              );
         teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
           if (!scout) return;
           newAssignments.push({
+            teamId: userData.teamId || "",
             eventKey: selectedEvent,
             matchKey: match.key,
             matchLabel: match.label,
@@ -2294,22 +2355,37 @@ function buildMatchScoutOrder(
       const now = Date.now();
       const newAssignments: Array<Omit<Assignment, "id">> = [];
 
-      targetMatches.forEach((match, matchIndex) => {
+      const teamsByMatch = targetMatches.map((match) => {
         const sourceTeams = match.teams.length > 0 ? match.teams : eventTeamOptions;
         const teamOrder = computeTeamPriorityOrder(sourceTeams, manualPriorityTeams, historyMap, statboticsMap);
-        const teamsToAssign = lowScoutMode ? teamOrder.slice(0, scoutOrder.length) : teamOrder;
+        return lowScoutMode ? teamOrder.slice(0, scoutOrder.length) : teamOrder;
+      });
+      const intervalSchedule =
+        (config?.pattern || "rotate-each-match") === "interval"
+          ? buildBalancedIntervalSchedule(
+              scoutOrder,
+              teamsByMatch.map((teams) => teams.length),
+              Number(config?.interval || 5)
+            )
+          : [];
 
-        const matchScouts = buildMatchScoutOrder(
-          scoutOrder,
-          matchIndex,
-          teamsToAssign.length,
-          config?.pattern || "rotate-each-match",
-          Number(config?.interval || 5)
-        );
+      targetMatches.forEach((match, matchIndex) => {
+        const teamsToAssign = teamsByMatch[matchIndex] || [];
+        const matchScouts =
+          (config?.pattern || "rotate-each-match") === "interval"
+            ? intervalSchedule[matchIndex] || []
+            : buildMatchScoutOrder(
+                scoutOrder,
+                matchIndex,
+                teamsToAssign.length,
+                config?.pattern || "rotate-each-match",
+                Number(config?.interval || 5)
+              );
         teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
           if (!scout) return;
           newAssignments.push({
+            teamId: userData.teamId || "",
             eventKey: practiceEventKey,
             matchKey: `p${match.matchNumber}`,
             matchLabel: `Practice ${match.matchNumber}`,
@@ -2393,6 +2469,7 @@ function buildMatchScoutOrder(
       const newAssignments: Array<Omit<PitAssignment, "id">> = sortedTeams.map((teamNumber, index) => {
         const scout = eligibleMembers[index % eligibleMembers.length];
         return {
+          teamId: userData.teamId || "",
           eventKey: selectedEvent,
           teamNumber,
           scoutId: scout.uid,
@@ -2455,7 +2532,12 @@ function buildMatchScoutOrder(
 
     try {
       const existing = teamAssignments.filter((assignment) => assignment.eventKey === selectedEvent);
-      await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "teamAssignments", assignment.id))));
+      const deleteResults = await Promise.allSettled(
+        existing.map((assignment) => deleteDoc(doc(db, "teamAssignments", assignment.id)))
+      );
+      if (deleteResults.some((result) => result.status === "rejected")) {
+        console.warn("Some team assignments could not be deleted due to permissions.");
+      }
 
       const sortedTeams = [...eventTeamOptions].filter((team) => Number.isFinite(team)).sort((a, b) => a - b);
       const now = Date.now();
@@ -2478,23 +2560,25 @@ function buildMatchScoutOrder(
           .filter((assignment) => pitScoutToStrategist.has(assignment.scoutId))
           .forEach((assignment, index) => {
             if (!Number.isFinite(assignment.teamNumber)) return;
-            const strategist = pitScoutToStrategist.get(assignment.scoutId);
-            if (!strategist) return;
-            assignedTeams.add(assignment.teamNumber);
-            newAssignments.push({
-              eventKey: selectedEvent,
-              teamNumber: assignment.teamNumber,
-              scoutId: strategist.uid,
-              scoutName: strategist.displayName,
-              assignedBy: userData.uid,
-              assignedAt: now + index,
-            });
+          const strategist = pitScoutToStrategist.get(assignment.scoutId);
+          if (!strategist) return;
+          assignedTeams.add(assignment.teamNumber);
+          newAssignments.push({
+            teamId: userData.teamId || "",
+            eventKey: selectedEvent,
+            teamNumber: assignment.teamNumber,
+            scoutId: strategist.uid,
+            scoutName: strategist.displayName,
+            assignedBy: userData.uid,
+            assignedAt: now + index,
           });
+        });
 
         const remainingTeams = sortedTeams.filter((teamNumber) => !assignedTeams.has(teamNumber));
         remainingTeams.forEach((teamNumber, index) => {
           const scout = eligibleMembers[index % eligibleMembers.length];
           newAssignments.push({
+            teamId: userData.teamId || "",
             eventKey: selectedEvent,
             teamNumber,
             scoutId: scout.uid,
@@ -2507,6 +2591,7 @@ function buildMatchScoutOrder(
         sortedTeams.forEach((teamNumber, index) => {
           const scout = eligibleMembers[index % eligibleMembers.length];
           newAssignments.push({
+            teamId: userData.teamId || "",
             eventKey: selectedEvent,
             teamNumber,
             scoutId: scout.uid,
