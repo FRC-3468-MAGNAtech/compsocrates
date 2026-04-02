@@ -358,8 +358,17 @@ export default function ReefscapeMatchSelectModal<T extends ReefscapeMatchOption
                         matchNum: m.matchNumber,
                         timeString: timeStringFromEpoch(m.scheduleTime),
                         matchId: m.id,
+                        scheduleTime: m.scheduleTime,
                       }));
-                    const resolvedNextNum = rows.find((row) => !completed.has(row.matchId))?.matchNum ?? -1;
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const graceSeconds = 10 * 60;
+                    const scheduledNext = rows
+                      .filter((row) => row.scheduleTime > 0 && row.scheduleTime >= nowSec - graceSeconds && !completed.has(row.matchId))
+                      .sort((a, b) => a.scheduleTime - b.scheduleTime || a.matchNum - b.matchNum);
+                    const resolvedNextNum =
+                      scheduledNext[0]?.matchNum ??
+                      rows.find((row) => !completed.has(row.matchId))?.matchNum ??
+                      -1;
                     return rows.map(({ option, matchNum, timeString, matchId }) => {
                       const done = completed.has(matchId);
                       const isAssigned = assigned.has(matchId);

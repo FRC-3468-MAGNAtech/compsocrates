@@ -1504,8 +1504,25 @@ function ScoutFormContent() {
       const ordered = rows.slice().sort(sortByTypeAndNumber);
       return ordered.find((match) => !modalCompleted.has(match.id)) || null;
     };
+    const pickNextBySchedule = (rows: MatchOption[]) => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const graceSeconds = 10 * 60;
+      const scheduled = rows
+        .filter((match) => match.scheduleTime > 0 && match.scheduleTime >= nowSec - graceSeconds)
+        .sort((a, b) => {
+          const typeDiff = matchTypeOrder[a.type] - matchTypeOrder[b.type];
+          if (typeDiff !== 0) return typeDiff;
+          if (a.scheduleTime !== b.scheduleTime) return a.scheduleTime - b.scheduleTime;
+          return a.matchNumber - b.matchNumber;
+        });
+      if (scheduled.length > 0) return scheduled[0];
+      return rows.slice().sort(sortByTypeAndNumber)[0] || null;
+    };
     const assignedMatches = options.filter((match) => assignedMatchIds.has(match.id));
-    const next = assignedMatches.length > 0 ? pickFirstIncomplete(assignedMatches) : pickFirstIncomplete(options);
+    const next =
+      assignedMatches.length > 0
+        ? pickFirstIncomplete(assignedMatches) || pickNextBySchedule(assignedMatches)
+        : pickFirstIncomplete(options) || pickNextBySchedule(options);
     if (!next) return;
     setSelectedMatch((current) => {
       if (!current) return next;
