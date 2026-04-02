@@ -261,7 +261,7 @@ function AccuracyVerificationContent() {
         const rescoutRows: RescoutEntry[] = rescoutSnap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as Omit<RescoutEntry, "id">),
-        }));
+        })).filter((row) => String(row.status || "").toLowerCase() !== "deleted");
         setRescouts(rescoutRows);
       } catch (error) {
         console.error("Failed loading accuracy verification data:", error);
@@ -573,6 +573,30 @@ function AccuracyVerificationContent() {
     return map;
   }, [rescouts]);
 
+  const rescoutGroupByKey = useMemo(() => {
+    const map = new Map<string, (typeof rescoutGroups extends Map<string, infer T> ? T : never)>();
+    rescoutGroups.forEach((group) => {
+      map.set(group.key, group);
+    });
+    return map;
+  }, [rescoutGroups]);
+
+  function getRescoutGroupKey(eventKey: string, matchKey: string, alliance: "red" | "blue") {
+    return `${normalizeEventKey(eventKey)}::${normalizeMatchId(matchKey)}::${alliance}`;
+  }
+
+  function isRescoutComplete(eventKey: string, matchKey: string, alliance: "red" | "blue") {
+    const key = getRescoutGroupKey(eventKey, matchKey, alliance);
+    const group = rescoutGroupByKey.get(key);
+    return Boolean(group && group.teamNumbers.length === 3);
+  }
+
+  function getRescoutAccuracy(eventKey: string, matchKey: string, alliance: "red" | "blue") {
+    const key = getRescoutGroupKey(eventKey, matchKey, alliance);
+    const group = rescoutGroupByKey.get(key);
+    return typeof group?.accuracy === "number" ? group.accuracy : null;
+  }
+
   const comparisonByGroup = useMemo(() => {
     const map = new Map<string, { diffPercent: number }>();
     rescoutGroups.forEach((group) => {
@@ -742,7 +766,16 @@ function AccuracyVerificationContent() {
       setRescouts((prev) => prev.filter((row) => row.id !== rescoutId));
     } catch (error) {
       console.error("Failed deleting rescout:", error);
-      alert("Could not delete rescout entry.");
+      try {
+        await updateDoc(doc(db, "accuracyRescouts", rescoutId), {
+          status: "deleted",
+          deletedAt: Date.now(),
+        });
+        setRescouts((prev) => prev.filter((row) => row.id !== rescoutId));
+      } catch (fallbackError) {
+        console.error("Fallback delete failed:", fallbackError);
+        alert("Could not delete rescout entry.");
+      }
     }
   }
 
@@ -821,7 +854,10 @@ function AccuracyVerificationContent() {
               <p className="text-xs text-gray-600">
                 {row.eventName || row.eventKey || "Event"} - {row.scoutName || "Rescout"}
               </p>
-              {row.eventKey && row.matchKey && row.alliance && (
+              <p className="text-xs text-gray-600">
+                Rescout Accuracy: {typeof row.accuracy === "number" ? `${row.accuracy}%` : "-"}
+              </p>
+              {row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance) && (
                 <button
                   type="button"
                   onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
@@ -874,13 +910,22 @@ function AccuracyVerificationContent() {
                     <p className="text-xs text-gray-600">
                       Teams: {alliance.teams.join(", ") || "-"}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => openComparison(match.eventKey, match.matchKey, alliance.alliance)}
-                      className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-100"
-                    >
-                      Compare
-                    </button>
+                    {isRescoutComplete(match.eventKey, match.matchKey, alliance.alliance) && (
+                      <>
+                        <p className="text-xs text-gray-600 mt-2">
+                          Rescout Accuracy: {typeof getRescoutAccuracy(match.eventKey, match.matchKey, alliance.alliance) === "number"
+                            ? `${getRescoutAccuracy(match.eventKey, match.matchKey, alliance.alliance)}%`
+                            : "-"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => openComparison(match.eventKey, match.matchKey, alliance.alliance)}
+                          className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-100"
+                        >
+                          Compare
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -905,7 +950,10 @@ function AccuracyVerificationContent() {
               <p className="text-xs text-gray-600">
                 {row.eventName || row.eventKey || "Event"} - {row.status || "pending"}
               </p>
-              {row.eventKey && row.matchKey && row.alliance && (
+              <p className="text-xs text-gray-600">
+                Rescout Accuracy: {typeof row.accuracy === "number" ? `${row.accuracy}%` : "-"}
+              </p>
+              {row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance) && (
                 <button
                   type="button"
                   onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
@@ -936,7 +984,10 @@ function AccuracyVerificationContent() {
                 <p className="text-xs text-gray-600">
                   {row.eventName || row.eventKey || "Event"} - {row.scoutName || "Scout"} - {row.status || "pending"}
                 </p>
-                {row.eventKey && row.matchKey && row.alliance && (
+                <p className="text-xs text-gray-600">
+                  Rescout Accuracy: {typeof row.accuracy === "number" ? `${row.accuracy}%` : "-"}
+                </p>
+                {row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance) && (
                   <button
                     type="button"
                     onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}

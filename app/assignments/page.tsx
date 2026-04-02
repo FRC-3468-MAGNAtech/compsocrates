@@ -135,13 +135,14 @@ type AssignmentMatchChoice = {
 };
 
 type RandomizeTarget = "match" | "practice" | "pit" | "team";
-type RandomizePattern = "rotate-each-match" | "block-5" | "constant";
+type RandomizePattern = "rotate-each-match" | "interval" | "constant";
 type RandomizeCategory = "practice" | "qualification" | "finals";
 
 type RandomizeConfig = {
   target: RandomizeTarget;
   matchCount: number;
   pattern: RandomizePattern;
+  interval?: number;
   scoutIds: string[];
   practiceEventKey?: string;
   priorityTeams?: number[];
@@ -718,6 +719,7 @@ function AssignmentsContent() {
   const [randomizePracticeEventSearch, setRandomizePracticeEventSearch] = useState("");
   const [randomizeMatchCount, setRandomizeMatchCount] = useState("");
   const [randomizePattern, setRandomizePattern] = useState<RandomizePattern>("rotate-each-match");
+  const [randomizeInterval, setRandomizeInterval] = useState("5");
   const [randomizeScoutIds, setRandomizeScoutIds] = useState<string[]>([]);
   const [randomizeCategories, setRandomizeCategories] = useState<RandomizeCategory[]>(["qualification"]);
   const [randomizePriorityTeamSearch, setRandomizePriorityTeamSearch] = useState("");
@@ -1547,14 +1549,16 @@ function buildMatchScoutOrder(
   scouts: TeamMember[],
   matchIndex: number,
   slots: number,
-  pattern: RandomizePattern
+  pattern: RandomizePattern,
+  interval = 5
 ): TeamMember[] {
   if (scouts.length === 0 || slots <= 0) return [];
   const targetSlots = Math.min(slots, scouts.length);
   if (pattern === "constant") return scouts.slice(0, targetSlots);
 
-  if (pattern === "block-5") {
-    const blockIndex = Math.floor(matchIndex / 5);
+  if (pattern === "interval") {
+    const safeInterval = Math.max(1, interval);
+    const blockIndex = Math.floor(matchIndex / safeInterval);
     if (scouts.length <= targetSlots) {
       const startIndex = (blockIndex * targetSlots) % scouts.length;
       return takeSequentialScouts(scouts, startIndex, targetSlots);
@@ -2083,7 +2087,8 @@ function buildMatchScoutOrder(
           scoutOrder,
           matchIndex,
           teamsToAssign.length,
-          config?.pattern || "rotate-each-match"
+          config?.pattern || "rotate-each-match",
+          Number(config?.interval || 5)
         );
         teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
@@ -2228,7 +2233,8 @@ function buildMatchScoutOrder(
           scoutOrder,
           matchIndex,
           teamsToAssign.length,
-          config?.pattern || "rotate-each-match"
+          config?.pattern || "rotate-each-match",
+          Number(config?.interval || 5)
         );
         teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
@@ -2393,6 +2399,7 @@ function buildMatchScoutOrder(
       target: randomizeTarget,
       matchCount,
       pattern: randomizePattern,
+      interval: Number(randomizeInterval.replace(/[^\d]/g, "")) || 5,
       scoutIds: randomizeScoutIds,
       practiceEventKey: randomizeTarget === "practice" ? randomizePracticeEventKey : undefined,
       priorityTeams: randomizePriorityTeams,
@@ -3441,9 +3448,26 @@ function buildMatchScoutOrder(
                         className="w-full border rounded p-2"
                       >
                         <option value="rotate-each-match">Rotate each match</option>
-                        <option value="block-5">Intervals of 5 then swap</option>
+                        <option value="interval">Interval</option>
                         <option value="constant">Constant same order</option>
                       </select>
+                    </div>
+                  )}
+
+                  {randomizeUsesMatches && randomizePattern === "interval" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Interval</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={randomizeInterval}
+                        onChange={(e) => setRandomizeInterval(e.target.value.replace(/[^\d]/g, ""))}
+                        className="w-full border rounded p-2"
+                        placeholder="e.g. 7"
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        Number of matches before swapping scout groups.
+                      </p>
                     </div>
                   )}
 

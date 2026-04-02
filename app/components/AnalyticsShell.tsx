@@ -313,45 +313,45 @@ function AnalyticsShellInner({
           </button>
           <div className="bg-white border-b border-gray-200 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => setCollapsed((v) => !v)}
-                className="hidden md:inline-block px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
-                title={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
-              >
-                {collapsed ? ">" : "<"}
-              </button>
-              <span className="text-sm text-gray-600">{entriesCount} entries</span>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search this analytics page"
-                className="ml-0 md:ml-2 border rounded px-3 py-1.5 text-sm w-full md:w-64 max-w-full md:max-w-[45vw]"
-              />
+              <div className="flex flex-wrap items-center gap-3 min-w-0">
+                <button
+                  onClick={() => setCollapsed((v) => !v)}
+                  className="hidden md:inline-block px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                  title={collapsed ? "Expand analytics sidebar" : "Collapse analytics sidebar"}
+                >
+                  {collapsed ? ">" : "<"}
+                </button>
+                <span className="text-sm text-gray-600 whitespace-nowrap">{entriesCount} entries</span>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search this analytics page"
+                  className="border rounded px-3 py-1.5 text-sm w-full md:w-64 max-w-full md:max-w-[45vw] min-w-[180px]"
+                />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-              <NotesToggle />
-              {extraControls}
-              {onPracticeMatchesOnlyChange && (
-                <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
-                  <input
-                    type="checkbox"
-                    checked={practiceMatchesOnly}
-                    onChange={(event) => onPracticeMatchesOnlyChange(event.target.checked)}
-                  />
-                  Practice Scouted Matches
-                </label>
-              )}
-              <label className="text-sm text-gray-600">Game:</label>
-              <select
-                value={selectedGame}
-                onChange={(e) => onSelectedGameChange(e.target.value)}
-                className="border rounded px-3 py-1.5 text-sm"
-              >
-                {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
-                {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
-              </select>
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
+                <NotesToggle />
+                {extraControls}
+                {onPracticeMatchesOnlyChange && (
+                  <label className="text-sm text-gray-600 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={practiceMatchesOnly}
+                      onChange={(event) => onPracticeMatchesOnlyChange(event.target.checked)}
+                    />
+                    Practice Scouted Matches
+                  </label>
+                )}
+                <label className="text-sm text-gray-600 whitespace-nowrap">Game:</label>
+                <select
+                  value={selectedGame}
+                  onChange={(e) => onSelectedGameChange(e.target.value)}
+                  className="border rounded px-3 py-1.5 text-sm"
+                >
+                  {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
+                  {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
+                </select>
               </div>
             </div>
           </div>

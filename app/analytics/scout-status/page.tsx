@@ -353,6 +353,9 @@ function ScoutStatusContent() {
       ),
     []
   );
+  const [maxMatchesTargetsByEvent, setMaxMatchesTargetsByEvent] = useState<
+    Record<string, Record<ScoutStatusFormType, string>>
+  >({});
   const [maxMatchesTargets, setMaxMatchesTargets] = useState<Record<ScoutStatusFormType, string>>(emptyTargets);
   const [maxMatchesTarget, setMaxMatchesTarget] = useState("");
   const [maxMatchesSaving, setMaxMatchesSaving] = useState(false);
@@ -372,8 +375,12 @@ function ScoutStatusContent() {
     return roles.includes("team-coach") || roles.includes("lead-scout") || roles.includes("lead-strategist");
   }, [userData]);
   const hasMaxTargets = useMemo(
-    () => Object.values(maxMatchesTargets).some((value) => String(value || "").trim().length > 0),
-    [maxMatchesTargets]
+    () =>
+      Object.values(maxMatchesTargets).some((value) => String(value || "").trim().length > 0) ||
+      Object.values(maxMatchesTargetsByEvent).some((targets) =>
+        Object.values(targets).some((value) => String(value || "").trim().length > 0)
+      ),
+    [maxMatchesTargets, maxMatchesTargetsByEvent]
   );
   const selectedFormLabel = useMemo(
     () => FORM_OPTIONS.find((option) => option.id === selectedFormType)?.label || "Form",
@@ -482,7 +489,21 @@ function ScoutStatusContent() {
         if (!teamDoc.exists()) return;
         const data = teamDoc.data() as Record<string, unknown>;
         const storedByForm = data.scoutStatusMaxMatchesByForm;
+        const storedByEvent = data.scoutStatusMaxMatchesByEvent;
         let nextTargets = { ...emptyTargets };
+        let nextByEvent: Record<string, Record<ScoutStatusFormType, string>> = {};
+
+        if (storedByEvent && typeof storedByEvent === "object") {
+          const record = storedByEvent as Record<string, Record<string, unknown>>;
+          Object.entries(record).forEach(([eventKey, values]) => {
+            if (!values || typeof values !== "object") return;
+            const next: Record<ScoutStatusFormType, string> = { ...emptyTargets };
+            FORM_OPTIONS.forEach((option) => {
+              next[option.id] = parseValue((values as Record<string, unknown>)[option.id]);
+            });
+            nextByEvent[eventKey] = next;
+          });
+        }
 
         if (storedByForm && typeof storedByForm === "object") {
           const record = storedByForm as Record<string, unknown>;
@@ -512,6 +533,11 @@ function ScoutStatusContent() {
             });
           }
         }
+        const eventKey = selectedEvent || "all";
+        if (nextByEvent[eventKey]) {
+          nextTargets = nextByEvent[eventKey];
+        }
+        setMaxMatchesTargetsByEvent(nextByEvent);
         setMaxMatchesTargets(nextTargets);
         setMaxMatchesTarget(nextTargets[selectedFormType] || "");
       } catch (error) {
@@ -519,15 +545,26 @@ function ScoutStatusContent() {
       }
     }
     void loadMaxMatches();
-  }, [emptyTargets, selectedFormType, userData?.teamId]);
+  }, [emptyTargets, selectedFormType, userData?.teamId, selectedEvent]);
 
   useEffect(() => {
     if (maxMatchesEditing) return;
+    const eventKey = selectedEvent || "all";
+    const eventTargets = maxMatchesTargetsByEvent[eventKey];
+    if (eventTargets) {
+      setMaxMatchesTargets(eventTargets);
+      setMaxMatchesTarget(eventTargets[selectedFormType] || "");
+      return;
+    }
     setMaxMatchesTarget(maxMatchesTargets[selectedFormType] || "");
-  }, [maxMatchesEditing, maxMatchesTargets, selectedFormType]);
+  }, [maxMatchesEditing, maxMatchesTargets, maxMatchesTargetsByEvent, selectedFormType, selectedEvent]);
 
   async function handleSaveMaxMatches() {
     if (!userData?.teamId) return;
+    if (selectedEvent === "all") {
+      alert("Select a specific event to set max match targets.");
+      return;
+    }
     setMaxMatchesSaving(true);
     const parseValue = (value: string) => {
       const num = Number(String(value || "").replace(/[^\d]/g, ""));
@@ -545,7 +582,24 @@ function ScoutStatusContent() {
         acc[option.id] = Number.isFinite(num) && num > 0 ? num : null;
         return acc;
       }, {} as Record<ScoutStatusFormType, number | null>);
-      await updateDoc(doc(db, "teams", userData.teamId), { scoutStatusMaxMatchesByForm: payloadByForm });
+      const nextByEvent = {
+        ...maxMatchesTargetsByEvent,
+        [selectedEvent]: nextTargets,
+      };
+      const payloadByEvent = Object.entries(nextByEvent).reduce((acc, [eventKey, values]) => {
+        acc[eventKey] = FORM_OPTIONS.reduce((inner, option) => {
+          const num = Number(String(values[option.id] || "").replace(/[^\d]/g, ""));
+          inner[option.id] = Number.isFinite(num) && num > 0 ? num : null;
+          return inner;
+        }, {} as Record<ScoutStatusFormType, number | null>);
+        return acc;
+      }, {} as Record<string, Record<ScoutStatusFormType, number | null>>);
+
+      await updateDoc(doc(db, "teams", userData.teamId), {
+        scoutStatusMaxMatchesByEvent: payloadByEvent,
+        scoutStatusMaxMatchesByForm: payloadByForm,
+      });
+      setMaxMatchesTargetsByEvent(nextByEvent);
       setMaxMatchesTargets(nextTargets);
       setMaxMatchesEditing(false);
       setMaxMatchesSnapshot(null);
@@ -1043,7 +1097,7 @@ function ScoutStatusContent() {
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h2 className="text-lg font-semibold">Max Match Targets</h2>
-                {canManageMaxMatches && !maxMatchesEditing && (
+                {canManageMaxMatches && selectedEvent !== "all" && !maxMatchesEditing && (
                   <button
                     type="button"
                     onClick={handleStartEditMaxMatches}
@@ -1074,6 +1128,9 @@ function ScoutStatusContent() {
                   </div>
                 )}
               </div>
+              {canManageMaxMatches && selectedEvent === "all" && (
+                <p className="text-xs text-gray-500 mb-2">Select a specific event to edit max match targets.</p>
+              )}
               {maxMatchesEditing ? (
                 <label className="text-sm text-gray-700 flex flex-col gap-1 max-w-xs">
                   <span>Max Matches ({selectedFormLabel})</span>

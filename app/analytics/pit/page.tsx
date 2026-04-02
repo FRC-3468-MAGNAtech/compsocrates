@@ -325,7 +325,7 @@ function PitAnalyticsContent() {
         entry.scoutName || "",
         entry.robotPictureUrl || "",
         entry.robotWeight || "",
-        entry.rookieTeam ? "Y" : "N",
+        typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-",
         dispositionToCsv(entry.pitDisposition),
         entry.driveBaseType || "",
         entry.centerOfGravity || "",
@@ -708,7 +708,7 @@ function PitAnalyticsContent() {
                       {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
                     </td>
                     <td>{formatAnalyticsText(entry.robotWeight)}</td>
-                    <td>{entry.rookieTeam ? "Y" : "N"}</td>
+                    <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>
@@ -847,7 +847,7 @@ function PitAnalyticsContent() {
                       {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
                     </td>
                     <td>{formatAnalyticsText(entry.robotWeight)}</td>
-                    <td>{entry.rookieTeam ? "Y" : "N"}</td>
+                    <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
                     <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
                     <td>{dispositionToCell(entry.pitDisposition)}</td>
                     <td>{dispositionToCell(entry.driveDisposition)}</td>

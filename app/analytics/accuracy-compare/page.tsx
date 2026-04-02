@@ -525,9 +525,10 @@ function AccuracyCompareContent() {
   }, [teamOrder, originalEntriesByTeam, rescoutGroup, practiceEntriesBySession]);
 
   const selectedGame = useMemo<AnalyticsGame>(() => {
-    const candidate = comparisonRows.find((row) => row.entry?.game)?.entry?.game || "";
+    const rescoutGame = rescoutGroup.find((row) => row.game)?.game || "";
+    const candidate = comparisonRows.find((row) => row.entry?.game)?.entry?.game || rescoutGame || "";
     return String(candidate || "").toUpperCase() === "REBUILT" ? "REBUILT" : "REEFSCAPE";
-  }, [comparisonRows]);
+  }, [comparisonRows, rescoutGroup]);
 
   if (loading) {
     return (
