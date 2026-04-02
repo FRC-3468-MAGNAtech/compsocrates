@@ -140,23 +140,18 @@ async function fetchCompletedMatchIds(eventKey: string, teamId?: string): Promis
   const completed = new Set<string>();
   const collections = ["scouting", "leadScouting", "matchStrategyPlans", "driveScouting"];
   const normalizedTarget = normalizeEventKey(eventKey);
-  const snaps = await Promise.all(
-    collections.map((name) => {
-      if (teamId) {
-        return getDocs(query(collection(db, name), where("teamId", "==", teamId)));
-      }
-      const keys = expandEventKeyAliases(eventKey);
-      return Promise.all(keys.map((key) => getDocs(query(collection(db, name), where("eventKey", "==", key)))));
-    })
-  );
   const docs: QueryDocumentSnapshot[] = [];
-  snaps.forEach((snap) => {
-    if (Array.isArray(snap)) {
-      snap.forEach((inner) => docs.push(...inner.docs));
-      return;
+  for (const name of collections) {
+    if (teamId) {
+      const teamSnap = await getDocs(query(collection(db, name), where("teamId", "==", teamId)));
+      docs.push(...teamSnap.docs);
     }
-    docs.push(...snap.docs);
-  });
+    const keys = expandEventKeyAliases(eventKey);
+    for (const key of keys) {
+      const eventSnap = await getDocs(query(collection(db, name), where("eventKey", "==", key)));
+      docs.push(...eventSnap.docs);
+    }
+  }
   docs.forEach((docSnap) => {
     const row = docSnap.data() as Record<string, unknown>;
     const rowEventKey = normalizeEventKey(String(row.eventKey || "").trim());
