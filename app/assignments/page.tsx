@@ -22,9 +22,10 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { getRoleLabel, getUserRoles, normalizeLegacyRole } from "@/app/utils/roles";
-import { APP_EVENTS, dedupeEventKeys } from "@/app/utils/events";
+import { APP_EVENTS, dedupeEventKeys, normalizeEventKey } from "@/app/utils/events";
 import { getEffectiveNowDate, getEffectiveNowMs, getEffectiveNowSec } from "@/app/utils/teamTime";
 import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
+import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 
 interface Assignment {
   id: string;
@@ -112,6 +113,29 @@ type EventOption = {
   startDate: string;
   endDate: string;
 };
+
+function parseEventDate(value: string): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function pickUpcomingEvent(options: EventOption[], nowMs: number): EventOption | null {
+  if (options.length === 0) return null;
+  const upcoming = options
+    .map((event) => {
+      const startMs = parseEventDate(event.startDate) ?? 0;
+      const endMs = parseEventDate(event.endDate) ?? startMs;
+      return { event, startMs, endMs };
+    })
+    .filter((row) => row.endMs >= nowMs)
+    .sort((a, b) => a.startMs - b.startMs);
+  if (upcoming.length > 0) return upcoming[0].event;
+  const fallback = options
+    .map((event) => ({ event, startMs: parseEventDate(event.startDate) ?? 0 }))
+    .sort((a, b) => b.startMs - a.startMs);
+  return fallback[0]?.event || null;
+}
 
 type PracticeMatchOption = {
   id: string;
@@ -929,13 +953,18 @@ function AssignmentsContent() {
       }
       setPracticeEventOptions(availablePracticeEvents);
       const scheduleOptionsBase = sortEventOptions(dedupeEventOptionsByName(eventsWithPracticeSchedule), nowMs);
+      const detectedKeyRaw = await resolveDetectedTeamEventKey(userData.teamId);
+      const detectedKey = detectedKeyRaw ? normalizeEventKey(String(detectedKeyRaw).trim()) : "";
+      const upcomingEvent = pickUpcomingEvent(accessibleEvents, nowMs);
       let activeEventKey = accessibleEvents.some((event) => event.key === selectedEvent)
         ? selectedEvent
-        : (accessibleEvents[0]?.key || "");
+        : detectedKey && accessibleEvents.some((event) => event.key === detectedKey)
+        ? detectedKey
+        : upcomingEvent?.key || (accessibleEvents[0]?.key || "");
       const isInitialSelection = !selectedEvent;
       let preFetchedMatches: TBAMatch[] = [];
       if (activeEventKey) {
-        if (isInitialSelection && accessibleEvents.length > 0) {
+        if (isInitialSelection && accessibleEvents.length > 0 && !detectedKey) {
           const matchBatches = await Promise.all(
             accessibleEvents.map(async (event) => ({
               key: event.key,
