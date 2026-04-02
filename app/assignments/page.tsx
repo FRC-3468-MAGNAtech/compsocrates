@@ -2938,7 +2938,7 @@ function buildBalancedIntervalSchedule(
         .filter((assignment) => isEventPracticeAssignment(assignment))
         .map((assignment) => ({
           ...assignment,
-          sourceCollection: "matchAssignments",
+          sourceCollection: "matchAssignments" as const,
         })),
     [assignments]
   );
@@ -2946,7 +2946,7 @@ function buildBalancedIntervalSchedule(
     const combined: PracticeAssignmentRow[] = [
       ...practiceAssignments.map((assignment) => ({
         ...assignment,
-        sourceCollection: "practiceAssignments",
+        sourceCollection: "practiceAssignments" as const,
       })),
       ...eventPracticeAssignments,
     ];
