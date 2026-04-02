@@ -254,14 +254,33 @@ function AccuracyVerificationContent() {
           ...(docSnap.data() as Omit<ScoutingEntry, "id">),
         }));
         if (!isActive) return;
-        setEntries(rows);
-        setEventOptions(getEventOptionsForEntries(rows, selectedGame));
         const rescoutSnap = await getDocs(query(collection(db, "accuracyRescouts"), where("teamId", "==", teamId)));
         if (!isActive) return;
         const rescoutRows: RescoutEntry[] = rescoutSnap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as Omit<RescoutEntry, "id">),
         })).filter((row) => String(row.status || "").toLowerCase() !== "deleted");
+        const sessionIds = Array.from(
+          new Set(rescoutRows.map((row) => String(row.practiceSessionId || "").trim()).filter((id) => id.length > 0))
+        );
+        const extraEntries: ScoutingEntry[] = [];
+        for (let i = 0; i < sessionIds.length; i += 10) {
+          const chunk = sessionIds.slice(i, i + 10);
+          const sessionSnap = await getDocs(query(collection(db, "scouting"), where("practiceSessionId", "in", chunk)));
+          sessionSnap.docs.forEach((docSnap) => {
+            extraEntries.push({
+              id: docSnap.id,
+              ...(docSnap.data() as Omit<ScoutingEntry, "id">),
+            });
+          });
+        }
+        const mergedMap = new Map<string, ScoutingEntry>();
+        [...rows, ...extraEntries].forEach((entry) => {
+          if (entry.id) mergedMap.set(entry.id, entry);
+        });
+        const mergedRows = Array.from(mergedMap.values());
+        setEntries(mergedRows);
+        setEventOptions(getEventOptionsForEntries(mergedRows, selectedGame));
         setRescouts(rescoutRows);
       } catch (error) {
         console.error("Failed loading accuracy verification data:", error);

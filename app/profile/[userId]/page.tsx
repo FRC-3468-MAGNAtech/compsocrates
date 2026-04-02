@@ -313,13 +313,15 @@ function ProfileContent() {
     stats.totalEntries > 0 && stats.practiceEntries === stats.totalEntries
       ? "Practice Entries"
       : "Scouting Entries";
-  const roleBadge = profile ? getRoleBadge(profile.role, profile.roles) : null;
+  const roleBadge = profile ? getRoleBadge(profile.role, Array.isArray(profile.roles) ? profile.roles : []) : null;
   const roleBadges = useMemo(() => {
     if (!profile) return [];
     const merged = new Set<string>();
     if (profile.role) merged.add(profile.role);
-    (profile.roles || []).forEach((role) => merged.add(role));
-    (profile.secondaryRoles || []).forEach((role) => merged.add(role));
+    const primaryRoles = Array.isArray(profile.roles) ? profile.roles : [];
+    const secondaryRoles = Array.isArray(profile.secondaryRoles) ? profile.secondaryRoles : [];
+    primaryRoles.forEach((role) => merged.add(role));
+    secondaryRoles.forEach((role) => merged.add(role));
     return Array.from(merged).map((role) => getRoleBadge(role, [role]));
   }, [profile]);
   const initials = profile?.displayName

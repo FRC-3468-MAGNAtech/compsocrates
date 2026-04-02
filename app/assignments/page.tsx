@@ -35,6 +35,7 @@ interface Assignment {
   scoutName: string;
   teamNumber: number;
   scoutHumanPlayer?: boolean;
+  assignmentType?: "match" | "event-practice";
   assignedBy: string;
   assignedAt: number;
 }
@@ -547,7 +548,8 @@ async function buildPracticeRowsFromMatchListStyle(
   return [...firstPractice, ...tbaPractice].sort((a, b) => a.matchNumber - b.matchNumber);
 }
 
-function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string }) {
+function isEventPracticeAssignment(row: { matchKey?: string; matchLabel?: string; assignmentType?: string }) {
+  if (row.assignmentType) return row.assignmentType === "event-practice";
   const key = String(row.matchKey || "").toLowerCase();
   const label = String(row.matchLabel || "").toLowerCase();
   return key.includes("_pm") || /^p\d+$/.test(key) || label.includes("practice ");
@@ -1270,13 +1272,36 @@ function AssignmentsContent() {
   }, [matchOptions, teamTimeOverride]);
   const matchScheduleOptions = useMemo(() => {
     const filtered = matchOptions.filter((match) => match.compLevel !== "pr");
-    return filtered.sort((a, b) => {
+    const extraPractice = assignments
+      .filter((assignment) => !isEventPracticeAssignment(assignment))
+      .map((assignment) => {
+        const parts = parseMatchKeyParts(assignment.matchKey) || parseMatchLabelParts(assignment.matchLabel);
+        if (!parts || parts.compLevel !== "pm") return null;
+        return {
+          key: assignment.matchKey || `p${parts.matchNumber}`,
+          label: assignment.matchLabel || `Practice ${parts.matchNumber}`,
+          teams: [],
+          compLevel: "pm" as const,
+          matchNumber: parts.matchNumber,
+          setNumber: parts.setNumber || 1,
+          scheduleTime: 0,
+        };
+      })
+      .filter((row): row is MatchOption => Boolean(row));
+    const merged = [...filtered, ...extraPractice];
+    const seen = new Map<string, MatchOption>();
+    merged.forEach((row) => {
+      if (!seen.has(row.key)) {
+        seen.set(row.key, row);
+      }
+    });
+    return Array.from(seen.values()).sort((a, b) => {
       const priorityDiff = compLevelPriority(a.compLevel) - compLevelPriority(b.compLevel);
       if (priorityDiff !== 0) return priorityDiff;
       if (a.setNumber !== b.setNumber) return a.setNumber - b.setNumber;
       return a.matchNumber - b.matchNumber;
     });
-  }, [matchOptions]);
+  }, [assignments, matchOptions]);
   const pitTeamOptions = useMemo(() => {
     const teams = [...eventTeamOptions];
     const assigned = new Set(pitAssignments.map((assignment) => assignment.teamNumber));
@@ -1602,8 +1627,21 @@ function buildMatchScoutOrder(
   if (pattern === "interval") {
     const safeInterval = Math.max(1, interval);
     const blockIndex = Math.floor(matchIndex / safeInterval);
-    const startIndex = (blockIndex * targetSlots) % scouts.length;
-    return takeSequentialScouts(scouts, startIndex, targetSlots);
+    const indexInBlock = matchIndex % safeInterval;
+    const blockSlots = safeInterval * targetSlots;
+    const baseCount = Math.floor(blockSlots / scouts.length);
+    const remainder = blockSlots % scouts.length;
+    const offset = blockIndex % scouts.length;
+    const rotated = scouts.slice(offset).concat(scouts.slice(0, offset));
+    const blockOrder: TeamMember[] = [];
+    for (let i = 0; i < baseCount; i += 1) {
+      blockOrder.push(...rotated);
+    }
+    if (remainder > 0) {
+      blockOrder.push(...rotated.slice(0, remainder));
+    }
+    const start = indexInBlock * targetSlots;
+    return blockOrder.slice(start, start + targetSlots);
   }
 
   const startIndex = matchIndex % scouts.length;
@@ -2136,6 +2174,7 @@ function buildMatchScoutOrder(
             scoutName: scout.displayName,
             teamNumber,
             scoutHumanPlayer: teamIndex === 0,
+            assignmentType: match.compLevel === "pm" ? "match" : undefined,
             assignedBy: userData.uid,
             assignedAt: Date.now(),
           });
@@ -2278,6 +2317,7 @@ function buildMatchScoutOrder(
             scoutName: scout.displayName,
             teamNumber,
             scoutHumanPlayer: teamIndex === 0,
+            assignmentType: "event-practice",
             assignedBy: userData.uid,
             assignedAt: now + matchIndex,
           });
@@ -2482,7 +2522,7 @@ function buildMatchScoutOrder(
       alert(`Randomized ${newAssignments.length} team assignments across ${sortedTeams.length} teams.`);
     } catch (error) {
       console.error("Error randomizing team assignments:", error);
-      alert("Error randomizing team assignments.");
+      alert(`Error randomizing team assignments. ${(error as Error)?.message || ""}`.trim());
     }
   }
 
@@ -2495,6 +2535,13 @@ function buildMatchScoutOrder(
     if (randomizeTarget === "match" && randomizeCategories.length === 0) {
       alert("Select at least one match category.");
       return;
+    }
+    if (randomizeTarget === "team" && randomizeAlignPitScouts) {
+      const mapped = Object.entries(randomizePitScoutMap).filter(([, strategistId]) => Boolean(strategistId));
+      if (mapped.length === 0) {
+        alert("Select at least one pit scout and assign a strategist before running.");
+        return;
+      }
     }
     const matchCount = Math.max(0, parseInt(randomizeMatchCount.replace(/[^\d]/g, ""), 10) || 0);
     const config: RandomizeConfig = {

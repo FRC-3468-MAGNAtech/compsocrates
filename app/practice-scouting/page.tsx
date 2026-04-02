@@ -1296,6 +1296,7 @@ function PracticeScoutingContent() {
 
     async function startRescoutFlow() {
       try {
+        if (isActive) setRescoutAutoStarted(true);
         setRescoutError("");
         clearPracticeDraft();
         setPendingDraft(null);
@@ -1401,7 +1402,6 @@ function PracticeScoutingContent() {
             teamNumber: String(target.teamNumber),
           }
         );
-        if (isActive) setRescoutAutoStarted(true);
       } catch (error) {
         console.error("Failed to auto-start rescout flow:", error);
       }
@@ -3211,6 +3211,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       );
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
+        teamId: userData.teamId || "",
         scoutName: userData.displayName,
         scoutId: userData.uid,
         matchId: currentMatch.id || '',
@@ -3299,6 +3300,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
           const endgameFuelWithHuman = endgameFuelSection + Number(robotData.endgameHumanPlayerFuel || 0);
 
           return addDoc(collection(db, "scouting"), {
+            teamId: userData.teamId || "",
             scoutName: userData.displayName,
             scoutId: userData.uid,
             teamNumber: robotData.teamNumber,
@@ -3422,6 +3424,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       );
 
       const session: Partial<PracticeSession> & Record<string, unknown> = {
+        teamId: userData.teamId || "",
         scoutName: userData.displayName,
         scoutId: userData.uid,
         matchId: currentMatch.id || '',
@@ -3471,6 +3474,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       await Promise.all(
         allRobotData.map((robotData) =>
           addDoc(collection(db, "scouting"), {
+            teamId: userData.teamId || "",
             ...robotData,
             scoutName: userData.displayName,
             scoutId: userData.uid,

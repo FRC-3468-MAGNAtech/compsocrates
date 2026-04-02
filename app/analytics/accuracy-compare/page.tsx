@@ -383,8 +383,23 @@ function AccuracyCompareContent() {
           id: docSnap.id,
           ...(docSnap.data() as Omit<RescoutEntry, "id">),
         })) as RescoutEntry[];
+        const sessionIds = Array.from(
+          new Set(rescoutRows.map((row) => String(row.practiceSessionId || "").trim()).filter((id) => id.length > 0))
+        );
+        const extraEntries: Entry[] = [];
+        for (let i = 0; i < sessionIds.length; i += 10) {
+          const chunk = sessionIds.slice(i, i + 10);
+          const sessionSnap = await getDocs(query(collection(db, "scouting"), where("practiceSessionId", "in", chunk)));
+          sessionSnap.docs.forEach((docSnap) => {
+            extraEntries.push({ id: docSnap.id, ...docSnap.data() } as Entry);
+          });
+        }
         if (!isActive) return;
-        setEntries(rows);
+        const merged = new Map<string, Entry>();
+        [...rows, ...extraEntries].forEach((entry) => {
+          if (entry.id) merged.set(entry.id, entry);
+        });
+        setEntries(Array.from(merged.values()));
         setRescouts(rescoutRows);
       } catch (error) {
         console.error("Failed loading comparison data:", error);
