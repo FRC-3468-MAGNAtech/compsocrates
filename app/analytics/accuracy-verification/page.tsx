@@ -739,6 +739,11 @@ function AccuracyVerificationContent() {
     setSavingRescout(true);
     try {
       const safeTeamId = String(userData.teamId);
+      const safeMatchKey = resolveMatchKey({
+        matchId: activeRescout.matchKey,
+        matchKey: activeRescout.matchKey,
+        matchLabel: activeRescout.matchLabel,
+      } as ScoutingEntry);
       const rawEventKey = normalizeEventKey(String(activeRescout.eventKey || "").trim());
       const eventKeyFromMatch = normalizeEventKey(inferEventKeyFromMatchKey(safeMatchKey));
       const eventKeyFromName =
@@ -752,11 +757,6 @@ function AccuracyVerificationContent() {
           : fallbackEventKey && fallbackEventKey !== "all"
           ? fallbackEventKey
           : "";
-      const safeMatchKey = resolveMatchKey({
-        matchId: activeRescout.matchKey,
-        matchKey: activeRescout.matchKey,
-        matchLabel: activeRescout.matchLabel,
-      } as ScoutingEntry);
       const safeMatchLabel = activeRescout.matchLabel || resolveMatchLabel({
         matchId: activeRescout.matchKey,
         matchKey: activeRescout.matchKey,
