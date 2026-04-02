@@ -1890,15 +1890,14 @@ function buildBalancedIntervalSchedule(
         await addDoc(collection(db, "teamAssignments"), payload);
       } catch (error) {
         if (!isPermissionError(error)) throw error;
+        await addDoc(collection(db, "matchAssignments"), {
+          ...payload,
+          assignmentType: "team",
+          matchKey: "team",
+          matchLabel: "Team Strategy",
+          scoutHumanPlayer: false,
+        });
       }
-      // Always mirror team assignments into matchAssignments for scout visibility.
-      await addDoc(collection(db, "matchAssignments"), {
-        ...payload,
-        assignmentType: "team",
-        matchKey: "team",
-        matchLabel: "Team Strategy",
-        scoutHumanPlayer: false,
-      });
       setSelectedTeamScoutId("");
       setSelectedTeamAssignmentNumber("");
       setShowAssignModal(false);
