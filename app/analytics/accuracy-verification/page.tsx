@@ -1074,11 +1074,11 @@ function AccuracyVerificationContent() {
               </button>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              {activeRescout.eventName} - {activeRescout.matchLabel} - {activeAlliance.alliance.toUpperCase()} Alliance
+              {activeRescout?.eventName || "-"} - {activeRescout?.matchLabel || "-"} - {activeAlliance?.alliance?.toUpperCase() || ""} Alliance
             </p>
             <div className="grid grid-cols-1 gap-2">
-              {activeAlliance.teams.map((team) => {
-                const key = `${normalizeEventKey(activeRescout.eventKey)}::${normalizeMatchId(activeRescout.matchKey)}::${team}`;
+              {(activeAlliance?.teams || []).map((team) => {
+                const key = `${normalizeEventKey(activeRescout?.eventKey || "")}::${normalizeMatchId(activeRescout?.matchKey || "")}::${team}`;
                 const exists = rescoutsByTeam.has(key);
                 return (
                   <button
