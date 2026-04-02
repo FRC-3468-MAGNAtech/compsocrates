@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     let year = Number(body?.year);
     let eventCode = String(body?.eventCode || "").trim().toUpperCase();
-    const tournamentLevel = String(body?.tournamentLevel || "").trim();
+    const rawTournamentLevel = String(body?.tournamentLevel || "").trim();
     if (!Number.isFinite(year) || !eventCode) {
       const eventKey = String(body?.eventKey || body?.key || "").trim();
       if (eventKey) {
@@ -52,9 +52,17 @@ export async function POST(request: NextRequest) {
     }
 
     const basicAuth = Buffer.from(`${username}:${token}`).toString("base64");
+    const normalizedLevel = (() => {
+      if (!rawTournamentLevel) return "Qualification";
+      const lower = rawTournamentLevel.toLowerCase();
+      if (lower === "practice") return "Practice";
+      if (lower === "qualification") return "Qualification";
+      if (lower === "playoff" || lower === "elimination" || lower === "finals") return "Playoff";
+      return rawTournamentLevel;
+    })();
     const url = new URL(`https://frc-api.firstinspires.org/v3.0/${year}/schedule/${encodeURIComponent(eventCode)}`);
-    if (tournamentLevel) {
-      url.searchParams.set("tournamentLevel", tournamentLevel);
+    if (normalizedLevel) {
+      url.searchParams.set("tournamentLevel", normalizedLevel);
     }
 
     const response = await fetch(url.toString(), {
