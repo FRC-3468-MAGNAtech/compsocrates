@@ -80,6 +80,10 @@ interface PracticeAssignment {
   assignedAt: number;
 }
 
+type PracticeAssignmentRow = (PracticeAssignment | Assignment) & {
+  sourceCollection: "practiceAssignments" | "matchAssignments";
+};
+
 interface SubInClaim {
   matchId: string;
   teamNumber: number;
@@ -1731,6 +1735,34 @@ function buildMatchScoutOrder(
   return takeSequentialScouts(scouts, startIndex, targetSlots);
 }
 
+function expandTeamsToSlots(matchTeams: number[], fallbackTeams: number[], slots: number): number[] {
+  if (slots <= 0) return [];
+  const uniqueMatchTeams = Array.from(new Set(matchTeams.filter((team) => Number.isFinite(team) && team > 0)));
+  if (uniqueMatchTeams.length >= slots) return uniqueMatchTeams.slice(0, slots);
+  const result = [...uniqueMatchTeams];
+  const fillers = fallbackTeams.filter((team) => !result.includes(team));
+  for (const team of fillers) {
+    result.push(team);
+    if (result.length >= slots) return result;
+  }
+  if (result.length === 0) return result;
+  let index = 0;
+  while (result.length < slots) {
+    result.push(result[index % result.length]);
+    index += 1;
+  }
+  return result;
+}
+
+function getHumanPlayerIndices(slotCount: number): number[] {
+  if (slotCount <= 0) return [];
+  if (slotCount === 1) return [0];
+  const indices = new Set<number>();
+  indices.add(0);
+  indices.add(Math.floor(slotCount / 2));
+  return Array.from(indices);
+}
+
 function buildBalancedIntervalSchedule(
   scouts: TeamMember[],
   slotsPerMatch: number[],
@@ -2110,6 +2142,14 @@ function buildBalancedIntervalSchedule(
     }
   }
 
+  async function deletePracticeAssignmentRow(assignment: PracticeAssignmentRow) {
+    if (assignment.sourceCollection === "matchAssignments") {
+      await deleteAssignment(assignment.id);
+      return;
+    }
+    await deletePracticeAssignment(assignment.id);
+  }
+
   async function deleteAssignmentsByCategory(target: "match" | "pit" | "practice" | "team") {
     if (!userData?.teamId) return;
     if (!canBulkDelete) {
@@ -2339,9 +2379,12 @@ function buildBalancedIntervalSchedule(
         .sort((a, b) => b.weightedAccuracy - a.weightedAccuracy)
         .map((row) => row.member);
       const scoutOrder = lowScoutMode ? scoutsByAccuracy : [...eligibleMembers];
+      const desiredSlots = Math.min(6, scoutOrder.length);
+      if (desiredSlots === 0) return;
       const allTeams = Array.from(
         new Set(targetMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
       );
+      const fallbackTeams = eventTeamOptions.length > 0 ? eventTeamOptions : allTeams;
       const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || getEffectiveNowDate(teamTimeOverride).getFullYear();
       const manualPriorityTeams = Array.from(
         new Set([...(config?.priorityTeams || []), ...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
@@ -2351,19 +2394,22 @@ function buildBalancedIntervalSchedule(
         : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
 
       const teamsByMatch = targetMatches.map((match) => {
+        const sourceTeams = match.teams.length > 0 ? match.teams : fallbackTeams;
         const rankedTeams = lowScoutMode
-          ? computeTeamPriorityOrder(match.teams, manualPriorityTeams, historyMap, statboticsMap)
-          : [...match.teams];
-        return lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
+          ? computeTeamPriorityOrder(sourceTeams, manualPriorityTeams, historyMap, statboticsMap)
+          : [...sourceTeams];
+        const base = lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
+        return expandTeamsToSlots(base, fallbackTeams, desiredSlots);
       });
       const intervalSchedule =
         (config?.pattern || "rotate-each-match") === "interval"
           ? buildBalancedIntervalSchedule(
               scoutOrder,
-              teamsByMatch.map((teams) => teams.length),
+              teamsByMatch.map(() => desiredSlots),
               Number(config?.interval || 5)
             )
           : [];
+      const hpIndices = getHumanPlayerIndices(desiredSlots);
 
       targetMatches.forEach((match, matchIndex) => {
         const teamsToAssign = teamsByMatch[matchIndex] || [];
@@ -2373,11 +2419,11 @@ function buildBalancedIntervalSchedule(
             : buildMatchScoutOrder(
                 scoutOrder,
                 matchIndex,
-                teamsToAssign.length,
+                desiredSlots,
                 config?.pattern || "rotate-each-match",
                 Number(config?.interval || 5)
               );
-        teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
+        teamsToAssign.slice(0, desiredSlots).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
           if (!scout) return;
           newAssignments.push({
@@ -2388,7 +2434,7 @@ function buildBalancedIntervalSchedule(
             scoutId: scout.uid,
             scoutName: scout.displayName,
             teamNumber,
-            scoutHumanPlayer: teamIndex === 0,
+            scoutHumanPlayer: hpIndices.includes(teamIndex),
             assignmentType: match.compLevel === "pm" ? "match" : undefined,
             assignedBy: userData.uid,
             assignedAt: Date.now(),
@@ -2506,22 +2552,26 @@ function buildBalancedIntervalSchedule(
         ? await buildPerformanceMapsForTeams(allPracticeTeams, yearFromEvent, practiceEventKey)
         : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
       const scoutOrder = [...eligibleMembers];
+      const desiredSlots = Math.min(6, scoutOrder.length);
+      if (desiredSlots === 0) return;
       const now = Date.now();
       const newAssignments: Array<Omit<Assignment, "id">> = [];
 
       const teamsByMatch = targetMatches.map((match) => {
         const sourceTeams = match.teams.length > 0 ? match.teams : eventTeamOptions;
         const teamOrder = computeTeamPriorityOrder(sourceTeams, manualPriorityTeams, historyMap, statboticsMap);
-        return lowScoutMode ? teamOrder.slice(0, scoutOrder.length) : teamOrder;
+        const base = lowScoutMode ? teamOrder.slice(0, scoutOrder.length) : teamOrder;
+        return expandTeamsToSlots(base, eventTeamOptions, desiredSlots);
       });
       const intervalSchedule =
         (config?.pattern || "rotate-each-match") === "interval"
           ? buildBalancedIntervalSchedule(
               scoutOrder,
-              teamsByMatch.map((teams) => teams.length),
+              teamsByMatch.map(() => desiredSlots),
               Number(config?.interval || 5)
             )
           : [];
+      const hpIndices = getHumanPlayerIndices(desiredSlots);
 
       targetMatches.forEach((match, matchIndex) => {
         const teamsToAssign = teamsByMatch[matchIndex] || [];
@@ -2531,11 +2581,11 @@ function buildBalancedIntervalSchedule(
             : buildMatchScoutOrder(
                 scoutOrder,
                 matchIndex,
-                teamsToAssign.length,
+                desiredSlots,
                 config?.pattern || "rotate-each-match",
                 Number(config?.interval || 5)
               );
-        teamsToAssign.slice(0, matchScouts.length).forEach((teamNumber, teamIndex) => {
+        teamsToAssign.slice(0, desiredSlots).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
           if (!scout) return;
           newAssignments.push({
@@ -2546,7 +2596,7 @@ function buildBalancedIntervalSchedule(
             scoutId: scout.uid,
             scoutName: scout.displayName,
             teamNumber,
-            scoutHumanPlayer: teamIndex === 0,
+            scoutHumanPlayer: hpIndices.includes(teamIndex),
             assignmentType: "event-practice",
             assignedBy: userData.uid,
             assignedAt: now + matchIndex,
@@ -2882,19 +2932,32 @@ function buildBalancedIntervalSchedule(
     },
     [assignments]
   );
-  const practiceAssignmentsSorted = useMemo(
+  const eventPracticeAssignments = useMemo<PracticeAssignmentRow[]>(
     () =>
-      practiceAssignments
-        .slice()
-        .sort((a, b) => {
-          const eventDiff = String(a.eventKey || "").localeCompare(String(b.eventKey || ""));
-          if (eventDiff !== 0) return eventDiff;
-          const labelDiff = String(a.matchLabel || a.matchKey || "").localeCompare(String(b.matchLabel || b.matchKey || ""));
-          if (labelDiff !== 0) return labelDiff;
-          return a.teamNumber - b.teamNumber;
-        }),
-    [practiceAssignments]
+      assignments
+        .filter((assignment) => isEventPracticeAssignment(assignment))
+        .map((assignment) => ({
+          ...assignment,
+          sourceCollection: "matchAssignments",
+        })),
+    [assignments]
   );
+  const practiceAssignmentsCombined = useMemo<PracticeAssignmentRow[]>(() => {
+    const combined: PracticeAssignmentRow[] = [
+      ...practiceAssignments.map((assignment) => ({
+        ...assignment,
+        sourceCollection: "practiceAssignments",
+      })),
+      ...eventPracticeAssignments,
+    ];
+    return combined.sort((a, b) => {
+      const eventDiff = String(a.eventKey || "").localeCompare(String(b.eventKey || ""));
+      if (eventDiff !== 0) return eventDiff;
+      const labelDiff = String(a.matchLabel || a.matchKey || "").localeCompare(String(b.matchLabel || b.matchKey || ""));
+      if (labelDiff !== 0) return labelDiff;
+      return a.teamNumber - b.teamNumber;
+    });
+  }, [practiceAssignments, eventPracticeAssignments]);
   const pitAssignmentsSorted = useMemo(
     () => pitAssignments.slice().sort((a, b) => a.teamNumber - b.teamNumber),
     [pitAssignments]
@@ -3224,7 +3287,7 @@ function buildBalancedIntervalSchedule(
                           </tr>
                         ))}
                       {assignmentView === "practice" &&
-                        practiceAssignmentsSorted.map((assignment) => (
+                        practiceAssignmentsCombined.map((assignment) => (
                           <tr key={assignment.id}>
                             <td className="px-6 py-4 whitespace-nowrap font-medium">{assignment.matchLabel || assignment.matchKey}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{assignment.eventKey}</td>
@@ -3243,7 +3306,7 @@ function buildBalancedIntervalSchedule(
                             <td className="px-6 py-4 whitespace-nowrap">Team {assignment.teamNumber}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               {canManageAssignments ? (
-                                <button onClick={() => void deletePracticeAssignment(assignment.id)} className="text-red-600 hover:text-red-800">
+                                <button onClick={() => void deletePracticeAssignmentRow(assignment)} className="text-red-600 hover:text-red-800">
                                   <Trash2 size={18} />
                                 </button>
                               ) : (
@@ -3267,7 +3330,7 @@ function buildBalancedIntervalSchedule(
                           <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">No match assignments yet.</td>
                         </tr>
                       )}
-                      {assignmentView === "practice" && practiceAssignmentsSorted.length === 0 && (
+                      {assignmentView === "practice" && practiceAssignmentsCombined.length === 0 && (
                         <tr>
                           <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">No practice assignments yet.</td>
                         </tr>
