@@ -1166,9 +1166,50 @@ function AssignmentsContent() {
             ...assignmentDoc.data(),
           })) as TeamAssignment[])
         : [];
-      const mergedTeamAssignments = [...teamFromPrimary, ...teamAssignmentsFromMatch].sort(
-        (a, b) => a.teamNumber - b.teamNumber
-      );
+      if (teamFromPrimary.length > 0 && isAssignmentsAdmin(userData)) {
+        const mirrorKeys = new Set(
+          teamAssignmentsFromMatch.map((assignment) => `${assignment.eventKey}|${assignment.teamNumber}`)
+        );
+        const missingMirrors = teamFromPrimary.filter(
+          (assignment) => !mirrorKeys.has(`${assignment.eventKey}|${assignment.teamNumber}`)
+        );
+        if (missingMirrors.length > 0) {
+          try {
+            await Promise.all(
+              missingMirrors.map((assignment) =>
+                addDoc(collection(db, "matchAssignments"), {
+                  teamId: assignment.teamId || "",
+                  eventKey: assignment.eventKey,
+                  teamNumber: assignment.teamNumber,
+                  scoutId: assignment.scoutId,
+                  scoutName: assignment.scoutName,
+                  assignedBy: assignment.assignedBy,
+                  assignedAt: assignment.assignedAt || Date.now(),
+                  assignmentType: "team",
+                  matchKey: "team",
+                  matchLabel: "Team Strategy",
+                  scoutHumanPlayer: false,
+                })
+              )
+            );
+          } catch (error) {
+            console.warn("Unable to mirror team assignments into matchAssignments:", error);
+          }
+        }
+      }
+      const mergedByKey = new Map<string, TeamAssignment>();
+      [...teamAssignmentsFromMatch, ...teamFromPrimary].forEach((assignment) => {
+        const key = `${assignment.eventKey}|${assignment.teamNumber}`;
+        const existing = mergedByKey.get(key);
+        if (!existing) {
+          mergedByKey.set(key, assignment);
+          return;
+        }
+        if (existing.sourceCollection !== "teamAssignments" && assignment.sourceCollection === "teamAssignments") {
+          mergedByKey.set(key, assignment);
+        }
+      });
+      const mergedTeamAssignments = Array.from(mergedByKey.values()).sort((a, b) => a.teamNumber - b.teamNumber);
       setTeamAssignments(mergedTeamAssignments);
       setPracticeAssignments(
         practiceAssignmentsDocs.map((row) => ({
@@ -1919,14 +1960,15 @@ function buildBalancedIntervalSchedule(
         await addDoc(collection(db, "teamAssignments"), payload);
       } catch (error) {
         if (!isPermissionError(error)) throw error;
-        await addDoc(collection(db, "matchAssignments"), {
-          ...payload,
-          assignmentType: "team",
-          matchKey: "team",
-          matchLabel: "Team Strategy",
-          scoutHumanPlayer: false,
-        });
       }
+      // Always mirror team assignments into matchAssignments for scout visibility.
+      await addDoc(collection(db, "matchAssignments"), {
+        ...payload,
+        assignmentType: "team",
+        matchKey: "team",
+        matchLabel: "Team Strategy",
+        scoutHumanPlayer: false,
+      });
       setSelectedTeamScoutId("");
       setSelectedTeamAssignmentNumber("");
       setShowAssignModal(false);
@@ -2019,6 +2061,33 @@ function buildBalancedIntervalSchedule(
       const source = assignment.sourceCollection || "teamAssignments";
       const collectionName = source === "matchAssignments" ? "matchAssignments" : "teamAssignments";
       await deleteDoc(doc(db, collectionName, assignment.id));
+      try {
+        const mirrorSnap = await getDocs(
+          query(
+            collection(db, "matchAssignments"),
+            where("eventKey", "==", assignment.eventKey),
+            where("assignmentType", "==", "team"),
+            where("teamNumber", "==", assignment.teamNumber)
+          )
+        );
+        await Promise.all(mirrorSnap.docs.map((docSnap) => deleteDoc(doc(db, "matchAssignments", docSnap.id))));
+      } catch (error) {
+        console.warn("Unable to delete mirrored matchAssignments:", error);
+      }
+      if (source === "matchAssignments") {
+        try {
+          const primarySnap = await getDocs(
+            query(
+              collection(db, "teamAssignments"),
+              where("eventKey", "==", assignment.eventKey),
+              where("teamNumber", "==", assignment.teamNumber)
+            )
+          );
+          await Promise.all(primarySnap.docs.map((docSnap) => deleteDoc(doc(db, "teamAssignments", docSnap.id))));
+        } catch (error) {
+          console.warn("Unable to delete primary teamAssignments:", error);
+        }
+      }
       await loadData();
     } catch (error) {
       console.error("Error deleting team assignment:", error);

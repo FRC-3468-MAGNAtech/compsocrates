@@ -218,29 +218,29 @@ function TeamStrategyFormContent() {
         } catch (error) {
           console.warn("Unable to load team assignments:", error);
         }
-        if (teamAssignments.length === 0) {
-          try {
-            const fallbackSnap = await getDocs(
-              query(
-                collection(db, "matchAssignments"),
-                where("scoutId", "==", userData.uid),
-                where("assignmentType", "==", "team")
-              )
-            );
-            teamAssignments = fallbackSnap.docs.map((row) => row.data() as Record<string, unknown>);
-          } catch (error) {
-            console.warn("Unable to load fallback team assignments:", error);
-          }
+        let matchAssignments: Record<string, unknown>[] = [];
+        try {
+          const fallbackSnap = await getDocs(
+            query(
+              collection(db, "matchAssignments"),
+              where("scoutId", "==", userData.uid),
+              where("assignmentType", "==", "team")
+            )
+          );
+          matchAssignments = fallbackSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        } catch (error) {
+          console.warn("Unable to load fallback team assignments:", error);
         }
+        const combinedAssignments = [...teamAssignments, ...matchAssignments];
 
         const assignmentForEvent =
-          teamAssignments.find((assignment) => String(assignment.eventKey || "").trim() === resolvedKey) ||
-          (resolvedKey === "app-testing" ? teamAssignments[0] : undefined);
+          combinedAssignments.find((assignment) => String(assignment.eventKey || "").trim() === resolvedKey) ||
+          (resolvedKey === "app-testing" ? combinedAssignments[0] : undefined);
         const effectiveEvent = String(assignmentForEvent?.eventKey || resolvedKey || "app-testing").trim() || "app-testing";
         setEventKey(effectiveEvent);
         setEventName(effectiveEvent === resolvedKey ? resolvedName : effectiveEvent);
 
-        const assignedTeamsForEvent = teamAssignments
+        const assignedTeamsForEvent = combinedAssignments
           .filter((assignment) => String(assignment.eventKey || "").trim() === effectiveEvent)
           .map((assignment) => String(assignment.teamNumber || "").replace(/[^\d]/g, ""))
           .filter(Boolean);
@@ -256,21 +256,20 @@ function TeamStrategyFormContent() {
         } catch (error) {
           console.warn("Unable to load all team assignments:", error);
         }
-        if (allAssignments.length === 0) {
-          try {
-            const fallbackSnap = await getDocs(
-              query(
-                collection(db, "matchAssignments"),
-                where("eventKey", "==", effectiveEvent),
-                where("assignmentType", "==", "team")
-              )
-            );
-            allAssignments = fallbackSnap.docs.map((row) => row.data() as Record<string, unknown>);
-          } catch (error) {
-            console.warn("Unable to load fallback team assignments:", error);
-          }
+        let matchAllAssignments: Record<string, unknown>[] = [];
+        try {
+          const fallbackSnap = await getDocs(
+            query(
+              collection(db, "matchAssignments"),
+              where("eventKey", "==", effectiveEvent),
+              where("assignmentType", "==", "team")
+            )
+          );
+          matchAllAssignments = fallbackSnap.docs.map((row) => row.data() as Record<string, unknown>);
+        } catch (error) {
+          console.warn("Unable to load fallback team assignments:", error);
         }
-        const allAssignedTeamsForEvent = allAssignments
+        const allAssignedTeamsForEvent = [...allAssignments, ...matchAllAssignments]
           .filter((assignment) => String(assignment.eventKey || "").trim() === effectiveEvent)
           .map((assignment) => String(assignment.teamNumber || "").replace(/[^\d]/g, ""))
           .filter(Boolean);
