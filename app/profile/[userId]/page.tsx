@@ -75,20 +75,32 @@ function ProfileContent() {
 
   const roleBadges = useMemo(() => {
     if (!profile) return [];
-    const merged = new Set<string>();
     const primaryRole = typeof profile.role === "string" ? profile.role.trim() : "";
-    if (primaryRole) merged.add(primaryRole);
     const primaryRoles = Array.isArray(profile.roles) ? profile.roles : [];
     const secondaryRoles = Array.isArray(profile.secondaryRoles) ? profile.secondaryRoles : [];
-    primaryRoles.forEach((role) => {
+    const secondarySet = new Set(secondaryRoles.map((role) => String(role || "").trim()).filter(Boolean));
+    const seen = new Set<string>();
+    const ordered: Array<{ role: string; isSecondary: boolean }> = [];
+
+    const pushRole = (role: string, isSecondary: boolean) => {
       const safe = String(role || "").trim();
-      if (safe) merged.add(safe);
-    });
+      if (!safe || seen.has(safe)) return;
+      seen.add(safe);
+      ordered.push({ role: safe, isSecondary });
+    };
+
+    if (primaryRole) pushRole(primaryRole, false);
+    primaryRoles.forEach((role) => pushRole(String(role || ""), false));
     secondaryRoles.forEach((role) => {
       const safe = String(role || "").trim();
-      if (safe) merged.add(safe);
+      if (!safe || seen.has(safe)) return;
+      pushRole(safe, true);
     });
-    return Array.from(merged).map((role) => getRoleBadge(role, [role]));
+
+    return ordered.map(({ role, isSecondary }) => ({
+      badge: getRoleBadge(role, [role]),
+      isSecondary: isSecondary || secondarySet.has(role),
+    }));
   }, [profile]);
 
   const roleBadge = useMemo(() => {
@@ -373,10 +385,12 @@ function ProfileContent() {
                   <p className="text-gray-600">{profile.email}</p>
                   {roleBadge && (
                     <div className="mt-1 flex flex-wrap gap-2">
-                      {roleBadges.map((badge, index) => (
+                      {roleBadges.map(({ badge, isSecondary }, index) => (
                         <span
                           key={`${badge.label}-${index}`}
-                          className={`inline-block px-2 py-0.5 rounded text-xs ${badge.bg} ${badge.text}`}
+                          className={`inline-block px-2 py-0.5 rounded text-xs ${badge.bg} ${badge.text} ${
+                            isSecondary ? "opacity-70" : ""
+                          }`}
                         >
                           {badge.label}
                         </span>
