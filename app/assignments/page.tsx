@@ -377,6 +377,42 @@ function getAssignmentCategory(assignment: { matchKey?: string; matchLabel?: str
   return "finals";
 }
 
+type MatchRange = {
+  category: RandomizeCategory;
+  numbers: Set<number>;
+};
+
+function parseMatchRangeInput(input: string): { ranges: MatchRange[]; error?: string } {
+  const text = String(input || "").trim();
+  if (!text) return { ranges: [] };
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  const ranges: MatchRange[] = [];
+  for (const part of parts) {
+    const match = part.match(/^([a-zA-Z]+)\s*(\d+)(?:\s*-\s*(\d+))?$/);
+    if (!match) return { ranges: [], error: `Invalid range: ${part}` };
+    const prefix = match[1].toLowerCase();
+    const start = Number(match[2]);
+    const end = match[3] ? Number(match[3]) : start;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0 || end <= 0) {
+      return { ranges: [], error: `Invalid numbers in: ${part}` };
+    }
+    const category: RandomizeCategory =
+      prefix.startsWith("p") ? "practice" : prefix.startsWith("q") ? "qualification" : "finals";
+    const numbers = new Set<number>();
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    for (let n = min; n <= max; n += 1) numbers.add(n);
+    ranges.push({ category, numbers });
+  }
+  return { ranges };
+}
+
+function getAssignmentMatchNumber(assignment: { matchKey?: string; matchLabel?: string }): number {
+  const id = mapAssignmentToMatchId(String(assignment.matchKey || assignment.matchLabel || ""));
+  const digits = id.match(/(\d+)/)?.[1];
+  return digits ? Number(digits) : 0;
+}
+
 function matchLabel(match: TBAMatch) {
   if (match.comp_level === "qm") return `Qualification ${match.match_number}`;
   if (match.comp_level === "f") return `Finals ${match.match_number}`;
@@ -749,6 +785,8 @@ function AssignmentsContent() {
   const [practiceEventSearch, setPracticeEventSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [bulkDeleteInProgress, setBulkDeleteInProgress] = useState(false);
+  const [deleteRangeInput, setDeleteRangeInput] = useState("");
+  const [deleteRangeInProgress, setDeleteRangeInProgress] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
   const [practiceMatchOptions, setPracticeMatchOptions] = useState<PracticeMatchOption[]>([]);
@@ -1720,8 +1758,8 @@ function buildMatchScoutOrder(
   interval = 5
 ): TeamMember[] {
   if (scouts.length === 0 || slots <= 0) return [];
-  const targetSlots = Math.min(slots, scouts.length);
-  if (pattern === "constant") return scouts.slice(0, targetSlots);
+  const targetSlots = slots;
+  if (pattern === "constant") return takeSequentialScouts(scouts, 0, targetSlots);
 
   if (pattern === "interval") {
     return takeSequentialScouts(scouts, matchIndex % scouts.length, targetSlots);
@@ -1765,6 +1803,12 @@ function buildBalancedIntervalSchedule(
   interval: number
 ): TeamMember[][] {
   if (scouts.length === 0) return [];
+  const maxSlots = Math.max(0, ...slotsPerMatch);
+  if (maxSlots > scouts.length) {
+    return slotsPerMatch.map((slots, index) =>
+      slots > 0 ? takeSequentialScouts(scouts, index % scouts.length, slots) : []
+    );
+  }
   const safeInterval = Math.max(1, interval);
   const totalSlots = slotsPerMatch.reduce((sum, value) => sum + Math.max(0, value), 0);
   const base = Math.floor(totalSlots / scouts.length);
@@ -2203,6 +2247,51 @@ function buildBalancedIntervalSchedule(
     }
   }
 
+  async function deleteAssignmentsByRangeInput() {
+    if (!canBulkDelete) {
+      alert("You do not have permission to delete assignments.");
+      return;
+    }
+    const { ranges, error } = parseMatchRangeInput(deleteRangeInput);
+    if (error) {
+      alert(error);
+      return;
+    }
+    if (ranges.length === 0) {
+      alert("Enter at least one range (e.g. Q1-10, P1-5).");
+      return;
+    }
+    const eventKey = selectedEvent;
+    if (!eventKey) {
+      alert("Select an event first.");
+      return;
+    }
+    if (!confirm("Delete assignments for the specified match ranges? This cannot be undone.")) return;
+    setDeleteRangeInProgress(true);
+    try {
+      const toDelete = assignments.filter((assignment) => {
+        if (assignment.eventKey !== eventKey) return false;
+        const category = getAssignmentCategory(assignment);
+        if (!category) return false;
+        const matchNumber = getAssignmentMatchNumber(assignment);
+        if (!matchNumber) return false;
+        return ranges.some((range) => range.category === category && range.numbers.has(matchNumber));
+      });
+      if (toDelete.length === 0) {
+        alert("No assignments matched those ranges.");
+        return;
+      }
+      await Promise.all(toDelete.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
+      await loadData();
+      setDeleteRangeInput("");
+    } catch (error) {
+      console.error("Error deleting assignment ranges:", error);
+      alert("Error deleting assignment ranges.");
+    } finally {
+      setDeleteRangeInProgress(false);
+    }
+  }
+
   async function randomizeAllAssignments(config?: RandomizeConfig) {
     if (!userData || !selectedEvent) return;
     const nowSec = Math.floor(Date.now() / 1000);
@@ -2367,8 +2456,8 @@ function buildBalancedIntervalSchedule(
         .sort((a, b) => b.weightedAccuracy - a.weightedAccuracy)
         .map((row) => row.member);
       const scoutOrder = lowScoutMode ? scoutsByAccuracy : [...eligibleMembers];
-      const desiredSlots = Math.min(6, scoutOrder.length);
-      if (desiredSlots === 0) return;
+      const desiredSlots = 6;
+      if (scoutOrder.length === 0) return;
       const allTeams = Array.from(
         new Set(targetMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
       );
@@ -2540,8 +2629,8 @@ function buildBalancedIntervalSchedule(
         ? await buildPerformanceMapsForTeams(allPracticeTeams, yearFromEvent, practiceEventKey)
         : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
       const scoutOrder = [...eligibleMembers];
-      const desiredSlots = Math.min(6, scoutOrder.length);
-      if (desiredSlots === 0) return;
+      const desiredSlots = 6;
+      if (scoutOrder.length === 0) return;
       const now = Date.now();
       const newAssignments: Array<Omit<Assignment, "id">> = [];
 
@@ -3348,6 +3437,31 @@ function buildBalancedIntervalSchedule(
                     </button>
                   </div>
                 </div>
+                {canManageAssignments && (
+                  <div className="px-6 pb-4 border-b border-gray-200">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Delete Match Ranges</label>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        value={deleteRangeInput}
+                        onChange={(e) => setDeleteRangeInput(e.target.value)}
+                        className="flex-1 min-w-[240px] border rounded p-2"
+                        placeholder="Q1-10, P1-5, F1-3"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void deleteAssignmentsByRangeInput()}
+                        disabled={deleteRangeInProgress}
+                        className="px-4 py-2 rounded text-white text-sm font-semibold disabled:opacity-60"
+                        style={{ backgroundColor: "#b91c1c" }}
+                      >
+                        {deleteRangeInProgress ? "Deleting..." : "Delete Ranges"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use prefixes: `P` practice, `Q` qualification, `F` finals. Separate ranges with commas.
+                    </p>
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
