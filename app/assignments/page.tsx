@@ -2423,7 +2423,7 @@ function buildBalancedIntervalSchedule(
             scoutName: scout.displayName,
             teamNumber,
             scoutHumanPlayer: hpIndices.includes(teamIndex),
-            assignmentType: match.compLevel === "pm" ? "match" : undefined,
+            ...(match.compLevel === "pm" ? { assignmentType: "match" as const } : {}),
             assignedBy: userData.uid,
             assignedAt: Date.now(),
           });
