@@ -280,6 +280,12 @@ function compLevelPriority(compLevel: string) {
   return 999;
 }
 
+function matchCategoryFromSchedule(compLevel: string): RandomizeCategory {
+  if (compLevel === "pr" || compLevel === "pm") return "practice";
+  if (compLevel === "qm") return "qualification";
+  return "finals";
+}
+
 function parseMatchKeyParts(matchKey: string) {
   const normalized = String(matchKey || "").toLowerCase();
   if (!normalized) return null;
@@ -787,6 +793,8 @@ function AssignmentsContent() {
   const [bulkDeleteInProgress, setBulkDeleteInProgress] = useState(false);
   const [deleteRangeInput, setDeleteRangeInput] = useState("");
   const [deleteRangeInProgress, setDeleteRangeInProgress] = useState(false);
+  const [randomizeRangeInput, setRandomizeRangeInput] = useState("");
+  const [randomizeRangeInProgress, setRandomizeRangeInProgress] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [matchOptions, setMatchOptions] = useState<MatchOption[]>([]);
   const [practiceMatchOptions, setPracticeMatchOptions] = useState<PracticeMatchOption[]>([]);
@@ -2306,6 +2314,218 @@ function buildBalancedIntervalSchedule(
     }
   }
 
+  async function randomizeAssignmentsByRangeInput() {
+    if (!userData || !selectedEvent) return;
+    const { ranges, error } = parseMatchRangeInput(randomizeRangeInput);
+    if (error) {
+      alert(error);
+      return;
+    }
+    if (ranges.length === 0) {
+      alert("Enter at least one range (e.g. Q1-10, P1-5).");
+      return;
+    }
+    if (randomizeEligibleMembers.length === 0) {
+      alert("No eligible scout-role members available to assign.");
+      return;
+    }
+    if (!confirm("Randomize assignments for the specified match ranges? Existing assignments in those ranges will be replaced.")) return;
+
+    setRandomizeRangeInProgress(true);
+    try {
+      const rangeIncludes = (category: RandomizeCategory, matchNumber: number) =>
+        ranges.some((range) => range.category === category && range.numbers.has(matchNumber));
+
+      const matchTargets = matchScheduleOptions.filter((match) => {
+        const category = matchCategoryFromSchedule(match.compLevel);
+        if (category === "practice") return false;
+        return rangeIncludes(category, match.matchNumber);
+      });
+      const practiceTargets = practiceScheduleMatchesAssigned.filter((match) => rangeIncludes("practice", match.matchNumber));
+
+      if (matchTargets.length === 0 && practiceTargets.length === 0) {
+        alert("No matches found for those ranges.");
+        return;
+      }
+
+      const selectedScoutIds = new Set(
+        randomizeScoutIds.length > 0 ? randomizeScoutIds : randomizeEligibleMembers.map((member) => member.uid)
+      );
+      const eligibleMembers = randomizeEligibleMembers.filter(
+        (member) => selectedScoutIds.size === 0 || selectedScoutIds.has(member.uid)
+      );
+      if (eligibleMembers.length === 0) {
+        alert("No eligible scout-role members available to assign.");
+        return;
+      }
+
+      const desiredSlots = 6;
+      const lowScoutMode = eligibleMembers.length < desiredSlots;
+      const scoutOrder = lowScoutMode
+        ? [...eligibleMembers].sort((a, b) => a.displayName.localeCompare(b.displayName))
+        : [...eligibleMembers];
+      const now = Date.now();
+
+      if (matchTargets.length > 0) {
+        const existing = assignments.filter(
+          (assignment) =>
+            assignment.eventKey === selectedEvent &&
+            !isEventPracticeAssignment(assignment) &&
+            matchTargets.some((match) => match.key === assignment.matchKey)
+        );
+        await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
+
+        const allTeams = Array.from(
+          new Set(matchTargets.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
+        );
+        const fallbackTeams = eventTeamOptions.length > 0 ? eventTeamOptions : allTeams;
+        const fallbackTeamsGlobal = fallbackTeams.length > 0 ? fallbackTeams : allTeams;
+        const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || getEffectiveNowDate(teamTimeOverride).getFullYear();
+        const manualPriorityTeams = Array.from(
+          new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+        );
+        const { historyMap, statboticsMap } = lowScoutMode
+          ? await buildPerformanceMapsForTeams(allTeams, yearFromEvent, selectedEvent)
+          : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
+
+        const teamsByMatch = matchTargets.map((match) => {
+          const sourceTeams = match.teams.length > 0 ? match.teams : fallbackTeams;
+          const rankedTeams = lowScoutMode
+            ? computeTeamPriorityOrder(sourceTeams, manualPriorityTeams, historyMap, statboticsMap)
+            : [...sourceTeams];
+          const base = lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
+          return expandTeamsToSlots(base, fallbackTeams, desiredSlots);
+        });
+        const intervalSchedule =
+          (randomizePattern || "rotate-each-match") === "interval"
+            ? buildBalancedIntervalSchedule(
+                scoutOrder,
+                teamsByMatch.map(() => desiredSlots),
+                Number(randomizeInterval || 5)
+              )
+            : [];
+        const hpIndices = getHumanPlayerIndices(desiredSlots);
+        const newAssignments: Array<Omit<Assignment, "id">> = [];
+
+        matchTargets.forEach((match, matchIndex) => {
+          const teamsToAssign = expandTeamsToSlots(teamsByMatch[matchIndex] || [], fallbackTeamsGlobal, desiredSlots);
+          const baseScouts =
+            (randomizePattern || "rotate-each-match") === "interval"
+              ? intervalSchedule[matchIndex] || []
+              : buildMatchScoutOrder(
+                  scoutOrder,
+                  matchIndex,
+                  desiredSlots,
+                  randomizePattern || "rotate-each-match",
+                  Number(randomizeInterval || 5)
+                );
+          const matchScouts = ensureScoutSlots(baseScouts, scoutOrder, matchIndex, desiredSlots);
+          teamsToAssign.slice(0, desiredSlots).forEach((teamNumber, teamIndex) => {
+            const scout = matchScouts[teamIndex];
+            if (!scout) return;
+            newAssignments.push({
+              teamId: userData.teamId || "",
+              eventKey: selectedEvent,
+              matchKey: match.key,
+              matchLabel: match.label,
+              scoutId: scout.uid,
+              scoutName: scout.displayName,
+              teamNumber,
+              scoutHumanPlayer: hpIndices.includes(teamIndex),
+              assignedBy: userData.uid,
+              assignedAt: now + matchIndex,
+            });
+          });
+        });
+
+        await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "matchAssignments"), assignment)));
+      }
+
+      if (practiceTargets.length > 0) {
+        const existing = assignments.filter(
+          (assignment) =>
+            assignment.eventKey === selectedEvent &&
+            isEventPracticeAssignment(assignment) &&
+            practiceTargets.some((match) => assignmentMatchesPractice(assignment, match.matchNumber))
+        );
+        await Promise.all(existing.map((assignment) => deleteDoc(doc(db, "matchAssignments", assignment.id))));
+
+        const allPracticeTeams = Array.from(new Set(practiceTargets.flatMap((match) => match.teams))).filter((team) =>
+          Number.isFinite(team)
+        );
+        const fallbackTeams = eventTeamOptions.length > 0 ? eventTeamOptions : allPracticeTeams;
+        const fallbackTeamsGlobal = fallbackTeams.length > 0 ? fallbackTeams : allPracticeTeams;
+        const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || getEffectiveNowDate(teamTimeOverride).getFullYear();
+        const { historyMap, statboticsMap } = lowScoutMode
+          ? await buildPerformanceMapsForTeams(allPracticeTeams, yearFromEvent, selectedEvent)
+          : { historyMap: new Map<number, { total: number; count: number }>(), statboticsMap: new Map<number, number>() };
+        const manualPriorityTeams = Array.from(
+          new Set([...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
+        );
+
+        const teamsByMatch = practiceTargets.map((match) => {
+          const sourceTeams = match.teams.length > 0 ? match.teams : fallbackTeams;
+          const rankedTeams = computeTeamPriorityOrder(sourceTeams, manualPriorityTeams, historyMap, statboticsMap);
+          const base = lowScoutMode ? rankedTeams.slice(0, scoutOrder.length) : rankedTeams;
+          return expandTeamsToSlots(base, fallbackTeams, desiredSlots);
+        });
+        const intervalSchedule =
+          (randomizePattern || "rotate-each-match") === "interval"
+            ? buildBalancedIntervalSchedule(
+                scoutOrder,
+                teamsByMatch.map(() => desiredSlots),
+                Number(randomizeInterval || 5)
+              )
+            : [];
+        const hpIndices = getHumanPlayerIndices(desiredSlots);
+        const newAssignments: Array<Omit<Assignment, "id">> = [];
+
+        practiceTargets.forEach((match, matchIndex) => {
+          const teamsToAssign = expandTeamsToSlots(teamsByMatch[matchIndex] || [], fallbackTeamsGlobal, desiredSlots);
+          const baseScouts =
+            (randomizePattern || "rotate-each-match") === "interval"
+              ? intervalSchedule[matchIndex] || []
+              : buildMatchScoutOrder(
+                  scoutOrder,
+                  matchIndex,
+                  desiredSlots,
+                  randomizePattern || "rotate-each-match",
+                  Number(randomizeInterval || 5)
+                );
+          const matchScouts = ensureScoutSlots(baseScouts, scoutOrder, matchIndex, desiredSlots);
+          teamsToAssign.slice(0, desiredSlots).forEach((teamNumber, teamIndex) => {
+            const scout = matchScouts[teamIndex];
+            if (!scout) return;
+            newAssignments.push({
+              teamId: userData.teamId || "",
+              eventKey: selectedEvent,
+              matchKey: `p${match.matchNumber}`,
+              matchLabel: `Practice ${match.matchNumber}`,
+              scoutId: scout.uid,
+              scoutName: scout.displayName,
+              teamNumber,
+              scoutHumanPlayer: hpIndices.includes(teamIndex),
+              assignmentType: "event-practice",
+              assignedBy: userData.uid,
+              assignedAt: now + matchIndex,
+            });
+          });
+        });
+
+        await Promise.all(newAssignments.map((assignment) => addDoc(collection(db, "matchAssignments"), assignment)));
+      }
+
+      await loadData();
+      setRandomizeRangeInput("");
+      alert("Randomized assignments for the specified match ranges.");
+    } catch (error) {
+      console.error("Error randomizing assignments for ranges:", error);
+      alert("Error randomizing assignments for ranges.");
+    } finally {
+      setRandomizeRangeInProgress(false);
+    }
+  }
+
   async function randomizeAllAssignments(config?: RandomizeConfig) {
     if (!userData || !selectedEvent) return;
     const nowSec = Math.floor(Date.now() / 1000);
@@ -3477,6 +3697,27 @@ function buildBalancedIntervalSchedule(
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
                       Use prefixes: `P` practice, `Q` qualification, `F` finals. Separate ranges with commas.
+                    </p>
+                    <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">Randomize Match Ranges</label>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        value={randomizeRangeInput}
+                        onChange={(e) => setRandomizeRangeInput(e.target.value)}
+                        className="flex-1 min-w-[240px] border rounded p-2"
+                        placeholder="Q12-14, Q20, P1-3"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void randomizeAssignmentsByRangeInput()}
+                        disabled={randomizeRangeInProgress}
+                        className="px-4 py-2 rounded text-white text-sm font-semibold disabled:opacity-60"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        {randomizeRangeInProgress ? "Randomizing..." : "Randomize Ranges"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Uses the current randomizer settings (scouts, pattern, interval) and always fills 6 slots per match.
                     </p>
                   </div>
                 )}
