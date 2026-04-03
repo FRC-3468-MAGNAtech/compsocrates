@@ -258,24 +258,12 @@ export function isPracticeScoutedEntry(entry: PracticeScoutedLike): boolean {
   return Boolean(entry.isPracticeScouting) || Boolean(entry.practiceMode) || Boolean(entry.practiceSessionId);
 }
 
-function hasPracticeSessionFlag(entry: {
-  isPracticeScouting?: boolean;
-  practiceMode?: boolean | string;
-  practiceSessionId?: string;
-}): boolean {
-  return Boolean(entry.isPracticeScouting) || Boolean(entry.practiceMode) || Boolean(entry.practiceSessionId);
-}
-
 export function isPracticeMatchEntry(entry: {
   matchType?: string;
   matchLabel?: string;
   matchId?: string;
   matchKey?: string;
-  isPracticeScouting?: boolean;
-  practiceMode?: boolean | string;
-  practiceSessionId?: string;
 }): boolean {
-  if (hasPracticeSessionFlag(entry)) return true;
   const matchType = String(entry.matchType || "").toLowerCase().trim();
   if (matchType === "practice") return true;
   const labels = [entry.matchLabel, entry.matchId, entry.matchKey].map((value) => String(value || ""));
