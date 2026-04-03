@@ -1939,7 +1939,10 @@ function ScoutFormContent() {
     }
     if (!selectedMatch) return alert("Select a match first.");
     if (!form.teamNumber.trim()) return alert("Team number required.");
-    if (!editMode && selectedScoutedTeams.has(form.teamNumber.trim())) return alert("That robot has already been scouted for this match.");
+    if (!editMode && selectedScoutedTeams.has(form.teamNumber.trim())) {
+      const proceed = window.confirm("That robot has already been scouted for this match. Submit anyway?");
+      if (!proceed) return;
+    }
     if (pitMismatchMessages.length > 0) {
       const proceed = window.confirm(
         `Warning: match scout scales do not match synced pit scout values for this event:\n${pitMismatchMessages.join("\n")}\n\nSubmit anyway?`
