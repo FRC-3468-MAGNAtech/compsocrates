@@ -289,6 +289,15 @@ function sumCategoryTargets(targets: CategoryTargets, categories: MatchCategory[
   return categories.reduce((sum, category) => sum + parseTargetNumber(targets[category]), 0);
 }
 
+function getSingleTargetValue(targets: CategoryTargets): string {
+  return (
+    String(targets.qualification || "").trim() ||
+    String(targets.practice || "").trim() ||
+    String(targets.semifinals || "").trim() ||
+    String(targets.finals || "").trim()
+  );
+}
+
 function getScoutIdentity(entry: ScoutStatusEntry): { id: string; name: string } {
   const name = String(entry.scoutName || entry.helperName || "Unknown Scout").trim() || "Unknown Scout";
   const id = String(entry.scoutId || entry.scoutName || entry.helperName || "unknown").trim() || "unknown";
@@ -305,6 +314,10 @@ function isTeamCoverageForm(formType: ScoutStatusFormType): boolean {
 
 function isAllianceCoverageForm(formType: ScoutStatusFormType): boolean {
   return formType === "match-strategy" || formType === "drive-reflection";
+}
+
+function isHelperForm(formType: ScoutStatusFormType): boolean {
+  return formType === "helper";
 }
 
 function parseManualTeamCsv(raw: string): string[] {
@@ -670,12 +683,17 @@ function ScoutStatusContent() {
       return Number.isFinite(num) && num > 0 ? num : null;
     };
     try {
-      const cleanedDraft: CategoryTargets = {
-        practice: maxMatchesDraft.practice,
-        qualification: maxMatchesDraft.qualification,
-        semifinals: maxMatchesDraft.semifinals,
-        finals: maxMatchesDraft.finals,
-      };
+      const cleanedDraft: CategoryTargets = isTeamCoverageSelected
+        ? {
+            ...EMPTY_CATEGORY_TARGETS,
+            qualification: getSingleTargetValue(maxMatchesDraft),
+          }
+        : {
+            practice: maxMatchesDraft.practice,
+            qualification: maxMatchesDraft.qualification,
+            semifinals: maxMatchesDraft.semifinals,
+            finals: maxMatchesDraft.finals,
+          };
       const nextTargets = {
         ...maxMatchesTargets,
         [selectedFormType]: cleanedDraft,
@@ -779,12 +797,22 @@ function ScoutStatusContent() {
           const byScout = (forms as Record<string, Record<string, CategoryTargets>>)[option.id] || {};
           const nextByScout: Record<string, Record<MatchCategory, number | null>> = {};
           Object.entries(byScout).forEach(([scoutId, targets]) => {
-            nextByScout[scoutId] = {
-              practice: parseValue(targets.practice),
-              qualification: parseValue(targets.qualification),
-              semifinals: parseValue(targets.semifinals),
-              finals: parseValue(targets.finals),
-            };
+            if (isTeamCoverageSelected) {
+              const single = getSingleTargetValue(targets);
+              nextByScout[scoutId] = {
+                practice: null,
+                qualification: parseValue(single),
+                semifinals: null,
+                finals: null,
+              };
+            } else {
+              nextByScout[scoutId] = {
+                practice: parseValue(targets.practice),
+                qualification: parseValue(targets.qualification),
+                semifinals: parseValue(targets.semifinals),
+                finals: parseValue(targets.finals),
+              };
+            }
           });
           inner[option.id] = nextByScout;
           return inner;
@@ -890,6 +918,15 @@ function ScoutStatusContent() {
     return activeCategories.length > 0 ? activeCategories : CATEGORY_OPTIONS.map((option) => option.id);
   }, [activeCategories, selectedFormType]);
 
+  const isTeamCoverageSelected = useMemo(
+    () => isTeamCoverageForm(selectedFormType),
+    [selectedFormType]
+  );
+  const isHelperSelected = useMemo(
+    () => isHelperForm(selectedFormType),
+    [selectedFormType]
+  );
+
   const currentMaxTargets = useMemo(() => {
     if (selectedEvent !== "all") {
       const eventTargets = maxMatchesTargetsByEvent[selectedEvent]?.[selectedFormType];
@@ -924,22 +961,35 @@ function ScoutStatusContent() {
     });
 
     const rows = Array.from(byScout.values()).map((row) => {
-      if (!isMatchBasedForm(selectedFormType) || activeCategoryList.length === 0) {
+      if (isHelperSelected) {
         return { ...row, targetTotal: 0 };
       }
       const overrideTargets = displayScoutTargets[row.id];
       const mergedTargets = mergeCategoryTargets(currentMaxTargets, overrideTargets);
+      if (isTeamCoverageSelected) {
+        const single = parseTargetNumber(getSingleTargetValue(mergedTargets));
+        return { ...row, targetTotal: single };
+      }
+      if (!isMatchBasedForm(selectedFormType) || activeCategoryList.length === 0) {
+        return { ...row, targetTotal: 0 };
+      }
       const targetTotal = sumCategoryTargets(mergedTargets, activeCategoryList);
       return { ...row, targetTotal };
     });
 
     return rows.sort((a, b) => {
-      const aSort = a.targetTotal > 0 ? a.entries / a.targetTotal : a.entries;
-      const bSort = b.targetTotal > 0 ? b.entries / b.targetTotal : b.entries;
-      if (bSort !== aSort) return bSort - aSort;
-      return b.entries - a.entries;
+      if (b.entries !== a.entries) return b.entries - a.entries;
+      return b.last - a.last;
     });
-  }, [activeCategoryList, currentMaxTargets, displayEntries, displayScoutTargets, selectedFormType]);
+  }, [
+    activeCategoryList,
+    currentMaxTargets,
+    displayEntries,
+    displayScoutTargets,
+    isHelperSelected,
+    isTeamCoverageSelected,
+    selectedFormType,
+  ]);
 
   const coverage = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1323,7 +1373,7 @@ function ScoutStatusContent() {
             </div>
           )}
 
-          {(canManageMaxMatches || hasMaxTargets) && (
+          {(canManageMaxMatches || hasMaxTargets) && !isHelperSelected && (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h2 className="text-lg font-semibold">Max Match Targets</h2>
@@ -1362,22 +1412,46 @@ function ScoutStatusContent() {
                 <p className="text-xs text-gray-500 mb-2">Select a specific event to edit max match targets.</p>
               )}
               {maxMatchesEditing ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl">
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <label key={`max-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
-                      <span>{option.label} Max ({selectedFormLabel})</span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={maxMatchesDraft[option.id]}
-                        onChange={(event) =>
-                          setMaxMatchesDraft((prev) => ({ ...prev, [option.id]: event.target.value }))
-                        }
-                        placeholder="e.g. 12"
-                        className="border rounded px-3 py-1.5 text-sm"
-                      />
-                    </label>
-                  ))}
+                isTeamCoverageSelected ? (
+                  <label className="text-sm text-gray-700 flex flex-col gap-1 max-w-xs">
+                    <span>Max Robot Target ({selectedFormLabel})</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={getSingleTargetValue(maxMatchesDraft)}
+                      onChange={(event) =>
+                        setMaxMatchesDraft({
+                          ...EMPTY_CATEGORY_TARGETS,
+                          qualification: event.target.value,
+                        })
+                      }
+                      placeholder="e.g. 12"
+                      className="border rounded px-3 py-1.5 text-sm"
+                    />
+                  </label>
+                ) : (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl">
+                    {CATEGORY_OPTIONS.map((option) => (
+                      <label key={`max-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
+                        <span>{option.label} Max ({selectedFormLabel})</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={maxMatchesDraft[option.id]}
+                          onChange={(event) =>
+                            setMaxMatchesDraft((prev) => ({ ...prev, [option.id]: event.target.value }))
+                          }
+                          placeholder="e.g. 12"
+                          className="border rounded px-3 py-1.5 text-sm"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )
+              ) : isTeamCoverageSelected ? (
+                <div className="text-sm text-gray-700 border rounded px-3 py-2 max-w-xs flex items-center justify-between">
+                  <span className="font-medium">Max Robot Target</span>
+                  <span>{String(getSingleTargetValue(maxMatchesDraft) || "-")}</span>
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl text-sm text-gray-700">
@@ -1395,7 +1469,7 @@ function ScoutStatusContent() {
             </div>
           )}
 
-          {isMatchBasedForm(selectedFormType) && (canManageMaxMatches || Object.keys(displayScoutTargets).length > 0) && (
+          {!isHelperSelected && (isMatchBasedForm(selectedFormType) || isTeamCoverageSelected) && (canManageMaxMatches || Object.keys(displayScoutTargets).length > 0) && (
             <div className="bg-white rounded-xl shadow-md p-4 mb-6">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h2 className="text-lg font-semibold">Scout Targets</h2>
@@ -1441,19 +1515,46 @@ function ScoutStatusContent() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scout</th>
-                        {CATEGORY_OPTIONS.map((option) => (
-                          <th
-                            key={`scout-target-${option.id}`}
-                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
-                          >
-                            {option.short}
-                          </th>
-                        ))}
+                        {isTeamCoverageSelected ? (
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Robot Target</th>
+                        ) : (
+                          CATEGORY_OPTIONS.map((option) => (
+                            <th
+                              key={`scout-target-${option.id}`}
+                              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                              {option.short}
+                            </th>
+                          ))
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {scoutStats.map((row) => {
                         const targets = displayScoutTargets[row.id] || EMPTY_CATEGORY_TARGETS;
+                        if (isTeamCoverageSelected) {
+                          return (
+                            <tr key={`scout-target-row-${row.id}`}>
+                              <td className="px-4 py-3 font-medium">{row.name}</td>
+                              <td className="px-4 py-3">
+                                {scoutTargetsEditing ? (
+                                  <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    value={getSingleTargetValue(targets)}
+                                    onChange={(event) =>
+                                      updateScoutTarget(row.id, "qualification", event.target.value)
+                                    }
+                                    className="border rounded px-2 py-1 text-sm w-24"
+                                    placeholder="-"
+                                  />
+                                ) : (
+                                  <span className="text-sm text-gray-700">{getSingleTargetValue(targets) || "-"}</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        }
                         return (
                           <tr key={`scout-target-row-${row.id}`}>
                             <td className="px-4 py-3 font-medium">{row.name}</td>
@@ -1508,7 +1609,7 @@ function ScoutStatusContent() {
                         <td className="px-4 py-3 font-medium">{row.name}</td>
                         <td className="px-4 py-3">{row.matches.size}</td>
                         <td className="px-4 py-3">
-                          {isMatchBasedForm(selectedFormType) && row.targetTotal > 0
+                          {(isMatchBasedForm(selectedFormType) || isTeamCoverageSelected) && row.targetTotal > 0
                             ? `${row.entries}/${row.targetTotal}`
                             : row.entries}
                         </td>
