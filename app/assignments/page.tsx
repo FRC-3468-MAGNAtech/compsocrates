@@ -2154,7 +2154,21 @@ function buildBalancedIntervalSchedule(
     try {
       const source = assignment.sourceCollection || "teamAssignments";
       const collectionName = source === "matchAssignments" ? "matchAssignments" : "teamAssignments";
-      await deleteDoc(doc(db, collectionName, assignment.id));
+      try {
+        await deleteDoc(doc(db, collectionName, assignment.id));
+      } catch (error) {
+        if (collectionName !== "teamAssignments" || !isPermissionError(error)) throw error;
+        // Fallback: delete mirrored matchAssignments when teamAssignments are write-protected.
+        const mirrorSnap = await getDocs(
+          query(
+            collection(db, "matchAssignments"),
+            where("eventKey", "==", assignment.eventKey),
+            where("assignmentType", "==", "team"),
+            where("teamNumber", "==", assignment.teamNumber)
+          )
+        );
+        await Promise.all(mirrorSnap.docs.map((docSnap) => deleteDoc(doc(db, "matchAssignments", docSnap.id))));
+      }
       try {
         const mirrorSnap = await getDocs(
           query(
@@ -2236,13 +2250,28 @@ function buildBalancedIntervalSchedule(
           : target === "practice"
           ? "practiceAssignments"
           : "matchAssignments";
-      const snap = await getDocs(query(collection(db, collectionName), where("eventKey", "==", eventKey)));
-      const docsToDelete = snap.docs;
+      let docsToDelete: Array<{ id: string }> = [];
+      let teamAssignmentsBlocked = false;
+      if (target === "team") {
+        try {
+          const snap = await getDocs(query(collection(db, collectionName), where("eventKey", "==", eventKey)));
+          docsToDelete = snap.docs;
+        } catch (error) {
+          if (!isPermissionError(error)) throw error;
+          teamAssignmentsBlocked = true;
+          docsToDelete = [];
+        }
+      } else {
+        const snap = await getDocs(query(collection(db, collectionName), where("eventKey", "==", eventKey)));
+        docsToDelete = snap.docs;
+      }
       if (docsToDelete.length === 0 && target !== "team") {
         alert(`No ${targetLabel} found for ${eventLabel}.`);
         return;
       }
-      await Promise.all(docsToDelete.map((assignmentDoc) => deleteDoc(doc(db, collectionName, assignmentDoc.id))));
+      if (!teamAssignmentsBlocked) {
+        await Promise.all(docsToDelete.map((assignmentDoc) => deleteDoc(doc(db, collectionName, assignmentDoc.id))));
+      }
       let extraDeletes = 0;
       if (target === "team") {
         const fallbackSnap = await getDocs(
