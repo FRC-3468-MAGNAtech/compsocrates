@@ -1769,6 +1769,20 @@ function buildMatchScoutOrder(
   return takeSequentialScouts(scouts, startIndex, targetSlots);
 }
 
+function ensureScoutSlots(
+  primary: TeamMember[],
+  fallback: TeamMember[],
+  matchIndex: number,
+  slots: number
+): TeamMember[] {
+  if (slots <= 0) return [];
+  if (primary.length >= slots) return primary.slice(0, slots);
+  if (fallback.length === 0) return primary.slice(0, slots);
+  const needed = slots - primary.length;
+  const extra = takeSequentialScouts(fallback, matchIndex, needed);
+  return [...primary, ...extra].slice(0, slots);
+}
+
 function expandTeamsToSlots(matchTeams: number[], fallbackTeams: number[], slots: number): number[] {
   if (slots <= 0) return [];
   const uniqueMatchTeams = Array.from(new Set(matchTeams.filter((team) => Number.isFinite(team) && team > 0)));
@@ -2462,6 +2476,7 @@ function buildBalancedIntervalSchedule(
         new Set(targetMatches.flatMap((match) => match.teams).filter((team) => Number.isFinite(team)))
       );
       const fallbackTeams = eventTeamOptions.length > 0 ? eventTeamOptions : allTeams;
+      const fallbackTeamsGlobal = fallbackTeams.length > 0 ? fallbackTeams : allTeams;
       const yearFromEvent = parseInt(selectedEvent.slice(0, 4), 10) || getEffectiveNowDate(teamTimeOverride).getFullYear();
       const manualPriorityTeams = Array.from(
         new Set([...(config?.priorityTeams || []), ...(manualPriorityTeamsByEvent[selectedEvent] || []), ...manualPriorityTeamsGlobal])
@@ -2489,8 +2504,8 @@ function buildBalancedIntervalSchedule(
       const hpIndices = getHumanPlayerIndices(desiredSlots);
 
       targetMatches.forEach((match, matchIndex) => {
-        const teamsToAssign = teamsByMatch[matchIndex] || [];
-        const matchScouts =
+        const teamsToAssign = expandTeamsToSlots(teamsByMatch[matchIndex] || [], fallbackTeamsGlobal, desiredSlots);
+        const baseScouts =
           (config?.pattern || "rotate-each-match") === "interval"
             ? intervalSchedule[matchIndex] || []
             : buildMatchScoutOrder(
@@ -2500,6 +2515,7 @@ function buildBalancedIntervalSchedule(
                 config?.pattern || "rotate-each-match",
                 Number(config?.interval || 5)
               );
+        const matchScouts = ensureScoutSlots(baseScouts, scoutOrder, matchIndex, desiredSlots);
         teamsToAssign.slice(0, desiredSlots).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
           if (!scout) return;
@@ -2640,6 +2656,7 @@ function buildBalancedIntervalSchedule(
         const base = lowScoutMode ? teamOrder.slice(0, scoutOrder.length) : teamOrder;
         return expandTeamsToSlots(base, eventTeamOptions, desiredSlots);
       });
+      const fallbackTeamsGlobal = eventTeamOptions.length > 0 ? eventTeamOptions : allPracticeTeams;
       const intervalSchedule =
         (config?.pattern || "rotate-each-match") === "interval"
           ? buildBalancedIntervalSchedule(
@@ -2651,8 +2668,8 @@ function buildBalancedIntervalSchedule(
       const hpIndices = getHumanPlayerIndices(desiredSlots);
 
       targetMatches.forEach((match, matchIndex) => {
-        const teamsToAssign = teamsByMatch[matchIndex] || [];
-        const matchScouts =
+        const teamsToAssign = expandTeamsToSlots(teamsByMatch[matchIndex] || [], fallbackTeamsGlobal, desiredSlots);
+        const baseScouts =
           (config?.pattern || "rotate-each-match") === "interval"
             ? intervalSchedule[matchIndex] || []
             : buildMatchScoutOrder(
@@ -2662,6 +2679,7 @@ function buildBalancedIntervalSchedule(
                 config?.pattern || "rotate-each-match",
                 Number(config?.interval || 5)
               );
+        const matchScouts = ensureScoutSlots(baseScouts, scoutOrder, matchIndex, desiredSlots);
         teamsToAssign.slice(0, desiredSlots).forEach((teamNumber, teamIndex) => {
           const scout = matchScouts[teamIndex];
           if (!scout) return;
