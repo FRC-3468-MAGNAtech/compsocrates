@@ -241,6 +241,10 @@ type PracticeScoutedLike = {
   isPracticeScouting?: boolean;
   practiceMode?: string;
   practiceSessionId?: string;
+  matchType?: string;
+  matchLabel?: string;
+  matchId?: string;
+  matchKey?: string;
 };
 
 type LeadScoutedLike = {
@@ -255,6 +259,7 @@ export function isSubInRequestEntry(entry: { entryType?: string; formType?: stri
 }
 
 export function isPracticeScoutedEntry(entry: PracticeScoutedLike): boolean {
+  if (isPracticeMatchEntry(entry)) return false;
   return Boolean(entry.isPracticeScouting) || Boolean(entry.practiceMode) || Boolean(entry.practiceSessionId);
 }
 
