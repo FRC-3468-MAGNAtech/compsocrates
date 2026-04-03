@@ -545,8 +545,10 @@ function ScoutStatusContent() {
     async function loadMaxMatches() {
       if (!userData?.teamId) return;
       const parseValue = (value: unknown) => {
-        const num = Number(String(value || "").replace(/[^\d]/g, ""));
-        return Number.isFinite(num) && num > 0 ? String(num) : "";
+        const raw = String(value ?? "").replace(/[^\d]/g, "");
+        if (!raw) return "";
+        const num = Number(raw);
+        return Number.isFinite(num) ? String(num) : "";
       };
       const parseCategoryTargets = (value: unknown): CategoryTargets => {
         if (!value || typeof value !== "object") {
@@ -668,8 +670,32 @@ function ScoutStatusContent() {
       return;
     }
     const currentTargets = scoutTargetsByEvent[eventKey]?.[selectedFormType] || {};
+    if (Object.keys(currentTargets).length > 0) {
+      setScoutTargetsDraft(currentTargets);
+      return;
+    }
+    if (scoutTargetsDraftKey && typeof window !== "undefined") {
+      const raw = window.localStorage.getItem(scoutTargetsDraftKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as Record<string, CategoryTargets>;
+          if (parsed && typeof parsed === "object") {
+            setScoutTargetsDraft(parsed);
+            return;
+          }
+        } catch {
+          // Ignore invalid local drafts.
+        }
+      }
+    }
     setScoutTargetsDraft(currentTargets);
-  }, [scoutTargetsByEvent, scoutTargetsEditing, selectedEvent, selectedFormType]);
+  }, [scoutTargetsByEvent, scoutTargetsDraftKey, scoutTargetsEditing, selectedEvent, selectedFormType]);
+
+  useEffect(() => {
+    if (!scoutTargetsEditing) return;
+    if (!scoutTargetsDraftKey || typeof window === "undefined") return;
+    window.localStorage.setItem(scoutTargetsDraftKey, JSON.stringify(scoutTargetsDraft));
+  }, [scoutTargetsDraft, scoutTargetsDraftKey, scoutTargetsEditing]);
 
   async function handleSaveMaxMatches() {
     if (!userData?.teamId) return;
@@ -679,8 +705,10 @@ function ScoutStatusContent() {
     }
     setMaxMatchesSaving(true);
     const parseValue = (value: string) => {
-      const num = Number(String(value || "").replace(/[^\d]/g, ""));
-      return Number.isFinite(num) && num > 0 ? num : null;
+      const raw = String(value ?? "").replace(/[^\d]/g, "");
+      if (!raw) return null;
+      const num = Number(raw);
+      return Number.isFinite(num) ? num : null;
     };
     try {
       const cleanedDraft: CategoryTargets = isTeamCoverageSelected
@@ -781,8 +809,10 @@ function ScoutStatusContent() {
     }
     setScoutTargetsSaving(true);
     const parseValue = (value: string) => {
-      const num = Number(String(value || "").replace(/[^\d]/g, ""));
-      return Number.isFinite(num) && num > 0 ? num : null;
+      const raw = String(value ?? "").replace(/[^\d]/g, "");
+      if (!raw) return null;
+      const num = Number(raw);
+      return Number.isFinite(num) ? num : null;
     };
     try {
       const nextByEvent = {
@@ -826,6 +856,9 @@ function ScoutStatusContent() {
       setScoutTargetsByEvent(nextByEvent);
       setScoutTargetsEditing(false);
       setScoutTargetsSnapshot(null);
+      if (scoutTargetsDraftKey && typeof window !== "undefined") {
+        window.localStorage.removeItem(scoutTargetsDraftKey);
+      }
     } catch (error) {
       console.error("Failed to save scout targets:", error);
       alert("Could not save scout targets.");
@@ -941,6 +974,11 @@ function ScoutStatusContent() {
   }, [scoutTargetsByEvent, selectedEvent, selectedFormType]);
 
   const displayScoutTargets = scoutTargetsEditing ? scoutTargetsDraft : currentScoutTargets;
+  const scoutTargetsDraftKey = useMemo(() => {
+    if (!userData?.teamId) return "";
+    if (!selectedEvent || selectedEvent === "all") return "";
+    return `scout-targets-draft:${userData.teamId}:${selectedEvent}:${selectedFormType}`;
+  }, [selectedEvent, selectedFormType, userData?.teamId]);
 
   const scoutStats = useMemo(() => {
     const byScout = new Map<string, { id: string; name: string; entries: number; matches: Set<string>; last: number }>();
