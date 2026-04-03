@@ -1191,12 +1191,13 @@ function ScoutFormContent() {
           // Fall through to load matches for the detected event even without assignments.
         }
 
-        const assignedEvent =
-          assignedEventCounts.size === 0
-            ? (normalizedCurrent || "app-testing")
-            : (normalizedCurrent && assignedEventCounts.has(normalizedCurrent))
-              ? normalizedCurrent
-              : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
+          const assignedEvent = leadMode && normalizedCurrent && normalizedCurrent !== "app-testing"
+            ? normalizedCurrent
+            : assignedEventCounts.size === 0
+              ? (normalizedCurrent || "app-testing")
+              : (normalizedCurrent && assignedEventCounts.has(normalizedCurrent))
+                ? normalizedCurrent
+                : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
         setEventKey(assignedEvent);
         if (assignedEvent === "app-testing") {
           const fallback = buildFallbackScoutOptions();
