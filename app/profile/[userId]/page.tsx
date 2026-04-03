@@ -73,6 +73,33 @@ function ProfileContent() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
 
+  const roleBadges = useMemo(() => {
+    if (!profile) return [];
+    const merged = new Set<string>();
+    const primaryRole = typeof profile.role === "string" ? profile.role.trim() : "";
+    if (primaryRole) merged.add(primaryRole);
+    const primaryRoles = Array.isArray(profile.roles) ? profile.roles : [];
+    const secondaryRoles = Array.isArray(profile.secondaryRoles) ? profile.secondaryRoles : [];
+    primaryRoles.forEach((role) => {
+      const safe = String(role || "").trim();
+      if (safe) merged.add(safe);
+    });
+    secondaryRoles.forEach((role) => {
+      const safe = String(role || "").trim();
+      if (safe) merged.add(safe);
+    });
+    return Array.from(merged).map((role) => getRoleBadge(role, [role]));
+  }, [profile]);
+
+  const roleBadge = useMemo(() => {
+    if (!profile) return null;
+    const primary = typeof profile.role === "string" ? profile.role : "";
+    const roles = Array.isArray(profile.roles)
+      ? profile.roles.map((role) => String(role || "").trim()).filter(Boolean)
+      : [];
+    return getRoleBadge(primary, roles);
+  }, [profile]);
+
   useEffect(() => {
     if (!canViewAccuracy && sortKey === "accuracy") {
       setSortKey("lastScoutedAt");
@@ -313,29 +340,6 @@ function ProfileContent() {
     stats.totalEntries > 0 && stats.practiceEntries === stats.totalEntries
       ? "Practice Entries"
       : "Scouting Entries";
-  const roleBadge = profile
-    ? getRoleBadge(
-        typeof profile.role === "string" ? profile.role : "",
-        Array.isArray(profile.roles) ? profile.roles.map((role) => String(role || "").trim()).filter(Boolean) : []
-      )
-    : null;
-  const roleBadges = useMemo(() => {
-    if (!profile) return [];
-    const merged = new Set<string>();
-    const primaryRole = typeof profile.role === "string" ? profile.role.trim() : "";
-    if (primaryRole) merged.add(primaryRole);
-    const primaryRoles = Array.isArray(profile.roles) ? profile.roles : [];
-    const secondaryRoles = Array.isArray(profile.secondaryRoles) ? profile.secondaryRoles : [];
-    primaryRoles.forEach((role) => {
-      const safe = String(role || "").trim();
-      if (safe) merged.add(safe);
-    });
-    secondaryRoles.forEach((role) => {
-      const safe = String(role || "").trim();
-      if (safe) merged.add(safe);
-    });
-    return Array.from(merged).map((role) => getRoleBadge(role, [role]));
-  }, [profile]);
   const initials = profile?.displayName
     ?.split(/\s+/)
     .filter(Boolean)
