@@ -1332,65 +1332,65 @@ function AnalyticsPageContent() {
     if (!canManageFlags || !userData?.teamId) return;
     const stateId = flagStateDocId("scoutingEntry", entryId);
     setFlagSavingKey(stateId);
+    const nextState: StoredFlagState = {
+      entityType: "scoutingEntry",
+      entityId: entryId,
+      dismissed: patch.dismissed ?? flagStates[stateId]?.dismissed ?? false,
+      manualFlagged: patch.manualFlagged ?? flagStates[stateId]?.manualFlagged ?? false,
+      dismissedAt: patch.dismissedAt ?? flagStates[stateId]?.dismissedAt,
+      dismissedBy: patch.dismissedBy ?? flagStates[stateId]?.dismissedBy,
+      manualFlaggedAt: patch.manualFlaggedAt ?? flagStates[stateId]?.manualFlaggedAt,
+      manualFlaggedBy: patch.manualFlaggedBy ?? flagStates[stateId]?.manualFlaggedBy,
+      manualReason: patch.manualReason ?? flagStates[stateId]?.manualReason,
+    };
     try {
-      const nextState: StoredFlagState = {
-        entityType: "scoutingEntry",
-        entityId: entryId,
-        dismissed: patch.dismissed ?? flagStates[stateId]?.dismissed ?? false,
-        manualFlagged: patch.manualFlagged ?? flagStates[stateId]?.manualFlagged ?? false,
-        dismissedAt: patch.dismissedAt ?? flagStates[stateId]?.dismissedAt,
-        dismissedBy: patch.dismissedBy ?? flagStates[stateId]?.dismissedBy,
-        manualFlaggedAt: patch.manualFlaggedAt ?? flagStates[stateId]?.manualFlaggedAt,
-        manualFlaggedBy: patch.manualFlaggedBy ?? flagStates[stateId]?.manualFlaggedBy,
-        manualReason: patch.manualReason ?? flagStates[stateId]?.manualReason,
-      };
-        await setDoc(
-          doc(db, "scoutingFlagStates", stateId),
-          {
-            teamId: userData.teamId,
-            ...nextState,
-          },
-          { merge: true }
+      await setDoc(
+        doc(db, "scoutingFlagStates", stateId),
+        {
+          teamId: userData.teamId,
+          ...nextState,
+        },
+        { merge: true }
+      );
+      setFlagStates((prev) => ({
+        ...prev,
+        [stateId]: nextState,
+      }));
+    } catch (error) {
+      console.error("Failed updating scouting entry flag state:", error);
+      try {
+        await updateDoc(doc(db, "scouting", entryId), {
+          flagDismissed: nextState.dismissed,
+          flagDismissedAt: nextState.dismissedAt || null,
+          flagDismissedBy: nextState.dismissedBy || "",
+          manualFlagged: Boolean(nextState.manualFlagged),
+          manualFlaggedAt: nextState.manualFlaggedAt || null,
+          manualFlaggedBy: nextState.manualFlaggedBy || "",
+          manualReason: nextState.manualReason || "",
+        });
+        setRawData((prev) =>
+          prev.map((row) =>
+            row.id === entryId
+              ? {
+                  ...row,
+                  flagDismissed: nextState.dismissed,
+                  flagDismissedAt: nextState.dismissedAt || null,
+                  flagDismissedBy: nextState.dismissedBy || "",
+                  manualFlagged: Boolean(nextState.manualFlagged),
+                  manualFlaggedAt: nextState.manualFlaggedAt || null,
+                  manualFlaggedBy: nextState.manualFlaggedBy || "",
+                  manualReason: nextState.manualReason || "",
+                }
+              : row
+          )
         );
-        setFlagStates((prev) => ({
-          ...prev,
-          [stateId]: nextState,
-        }));
-      } catch (error) {
-        console.error("Failed updating scouting entry flag state:", error);
-        try {
-          await updateDoc(doc(db, "scouting", entryId), {
-            flagDismissed: nextState.dismissed,
-            flagDismissedAt: nextState.dismissedAt || null,
-            flagDismissedBy: nextState.dismissedBy || "",
-            manualFlagged: Boolean(nextState.manualFlagged),
-            manualFlaggedAt: nextState.manualFlaggedAt || null,
-            manualFlaggedBy: nextState.manualFlaggedBy || "",
-            manualReason: nextState.manualReason || "",
-          });
-          setRawData((prev) =>
-            prev.map((row) =>
-              row.id === entryId
-                ? {
-                    ...row,
-                    flagDismissed: nextState.dismissed,
-                    flagDismissedAt: nextState.dismissedAt || null,
-                    flagDismissedBy: nextState.dismissedBy || "",
-                    manualFlagged: Boolean(nextState.manualFlagged),
-                    manualFlaggedAt: nextState.manualFlaggedAt || null,
-                    manualFlaggedBy: nextState.manualFlaggedBy || "",
-                    manualReason: nextState.manualReason || "",
-                  }
-                : row
-            )
-          );
-        } catch (fallbackError) {
-          console.error("Fallback update failed for scouting entry flag state:", fallbackError);
-          alert("Could not update flag state.");
-        }
-      } finally {
-        setFlagSavingKey("");
+      } catch (fallbackError) {
+        console.error("Fallback update failed for scouting entry flag state:", fallbackError);
+        alert("Could not update flag state.");
       }
+    } finally {
+      setFlagSavingKey("");
+    }
     }
 
   async function setScoutingEntryFlagDismissed(entryId: string, dismissed: boolean) {
