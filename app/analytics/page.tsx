@@ -1011,6 +1011,30 @@ function AnalyticsPageContent() {
     });
   }, [rawData, selectedEvent, selectedGame, practiceMatchesOnly, rebuiltEventOptions]);
 
+  const getEntryFlagState = (entry: Entry) => {
+    const stateId = flagStateDocId("scoutingEntry", entry.id);
+    const state = flagStates[stateId];
+    if (state) return state;
+    const dismissed = Boolean((entry as Entry & Record<string, unknown>).flagDismissed);
+    const manualFlagged = Boolean((entry as Entry & Record<string, unknown>).manualFlagged);
+    const manualReason = String((entry as Entry & Record<string, unknown>).manualReason || "");
+    const dismissedAt = Number((entry as Entry & Record<string, unknown>).flagDismissedAt || 0) || undefined;
+    const dismissedBy = String((entry as Entry & Record<string, unknown>).flagDismissedBy || "");
+    const manualFlaggedAt = Number((entry as Entry & Record<string, unknown>).manualFlaggedAt || 0) || undefined;
+    const manualFlaggedBy = String((entry as Entry & Record<string, unknown>).manualFlaggedBy || "");
+    return {
+      entityType: "scoutingEntry",
+      entityId: entry.id,
+      dismissed,
+      manualFlagged,
+      manualReason: manualReason || undefined,
+      dismissedAt,
+      dismissedBy: dismissedBy || undefined,
+      manualFlaggedAt,
+      manualFlaggedBy: manualFlaggedBy || undefined,
+    } as StoredFlagState;
+  };
+
   const allianceAccuracyByEntryId = useMemo(() => {
     const result: Record<string, { accuracy: number | null; scriptStatus: string }> = {};
     const grouped = new Map<string, Entry[]>();
@@ -1328,17 +1352,46 @@ function AnalyticsPageContent() {
         },
         { merge: true }
       );
-      setFlagStates((prev) => ({
-        ...prev,
-        [stateId]: nextState,
-      }));
-    } catch (error) {
-      console.error("Failed updating scouting entry flag state:", error);
-      alert("Could not update flag state.");
-    } finally {
-      setFlagSavingKey("");
+        setFlagStates((prev) => ({
+          ...prev,
+          [stateId]: nextState,
+        }));
+      } catch (error) {
+        console.error("Failed updating scouting entry flag state:", error);
+        try {
+          await updateDoc(doc(db, "scouting", entryId), {
+            flagDismissed: nextState.dismissed,
+            flagDismissedAt: nextState.dismissedAt || null,
+            flagDismissedBy: nextState.dismissedBy || "",
+            manualFlagged: Boolean(nextState.manualFlagged),
+            manualFlaggedAt: nextState.manualFlaggedAt || null,
+            manualFlaggedBy: nextState.manualFlaggedBy || "",
+            manualReason: nextState.manualReason || "",
+          });
+          setRawData((prev) =>
+            prev.map((row) =>
+              row.id === entryId
+                ? {
+                    ...row,
+                    flagDismissed: nextState.dismissed,
+                    flagDismissedAt: nextState.dismissedAt || null,
+                    flagDismissedBy: nextState.dismissedBy || "",
+                    manualFlagged: Boolean(nextState.manualFlagged),
+                    manualFlaggedAt: nextState.manualFlaggedAt || null,
+                    manualFlaggedBy: nextState.manualFlaggedBy || "",
+                    manualReason: nextState.manualReason || "",
+                  }
+                : row
+            )
+          );
+        } catch (fallbackError) {
+          console.error("Fallback update failed for scouting entry flag state:", fallbackError);
+          alert("Could not update flag state.");
+        }
+      } finally {
+        setFlagSavingKey("");
+      }
     }
-  }
 
   async function setScoutingEntryFlagDismissed(entryId: string, dismissed: boolean) {
     await updateScoutingEntryFlagState(entryId, {
@@ -2371,7 +2424,7 @@ function AnalyticsPageContent() {
                 const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
                 const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
                 const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
-                const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
+                const flagState = getEntryFlagState(entry);
                 const isFlagDismissed = Boolean(flagState?.dismissed);
                 const isManualFlagged = Boolean(flagState?.manualFlagged);
                 const autoFlags = isFlagDismissed ? [] : entryFlags;
@@ -2626,7 +2679,7 @@ function AnalyticsPageContent() {
           <tbody>
             {data.map((entry) => {
               const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
-              const flagState = flagStates[flagStateDocId("scoutingEntry", entry.id)];
+              const flagState = getEntryFlagState(entry);
               const isFlagDismissed = Boolean(flagState?.dismissed);
               const isManualFlagged = Boolean(flagState?.manualFlagged);
               const autoFlags = isFlagDismissed ? [] : entryFlags;
@@ -2776,8 +2829,7 @@ function AnalyticsPageContent() {
         <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
             {(() => {
-              const stateId = flagStateDocId("scoutingEntry", flagMenuEntry.id);
-              const flagState = flagStates[stateId];
+              const flagState = getEntryFlagState(flagMenuEntry);
               const entryFlags = evaluateScoutingFlags(flagMenuEntry as unknown as Record<string, unknown>);
               const isDismissed = Boolean(flagState?.dismissed);
               const isManualFlagged = Boolean(flagState?.manualFlagged);
