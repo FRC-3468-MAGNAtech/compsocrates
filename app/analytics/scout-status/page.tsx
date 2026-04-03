@@ -13,7 +13,7 @@ import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
   getEventsForGame,
-  isPracticeMatchEntry,
+  isPracticeScoutedEntry,
   normalizeMatchLabel,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
@@ -78,6 +78,8 @@ type AllianceMatchRow = MatchRow & {
 
 type MatchCategory = "practice" | "qualification" | "semifinals" | "finals";
 
+type CategoryTargets = Record<MatchCategory, string>;
+
 const CATEGORY_OPTIONS: Array<{ id: MatchCategory; label: string; short: string }> = [
   { id: "practice", label: "Practice", short: "P" },
   { id: "qualification", label: "Qualifications", short: "Q" },
@@ -94,6 +96,13 @@ const FORM_OPTIONS: Array<{ id: ScoutStatusFormType; label: string }> = [
   { id: "drive-reflection", label: "Drive Reflection" },
   { id: "helper", label: "Helper" },
 ];
+
+const EMPTY_CATEGORY_TARGETS: CategoryTargets = {
+  practice: "",
+  qualification: "",
+  semifinals: "",
+  finals: "",
+};
 
 function entryTime(entry: ScoutStatusEntry): number {
   const raw = Number(entry.submittedAt ?? entry.timestamp ?? entry.createdAt ?? 0);
@@ -188,6 +197,7 @@ function getMatchCategoryFromRow(match: MatchRow): MatchCategory {
 }
 
 function getEntryCategory(entry: ScoutStatusEntry): MatchCategory {
+  if (isPracticeScoutedEntry(entry)) return "practice";
   const matchType = String(entry.matchType || "").toLowerCase();
   const label = String(entry.matchLabel || entry.matchId || entry.matchKey || "").toLowerCase();
   const matchId = String(entry.matchId || entry.matchKey || "").toLowerCase();
@@ -258,6 +268,25 @@ function parseTeamNumber(value: unknown): number | null {
   const digits = raw.match(/\d+/)?.[0];
   const num = Number(digits ?? raw);
   return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function parseTargetNumber(value: string): number {
+  const num = Number(String(value || "").replace(/[^\d]/g, ""));
+  return Number.isFinite(num) && num > 0 ? num : 0;
+}
+
+function mergeCategoryTargets(base: CategoryTargets, override?: CategoryTargets): CategoryTargets {
+  if (!override) return base;
+  const merged: CategoryTargets = { ...base };
+  (Object.keys(EMPTY_CATEGORY_TARGETS) as MatchCategory[]).forEach((category) => {
+    const value = String(override[category] || "").trim();
+    if (value.length > 0) merged[category] = value;
+  });
+  return merged;
+}
+
+function sumCategoryTargets(targets: CategoryTargets, categories: MatchCategory[]): number {
+  return categories.reduce((sum, category) => sum + parseTargetNumber(targets[category]), 0);
 }
 
 function getScoutIdentity(entry: ScoutStatusEntry): { id: string; name: string } {
@@ -348,19 +377,26 @@ function ScoutStatusContent() {
   const emptyTargets = useMemo(
     () =>
       FORM_OPTIONS.reduce(
-        (acc, option) => ({ ...acc, [option.id]: "" }),
-        {} as Record<ScoutStatusFormType, string>
+        (acc, option) => ({ ...acc, [option.id]: { ...EMPTY_CATEGORY_TARGETS } }),
+        {} as Record<ScoutStatusFormType, CategoryTargets>
       ),
     []
   );
   const [maxMatchesTargetsByEvent, setMaxMatchesTargetsByEvent] = useState<
-    Record<string, Record<ScoutStatusFormType, string>>
+    Record<string, Record<ScoutStatusFormType, CategoryTargets>>
   >({});
-  const [maxMatchesTargets, setMaxMatchesTargets] = useState<Record<ScoutStatusFormType, string>>(emptyTargets);
-  const [maxMatchesTarget, setMaxMatchesTarget] = useState("");
+  const [maxMatchesTargets, setMaxMatchesTargets] = useState<Record<ScoutStatusFormType, CategoryTargets>>(emptyTargets);
+  const [maxMatchesDraft, setMaxMatchesDraft] = useState<CategoryTargets>({ ...EMPTY_CATEGORY_TARGETS });
   const [maxMatchesSaving, setMaxMatchesSaving] = useState(false);
   const [maxMatchesEditing, setMaxMatchesEditing] = useState(false);
-  const [maxMatchesSnapshot, setMaxMatchesSnapshot] = useState<string | null>(null);
+  const [maxMatchesSnapshot, setMaxMatchesSnapshot] = useState<CategoryTargets | null>(null);
+  const [scoutTargetsByEvent, setScoutTargetsByEvent] = useState<
+    Record<string, Record<ScoutStatusFormType, Record<string, CategoryTargets>>>
+  >({});
+  const [scoutTargetsDraft, setScoutTargetsDraft] = useState<Record<string, CategoryTargets>>({});
+  const [scoutTargetsEditing, setScoutTargetsEditing] = useState(false);
+  const [scoutTargetsSaving, setScoutTargetsSaving] = useState(false);
+  const [scoutTargetsSnapshot, setScoutTargetsSnapshot] = useState<Record<string, CategoryTargets> | null>(null);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [matches, setMatches] = useState<MatchRow[]>([]);
@@ -376,11 +412,22 @@ function ScoutStatusContent() {
   }, [userData]);
   const hasMaxTargets = useMemo(
     () =>
-      Object.values(maxMatchesTargets).some((value) => String(value || "").trim().length > 0) ||
-      Object.values(maxMatchesTargetsByEvent).some((targets) =>
+      Object.values(maxMatchesTargets).some((targets) =>
         Object.values(targets).some((value) => String(value || "").trim().length > 0)
+      ) ||
+      Object.values(maxMatchesTargetsByEvent).some((targets) =>
+        Object.values(targets).some((values) =>
+          Object.values(values).some((value) => String(value || "").trim().length > 0)
+        )
+      ) ||
+      Object.values(scoutTargetsByEvent).some((targetsByForm) =>
+        Object.values(targetsByForm).some((targetsByScout) =>
+          Object.values(targetsByScout).some((values) =>
+            Object.values(values).some((value) => String(value || "").trim().length > 0)
+          )
+        )
       ),
-    [maxMatchesTargets, maxMatchesTargetsByEvent]
+    [maxMatchesTargets, maxMatchesTargetsByEvent, scoutTargetsByEvent]
   );
   const selectedFormLabel = useMemo(
     () => FORM_OPTIONS.find((option) => option.id === selectedFormType)?.label || "Form",
@@ -488,22 +535,37 @@ function ScoutStatusContent() {
         const num = Number(String(value || "").replace(/[^\d]/g, ""));
         return Number.isFinite(num) && num > 0 ? String(num) : "";
       };
+      const parseCategoryTargets = (value: unknown): CategoryTargets => {
+        if (!value || typeof value !== "object") {
+          const fallback = parseValue(value);
+          return { ...EMPTY_CATEGORY_TARGETS, qualification: fallback };
+        }
+        const record = value as Record<string, unknown>;
+        return {
+          practice: parseValue(record.practice),
+          qualification: parseValue(record.qualification ?? record.qualifications ?? record.qual),
+          semifinals: parseValue(record.semifinals ?? record.semiFinals ?? record.semi),
+          finals: parseValue(record.finals ?? record.final ?? record.f),
+        };
+      };
       try {
         const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
         if (!teamDoc.exists()) return;
         const data = teamDoc.data() as Record<string, unknown>;
         const storedByForm = data.scoutStatusMaxMatchesByForm;
         const storedByEvent = data.scoutStatusMaxMatchesByEvent;
+        const storedByScout = data.scoutStatusMaxMatchesByScoutByEvent;
         let nextTargets = { ...emptyTargets };
-        let nextByEvent: Record<string, Record<ScoutStatusFormType, string>> = {};
+        let nextByEvent: Record<string, Record<ScoutStatusFormType, CategoryTargets>> = {};
+        let nextByScout: Record<string, Record<ScoutStatusFormType, Record<string, CategoryTargets>>> = {};
 
         if (storedByEvent && typeof storedByEvent === "object") {
           const record = storedByEvent as Record<string, Record<string, unknown>>;
           Object.entries(record).forEach(([eventKey, values]) => {
             if (!values || typeof values !== "object") return;
-            const next: Record<ScoutStatusFormType, string> = { ...emptyTargets };
+            const next: Record<ScoutStatusFormType, CategoryTargets> = { ...emptyTargets };
             FORM_OPTIONS.forEach((option) => {
-              next[option.id] = parseValue((values as Record<string, unknown>)[option.id]);
+              next[option.id] = parseCategoryTargets((values as Record<string, unknown>)[option.id]);
             });
             nextByEvent[eventKey] = next;
           });
@@ -512,7 +574,7 @@ function ScoutStatusContent() {
         if (storedByForm && typeof storedByForm === "object") {
           const record = storedByForm as Record<string, unknown>;
           FORM_OPTIONS.forEach((option) => {
-            nextTargets[option.id] = parseValue(record[option.id]);
+            nextTargets[option.id] = parseCategoryTargets(record[option.id]);
           });
         } else {
           const stored = data.scoutStatusMaxMatches;
@@ -528,24 +590,48 @@ function ScoutStatusContent() {
                 storedRecord.practice ??
                 storedRecord.semifinals ??
                 storedRecord.finals ??
+                storedRecord.total ??
+                storedRecord.match ??
+                storedRecord.matches ??
+                storedRecord.entries ??
+                storedRecord.entry ??
                 ""
             );
+          } else if (typeof stored === "string") {
+            fallback = parseValue(stored);
           }
           if (fallback) {
             FORM_OPTIONS.forEach((option) => {
-              nextTargets[option.id] = fallback;
+              nextTargets[option.id] = { ...EMPTY_CATEGORY_TARGETS, qualification: fallback };
             });
           }
         }
-        const eventKey = selectedEvent || "all";
-        if (eventKey !== "all" && nextByEvent[eventKey]) {
-          nextTargets = nextByEvent[eventKey];
-        } else if (eventKey !== "all") {
-          nextTargets = { ...emptyTargets };
+
+        if (storedByScout && typeof storedByScout === "object") {
+          const record = storedByScout as Record<string, Record<string, unknown>>;
+          Object.entries(record).forEach(([eventKey, forms]) => {
+            if (!forms || typeof forms !== "object") return;
+            const nextFormTargets: Record<ScoutStatusFormType, Record<string, CategoryTargets>> = {} as Record<
+              ScoutStatusFormType,
+              Record<string, CategoryTargets>
+            >;
+            FORM_OPTIONS.forEach((option) => {
+              const formValue = (forms as Record<string, unknown>)[option.id];
+              if (!formValue || typeof formValue !== "object") return;
+              const byScout = formValue as Record<string, unknown>;
+              const scoutTargets: Record<string, CategoryTargets> = {};
+              Object.entries(byScout).forEach(([scoutId, targetValue]) => {
+                scoutTargets[scoutId] = parseCategoryTargets(targetValue);
+              });
+              nextFormTargets[option.id] = scoutTargets;
+            });
+            nextByScout[eventKey] = nextFormTargets;
+          });
         }
+
         setMaxMatchesTargetsByEvent(nextByEvent);
         setMaxMatchesTargets(nextTargets);
-        setMaxMatchesTarget(nextTargets[selectedFormType] || "");
+        setScoutTargetsByEvent(nextByScout);
       } catch (error) {
         console.warn("Failed to load max match targets:", error);
       }
@@ -556,19 +642,21 @@ function ScoutStatusContent() {
   useEffect(() => {
     if (maxMatchesEditing) return;
     const eventKey = selectedEvent || "all";
-    const eventTargets = maxMatchesTargetsByEvent[eventKey];
-    if (eventTargets && eventKey !== "all") {
-      setMaxMatchesTargets(eventTargets);
-      setMaxMatchesTarget(eventTargets[selectedFormType] || "");
-      return;
-    }
-    if (eventKey !== "all") {
-      setMaxMatchesTargets({ ...emptyTargets });
-      setMaxMatchesTarget("");
-      return;
-    }
-    setMaxMatchesTarget(maxMatchesTargets[selectedFormType] || "");
+    const eventTargets = eventKey !== "all" ? maxMatchesTargetsByEvent[eventKey]?.[selectedFormType] : undefined;
+    const fallbackTargets = maxMatchesTargets[selectedFormType] || { ...EMPTY_CATEGORY_TARGETS };
+    setMaxMatchesDraft(eventTargets || fallbackTargets);
   }, [maxMatchesEditing, maxMatchesTargets, maxMatchesTargetsByEvent, selectedFormType, selectedEvent]);
+
+  useEffect(() => {
+    if (scoutTargetsEditing) return;
+    const eventKey = selectedEvent || "all";
+    if (eventKey === "all") {
+      setScoutTargetsDraft({});
+      return;
+    }
+    const currentTargets = scoutTargetsByEvent[eventKey]?.[selectedFormType] || {};
+    setScoutTargetsDraft(currentTargets);
+  }, [scoutTargetsByEvent, scoutTargetsEditing, selectedEvent, selectedFormType]);
 
   async function handleSaveMaxMatches() {
     if (!userData?.teamId) return;
@@ -581,30 +669,47 @@ function ScoutStatusContent() {
       const num = Number(String(value || "").replace(/[^\d]/g, ""));
       return Number.isFinite(num) && num > 0 ? num : null;
     };
-    const parsedValue = parseValue(maxMatchesTarget);
     try {
+      const cleanedDraft: CategoryTargets = {
+        practice: maxMatchesDraft.practice,
+        qualification: maxMatchesDraft.qualification,
+        semifinals: maxMatchesDraft.semifinals,
+        finals: maxMatchesDraft.finals,
+      };
       const nextTargets = {
         ...maxMatchesTargets,
-        [selectedFormType]: parsedValue ? String(parsedValue) : "",
+        [selectedFormType]: cleanedDraft,
       };
       const payloadByForm = FORM_OPTIONS.reduce((acc, option) => {
-        const rawValue = nextTargets[option.id];
-        const num = Number(String(rawValue || "").replace(/[^\d]/g, ""));
-        acc[option.id] = Number.isFinite(num) && num > 0 ? num : null;
+        const values = nextTargets[option.id] || EMPTY_CATEGORY_TARGETS;
+        acc[option.id] = {
+          practice: parseValue(values.practice),
+          qualification: parseValue(values.qualification),
+          semifinals: parseValue(values.semifinals),
+          finals: parseValue(values.finals),
+        };
         return acc;
-      }, {} as Record<ScoutStatusFormType, number | null>);
+      }, {} as Record<ScoutStatusFormType, Record<MatchCategory, number | null>>);
       const nextByEvent = {
         ...maxMatchesTargetsByEvent,
-        [selectedEvent]: nextTargets,
+        [selectedEvent]: {
+          ...(maxMatchesTargetsByEvent[selectedEvent] || emptyTargets),
+          [selectedFormType]: cleanedDraft,
+        },
       };
       const payloadByEvent = Object.entries(nextByEvent).reduce((acc, [eventKey, values]) => {
         acc[eventKey] = FORM_OPTIONS.reduce((inner, option) => {
-          const num = Number(String(values[option.id] || "").replace(/[^\d]/g, ""));
-          inner[option.id] = Number.isFinite(num) && num > 0 ? num : null;
+          const target = values[option.id] || EMPTY_CATEGORY_TARGETS;
+          inner[option.id] = {
+            practice: parseValue(target.practice),
+            qualification: parseValue(target.qualification),
+            semifinals: parseValue(target.semifinals),
+            finals: parseValue(target.finals),
+          };
           return inner;
-        }, {} as Record<ScoutStatusFormType, number | null>);
+        }, {} as Record<ScoutStatusFormType, Record<MatchCategory, number | null>>);
         return acc;
-      }, {} as Record<string, Record<ScoutStatusFormType, number | null>>);
+      }, {} as Record<string, Record<ScoutStatusFormType, Record<MatchCategory, number | null>>>);
 
       await updateDoc(doc(db, "teams", userData.teamId), {
         scoutStatusMaxMatchesByEvent: payloadByEvent,
@@ -624,16 +729,94 @@ function ScoutStatusContent() {
 
   function handleStartEditMaxMatches() {
     if (!canManageMaxMatches) return;
-    setMaxMatchesSnapshot(maxMatchesTarget);
+    setMaxMatchesSnapshot({ ...maxMatchesDraft });
     setMaxMatchesEditing(true);
   }
 
   function handleCancelEditMaxMatches() {
     if (maxMatchesSnapshot !== null) {
-      setMaxMatchesTarget(maxMatchesSnapshot);
+      setMaxMatchesDraft({ ...maxMatchesSnapshot });
     }
     setMaxMatchesEditing(false);
     setMaxMatchesSnapshot(null);
+  }
+
+  function handleStartEditScoutTargets() {
+    if (!canManageMaxMatches) return;
+    setScoutTargetsSnapshot({ ...scoutTargetsDraft });
+    setScoutTargetsEditing(true);
+  }
+
+  function handleCancelEditScoutTargets() {
+    if (scoutTargetsSnapshot !== null) {
+      setScoutTargetsDraft({ ...scoutTargetsSnapshot });
+    }
+    setScoutTargetsEditing(false);
+    setScoutTargetsSnapshot(null);
+  }
+
+  async function handleSaveScoutTargets() {
+    if (!userData?.teamId) return;
+    if (selectedEvent === "all") {
+      alert("Select a specific event to set scout targets.");
+      return;
+    }
+    setScoutTargetsSaving(true);
+    const parseValue = (value: string) => {
+      const num = Number(String(value || "").replace(/[^\d]/g, ""));
+      return Number.isFinite(num) && num > 0 ? num : null;
+    };
+    try {
+      const nextByEvent = {
+        ...scoutTargetsByEvent,
+        [selectedEvent]: {
+          ...(scoutTargetsByEvent[selectedEvent] || {}),
+          [selectedFormType]: { ...scoutTargetsDraft },
+        },
+      };
+      const payloadByEvent = Object.entries(nextByEvent).reduce((acc, [eventKey, forms]) => {
+        acc[eventKey] = FORM_OPTIONS.reduce((inner, option) => {
+          const byScout = (forms as Record<string, Record<string, CategoryTargets>>)[option.id] || {};
+          const nextByScout: Record<string, Record<MatchCategory, number | null>> = {};
+          Object.entries(byScout).forEach(([scoutId, targets]) => {
+            nextByScout[scoutId] = {
+              practice: parseValue(targets.practice),
+              qualification: parseValue(targets.qualification),
+              semifinals: parseValue(targets.semifinals),
+              finals: parseValue(targets.finals),
+            };
+          });
+          inner[option.id] = nextByScout;
+          return inner;
+        }, {} as Record<ScoutStatusFormType, Record<string, Record<MatchCategory, number | null>>>);
+        return acc;
+      }, {} as Record<string, Record<ScoutStatusFormType, Record<string, Record<MatchCategory, number | null>>>>);
+
+      await updateDoc(doc(db, "teams", userData.teamId), {
+        scoutStatusMaxMatchesByScoutByEvent: payloadByEvent,
+      });
+      setScoutTargetsByEvent(nextByEvent);
+      setScoutTargetsEditing(false);
+      setScoutTargetsSnapshot(null);
+    } catch (error) {
+      console.error("Failed to save scout targets:", error);
+      alert("Could not save scout targets.");
+    } finally {
+      setScoutTargetsSaving(false);
+    }
+  }
+
+  function updateScoutTarget(scoutId: string, category: MatchCategory, value: string) {
+    setScoutTargetsDraft((prev) => {
+      const current = prev[scoutId] || { ...EMPTY_CATEGORY_TARGETS };
+      return {
+        ...prev,
+        [scoutId]: {
+          ...current,
+          [category]: value,
+        },
+      };
+    });
   }
 
   useEffect(() => {
@@ -668,7 +851,7 @@ function ScoutStatusContent() {
     const includeLead = selectedFormType === "lead-scout";
     return entries
       .filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, eventFilterOptions, { includeLead }))
-      .filter((entry) => (practiceMatchesOnly ? isPracticeMatchEntry(entry) : !isPracticeMatchEntry(entry)))
+      .filter((entry) => (practiceMatchesOnly ? isPracticeScoutedEntry(entry) : !isPracticeScoutedEntry(entry)))
       .filter((entry) => !entry.excludeFromStats);
   }, [entries, selectedEvent, selectedGame, practiceMatchesOnly, selectedFormType]);
 
@@ -702,6 +885,26 @@ function ScoutStatusContent() {
     [categoryFilteredEntries, filteredEntries, selectedFormType]
   );
 
+  const activeCategoryList = useMemo(() => {
+    if (!isMatchBasedForm(selectedFormType)) return [];
+    return activeCategories.length > 0 ? activeCategories : CATEGORY_OPTIONS.map((option) => option.id);
+  }, [activeCategories, selectedFormType]);
+
+  const currentMaxTargets = useMemo(() => {
+    if (selectedEvent !== "all") {
+      const eventTargets = maxMatchesTargetsByEvent[selectedEvent]?.[selectedFormType];
+      if (eventTargets) return eventTargets;
+    }
+    return maxMatchesTargets[selectedFormType] || { ...EMPTY_CATEGORY_TARGETS };
+  }, [maxMatchesTargets, maxMatchesTargetsByEvent, selectedEvent, selectedFormType]);
+
+  const currentScoutTargets = useMemo(() => {
+    if (selectedEvent === "all") return {};
+    return scoutTargetsByEvent[selectedEvent]?.[selectedFormType] || {};
+  }, [scoutTargetsByEvent, selectedEvent, selectedFormType]);
+
+  const displayScoutTargets = scoutTargetsEditing ? scoutTargetsDraft : currentScoutTargets;
+
   const scoutStats = useMemo(() => {
     const byScout = new Map<string, { id: string; name: string; entries: number; matches: Set<string>; last: number }>();
     displayEntries.forEach((entry) => {
@@ -719,8 +922,24 @@ function ScoutStatusContent() {
       if (time > current.last) current.last = time;
       byScout.set(scoutId, current);
     });
-    return Array.from(byScout.values()).sort((a, b) => b.entries - a.entries);
-  }, [displayEntries, selectedFormType]);
+
+    const rows = Array.from(byScout.values()).map((row) => {
+      if (!isMatchBasedForm(selectedFormType) || activeCategoryList.length === 0) {
+        return { ...row, targetTotal: 0 };
+      }
+      const overrideTargets = displayScoutTargets[row.id];
+      const mergedTargets = mergeCategoryTargets(currentMaxTargets, overrideTargets);
+      const targetTotal = sumCategoryTargets(mergedTargets, activeCategoryList);
+      return { ...row, targetTotal };
+    });
+
+    return rows.sort((a, b) => {
+      const aSort = a.targetTotal > 0 ? a.entries / a.targetTotal : a.entries;
+      const bSort = b.targetTotal > 0 ? b.entries / b.targetTotal : b.entries;
+      if (bSort !== aSort) return bSort - aSort;
+      return b.entries - a.entries;
+    });
+  }, [activeCategoryList, currentMaxTargets, displayEntries, displayScoutTargets, selectedFormType]);
 
   const coverage = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1143,21 +1362,124 @@ function ScoutStatusContent() {
                 <p className="text-xs text-gray-500 mb-2">Select a specific event to edit max match targets.</p>
               )}
               {maxMatchesEditing ? (
-                <label className="text-sm text-gray-700 flex flex-col gap-1 max-w-xs">
-                  <span>Max Matches ({selectedFormLabel})</span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    value={maxMatchesTarget}
-                    onChange={(event) => setMaxMatchesTarget(event.target.value)}
-                    placeholder="e.g. 50"
-                    className="border rounded px-3 py-1.5 text-sm"
-                  />
-                </label>
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl">
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <label key={`max-${option.id}`} className="text-sm text-gray-700 flex flex-col gap-1">
+                      <span>{option.label} Max ({selectedFormLabel})</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={maxMatchesDraft[option.id]}
+                        onChange={(event) =>
+                          setMaxMatchesDraft((prev) => ({ ...prev, [option.id]: event.target.value }))
+                        }
+                        placeholder="e.g. 12"
+                        className="border rounded px-3 py-1.5 text-sm"
+                      />
+                    </label>
+                  ))}
+                </div>
               ) : (
-                <div className="text-sm text-gray-700 border rounded px-3 py-2 max-w-xs flex items-center justify-between">
-                  <span className="font-medium">Max Matches ({selectedFormLabel})</span>
-                  <span>{String(maxMatchesTarget || "-")}</span>
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl text-sm text-gray-700">
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <div
+                      key={`max-view-${option.id}`}
+                      className="border rounded px-3 py-2 flex items-center justify-between"
+                    >
+                      <span className="font-medium">{option.short} Max</span>
+                      <span>{String(maxMatchesDraft[option.id] || "-")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isMatchBasedForm(selectedFormType) && (canManageMaxMatches || Object.keys(displayScoutTargets).length > 0) && (
+            <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h2 className="text-lg font-semibold">Scout Targets</h2>
+                {canManageMaxMatches && selectedEvent !== "all" && !scoutTargetsEditing && (
+                  <button
+                    type="button"
+                    onClick={handleStartEditScoutTargets}
+                    className="px-3 py-1.5 rounded text-sm text-white"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                  >
+                    Edit
+                  </button>
+                )}
+                {canManageMaxMatches && scoutTargetsEditing && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveScoutTargets}
+                      disabled={scoutTargetsSaving}
+                      className="px-3 py-1.5 rounded text-sm text-white"
+                      style={{ backgroundColor: "var(--primary-color)", opacity: scoutTargetsSaving ? 0.7 : 1 }}
+                    >
+                      {scoutTargetsSaving ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelEditScoutTargets}
+                      className="px-3 py-1.5 rounded text-sm border border-gray-300 text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+              {canManageMaxMatches && selectedEvent === "all" && (
+                <p className="text-xs text-gray-500 mb-2">Select a specific event to edit scout targets.</p>
+              )}
+              {scoutStats.length === 0 ? (
+                <p className="text-sm text-gray-600">No scouts with entries to set targets for yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[520px]">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scout</th>
+                        {CATEGORY_OPTIONS.map((option) => (
+                          <th
+                            key={`scout-target-${option.id}`}
+                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                          >
+                            {option.short}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {scoutStats.map((row) => {
+                        const targets = displayScoutTargets[row.id] || EMPTY_CATEGORY_TARGETS;
+                        return (
+                          <tr key={`scout-target-row-${row.id}`}>
+                            <td className="px-4 py-3 font-medium">{row.name}</td>
+                            {CATEGORY_OPTIONS.map((option) => (
+                              <td key={`scout-target-${row.id}-${option.id}`} className="px-4 py-3">
+                                {scoutTargetsEditing ? (
+                                  <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    value={targets[option.id]}
+                                    onChange={(event) =>
+                                      updateScoutTarget(row.id, option.id, event.target.value)
+                                    }
+                                    className="border rounded px-2 py-1 text-sm w-20"
+                                    placeholder="-"
+                                  />
+                                ) : (
+                                  <span className="text-sm text-gray-700">{targets[option.id] || "-"}</span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -1181,16 +1503,20 @@ function ScoutStatusContent() {
                     </td>
                   </tr>
                 ) : (
-                  scoutStats.map((row) => (
-                    <tr key={row.id} data-analytics-search-item="true">
-                      <td className="px-4 py-3 font-medium">{row.name}</td>
-                      <td className="px-4 py-3">{row.matches.size}</td>
-                      <td className="px-4 py-3">{row.entries}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {row.last ? new Date(row.last).toLocaleString() : "-"}
-                      </td>
-                    </tr>
-                  ))
+                    scoutStats.map((row) => (
+                      <tr key={row.id} data-analytics-search-item="true">
+                        <td className="px-4 py-3 font-medium">{row.name}</td>
+                        <td className="px-4 py-3">{row.matches.size}</td>
+                        <td className="px-4 py-3">
+                          {isMatchBasedForm(selectedFormType) && row.targetTotal > 0
+                            ? `${row.entries}/${row.targetTotal}`
+                            : row.entries}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {row.last ? new Date(row.last).toLocaleString() : "-"}
+                        </td>
+                      </tr>
+                    ))
                 )}
               </tbody>
             </table>
