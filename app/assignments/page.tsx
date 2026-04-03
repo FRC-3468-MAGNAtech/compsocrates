@@ -3698,27 +3698,6 @@ function buildBalancedIntervalSchedule(
                     <p className="text-xs text-gray-500 mt-1">
                       Use prefixes: `P` practice, `Q` qualification, `F` finals. Separate ranges with commas.
                     </p>
-                    <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">Randomize Match Ranges</label>
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        value={randomizeRangeInput}
-                        onChange={(e) => setRandomizeRangeInput(e.target.value)}
-                        className="flex-1 min-w-[240px] border rounded p-2"
-                        placeholder="Q12-14, Q20, P1-3"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void randomizeAssignmentsByRangeInput()}
-                        disabled={randomizeRangeInProgress}
-                        className="px-4 py-2 rounded text-white text-sm font-semibold disabled:opacity-60"
-                        style={{ backgroundColor: "var(--primary-color)" }}
-                      >
-                        {randomizeRangeInProgress ? "Randomizing..." : "Randomize Ranges"}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Uses the current randomizer settings (scouts, pattern, interval) and always fills 6 slots per match.
-                    </p>
                   </div>
                 )}
                 <div className="overflow-x-auto">
@@ -4420,6 +4399,32 @@ function buildBalancedIntervalSchedule(
                     </div>
                   )}
                 </div>
+
+                {randomizeUsesMatches && (
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Randomize Match Ranges</label>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        value={randomizeRangeInput}
+                        onChange={(e) => setRandomizeRangeInput(e.target.value)}
+                        className="flex-1 min-w-[240px] border rounded p-2"
+                        placeholder="Q12-14, Q20, P1-3"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void randomizeAssignmentsByRangeInput()}
+                        disabled={randomizeRangeInProgress}
+                        className="px-4 py-2 rounded text-white text-sm font-semibold disabled:opacity-60"
+                        style={{ backgroundColor: "var(--primary-color)" }}
+                      >
+                        {randomizeRangeInProgress ? "Randomizing..." : "Randomize Ranges"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use prefixes: `P` practice, `Q` qualification, `F` finals. Separate ranges with commas.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex gap-3 mt-6">
                   <button
