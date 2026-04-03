@@ -1344,14 +1344,14 @@ function AnalyticsPageContent() {
         manualFlaggedBy: patch.manualFlaggedBy ?? flagStates[stateId]?.manualFlaggedBy,
         manualReason: patch.manualReason ?? flagStates[stateId]?.manualReason,
       };
-      await setDoc(
-        doc(db, "scoutingFlagStates", stateId),
-        {
-          teamId: userData.teamId,
-          ...nextState,
-        },
-        { merge: true }
-      );
+        await setDoc(
+          doc(db, "scoutingFlagStates", stateId),
+          {
+            teamId: userData.teamId,
+            ...nextState,
+          },
+          { merge: true }
+        );
         setFlagStates((prev) => ({
           ...prev,
           [stateId]: nextState,
