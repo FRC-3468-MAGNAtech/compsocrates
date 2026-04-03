@@ -2828,11 +2828,12 @@ function AnalyticsPageContent() {
       {flagMenuEntry && canManageFlags && (
         <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-            {(() => {
-              const flagState = getEntryFlagState(flagMenuEntry);
-              const entryFlags = evaluateScoutingFlags(flagMenuEntry as unknown as Record<string, unknown>);
-              const isDismissed = Boolean(flagState?.dismissed);
-              const isManualFlagged = Boolean(flagState?.manualFlagged);
+              {(() => {
+                const flagState = getEntryFlagState(flagMenuEntry);
+                const stateId = flagStateDocId("scoutingEntry", flagMenuEntry.id);
+                const entryFlags = evaluateScoutingFlags(flagMenuEntry as unknown as Record<string, unknown>);
+                const isDismissed = Boolean(flagState?.dismissed);
+                const isManualFlagged = Boolean(flagState?.manualFlagged);
               const isExcluded = Boolean(flagMenuEntry.excludeFromStats);
               const manualReasonValue = flagState?.manualReason || manualFlagReason;
               const reasonLabel =
