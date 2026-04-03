@@ -4193,15 +4193,16 @@ function buildBalancedIntervalSchedule(
                   )}
                   {randomizeUsesMatches && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Matches To Randomize</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Match Ranges To Randomize</label>
                       <input
-                        type="number"
-                        min={1}
-                        value={randomizeMatchCount}
-                        onChange={(e) => setRandomizeMatchCount(e.target.value.replace(/[^\d]/g, ""))}
+                        value={randomizeRangeInput}
+                        onChange={(e) => setRandomizeRangeInput(e.target.value)}
                         className="w-full border rounded p-2"
-                        placeholder="Leave blank for all upcoming matches"
+                        placeholder="Q12-14, Q20, P1-3 (leave blank for all upcoming)"
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Use prefixes: `P` practice, `Q` qualification, `F` finals. Separate ranges with commas.
+                      </p>
                     </div>
                   )}
                   {randomizeTarget === "match" && (
@@ -4400,45 +4401,26 @@ function buildBalancedIntervalSchedule(
                   )}
                 </div>
 
-                {randomizeUsesMatches && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Randomize Match Ranges</label>
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        value={randomizeRangeInput}
-                        onChange={(e) => setRandomizeRangeInput(e.target.value)}
-                        className="flex-1 min-w-[240px] border rounded p-2"
-                        placeholder="Q12-14, Q20, P1-3"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void randomizeAssignmentsByRangeInput()}
-                        disabled={randomizeRangeInProgress}
-                        className="px-4 py-2 rounded text-white text-sm font-semibold disabled:opacity-60"
-                        style={{ backgroundColor: "var(--primary-color)" }}
-                      >
-                        {randomizeRangeInProgress ? "Randomizing..." : "Randomize Ranges"}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Use prefixes: `P` practice, `Q` qualification, `F` finals. Separate ranges with commas.
-                    </p>
-                  </div>
-                )}
-
                 <div className="flex gap-3 mt-6">
                   <button
                     type="button"
-                    onClick={() => void runRandomizeFromConfig()}
+                    onClick={() => {
+                      if (randomizeUsesMatches && randomizeRangeInput.trim()) {
+                        void randomizeAssignmentsByRangeInput();
+                        return;
+                      }
+                      void runRandomizeFromConfig();
+                    }}
                     className="flex-1 py-2 rounded text-white font-semibold"
                     style={{ backgroundColor: "var(--primary-color)" }}
                     disabled={
                       randomizeScoutIds.length === 0 ||
+                      (randomizeUsesMatches && randomizeRangeInProgress) ||
                       (randomizeTarget === "practice" && !randomizePracticeEventKey) ||
                       ((randomizeTarget === "pit" || randomizeTarget === "team") && !selectedEvent)
                     }
                   >
-                    Run Randomize
+                    {randomizeRangeInProgress ? "Randomizing..." : "Run Randomize"}
                   </button>
                   <button
                     type="button"
