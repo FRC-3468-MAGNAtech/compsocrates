@@ -336,14 +336,14 @@ function PerformanceReliabilityContent() {
             ) : (
               <div className="mt-4 h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart>
+                  <ScatterChart margin={{ bottom: 32 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       type="number"
                       dataKey="power"
                       name="Power"
                       tick={{ fontSize: 12 }}
-                      label={{ value: "Average Match Score (Power)", position: "insideBottom", offset: -8, fontSize: 12 }}
+                      label={{ value: "Average Match Score (Power)", position: "bottom", offset: 12, fontSize: 12 }}
                     />
                     <YAxis
                       type="number"
