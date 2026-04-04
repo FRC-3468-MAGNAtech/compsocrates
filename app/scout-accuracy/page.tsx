@@ -777,6 +777,10 @@ function ScoutAccuracyContent() {
             });
           }
 
+          if (eligibleEntries.length === 0) {
+            return null;
+          }
+
           const accuracyResult = calculateScoutAccuracy(accuracyInputs, {
             mode: "real",
             minMatches: 5,
@@ -790,7 +794,7 @@ function ScoutAccuracyContent() {
             role: member.role,
             roles: member.roles,
             totalEntries: eligibleEntries.length,
-            practiceSessionsCompleted: accuracyResult.totalMatches,
+            practiceSessionsCompleted: eligibleEntries.length,
             averageAccuracy,
             confidenceLevel: accuracyResult.confidenceLevel,
             status: accuracyResult.status,
