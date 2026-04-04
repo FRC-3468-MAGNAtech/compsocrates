@@ -134,6 +134,15 @@ function PerformanceReliabilityContent() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const interval = window.setInterval(() => {
+      const next = localStorage.getItem("analytics-search-term") || "";
+      setSearchTerm((prev) => (prev === next ? prev : next));
+    }, 500);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem("analytics-selected-game", selectedGame);
     localStorage.setItem("analytics-selected-event", selectedEvent);
     localStorage.setItem("analytics-practice-matches-only", String(practiceMatchesOnly));
@@ -207,6 +216,13 @@ function PerformanceReliabilityContent() {
     if (!numeric) return null;
     return processed.teamStats.some((team) => team.teamNumber === numeric) ? numeric : null;
   }, [processed.teamStats, searchTerm]);
+
+  useEffect(() => {
+    if (!highlightedTeamFromSearch) return;
+    if (activeTeam !== highlightedTeamFromSearch) {
+      setActiveTeam(highlightedTeamFromSearch);
+    }
+  }, [highlightedTeamFromSearch, activeTeam]);
 
   const activeStats: TeamReliabilityStats | undefined = useMemo(
     () => processed.teamStats.find((team) => team.teamNumber === activeTeam),
@@ -300,7 +316,7 @@ function PerformanceReliabilityContent() {
                     <YAxis type="number" dataKey="consistency" name="Consistency" tick={{ fontSize: 12 }} />
                     <Tooltip
                       cursor={{ strokeDasharray: "3 3" }}
-                      formatter={(value: number, name: string, entry) => {
+                      formatter={(value: number, name: string) => {
                         if (name === "power") return [formatNumber(value, 1), "Avg Score"];
                         if (name === "consistency") return [formatNumber(value, 1), "Std Dev"];
                         return [value, name];
@@ -330,6 +346,14 @@ function PerformanceReliabilityContent() {
                               : highlightedTeamFromSearch && point.teamNumber === highlightedTeamFromSearch
                                 ? "#f97316"
                                 : "#fb7185"
+                          }
+                          stroke={
+                            highlightedTeamFromSearch && point.teamNumber === highlightedTeamFromSearch
+                              ? "#b45309"
+                              : undefined
+                          }
+                          strokeWidth={
+                            highlightedTeamFromSearch && point.teamNumber === highlightedTeamFromSearch ? 2 : 0
                           }
                         />
                       ))}
