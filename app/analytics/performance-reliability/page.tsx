@@ -63,6 +63,17 @@ function ScatterTooltip({ active, payload }: TooltipProps<number, string>) {
   );
 }
 
+function LineTooltip({ active, payload, label }: TooltipProps<number, string>) {
+  if (!active || !payload || payload.length === 0) return null;
+  const value = payload[0]?.value as number | undefined;
+  return (
+    <div className="bg-white border border-gray-200 rounded px-3 py-2 text-xs shadow">
+      <div className="font-semibold text-gray-900">{`Match ${label}`}</div>
+      <div className="text-gray-700">Score: {formatNumber(Number(value), 1)}</div>
+    </div>
+  );
+}
+
 function PerformanceReliabilityContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<PerformanceReliabilityEntry[]>([]);
@@ -421,10 +432,7 @@ function PerformanceReliabilityContent() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="matchLabel" tick={{ fontSize: 12 }} />
                       <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip
-                        formatter={(value: number) => [formatNumber(value, 1), "Score"]}
-                        labelFormatter={(label) => `Match ${label}`}
-                      />
+                      <Tooltip content={<LineTooltip />} />
                       <Line
                         type="monotone"
                         dataKey="score"
