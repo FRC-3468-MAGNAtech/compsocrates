@@ -446,6 +446,18 @@ function ScoutStatusContent() {
     () => FORM_OPTIONS.find((option) => option.id === selectedFormType)?.label || "Form",
     [selectedFormType]
   );
+  const currentScoutTargets = useMemo(() => {
+    if (selectedEvent === "all") return {};
+    return scoutTargetsByEvent[selectedEvent]?.[selectedFormType] || {};
+  }, [scoutTargetsByEvent, selectedEvent, selectedFormType]);
+
+  const scoutTargetsDraftKey = useMemo(() => {
+    if (!userData?.teamId) return "";
+    if (!selectedEvent || selectedEvent === "all") return "";
+    return `scout-targets-draft:${userData.teamId}:${selectedEvent}:${selectedFormType}`;
+  }, [selectedEvent, selectedFormType, userData?.teamId]);
+
+  const displayScoutTargets = scoutTargetsEditing ? scoutTargetsDraft : currentScoutTargets;
 
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
@@ -968,17 +980,6 @@ function ScoutStatusContent() {
     return maxMatchesTargets[selectedFormType] || { ...EMPTY_CATEGORY_TARGETS };
   }, [maxMatchesTargets, maxMatchesTargetsByEvent, selectedEvent, selectedFormType]);
 
-  const currentScoutTargets = useMemo(() => {
-    if (selectedEvent === "all") return {};
-    return scoutTargetsByEvent[selectedEvent]?.[selectedFormType] || {};
-  }, [scoutTargetsByEvent, selectedEvent, selectedFormType]);
-
-  const scoutTargetsDraftKey = useMemo(() => {
-    if (!userData?.teamId) return "";
-    if (!selectedEvent || selectedEvent === "all") return "";
-    return `scout-targets-draft:${userData.teamId}:${selectedEvent}:${selectedFormType}`;
-  }, [selectedEvent, selectedFormType, userData?.teamId]);
-  const displayScoutTargets = scoutTargetsEditing ? scoutTargetsDraft : currentScoutTargets;
 
   const scoutStats = useMemo(() => {
     const byScout = new Map<string, { id: string; name: string; entries: number; matches: Set<string>; last: number }>();
