@@ -973,12 +973,12 @@ function ScoutStatusContent() {
     return scoutTargetsByEvent[selectedEvent]?.[selectedFormType] || {};
   }, [scoutTargetsByEvent, selectedEvent, selectedFormType]);
 
-  const displayScoutTargets = scoutTargetsEditing ? scoutTargetsDraft : currentScoutTargets;
   const scoutTargetsDraftKey = useMemo(() => {
     if (!userData?.teamId) return "";
     if (!selectedEvent || selectedEvent === "all") return "";
     return `scout-targets-draft:${userData.teamId}:${selectedEvent}:${selectedFormType}`;
   }, [selectedEvent, selectedFormType, userData?.teamId]);
+  const displayScoutTargets = scoutTargetsEditing ? scoutTargetsDraft : currentScoutTargets;
 
   const scoutStats = useMemo(() => {
     const byScout = new Map<string, { id: string; name: string; entries: number; matches: Set<string>; last: number }>();
