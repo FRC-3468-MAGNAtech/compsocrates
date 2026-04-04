@@ -9,6 +9,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import RobotRadarChart from "@/app/components/RobotRadarChart";
+import ClimbBoxPlot from "@/app/components/ClimbBoxPlot";
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
@@ -74,6 +75,7 @@ type ScoutingEntry = {
     counterOverride?: number;
     counterOverrideMissedFuel?: number;
     humanPlayerFuel?: number;
+    attemptedClimb?: boolean;
     status?: string;
   };
 };
@@ -444,6 +446,19 @@ function RobotRadarPageContent() {
       ) : (
         <div className="bg-white rounded-xl shadow p-4 text-sm text-gray-600">
           Enter a Team A number to generate the radar chart.
+        </div>
+      )}
+
+      {normalizedSelectedTeams.length > 0 && (
+        <div className="bg-white rounded-xl shadow p-4 mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-gray-900">Climb Reliability (REBUILT)</h2>
+            <span className="text-xs text-gray-500">Filtered by accuracy threshold</span>
+          </div>
+          <ClimbBoxPlot
+            entries={filteredEntries}
+            teamNumbers={normalizedSelectedTeams}
+          />
         </div>
       )}
     </AnalyticsShell>
