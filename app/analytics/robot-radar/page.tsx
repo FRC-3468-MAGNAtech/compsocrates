@@ -151,8 +151,8 @@ function RobotRadarPageContent() {
   );
 
   const rebuiltEventOptions = useMemo(
-    () => (selectedGame === "REBUILT" ? getEventOptionsForEntries(entries, selectedGame, detectedEventOptions) : []),
-    [entries, selectedGame, detectedEventOptions]
+    () => (selectedGame === "REBUILT" ? detectedEventOptions : []),
+    [selectedGame, detectedEventOptions]
   );
 
   useEffect(() => {
@@ -244,15 +244,13 @@ function RobotRadarPageContent() {
 
   const teamOptions = useMemo(() => {
     const counts = new Map<string, number>();
-    filteredEntries.forEach((entry) => {
-      const team = String(entry.teamNumber || "").trim();
-      if (!team) return;
-      counts.set(team, (counts.get(team) || 0) + 1);
+    processed.teamStats.forEach((team) => {
+      counts.set(team.teamNumber, team.entriesCount);
     });
     return Array.from(counts.entries())
       .sort((a, b) => Number(a[0]) - Number(b[0]))
       .map(([teamNumber, count]) => ({ teamNumber, count }));
-  }, [filteredEntries]);
+  }, [processed.teamStats]);
 
   const normalizedSelectedTeams = selectedTeams.map((team) => team.replace(/[^0-9]/g, "")).filter(Boolean).slice(0, 2);
   const radarTeams = normalizedSelectedTeams.length === 2
@@ -354,6 +352,12 @@ function RobotRadarPageContent() {
         <p className="text-sm text-gray-600">
           Normalized 0–10 build profile for REBUILT robots. Add a second team to compare overlap and synergy.
         </p>
+        {processed.filteredEntries.length === 0 && (
+          <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            No entries match the current filters. Try lowering the accuracy threshold or confirm accuracy has been
+            recalculated.
+          </p>
+        )}
         {normalizedSelectedTeams.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
             {normalizedSelectedTeams.map((team) => (
