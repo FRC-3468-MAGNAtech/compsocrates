@@ -2197,7 +2197,7 @@ function AnalyticsPageContent() {
           Import CSV
           <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
         </label>
-        {canViewAdminColumns && (
+        {(userData?.role === "coach" || Boolean(userData?.isTeamAdmin)) && (
           <button
             type="button"
             onClick={handleRecalculateAccuracy}
