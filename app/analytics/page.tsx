@@ -758,6 +758,7 @@ function AnalyticsPageContent() {
   const [manualFlagReason, setManualFlagReason] = useState<string>(MANUAL_FLAG_REASONS[0].value);
   const deleteGuardRef = useRef<string | null>(null);
   const accuracyPersistedRef = useRef<Set<string>>(new Set());
+  const [accuracyRecalcNonce, setAccuracyRecalcNonce] = useState(0);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const scoutHeaderRef = useRef<HTMLTableCellElement | null>(null);
   const startingPosHeaderRef = useRef<HTMLTableCellElement | null>(null);
@@ -1160,7 +1161,7 @@ function AnalyticsPageContent() {
         prev.map((entry) => (payloadById[entry.id] ? { ...entry, ...payloadById[entry.id] } : entry))
       );
     });
-  }, [allianceAccuracyByEntryId, canViewAdminColumns, filtered, userData?.teamId]);
+  }, [allianceAccuracyByEntryId, canViewAdminColumns, filtered, userData?.teamId, accuracyRecalcNonce]);
 
   useEffect(() => {
     if (!userData?.teamId) return;
@@ -1455,8 +1456,6 @@ function AnalyticsPageContent() {
         eventKeyUsed: String(entry.accuracyDetails.eventKeyUsed || ""),
         matchLabelUsed: String(entry.accuracyDetails.matchLabelUsed || clickedLabel),
       });
-      setAccuracyModalLoading(false);
-      return;
     }
     const persistAccuracySnapshot = async (
       details: AccuracyDetails,
@@ -1531,6 +1530,7 @@ function AnalyticsPageContent() {
       let allianceColor = inferAllianceColor(entry);
       let officialTeamsForAlliance: string[] = [];
       let matchLabelUsed = clickedLabel;
+      let foulPoints = 0;
       let actualPoints: number | null =
         typeof entry.officialScore === "number"
           ? Number(entry.officialScore)
@@ -1547,13 +1547,20 @@ function AnalyticsPageContent() {
         );
         if (scopedMatchRows.length > 0) {
           const latestSessionRows = chooseLatestEntryPerTeam(scopedMatchRows);
-          let sessionScoutedPoints = latestSessionRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+          const sessionPenaltyPoints =
+            Number(
+              latestSessionRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
+                entry.penaltyPoints ??
+                0
+            ) || 0;
+          let sessionScoutedPoints =
+            latestSessionRows.reduce((sum, row) => sum + scoreEntryBase(row, entryGame), 0) + sessionPenaltyPoints;
           const breakdown = latestSessionRows.map((row) =>
             entryGame === "REBUILT"
               ? getRebuiltBreakdown(row)
               : {
                   teamNumber: String(row.teamNumber || "-"),
-                  total: scoreEntry(row, entryGame),
+                  total: scoreEntryBase(row, entryGame),
                   source: "reefscape" as const,
                   autoFuel: 0,
                   teleFuel: 0,
@@ -1581,12 +1588,7 @@ function AnalyticsPageContent() {
           const details: AccuracyDetails = {
             scoutedPoints: sessionScoutedPoints,
             actualPoints,
-            penaltyPoints:
-              Number(
-                latestSessionRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
-                  entry.penaltyPoints ??
-                  0
-              ) || 0,
+            penaltyPoints: sessionPenaltyPoints,
             allRobotsScouted: latestSessionRows.length >= 3 ? "yes" : "no",
             eventKeyUsed: eventKey,
             matchLabelUsed,
@@ -1603,13 +1605,20 @@ function AnalyticsPageContent() {
             ? latestReferenceRows
             : matchRows.filter((row) => inferAllianceColor(row) === allianceColor);
         const latestAllianceRows = chooseLatestEntryPerTeam(allianceRows);
-        const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+        const penaltyPoints =
+          Number(
+            latestAllianceRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
+              entry.penaltyPoints ??
+              0
+          ) || 0;
+        const scoutedPoints =
+          latestAllianceRows.reduce((sum, row) => sum + scoreEntryBase(row, entryGame), 0) + penaltyPoints;
         const breakdown = latestAllianceRows.map((row) =>
           entryGame === "REBUILT"
             ? getRebuiltBreakdown(row)
             : {
                 teamNumber: String(row.teamNumber || "-"),
-                total: scoreEntry(row, entryGame),
+                total: scoreEntryBase(row, entryGame),
                 source: "reefscape" as const,
                 autoFuel: 0,
                 teleFuel: 0,
@@ -1621,7 +1630,7 @@ function AnalyticsPageContent() {
         const details: AccuracyDetails = {
           scoutedPoints,
           actualPoints,
-          penaltyPoints: Number(entry.penaltyPoints || 0),
+          penaltyPoints,
           allRobotsScouted: "unknown",
           eventKeyUsed: eventKey,
           matchLabelUsed: matchLabelUsed,
@@ -1687,9 +1696,11 @@ function AnalyticsPageContent() {
             if (allianceColor === "red") {
               officialTeamsForAlliance = best.redTeams;
               actualPoints = typeof alliances.red?.score === "number" ? alliances.red.score : actualPoints;
+              foulPoints = Number(best.row.score_breakdown?.red?.foulPoints || 0);
             } else if (allianceColor === "blue") {
               officialTeamsForAlliance = best.blueTeams;
               actualPoints = typeof alliances.blue?.score === "number" ? alliances.blue.score : actualPoints;
+              foulPoints = Number(best.row.score_breakdown?.blue?.foulPoints || 0);
             }
             matchLabelUsed = tbaMatchLabel(best.row);
           }
@@ -1707,13 +1718,21 @@ function AnalyticsPageContent() {
         // If official-team matching collapses rows (bad/missing team keys), keep scouted alliance rows visible.
         latestAllianceRows = latestReferenceRows;
       }
-      const scoutedPoints = latestAllianceRows.reduce((sum, row) => sum + scoreEntry(row, entryGame), 0);
+      const penaltyPoints =
+        Number(
+          foulPoints ||
+            latestAllianceRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
+            entry.penaltyPoints ??
+            0
+        ) || 0;
+      const scoutedPoints =
+        latestAllianceRows.reduce((sum, row) => sum + scoreEntryBase(row, entryGame), 0) + penaltyPoints;
       const breakdown = latestAllianceRows.map((row) =>
         entryGame === "REBUILT"
           ? getRebuiltBreakdown(row)
           : {
               teamNumber: String(row.teamNumber || "-"),
-              total: scoreEntry(row, entryGame),
+              total: scoreEntryBase(row, entryGame),
               source: "reefscape" as const,
               autoFuel: 0,
               teleFuel: 0,
@@ -1732,12 +1751,7 @@ function AnalyticsPageContent() {
       const details: AccuracyDetails = {
         scoutedPoints,
         actualPoints,
-        penaltyPoints:
-          Number(
-            latestAllianceRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
-              entry.penaltyPoints ??
-              0
-          ) || 0,
+        penaltyPoints,
         allRobotsScouted,
         eventKeyUsed: eventKey,
         matchLabelUsed: matchLabelUsed,
@@ -2128,6 +2142,11 @@ function AnalyticsPageContent() {
     reader.readAsText(pendingImportFile);
   }
 
+  function handleRecalculateAccuracy() {
+    accuracyPersistedRef.current = new Set();
+    setAccuracyRecalcNonce(Date.now());
+  }
+
   return (
     <AnalyticsShell
       entriesCount={data.length}
@@ -2171,6 +2190,16 @@ function AnalyticsPageContent() {
           Import CSV
           <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
         </label>
+        {canViewAdminColumns && (
+          <button
+            type="button"
+            onClick={handleRecalculateAccuracy}
+            className="px-3 py-1.5 text-sm rounded bg-rose-600 text-white hover:bg-rose-700"
+            title="Recalculate accuracy for the current filter"
+          >
+            Recalculate Accuracy
+          </button>
+        )}
       </div>
 
       {showImportDialog && (
