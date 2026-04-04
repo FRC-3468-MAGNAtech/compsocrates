@@ -2784,10 +2784,20 @@ function ScoutFormContent() {
   );
 }
 
-export default function Page() {
+function ScoutFormGate() {
+  const searchParams = useSearchParams();
+  const leadMode = searchParams.get("lead") === "1";
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
+    <ProtectedRoute
+      requireAuth={true}
+      allowedRoles={leadMode ? ["coach", "lead-scout"] : ["coach", "scout"]}
+      formKey={leadMode ? "lead-scout-form" : undefined}
+    >
       <ScoutFormContent />
     </ProtectedRoute>
   );
+}
+
+export default function Page() {
+  return <ScoutFormGate />;
 }
