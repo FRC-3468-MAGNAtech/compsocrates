@@ -151,8 +151,8 @@ function RobotRadarPageContent() {
   );
 
   const rebuiltEventOptions = useMemo(
-    () => (selectedGame === "REBUILT" ? detectedEventOptions : []),
-    [selectedGame, detectedEventOptions]
+    () => getEventOptionsForEntries(entries, "REBUILT", detectedEventOptions),
+    [entries, detectedEventOptions]
   );
 
   useEffect(() => {
