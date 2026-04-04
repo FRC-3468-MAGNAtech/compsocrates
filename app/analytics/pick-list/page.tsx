@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
@@ -102,6 +102,7 @@ function PickListContent() {
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [pickedTeams, setPickedTeams] = useState<TeamPick[]>([]);
+  const [pickListLoading, setPickListLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [officialRanks, setOfficialRanks] = useState<Map<string, number>>(new Map());
   const [officialEpa, setOfficialEpa] = useState<Map<string, number | null>>(new Map());
@@ -174,20 +175,64 @@ function PickListContent() {
   }, []);
 
   useEffect(() => {
-    if (!userData?.uid) return;
-    const saved = localStorage.getItem(`pick-list-${userData.uid}`);
-    if (!saved) return;
-    try {
-      setPickedTeams(JSON.parse(saved));
-    } catch {
-      setPickedTeams([]);
+    let cancelled = false;
+    async function loadPickList() {
+      if (!userData?.teamId) {
+        if (!cancelled) {
+          setPickedTeams([]);
+          setPickListLoading(false);
+        }
+        return;
+      }
+      setPickListLoading(true);
+      try {
+        const snap = await getDoc(doc(db, "teamPickLists", userData.teamId));
+        if (!snap.exists()) {
+          if (!cancelled) setPickedTeams([]);
+          return;
+        }
+        const data = snap.data() as { picks?: Array<{ teamNumber?: string; pickOrder?: number }> } | undefined;
+        const picks = Array.isArray(data?.picks) ? data?.picks : [];
+        const normalized = picks
+          .map((pick, index) => ({
+            teamNumber: String(pick.teamNumber || "").trim(),
+            avgScore: 0,
+            highScore: 0,
+            picked: true,
+            pickOrder: Number(pick.pickOrder || index + 1),
+          }))
+          .filter((pick) => Boolean(pick.teamNumber))
+          .sort((a, b) => (a.pickOrder || 0) - (b.pickOrder || 0))
+          .map((pick, index) => ({ ...pick, pickOrder: index + 1 }));
+        if (!cancelled) setPickedTeams(normalized);
+      } catch (error) {
+        console.warn("Failed to load team pick list:", error);
+        if (!cancelled) setPickedTeams([]);
+      } finally {
+        if (!cancelled) setPickListLoading(false);
+      }
     }
-  }, [userData?.uid]);
+    void loadPickList();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.teamId]);
 
   useEffect(() => {
-    if (!userData?.uid) return;
-    localStorage.setItem(`pick-list-${userData.uid}`, JSON.stringify(pickedTeams));
-  }, [pickedTeams, userData?.uid]);
+    if (!canEditPickList || !userData?.teamId) return;
+    if (pickListLoading) return;
+    const payload = {
+      picks: pickedTeams.map((team, index) => ({
+        teamNumber: team.teamNumber,
+        pickOrder: team.pickOrder || index + 1,
+      })),
+      updatedAt: Date.now(),
+      updatedBy: userData?.uid || "",
+    };
+    setDoc(doc(db, "teamPickLists", userData.teamId), payload, { merge: true }).catch((error) => {
+      console.warn("Failed to persist team pick list:", error);
+    });
+  }, [pickedTeams, canEditPickList, userData?.teamId, userData?.uid, pickListLoading]);
 
   const filteredEntries = useMemo(() => {
     const gameFiltered = entries.filter((entry) =>
@@ -447,7 +492,7 @@ function PickListContent() {
         </p>
       )}
 
-      {loading ? (
+      {loading || pickListLoading ? (
         <LoadingSpinner message="Loading pick list..." />
       ) : (
         <div className="grid lg:grid-cols-2 gap-6">
