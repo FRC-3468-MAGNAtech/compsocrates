@@ -57,6 +57,8 @@ function PerformanceReliabilityContent() {
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [accuracyThreshold, setAccuracyThreshold] = useState<(typeof ACCURACY_OPTIONS)[number]>(85);
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"scatter" | "team">("scatter");
+  const [searchTerm, setSearchTerm] = useState("");
   const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
 
   useEffect(() => {
@@ -98,16 +100,29 @@ function PerformanceReliabilityContent() {
     const savedGame = localStorage.getItem("analytics-selected-game");
     const savedEvent = localStorage.getItem("analytics-selected-event");
     const savedPractice = localStorage.getItem("analytics-practice-matches-only");
+    const savedSearch = localStorage.getItem("analytics-search-term");
     const savedAccuracy = localStorage.getItem("analytics-performance-accuracy");
     if (savedGame === "REEFSCAPE" || savedGame === "REBUILT") setSelectedGame(savedGame);
     if (savedEvent) setSelectedEvent(savedEvent);
     if (savedPractice !== null) setPracticeMatchesOnly(savedPractice === "true");
+    if (savedSearch !== null) setSearchTerm(savedSearch);
     if (savedAccuracy) {
       const parsed = Number(savedAccuracy);
       if (ACCURACY_OPTIONS.includes(parsed as (typeof ACCURACY_OPTIONS)[number])) {
         setAccuracyThreshold(parsed as (typeof ACCURACY_OPTIONS)[number]);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function handleStorage(event: StorageEvent) {
+      if (event.key === "analytics-search-term") {
+        setSearchTerm(event.newValue || "");
+      }
+    }
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
   useEffect(() => {
@@ -168,6 +183,23 @@ function PerformanceReliabilityContent() {
     }
   }, [processed.teamStats, activeTeam]);
 
+  useEffect(() => {
+    if (!activeTeam) return;
+    if (viewMode !== "team") return;
+    const exists = processed.teamStats.some((team) => team.teamNumber === activeTeam);
+    if (!exists) {
+      setViewMode("scatter");
+    }
+  }, [activeTeam, processed.teamStats, viewMode]);
+
+  const highlightedTeamFromSearch = useMemo(() => {
+    const normalized = searchTerm.trim();
+    if (!normalized) return null;
+    const numeric = normalized.replace(/[^0-9]/g, "");
+    if (!numeric) return null;
+    return processed.teamStats.some((team) => team.teamNumber === numeric) ? numeric : null;
+  }, [processed.teamStats, searchTerm]);
+
   const activeStats: TeamReliabilityStats | undefined = useMemo(
     () => processed.teamStats.find((team) => team.teamNumber === activeTeam),
     [processed.teamStats, activeTeam]
@@ -222,7 +254,12 @@ function PerformanceReliabilityContent() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <p className="text-xs text-gray-500">
+          Power shows the average score per team. Consistency is the standard deviation of those scores (lower is steadier).
+          Click a dot to see every match for that robot.
+        </p>
+
+        <div className="grid grid-cols-1 gap-6">
           <div className="bg-white rounded-lg shadow p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -233,7 +270,18 @@ function PerformanceReliabilityContent() {
                 {scatterData.length} teams
               </div>
             </div>
-            {scatterData.length === 0 ? (
+            {viewMode !== "scatter" ? (
+              <div className="mt-4 text-sm text-gray-600">
+                Viewing team details.{" "}
+                <button
+                  type="button"
+                  className="text-rose-700 font-semibold hover:underline"
+                  onClick={() => setViewMode("scatter")}
+                >
+                  Back to scatter plot
+                </button>
+              </div>
+            ) : scatterData.length === 0 ? (
               <div className="mt-6 text-sm text-gray-500">No teams match this filter yet.</div>
             ) : (
               <div className="mt-4 h-72">
@@ -259,13 +307,22 @@ function PerformanceReliabilityContent() {
                       fill="#f87171"
                       onClick={(payload) => {
                         const point = payload as ScatterPoint | undefined;
-                        if (point?.teamNumber) setActiveTeam(point.teamNumber);
+                        if (point?.teamNumber) {
+                          setActiveTeam(point.teamNumber);
+                          setViewMode("team");
+                        }
                       }}
                     >
                       {scatterData.map((point) => (
                         <Cell
                           key={point.teamNumber}
-                          fill={point.teamNumber === activeTeam ? "#be123c" : "#fb7185"}
+                          fill={
+                            point.teamNumber === activeTeam
+                              ? "#be123c"
+                              : highlightedTeamFromSearch && point.teamNumber === highlightedTeamFromSearch
+                                ? "#f97316"
+                                : "#fb7185"
+                          }
                         />
                       ))}
                     </Scatter>
@@ -275,7 +332,8 @@ function PerformanceReliabilityContent() {
             )}
           </div>
 
-          <div className="bg-white rounded-lg shadow p-4">
+          {viewMode === "team" && (
+            <div className="bg-white rounded-lg shadow p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Match Trend</h2>
@@ -333,6 +391,7 @@ function PerformanceReliabilityContent() {
               </>
             )}
           </div>
+          )}
         </div>
       </div>
     </AnalyticsShell>
