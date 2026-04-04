@@ -3,14 +3,16 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import RobotRadarChart from "@/app/components/RobotRadarChart";
 import {
+  entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
+  isPracticeScoutedEntry,
   type AnalyticsEventOption,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
@@ -76,9 +78,37 @@ type ScoutingEntry = {
   };
 };
 
+type LeadScoutEntry = {
+  id?: string;
+  eventKey?: string;
+  eventName?: string;
+  matchId?: string;
+  matchKey?: string;
+  matchLabel?: string;
+  matchType?: string;
+  matchNumber?: string;
+  submittedAt?: number;
+  timestamp?: number;
+  game?: string;
+  isPracticeScouting?: boolean;
+  practiceMode?: string;
+  practiceSessionId?: string;
+  excludeFromStats?: boolean;
+  entryType?: string;
+  isLeadScouting?: boolean;
+  robots?: Array<{
+    teamNumber?: string;
+    skillLevel?: number;
+  }>;
+  overallAlliance?: {
+    skillLevel?: number;
+  };
+};
+
 function RobotRadarPageContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
+  const [leadEntries, setLeadEntries] = useState<LeadScoutEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -171,12 +201,48 @@ function RobotRadarPageContent() {
       try {
         const scoutSnap = await getDocs(collection(db, "scouting"));
         setEntries(scoutSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+
+        const teamId = String(userData?.teamId || "").trim();
+        const leadQuery = teamId
+          ? query(collection(db, "leadScouting"), where("teamId", "==", teamId))
+          : collection(db, "leadScouting");
+        const scoutingLeadQuery = teamId
+          ? query(collection(db, "scouting"), where("entryType", "==", "lead"), where("teamId", "==", teamId))
+          : query(collection(db, "scouting"), where("entryType", "==", "lead"));
+
+        let leadEntriesFromLead: LeadScoutEntry[] = [];
+        let leadEntriesFromScouting: LeadScoutEntry[] = [];
+        try {
+          const leadDocs = await getDocs(leadQuery);
+          leadEntriesFromLead = leadDocs.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+            entryType: "lead",
+            isLeadScouting: true,
+          }));
+        } catch (error) {
+          console.warn("Lead scout radar: insufficient permissions for leadScouting.", error);
+        }
+
+        try {
+          const scoutingLeadDocs = await getDocs(scoutingLeadQuery);
+          leadEntriesFromScouting = scoutingLeadDocs.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+            entryType: "lead",
+            isLeadScouting: true,
+          }));
+        } catch (error) {
+          console.warn("Lead scout radar: insufficient permissions for lead entries in scouting.", error);
+        }
+
+        setLeadEntries([...leadEntriesFromLead, ...leadEntriesFromScouting] as LeadScoutEntry[]);
       } finally {
         setLoading(false);
       }
     }
     void loadEntries();
-  }, []);
+  }, [userData?.teamId]);
 
   const processed = useMemo(
     () =>
@@ -191,6 +257,31 @@ function RobotRadarPageContent() {
   );
 
   const filteredEntries = processed.filteredEntries as ScoutingEntry[];
+
+  const normalizedLeadEntries = useMemo(
+    () =>
+      leadEntries.map((entry) => ({
+        ...entry,
+        game: entry.game || "REBUILT",
+        timestamp: entry.timestamp || entry.submittedAt || 0,
+      })),
+    [leadEntries]
+  );
+
+  const filteredLeadEntries = useMemo(() => {
+    return normalizedLeadEntries.filter((entry) => {
+      if (entry.excludeFromStats) return false;
+      if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, rebuiltEventOptions, { includeLead: true })) {
+        return false;
+      }
+      if (practiceMatchesOnly) {
+        if (!isPracticeScoutedEntry(entry)) return false;
+      } else if (isPracticeScoutedEntry(entry)) {
+        return false;
+      }
+      return true;
+    });
+  }, [normalizedLeadEntries, practiceMatchesOnly, rebuiltEventOptions, selectedEvent, selectedGame]);
 
   const filteredTeamSet = useMemo(
     () => new Set(filteredEntries.map((row) => String(row.teamNumber || "").trim()).filter(Boolean)),
@@ -346,6 +437,7 @@ function RobotRadarPageContent() {
         <div className="bg-white rounded-xl shadow p-4">
           <RobotRadarChart
             entries={filteredEntries}
+            leadEntries={filteredLeadEntries}
             teamNumbers={radarTeams}
           />
         </div>

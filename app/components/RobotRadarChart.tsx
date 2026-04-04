@@ -78,7 +78,11 @@ function towerScore(status?: string) {
 }
 
 function resolveSkillLevel(entry: LeadScoutEntry, teamNumber: string) {
-  const match = entry.robots?.find((robot) => String(robot.teamNumber || "").trim() === teamNumber);
+  const normalizedTeam = String(teamNumber || "").trim().replace(/[^0-9]/g, "");
+  const match = entry.robots?.find((robot) => {
+    const robotTeam = String(robot.teamNumber || "").trim().replace(/[^0-9]/g, "");
+    return robotTeam === normalizedTeam;
+  });
   if (typeof match?.skillLevel === "number") return match.skillLevel;
   if (typeof entry.overallAlliance?.skillLevel === "number") return entry.overallAlliance.skillLevel;
   return null;
@@ -136,7 +140,7 @@ export default function RobotRadarChart({
     leadEntries.forEach((entry) => {
       const robots = entry.robots || [];
       robots.forEach((robot) => {
-        const team = String(robot.teamNumber || "").trim();
+        const team = String(robot.teamNumber || "").trim().replace(/[^0-9]/g, "");
         if (!team) return;
         const level = resolveSkillLevel(entry, team);
         if (typeof level !== "number") return;
