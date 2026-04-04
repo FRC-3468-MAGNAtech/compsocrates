@@ -759,6 +759,7 @@ function AnalyticsPageContent() {
   const deleteGuardRef = useRef<string | null>(null);
   const accuracyPersistedRef = useRef<Set<string>>(new Set());
   const [accuracyRecalcNonce, setAccuracyRecalcNonce] = useState(0);
+  const [accuracyRecalcRunning, setAccuracyRecalcRunning] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const scoutHeaderRef = useRef<HTMLTableCellElement | null>(null);
   const startingPosHeaderRef = useRef<HTMLTableCellElement | null>(null);
@@ -1155,13 +1156,17 @@ function AnalyticsPageContent() {
         })
       );
     });
-    if (updates.length === 0) return;
+    if (updates.length === 0) {
+      if (accuracyRecalcRunning) setAccuracyRecalcRunning(false);
+      return;
+    }
     Promise.all(updates).then(() => {
       setRawData((prev) =>
         prev.map((entry) => (payloadById[entry.id] ? { ...entry, ...payloadById[entry.id] } : entry))
       );
+      setAccuracyRecalcRunning(false);
     });
-  }, [allianceAccuracyByEntryId, canViewAdminColumns, filtered, userData?.teamId, accuracyRecalcNonce]);
+  }, [allianceAccuracyByEntryId, canViewAdminColumns, filtered, userData?.teamId, accuracyRecalcNonce, accuracyRecalcRunning]);
 
   useEffect(() => {
     if (!userData?.teamId) return;
@@ -2145,6 +2150,7 @@ function AnalyticsPageContent() {
 
   function handleRecalculateAccuracy() {
     accuracyPersistedRef.current = new Set();
+    setAccuracyRecalcRunning(true);
     setAccuracyRecalcNonce(Date.now());
   }
 
@@ -2195,10 +2201,11 @@ function AnalyticsPageContent() {
           <button
             type="button"
             onClick={handleRecalculateAccuracy}
-            className="px-3 py-1.5 text-sm rounded bg-rose-600 text-white hover:bg-rose-700"
+            className="px-3 py-1.5 text-sm rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
             title="Recalculate accuracy for the current filter"
+            disabled={accuracyRecalcRunning}
           >
-            Recalculate Accuracy
+            {accuracyRecalcRunning ? "Recalculating..." : "Recalculate Accuracy"}
           </button>
         )}
       </div>
