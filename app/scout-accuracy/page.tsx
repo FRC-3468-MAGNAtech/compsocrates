@@ -10,6 +10,12 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import DataSourceCredits from "@/app/components/DataSourceCredits";
 import { Users, Target, ClipboardList, ChevronDown } from "lucide-react";
 import { calculateAccuracy } from "@/app/utils/practiceTypes";
+import {
+  calculateMatchAccuracyFromTotals,
+  calculateScoutAccuracy,
+  type ScoutAccuracyStatus,
+  type ScoutAccuracyConfidence,
+} from "@/app/utils/scoutAccuracy";
 import { getRoleBadge as getTeamRoleBadge, getUserRoles, getRoleLabel, TEAM_ROLES, type TeamRole } from "@/app/utils/roles";
 import { evaluateScoutingFlags, flagStateDocId, type FlagEntityType, type StoredFlagState } from "@/app/utils/scoutingFlags";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
@@ -25,6 +31,9 @@ interface ScoutStats {
   totalEntries: number;
   practiceSessionsCompleted: number;
   averageAccuracy: number;
+  confidenceLevel: ScoutAccuracyConfidence;
+  status: ScoutAccuracyStatus;
+  confirmed: boolean;
   lastPracticeDate: number;
   recentAccuracies: number[];
   recentSessions: Array<{
@@ -142,6 +151,10 @@ type ScoutingEntry = {
     humanPlayerFuel?: number;
     estimatedFuel?: number;
     status?: string;
+  };
+  accuracyDetails?: {
+    scoutedPoints?: number;
+    actualPoints?: number;
   };
 };
 
@@ -271,6 +284,18 @@ function isAccuracyComplete(entry: ScoutingEntry): boolean {
   return status === "complete";
 }
 
+function resolveMatchAccuracy(entry: ScoutingEntry): number | null {
+  const details = entry.accuracyDetails;
+  if (details && typeof details.scoutedPoints === "number" && typeof details.actualPoints === "number") {
+    return calculateMatchAccuracyFromTotals(details.scoutedPoints, details.actualPoints);
+  }
+  if (typeof entry.accuracy === "number" && Number.isFinite(entry.accuracy)) {
+    const normalized = Math.max(0, Math.min(1, entry.accuracy / 100));
+    return normalized;
+  }
+  return null;
+}
+
 function isAllRobotsScouted(entry: ScoutingEntry): boolean {
   const details = (entry as ScoutingEntry & { accuracyDetails?: { allRobotsScouted?: string } }).accuracyDetails;
   if (details && typeof details.allRobotsScouted === "string") {
@@ -291,8 +316,6 @@ type CalculationScope = {
   eventKey: string;
   practiceMode: "trial" | "competitive" | null;
 };
-
-const PRACTICE_WEIGHT = 0.25;
 
 function parseCalculationScope(value: string): CalculationScope {
   const trimmed = String(value || "").trim();
@@ -679,8 +702,8 @@ function ScoutAccuracyContent() {
         const realEntries = baseByEvent.filter((entry) => isAccuracyComplete(entry));
         setRealScoutingEntries(realEntries);
 
-        const practiceByScoutId = new Map<string, { sum: number; count: number }>();
-        const practiceByScoutName = new Map<string, { sum: number; count: number }>();
+        const practiceByScoutId = new Map<string, number[]>();
+        const practiceByScoutName = new Map<string, number[]>();
         if (includePractice && calculationScope.practiceMode) {
           try {
             const practiceSnap = await getDocs(
@@ -702,14 +725,12 @@ function ScoutAccuracyContent() {
               const scoutId = String(data.scoutId || "").trim();
               const scoutName = String(data.scoutName || "").trim().toLowerCase();
               if (scoutId) {
-                const current = practiceByScoutId.get(scoutId) || { sum: 0, count: 0 };
-                current.sum += accuracy;
-                current.count += 1;
+                const current = practiceByScoutId.get(scoutId) || [];
+                current.push(accuracy);
                 practiceByScoutId.set(scoutId, current);
               } else if (scoutName) {
-                const current = practiceByScoutName.get(scoutName) || { sum: 0, count: 0 };
-                current.sum += accuracy;
-                current.count += 1;
+                const current = practiceByScoutName.get(scoutName) || [];
+                current.push(accuracy);
                 practiceByScoutName.set(scoutName, current);
               }
             });
@@ -734,25 +755,32 @@ function ScoutAccuracyContent() {
             .filter((entry) => !entry.excludeFromStats);
           const calculationEntries = filteredEntries.filter((entry) => matchesCalculationEvent(entry));
           const eligibleEntries = calculationEntries.filter((entry) => isAccuracyComplete(entry));
-          const matchKeys = new Set(eligibleEntries.map(getMatchIdentityKey).filter(Boolean));
-          const accuracyEntries = eligibleEntries;
-          const accuracyValues = accuracyEntries
-            .map((entry) => (typeof entry.accuracy === "number" ? Number(entry.accuracy) : NaN))
-            .filter((value) => Number.isFinite(value));
-          const realAccuracySum = accuracyValues.reduce((sum, value) => sum + value, 0);
-          const realAccuracyCount = accuracyValues.length;
+          const accuracyInputs = eligibleEntries
+            .map((entry) => {
+              const accuracy = resolveMatchAccuracy(entry);
+              if (accuracy === null) return null;
+              return { accuracy, environment: "real" as const };
+            })
+            .filter((row): row is { accuracy: number; environment: "real" } => Boolean(row));
+
           const scoutNameKey = String(member.scoutName || "").trim().toLowerCase();
-          const practiceById = practiceByScoutId.get(member.uid) || { sum: 0, count: 0 };
-          const practiceByName = practiceByScoutName.get(scoutNameKey) || { sum: 0, count: 0 };
-          const practiceSum = includePractice ? practiceById.sum + practiceByName.sum : 0;
-          const practiceCount = includePractice ? practiceById.count + practiceByName.count : 0;
-          const practiceAvg = practiceCount > 0 ? practiceSum / practiceCount : 0;
-          const practiceWeight = includePractice && practiceCount > 0 ? PRACTICE_WEIGHT : 0;
-          const realAvg = realAccuracyCount > 0 ? realAccuracySum / realAccuracyCount : 0;
-          const averageAccuracy =
-            realAccuracyCount > 0
-              ? Math.round((realAvg + practiceAvg * practiceWeight) / (1 + practiceWeight))
-              : 0;
+          const practiceById = practiceByScoutId.get(member.uid) || [];
+          const practiceByName = practiceByScoutName.get(scoutNameKey) || [];
+          const practiceAccuracies = includePractice ? [...practiceById, ...practiceByName] : [];
+          if (includePractice && calculationScope.practiceMode) {
+            practiceAccuracies.forEach((accuracy) => {
+              accuracyInputs.push({
+                accuracy: Math.max(0, Math.min(1, accuracy / 100)),
+                environment: calculationScope.practiceMode,
+              });
+            });
+          }
+
+          const accuracyResult = calculateScoutAccuracy(accuracyInputs, {
+            mode: "real",
+            minMatches: 5,
+          });
+          const averageAccuracy = accuracyResult.displayAccuracy;
           const lastSubmit = eligibleEntries.reduce((max, entry) => Math.max(max, getEntryTimestamp(entry)), 0);
 
           return {
@@ -761,8 +789,11 @@ function ScoutAccuracyContent() {
             role: member.role,
             roles: member.roles,
             totalEntries: eligibleEntries.length,
-            practiceSessionsCompleted: matchKeys.size,
+            practiceSessionsCompleted: accuracyResult.totalMatches,
             averageAccuracy,
+            confidenceLevel: accuracyResult.confidenceLevel,
+            status: accuracyResult.status,
+            confirmed: accuracyResult.confirmed,
             lastPracticeDate: lastSubmit || 0,
             recentAccuracies: [],
             recentSessions: [],
@@ -836,8 +867,6 @@ function ScoutAccuracyContent() {
           if (!scoutEntriesBySession.has(sessionId)) scoutEntriesBySession.set(sessionId, []);
           scoutEntriesBySession.get(sessionId)?.push(entry);
         });
-        let totalAccuracy = 0;
-        let includedAccuracyCount = 0;
         let recentAccuracies: number[] = [];
         let recentSessions: ScoutStats["recentSessions"] = [];
         let allSessions: ScoutStats["allSessions"] = [];
@@ -881,8 +910,6 @@ function ScoutAccuracyContent() {
               excluded,
             });
             if (!excluded) {
-              totalAccuracy += Number(data.accuracy || 0);
-              includedAccuracyCount += 1;
               practiceDevicePoints.push({
                 deviceType: sessionDeviceType,
                 accuracy: Number(data.accuracy || 0),
@@ -914,9 +941,16 @@ function ScoutAccuracyContent() {
         recentSessions = sortedTimeline.slice(0, 5).map(withSessionNumber);
         allSessions = sortedTimeline.map(withSessionNumber);
         recentAccuracies = recentSessions.map((row) => row.accuracy);
-        const averageAccuracy = includedAccuracyCount > 0
-          ? Math.round(totalAccuracy / includedAccuracyCount)
-          : 0;
+        const includedSessions = accuracyTimeline.filter((row) => !row.excluded);
+        const practiceInputs = includedSessions.map((session) => ({
+          accuracy: Math.max(0, Math.min(1, session.accuracy / 100)),
+          environment: selectedMode,
+        }));
+        const practiceAccuracyResult = calculateScoutAccuracy(practiceInputs, {
+          mode: selectedMode,
+          minMatches: 5,
+        });
+        const averageAccuracy = practiceAccuracyResult.displayAccuracy;
 
         return {
           scoutId: member.uid,
@@ -924,8 +958,11 @@ function ScoutAccuracyContent() {
           role: member.role,
           roles: member.roles,
           totalEntries: scoutPracticeEntries.length,
-          practiceSessionsCompleted: practiceRows.length,
+          practiceSessionsCompleted: practiceAccuracyResult.totalMatches,
           averageAccuracy,
+          confidenceLevel: practiceAccuracyResult.confidenceLevel,
+          status: practiceAccuracyResult.status,
+          confirmed: practiceAccuracyResult.confirmed,
           lastPracticeDate: lastPracticeDate || Date.now(),
           recentAccuracies,
           recentSessions,
@@ -1057,56 +1094,27 @@ function ScoutAccuracyContent() {
   }
 
   function getAccuracyBadge(
-    accuracy: number,
-    practiceSessions: number
+    status: ScoutAccuracyStatus,
+    confirmed: boolean
   ): { bg: string; text: string; label: string; showWarning: boolean } {
-    // If no practice sessions, status is undetermined
-    if (practiceSessions === 0) {
+    if (!confirmed || status === "undetermined") {
       return {
         bg: "bg-gray-100",
         text: "text-gray-700",
         label: "Undetermined",
-        showWarning: false
+        showWarning: false,
       };
     }
-    
-    // Status thresholds:
-    // 0-50 = Mentor Intervention
-    // 51-74 = Student Intervention
-    // 75-89 = Good
-    // 90-100 = Excellent
-    
-    if (accuracy >= 90) {
-      return {
-        bg: "bg-green-100",
-        text: "text-green-700",
-        label: "Excellent",
-        showWarning: false
-      };
-    }
-    if (accuracy >= 75) {
-      return {
-        bg: "bg-blue-100",
-        text: "text-blue-700",
-        label: "Good",
-        showWarning: false
-      };
-    }
-    if (accuracy >= 51) {
-      return {
-        bg: "bg-orange-100",
-        text: "text-orange-800",
-        label: "Student Intervention",
-        showWarning: true
-      };
-    }
-    // 0-50
-    return {
-      bg: "bg-red-100",
-      text: "text-red-800",
-      label: "Mentor Intervention",
-      showWarning: true
+
+    const map: Record<ScoutAccuracyStatus, { bg: string; text: string; label: string; showWarning: boolean }> = {
+      "mentor-intervention": { bg: "bg-red-100", text: "text-red-800", label: "Mentor Intervention", showWarning: true },
+      "student-intervention": { bg: "bg-orange-100", text: "text-orange-800", label: "Student Intervention", showWarning: true },
+      certified: { bg: "bg-purple-100", text: "text-purple-800", label: "Certified", showWarning: false },
+      good: { bg: "bg-blue-100", text: "text-blue-700", label: "Good", showWarning: false },
+      excellent: { bg: "bg-green-100", text: "text-green-700", label: "Excellent", showWarning: false },
+      undetermined: { bg: "bg-gray-100", text: "text-gray-700", label: "Undetermined", showWarning: false },
     };
+    return map[status] || map.undetermined;
   }
 
   const selectedScoutData = scoutStats.find(s => s.scoutName === selectedScout);
@@ -1351,16 +1359,24 @@ function ScoutAccuracyContent() {
         const nextRecentSessions = scout.recentSessions.map(updateSession);
         if (!touched) return scout;
         const includedSessions = nextAllSessions.filter((session) => !session.excluded);
-        const averageAccuracy =
-          includedSessions.length > 0
-            ? Math.round(includedSessions.reduce((sum, session) => sum + session.accuracy, 0) / includedSessions.length)
-            : 0;
+        const practiceInputs = includedSessions.map((session) => ({
+          accuracy: Math.max(0, Math.min(1, session.accuracy / 100)),
+          environment: selectedMode,
+        }));
+        const practiceAccuracyResult = calculateScoutAccuracy(practiceInputs, {
+          mode: selectedMode,
+          minMatches: 5,
+        });
         return {
           ...scout,
           allSessions: nextAllSessions,
           recentSessions: nextRecentSessions,
           recentAccuracies: nextRecentSessions.map((session) => session.accuracy),
-          averageAccuracy,
+          averageAccuracy: practiceAccuracyResult.displayAccuracy,
+          confidenceLevel: practiceAccuracyResult.confidenceLevel,
+          status: practiceAccuracyResult.status,
+          confirmed: practiceAccuracyResult.confirmed,
+          practiceSessionsCompleted: practiceAccuracyResult.totalMatches,
         };
       })
     );
@@ -1739,9 +1755,9 @@ function ScoutAccuracyContent() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {visibleRankedScoutStats.map(({ scout, rank }) => {
-                        const badge = getAccuracyBadge(scout.averageAccuracy, scout.practiceSessionsCompleted);
+                        const badge = getAccuracyBadge(scout.status, scout.confirmed);
                         const roleBadge = getTeamRoleBadge(scout.role, scout.roles);
-                        const displayRank = scout.practiceSessionsCompleted === 0 ? "?" : `#${rank}`;
+                        const displayRank = scout.confirmed ? `#${rank}` : "?";
                         return (
                           <tr key={scout.scoutName} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -1844,8 +1860,9 @@ function ScoutAccuracyContent() {
                           <div className="space-y-2">
                             {selectedRealMatches.map((entry) => {
                               const timestamp = getEntryTimestamp(entry);
+                              const matchAccuracy = resolveMatchAccuracy(entry);
                               const accuracyValue =
-                                typeof entry.accuracy === "number" ? Math.round(entry.accuracy) : null;
+                                typeof matchAccuracy === "number" ? Math.round(matchAccuracy * 100) : null;
                               const displayAccuracy = accuracyValue !== null ? accuracyValue : 0;
                               return (
                                 <div
@@ -1898,10 +1915,7 @@ function ScoutAccuracyContent() {
                       </div>
 
                       {(() => {
-                        const badge = getAccuracyBadge(
-                          selectedScoutData.averageAccuracy,
-                          selectedScoutData.practiceSessionsCompleted
-                        );
+                        const badge = getAccuracyBadge(selectedScoutData.status, selectedScoutData.confirmed);
                         return (
                           <div className={`p-4 rounded-lg ${badge.bg} ${badge.text} border ${
                             badge.label === "Excellent" ? "border-green-200" :
@@ -2110,10 +2124,7 @@ function ScoutAccuracyContent() {
 
                       {/* RECOMMENDATIONS */}
                       {(() => {
-                        const badge = getAccuracyBadge(
-                          selectedScoutData.averageAccuracy,
-                          selectedScoutData.practiceSessionsCompleted
-                        );
+                        const badge = getAccuracyBadge(selectedScoutData.status, selectedScoutData.confirmed);
                         
                         return (
                           <div className={`p-4 rounded-lg ${badge.bg} ${badge.text} border ${
