@@ -180,7 +180,7 @@ function AnalyticsShellInner({
           />
         )}
         <aside
-          className={`hidden md:block bg-white border-r border-gray-200 shrink-0 transition-all duration-300 ${
+          className={`hidden md:flex flex-col bg-white border-r border-gray-200 shrink-0 transition-all duration-300 h-screen ${
             collapsed ? "w-0 overflow-hidden" : "w-64"
           }`}
           style={{}}
@@ -206,7 +206,7 @@ function AnalyticsShellInner({
               </div>
             )}
           </div>
-          <nav className="p-3 space-y-1">
+          <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
             {analyticsLinks.map((item, index) => {
               if ("divider" in item) {
                 return <hr key={`divider-${index}`} className="my-2 border-gray-300" />;
@@ -239,7 +239,7 @@ function AnalyticsShellInner({
           </nav>
         </aside>
         <aside
-          className={`md:hidden fixed top-0 left-0 h-screen w-72 bg-white border-r border-gray-200 z-[70] transition-transform duration-300 ${
+          className={`md:hidden fixed top-0 left-0 h-screen w-72 bg-white border-r border-gray-200 z-[70] transition-transform duration-300 flex flex-col ${
             mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -273,7 +273,7 @@ function AnalyticsShellInner({
               </div>
             )}
           </div>
-          <nav className="p-3 space-y-1 overflow-y-auto">
+          <nav className="p-3 space-y-1 overflow-y-auto flex-1">
             {analyticsLinks.map((item, index) => {
               if ("divider" in item) {
                 return <hr key={`mobile-divider-${index}`} className="my-2 border-gray-300" />;

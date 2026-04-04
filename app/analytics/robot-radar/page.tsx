@@ -10,14 +10,15 @@ import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import RobotRadarChart from "@/app/components/RobotRadarChart";
 import {
-  entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
+  entryMatchesAnalyticsFilters,
   isPracticeScoutedEntry,
   type AnalyticsEventOption,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import { useAuth } from "@/app/AuthContext";
+import { getProcessedTeamStats } from "@/app/utils/performanceReliability";
 
 type ScoutingEntry = {
   id?: string;
@@ -149,6 +150,11 @@ function RobotRadarPageContent() {
     [entries, selectedGame, detectedEventOptions]
   );
 
+  const rebuiltEventOptions = useMemo(
+    () => (selectedGame === "REBUILT" ? getEventOptionsForEntries(entries, selectedGame, detectedEventOptions) : []),
+    [entries, selectedGame, detectedEventOptions]
+  );
+
   useEffect(() => {
     const savedGame = localStorage.getItem("analytics-selected-game");
     const savedEvent = localStorage.getItem("analytics-selected-event");
@@ -203,33 +209,37 @@ function RobotRadarPageContent() {
     void loadEntries();
   }, []);
 
-  const filteredEntries = useMemo(
+  const processed = useMemo(
     () =>
-      entries.filter((entry) => {
-        if (entry.excludeFromStats) return false;
-        if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, detectedEventOptions)) return false;
-        if (practiceMatchesOnly) return isPracticeScoutedEntry(entry);
-        if (isPracticeScoutedEntry(entry)) return false;
-        const accuracy = typeof (entry as { accuracy?: number }).accuracy === "number"
-          ? Number((entry as { accuracy?: number }).accuracy)
-          : NaN;
-        if (!Number.isFinite(accuracy)) return false;
-        return accuracy >= accuracyThreshold;
+      getProcessedTeamStats(entries as unknown as Parameters<typeof getProcessedTeamStats>[0], {
+        accuracyThreshold,
+        game: selectedGame,
+        selectedEvent,
+        practiceMatchesOnly,
+        rebuiltEventOptions,
       }),
-    [entries, selectedGame, selectedEvent, practiceMatchesOnly, detectedEventOptions, accuracyThreshold]
+    [entries, accuracyThreshold, selectedGame, selectedEvent, practiceMatchesOnly, rebuiltEventOptions]
+  );
+
+  const filteredEntries = processed.filteredEntries as ScoutingEntry[];
+
+  const filteredTeamSet = useMemo(
+    () => new Set(filteredEntries.map((row) => String(row.teamNumber || "").trim()).filter(Boolean)),
+    [filteredEntries]
   );
 
   const filteredLeadEntries = useMemo(
     () =>
       leadEntries.filter((entry) => {
         if (entry.excludeFromStats) return false;
-        if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, detectedEventOptions, { includeLead: true })) {
+        if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, rebuiltEventOptions, { includeLead: true })) {
           return false;
         }
         if (practiceMatchesOnly) return isPracticeScoutedEntry(entry);
-        return !isPracticeScoutedEntry(entry);
+        if (isPracticeScoutedEntry(entry)) return false;
+        return entry.robots?.some((robot) => filteredTeamSet.has(String(robot.teamNumber || "").trim())) || false;
       }),
-    [leadEntries, selectedGame, selectedEvent, practiceMatchesOnly, detectedEventOptions]
+    [leadEntries, filteredTeamSet, selectedGame, selectedEvent, rebuiltEventOptions, practiceMatchesOnly]
   );
 
   const teamOptions = useMemo(() => {
