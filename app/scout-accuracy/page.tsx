@@ -980,7 +980,7 @@ function ScoutAccuracyContent() {
           scoutName: member.scoutName,
           role: member.role,
           roles: member.roles,
-          totalEntries: scoutPracticeEntries.length,
+          totalEntries: Math.max(scoutPracticeEntries.length, practiceRows.length),
           practiceSessionsCompleted: practiceAccuracyResult.totalMatches,
           averageAccuracy,
           confidenceLevel: practiceAccuracyResult.confidenceLevel,
@@ -1780,7 +1780,7 @@ function ScoutAccuracyContent() {
                       {visibleRankedScoutStats.map(({ scout, rank }) => {
                         const badge = getAccuracyBadge(scout.status, scout.confirmed);
                         const roleBadge = getTeamRoleBadge(scout.role, scout.roles);
-                        const displayRank = scout.confirmed ? `#${rank}` : "?";
+                        const displayRank = scout.averageAccuracy > 0 ? `#${rank}` : "?";
                         return (
                           <tr key={scout.scoutName} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
