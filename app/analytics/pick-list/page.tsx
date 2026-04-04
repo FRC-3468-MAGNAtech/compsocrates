@@ -193,13 +193,13 @@ function PickListContent() {
       }
       setPickListLoading(true);
       try {
-        const snap = await getDoc(doc(db, "teamPickLists", userData.teamId));
+        const snap = await getDoc(doc(db, "teams", userData.teamId));
         if (!snap.exists()) {
           if (!cancelled) setPickedTeams([]);
           return;
         }
-        const data = snap.data() as { picks?: Array<{ teamNumber?: string; pickOrder?: number }> } | undefined;
-        const picks = Array.isArray(data?.picks) ? data?.picks : [];
+        const data = snap.data() as { pickList?: { picks?: Array<{ teamNumber?: string; pickOrder?: number }> } } | undefined;
+        const picks = Array.isArray(data?.pickList?.picks) ? data?.pickList?.picks : [];
         const normalized = picks
           .map((pick, index) => ({
             teamNumber: String(pick.teamNumber || "").trim(),
@@ -236,7 +236,11 @@ function PickListContent() {
       updatedAt: Date.now(),
       updatedBy: userData?.uid || "",
     };
-    setDoc(doc(db, "teamPickLists", userData.teamId), payload, { merge: true }).catch((error) => {
+    setDoc(
+      doc(db, "teams", userData.teamId),
+      { pickList: payload },
+      { merge: true }
+    ).catch((error) => {
       console.warn("Failed to persist team pick list:", error);
     });
   }, [pickedTeams, canEditPickList, userData?.teamId, userData?.uid, pickListLoading]);
