@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where, type QueryDocumentSnapshot } from "firebase/firestore";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import ReefscapeMatchSelectModal from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
@@ -2799,5 +2800,9 @@ function ScoutFormGate() {
 }
 
 export default function Page() {
-  return <ScoutFormGate />;
+  return (
+    <Suspense fallback={<LoadingSpinner message="Loading scout form..." />}>
+      <ScoutFormGate />
+    </Suspense>
+  );
 }
