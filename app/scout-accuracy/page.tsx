@@ -755,7 +755,7 @@ function ScoutAccuracyContent() {
             .filter((entry) => !entry.excludeFromStats);
           const calculationEntries = filteredEntries.filter((entry) => matchesCalculationEvent(entry));
           const eligibleEntries = calculationEntries.filter((entry) => isAccuracyComplete(entry));
-          const accuracyInputs = eligibleEntries
+          const accuracyInputs: Array<{ accuracy: number; environment: "real" | "trial" | "competitive" }> = eligibleEntries
             .map((entry) => {
               const accuracy = resolveMatchAccuracy(entry);
               if (accuracy === null) return null;
