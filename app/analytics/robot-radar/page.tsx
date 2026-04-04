@@ -109,9 +109,10 @@ function RobotRadarPageContent() {
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
-  const [teamA, setTeamA] = useState("");
-  const [teamB, setTeamB] = useState("");
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [teamMenuOpen, setTeamMenuOpen] = useState(false);
   const [detectedEventOptions, setDetectedEventOptions] = useState<AnalyticsEventOption[]>([]);
+  const [accuracyThreshold, setAccuracyThreshold] = useState<75 | 85 | 90>(75);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,13 +153,23 @@ function RobotRadarPageContent() {
     const savedGame = localStorage.getItem("analytics-selected-game");
     const savedEvent = localStorage.getItem("analytics-selected-event");
     const savedPractice = localStorage.getItem("analytics-practice-matches-only");
-    const savedTeamA = localStorage.getItem("robot-radar-team-a");
-    const savedTeamB = localStorage.getItem("robot-radar-team-b");
+    const savedTeams = localStorage.getItem("robot-radar-teams");
+    const savedAccuracy = localStorage.getItem("robot-radar-accuracy");
     if (savedGame === "REEFSCAPE" || savedGame === "REBUILT") setSelectedGame(savedGame);
     if (savedEvent) setSelectedEvent(savedEvent);
     if (savedPractice !== null) setPracticeMatchesOnly(savedPractice === "true");
-    if (savedTeamA) setTeamA(savedTeamA);
-    if (savedTeamB) setTeamB(savedTeamB);
+    if (savedTeams) {
+      const parsed = savedTeams
+        .split(",")
+        .map((team) => team.trim())
+        .filter(Boolean)
+        .slice(0, 2);
+      setSelectedTeams(parsed);
+    }
+    if (savedAccuracy) {
+      const parsed = Number(savedAccuracy);
+      if (parsed === 75 || parsed === 85 || parsed === 90) setAccuracyThreshold(parsed);
+    }
   }, []);
 
   useEffect(() => {
@@ -168,12 +179,12 @@ function RobotRadarPageContent() {
   }, [selectedGame, selectedEvent, practiceMatchesOnly]);
 
   useEffect(() => {
-    localStorage.setItem("robot-radar-team-a", teamA);
-  }, [teamA]);
+    localStorage.setItem("robot-radar-teams", selectedTeams.join(","));
+  }, [selectedTeams]);
 
   useEffect(() => {
-    localStorage.setItem("robot-radar-team-b", teamB);
-  }, [teamB]);
+    localStorage.setItem("robot-radar-accuracy", String(accuracyThreshold));
+  }, [accuracyThreshold]);
 
   useEffect(() => {
     async function loadEntries() {
@@ -198,9 +209,14 @@ function RobotRadarPageContent() {
         if (entry.excludeFromStats) return false;
         if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, detectedEventOptions)) return false;
         if (practiceMatchesOnly) return isPracticeScoutedEntry(entry);
-        return !isPracticeScoutedEntry(entry);
+        if (isPracticeScoutedEntry(entry)) return false;
+        const accuracy = typeof (entry as { accuracy?: number }).accuracy === "number"
+          ? Number((entry as { accuracy?: number }).accuracy)
+          : NaN;
+        if (!Number.isFinite(accuracy)) return false;
+        return accuracy >= accuracyThreshold;
       }),
-    [entries, selectedGame, selectedEvent, practiceMatchesOnly, detectedEventOptions]
+    [entries, selectedGame, selectedEvent, practiceMatchesOnly, detectedEventOptions, accuracyThreshold]
   );
 
   const filteredLeadEntries = useMemo(
@@ -216,13 +232,49 @@ function RobotRadarPageContent() {
     [leadEntries, selectedGame, selectedEvent, practiceMatchesOnly, detectedEventOptions]
   );
 
-  const normalizedTeamA = teamA.replace(/[^0-9]/g, "");
-  const normalizedTeamB = teamB.replace(/[^0-9]/g, "");
-  const radarTeams = normalizedTeamB ? ([normalizedTeamA, normalizedTeamB] as [string, string]) : ([normalizedTeamA] as [string]);
+  const teamOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    filteredEntries.forEach((entry) => {
+      const team = String(entry.teamNumber || "").trim();
+      if (!team) return;
+      counts.set(team, (counts.get(team) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([teamNumber, count]) => ({ teamNumber, count }));
+  }, [filteredEntries]);
+
+  const normalizedSelectedTeams = selectedTeams.map((team) => team.replace(/[^0-9]/g, "")).filter(Boolean).slice(0, 2);
+  const radarTeams = normalizedSelectedTeams.length === 2
+    ? ([normalizedSelectedTeams[0], normalizedSelectedTeams[1]] as [string, string])
+    : ([normalizedSelectedTeams[0]] as [string]);
 
   if (loading) {
     return <LoadingSpinner message="Loading robot radar..." />;
   }
+
+  const accuracyToggle = (
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-gray-600 whitespace-nowrap">Scout Accuracy Threshold</span>
+      <div className="inline-flex rounded border border-gray-200 overflow-hidden">
+        {[75, 85, 90].map((option) => {
+          const isActive = option === accuracyThreshold;
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setAccuracyThreshold(option as 75 | 85 | 90)}
+              className={`px-3 py-1 text-sm border-r last:border-r-0 ${
+                isActive ? "bg-rose-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              {option}%
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <AnalyticsShell
@@ -236,25 +288,54 @@ function RobotRadarPageContent() {
       eventOptions={eventOptions}
       onSelectedEventChange={setSelectedEvent}
       extraControls={
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm text-gray-600 flex items-center gap-2">
-            Team A
-            <input
-              value={teamA}
-              onChange={(event) => setTeamA(event.target.value)}
-              className="border rounded px-2 py-1 text-sm w-24"
-              placeholder="1234"
-            />
-          </label>
-          <label className="text-sm text-gray-600 flex items-center gap-2">
-            Team B
-            <input
-              value={teamB}
-              onChange={(event) => setTeamB(event.target.value)}
-              className="border rounded px-2 py-1 text-sm w-24"
-              placeholder="Optional"
-            />
-          </label>
+        <div className="flex flex-wrap items-center gap-3">
+          {accuracyToggle}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setTeamMenuOpen((open) => !open)}
+              className="px-3 py-1.5 text-sm rounded border border-gray-200 bg-white hover:bg-gray-100"
+            >
+              {normalizedSelectedTeams.length > 0
+                ? `Teams (${normalizedSelectedTeams.length}/2)`
+                : "Select Teams"}
+            </button>
+            {teamMenuOpen && (
+              <div className="absolute right-0 mt-2 w-56 max-h-64 overflow-y-auto rounded border border-gray-200 bg-white shadow-lg z-50">
+                {teamOptions.length === 0 ? (
+                  <div className="p-3 text-xs text-gray-500">No teams found for this filter.</div>
+                ) : (
+                  teamOptions.map((option) => {
+                    const selected = normalizedSelectedTeams.includes(option.teamNumber);
+                    const disable =
+                      !selected && normalizedSelectedTeams.length >= 2;
+                    return (
+                      <button
+                        key={option.teamNumber}
+                        type="button"
+                        disabled={disable}
+                        onClick={() => {
+                          setSelectedTeams((prev) => {
+                            if (prev.includes(option.teamNumber)) {
+                              return prev.filter((team) => team !== option.teamNumber);
+                            }
+                            if (prev.length >= 2) return prev;
+                            return [...prev, option.teamNumber];
+                          });
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${
+                          selected ? "bg-rose-50 text-rose-700" : "text-gray-700"
+                        } ${disable ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                      >
+                        <span>Team {option.teamNumber}</span>
+                        <span className="text-xs text-gray-400">{option.count}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
         </div>
       }
     >
@@ -263,9 +344,28 @@ function RobotRadarPageContent() {
         <p className="text-sm text-gray-600">
           Normalized 0–10 build profile for REBUILT robots. Add a second team to compare overlap and synergy.
         </p>
+        {normalizedSelectedTeams.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            {normalizedSelectedTeams.map((team) => (
+              <span
+                key={team}
+                className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-rose-50 text-rose-700"
+              >
+                Team {team}
+                <button
+                  type="button"
+                  onClick={() => setSelectedTeams((prev) => prev.filter((value) => value !== team))}
+                  className="text-rose-600 hover:text-rose-800"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {normalizedTeamA ? (
+      {normalizedSelectedTeams.length > 0 ? (
         <div className="bg-white rounded-xl shadow p-4">
           <RobotRadarChart
             entries={filteredEntries}
