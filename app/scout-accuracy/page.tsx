@@ -739,12 +739,13 @@ function ScoutAccuracyContent() {
           }
         }
 
-        const stats = memberData.map((member) => {
-          const combined = new Map<string, ScoutingEntry>();
-          (entriesByScoutId.get(member.uid) || []).forEach((entry) => {
-            combined.set(String(entry.id || ""), entry);
-          });
-          (entriesByScoutName.get(String(member.scoutName || "").trim().toLowerCase()) || []).forEach((entry) => {
+        const stats = memberData
+          .map((member) => {
+            const combined = new Map<string, ScoutingEntry>();
+            (entriesByScoutId.get(member.uid) || []).forEach((entry) => {
+              combined.set(String(entry.id || ""), entry);
+            });
+            (entriesByScoutName.get(String(member.scoutName || "").trim().toLowerCase()) || []).forEach((entry) => {
             combined.set(String(entry.id || ""), entry);
           });
 
@@ -804,7 +805,8 @@ function ScoutAccuracyContent() {
             recentSessions: [],
             allSessions: [],
           } as ScoutStats;
-        });
+        })
+          .filter(Boolean) as ScoutStats[];
 
         setScoutStats(
           stats.sort((a, b) => {
