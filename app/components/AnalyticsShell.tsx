@@ -35,8 +35,8 @@ const analyticsLinks: Array<{ href: string; label: string } | { divider: true }>
   { href: "/analytics/match-breakdown", label: "Match Breakdown" },
   { href: "/analytics/rankings", label: "Rankings" },
   { href: "/analytics/team-breakdown", label: "Team Breakdown" },
-  { href: "/analytics/pick-list", label: "Pick List" },
   { href: "/analytics/performance-reliability", label: "Performance Reliability" },
+  { href: "/analytics/pick-list", label: "Pick List" },
   { href: "/analytics/scout-status", label: "Scout Status" },
 ];
 
@@ -128,6 +128,9 @@ function AnalyticsShellInner({
 
   useEffect(() => {
     localStorage.setItem("analytics-search-term", searchTerm);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("analytics-search-term", { detail: searchTerm }));
+    }
   }, [searchTerm]);
 
   useEffect(() => {

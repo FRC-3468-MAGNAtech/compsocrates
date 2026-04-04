@@ -121,8 +121,16 @@ function PerformanceReliabilityContent() {
         setSearchTerm(event.newValue || "");
       }
     }
+    function handleSearchEvent(event: Event) {
+      const detail = (event as CustomEvent<string>).detail;
+      if (typeof detail === "string") setSearchTerm(detail);
+    }
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    window.addEventListener("analytics-search-term", handleSearchEvent as EventListener);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("analytics-search-term", handleSearchEvent as EventListener);
+    };
   }, []);
 
   useEffect(() => {
