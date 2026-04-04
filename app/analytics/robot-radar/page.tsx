@@ -146,13 +146,13 @@ function RobotRadarPageContent() {
   }, [userData?.teamId]);
 
   const eventOptions = useMemo(
-    () => getEventOptionsForEntries(entries, selectedGame, detectedEventOptions),
+    () => getEventOptionsForEntries(entries, selectedGame, selectedGame === "REBUILT" ? detectedEventOptions : []),
     [entries, selectedGame, detectedEventOptions]
   );
 
   const rebuiltEventOptions = useMemo(
-    () => (selectedGame === "REBUILT" ? getEventOptionsForEntries(entries, selectedGame, detectedEventOptions) : []),
-    [entries, selectedGame, detectedEventOptions]
+    () => (selectedGame === "REBUILT" ? detectedEventOptions : []),
+    [selectedGame, detectedEventOptions]
   );
 
   useEffect(() => {
