@@ -83,8 +83,8 @@ function resolveSkillLevel(entry: LeadScoutEntry, teamNumber: string) {
     const robotTeam = String(robot.teamNumber || "").trim().replace(/[^0-9]/g, "");
     return robotTeam === normalizedTeam;
   });
-  if (typeof match?.skillLevel === "number") return match.skillLevel;
-  if (typeof entry.overallAlliance?.skillLevel === "number") return entry.overallAlliance.skillLevel;
+  if (typeof match?.skillLevel === "number") return match.skillLevel * 2;
+  if (typeof entry.overallAlliance?.skillLevel === "number") return entry.overallAlliance.skillLevel * 2;
   return null;
 }
 
