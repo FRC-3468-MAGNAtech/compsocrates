@@ -196,12 +196,15 @@ function RobotRadarPageContent() {
     async function loadEntries() {
       setLoading(true);
       try {
-        const [scoutSnap, leadSnap] = await Promise.all([
-          getDocs(collection(db, "scouting")),
-          getDocs(collection(db, "leadScouting")),
-        ]);
+        const scoutSnap = await getDocs(collection(db, "scouting"));
         setEntries(scoutSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-        setLeadEntries(leadSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+        try {
+          const leadSnap = await getDocs(collection(db, "leadScouting"));
+          setLeadEntries(leadSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+        } catch (error) {
+          console.warn("Unable to load lead scouting entries for radar:", error);
+          setLeadEntries([]);
+        }
       } finally {
         setLoading(false);
       }
