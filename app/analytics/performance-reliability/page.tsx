@@ -15,6 +15,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type TooltipProps,
 } from "recharts";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
@@ -46,6 +47,20 @@ type ScatterPoint = {
 function formatNumber(value: number, digits = 1) {
   if (!Number.isFinite(value)) return "-";
   return value.toFixed(digits);
+}
+
+function ScatterTooltip({ active, payload }: TooltipProps<number, string>) {
+  if (!active || !payload || payload.length === 0) return null;
+  const point = payload[0]?.payload as ScatterPoint | undefined;
+  if (!point) return null;
+  return (
+    <div className="bg-white border border-gray-200 rounded px-3 py-2 text-xs shadow">
+      <div className="font-semibold text-gray-900">Team {point.teamNumber}</div>
+      <div className="text-gray-700">Power: {formatNumber(point.power, 1)}</div>
+      <div className="text-gray-700">Consistency: {formatNumber(point.consistency, 1)}</div>
+      <div className="text-gray-500">{point.entriesCount} matches</div>
+    </div>
+  );
 }
 
 function PerformanceReliabilityContent() {
@@ -314,18 +329,7 @@ function PerformanceReliabilityContent() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" dataKey="power" name="Power" tick={{ fontSize: 12 }} />
                     <YAxis type="number" dataKey="consistency" name="Consistency" tick={{ fontSize: 12 }} />
-                    <Tooltip
-                      cursor={{ strokeDasharray: "3 3" }}
-                      formatter={(value: number, name: string) => {
-                        if (name === "power") return [formatNumber(value, 1), "Avg Score"];
-                        if (name === "consistency") return [formatNumber(value, 1), "Std Dev"];
-                        return [value, name];
-                      }}
-                      labelFormatter={(_, payload) => {
-                        const point = payload?.[0]?.payload as ScatterPoint | undefined;
-                        return point ? `Team ${point.teamNumber}` : "";
-                      }}
-                    />
+                    <Tooltip cursor={{ strokeDasharray: "3 3" }} content={<ScatterTooltip />} />
                     <Scatter
                       data={scatterData}
                       fill="#f87171"
