@@ -308,6 +308,13 @@ function RobotRadarPageContent() {
         <p className="text-sm text-gray-600">
           Normalized 0–10 build profile for REBUILT robots. Add a second team to compare overlap and synergy.
         </p>
+        <div className="mt-2 text-xs text-gray-600 space-y-1">
+          <p><span className="font-semibold">Auto Prowess:</span> Average auto points normalized vs. top auto average.</p>
+          <p><span className="font-semibold">Hub Volume:</span> Average active-hub fuel normalized vs. top fuel average.</p>
+          <p><span className="font-semibold">Hub IQ:</span> Active hub fuel / total fuel scored (efficiency).</p>
+          <p><span className="font-semibold">Tower Power:</span> Endgame climb weight (L1=3, L2=6, L3=10).</p>
+          <p><span className="font-semibold">Agility/Defense:</span> Average driver/defense rating (1–10).</p>
+        </div>
         {processed.filteredEntries.length === 0 && (
           <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
             No entries match the current filters. Try lowering the accuracy threshold or confirm accuracy has been
