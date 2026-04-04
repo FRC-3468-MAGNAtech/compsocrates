@@ -814,6 +814,14 @@ function ScoutAccuracyContent() {
         );
         return;
       }
+      const calculationScope = parseCalculationScope(calculationEvent);
+      const calculationEventKey = calculationScope.eventKey;
+      const eventOptions = getEventsForGame(selectedGame);
+      const matchesCalculationEvent = (entry: ScoutingEntry) =>
+        calculationEventKey === "all"
+          ? true
+          : entryMatchesAnalyticsFilters(entry, selectedGame, calculationEventKey, eventOptions);
+
       const statsPromises = memberData.map(async (member) => {
         const [scoutEntriesByNameSnap, scoutEntriesByUidSnap] = await Promise.all([
           getDocs(query(collection(db, "scouting"), where("scoutName", "==", member.scoutName))),
@@ -826,7 +834,17 @@ function ScoutAccuracyContent() {
         scoutEntriesByUidSnap.docs.forEach((docSnap) => {
           scoutEntriesMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as ScoutingEntry) });
         });
-        const scoutPracticeEntries = Array.from(scoutEntriesMap.values())
+        const allEntries = Array.from(scoutEntriesMap.values());
+        const eventMatchEntries = allEntries
+          .filter((entry) => isRealScoutingEntry(entry))
+          .filter((entry) => isMatchScoutEntry(entry))
+          .filter((entry) => getEntryGame(entry) === selectedGame)
+          .filter((entry) => matchesCalculationEvent(entry));
+        if (calculationEventKey !== "all" && eventMatchEntries.length === 0) {
+          return null;
+        }
+
+        const scoutPracticeEntries = allEntries
           .filter((row) => {
             if (!row.isPracticeScouting) return false;
             if (row.isLivePracticeScouting) return false;
@@ -953,6 +971,10 @@ function ScoutAccuracyContent() {
         });
         const averageAccuracy = practiceAccuracyResult.displayAccuracy;
 
+        if (practiceAccuracyResult.totalMatches === 0) {
+          return null;
+        }
+
         return {
           scoutId: member.uid,
           scoutName: member.scoutName,
@@ -972,7 +994,9 @@ function ScoutAccuracyContent() {
         };
       });
 
-      const stats = await Promise.all(statsPromises);
+      const stats = (await Promise.all(statsPromises)).filter(
+        (value): value is ScoutStats => Boolean(value)
+      );
       setScoutStats(
         stats.sort((a, b) => {
           const aHasSessions = a.practiceSessionsCompleted > 0 ? 1 : 0;
