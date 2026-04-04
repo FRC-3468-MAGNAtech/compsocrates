@@ -1718,13 +1718,14 @@ function AnalyticsPageContent() {
         // If official-team matching collapses rows (bad/missing team keys), keep scouted alliance rows visible.
         latestAllianceRows = latestReferenceRows;
       }
-      const penaltyPoints =
-        Number(
-          foulPoints ||
-            latestAllianceRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints ??
-            entry.penaltyPoints ??
-            0
-        ) || 0;
+      const fallbackPenalty = latestAllianceRows.find((row) => typeof row.penaltyPoints === "number")?.penaltyPoints;
+      const penaltyPoints = Number(
+        typeof foulPoints === "number" && foulPoints > 0
+          ? foulPoints
+          : typeof fallbackPenalty === "number"
+            ? fallbackPenalty
+            : entry.penaltyPoints ?? 0
+      ) || 0;
       const scoutedPoints =
         latestAllianceRows.reduce((sum, row) => sum + scoreEntryBase(row, entryGame), 0) + penaltyPoints;
       const breakdown = latestAllianceRows.map((row) =>
