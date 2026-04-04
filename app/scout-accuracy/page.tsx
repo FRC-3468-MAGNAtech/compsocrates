@@ -994,9 +994,7 @@ function ScoutAccuracyContent() {
         };
       });
 
-      const stats = (await Promise.all(statsPromises)).filter(
-        (value): value is ScoutStats => Boolean(value)
-      );
+      const stats = (await Promise.all(statsPromises)).filter(Boolean) as ScoutStats[];
       setScoutStats(
         stats.sort((a, b) => {
           const aHasSessions = a.practiceSessionsCompleted > 0 ? 1 : 0;
