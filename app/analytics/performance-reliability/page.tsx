@@ -327,8 +327,20 @@ function PerformanceReliabilityContent() {
                 <ResponsiveContainer width="100%" height="100%">
                   <ScatterChart>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" dataKey="power" name="Power" tick={{ fontSize: 12 }} />
-                    <YAxis type="number" dataKey="consistency" name="Consistency" tick={{ fontSize: 12 }} />
+                    <XAxis
+                      type="number"
+                      dataKey="power"
+                      name="Power"
+                      tick={{ fontSize: 12 }}
+                      label={{ value: "Average Match Score (Power)", position: "insideBottom", offset: -8, fontSize: 12 }}
+                    />
+                    <YAxis
+                      type="number"
+                      dataKey="consistency"
+                      name="Consistency"
+                      tick={{ fontSize: 12 }}
+                      label={{ value: "Std Dev of Match Scores (Consistency)", angle: -90, position: "insideLeft", fontSize: 12 }}
+                    />
                     <Tooltip cursor={{ strokeDasharray: "3 3" }} content={<ScatterTooltip />} />
                     <Scatter
                       data={scatterData}
