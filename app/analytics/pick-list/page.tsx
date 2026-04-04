@@ -7,6 +7,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
+import { getUserRoles } from "@/app/utils/roles";
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
@@ -96,7 +97,13 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
 
 function PickListContent() {
   const { userData } = useAuth();
-  const canEditPickList = userData?.role === "coach" || Boolean(userData?.isTeamAdmin);
+  const roles = getUserRoles(userData);
+  const canEditPickList =
+    userData?.role === "coach" ||
+    Boolean(userData?.isTeamAdmin) ||
+    roles.includes("lead-scout") ||
+    roles.includes("lead-strategist") ||
+    roles.includes("team-coach");
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
