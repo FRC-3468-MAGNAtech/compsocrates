@@ -36,6 +36,7 @@ const analyticsLinks: Array<{ href: string; label: string } | { divider: true }>
   { href: "/analytics/rankings", label: "Rankings" },
   { href: "/analytics/team-breakdown", label: "Team Breakdown" },
   { href: "/analytics/pick-list", label: "Pick List" },
+  { href: "/analytics/performance-reliability", label: "Performance Reliability" },
   { href: "/analytics/scout-status", label: "Scout Status" },
 ];
 
