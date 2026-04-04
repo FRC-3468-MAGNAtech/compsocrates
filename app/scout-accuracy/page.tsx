@@ -767,11 +767,12 @@ function ScoutAccuracyContent() {
           const practiceById = practiceByScoutId.get(member.uid) || [];
           const practiceByName = practiceByScoutName.get(scoutNameKey) || [];
           const practiceAccuracies = includePractice ? [...practiceById, ...practiceByName] : [];
-          if (includePractice && calculationScope.practiceMode) {
+          const practiceMode = calculationScope.practiceMode;
+          if (includePractice && practiceMode) {
             practiceAccuracies.forEach((accuracy) => {
               accuracyInputs.push({
                 accuracy: Math.max(0, Math.min(1, accuracy / 100)),
-                environment: calculationScope.practiceMode,
+                environment: practiceMode,
               });
             });
           }
