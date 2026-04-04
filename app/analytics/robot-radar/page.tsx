@@ -11,8 +11,6 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import RobotRadarChart from "@/app/components/RobotRadarChart";
 import {
   getEventOptionsForEntries,
-  entryMatchesAnalyticsFilters,
-  isPracticeScoutedEntry,
   type AnalyticsEventOption,
   type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
@@ -78,34 +76,9 @@ type ScoutingEntry = {
   };
 };
 
-type LeadEntry = {
-  id?: string;
-  game?: string;
-  eventKey?: string;
-  matchId?: string;
-  matchKey?: string;
-  matchLabel?: string;
-  matchType?: string;
-  matchNumber?: string;
-  submittedAt?: number;
-  timestamp?: number;
-  isPracticeScouting?: boolean;
-  entryType?: string;
-  isLeadScouting?: boolean;
-  excludeFromStats?: boolean;
-  robots?: Array<{
-    teamNumber?: string;
-    skillLevel?: number;
-  }>;
-  overallAlliance?: {
-    skillLevel?: number;
-  };
-};
-
 function RobotRadarPageContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [leadEntries, setLeadEntries] = useState<LeadEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -198,13 +171,6 @@ function RobotRadarPageContent() {
       try {
         const scoutSnap = await getDocs(collection(db, "scouting"));
         setEntries(scoutSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-        try {
-          const leadSnap = await getDocs(collection(db, "leadScouting"));
-          setLeadEntries(leadSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-        } catch (error) {
-          console.warn("Unable to load lead scouting entries for radar:", error);
-          setLeadEntries([]);
-        }
       } finally {
         setLoading(false);
       }
@@ -231,19 +197,6 @@ function RobotRadarPageContent() {
     [filteredEntries]
   );
 
-  const filteredLeadEntries = useMemo(
-    () =>
-      leadEntries.filter((entry) => {
-        if (entry.excludeFromStats) return false;
-        if (!entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent, rebuiltEventOptions, { includeLead: true })) {
-          return false;
-        }
-        if (practiceMatchesOnly) return isPracticeScoutedEntry(entry);
-        if (isPracticeScoutedEntry(entry)) return false;
-        return entry.robots?.some((robot) => filteredTeamSet.has(String(robot.teamNumber || "").trim())) || false;
-      }),
-    [leadEntries, filteredTeamSet, selectedGame, selectedEvent, rebuiltEventOptions, practiceMatchesOnly]
-  );
 
   const teamOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -386,7 +339,6 @@ function RobotRadarPageContent() {
         <div className="bg-white rounded-xl shadow p-4">
           <RobotRadarChart
             entries={filteredEntries}
-            leadEntries={filteredLeadEntries}
             teamNumbers={radarTeams}
           />
         </div>
