@@ -106,9 +106,7 @@ export function calculateScoutAccuracy(
   else if (highAccuracyMatches >= 3) confidenceLevel = "medium";
 
   let status: ScoutAccuracyStatus = "undetermined";
-  if (!confirmed) {
-    status = "undetermined";
-  } else if (mode === "competitive") {
+  if (mode === "competitive") {
     if (displayAccuracy >= 80) status = "certified";
     else if (displayAccuracy >= 51) status = "student-intervention";
     else status = "mentor-intervention";

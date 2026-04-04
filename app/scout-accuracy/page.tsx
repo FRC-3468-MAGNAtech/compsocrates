@@ -1098,7 +1098,7 @@ function ScoutAccuracyContent() {
     status: ScoutAccuracyStatus,
     confirmed: boolean
   ): { bg: string; text: string; label: string; showWarning: boolean } {
-    if (!confirmed || status === "undetermined") {
+    if (status === "undetermined") {
       return {
         bg: "bg-gray-100",
         text: "text-gray-700",
