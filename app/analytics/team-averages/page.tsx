@@ -10,7 +10,7 @@ import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
   isPracticeScoutedEntry,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 
@@ -108,7 +108,7 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
 
 function TeamAveragesContent() {
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -233,3 +233,4 @@ export default function TeamAveragesPage() {
     </ProtectedRoute>
   );
 }
+

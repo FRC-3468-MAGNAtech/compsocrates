@@ -8,7 +8,7 @@ import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 import AnalyticsConfigModal from "@/app/components/AnalyticsConfigModal";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, getStoredAnalyticsGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
@@ -54,7 +54,7 @@ function TeamStrategyAnalyticsContent() {
   const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canShowActions = canManageConfig || canDeleteEntries;
   const [entries, setEntries] = useState<TeamStrategyEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -437,3 +437,4 @@ export default function TeamStrategyAnalyticsPage() {
     </ProtectedRoute>
   );
 }
+

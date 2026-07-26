@@ -15,7 +15,7 @@ import {
   getEventsForGame,
   isPracticeScoutedEntry,
   normalizeMatchLabel,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { normalizeEventKey } from "@/app/utils/events";
 import { formatMatchLabelLong, getMatchLabelMeta } from "@/app/utils/displayFormat";
@@ -212,7 +212,7 @@ function AccuracyVerificationContent() {
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [rescouts, setRescouts] = useState<RescoutEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
   const [selectedEvent, setSelectedEvent] = useState<string>("all");
   const [eventOptions, setEventOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [showAllCritical, setShowAllCritical] = useState(false);
@@ -1143,3 +1143,4 @@ function SectionCard({
     </div>
   );
 }
+

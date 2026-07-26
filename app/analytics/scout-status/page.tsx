@@ -15,7 +15,7 @@ import {
   getEventsForGame,
   isPracticeScoutedEntry,
   normalizeMatchLabel,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { fetchFirstSchedule, getFirstEventCodeFromTbaKey, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import { mapTbaMatchToModalId } from "@/app/utils/reefscapeMatchSync";
@@ -375,7 +375,7 @@ function ScoutStatusContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutStatusEntry[]>([]);
   const [selectedFormType, setSelectedFormType] = useState<ScoutStatusFormType>("match-scout");
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [activeCategories, setActiveCategories] = useState<MatchCategory[]>(
@@ -1861,3 +1861,4 @@ export default function ScoutStatusPage() {
     </ProtectedRoute>
   );
 }
+

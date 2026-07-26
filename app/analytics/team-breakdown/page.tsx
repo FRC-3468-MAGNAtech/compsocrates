@@ -7,7 +7,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, getStoredAnalyticsGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 
 type ScoutingEntry = {
@@ -127,7 +127,7 @@ function TeamBreakdownContent() {
   const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
   const [strategyEntries, setStrategyEntries] = useState<StrategyOrDriveEntry[]>([]);
   const [driveEntries, setDriveEntries] = useState<StrategyOrDriveEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -412,4 +412,5 @@ export default function TeamBreakdownPage() {
     </ProtectedRoute>
   );
 }
+
 

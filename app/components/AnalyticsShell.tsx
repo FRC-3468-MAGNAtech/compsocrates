@@ -46,7 +46,7 @@ function AnalyticsShellInner({
   entriesCount,
   selectedGame,
   onSelectedGameChange,
-  allowedGames = ["REEFSCAPE", "REBUILT"],
+  allowedGames = ["CHARGED_UP", "REEFSCAPE", "REBUILT"],
   practiceMatchesOnly = false,
   onPracticeMatchesOnlyChange,
   selectedEvent,

@@ -62,7 +62,28 @@ export type ReefscapeScoringEntry = {
   stageStatus?: string;
 };
 
-export type ScoringEntry = RebuiltScoringEntry & ReefscapeScoringEntry;
+export type ChargedUpScoringEntry = {
+  mobility?: boolean;
+  auto?: {
+    mobility?: boolean;
+    gridBottom?: number;
+    gridMiddle?: number;
+    gridTop?: number;
+    chargeStation?: string;
+  };
+  teleop?: {
+    gridBottom?: number;
+    gridMiddle?: number;
+    gridTop?: number;
+    links?: number;
+  };
+  endgame?: {
+    chargeStation?: string;
+  };
+  penaltyPoints?: number;
+};
+
+export type ScoringEntry = RebuiltScoringEntry & ReefscapeScoringEntry & ChargedUpScoringEntry;
 
 const REBUILT_BPS_VALUES = [0, 2, 5, 8, 12, 16, 20, 23, 25];
 const REBUILT_CARRY_VALUES = [0, 12, 23, 32, 42, 53, 64, 74, 75];
@@ -173,7 +194,39 @@ export function scoreRebuiltEntry(entry: RebuiltScoringEntry): number {
   return autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
 }
 
+function chargedAutoStationPoints(value: unknown) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "engaged") return 12;
+  if (status === "docked") return 8;
+  return 0;
+}
+
+function chargedEndgameStationPoints(value: unknown) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "engaged") return 10;
+  if (status === "docked") return 6;
+  if (status === "parked") return 2;
+  return 0;
+}
+
+export function scoreChargedUpEntry(entry: ChargedUpScoringEntry): number {
+  const autoScore =
+    (Boolean(entry.auto?.mobility ?? entry.mobility) ? 3 : 0) +
+    Number(entry.auto?.gridBottom || 0) * 3 +
+    Number(entry.auto?.gridMiddle || 0) * 4 +
+    Number(entry.auto?.gridTop || 0) * 6 +
+    chargedAutoStationPoints(entry.auto?.chargeStation);
+  const teleopScore =
+    Number(entry.teleop?.gridBottom || 0) * 2 +
+    Number(entry.teleop?.gridMiddle || 0) * 3 +
+    Number(entry.teleop?.gridTop || 0) * 5 +
+    Number(entry.teleop?.links || 0) * 5;
+  const endgameScore = chargedEndgameStationPoints(entry.endgame?.chargeStation);
+  return autoScore + teleopScore + endgameScore;
+}
+
 export function scoreEntryForGame(entry: ScoringEntry, game: AnalyticsGame): number {
+  if (game === "CHARGED_UP") return scoreChargedUpEntry(entry) + Number(entry.penaltyPoints || 0);
   if (game === "REBUILT") return scoreRebuiltEntry(entry);
 
   let total = 0;

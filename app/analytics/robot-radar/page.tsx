@@ -15,7 +15,7 @@ import {
   getEventOptionsForEntries,
   isPracticeScoutedEntry,
   type AnalyticsEventOption,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import { useAuth } from "@/app/AuthContext";
@@ -112,7 +112,7 @@ function RobotRadarPageContent() {
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [leadEntries, setLeadEntries] = useState<LeadScoutEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
@@ -472,3 +472,4 @@ export default function RobotRadarPage() {
     </ProtectedRoute>
   );
 }
+

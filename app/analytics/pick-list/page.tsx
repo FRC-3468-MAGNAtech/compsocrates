@@ -13,7 +13,7 @@ import {
   getEventOptionsForEntries,
   isPracticeScoutedEntry,
   type AnalyticsEventOption,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 import { getFirstEventCodeFromTbaKey } from "@/app/utils/firstSchedule";
@@ -105,7 +105,7 @@ function PickListContent() {
     roles.includes("lead-strategist") ||
     roles.includes("team-coach");
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [pickedTeams, setPickedTeams] = useState<TeamPick[]>([]);
@@ -598,3 +598,4 @@ export default function PickListAnalyticsPage() {
     </ProtectedRoute>
   );
 }
+

@@ -25,7 +25,7 @@ import { useAuth } from "@/app/AuthContext";
 import {
   getEventOptionsForEntries,
   type AnalyticsEventOption,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
 import {
@@ -78,7 +78,7 @@ function PerformanceReliabilityContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<PerformanceReliabilityEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [accuracyThreshold, setAccuracyThreshold] = useState<(typeof ACCURACY_OPTIONS)[number]>(85);
@@ -461,3 +461,4 @@ export default function PerformanceReliabilityPage() {
     </ProtectedRoute>
   );
 }
+

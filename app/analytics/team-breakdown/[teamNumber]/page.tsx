@@ -15,7 +15,7 @@ import {
   getEventsForGame,
   isPracticeScoutedEntry,
   type AnalyticsEventOption,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { getTeamEvents } from "@/app/utils/tba-api";
 import { dedupeEventKeys } from "@/app/utils/events";
@@ -289,7 +289,7 @@ function TeamBreakdownDetailContent() {
   const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
   const [strategyEntries, setStrategyEntries] = useState<StrategyPlanEntry[]>([]);
   const [driveEntries, setDriveEntries] = useState<DriveEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [knownTeamEvents, setKnownTeamEvents] = useState<Array<{ key: string; name: string; start_date?: string }>>([]);
@@ -1057,3 +1057,4 @@ export default function TeamBreakdownDetailPage() {
     </ProtectedRoute>
   );
 }
+

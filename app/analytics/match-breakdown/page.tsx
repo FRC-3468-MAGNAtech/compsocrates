@@ -13,7 +13,7 @@ import {
   isPracticeScoutedEntry,
   normalizeMatchLabel,
   type AnalyticsEventOption,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 import { useAuth } from "@/app/AuthContext";
@@ -134,7 +134,7 @@ function inferAlliance(entry: ScoutingEntry): "red" | "blue" | null {
 function MatchBreakdownContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState("");
@@ -451,3 +451,4 @@ export default function MatchBreakdownPage() {
     </ProtectedRoute>
   );
 }
+

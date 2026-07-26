@@ -13,7 +13,7 @@ import {
   getEventOptionsForEntries,
   isLeadScoutingEntry,
   isPracticeScoutedEntry,
-  type AnalyticsGame,
+  getStoredAnalyticsGame, type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText, formatMatchLabelShort, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
@@ -150,7 +150,7 @@ function LeadAnalyticsContent() {
   const canOpenConfig = canManageAnalytics;
   const [entries, setEntries] = useState<LeadScoutEntry[]>([]);
   const [configEntry, setConfigEntry] = useState<LeadScoutEntry | null>(null);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -509,3 +509,4 @@ export default function LeadAnalyticsPage() {
     </ProtectedRoute>
   );
 }
+

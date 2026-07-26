@@ -6,7 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, getStoredAnalyticsGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 import { useAuth } from "@/app/AuthContext";
 
@@ -94,7 +94,7 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
 function RankingsContent() {
   const { userData } = useAuth();
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -363,3 +363,4 @@ export default function RankingsPage() {
     </ProtectedRoute>
   );
 }
+

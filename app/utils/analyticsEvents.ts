@@ -10,6 +10,20 @@ export type AnalyticsEventOption = {
   key?: string;
 };
 
+export function isAnalyticsGame(value: string): value is AnalyticsGame {
+  return value === "CHARGED_UP" || value === "REEFSCAPE" || value === "REBUILT";
+}
+
+export function normalizeAnalyticsGame(value: unknown, fallback: AnalyticsGame = "REEFSCAPE"): AnalyticsGame {
+  const game = String(value || "").trim().toUpperCase();
+  return isAnalyticsGame(game) ? game : fallback;
+}
+
+export function getStoredAnalyticsGame(fallback: AnalyticsGame = "REEFSCAPE"): AnalyticsGame {
+  if (typeof window === "undefined") return fallback;
+  return normalizeAnalyticsGame(localStorage.getItem("analytics-selected-game"), fallback);
+}
+
 const LEGACY_REEFSCAPE_EVENTS: AnalyticsEventOption[] = [
   { id: "2025alhu", key: "2025alhu", name: "Rocket City Regional", startDate: "2025-03-18", endDate: "2025-03-21" },
   { id: "2025lake", key: "2025lake", name: "Bayou Regional", startDate: "2025-04-01", endDate: "2025-04-04" },
