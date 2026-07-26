@@ -1,6 +1,6 @@
 import { APP_EVENT_BY_KEY, APP_EVENTS, normalizeEventKey } from "@/app/utils/events";
 
-export type AnalyticsGame = "REEFSCAPE" | "REBUILT";
+export type AnalyticsGame = "CHARGED_UP" | "REEFSCAPE" | "REBUILT";
 
 export type AnalyticsEventOption = {
   id: string;
@@ -16,6 +16,12 @@ const LEGACY_REEFSCAPE_EVENTS: AnalyticsEventOption[] = [
   { id: "app-testing", name: "App Testing" },
 ];
 
+const CHARGED_UP_EVENTS: AnalyticsEventOption[] = [
+  { id: "2023mslr", key: "2023mslr", name: "Magnolia Regional", startDate: "2023-03-15", endDate: "2023-03-18" },
+  { id: "2023lake", key: "2023lake", name: "Bayou Regional", startDate: "2023-03-29", endDate: "2023-04-01" },
+  { id: "app-testing", name: "App Testing" },
+];
+
 const REBUILT_EVENTS: AnalyticsEventOption[] = [
   ...APP_EVENTS.map((event) => ({
     id: event.key,
@@ -28,7 +34,9 @@ const REBUILT_EVENTS: AnalyticsEventOption[] = [
 ];
 
 export function getEventsForGame(game: AnalyticsGame): AnalyticsEventOption[] {
-  return game === "REBUILT" ? REBUILT_EVENTS : LEGACY_REEFSCAPE_EVENTS;
+  if (game === "REBUILT") return REBUILT_EVENTS;
+  if (game === "CHARGED_UP") return CHARGED_UP_EVENTS;
+  return LEGACY_REEFSCAPE_EVENTS;
 }
 
 type AnalyticsEntryLike = {

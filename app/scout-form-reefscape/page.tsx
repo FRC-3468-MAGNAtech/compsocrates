@@ -672,11 +672,15 @@ function ScoutFormContent() {
               className="w-full border rounded p-2"
               value="reefscape"
               onChange={(event) => {
+                if (event.target.value === "charged-up") {
+                  router.push("/scout-form?lead=0&game=CHARGED_UP");
+                }
                 if (event.target.value === "placeholder") {
                   router.push("/scout-form?lead=0");
                 }
               }}
             >
+              <option value="charged-up">CHARGED UP Form</option>
               <option value="reefscape">REEFSCAPE Form</option>
               <option value="placeholder">REBUILT Form</option>
             </select>

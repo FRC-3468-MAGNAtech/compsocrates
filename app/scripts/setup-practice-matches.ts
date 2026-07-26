@@ -29,6 +29,7 @@ const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREB
 type EventConfig = {
   key: string;
   name: string;
+  game: "CHARGED_UP" | "REBUILT";
 };
 
 type TbaAlliance = {
@@ -50,9 +51,11 @@ type TbaMatch = {
 };
 
 const EVENTS: EventConfig[] = [
-  { key: "2026tuis", name: "Istanbul Regional" },
-  { key: "2026okok", name: "Oklahoma Regional" },
-  { key: "2026cosp", name: "Pikes Peak Regional" },
+  { key: "2023mslr", name: "Magnolia Regional", game: "CHARGED_UP" },
+  { key: "2023lake", name: "Bayou Regional", game: "CHARGED_UP" },
+  { key: "2026tuis", name: "Istanbul Regional", game: "REBUILT" },
+  { key: "2026okok", name: "Oklahoma Regional", game: "REBUILT" },
+  { key: "2026cosp", name: "Pikes Peak Regional", game: "REBUILT" },
 ];
 
 const FRC_CHANNEL_NAME = "FIRST Robotics Competition";
@@ -94,7 +97,12 @@ async function getFrcYouTubeUrl(match: TbaMatch): Promise<string | null> {
   return ok ? `https://www.youtube.com/watch?v=${key}` : null;
 }
 
-function scoreToDifficulty(score: number): "easy" | "medium" | "hard" {
+function scoreToDifficulty(score: number, game: EventConfig["game"]): "easy" | "medium" | "hard" {
+  if (game === "CHARGED_UP") {
+    if (!Number.isFinite(score) || score <= 80) return "easy";
+    if (score <= 120) return "medium";
+    return "hard";
+  }
   if (!Number.isFinite(score) || score <= 200) return "easy";
   if (score <= 400) return "medium";
   return "hard";
@@ -242,8 +250,13 @@ async function run() {
   if (!FIREBASE_PROJECT_ID) throw new Error("NEXT_PUBLIC_FIREBASE_PROJECT_ID is required.");
 
   const istanbulOnly = hasFlag("--istanbul-only");
+  const chargedUpOnly = hasFlag("--charged-up-only");
   const dryRun = hasFlag("--dry-run");
-  const selectedEvents = istanbulOnly ? EVENTS.filter((event) => event.key === "2026tuis") : EVENTS;
+  const selectedEvents = chargedUpOnly
+    ? EVENTS.filter((event) => event.game === "CHARGED_UP")
+    : istanbulOnly
+    ? EVENTS.filter((event) => event.key === "2026tuis")
+    : EVENTS;
   if (!selectedEvents.length) throw new Error("No events selected for import.");
 
   const getToken = createAccessTokenProvider();
@@ -290,7 +303,7 @@ async function run() {
           compLevel: String(match.comp_level || ""),
           setNumber: Number(match.set_number || 1),
           videoUrl,
-          difficulty: scoreToDifficulty(allianceScore),
+          difficulty: scoreToDifficulty(allianceScore, event.game),
           alliance,
           allianceScore,
           allianceTeams: allianceTeams.slice(0, 3),
@@ -302,6 +315,7 @@ async function run() {
             penaltyPoints,
             breakdown: (scoreBreakdown?.[alliance] as Record<string, unknown>) || {},
           },
+          game: event.game,
           createdAt: Date.now(),
           importedByScript: "setup-practice-matches.ts",
         };

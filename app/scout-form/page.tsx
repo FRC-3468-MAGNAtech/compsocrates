@@ -223,6 +223,24 @@ type FormState = {
   notes: string;
 };
 
+type ChargedUpFormState = {
+  scoutName: string;
+  teamNumber: string;
+  startingPosition: string;
+  mobility: boolean;
+  autoGridBottom: number;
+  autoGridMiddle: number;
+  autoGridTop: number;
+  autoChargeStation: string;
+  teleopGridBottom: number;
+  teleopGridMiddle: number;
+  teleopGridTop: number;
+  teleopLinks: number;
+  endgameChargeStation: string;
+  incidents: string[];
+  notes: string;
+};
+
 type LeadFormState = {
   scoutName: string;
   alliance: "red" | "blue" | "";
@@ -1034,6 +1052,23 @@ function ScoutFormContent() {
     incidents: [],
     notes: "",
   });
+  const [chargedUpForm, setChargedUpForm] = useState<ChargedUpFormState>({
+    scoutName: userData?.displayName || "",
+    teamNumber: "",
+    startingPosition: "",
+    mobility: false,
+    autoGridBottom: 0,
+    autoGridMiddle: 0,
+    autoGridTop: 0,
+    autoChargeStation: "",
+    teleopGridBottom: 0,
+    teleopGridMiddle: 0,
+    teleopGridTop: 0,
+    teleopLinks: 0,
+    endgameChargeStation: "",
+    incidents: [],
+    notes: "",
+  });
 
   const [autoCycles, setAutoCycles] = useState<number[]>([]);
   const [transitionCycles, setTransitionCycles] = useState<number[]>([]);
@@ -1047,6 +1082,7 @@ function ScoutFormContent() {
     if (!userData?.displayName) return;
     if (!editMode) {
       setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
+      setChargedUpForm((prev) => ({ ...prev, scoutName: userData.displayName }));
       setLeadForm((prev) => ({ ...prev, scoutName: userData.displayName }));
     }
   }, [userData?.displayName]);
@@ -2210,6 +2246,9 @@ function ScoutFormContent() {
     closeLeadTeamPicker();
   }
   const fromPractice = searchParams.get("practice") === "1";
+  const [activeFormGame, setActiveFormGame] = useState<"CHARGED_UP" | "REBUILT">(
+    String(searchParams.get("game") || "").toUpperCase().replace(/[\s-]+/g, "_") === "CHARGED_UP" ? "CHARGED_UP" : "REBUILT"
+  );
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -2256,13 +2295,16 @@ function ScoutFormContent() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
                     <select
                       className="w-full border rounded p-2"
-                      value="REBUILT"
+                      value={activeFormGame}
                       onChange={(e) => {
                         if (e.target.value === "REEFSCAPE") {
                           router.push("/scout-form-reefscape");
+                          return;
                         }
+                        setActiveFormGame(e.target.value === "CHARGED_UP" ? "CHARGED_UP" : "REBUILT");
                       }}
                     >
+                      <option value="CHARGED_UP">CHARGED UP Form</option>
                       <option value="REEFSCAPE">REEFSCAPE Form</option>
                       <option value="REBUILT">REBUILT Form</option>
                     </select>
@@ -2290,7 +2332,116 @@ function ScoutFormContent() {
               </div>
             </div>
 
-            {!leadMode && (
+            {!leadMode && activeFormGame === "CHARGED_UP" && (
+              <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
+                  <label className="block text-sm font-medium text-gray-700">Scout Name</label>
+                  <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={chargedUpForm.scoutName} disabled />
+                  <label className="block text-sm font-medium text-gray-700">Team Number</label>
+                  <input
+                    className="w-full border rounded p-2"
+                    value={chargedUpForm.teamNumber}
+                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, teamNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                    placeholder="Enter team number"
+                  />
+                  <label className="block text-sm font-medium text-gray-700">Starting Position</label>
+                  <select
+                    className="w-full border rounded p-2"
+                    value={chargedUpForm.startingPosition}
+                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, startingPosition: e.target.value }))}
+                  >
+                    <option value="">Select Position</option>
+                    <option value="Barrier Side">Barrier Side</option>
+                    <option value="Middle">Middle</option>
+                    <option value="Corner Side">Corner Side</option>
+                  </select>
+                </div>
+
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={chargedUpForm.mobility}
+                      onChange={(e) => setChargedUpForm((prev) => ({ ...prev, mobility: e.target.checked }))}
+                    />
+                    Mobility
+                  </label>
+                  <h3 className="text-sm font-semibold text-gray-700">Auto Grids</h3>
+                  <ClimbCounter label="Bottom Row" value={chargedUpForm.autoGridBottom} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridBottom: next }))} />
+                  <ClimbCounter label="Middle Row" value={chargedUpForm.autoGridMiddle} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridMiddle: next }))} />
+                  <ClimbCounter label="Top Row" value={chargedUpForm.autoGridTop} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridTop: next }))} />
+                  <select
+                    className="w-full border rounded p-2"
+                    value={chargedUpForm.autoChargeStation}
+                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, autoChargeStation: e.target.value }))}
+                  >
+                    <option value="">Auto Charge Station</option>
+                    <option value="Docked">Docked</option>
+                    <option value="Engaged">Engaged</option>
+                  </select>
+                </div>
+
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleop</h2>
+                  <h3 className="text-sm font-semibold text-gray-700">Teleop Grids</h3>
+                  <ClimbCounter label="Bottom Row" value={chargedUpForm.teleopGridBottom} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridBottom: next }))} />
+                  <ClimbCounter label="Middle Row" value={chargedUpForm.teleopGridMiddle} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridMiddle: next }))} />
+                  <ClimbCounter label="Top Row" value={chargedUpForm.teleopGridTop} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridTop: next }))} />
+                  <ClimbCounter label="Link" value={chargedUpForm.teleopLinks} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopLinks: next }))} />
+                </div>
+
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Endgame</h2>
+                  <select
+                    className="w-full border rounded p-2"
+                    value={chargedUpForm.endgameChargeStation}
+                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, endgameChargeStation: e.target.value }))}
+                  >
+                    <option value="">Not Parked</option>
+                    <option value="Parked">Parked</option>
+                    <option value="Docked">Docked</option>
+                    <option value="Engaged">Engaged</option>
+                  </select>
+                </div>
+
+                <div className="bg-white rounded-xl shadow p-4 space-y-2">
+                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>General</h2>
+                  {INCIDENTS.map((incident) => (
+                    <label key={incident.value} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={chargedUpForm.incidents.includes(incident.value)}
+                        onChange={(e) =>
+                          setChargedUpForm((prev) => ({
+                            ...prev,
+                            incidents: e.target.checked
+                              ? [...prev.incidents, incident.value]
+                              : prev.incidents.filter((value) => value !== incident.value),
+                          }))
+                        }
+                      />
+                      {incident.label}
+                    </label>
+                  ))}
+                </div>
+
+                <div className="bg-white rounded-xl shadow p-4">
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full py-3 rounded text-white font-semibold"
+                    style={{ backgroundColor: "var(--primary-color)" }}
+                    onClick={() => alert("CHARGED UP match form submissions are disabled.")}
+                  >
+                    Submission Disabled for CHARGED UP
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {!leadMode && activeFormGame === "REBUILT" && (
               <form
                 className="space-y-6"
                 onSubmit={(event) => {
@@ -2631,7 +2782,19 @@ function ScoutFormContent() {
               <div className="hidden md:block w-80 p-4">
                 <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
                   <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
-                  <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="flex-1 border rounded p-2 resize-none" placeholder="Optional notes..." />
+                  <textarea
+                    value={activeFormGame === "CHARGED_UP" ? chargedUpForm.notes : form.notes}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (activeFormGame === "CHARGED_UP") {
+                        setChargedUpForm((prev) => ({ ...prev, notes: value }));
+                      } else {
+                        setForm((p) => ({ ...p, notes: value }));
+                      }
+                    }}
+                    className="flex-1 border rounded p-2 resize-none"
+                    placeholder="Optional notes..."
+                  />
                 </div>
               </div>
 
@@ -2641,7 +2804,18 @@ function ScoutFormContent() {
               {mobileNotesOpen && (
                 <div className="fixed inset-0 z-50 bg-white p-4">
                   <div className="flex items-center justify-between mb-2"><h2 className="text-xl font-semibold">Notes</h2><button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
-                  <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full h-[calc(100%-3rem)] border rounded p-3 resize-none" />
+                  <textarea
+                    value={activeFormGame === "CHARGED_UP" ? chargedUpForm.notes : form.notes}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (activeFormGame === "CHARGED_UP") {
+                        setChargedUpForm((prev) => ({ ...prev, notes: value }));
+                      } else {
+                        setForm((p) => ({ ...p, notes: value }));
+                      }
+                    }}
+                    className="w-full h-[calc(100%-3rem)] border rounded p-3 resize-none"
+                  />
                 </div>
               )}
             </>

@@ -103,6 +103,25 @@ const RebuiltCycleTimer = ({
 type PracticeMode = 'trial' | 'competitive';
 type ScoutedData = PracticeSession["scoutedData"];
 type PracticeStep = 'select' | 'live_reveal' | 'practice' | 'break' | 'results';
+type PracticeGame = AnalyticsGame;
+type PracticeDifficulty = 'easy' | 'medium' | 'hard';
+type SelectedDifficulty = PracticeDifficulty | 'live';
+type ChargedUpScoutedData = {
+  teamNumber: string;
+  startingPosition: string;
+  mobility: boolean;
+  autoGridBottom: number;
+  autoGridMiddle: number;
+  autoGridTop: number;
+  autoChargeStation: string;
+  teleopGridBottom: number;
+  teleopGridMiddle: number;
+  teleopGridTop: number;
+  teleopLinks: number;
+  endgameChargeStation: string;
+  incidents: string[];
+  notes: string;
+};
 type RebuiltScoutedData = {
   teamNumber: string;
   startingPosition: string;
@@ -162,8 +181,8 @@ type PracticeSessionDraft = {
   version: 1;
   savedAt: number;
   scoutId: string;
-  selectedGame: "REEFSCAPE" | "REBUILT" | null;
-  selectedDifficulty: 'easy' | 'medium' | 'hard' | 'live' | null;
+  selectedGame: PracticeGame | null;
+  selectedDifficulty: SelectedDifficulty | null;
   selectedMode: PracticeMode | null;
   currentStep: Extract<PracticeStep, "practice" | "break">;
   currentMatch: PracticeMatch;
@@ -171,9 +190,11 @@ type PracticeSessionDraft = {
   breakCompletedRobotIndex: number | null;
   robotSessions: ScoutedData[];
   rebuiltRobotSessions: RebuiltScoutedData[];
+  chargedUpRobotSessions: ChargedUpScoutedData[];
   humanPlayerRobot: number | null;
   formData: ScoutedData;
   rebuiltFormData: RebuiltScoutedData;
+  chargedUpFormData: ChargedUpScoutedData;
 };
 
 type CandidatePracticeMatch = PracticeMatch & {
@@ -200,7 +221,7 @@ type LivePracticeLobby = {
   hostId: string;
   hostName: string;
   teamId: string;
-  game: "REEFSCAPE" | "REBUILT";
+  game: PracticeGame;
   mode: PracticeMode;
   status: "waiting" | "in_progress" | "completed" | "closed";
   createdAt: number;
@@ -274,6 +295,48 @@ function createEmptyScoutedData(teamNumber = "", notes = ""): ScoutedData {
     incidents: [] as string[],
     notes,
   };
+}
+
+function createEmptyChargedUpScoutedData(teamNumber = "", notes = ""): ChargedUpScoutedData {
+  return {
+    teamNumber,
+    startingPosition: "",
+    mobility: false,
+    autoGridBottom: 0,
+    autoGridMiddle: 0,
+    autoGridTop: 0,
+    autoChargeStation: "",
+    teleopGridBottom: 0,
+    teleopGridMiddle: 0,
+    teleopGridTop: 0,
+    teleopLinks: 0,
+    endgameChargeStation: "",
+    incidents: [],
+    notes,
+  };
+}
+
+function calculateChargedUpScoutedScore(data: ChargedUpScoutedData): number {
+  const autoCharge =
+    data.autoChargeStation === "engaged" ? 12 :
+    data.autoChargeStation === "docked" ? 8 : 0;
+  const endgameCharge =
+    data.endgameChargeStation === "engaged" ? 10 :
+    data.endgameChargeStation === "docked" ? 6 :
+    data.endgameChargeStation === "parked" ? 2 : 0;
+
+  return (
+    (data.mobility ? 3 : 0) +
+    data.autoGridBottom * 3 +
+    data.autoGridMiddle * 4 +
+    data.autoGridTop * 6 +
+    autoCharge +
+    data.teleopGridBottom * 2 +
+    data.teleopGridMiddle * 3 +
+    data.teleopGridTop * 5 +
+    data.teleopLinks * 5 +
+    endgameCharge
+  );
 }
 
 function parseTeamNumber(value: unknown): number | null {
@@ -440,7 +503,12 @@ function readOfficialData(value: unknown): { score: number; penaltyPoints: numbe
   return { score: 0, penaltyPoints: 0, breakdown: {} };
 }
 
-function scoreToDifficulty(score: number): "easy" | "medium" | "hard" {
+function scoreToDifficulty(score: number, game?: PracticeGame | null): PracticeDifficulty {
+  if (game === "CHARGED_UP") {
+    if (!Number.isFinite(score) || score <= 80) return "easy";
+    if (score <= 120) return "medium";
+    return "hard";
+  }
   if (!Number.isFinite(score) || score <= 200) return "easy";
   if (score <= 400) return "medium";
   return "hard";
@@ -490,7 +558,8 @@ function getPracticeMatchScore(match: PracticeMatch): number | null {
 function matchMatchesDifficulty(match: PracticeMatch, difficulty: "easy" | "medium" | "hard"): boolean {
   const score = getPracticeMatchScore(match);
   if (score === null) return false;
-  return scoreToDifficulty(score) === difficulty;
+  const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase() as PracticeGame;
+  return scoreToDifficulty(score, matchGame) === difficulty;
 }
 
 function dedupePracticeMatches(matches: PracticeMatch[]): PracticeMatch[] {
@@ -1020,6 +1089,14 @@ function normalizeEventValue(value: string): string {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function normalizePracticeGame(value: unknown, fallback: PracticeGame = "REBUILT"): PracticeGame {
+  const normalized = String(value || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (normalized === "CHARGED_UP" || normalized === "CHARGEDUP") return "CHARGED_UP";
+  if (normalized === "REEFSCAPE") return "REEFSCAPE";
+  if (normalized === "REBUILT") return "REBUILT";
+  return fallback;
+}
+
 function resolvePracticeEvent(
   match: PracticeMatch,
   game: AnalyticsGame,
@@ -1035,6 +1112,7 @@ function resolvePracticeEvent(
 
   // Build a wider catalog across both games for robust name/key mapping.
   const staticCatalog = [
+    ...getEventsForGame("CHARGED_UP").filter((event) => event.id !== "app-testing"),
     ...getEventsForGame("REEFSCAPE").filter((event) => event.id !== "app-testing"),
     ...getEventsForGame("REBUILT").filter((event) => event.id !== "app-testing"),
   ];
@@ -1094,7 +1172,7 @@ function PracticeScoutingContent() {
     matchKey: string;
     alliance: "red" | "blue";
     teamNumber: number;
-    game: "REEFSCAPE" | "REBUILT";
+    game: PracticeGame;
     eventKey?: string;
     eventName?: string;
   } | null>(null);
@@ -1103,15 +1181,16 @@ function PracticeScoutingContent() {
   const [rescoutCompleted, setRescoutCompleted] = useState(false);
   const [rescoutSubmitInFlight, setRescoutSubmitInFlight] = useState(false);
   const [rescoutError, setRescoutError] = useState("");
-  const [activeMatchGame, setActiveMatchGame] = useState<"REEFSCAPE" | "REBUILT" | null>(null);
+  const [activeMatchGame, setActiveMatchGame] = useState<PracticeGame | null>(null);
   const [currentStep, setCurrentStep] = useState<PracticeStep>('select');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'live' | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<SelectedDifficulty | null>(null);
   const [selectedMode, setSelectedMode] = useState<PracticeMode | null>(null);
   const [currentMatch, setCurrentMatch] = useState<PracticeMatch | null>(null);
   const [currentRobotIndex, setCurrentRobotIndex] = useState(0);
   const [breakCompletedRobotIndex, setBreakCompletedRobotIndex] = useState<number | null>(null);
   const [robotSessions, setRobotSessions] = useState<ScoutedData[]>([]);
   const [rebuiltRobotSessions, setRebuiltRobotSessions] = useState<RebuiltScoutedData[]>([]);
+  const [chargedUpRobotSessions, setChargedUpRobotSessions] = useState<ChargedUpScoutedData[]>([]);
   const [humanPlayerRobot, setHumanPlayerRobot] = useState<number | null>(null); // 0, 1, 2, or null
   const [sessionResults, setSessionResults] = useState<PracticeSession | null>(null);
   const [candidateMatches, setCandidateMatches] = useState<CandidatePracticeMatch[]>([]);
@@ -1154,12 +1233,13 @@ function PracticeScoutingContent() {
 
   const [formData, setFormData] = useState<ScoutedData>(createEmptyScoutedData());
   const [rebuiltFormData, setRebuiltFormData] = useState<RebuiltScoutedData>(createEmptyRebuiltScoutedData());
+  const [chargedUpFormData, setChargedUpFormData] = useState<ChargedUpScoutedData>(createEmptyChargedUpScoutedData());
   const REBUILT_WEEK0_EVENT_KEY = "2026week0";
   const hasRescoutTarget = Boolean(rescoutTarget);
   const isRescoutIntent = Boolean(rescoutId || hasRescoutTarget);
   const isRescoutFlow = Boolean(rescoutId || hasRescoutTarget);
 
-  const persistedDifficulty: "easy" | "medium" | "hard" = selectedDifficulty === "live"
+  const persistedDifficulty: PracticeDifficulty = selectedDifficulty === "live"
     ? "hard"
     : (selectedDifficulty || "easy");
 
@@ -1179,7 +1259,7 @@ function PracticeScoutingContent() {
     const matchKey = String(searchParams.get("matchKey") || "").trim();
     const teamNumber = parseTeamNumber(searchParams.get("teamNumber"));
     const alliance = String(searchParams.get("alliance") || "").toLowerCase() === "blue" ? "blue" : "red";
-    const game = String(searchParams.get("game") || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+    const game = normalizePracticeGame(searchParams.get("game"), "REBUILT");
     const rawEventKey = normalizeEventKey(String(searchParams.get("eventKey") || "").trim());
     let eventKey = rawEventKey === "all" ? "" : rawEventKey;
     const eventName = String(searchParams.get("eventName") || "").trim();
@@ -1219,7 +1299,7 @@ function PracticeScoutingContent() {
         const alliance = String(data.alliance || "").toLowerCase() === "blue" ? "blue" : "red";
         const teamNumber = parseTeamNumber(data.teamNumber);
         const matchKey = String(data.matchKey || data.matchLabel || "").trim();
-        const game = String(data.game || "REBUILT").toUpperCase() === "REEFSCAPE" ? "REEFSCAPE" : "REBUILT";
+        const game = normalizePracticeGame(data.game, "REBUILT");
         const eventName = String(data.eventName || "").trim();
         let eventKey = normalizeEventKey(String(data.eventKey || "").trim());
         if (!isValidEventKey(eventKey)) {
@@ -1415,7 +1495,7 @@ function PracticeScoutingContent() {
             matchNumber: Number(tbaMatch.match_number || 0),
             matchType: normalizePracticeMatchType(undefined, tbaMatch.key, tbaMatch.comp_level),
             videoUrl: videoUrl || matchToUse?.videoUrl || "",
-            difficulty: scoreToDifficulty(allianceScore),
+            difficulty: scoreToDifficulty(allianceScore, activeMatchGame),
             alliance: target.alliance,
             allianceScore,
             allianceTeams,
@@ -2308,6 +2388,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
 
   function inferGameFromEventYear(eventKey: string): AnalyticsGame | null {
     const year = parseInt(eventKey.slice(0, 4), 10);
+    if (year === 2023) return "CHARGED_UP";
     if (year === 2026) return "REBUILT";
     if (year === 2025) return "REEFSCAPE";
     return null;
@@ -2322,19 +2403,26 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }
 
   function matchBelongsToSelectedGame(match: PracticeMatch): boolean {
-    const matchGame = String((match as unknown as Record<string, unknown>).game || "").toUpperCase();
+    const matchGame = normalizePracticeGame((match as unknown as Record<string, unknown>).game, "" as PracticeGame);
     const eventKey = resolveMatchEventKey(match);
     const eventGame = eventKey ? inferGameFromEventYear(eventKey) : null;
 
     if (activeMatchGame === "REBUILT") {
-      if (matchGame === "REEFSCAPE") return false;
+      if (matchGame === "REEFSCAPE" || matchGame === "CHARGED_UP") return false;
       if (eventKey === REBUILT_WEEK0_EVENT_KEY) return true;
       if (eventGame) return eventGame === "REBUILT";
       if (matchGame) return matchGame === "REBUILT";
       return true;
     }
 
-    if (matchGame === "REBUILT") return false;
+    if (activeMatchGame === "CHARGED_UP") {
+      if (matchGame === "REEFSCAPE" || matchGame === "REBUILT") return false;
+      if (eventGame) return eventGame === "CHARGED_UP";
+      if (matchGame) return matchGame === "CHARGED_UP";
+      return false;
+    }
+
+    if (matchGame === "REBUILT" || matchGame === "CHARGED_UP") return false;
     if (eventKey === REBUILT_WEEK0_EVENT_KEY) return false;
     if (eventGame) return eventGame === "REEFSCAPE";
     if (matchGame) return matchGame === "REEFSCAPE";
@@ -2367,7 +2455,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function inferEventKeyFromStreamTitle(title: string, game?: AnalyticsGame | null): string {
     const normalizedTitle = normalizeEventValue(title);
     if (!normalizedTitle) return "";
-    const gamesToCheck: AnalyticsGame[] = game ? [game] : ["REEFSCAPE", "REBUILT"];
+    const gamesToCheck: AnalyticsGame[] = game ? [game] : ["CHARGED_UP", "REEFSCAPE", "REBUILT"];
     const staticEvents = gamesToCheck.flatMap((entryGame) =>
       getEventsForGame(entryGame).filter((event) => event.id !== "app-testing")
     );
@@ -2393,6 +2481,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   function inferGameFromEventKey(eventKey: string): AnalyticsGame | null {
     const normalizedKey = String(eventKey || "").trim().toLowerCase();
     if (!normalizedKey) return null;
+    if (getEventsForGame("CHARGED_UP").some((event) => event.id.toLowerCase() === normalizedKey)) return "CHARGED_UP";
     if (getEventsForGame("REEFSCAPE").some((event) => event.id.toLowerCase() === normalizedKey)) return "REEFSCAPE";
     if (getEventsForGame("REBUILT").some((event) => event.id.toLowerCase() === normalizedKey)) return "REBUILT";
     return null;
@@ -2523,6 +2612,8 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       if (lockedTeam) {
         if (activeMatchGame === "REBUILT") {
           setRebuiltFormData((prev) => (prev.teamNumber === lockedTeam ? prev : { ...prev, teamNumber: lockedTeam }));
+        } else if (activeMatchGame === "CHARGED_UP") {
+          setChargedUpFormData((prev) => (prev.teamNumber === lockedTeam ? prev : { ...prev, teamNumber: lockedTeam }));
         } else {
           setFormData((prev) => (prev.teamNumber === lockedTeam ? prev : { ...prev, teamNumber: lockedTeam }));
         }
@@ -2532,6 +2623,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const expectedTeam = currentMatch.allianceTeams[currentRobotIndex]?.toString() || "";
     if (activeMatchGame === "REBUILT") {
       setRebuiltFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
+      return;
+    }
+    if (activeMatchGame === "CHARGED_UP") {
+      setChargedUpFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
       return;
     }
     setFormData((prev) => (prev.teamNumber === expectedTeam ? prev : { ...prev, teamNumber: expectedTeam }));
@@ -2561,9 +2656,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       breakCompletedRobotIndex: overrides.breakCompletedRobotIndex ?? breakCompletedRobotIndex,
       robotSessions: overrides.robotSessions ?? robotSessions,
       rebuiltRobotSessions: overrides.rebuiltRobotSessions ?? rebuiltRobotSessions,
+      chargedUpRobotSessions: overrides.chargedUpRobotSessions ?? chargedUpRobotSessions,
       humanPlayerRobot: overrides.humanPlayerRobot ?? humanPlayerRobot,
       formData: overrides.formData ?? formData,
       rebuiltFormData: overrides.rebuiltFormData ?? rebuiltFormData,
+      chargedUpFormData: overrides.chargedUpFormData ?? chargedUpFormData,
     };
     localStorage.setItem(getPracticeDraftKey(userData.uid), JSON.stringify(draft));
   }
@@ -2572,6 +2669,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const safeStep: PracticeStep = draft.currentStep === "break" ? "break" : "practice";
     const inferredGame =
       draft.selectedGame
+      || inferGameFromEventYear(String((draft.currentMatch as unknown as Record<string, unknown>)?.eventKey || "").toLowerCase())
       || (String((draft.currentMatch as unknown as Record<string, unknown>)?.eventKey || "").toLowerCase() === REBUILT_WEEK0_EVENT_KEY
           ? "REBUILT"
           : "REEFSCAPE");
@@ -2585,6 +2683,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     );
     setRobotSessions(Array.isArray(draft.robotSessions) ? draft.robotSessions.slice(0, 3) : []);
     setRebuiltRobotSessions(Array.isArray(draft.rebuiltRobotSessions) ? draft.rebuiltRobotSessions.slice(0, 3) : []);
+    setChargedUpRobotSessions(Array.isArray(draft.chargedUpRobotSessions) ? draft.chargedUpRobotSessions.slice(0, 3) : []);
     setHumanPlayerRobot(
       typeof draft.humanPlayerRobot === "number" ? Math.max(0, Math.min(2, draft.humanPlayerRobot)) : null
     );
@@ -2595,6 +2694,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setRebuiltFormData({
       ...createEmptyRebuiltScoutedData(),
       ...(draft.rebuiltFormData || {}),
+    });
+    setChargedUpFormData({
+      ...createEmptyChargedUpScoutedData(),
+      ...(draft.chargedUpFormData || {}),
     });
     setCurrentStep(safeStep);
     setPendingDraft(null);
@@ -2628,7 +2731,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
   }, [userData?.uid]);
 
   async function selectPracticeMatch(
-    difficulty: 'easy' | 'medium' | 'hard' | 'live',
+    difficulty: SelectedDifficulty,
     mode: PracticeMode,
     liveEventOverride?: string
   ): Promise<CandidatePracticeMatch[]> {
@@ -2716,11 +2819,12 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 if (teams.length < 3) return null;
                 const allianceScore = Number(match.alliances?.[alliance]?.score);
                 const normalizedAllianceScore = Number.isFinite(allianceScore) && allianceScore >= 0 ? allianceScore : 0;
-                const normalizedDifficulty = scoreToDifficulty(normalizedAllianceScore);
+                const normalizedDifficulty = scoreToDifficulty(normalizedAllianceScore, activeMatchGame);
                 return {
                   id: `${matchKey}:${alliance}`,
                   eventKey: hintedEventKey,
                   eventName: liveStreamTitle || hintedEventKey,
+                  game: activeMatchGame,
                   matchKey,
                   matchNumber: Number(match.match_number || 0),
                   setNumber: Number(match.set_number || 0),
@@ -2774,7 +2878,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         const sessionsSnap = await getDocs(query(collection(db, "practiceSessions"), where("scoutId", "==", userData.uid)));
         sessionsSnap.docs.forEach((docSnap) => {
           const row = docSnap.data() as Record<string, unknown>;
-          const game = String(row.game || "REEFSCAPE").toUpperCase();
+          const game = normalizePracticeGame(row.game, "REEFSCAPE");
           if (activeMatchGame && game !== activeMatchGame) return;
           const identity = getPracticeIdentity({
             matchKey: row.matchKey,
@@ -2790,7 +2894,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         scoutingSnap.docs.forEach((docSnap) => {
           const row = docSnap.data() as Record<string, unknown>;
           if (!row.isPracticeScouting) return;
-          const game = String(row.game || "REEFSCAPE").toUpperCase();
+          const game = normalizePracticeGame(row.game, "REEFSCAPE");
           if (activeMatchGame && game !== activeMatchGame) return;
           const identity = getPracticeIdentity({
             matchKey: row.matchKey,
@@ -2878,11 +2982,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setBreakCompletedRobotIndex(null);
     setRobotSessions([]);
     setRebuiltRobotSessions([]);
+    setChargedUpRobotSessions([]);
     const defaultTeam = safeMatch.allianceTeams[initialRobotIndex]?.toString() || "";
     const hasExplicitTeam = typeof options?.teamNumber === "string";
     const initialTeamNumber = hasExplicitTeam ? String(options?.teamNumber) : (isLiveSession && liveLobby ? "" : defaultTeam);
     setFormData(createEmptyScoutedData(initialTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(initialTeamNumber));
+    setChargedUpFormData(createEmptyChargedUpScoutedData(initialTeamNumber));
     if (hasRescoutTarget) {
       setHumanPlayerRobot(null);
     } else {
@@ -3202,6 +3308,29 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
 
+    if (activeMatchGame === "CHARGED_UP") {
+      const robotData = { ...chargedUpFormData };
+      const nextRobotSessions = [...chargedUpRobotSessions, robotData];
+      setChargedUpRobotSessions(nextRobotSessions);
+
+      if (isRescoutFlow || currentRobotIndex === 2) {
+        if (isRescoutFlow) setRescoutSubmitInFlight(true);
+        await submitChargedUpPracticeSession(nextRobotSessions);
+        return;
+      }
+
+      setBreakCompletedRobotIndex(currentRobotIndex);
+      setCurrentStep('break');
+      savePracticeDraft({
+        selectedGame: "CHARGED_UP",
+        currentStep: "break",
+        breakCompletedRobotIndex: currentRobotIndex,
+        chargedUpRobotSessions: nextRobotSessions,
+        chargedUpFormData: robotData,
+      });
+      return;
+    }
+
     const robotData = { ...formData };
     const nextRobotSessions = [...robotSessions, robotData];
     setRobotSessions(nextRobotSessions);
@@ -3232,6 +3361,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     const nextTeamNumber = selectedDifficulty === "live" && liveLobby ? "" : defaultTeam;
     setFormData(createEmptyScoutedData(nextTeamNumber));
     setRebuiltFormData(createEmptyRebuiltScoutedData(nextTeamNumber));
+    setChargedUpFormData(createEmptyChargedUpScoutedData(nextTeamNumber));
     setCurrentStep('practice');
     setMobileNotesOpen(false);
     formPaneRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -3450,6 +3580,148 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     }
   }
 
+  async function submitChargedUpPracticeSession(allRobotData: ChargedUpScoutedData[]) {
+    if (!currentMatch || !userData) return;
+    if (allRobotData.length === 0) return;
+
+    setLoading(true);
+    try {
+      const scores = allRobotData.map((data) => calculateChargedUpScoutedScore(data));
+      const baseScoutedScore = scores.reduce((a, b) => a + b, 0);
+      const penaltyPoints = Number(currentMatch.officialData?.penaltyPoints || 0);
+      const totalScoutedScore = baseScoutedScore + penaltyPoints;
+      const officialAllianceScore =
+        typeof currentMatch.officialData?.score === "number"
+          ? currentMatch.officialData.score
+          : typeof currentMatch.actualScore === "number"
+          ? currentMatch.actualScore
+          : 0;
+      const sessionAccuracy = calculateAccuracy(totalScoutedScore, officialAllianceScore);
+
+      const now = Date.now();
+      const device = getScoutDevice();
+      const { eventKey, eventName } = resolvePracticeEvent(currentMatch, "CHARGED_UP", teamEventCatalog);
+      const matchStage = getPracticeStage(currentMatch);
+      const analyticsMatchType: "practice" | "qualification" | "finals" =
+        matchStage === "practice" ? "practice" : matchStage === "qualification" ? "qualification" : "finals";
+      const matchIdPrefix = analyticsMatchType === "practice" ? "p" : analyticsMatchType === "finals" ? "f" : "q";
+      const normalizedMatchType = normalizePracticeMatchType(
+        currentMatch.matchType,
+        currentMatch.matchKey,
+        (currentMatch as unknown as Record<string, unknown>).compLevel
+      );
+
+      const session: Partial<PracticeSession> & Record<string, unknown> = {
+        teamId: userData.teamId || "",
+        scoutName: userData.displayName,
+        scoutId: userData.uid,
+        matchId: currentMatch.id || "",
+        matchKey: currentMatch.matchKey || "",
+        matchNumber: currentMatch.matchNumber,
+        matchType: normalizedMatchType,
+        alliance: normalizeAllianceSide(currentMatch.alliance),
+        difficulty: persistedDifficulty,
+        mode: selectedMode || "trial",
+        isLivePracticeScouting: false,
+        scoutedData: allRobotData[0] as unknown as ScoutedData,
+        allScoutedData: allRobotData,
+        eventKey,
+        eventName,
+        game: "CHARGED_UP",
+        officialScore: officialAllianceScore,
+        actualScore: officialAllianceScore,
+        scoutedScore: totalScoutedScore,
+        penaltyPoints,
+        accuracy: sessionAccuracy,
+        scoringWeights: {
+          mobility: 3,
+          autoGridBottom: 3,
+          autoGridMiddle: 4,
+          autoGridTop: 6,
+          autoDocked: 8,
+          autoEngaged: 12,
+          teleopGridBottom: 2,
+          teleopGridMiddle: 3,
+          teleopGridTop: 5,
+          teleopLink: 5,
+          parked: 2,
+          docked: 6,
+          engaged: 10,
+        },
+        deviceType: device.deviceType,
+        deviceDetails: device.details,
+        timestamp: now,
+        startedAt: now,
+        completedAt: now,
+      };
+
+      const docRef = await addDoc(collection(db, "practiceSessions"), session);
+
+      await Promise.all(
+        allRobotData.map((robotData) =>
+          addDoc(collection(db, "scouting"), {
+            teamId: userData.teamId || "",
+            scoutName: userData.displayName,
+            scoutId: userData.uid,
+            teamNumber: robotData.teamNumber,
+            startingPosition: robotData.startingPosition,
+            mobility: robotData.mobility,
+            auto: {
+              mobility: robotData.mobility,
+              gridBottom: robotData.autoGridBottom,
+              gridMiddle: robotData.autoGridMiddle,
+              gridTop: robotData.autoGridTop,
+              chargeStation: robotData.autoChargeStation,
+            },
+            teleop: {
+              gridBottom: robotData.teleopGridBottom,
+              gridMiddle: robotData.teleopGridMiddle,
+              gridTop: robotData.teleopGridTop,
+              links: robotData.teleopLinks,
+            },
+            endgame: {
+              chargeStation: robotData.endgameChargeStation,
+            },
+            incidents: robotData.incidents,
+            notes: robotData.notes,
+            scoutedScore: calculateChargedUpScoutedScore(robotData),
+            matchId: `${matchIdPrefix}${currentMatch.matchNumber}`,
+            matchNumber: String(currentMatch.matchNumber),
+            matchType: analyticsMatchType,
+            alliance: normalizeAllianceSide(currentMatch.alliance),
+            allianceColor: normalizeAllianceSide(currentMatch.alliance),
+            matchKey: currentMatch.matchKey || "",
+            eventKey,
+            eventName,
+            game: "CHARGED_UP",
+            accuracy: sessionAccuracy,
+            timestamp: now,
+            submittedAt: now,
+            practiceMode: selectedMode || "trial",
+            difficulty: persistedDifficulty,
+            isLivePracticeScouting: false,
+            isPracticeScouting: true,
+            practiceSessionId: docRef.id,
+            penaltyPoints,
+            deviceType: device.deviceType,
+            deviceDetails: device.details,
+          })
+        )
+      );
+
+      setSessionResults({ ...(session as PracticeSession), id: docRef.id });
+      setCurrentStep("results");
+      clearPracticeDraft();
+      setPendingDraft(null);
+    } catch (error) {
+      console.error("Error submitting CHARGED UP practice session:", error);
+      alert("Error submitting practice session: " + (error as Error).message);
+    } finally {
+      setLoading(false);
+      if (isRescoutFlow) setRescoutSubmitInFlight(false);
+    }
+  }
+
   async function submitPracticeSession(allRobotData: ScoutedData[]) {
     if (!currentMatch || !userData) return;
     if (allRobotData.length === 0) return;
@@ -3602,6 +3874,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
     setMobileNotesOpen(false);
     setFormData(createEmptyScoutedData());
     setRebuiltFormData(createEmptyRebuiltScoutedData());
+    setChargedUpFormData(createEmptyChargedUpScoutedData());
     setLiveTeamAccuracy(null);
     setLiveLeaderboard([]);
     setLiveStartedSessionKey("");
@@ -3935,7 +4208,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
         const stageNumber = parsePracticeMatchNumber(match as { matchKey?: unknown; matchNumber?: unknown; setNumber?: unknown; compLevel?: unknown });
         const alliance = normalizeAllianceSide(match.alliance);
         const score = getPracticeMatchScore(match);
-        const difficulty = score !== null ? scoreToDifficulty(score) : "";
+        const difficulty = score !== null ? scoreToDifficulty(score, activeMatchGame) : "";
         return {
           id: match.id,
           label: matchLabel,
@@ -3991,7 +4264,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
       return;
     }
     const score = getPracticeMatchScore(picked);
-    const difficulty = score !== null ? scoreToDifficulty(score) : "";
+    const difficulty = score !== null ? scoreToDifficulty(score, activeMatchGame) : "";
     void updateLiveLobbySettings({
       selectedMatchId: picked.id,
       selectedMatchBase: base,
@@ -4171,12 +4444,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 {(() => {
                   const inferredGame =
                     pendingDraft.selectedGame
+                    || inferGameFromEventYear(String((pendingDraft.currentMatch as unknown as Record<string, unknown>)?.eventKey || "").toLowerCase())
                     || (String((pendingDraft.currentMatch as unknown as Record<string, unknown>)?.eventKey || "").toLowerCase() === REBUILT_WEEK0_EVENT_KEY
-                        ? "REBUILT"
-                        : "REEFSCAPE");
+                      ? "REBUILT"
+                      : "REEFSCAPE");
                   const completedCount =
                     inferredGame === "REBUILT"
                       ? pendingDraft.rebuiltRobotSessions?.length || 0
+                      : inferredGame === "CHARGED_UP"
+                      ? pendingDraft.chargedUpRobotSessions?.length || 0
                       : pendingDraft.robotSessions?.length || 0;
                   return (
                 <p className="text-sm text-amber-800 mb-3">
@@ -4214,7 +4490,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
             {!activeMatchGame ? (
               <>
                 <h2 className="text-xl font-semibold mb-4">Select Game</h2>
-                <div className="grid md:grid-cols-2 gap-4 mb-8">
+                <div className="grid md:grid-cols-3 gap-4 mb-8">
+                  <button
+                    onClick={() => setActiveMatchGame("CHARGED_UP")}
+                    className="p-6 border-2 border-amber-300 rounded-lg text-left transition-colors hover:bg-amber-500/10"
+                  >
+                    <div className="text-sm font-semibold mb-2 text-amber-700">CHARGED UP</div>
+                    <h3 className="font-semibold text-lg mb-1">Scout CHARGED UP</h3>
+                    <p className="text-sm text-gray-600">Use 2023 practice videos and grid scoring.</p>
+                  </button>
                   <button
                     onClick={() => setActiveMatchGame("REEFSCAPE")}
                     className="p-6 border-2 border-sky-300 rounded-lg text-left transition-colors hover:bg-sky-500/10"
@@ -4390,6 +4674,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     </button>
                   )}
                 </div>
+                {activeMatchGame === "REBUILT" && (
                 <div className="mt-6 rounded-xl border border-indigo-300 bg-indigo-500/5 shadow-md p-4">
                   <h3 className="font-semibold mb-1 text-indigo-800">Live Practice Lobby (Beta)</h3>
                   <p className="text-sm text-gray-700 mb-3">
@@ -4575,6 +4860,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     </div>
                   )}
                 </div>
+                )}
               </>
             )}
           </div>
@@ -4630,7 +4916,11 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               </h1>
               <p className="text-gray-700 text-lg mb-3">
                 Team {selectedDifficulty === "live"
-                  ? (activeMatchGame === "REBUILT" ? rebuiltFormData.teamNumber || "Unknown" : formData.teamNumber || "Unknown")
+                  ? (activeMatchGame === "REBUILT"
+                      ? rebuiltFormData.teamNumber || "Unknown"
+                      : activeMatchGame === "CHARGED_UP"
+                      ? chargedUpFormData.teamNumber || "Unknown"
+                      : formData.teamNumber || "Unknown")
                   : currentMatch.allianceTeams[breakCompletedRobotIndex]} scouting is complete.
               </p>
               <p className="text-gray-600 mb-8">
@@ -4747,6 +5037,10 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                         activeMatchGame === "REBUILT"
                           ? rebuiltFormData.teamNumber
                             ? ` • Team ${rebuiltFormData.teamNumber}`
+                            : ""
+                          : activeMatchGame === "CHARGED_UP"
+                          ? chargedUpFormData.teamNumber
+                            ? ` • Team ${chargedUpFormData.teamNumber}`
                             : ""
                           : formData.teamNumber
                           ? ` • Team ${formData.teamNumber}`
@@ -4874,7 +5168,121 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 </div>
               )}
 
-              {activeMatchGame === "REEFSCAPE" ? (
+              {activeMatchGame === "CHARGED_UP" ? (
+                <>
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Match</label>
+                        <div className="flex items-center gap-2">
+                          <input type="text" value={getPracticeLabel(currentMatch)} disabled className="flex-1 border rounded p-2 bg-gray-100 text-gray-600" />
+                          <button type="button" onClick={() => setShowDifficultyMatchModal(true)} className="px-3 py-2 rounded text-white text-sm font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Scout Name</label>
+                        <input type="text" value={userData?.displayName || ""} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Team Number</label>
+                        <input type="text" value={chargedUpFormData.teamNumber} disabled className="w-full border rounded p-2 bg-gray-100 text-gray-600" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Starting Position</label>
+                        <select
+                          value={chargedUpFormData.startingPosition}
+                          onChange={(e) => setChargedUpFormData({ ...chargedUpFormData, startingPosition: e.target.value })}
+                          className="w-full border rounded p-2"
+                        >
+                          <option value="">Select Position</option>
+                          <option value="Barrier Side">Barrier Side</option>
+                          <option value="Middle">Middle</option>
+                          <option value="Corner Side">Corner Side</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
+                    <label className="flex items-center gap-2 cursor-pointer mb-3">
+                      <input
+                        type="checkbox"
+                        checked={chargedUpFormData.mobility}
+                        onChange={(e) => setChargedUpFormData({ ...chargedUpFormData, mobility: e.target.checked })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Mobility</span>
+                    </label>
+                    <div className="border-t pt-3">
+                      <h3 className="font-semibold text-base mb-2">Auto Grids</h3>
+                      <Counter label="Bottom Row" value={chargedUpFormData.autoGridBottom} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, autoGridBottom: value })} />
+                      <Counter label="Middle Row" value={chargedUpFormData.autoGridMiddle} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, autoGridMiddle: value })} />
+                      <Counter label="Top Row" value={chargedUpFormData.autoGridTop} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, autoGridTop: value })} />
+                    </div>
+                    <div className="border-t pt-3 mt-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Auto Charge Station</label>
+                      <select
+                        value={chargedUpFormData.autoChargeStation}
+                        onChange={(e) => setChargedUpFormData({ ...chargedUpFormData, autoChargeStation: e.target.value })}
+                        className="w-full border rounded p-2"
+                      >
+                        <option value="">Select Status</option>
+                        <option value="docked">Docked</option>
+                        <option value="engaged">Engaged</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Teleop</h2>
+                    <h3 className="font-semibold text-base mb-2">Teleop Grids</h3>
+                    <Counter label="Bottom Row" value={chargedUpFormData.teleopGridBottom} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopGridBottom: value })} />
+                    <Counter label="Middle Row" value={chargedUpFormData.teleopGridMiddle} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopGridMiddle: value })} />
+                    <Counter label="Top Row" value={chargedUpFormData.teleopGridTop} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopGridTop: value })} />
+                    <Counter label="Link" value={chargedUpFormData.teleopLinks} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopLinks: value })} />
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Endgame</h2>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Charge Station</label>
+                    <select
+                      value={chargedUpFormData.endgameChargeStation}
+                      onChange={(e) => setChargedUpFormData({ ...chargedUpFormData, endgameChargeStation: e.target.value })}
+                      className="w-full border rounded p-2"
+                    >
+                      <option value="">Not Parked</option>
+                      <option value="parked">Parked</option>
+                      <option value="docked">Docked</option>
+                      <option value="engaged">Engaged</option>
+                    </select>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow p-4">
+                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>General</h2>
+                    <div className="space-y-2">
+                      {['Died During Match', 'Never Started Match', 'Disabled by FRC', 'Recovered from Freeze', 'Tipped Over', 'Yellow Card', 'Red Card'].map((incident) => (
+                        <label key={incident} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={chargedUpFormData.incidents.includes(incident)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setChargedUpFormData({ ...chargedUpFormData, incidents: [...chargedUpFormData.incidents, incident] });
+                              } else {
+                                setChargedUpFormData({ ...chargedUpFormData, incidents: chargedUpFormData.incidents.filter((item) => item !== incident) });
+                              }
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm">{incident}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : activeMatchGame === "REEFSCAPE" ? (
                 <>
               {/* PRE-MATCH INFO */}
               <div className="bg-white rounded-xl shadow p-4">
@@ -5417,11 +5825,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                 <div className="p-4">
                   <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Notes</h2>
                   <textarea
-                    value={activeMatchGame === "REBUILT" ? rebuiltFormData.notes : formData.notes}
+                    value={activeMatchGame === "REBUILT" ? rebuiltFormData.notes : activeMatchGame === "CHARGED_UP" ? chargedUpFormData.notes : formData.notes}
                     onChange={(e) => {
                       const value = e.target.value;
                       if (activeMatchGame === "REBUILT") {
                         setRebuiltFormData({ ...rebuiltFormData, notes: value });
+                      } else if (activeMatchGame === "CHARGED_UP") {
+                        setChargedUpFormData({ ...chargedUpFormData, notes: value });
                       } else {
                         setFormData({ ...formData, notes: value });
                       }
@@ -5461,11 +5871,13 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   </div>
                   <div className="p-3">
                     <textarea
-                      value={activeMatchGame === "REBUILT" ? rebuiltFormData.notes : formData.notes}
+                      value={activeMatchGame === "REBUILT" ? rebuiltFormData.notes : activeMatchGame === "CHARGED_UP" ? chargedUpFormData.notes : formData.notes}
                       onChange={(e) => {
                         const value = e.target.value;
                         if (activeMatchGame === "REBUILT") {
                           setRebuiltFormData({ ...rebuiltFormData, notes: value });
+                        } else if (activeMatchGame === "CHARGED_UP") {
+                          setChargedUpFormData({ ...chargedUpFormData, notes: value });
                         } else {
                           setFormData({ ...formData, notes: value });
                         }
