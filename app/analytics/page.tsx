@@ -2249,6 +2249,7 @@ function AnalyticsPageContent() {
       entriesCount={data.length}
       selectedGame={selectedGame}
       onSelectedGameChange={(game) => handleGameChange(game as AnalyticsGame)}
+      allowedGames={["CHARGED_UP", "REEFSCAPE", "REBUILT"]}
       practiceMatchesOnly={practiceMatchesOnly}
       onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
       selectedEvent={selectedEvent}
