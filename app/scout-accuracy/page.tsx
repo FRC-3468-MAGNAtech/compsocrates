@@ -19,7 +19,7 @@ import {
 import { getRoleBadge as getTeamRoleBadge, getUserRoles, getRoleLabel, TEAM_ROLES, type TeamRole } from "@/app/utils/roles";
 import { evaluateScoutingFlags, flagStateDocId, type FlagEntityType, type StoredFlagState } from "@/app/utils/scoutingFlags";
 import { getUpcomingEvents, type UpcomingEvent } from "@/app/utils/stats-calculator";
-import { entryMatchesAnalyticsFilters, getEventsForGame, normalizeMatchLabel } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventsForGame, normalizeMatchLabel, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatMatchLabelLong } from "@/app/utils/displayFormat";
 
 interface ScoutStats {
@@ -108,9 +108,15 @@ type ScoutingEntry = {
   teleopNetRobotScored?: number;
   teleopNetHumanScored?: number;
   stageStatus?: string;
+  mobility?: boolean;
   penaltyPoints?: number;
   estimatedScore?: number;
   auto?: {
+    mobility?: boolean;
+    gridBottom?: number;
+    gridMiddle?: number;
+    gridTop?: number;
+    chargeStation?: string;
     preloadScale?: number;
     bpsScale?: number;
     carryingScale?: number;
@@ -123,6 +129,10 @@ type ScoutingEntry = {
     wonAuto?: boolean;
   };
   teleop?: {
+    gridBottom?: number;
+    gridMiddle?: number;
+    gridTop?: number;
+    links?: number;
     bpsScale?: number;
     carryingScale?: number;
     transitionCycles?: number[];
@@ -145,6 +155,7 @@ type ScoutingEntry = {
     estimatedFuel?: number;
   };
   endgame?: {
+    chargeStation?: string;
     cycleTimes?: number[];
     counterOverride?: number;
     counterOverrideMissedFuel?: number;
@@ -170,11 +181,18 @@ function getEntryEventKey(value: ScoutingEntry): string {
   return "";
 }
 
-function getEntryGame(value: ScoutingEntry): "REEFSCAPE" | "REBUILT" {
+function getEntryGame(value: ScoutingEntry): AnalyticsGame {
   const explicit = String(value.game || "").trim().toUpperCase();
-  if (explicit === "REBUILT" || explicit === "REEFSCAPE") return explicit;
+  if (explicit === "CHARGED_UP" || explicit === "REBUILT" || explicit === "REEFSCAPE") return explicit;
   const eventKey = getEntryEventKey(value).toLowerCase();
+  if (eventKey.startsWith("2023")) return "CHARGED_UP";
   if (eventKey.startsWith("2026") || eventKey === "2026week0") return "REBUILT";
+  return "REEFSCAPE";
+}
+
+function normalizeAnalyticsGame(value: unknown): AnalyticsGame {
+  const game = String(value || "").trim().toUpperCase();
+  if (game === "CHARGED_UP" || game === "REBUILT" || game === "REEFSCAPE") return game;
   return "REEFSCAPE";
 }
 
@@ -445,6 +463,40 @@ function scoreRebuiltEntry(entry: ScoutingEntry): number {
   return autoFuel + teleopFuel + endgameFuel + autoClimb + teleopClimb;
 }
 
+function chargedAutoStationPoints(value: unknown) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "engaged") return 12;
+  if (status === "docked") return 8;
+  return 0;
+}
+
+function chargedEndgameStationPoints(value: unknown) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "engaged") return 10;
+  if (status === "docked") return 6;
+  if (status === "parked") return 2;
+  return 0;
+}
+
+function scoreChargedUpEntry(entry: ScoutingEntry): number {
+  const auto = entry.auto || {};
+  const teleop = entry.teleop || {};
+  const endgame = entry.endgame || {};
+  const autoScore =
+    (Boolean(auto.mobility ?? entry.mobility) ? 3 : 0) +
+    toNumber(auto.gridBottom) * 3 +
+    toNumber(auto.gridMiddle) * 4 +
+    toNumber(auto.gridTop) * 6 +
+    chargedAutoStationPoints(auto.chargeStation);
+  const teleopScore =
+    toNumber(teleop.gridBottom) * 2 +
+    toNumber(teleop.gridMiddle) * 3 +
+    toNumber(teleop.gridTop) * 5 +
+    toNumber(teleop.links) * 5;
+  const endgameScore = chargedEndgameStationPoints(endgame.chargeStation);
+  return autoScore + teleopScore + endgameScore;
+}
+
 function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accuracy: number }>) {
   const mobile = points.filter((p) => p.deviceType === "mobile");
   const pc = points.filter((p) => p.deviceType === "pc");
@@ -459,7 +511,8 @@ function getDeviceBreakdown(points: Array<{ deviceType?: "mobile" | "pc"; accura
   return { mobileCount: mobile.length, pcCount: pc.length, mobileAvg, pcAvg, betterDevice };
 }
 
-function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: "REEFSCAPE" | "REBUILT"): number {
+function scorePracticeEntryWithoutPenalty(entry: ScoutingEntry, game: AnalyticsGame): number {
+  if (game === "CHARGED_UP") return scoreChargedUpEntry(entry);
   if (game === "REBUILT") return scoreRebuiltEntry(entry);
 
   let score = 0;
@@ -517,7 +570,7 @@ function ScoutAccuracyContent() {
   const [realScoutingEntries, setRealScoutingEntries] = useState<ScoutingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
-  const [selectedGame, setSelectedGame] = useState<"REEFSCAPE" | "REBUILT">("REBUILT");
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive" | "real">("trial");
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
   const [rerunSessionId, setRerunSessionId] = useState("");
@@ -1266,7 +1319,7 @@ function ScoutAccuracyContent() {
         return;
       }
 
-      const sessionGame = String(sessionData.game || "REEFSCAPE").toUpperCase() === "REBUILT" ? "REBUILT" : "REEFSCAPE";
+      const sessionGame = normalizeAnalyticsGame(sessionData.game);
       const sessionPenaltyPoints =
         typeof sessionData.penaltyPoints === "number"
           ? Number(sessionData.penaltyPoints)
@@ -1448,9 +1501,10 @@ function ScoutAccuracyContent() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Game</label>
             <select
               value={selectedGame}
-              onChange={(event) => setSelectedGame(event.target.value === "REBUILT" ? "REBUILT" : "REEFSCAPE")}
+              onChange={(event) => setSelectedGame(normalizeAnalyticsGame(event.target.value))}
               className="w-full md:w-96 border rounded p-2"
             >
+              <option value="CHARGED_UP">CHARGED UP</option>
               <option value="REEFSCAPE">REEFSCAPE</option>
               <option value="REBUILT">REBUILT</option>
             </select>

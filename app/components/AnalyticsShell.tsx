@@ -46,7 +46,7 @@ function AnalyticsShellInner({
   entriesCount,
   selectedGame,
   onSelectedGameChange,
-  allowedGames = ["REEFSCAPE", "REBUILT"],
+  allowedGames = ["CHARGED_UP", "REEFSCAPE", "REBUILT"],
   practiceMatchesOnly = false,
   onPracticeMatchesOnlyChange,
   selectedEvent,
@@ -355,6 +355,7 @@ function AnalyticsShellInner({
                     onChange={(e) => onSelectedGameChange(e.target.value)}
                     className="border rounded px-3 py-1.5 text-sm"
                   >
+                    {allowedGames.includes("CHARGED_UP") && <option value="CHARGED_UP">CHARGED UP</option>}
                     {allowedGames.includes("REEFSCAPE") && <option value="REEFSCAPE">REEFSCAPE</option>}
                     {allowedGames.includes("REBUILT") && <option value="REBUILT">REBUILT</option>}
                   </select>

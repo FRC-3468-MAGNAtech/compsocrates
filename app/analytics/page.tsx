@@ -75,6 +75,8 @@ type Entry = {
   notes: string;
   timestamp: number;
   estimatedScore?: number;
+  scoutedScore?: number;
+  mobility?: boolean;
   excludeFromStats?: boolean;
   accuracy?: number;
   accuracyScriptStatus?: string;
@@ -82,6 +84,11 @@ type Entry = {
   accuracyRobotBreakdown?: AccuracyRobotBreakdown[];
   accuracyUpdatedAt?: number;
   auto?: {
+    mobility?: boolean;
+    gridBottom?: number;
+    gridMiddle?: number;
+    gridTop?: number;
+    chargeStation?: string;
     preloadScale?: number;
     bpsScale?: number;
     carryingScale?: number;
@@ -95,6 +102,10 @@ type Entry = {
     wonAuto?: boolean;
   };
   teleop?: {
+    gridBottom?: number;
+    gridMiddle?: number;
+    gridTop?: number;
+    links?: number;
     bpsScale?: number;
     carryingScale?: number;
     transitionCycles?: number[];
@@ -117,6 +128,7 @@ type Entry = {
     estimatedFuel?: number;
   };
   endgame?: {
+    chargeStation?: string;
     cycleTimes?: number[];
     counterOverride?: number;
     counterOverrideMissedFuel?: number;
@@ -126,6 +138,73 @@ type Entry = {
     status?: string;
   };
 };
+
+function isAnalyticsGame(value: string): value is AnalyticsGame {
+  return value === "CHARGED_UP" || value === "REEFSCAPE" || value === "REBUILT";
+}
+
+function toFiniteNumber(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeChargedStation(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function chargedAutoStationPoints(value: unknown) {
+  const status = normalizeChargedStation(value);
+  if (status === "engaged") return 12;
+  if (status === "docked") return 8;
+  return 0;
+}
+
+function chargedEndgameStationPoints(value: unknown) {
+  const status = normalizeChargedStation(value);
+  if (status === "engaged") return 10;
+  if (status === "docked") return 6;
+  if (status === "parked") return 2;
+  return 0;
+}
+
+function getChargedUpBreakdown(e: Entry) {
+  const auto = {
+    mobility: Boolean(e.auto?.mobility ?? e.mobility),
+    gridBottom: toFiniteNumber(e.auto?.gridBottom),
+    gridMiddle: toFiniteNumber(e.auto?.gridMiddle),
+    gridTop: toFiniteNumber(e.auto?.gridTop),
+    chargeStation: e.auto?.chargeStation || "",
+  };
+  const autoPoints =
+    (auto.mobility ? 3 : 0) +
+    auto.gridBottom * 3 +
+    auto.gridMiddle * 4 +
+    auto.gridTop * 6 +
+    chargedAutoStationPoints(auto.chargeStation);
+
+  const teleop = {
+    gridBottom: toFiniteNumber(e.teleop?.gridBottom),
+    gridMiddle: toFiniteNumber(e.teleop?.gridMiddle),
+    gridTop: toFiniteNumber(e.teleop?.gridTop),
+    links: toFiniteNumber(e.teleop?.links),
+  };
+  const teleopPoints = teleop.gridBottom * 2 + teleop.gridMiddle * 3 + teleop.gridTop * 5 + teleop.links * 5;
+
+  const endgame = {
+    chargeStation: e.endgame?.chargeStation || "",
+  };
+  const endgamePoints = chargedEndgameStationPoints(endgame.chargeStation);
+
+  return {
+    auto,
+    teleop,
+    endgame,
+    autoPoints,
+    teleopPoints,
+    endgamePoints,
+    total: autoPoints + teleopPoints + endgamePoints,
+  };
+}
 
 const INCIDENT_LABELS: Record<string, string> = {
   died: "Died During Match",
@@ -176,6 +255,7 @@ function scoreRebuiltEntry(e: Entry) {
 }
 
 function scoreEntry(e: Entry, game: AnalyticsGame) {
+  if (game === "CHARGED_UP") return getChargedUpBreakdown(e).total + Number(e.penaltyPoints || 0);
   if (game === "REBUILT") return scoreRebuiltEntry(e);
 
   let s = 0;
@@ -202,6 +282,7 @@ function scoreEntry(e: Entry, game: AnalyticsGame) {
 }
 
 function scoreEntryBase(e: Entry, game: AnalyticsGame) {
+  if (game === "CHARGED_UP") return getChargedUpBreakdown(e).total;
   if (game === "REBUILT") return scoreRebuiltEntry(e);
 
   let s = 0;
@@ -669,6 +750,9 @@ type SortKey =
   | "matchLabel"
   | "accuracy"
   | "scriptStatus"
+  | "chargedAutoPoints"
+  | "chargedTeleopPoints"
+  | "chargedEndgamePoints"
   | "autoPreloadScale"
   | "autoBpsScale"
   | "autoCarryScale"
@@ -719,7 +803,8 @@ function AnalyticsPageContent() {
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
-    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
+    const savedGame = saved || "";
+    return isAnalyticsGame(savedGame) ? savedGame : "REEFSCAPE";
   });
   const [selectedEvent, setSelectedEvent] = useState(() => {
     if (typeof window === "undefined") return "all";
@@ -734,7 +819,8 @@ function AnalyticsPageContent() {
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
-    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
+    const savedGame = saved || "";
+    return isAnalyticsGame(savedGame) ? savedGame : "REEFSCAPE";
   });
   const [importEvent, setImportEvent] = useState("app-testing");
   const [selectedAccuracyEntry, setSelectedAccuracyEntry] = useState<Entry | null>(null);
@@ -1213,6 +1299,7 @@ function AnalyticsPageContent() {
       const end = String(entry.endgame?.status || "").toLowerCase();
       const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
       const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
+      const charged = getChargedUpBreakdown(entry);
       const computedAccuracy = allianceAccuracyByEntryId[entry.id];
       const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? Number((entry as Entry & { accuracy?: number }).accuracy)
@@ -1238,6 +1325,9 @@ function AnalyticsPageContent() {
         matchLabel: matchLabel(entry),
         accuracy: normalizedAccuracy,
         scriptStatus,
+        chargedAutoPoints: charged.autoPoints,
+        chargedTeleopPoints: charged.teleopPoints,
+        chargedEndgamePoints: charged.endgamePoints,
         autoPreloadScale: entry.auto?.preloadScale ?? 0,
         autoBpsScale: entry.auto?.bpsScale ?? 0,
         autoCarryScale: entry.auto?.carryingScale ?? 0,
@@ -2233,6 +2323,7 @@ function AnalyticsPageContent() {
                   }}
                   className="w-full border rounded p-2"
                 >
+                  <option value="CHARGED_UP">CHARGED UP</option>
                   <option value="REEFSCAPE">REEFSCAPE</option>
                   <option value="REBUILT">REBUILT</option>
                 </select>
@@ -2287,7 +2378,199 @@ function AnalyticsPageContent() {
       )}
 
       <div ref={tableScrollRef} className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
-        {selectedGame === "REBUILT" ? (
+        {selectedGame === "CHARGED_UP" ? (
+          <table>
+            <thead className="sticky-header">
+              <tr>
+                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
+                <th
+                  className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center"
+                  colSpan={preMatchColSpan}
+                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
+                >
+                  Pre-Match
+                </th>
+                {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
+                <th className="bg-green-300 text-center" colSpan={6}>Autonomous</th>
+                <th className="bg-blue-300 text-center" colSpan={5}>Teleoperated</th>
+                <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
+                <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 5 : 3}>General</th>
+                {canViewAdminColumns && <th className="bg-gray-300 text-center" colSpan={1} />}
+              </tr>
+              <tr>
+                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
+                <th
+                  className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center"
+                  colSpan={preMatchColSpan}
+                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
+                >
+                  Pre-Match
+                </th>
+                {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
+                <th className="bg-green-200 text-center" colSpan={1}>Mobility</th>
+                <th className="bg-green-200 text-center" colSpan={3}>Grids</th>
+                <th className="bg-green-200 text-center" colSpan={1}>Charge Station</th>
+                <th className="bg-green-200 text-center" colSpan={1}>Score</th>
+                <th className="bg-blue-200 text-center" colSpan={3}>Grids</th>
+                <th className="bg-blue-200 text-center" colSpan={1}>Links</th>
+                <th className="bg-blue-200 text-center" colSpan={1}>Score</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Charge Station</th>
+                <th className="bg-purple-200 text-center" colSpan={1}>Score</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Incidents</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Score</th>
+                <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
+                {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>}
+                {canViewAdminColumns && <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>}
+              </tr>
+              <tr>
+                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
+                  {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
+                </th>
+                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
+                  {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
+                </th>
+                <th ref={scoutHeaderRef} className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
+                  {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                </th>
+                <th ref={startingPosHeaderRef} className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
+                  {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
+                </th>
+                <th className="text-center">Mobility</th>
+                <th className="text-center">Bottom</th>
+                <th className="text-center">Middle</th>
+                <th className="text-center">Top</th>
+                <th className="text-center">Status</th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("chargedAutoPoints")}>
+                  {sortLabel(sortKey, sortDir, "chargedAutoPoints", "Auto")}
+                </th>
+                <th className="text-center">Bottom</th>
+                <th className="text-center">Middle</th>
+                <th className="text-center">Top</th>
+                <th className="text-center">Links</th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("chargedTeleopPoints")}>
+                  {sortLabel(sortKey, sortDir, "chargedTeleopPoints", "Teleop")}
+                </th>
+                <th className="text-center">Status</th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("chargedEndgamePoints")}>
+                  {sortLabel(sortKey, sortDir, "chargedEndgamePoints", "Endgame")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("incidents")}>
+                  {sortLabel(sortKey, sortDir, "incidents", "Incidents")}
+                </th>
+                <th className="cursor-pointer text-center" onClick={() => handleSort("score")}>
+                  {sortLabel(sortKey, sortDir, "score", "Total")}
+                </th>
+                <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
+                  {sortLabel(sortKey, sortDir, "notes", "Comments")}
+                </th>
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
+                    {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
+                  </th>
+                )}
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
+                    {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
+                  </th>
+                )}
+                {canViewAdminColumns && (
+                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
+                    {sortLabel(sortKey, sortDir, "id", "Actions")}
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((entry) => {
+                const charged = getChargedUpBreakdown(entry);
+                const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
+                const flagState = getEntryFlagState(entry);
+                const isFlagDismissed = Boolean(flagState?.dismissed);
+                const isManualFlagged = Boolean(flagState?.manualFlagged);
+                const autoFlags = isFlagDismissed ? [] : entryFlags;
+                const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
+                const isExcluded = Boolean(entry.excludeFromStats);
+                return (
+                <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
+                  <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
+                  <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
+                  <td className="sticky-left-2 bg-white text-center">
+                    {canViewScoutNames && !hideNames ? displayEntryText(entry.scoutName) : "-"}
+                  </td>
+                  <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
+                  <td className="text-center">{charged.auto.mobility ? "Y" : "N"}</td>
+                  <td className="text-center">{charged.auto.gridBottom}</td>
+                  <td className="text-center">{charged.auto.gridMiddle}</td>
+                  <td className="text-center">{charged.auto.gridTop}</td>
+                  <td className="text-center">{toDisplayTitle(charged.auto.chargeStation || "-")}</td>
+                  <td className="text-center font-semibold">{charged.autoPoints}</td>
+                  <td className="text-center">{charged.teleop.gridBottom}</td>
+                  <td className="text-center">{charged.teleop.gridMiddle}</td>
+                  <td className="text-center">{charged.teleop.gridTop}</td>
+                  <td className="text-center">{charged.teleop.links}</td>
+                  <td className="text-center font-semibold">{charged.teleopPoints}</td>
+                  <td className="text-center">{toDisplayTitle(charged.endgame.chargeStation || "-")}</td>
+                  <td className="text-center font-semibold">{charged.endgamePoints}</td>
+                  <td className="text-center">
+                    {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
+                  </td>
+                  <td className="text-center font-semibold">{scoreEntry(entry, selectedGame)}</td>
+                  <td className="text-left align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
+                    <ExpandableNotesCell text={entry.notes} />
+                  </td>
+                  {canViewAdminColumns && (
+                    <td className="text-center">
+                      {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAccuracyEntry(entry);
+                            void loadAccuracyDetails(entry);
+                          }}
+                          className="underline decoration-dotted underline-offset-2"
+                          style={{ color: "var(--primary-color)" }}
+                        >
+                          {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
+                        </button>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  )}
+                  {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
+                  {canViewAdminColumns && (
+                    <td className="text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        {canManageFlags && (
+                          <button
+                            type="button"
+                            onClick={() => setFlagMenuEntry(entry)}
+                            disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
+                            className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
+                          >
+                            {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(event) => triggerDeleteEntry(entry, event)}
+                          onPointerUp={(event) => triggerDeleteEntry(entry, event)}
+                          className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
+                          style={{ backgroundColor: "#dc2626" }}
+                          disabled={!canDeleteEntries}
+                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : selectedGame === "REBUILT" ? (
           <table>
             <thead className="sticky-header">
               <tr>
