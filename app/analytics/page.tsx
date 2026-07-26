@@ -88,6 +88,7 @@ type Entry = {
     gridBottom?: number;
     gridMiddle?: number;
     gridTop?: number;
+    missed?: boolean;
     chargeStation?: string;
     preloadScale?: number;
     bpsScale?: number;
@@ -105,6 +106,7 @@ type Entry = {
     gridBottom?: number;
     gridMiddle?: number;
     gridTop?: number;
+    missed?: boolean;
     links?: number;
     bpsScale?: number;
     carryingScale?: number;
@@ -173,6 +175,7 @@ function getChargedUpBreakdown(e: Entry) {
     gridBottom: toFiniteNumber(e.auto?.gridBottom),
     gridMiddle: toFiniteNumber(e.auto?.gridMiddle),
     gridTop: toFiniteNumber(e.auto?.gridTop),
+    missed: Boolean(e.auto?.missed),
     chargeStation: e.auto?.chargeStation || "",
   };
   const autoPoints =
@@ -186,6 +189,7 @@ function getChargedUpBreakdown(e: Entry) {
     gridBottom: toFiniteNumber(e.teleop?.gridBottom),
     gridMiddle: toFiniteNumber(e.teleop?.gridMiddle),
     gridTop: toFiniteNumber(e.teleop?.gridTop),
+    missed: Boolean(e.teleop?.missed),
     links: toFiniteNumber(e.teleop?.links),
   };
   const teleopPoints = teleop.gridBottom * 2 + teleop.gridMiddle * 3 + teleop.gridTop * 5 + teleop.links * 5;
@@ -646,6 +650,12 @@ function displayEntryText(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw || raw === "0" || raw.toLowerCase() === "n/a" || raw.toLowerCase() === "unknown") return "-";
   return raw;
+}
+
+function displayGameLabel(game: unknown) {
+  const normalized = String(game || "REEFSCAPE").trim().toUpperCase();
+  if (normalized === "CHARGED_UP") return "CHARGED UP";
+  return normalized || "REEFSCAPE";
 }
 
 function toDisplayTitle(value: unknown) {
@@ -2392,8 +2402,8 @@ function AnalyticsPageContent() {
                   Pre-Match
                 </th>
                 {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
-                <th className="bg-green-300 text-center" colSpan={6}>Autonomous</th>
-                <th className="bg-blue-300 text-center" colSpan={5}>Teleoperated</th>
+                <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
+                <th className="bg-blue-300 text-center" colSpan={6}>Teleoperated</th>
                 <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
                 <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 5 : 3}>General</th>
                 {canViewAdminColumns && <th className="bg-gray-300 text-center" colSpan={1} />}
@@ -2409,10 +2419,10 @@ function AnalyticsPageContent() {
                 </th>
                 {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
                 <th className="bg-green-200 text-center" colSpan={1}>Mobility</th>
-                <th className="bg-green-200 text-center" colSpan={3}>Grids</th>
+                <th className="bg-green-200 text-center" colSpan={4}>Grids</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Charge Station</th>
                 <th className="bg-green-200 text-center" colSpan={1}>Score</th>
-                <th className="bg-blue-200 text-center" colSpan={3}>Grids</th>
+                <th className="bg-blue-200 text-center" colSpan={4}>Grids</th>
                 <th className="bg-blue-200 text-center" colSpan={1}>Links</th>
                 <th className="bg-blue-200 text-center" colSpan={1}>Score</th>
                 <th className="bg-purple-200 text-center" colSpan={1}>Charge Station</th>
@@ -2440,6 +2450,7 @@ function AnalyticsPageContent() {
                 <th className="text-center">Bottom</th>
                 <th className="text-center">Middle</th>
                 <th className="text-center">Top</th>
+                <th className="text-center">Missed</th>
                 <th className="text-center">Status</th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("chargedAutoPoints")}>
                   {sortLabel(sortKey, sortDir, "chargedAutoPoints", "Auto")}
@@ -2447,6 +2458,7 @@ function AnalyticsPageContent() {
                 <th className="text-center">Bottom</th>
                 <th className="text-center">Middle</th>
                 <th className="text-center">Top</th>
+                <th className="text-center">Missed</th>
                 <th className="text-center">Links</th>
                 <th className="cursor-pointer text-center" onClick={() => handleSort("chargedTeleopPoints")}>
                   {sortLabel(sortKey, sortDir, "chargedTeleopPoints", "Teleop")}
@@ -2503,11 +2515,13 @@ function AnalyticsPageContent() {
                   <td className="text-center">{charged.auto.gridBottom}</td>
                   <td className="text-center">{charged.auto.gridMiddle}</td>
                   <td className="text-center">{charged.auto.gridTop}</td>
+                  <td className="text-center">{charged.auto.missed ? "Y" : "N"}</td>
                   <td className="text-center">{toDisplayTitle(charged.auto.chargeStation || "-")}</td>
                   <td className="text-center font-semibold">{charged.autoPoints}</td>
                   <td className="text-center">{charged.teleop.gridBottom}</td>
                   <td className="text-center">{charged.teleop.gridMiddle}</td>
                   <td className="text-center">{charged.teleop.gridTop}</td>
+                  <td className="text-center">{charged.teleop.missed ? "Y" : "N"}</td>
                   <td className="text-center">{charged.teleop.links}</td>
                   <td className="text-center font-semibold">{charged.teleopPoints}</td>
                   <td className="text-center">{toDisplayTitle(charged.endgame.chargeStation || "-")}</td>
@@ -3124,7 +3138,7 @@ function AnalyticsPageContent() {
                             Team {row.teamNumber}: {row.total}{" "}
                             {row.source === "computed"
                               ? `(autoFuel=${row.autoFuel} + teleFuel=${row.teleFuel} + autoClimb=${row.autoClimb} + endgameClimb=${row.endgameClimb})`
-                              : "(REEFSCAPE scorer)"}
+                              : `(${displayGameLabel(selectedAccuracyEntry?.game || selectedGame)} scorer)`}
                           </p>
                         ))}
                       </div>

@@ -231,10 +231,12 @@ type ChargedUpFormState = {
   autoGridBottom: number;
   autoGridMiddle: number;
   autoGridTop: number;
+  autoGridMissed: boolean;
   autoChargeStation: string;
   teleopGridBottom: number;
   teleopGridMiddle: number;
   teleopGridTop: number;
+  teleopGridMissed: boolean;
   teleopLinks: number;
   endgameChargeStation: string;
   incidents: string[];
@@ -1060,10 +1062,12 @@ function ScoutFormContent() {
     autoGridBottom: 0,
     autoGridMiddle: 0,
     autoGridTop: 0,
+    autoGridMissed: false,
     autoChargeStation: "",
     teleopGridBottom: 0,
     teleopGridMiddle: 0,
     teleopGridTop: 0,
+    teleopGridMissed: false,
     teleopLinks: 0,
     endgameChargeStation: "",
     incidents: [],
@@ -2372,6 +2376,14 @@ function ScoutFormContent() {
                   <ClimbCounter label="Bottom Row" value={chargedUpForm.autoGridBottom} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridBottom: next }))} />
                   <ClimbCounter label="Middle Row" value={chargedUpForm.autoGridMiddle} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridMiddle: next }))} />
                   <ClimbCounter label="Top Row" value={chargedUpForm.autoGridTop} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridTop: next }))} />
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={chargedUpForm.autoGridMissed}
+                      onChange={(e) => setChargedUpForm((prev) => ({ ...prev, autoGridMissed: e.target.checked }))}
+                    />
+                    Missed
+                  </label>
                   <select
                     className="w-full border rounded p-2"
                     value={chargedUpForm.autoChargeStation}
@@ -2389,6 +2401,14 @@ function ScoutFormContent() {
                   <ClimbCounter label="Bottom Row" value={chargedUpForm.teleopGridBottom} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridBottom: next }))} />
                   <ClimbCounter label="Middle Row" value={chargedUpForm.teleopGridMiddle} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridMiddle: next }))} />
                   <ClimbCounter label="Top Row" value={chargedUpForm.teleopGridTop} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridTop: next }))} />
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={chargedUpForm.teleopGridMissed}
+                      onChange={(e) => setChargedUpForm((prev) => ({ ...prev, teleopGridMissed: e.target.checked }))}
+                    />
+                    Missed
+                  </label>
                   <ClimbCounter label="Link" value={chargedUpForm.teleopLinks} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopLinks: next }))} />
                 </div>
 

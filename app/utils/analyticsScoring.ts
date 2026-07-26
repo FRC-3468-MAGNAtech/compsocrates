@@ -69,12 +69,14 @@ export type ChargedUpScoringEntry = {
     gridBottom?: number;
     gridMiddle?: number;
     gridTop?: number;
+    missed?: boolean;
     chargeStation?: string;
   };
   teleop?: {
     gridBottom?: number;
     gridMiddle?: number;
     gridTop?: number;
+    missed?: boolean;
     links?: number;
   };
   endgame?: {

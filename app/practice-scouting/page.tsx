@@ -113,10 +113,12 @@ type ChargedUpScoutedData = {
   autoGridBottom: number;
   autoGridMiddle: number;
   autoGridTop: number;
+  autoGridMissed: boolean;
   autoChargeStation: string;
   teleopGridBottom: number;
   teleopGridMiddle: number;
   teleopGridTop: number;
+  teleopGridMissed: boolean;
   teleopLinks: number;
   endgameChargeStation: string;
   incidents: string[];
@@ -305,10 +307,12 @@ function createEmptyChargedUpScoutedData(teamNumber = "", notes = ""): ChargedUp
     autoGridBottom: 0,
     autoGridMiddle: 0,
     autoGridTop: 0,
+    autoGridMissed: false,
     autoChargeStation: "",
     teleopGridBottom: 0,
     teleopGridMiddle: 0,
     teleopGridTop: 0,
+    teleopGridMissed: false,
     teleopLinks: 0,
     endgameChargeStation: "",
     incidents: [],
@@ -3671,12 +3675,14 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
               gridBottom: robotData.autoGridBottom,
               gridMiddle: robotData.autoGridMiddle,
               gridTop: robotData.autoGridTop,
+              missed: robotData.autoGridMissed,
               chargeStation: robotData.autoChargeStation,
             },
             teleop: {
               gridBottom: robotData.teleopGridBottom,
               gridMiddle: robotData.teleopGridMiddle,
               gridTop: robotData.teleopGridTop,
+              missed: robotData.teleopGridMissed,
               links: robotData.teleopLinks,
             },
             endgame: {
@@ -4497,7 +4503,7 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                   >
                     <div className="text-sm font-semibold mb-2 text-amber-700">CHARGED UP</div>
                     <h3 className="font-semibold text-lg mb-1">Scout CHARGED UP</h3>
-                    <p className="text-sm text-gray-600">Use 2023 practice videos and grid scoring.</p>
+                    <p className="text-sm text-gray-600">Use CHARGED UP practice videos and scoring.</p>
                   </button>
                   <button
                     onClick={() => setActiveMatchGame("REEFSCAPE")}
@@ -5220,6 +5226,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                       <Counter label="Bottom Row" value={chargedUpFormData.autoGridBottom} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, autoGridBottom: value })} />
                       <Counter label="Middle Row" value={chargedUpFormData.autoGridMiddle} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, autoGridMiddle: value })} />
                       <Counter label="Top Row" value={chargedUpFormData.autoGridTop} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, autoGridTop: value })} />
+                      <label className="flex items-center gap-2 cursor-pointer py-2">
+                        <input
+                          type="checkbox"
+                          checked={chargedUpFormData.autoGridMissed}
+                          onChange={(e) => setChargedUpFormData({ ...chargedUpFormData, autoGridMissed: e.target.checked })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Missed</span>
+                      </label>
                     </div>
                     <div className="border-t pt-3 mt-3">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Auto Charge Station</label>
@@ -5241,6 +5256,15 @@ function getPracticeLabel(match: Pick<PracticeMatch, "matchType" | "matchNumber"
                     <Counter label="Bottom Row" value={chargedUpFormData.teleopGridBottom} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopGridBottom: value })} />
                     <Counter label="Middle Row" value={chargedUpFormData.teleopGridMiddle} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopGridMiddle: value })} />
                     <Counter label="Top Row" value={chargedUpFormData.teleopGridTop} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopGridTop: value })} />
+                    <label className="flex items-center gap-2 cursor-pointer py-2">
+                      <input
+                        type="checkbox"
+                        checked={chargedUpFormData.teleopGridMissed}
+                        onChange={(e) => setChargedUpFormData({ ...chargedUpFormData, teleopGridMissed: e.target.checked })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Missed</span>
+                    </label>
                     <Counter label="Link" value={chargedUpFormData.teleopLinks} onChange={(value) => setChargedUpFormData({ ...chargedUpFormData, teleopLinks: value })} />
                   </div>
 

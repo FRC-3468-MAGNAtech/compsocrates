@@ -116,6 +116,7 @@ type ScoutingEntry = {
     gridBottom?: number;
     gridMiddle?: number;
     gridTop?: number;
+    missed?: boolean;
     chargeStation?: string;
     preloadScale?: number;
     bpsScale?: number;
@@ -132,6 +133,7 @@ type ScoutingEntry = {
     gridBottom?: number;
     gridMiddle?: number;
     gridTop?: number;
+    missed?: boolean;
     links?: number;
     bpsScale?: number;
     carryingScale?: number;
