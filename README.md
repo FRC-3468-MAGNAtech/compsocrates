@@ -1,12 +1,12 @@
 # CompSocrates v2 Architecture Manual
 
-CompSocrates v2 is a light-mode Greek-Tech scouting and strategy platform for competition robotics teams. The `CompSocrates-v2` branch rebuilds the interface from scratch while preserving the updated feature behavior, data inputs, and metric calculations proven on the `preview` branch.
+CompSocrates v2 is a light-mode Greek-Tech scouting and strategy platform for competition robotics teams. The `CompSocrates-v2` branch treats the previous app as a feature and data specification while rebuilding the interaction model around a floating HUD, asymmetrical strategy decks, and high-translucency glass surfaces.
 
 ## Architecture Principles
 
 - `preview` logic is the functional blueprint for scoring, filters, role checks, event detection, Firestore queries, and analytics calculations.
-- UI structure is rebuilt with modular React components instead of legacy layout trees.
-- The visual system is fixed to MAGNATech Greek-Tech: pearl surfaces, crimson actions, metallic gold accents, frosted glass, and bright ambient depth.
+- UI structure is rebuilt with modular React components instead of legacy layout trees, sidebar rails, or old dashboard wrapper patterns.
+- The visual system is fixed to MAGNATech Greek-Tech: slate/pearl canvas, crimson actions, metallic gold accents, extreme frosted glass, and persistent radial glows that shine through interface layers.
 - Data-heavy pages keep efficient local hooks and memoized transforms. Complex metrics remain in utility modules instead of being rewritten inside page components.
 - Dead theming infrastructure was removed. The app now has one official design system and no dark/legacy theme fallback layer.
 
@@ -40,7 +40,7 @@ app/
 RootLayout
   AuthProvider
     Page / ProtectedRoute
-      Sidebar
+      Sidebar export rendering Floating HUD navigation
       Page content
     CookieConsentBanner
 
@@ -49,10 +49,11 @@ Analytics pages
     AnalyticsShell
       AnalyticsNotesProvider
       GreekTechBackground
-        Sidebar
+      Floating HUD navigation
         GreekHeader
-        Analytics navigation panel
-        Search/filter toolbar
+      Priority strategy deck
+      Floating search/filter HUD
+      Asymmetrical analytics deck frame
         Analytics page content
 
 Public entry
@@ -66,13 +67,15 @@ Public entry
 
 [app/components/GreekTech.tsx](app/components/GreekTech.tsx) defines the shared visual primitives:
 
-- `GreekTechBackground`: pearl canvas, subtle grid, crimson/gold ambient glows.
+- `GreekTechBackground`: slate/pearl canvas, subtle grid, large persistent crimson/gold ambient glows.
 - `SectionShell`: responsive max-width layout wrapper.
 - `GreekHeader`: Dalek-styled page title block with optional tactical badges/actions.
-- `GlassCard`: frosted white container with soft colored shadow and hover lift.
+- `GlassCard`: high-translucency frosted container with top-edge sheen and crimson/gold edge tint.
 - `GradientBorder`: gold-to-crimson border wrapper for emphasis panels.
 - `StatBadge`: compact pill for numeric or state highlights.
 - `PillButton`: rounded command button with primary, secondary, and ghost variants.
+- `FloatingDeck`: elevated asymmetric panel used for priority metrics, matchup decks, and verification surfaces.
+- `HudPill`: central floating command bar shell with heavy blur and translucent white fill.
 
 These primitives are intentionally small. Pages compose them instead of carrying large bespoke layout blocks.
 
@@ -83,8 +86,8 @@ Global tokens live in `:root` inside [app/globals.css](app/globals.css):
 - `--cs-crimson`: `#8B0000`
 - `--cs-red`: `#DC2626`
 - `--cs-gold`: `#D4AF37`
-- `--cs-pearl`: `#F8FAFC`
-- `--cs-marble`: `#F4F4F5`
+- `--cs-pearl`: `#F1F5F9`
+- `--cs-marble`: `#E2E8F0`
 - `--cs-ink`: `#0F172A`
 - `--theme-font-heading`: Dalek local font fallback for `h1`, `h2`, and hero titles
 - `--theme-font-body`: Inter/system sans for interface copy
@@ -102,19 +105,20 @@ These are maintained because analytics pages rely on sticky columns and dense ta
 
 ## Navigation Shell
 
-[app/components/Sidebar.tsx](app/components/Sidebar.tsx) is the primary authenticated command rail. It:
+[app/components/Sidebar.tsx](app/components/Sidebar.tsx) keeps its historical export name for compatibility, but it now renders the primary authenticated floating HUD. It:
 
 - Loads team display context from Firestore.
 - Uses `getDashboardRoute`, `getUserRoles`, `getRoleBadge`, and `canAccessForm` from preview-derived utilities.
 - Gates form links by role and team-level form access overrides.
-- Provides responsive mobile overlay navigation.
-- Stores only the collapsed state in local storage.
+- Pins high-priority workspaces into a central pill command bar.
+- Opens a searchable glass command palette for all available workspaces.
+- Provides responsive mobile and desktop navigation without reserving a left rail.
 
 The navigation does not own application data beyond the team label and access overrides needed to render links.
 
 ## Analytics Shell
 
-[app/components/AnalyticsShell.tsx](app/components/AnalyticsShell.tsx) wraps every analytics view. It owns shell-level controls only:
+[app/components/AnalyticsShell.tsx](app/components/AnalyticsShell.tsx) wraps every analytics view with a non-sidebar strategy surface. It owns shell-level controls only:
 
 - Game selection for `CHARGED_UP`, `REEFSCAPE`, and `REBUILT`
 - Event selection and practice-event remapping
@@ -122,6 +126,8 @@ The navigation does not own application data beyond the team label and access ov
 - Page-wide search across table rows and searchable cards
 - Analytics notes visibility
 - Role-gated Scout Status link
+- Priority deck links for Match Strategy, Scout Matrix, and Team Breakdown
+- Support view pills for rankings, reliability, radar, pick lists, and reports
 
 Analytics metric calculations remain in page files and `app/utils/*` modules, matching the preview branch behavior. The shell does not calculate scores.
 

@@ -7,12 +7,12 @@
   --cs-red: #dc2626;
   --cs-gold: #d4af37;
   --cs-gold-soft: #f5d66d;
-  --cs-pearl: #f8fafc;
-  --cs-marble: #f4f4f5;
+  --cs-pearl: #f1f5f9;
+  --cs-marble: #e2e8f0;
   --cs-ink: #0f172a;
   --cs-muted: #64748b;
   --cs-border: rgba(212, 175, 55, 0.26);
-  --cs-glass: rgba(255, 255, 255, 0.72);
+  --cs-glass: rgba(255, 255, 255, 0.4);
   --primary-color: var(--cs-crimson);
   --primary-rgb: 139, 0, 0;
   --accent-color: var(--cs-gold);
@@ -22,14 +22,15 @@
   --theme-text: #ffffff;
   --theme-bg: var(--cs-marble);
   --theme-page-canvas: var(--cs-pearl);
-  --theme-page-gradient: radial-gradient(circle at top left, rgba(220, 38, 38, 0.08), transparent 32%),
-    radial-gradient(circle at top right, rgba(212, 175, 55, 0.17), transparent 34%),
-    linear-gradient(135deg, #f8fafc 0%, #f4f4f5 100%);
-  --theme-surface: rgba(255, 255, 255, 0.82);
-  --theme-surface-raised: rgba(255, 255, 255, 0.92);
+  --theme-page-gradient: radial-gradient(circle at 12% 18%, rgba(220, 38, 38, 0.15), transparent 34%),
+    radial-gradient(circle at 88% 24%, rgba(212, 175, 55, 0.2), transparent 36%),
+    radial-gradient(circle at 45% 92%, rgba(139, 0, 0, 0.1), transparent 32%),
+    linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  --theme-surface: rgba(255, 255, 255, 0.4);
+  --theme-surface-raised: rgba(255, 255, 255, 0.52);
   --theme-border: var(--cs-border);
-  --theme-input-bg: rgba(255, 255, 255, 0.76);
-  --theme-input-bg-disabled: rgba(241, 245, 249, 0.84);
+  --theme-input-bg: rgba(255, 255, 255, 0.42);
+  --theme-input-bg-disabled: rgba(241, 245, 249, 0.5);
   --theme-body-text: var(--cs-ink);
   --theme-muted-text: #475569;
   --theme-subtle-text: var(--cs-muted);
@@ -60,6 +61,7 @@ body {
   background: var(--theme-page-gradient);
   font-family: var(--theme-font-body);
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
 h1,
@@ -105,10 +107,10 @@ textarea {
 
 .greek-tech-bg {
   background:
-    linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.42) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.38) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.32) 1px, transparent 1px),
     var(--theme-page-gradient);
-  background-size: 44px 44px, 44px 44px, auto;
+  background-size: 52px 52px, 52px 52px, auto;
 }
 
 .glass-card {
@@ -121,7 +123,7 @@ textarea {
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65), rgba(212, 175, 55, 0.1), rgba(220, 38, 38, 0.08));
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(212, 175, 55, 0.14), rgba(220, 38, 38, 0.11));
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
   padding: 1px;
@@ -153,10 +155,11 @@ select,
 textarea {
   min-height: 2.5rem;
   border-radius: 999px;
-  border: 1px solid rgba(212, 175, 55, 0.3);
+  border: 1px solid rgba(212, 175, 55, 0.36);
   background-color: var(--theme-input-bg) !important;
   color: var(--theme-body-text) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), 0 10px 32px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(24px);
 }
 
 textarea {
@@ -212,11 +215,13 @@ select option {
 .table-scroll {
   overflow: auto;
   position: relative;
-  border-radius: 1.5rem;
-  border: 1px solid rgba(212, 175, 55, 0.24);
-  background: rgba(255, 255, 255, 0.62);
-  box-shadow: 0 22px 70px rgba(139, 0, 0, 0.08);
-  backdrop-filter: blur(18px);
+  border-radius: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-bottom-color: rgba(212, 175, 55, 0.22);
+  border-right-color: rgba(220, 38, 38, 0.18);
+  background: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 22px 90px rgba(139, 0, 0, 0.11);
+  backdrop-filter: blur(28px);
 }
 
 .table-scroll table {
@@ -229,12 +234,13 @@ select option {
 
 .table-scroll th,
 .table-scroll td {
-  border-right: 1px solid rgba(212, 175, 55, 0.18);
-  border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+  border-right: 1px solid rgba(212, 175, 55, 0.2);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
   padding: 0.7rem 0.85rem;
   text-align: center;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(22px);
   vertical-align: middle;
   font-size: 0.78rem;
 }
@@ -246,7 +252,8 @@ select option {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  background: linear-gradient(180deg, rgba(255, 251, 235, 0.95), rgba(255, 255, 255, 0.9));
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.62), rgba(255, 255, 255, 0.42));
+  backdrop-filter: blur(28px);
 }
 
 .sticky-header th {
@@ -276,7 +283,7 @@ select option {
 .sticky-left-group-3 {
   position: sticky !important;
   z-index: 15 !important;
-  background: rgba(255, 255, 255, 0.94) !important;
+  background: rgba(255, 255, 255, 0.68) !important;
   box-shadow: 10px 0 24px rgba(139, 0, 0, 0.06);
 }
 
