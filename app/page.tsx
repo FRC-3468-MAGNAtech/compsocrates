@@ -2,255 +2,138 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowRight, BarChart3, ClipboardList, Gauge, ShieldCheck, Target } from "lucide-react";
 import { useAuth } from "@/app/AuthContext";
 import { getDashboardRoute } from "@/app/utils/dashboardRoute";
+import { GlassCard, GreekHeader, GreekTechBackground, PillButton, SectionShell, StatBadge } from "@/app/components/GreekTech";
+
+const platformSignals = [
+  { label: "Match Intel", value: "Live", icon: ClipboardList },
+  { label: "Strategy Views", value: "15", icon: BarChart3 },
+  { label: "Scout Review", value: "Verified", icon: ShieldCheck },
+];
+
+const capabilityCards = [
+  {
+    title: "Scout Capture",
+    body: "Role-aware forms for match, pit, drive, helper, team strategy, and match strategy workflows.",
+    icon: ClipboardList,
+  },
+  {
+    title: "Event Command",
+    body: "Assignments, match lists, event details, people management, and team operations share one navigation model.",
+    icon: Gauge,
+  },
+  {
+    title: "Competitive Analysis",
+    body: "Analytics screens keep the preview-branch scoring logic and move it into a brighter strategy workspace.",
+    icon: Target,
+  },
+];
 
 export default function LandingPage() {
   const router = useRouter();
   const { user, userData } = useAuth();
-
-  // Optional: Auto-redirect logged-in users (commented out by default)
-  // useEffect(() => {
-  //   if (user && userData) {
-  //     const dashboard = userData.role === "coach" ? "/coach-dashboard" : "/scout-dashboard";
-  //     router.push(dashboard);
-  //   }
-  // }, [user, userData, router]);
+  const signedIn = Boolean(user && userData);
+  const dashboardHref = userData ? getDashboardRoute(userData) : "/dashboard";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* NAVIGATION */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
-              <span className="text-white text-xl font-bold">CS</span>
+    <GreekTechBackground>
+      <SectionShell className="flex min-h-screen flex-col">
+        <nav className="mb-10 flex items-center justify-between rounded-full border border-white/70 bg-white/72 px-4 py-3 shadow-xl shadow-red-900/5 backdrop-blur-xl">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-red-800 via-red-600 to-amber-300 text-sm font-black text-white shadow-lg shadow-red-900/20">
+              CS
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>
-              CompSocrates
-            </h1>
-          </div>
-          <div className="flex gap-3">
-            {user && userData ? (
-              <button
-                onClick={() => router.push(getDashboardRoute(userData))}
-                className="px-4 py-2 rounded-lg text-white font-medium"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
+            <span className="font-display text-2xl text-slate-950">CompSocrates</span>
+          </Link>
+          <div className="flex items-center gap-2">
+            {signedIn ? (
+              <PillButton onClick={() => router.push(dashboardHref)}>
                 Dashboard
-              </button>
+                <ArrowRight className="h-4 w-4" />
+              </PillButton>
             ) : (
               <>
-                <button
-                  onClick={() => router.push("/login")}
-                  className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-medium"
-                >
+                <PillButton variant="ghost" onClick={() => router.push("/login")}>
                   Log In
-                </button>
-                <button
-                  onClick={() => router.push("/signup")}
-                  className="px-4 py-2 rounded-lg text-white font-medium"
-                  style={{ backgroundColor: "var(--primary-color)" }}
-                >
-                  Get Started
-                </button>
+                </PillButton>
+                <PillButton onClick={() => router.push("/signup")}>
+                  Join Team
+                  <ArrowRight className="h-4 w-4" />
+                </PillButton>
               </>
             )}
           </div>
-        </div>
-      </nav>
+        </nav>
 
-      {/* HERO SECTION */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-        <div className="text-center max-w-3xl mx-auto">
-          <h2 className="text-5xl font-bold mb-6" style={{ color: "var(--primary-color)" }}>
-            Strategic Scouting for FRC Teams
-          </h2>
-          <p className="text-xl text-gray-600 mb-8">
-            CompSocrates is the modern scouting platform that helps FIRST Robotics Competition teams make data-driven decisions. Track performance, analyze trends, and dominate the competition.
-          </p>
-          <button
-            onClick={() => router.push("/signup")}
-            className="px-8 py-4 rounded-lg text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-shadow"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            Start Scouting Today
-          </button>
-        </div>
-      </div>
+        <main className="grid flex-1 items-center gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(25rem,1.1fr)]">
+          <div className="space-y-8">
+            <GreekHeader
+              eyebrow="MAGNATech Strategy Platform"
+              title="CompSocrates"
+              subtitle="A bright Greek-Tech command center for FRC scouting, match planning, and event intelligence."
+              actions={platformSignals.map((signal) => (
+                <StatBadge key={signal.label} icon={signal.icon} label={signal.label} value={signal.value} tone="gold" />
+              ))}
+            />
 
-      {/* FEATURES GRID */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h3 className="text-3xl font-bold text-center mb-12">Why Teams Choose CompSocrates</h3>
-        
-        <div className="grid md:grid-cols-3 gap-8">
-          {/* Feature 1 */}
-          <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
-              <span className="text-white text-sm font-bold">RT</span>
+            <div className="flex flex-wrap gap-3">
+              <PillButton onClick={() => router.push(signedIn ? dashboardHref : "/signup")}>
+                {signedIn ? "Open Dashboard" : "Start Scouting"}
+                <ArrowRight className="h-4 w-4" />
+              </PillButton>
+              <PillButton variant="secondary" onClick={() => router.push("/login")}>
+                Team Access
+              </PillButton>
             </div>
-            <h4 className="text-xl font-semibold mb-3">Real-Time Analytics</h4>
-            <p className="text-gray-600">
-              Track team performance instantly with live data collection during matches. View detailed breakdowns, averages, and rankings as the competition unfolds.
-            </p>
           </div>
 
-          {/* Feature 2 */}
-          <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
-              <span className="text-white text-sm font-bold">M</span>
-            </div>
-            <h4 className="text-xl font-semibold mb-3">Mobile-First Design</h4>
-            <p className="text-gray-600">
-              Scout from anywhere with our responsive interface. Works seamlessly on phones, tablets, and laptops - perfect for the chaotic environment of competitions.
-            </p>
-          </div>
+          <GlassCard className="p-5" hover={false}>
+            <div className="relative overflow-hidden rounded-[1.6rem] border border-amber-200/50 bg-gradient-to-br from-white via-amber-50/70 to-red-50/60 p-5">
+              <div className="absolute right-6 top-6 h-24 w-24 rounded-full border border-amber-300/50" />
+              <div className="absolute right-14 top-14 h-36 w-36 rounded-full border border-red-200/50" />
+              <div className="relative grid gap-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.28em] text-red-900/60">Current Focus</p>
+                    <h2 className="mt-2 font-display text-3xl text-slate-950">Alliance Readiness</h2>
+                  </div>
+                  <div className="rounded-full border border-amber-300/60 bg-white/76 px-4 py-2 font-mono text-sm font-bold text-amber-900">
+                    REBUILT
+                  </div>
+                </div>
 
-          {/* Feature 3 */}
-          <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
-              <span className="text-white text-sm font-bold">SA</span>
-            </div>
-            <h4 className="text-xl font-semibold mb-3">Scout Accuracy Tracking</h4>
-            <p className="text-gray-600">
-              Train and verify your scouts with practice modes. Track accuracy scores to ensure your data is reliable when it matters most.
-            </p>
-          </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {["Auto Fuel", "Cycle Pace", "Climb Value"].map((label, index) => (
+                    <div key={label} className="rounded-3xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                      <p className="mt-3 font-mono text-3xl font-black text-red-800">{[84, 91, 76][index]}</p>
+                    </div>
+                  ))}
+                </div>
 
-          {/* Feature 4 */}
-          <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
-              <span className="text-white text-sm font-bold">MS</span>
-            </div>
-            <h4 className="text-xl font-semibold mb-3">Match Strategy Builder</h4>
-            <p className="text-gray-600">
-              Use historical data to predict outcomes and plan alliance strategies. Make informed decisions about partner selection and match approaches.
-            </p>
-          </div>
-
-          {/* Feature 5 */}
-          <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
-              <span className="text-white text-sm font-bold">FB</span>
-            </div>
-            <h4 className="text-xl font-semibold mb-3">Custom Form Builder</h4>
-            <p className="text-gray-600">
-              Adapt to each season&apos;s unique game with customizable scouting forms. Track exactly what matters for your team&apos;s strategy.
-            </p>
-          </div>
-
-          {/* Feature 6 */}
-          <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: "var(--primary-color)" }}>
-              <span className="text-white text-sm font-bold">TC</span>
-            </div>
-            <h4 className="text-xl font-semibold mb-3">Team Collaboration</h4>
-            <p className="text-gray-600">
-              Coordinate multiple scouts effortlessly. Assign matches, track completion, and ensure comprehensive coverage of every match.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* HOW IT WORKS */}
-      <div
-        className="py-16 mt-16"
-        style={{
-          background: "linear-gradient(180deg, rgba(var(--primary-rgb), 0.05), rgba(var(--primary-rgb), 0.02))",
-          borderTop: "1px solid rgba(var(--primary-rgb), 0.14)",
-          borderBottom: "1px solid rgba(var(--primary-rgb), 0.14)",
-        }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h3 className="text-3xl font-bold text-center mb-12">How It Works</h3>
-          
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
-                1
+                <div className="grid gap-3">
+                  {capabilityCards.map((card) => {
+                    const Icon = card.icon;
+                    return (
+                      <div key={card.title} className="flex gap-4 rounded-3xl border border-amber-200/40 bg-white/72 p-4 shadow-sm backdrop-blur">
+                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-800">
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-950">{card.title}</h3>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">{card.body}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <h4 className="font-semibold mb-2">Create Your Team</h4>
-              <p className="text-gray-600 text-sm">Sign up and set up your team profile with scouts and coaches</p>
             </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
-                2
-              </div>
-              <h4 className="font-semibold mb-2">Configure Your Form</h4>
-              <p className="text-gray-600 text-sm">Customize scouting fields to match this season&apos;s game</p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
-                3
-              </div>
-              <h4 className="font-semibold mb-2">Scout Matches</h4>
-              <p className="text-gray-600 text-sm">Collect data during practice and competition matches</p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: "var(--primary-color)" }}>
-                4
-              </div>
-              <h4 className="font-semibold mb-2">Analyze & Win</h4>
-              <p className="text-gray-600 text-sm">Review analytics and make strategic decisions to dominate.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* CTA SECTION */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-        <div className="bg-gradient-to-r from-red-50 to-red-100 rounded-2xl p-12 text-center">
-          <h3 className="text-3xl font-bold mb-4" style={{ color: "var(--primary-color)" }}>
-            Ready to Transform Your Scouting?
-          </h3>
-          <p className="text-lg text-gray-700 mb-8 max-w-2xl mx-auto">
-            Join teams using CompSocrates to gain a competitive edge. Start collecting better data today.
-          </p>
-          <button
-            onClick={() => router.push("/signup")}
-            className="px-8 py-4 rounded-lg text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-shadow"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            Get Started Free
-          </button>
-        </div>
-      </div>
-
-      {/* FOOTER */}
-      <footer className="bg-gray-900 text-white py-12 mt-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-2 gap-8">
-            <div>
-              <h5 className="font-bold mb-4">CompSocrates</h5>
-              <p className="text-gray-400 text-sm">
-                Strategic scouting software for FIRST Robotics Competition teams.
-              </p>
-            </div>
-            <div>
-              <h5 className="font-semibold mb-4">Legal</h5>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li>
-                  <Link href="/privacy-policy" className="hover:text-white underline-offset-2 hover:underline">
-                    Privacy Policy
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/terms-of-service" className="hover:text-white underline-offset-2 hover:underline">
-                    Terms of Service
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400 text-sm">
-            © 2026 CompSocrates. All rights reserved.
-          </div>
-        </div>
-      </footer>
-    </div>
+          </GlassCard>
+        </main>
+      </SectionShell>
+    </GreekTechBackground>
   );
 }
-

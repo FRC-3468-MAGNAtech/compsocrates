@@ -574,6 +574,7 @@ function ScoutAccuracyContent() {
   const [selectedScout, setSelectedScout] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedMode, setSelectedMode] = useState<"trial" | "competitive" | "real">("trial");
+  const canUseRealEventMode = canViewRealEventTab && selectedGame !== "CHARGED_UP";
   const [rerunningAccuracy, setRerunningAccuracy] = useState(false);
   const [rerunSessionId, setRerunSessionId] = useState("");
   const [rerunResultModal, setRerunResultModal] = useState<{
@@ -597,10 +598,10 @@ function ScoutAccuracyContent() {
   }, [selectedMode, selectedGame, userData?.teamId, calculationEvent]);
 
   useEffect(() => {
-    if (!canViewRealEventTab && selectedMode === "real") {
+    if (!canUseRealEventMode && selectedMode === "real") {
       setSelectedMode("trial");
     }
-  }, [canViewRealEventTab, selectedMode]);
+  }, [canUseRealEventMode, selectedMode]);
 
   useEffect(() => {
     setSelectedScout(null);
@@ -1554,7 +1555,7 @@ function ScoutAccuracyContent() {
             >
               Competitive Mode
             </button>
-            {canViewRealEventTab && (
+            {canUseRealEventMode && (
               <button
                 onClick={() => {
                   setSelectedMode("real");

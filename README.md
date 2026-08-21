@@ -1,36 +1,179 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CompSocrates v2 Architecture Manual
 
-## Getting Started
+CompSocrates v2 is a light-mode Greek-Tech scouting and strategy platform for competition robotics teams. The `CompSocrates-v2` branch rebuilds the interface from scratch while preserving the updated feature behavior, data inputs, and metric calculations proven on the `preview` branch.
 
-First, run the development server:
+## Architecture Principles
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- `preview` logic is the functional blueprint for scoring, filters, role checks, event detection, Firestore queries, and analytics calculations.
+- UI structure is rebuilt with modular React components instead of legacy layout trees.
+- The visual system is fixed to MAGNATech Greek-Tech: pearl surfaces, crimson actions, metallic gold accents, frosted glass, and bright ambient depth.
+- Data-heavy pages keep efficient local hooks and memoized transforms. Complex metrics remain in utility modules instead of being rewritten inside page components.
+- Dead theming infrastructure was removed. The app now has one official design system and no dark/legacy theme fallback layer.
+
+## Application Stack
+
+- Next.js App Router under `app/`
+- React client components for authenticated workflows and Firestore-backed screens
+- Firebase Auth and Firestore for users, teams, scouting entries, assignments, events, and administrative state
+- Tailwind CSS plus global design tokens in [app/globals.css](app/globals.css)
+- Recharts and local analytics utilities for strategy visualizations
+- Lucide React icons for controls and navigation
+
+## Directory Structure
+
+```text
+app/
+  api/                     Server routes for user, TBA, FIRST, Statbotics, and team operations
+  analytics/               Analytics views using shared filtering and scoring utilities
+  components/              Reusable UI, app chrome, chart, modal, and context components
+  hooks/                   Focused client hooks such as scout accuracy loading
+  scripts/                 One-off migration/import scripts
+  utils/                   Data normalization, scoring, permissions, events, and integrations
+  page.tsx                 Greek-Tech public entry screen
+  layout.tsx               Auth provider, global shell host, cookie banner
+  globals.css              Design tokens, glassmorphism layer, form/table compatibility styles
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Component Hierarchy
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+RootLayout
+  AuthProvider
+    Page / ProtectedRoute
+      Sidebar
+      Page content
+    CookieConsentBanner
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Analytics pages
+  ProtectedRoute
+    AnalyticsShell
+      AnalyticsNotesProvider
+      GreekTechBackground
+        Sidebar
+        GreekHeader
+        Analytics navigation panel
+        Search/filter toolbar
+        Analytics page content
 
-## Learn More
+Public entry
+  GreekTechBackground
+    SectionShell
+      GreekHeader
+      GlassCard / StatBadge / PillButton
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Core UI Primitives
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+[app/components/GreekTech.tsx](app/components/GreekTech.tsx) defines the shared visual primitives:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `GreekTechBackground`: pearl canvas, subtle grid, crimson/gold ambient glows.
+- `SectionShell`: responsive max-width layout wrapper.
+- `GreekHeader`: Dalek-styled page title block with optional tactical badges/actions.
+- `GlassCard`: frosted white container with soft colored shadow and hover lift.
+- `GradientBorder`: gold-to-crimson border wrapper for emphasis panels.
+- `StatBadge`: compact pill for numeric or state highlights.
+- `PillButton`: rounded command button with primary, secondary, and ghost variants.
 
-## Deploy on Vercel
+These primitives are intentionally small. Pages compose them instead of carrying large bespoke layout blocks.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Design Tokens
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Global tokens live in `:root` inside [app/globals.css](app/globals.css):
+
+- `--cs-crimson`: `#8B0000`
+- `--cs-red`: `#DC2626`
+- `--cs-gold`: `#D4AF37`
+- `--cs-pearl`: `#F8FAFC`
+- `--cs-marble`: `#F4F4F5`
+- `--cs-ink`: `#0F172A`
+- `--theme-font-heading`: Dalek local font fallback for `h1`, `h2`, and hero titles
+- `--theme-font-body`: Inter/system sans for interface copy
+- `--theme-font-data`: JetBrains Mono/monospace for dense analytics and tables
+
+The global stylesheet also provides compatibility classes for existing analytics tables:
+
+- `.table-scroll`
+- `.sticky-header`
+- `.sticky-left-*`
+- `.theme-primary`
+- `.theme-stepper-btn`
+
+These are maintained because analytics pages rely on sticky columns and dense table behavior.
+
+## Navigation Shell
+
+[app/components/Sidebar.tsx](app/components/Sidebar.tsx) is the primary authenticated command rail. It:
+
+- Loads team display context from Firestore.
+- Uses `getDashboardRoute`, `getUserRoles`, `getRoleBadge`, and `canAccessForm` from preview-derived utilities.
+- Gates form links by role and team-level form access overrides.
+- Provides responsive mobile overlay navigation.
+- Stores only the collapsed state in local storage.
+
+The navigation does not own application data beyond the team label and access overrides needed to render links.
+
+## Analytics Shell
+
+[app/components/AnalyticsShell.tsx](app/components/AnalyticsShell.tsx) wraps every analytics view. It owns shell-level controls only:
+
+- Game selection for `CHARGED_UP`, `REEFSCAPE`, and `REBUILT`
+- Event selection and practice-event remapping
+- Practice-only toggle
+- Page-wide search across table rows and searchable cards
+- Analytics notes visibility
+- Role-gated Scout Status link
+
+Analytics metric calculations remain in page files and `app/utils/*` modules, matching the preview branch behavior. The shell does not calculate scores.
+
+## Data Flow
+
+1. `AuthProvider` loads Firebase Auth state and user/team metadata.
+2. `ProtectedRoute` enforces authentication, profile completion, team membership, role access, and form access overrides.
+3. Page components fetch Firestore collections such as `scouting`, `pitScouting`, `teams`, `matchAssignments`, and practice data.
+4. Utilities normalize event keys, match labels, game filters, role permissions, scoring, and scout accuracy.
+5. Shared shells render navigation and filters, then pass page content through unchanged.
+
+## Firestore Boundaries
+
+UI components may read small display/access context when needed. Heavy domain reads remain inside route pages or utility modules:
+
+- Team navigation label and form overrides: `Sidebar`
+- Route authorization overrides: `ProtectedRoute`
+- Analytics entries and scoring inputs: analytics page components
+- TBA/FIRST/Statbotics integrations: `app/api/*` and integration utilities
+
+## Removed Legacy Code
+
+The legacy multi-theme subsystem was deleted:
+
+- `app/components/ThemePicker.tsx`
+- `app/components/ThemeInitializer.tsx`
+- `app/utils/themes.ts`
+
+The previous global CSS compatibility theme layer was replaced with fixed Greek-Tech tokens and focused form/table support.
+
+## Maintenance Rules
+
+- Keep new UI in reusable components under `app/components/`.
+- Do not introduce alternate dark or legacy palettes.
+- Do not copy old DOM layouts into new surfaces.
+- Keep scoring and data normalization in utilities, not in presentation components.
+- Keep comments sparse and useful.
+- Remove dead imports, obsolete state, unused props, and replaced files in the same change that makes them obsolete.
+
+## Verification
+
+Before merging substantial UI changes:
+
+```bash
+npm run lint
+npm run build
+```
+
+For visual work, run the Next dev server and inspect authenticated pages at desktop and mobile widths, with special attention to:
+
+- Navigation overflow
+- Analytics table stickiness
+- Form control readability
+- Mobile overlays
+- Text fit inside pills, cards, tabs, and buttons

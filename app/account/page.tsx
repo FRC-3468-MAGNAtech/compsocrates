@@ -7,7 +7,6 @@ import { updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCrede
 import { doc, getDoc } from "firebase/firestore";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
-import ThemePicker from "@/app/components/ThemePicker";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 import ProfilePictureUpload from "@/app/components/ProfilePictureUpload";
 import { auth, db } from "@/app/firebase";
@@ -451,13 +450,6 @@ function AccountContent() {
                 </p>
               )}
             </div>
-          </div>
-
-          {/* THEMES */}
-          <div className="bg-white rounded-xl shadow p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-2">Appearance</h2>
-            <p className="text-sm text-gray-600 mb-4">Pick a light, dark, or pride theme.</p>
-            <ThemePicker />
           </div>
 
           <div className="bg-white rounded-xl shadow p-6 mb-6">

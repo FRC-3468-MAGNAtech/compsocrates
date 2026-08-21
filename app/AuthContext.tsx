@@ -42,8 +42,6 @@ export type UserData = {
   preferredDashboard?: string;
   canManageVersionReleases?: boolean;
   emailVerificationExempt?: boolean;
-  accountThemeId?: string;
-  accountFontId?: string;
   experiencedScout?: boolean;
 };
 
@@ -301,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!userData?.teamId) {
-      setTeamTimeOverride(null);
+      queueMicrotask(() => setTeamTimeOverride(null));
       return;
     }
     const teamRef = doc(db, "teams", userData.teamId);
