@@ -1,23 +1,45 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Loader2,
+  Medal,
+  ShieldAlert,
+  Trophy,
+  Users,
+  X,
+} from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import AnalyticsShell from "@/app/components/AnalyticsShell";
-import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { getUserRoles } from "@/app/utils/roles";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
   isPracticeScoutedEntry,
   type AnalyticsEventOption,
-  getStoredAnalyticsGame, type AnalyticsGame,
+  type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 import { getFirstEventCodeFromTbaKey } from "@/app/utils/firstSchedule";
 import { getTeamEventOptions } from "@/app/utils/eventDetection";
+import {
+  Action,
+  Chip,
+  CommandBar,
+  Deck,
+  HudCanvas,
+  HudViewport,
+  PageIntro,
+  Surface,
+} from "@/app/components/Hud";
 
 type TeamPick = {
   teamNumber: string;
@@ -72,6 +94,9 @@ function isPracticeEntry(entry: ScoutingEntry) {
   return isPracticeScoutedEntry(entry);
 }
 
+// Scoring logic ported verbatim from the source-of-truth reference — do not
+// swap for the shared analyticsScoring util, this preserves exact ranking
+// parity with the app this page was specified from.
 function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
   if (game === "REBUILT") {
     const autoFuel = Number(entry.auto?.estimatedFuel || 0);
@@ -95,8 +120,24 @@ function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
   );
 }
 
+function StatChip({ label, value, tone = "slate" }: { label: string; value: string; tone?: "gold" | "crimson" | "slate" }) {
+  const toneClass =
+    tone === "gold"
+      ? "border-amber-300/60 bg-amber-50/50 text-amber-950"
+      : tone === "crimson"
+      ? "border-red-300/50 bg-red-50/50 text-red-950"
+      : "border-white/60 bg-white/40 text-slate-800";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-data text-[11px] font-semibold ${toneClass}`}>
+      <span className="uppercase tracking-[0.1em] opacity-60">{label}</span>
+      {value}
+    </span>
+  );
+}
+
 function PickListContent() {
   const { userData } = useAuth();
+  const router = useRouter();
   const roles = getUserRoles(userData);
   const canEditPickList =
     userData?.role === "coach" ||
@@ -105,7 +146,7 @@ function PickListContent() {
     roles.includes("lead-strategist") ||
     roles.includes("team-coach");
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [pickedTeams, setPickedTeams] = useState<TeamPick[]>([]);
@@ -448,12 +489,20 @@ function PickListContent() {
     return [...pickedTeams].sort((a, b) => (a.pickOrder || 0) - (b.pickOrder || 0));
   }, [pickedTeams]);
 
-  function formatStatLine(teamNumber: string, avgScore: number, highScore: number) {
+  function statChipsFor(teamNumber: string, avgScore: number, highScore: number) {
     const scoutedRank = scoutedRankMap.get(teamNumber);
     const officialRank = officialRanks.get(teamNumber);
     const epaValue = officialEpa.get(teamNumber);
     const epaText = typeof epaValue === "number" && Number.isFinite(epaValue) ? epaValue.toFixed(2) : "-";
-    return `O. Rank ${officialRank ?? "-"} | S. Rank ${scoutedRank ?? "-"} | S. Avg ${avgScore} | S. High ${highScore} | O. EPA ${epaText}`;
+    return (
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <StatChip label="O.Rank" value={String(officialRank ?? "-")} tone="crimson" />
+        <StatChip label="S.Rank" value={String(scoutedRank ?? "-")} tone="gold" />
+        <StatChip label="S.Avg" value={String(avgScore)} />
+        <StatChip label="S.High" value={String(highScore)} />
+        <StatChip label="O.EPA" value={epaText} />
+      </div>
+    );
   }
 
   function pickTeam(team: TeamPick) {
@@ -484,110 +533,198 @@ function PickListContent() {
     });
   }
 
+  const isBusy = loading || pickListLoading;
+  const dashboardHref = getDashboardRoute(userData);
+  const availableTeams = teams.filter((t) => !t.picked);
+
   return (
-    <AnalyticsShell
-      entriesCount={dedupedEntries.length}
-      selectedGame={selectedGame}
-      onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
-      practiceMatchesOnly={practiceMatchesOnly}
-      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
-      selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...eventOptions]}
-      onSelectedEventChange={setSelectedEvent}
-    >
-      <h1 className="text-3xl font-bold mb-2 theme-text">Pick List</h1>
-      <p className="text-gray-600 mb-6">Build and reorder your preferred alliance picks.</p>
-      {!canEditPickList && (
-        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-6">
-          View only: only coaches or team admins can add or remove teams from the pick list.
-        </p>
-      )}
+    <HudCanvas>
+      <CommandBar>
+        <Action variant="ghost" onClick={() => router.push(dashboardHref)}>
+          <ArrowLeft className="h-4 w-4" />
+          Dashboard
+        </Action>
+        <span className="hidden font-display text-sm text-slate-950 sm:inline">Pick List</span>
+        <Chip icon={Users} label="Scouted" value={dedupedEntries.length} tone="gold" />
+        {(officialLoading || epaLoading) && (
+          <Chip icon={Loader2} label="Sync" value="live" tone="crimson" />
+        )}
+      </CommandBar>
 
-      {loading || pickListLoading ? (
-        <LoadingSpinner message="Loading pick list..." />
-      ) : (
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="font-semibold">Available Teams</h2>
+      <HudViewport>
+        <div className="grid gap-6 xl:grid-cols-12">
+          <div className="xl:col-span-12">
+            <PageIntro
+              eyebrow="Alliance Selection"
+              title="Pick List"
+              subtitle="Build and reorder your preferred alliance picks — ranked by official standing, then scouted average, with EPA as a tiebreak signal."
+            />
+          </div>
+
+          {!canEditPickList && (
+            <div className="xl:col-span-12">
+              <Surface className="flex items-center gap-3 px-5 py-3">
+                <ShieldAlert className="h-4 w-4 flex-shrink-0 text-amber-700" />
+                <p className="text-sm text-slate-700">
+                  View only — coaches, team admins, lead scouts and lead strategists can add or reorder picks.
+                </p>
+              </Surface>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto">
-              {teams.filter((t) => !t.picked).map((team) => (
-                <div key={team.teamNumber} data-analytics-search-item="true" className="p-4 border-b flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">Team {team.teamNumber}</p>
-                    <p className="text-sm text-gray-600">
-                      {formatStatLine(team.teamNumber, team.avgScore, team.highScore)}
-                    </p>
+          )}
+
+          <Deck priority="normal" className="xl:col-span-12">
+            <div className="flex flex-wrap items-end gap-5">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Game</label>
+                <select
+                  value={selectedGame}
+                  onChange={(event) => setSelectedGame(event.target.value as AnalyticsGame)}
+                  className="min-w-[9rem] font-data"
+                >
+                  <option value="REEFSCAPE">REEFSCAPE</option>
+                  <option value="REBUILT">REBUILT</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Event</label>
+                <select
+                  value={selectedEvent}
+                  onChange={(event) => setSelectedEvent(event.target.value)}
+                  className="min-w-[13rem] font-data"
+                >
+                  <option value="all">All Events</option>
+                  {eventOptions.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Action
+                variant={practiceMatchesOnly ? "primary" : "secondary"}
+                onClick={() => setPracticeMatchesOnly((prev) => !prev)}
+              >
+                <ClipboardList className="h-4 w-4" />
+                {practiceMatchesOnly ? "Practice Matches Only" : "Official Matches Only"}
+              </Action>
+            </div>
+          </Deck>
+
+          {isBusy ? (
+            <div className="xl:col-span-12">
+              <Surface className="flex flex-col items-center justify-center gap-3 px-6 py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-red-800" />
+                <p className="font-data text-sm text-slate-600">Loading pick list…</p>
+              </Surface>
+            </div>
+          ) : (
+            <>
+              <Deck priority="high" className="xl:col-span-7">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Trophy className="h-4 w-4 text-red-800" />
+                    <h2 className="font-data text-sm font-bold uppercase tracking-[0.18em] text-slate-800">
+                      Available Teams
+                    </h2>
                   </div>
-                  {canEditPickList ? (
-                    <button onClick={() => pickTeam(team)} className="px-3 py-1.5 rounded theme-primary text-sm">
-                      Pick
-                    </button>
-                  ) : (
-                    <span className="text-xs text-gray-500">Coach/Admin only</span>
-                  )}
+                  <span className="font-data text-xs font-semibold text-slate-500">{availableTeams.length}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="font-semibold">Selected Picks ({pickedTeams.length})</h2>
-            </div>
-            <div className="max-h-[60vh] overflow-y-auto">
-              {orderedPickedTeams.map((team, index) => {
-                const stats = teamStatsMap.get(team.teamNumber);
-                const avgScore = stats?.avgScore ?? team.avgScore ?? 0;
-                const highScore = stats?.highScore ?? team.highScore ?? 0;
-                const order = team.pickOrder ?? index + 1;
-                return (
-                  <div key={team.teamNumber} data-analytics-search-item="true" className="p-4 border-b flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">
-                        #{order} Team {team.teamNumber}
-                      </p>
-                      <p className="text-sm text-gray-600">{formatStatLine(team.teamNumber, avgScore, highScore)}</p>
-                    </div>
-                    {canEditPickList ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            onClick={() => movePick(team.teamNumber, "up")}
-                            disabled={index === 0}
-                            className="px-2 py-1 rounded border border-gray-300 text-xs disabled:opacity-40"
-                          >
-                            Up
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => movePick(team.teamNumber, "down")}
-                            disabled={index === orderedPickedTeams.length - 1}
-                            className="px-2 py-1 rounded border border-gray-300 text-xs disabled:opacity-40"
-                          >
-                            Down
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => removeTeam(team.teamNumber)}
-                          className="px-3 py-1.5 rounded bg-red-100 text-red-700 text-sm"
-                        >
-                          Remove
-                        </button>
+                <div className="flex max-h-[62vh] flex-col gap-3 overflow-y-auto pr-1">
+                  {availableTeams.length === 0 && (
+                    <p className="py-8 text-center text-sm text-slate-500">No scouted teams match the current filters.</p>
+                  )}
+                  {availableTeams.map((team) => (
+                    <div
+                      key={team.teamNumber}
+                      data-analytics-search-item="true"
+                      className="flex items-center justify-between gap-4 rounded-2xl border border-white/60 bg-white/45 px-4 py-3 shadow-[0_10px_30px_-14px_rgba(15,23,42,0.2)] backdrop-blur-md"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-data text-lg font-black text-slate-900">Team {team.teamNumber}</p>
+                        {statChipsFor(team.teamNumber, team.avgScore, team.highScore)}
                       </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">Coach/Admin only</span>
-                    )}
+                      {canEditPickList ? (
+                        <Action variant="primary" className="flex-shrink-0" onClick={() => pickTeam(team)}>
+                          Pick
+                        </Action>
+                      ) : (
+                        <span className="flex-shrink-0 text-xs text-slate-500">Locked</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Deck>
+
+              <Deck priority="critical" className="xl:col-span-5 xl:mt-14">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Medal className="h-4 w-4 text-amber-600" />
+                    <h2 className="font-data text-sm font-bold uppercase tracking-[0.18em] text-slate-800">
+                      Selected Picks
+                    </h2>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <span className="font-data text-xs font-semibold text-slate-500">{pickedTeams.length}</span>
+                </div>
+                <div className="flex max-h-[62vh] flex-col gap-3 overflow-y-auto pr-1">
+                  {orderedPickedTeams.length === 0 && (
+                    <p className="py-8 text-center text-sm text-slate-500">No teams picked yet.</p>
+                  )}
+                  {orderedPickedTeams.map((team, index) => {
+                    const stats = teamStatsMap.get(team.teamNumber);
+                    const avgScore = stats?.avgScore ?? team.avgScore ?? 0;
+                    const highScore = stats?.highScore ?? team.highScore ?? 0;
+                    const order = team.pickOrder ?? index + 1;
+                    return (
+                      <div
+                        key={team.teamNumber}
+                        data-analytics-search-item="true"
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300/50 bg-white/50 px-4 py-3 shadow-[0_10px_30px_-14px_rgba(212,175,55,0.3)] backdrop-blur-md"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-data text-lg font-black text-slate-900">
+                            <span className="text-red-800">#{order}</span> Team {team.teamNumber}
+                          </p>
+                          {statChipsFor(team.teamNumber, avgScore, highScore)}
+                        </div>
+                        {canEditPickList ? (
+                          <div className="flex flex-shrink-0 items-center gap-2">
+                            <div className="flex flex-col gap-1">
+                              <button
+                                type="button"
+                                onClick={() => movePick(team.teamNumber, "up")}
+                                disabled={index === 0}
+                                aria-label="Move up"
+                                className="rounded-full border border-amber-300/60 bg-white/60 p-1 text-amber-900 disabled:opacity-30"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => movePick(team.teamNumber, "down")}
+                                disabled={index === orderedPickedTeams.length - 1}
+                                aria-label="Move down"
+                                className="rounded-full border border-amber-300/60 bg-white/60 p-1 text-amber-900 disabled:opacity-30"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <Action variant="danger" onClick={() => removeTeam(team.teamNumber)}>
+                              <X className="h-3.5 w-3.5" />
+                            </Action>
+                          </div>
+                        ) : (
+                          <span className="flex-shrink-0 text-xs text-slate-500">Locked</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Deck>
+            </>
+          )}
         </div>
-      )}
-    </AnalyticsShell>
+      </HudViewport>
+    </HudCanvas>
   );
 }
 
@@ -598,4 +735,3 @@ export default function PickListAnalyticsPage() {
     </ProtectedRoute>
   );
 }
-

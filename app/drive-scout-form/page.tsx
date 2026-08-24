@@ -1,13 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  Compass,
+  Flag,
+  Radar,
+  RefreshCw,
+  Rocket,
+  StickyNote,
+  Users,
+} from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import Sidebar from "@/app/components/Sidebar";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
@@ -18,6 +30,7 @@ import {
   fetchEventMatchesWithTeamAuth,
   mapTbaMatchToModalId,
 } from "@/app/utils/reefscapeMatchSync";
+import { Action, Chip, CommandBar, Deck, HudCanvas, HudViewport, PageIntro, Surface } from "@/app/components/Hud";
 
 type RobotReflection = {
   teamNumber: string;
@@ -254,14 +267,173 @@ function MatchPickerModal({
   );
 }
 
+const START_POSITIONS = [
+  { value: "", label: "Select Position" },
+  { value: "not-there", label: "Not There" },
+  { value: "outpost-trench", label: "Outpost Trench" },
+  { value: "outpost-side", label: "Outpost Side" },
+  { value: "outpost-bump", label: "Outpost Bump" },
+  { value: "middle", label: "Middle" },
+  { value: "depot-bump", label: "Depot Bump" },
+  { value: "depot-side", label: "Depot Side" },
+  { value: "depot-trench", label: "Depot Trench" },
+];
+
+const ROLES = [
+  { value: "", label: "Select Role" },
+  { value: "cycler", label: "Cycler" },
+  { value: "passer", label: "Passer" },
+  { value: "shooter", label: "Shooter" },
+  { value: "stealer", label: "Stealer" },
+];
+
+const ENDGAME_CLIMBS = [
+  { value: "", label: "None" },
+  { value: "level-1", label: "Level 1" },
+  { value: "level-2", label: "Level 2" },
+  { value: "level-3", label: "Level 3" },
+];
+
+type RobotMismatch = {
+  team: string;
+  hasPlanForTeam: boolean;
+  startingPosition: boolean;
+  role: boolean;
+  autoClimb: boolean;
+  endgameClimb: boolean;
+};
+
+function RobotDeck({
+  index,
+  robot,
+  setRobot,
+  mismatch,
+  syncedPlan,
+  priority,
+  offset,
+}: {
+  index: number;
+  robot: RobotReflection;
+  setRobot: (value: RobotReflection) => void;
+  mismatch: RobotMismatch;
+  syncedPlan: StrategyPlanDoc | null;
+  priority: "normal" | "high" | "critical";
+  offset?: string;
+}) {
+  const anyMismatch =
+    mismatch.startingPosition || mismatch.role || mismatch.autoClimb || mismatch.endgameClimb;
+  return (
+    <Deck priority={priority} offset={offset} className="flex flex-col gap-4 xl:col-span-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="flex items-center gap-2 font-display text-2xl text-slate-950">
+          <Rocket className="h-5 w-5 text-red-800/70" />
+          Robot {index}
+        </p>
+        {anyMismatch ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-red-300/60 bg-red-50/60 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-red-800">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Plan Mismatch
+          </span>
+        ) : syncedPlan && mismatch.team && mismatch.hasPlanForTeam ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/60 bg-emerald-50/60 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-800">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Synced
+          </span>
+        ) : null}
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Team Number</label>
+        <input
+          className="w-full font-data text-lg"
+          value={robot.teamNumber}
+          onChange={(e) => setRobot({ ...robot, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
+          placeholder="0000"
+        />
+        {syncedPlan && mismatch.team && !mismatch.hasPlanForTeam && (
+          <p className="mt-1.5 text-xs font-semibold text-amber-700">
+            No synced match strategy data found for team {mismatch.team} in this match.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1.5 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+          <Compass className="h-3.5 w-3.5" />
+          Starting Position
+        </label>
+        <select
+          className="w-full"
+          value={robot.startingPosition}
+          onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}
+        >
+          {START_POSITIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        {mismatch.startingPosition && (
+          <p className="mt-1.5 text-xs font-semibold text-red-700">Does not match synced match strategy starting position.</p>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Role</label>
+        <select className="w-full" value={robot.role} onChange={(e) => setRobot({ ...robot, role: e.target.value })}>
+          {ROLES.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        {mismatch.role && <p className="mt-1.5 text-xs font-semibold text-red-700">Does not match synced match strategy role.</p>}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setRobot({ ...robot, autoClimb: !robot.autoClimb })}
+        className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+          robot.autoClimb ? "border-amber-400/60 bg-amber-50/60 text-amber-950" : "border-white/70 bg-white/40 text-slate-600"
+        }`}
+      >
+        <span className="text-sm font-bold">Auto Climb</span>
+        <span className="font-data text-xs uppercase tracking-[0.14em]">{robot.autoClimb ? "Yes" : "No"}</span>
+      </button>
+      {mismatch.autoClimb && <p className="text-xs font-semibold text-red-700">Does not match synced match strategy auto climb value.</p>}
+
+      <div>
+        <label className="mb-1.5 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+          <Flag className="h-3.5 w-3.5" />
+          Endgame Climb
+        </label>
+        <select
+          className="w-full"
+          value={robot.endgameClimb}
+          onChange={(e) => setRobot({ ...robot, endgameClimb: e.target.value })}
+        >
+          {ENDGAME_CLIMBS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        {mismatch.endgameClimb && (
+          <p className="mt-1.5 text-xs font-semibold text-red-700">Does not match synced match strategy endgame climb.</p>
+        )}
+      </div>
+    </Deck>
+  );
+}
+
 function DriveReflectionFormContent() {
   const { userData, teamTimeOverride } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("editId");
   const editCollectionParam = searchParams.get("editCollection");
   const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
-  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
   const [ourTeamNumber, setOurTeamNumber] = useState("");
@@ -566,6 +738,7 @@ function DriveReflectionFormContent() {
     }
 
     void loadMatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchKey]);
 
   useEffect(() => {
@@ -803,180 +976,161 @@ function DriveReflectionFormContent() {
     }
   }
 
-  const robotBlock = (
-    title: string,
-    robot: RobotReflection,
-    setRobot: (value: RobotReflection) => void,
-    mismatch: { team: string; hasPlanForTeam: boolean; startingPosition: boolean; role: boolean; autoClimb: boolean; endgameClimb: boolean }
-  ) => (
-    <div className="bg-white rounded-xl shadow p-4 space-y-3">
-      <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>
-        {title}
-      </h2>
-      <label className="block text-sm font-medium text-gray-700">Team Number</label>
-      <input
-        className="w-full border rounded p-3"
-        value={robot.teamNumber}
-        onChange={(e) => setRobot({ ...robot, teamNumber: e.target.value.replace(/[^\d]/g, "") })}
-      />
-      {syncedPlan && mismatch.team && !mismatch.hasPlanForTeam && (
-        <p className="text-xs text-amber-700">No synced match strategy data found for team {mismatch.team} in this match.</p>
-      )}
-
-      <label className="block text-sm font-medium text-gray-700">Starting Position</label>
-      <select
-        className="w-full border rounded p-3"
-        value={robot.startingPosition}
-        onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}
-      >
-        <option value="">Select Position</option>
-        <option value="not-there">Not There</option>
-        <option value="outpost-trench">Outpost Trench</option>
-        <option value="outpost-side">Outpost Side</option>
-        <option value="outpost-bump">Outpost Bump</option>
-        <option value="middle">Middle</option>
-        <option value="depot-bump">Depot Bump</option>
-        <option value="depot-side">Depot Side</option>
-        <option value="depot-trench">Depot Trench</option>
-      </select>
-      {mismatch.startingPosition && (
-        <p className="text-xs text-red-700">Does not match synced match strategy starting position.</p>
-      )}
-
-      <label className="block text-sm font-medium text-gray-700">Role</label>
-      <select className="w-full border rounded p-3" value={robot.role} onChange={(e) => setRobot({ ...robot, role: e.target.value })}>
-        <option value="">Select Role</option>
-        <option value="cycler">Cycler</option>
-        <option value="passer">Passer</option>
-        <option value="shooter">Shooter</option>
-        <option value="stealer">Stealer</option>
-      </select>
-      {mismatch.role && (
-        <p className="text-xs text-red-700">Does not match synced match strategy role.</p>
-      )}
-
-      <label className="flex items-center gap-2">
-        <input type="checkbox" checked={robot.autoClimb} onChange={(e) => setRobot({ ...robot, autoClimb: e.target.checked })} />
-        Auto Climb
-      </label>
-      {mismatch.autoClimb && (
-        <p className="text-xs text-red-700">Does not match synced match strategy auto climb value.</p>
-      )}
-
-      <label className="block text-sm font-medium text-gray-700">Endgame Climb</label>
-      <select
-        className="w-full border rounded p-3"
-        value={robot.endgameClimb}
-        onChange={(e) => setRobot({ ...robot, endgameClimb: e.target.value })}
-      >
-        <option value="">None</option>
-        <option value="level-1">Level 1</option>
-        <option value="level-2">Level 2</option>
-        <option value="level-3">Level 3</option>
-      </select>
-      {mismatch.endgameClimb && (
-        <p className="text-xs text-red-700">Does not match synced match strategy endgame climb.</p>
-      )}
-    </div>
-  );
+  const dashboardHref = getDashboardRoute(userData);
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-        <form onSubmit={submit} className="flex-1 p-4 space-y-4 max-w-3xl">
-          <div className="bg-white rounded-xl shadow p-4">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Drive Reflection Form
-            </h1>
+    <HudCanvas>
+      <CommandBar>
+        <Action variant="ghost" onClick={() => router.push(dashboardHref)}>
+          <ArrowLeft className="h-4 w-4" />
+          Dashboard
+        </Action>
+        <span className="hidden font-display text-sm text-slate-950 sm:inline">Drive Reflection</span>
+        <Chip icon={Users} label="Role" value="Drive Team" tone="crimson" />
+      </CommandBar>
+
+      <HudViewport>
+        <form onSubmit={submit} className="grid gap-6 xl:grid-cols-12 xl:items-start">
+          <div className="xl:col-span-12">
+            <PageIntro
+              eyebrow="Post-Match Debrief"
+              title={editMode ? "Update Drive Reflection" : "Drive Reflection Form"}
+              subtitle="Log what your alliance actually ran on the field this match, so the strategy deck can compare intent against reality."
+              actions={
+                <Chip
+                  icon={Radar}
+                  label="Match"
+                  value={displayMatchLabel(selectedMatch)}
+                  tone={selectedMatch ? "gold" : "slate"}
+                />
+              }
+            />
           </div>
 
-          <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>
-              Information
-            </h2>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-lg font-semibold">Match:</span>
-              <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{displayMatchLabel(selectedMatch)}</span>
-              <button
-                type="button"
-                onClick={() => setShowMatchPicker(true)}
-                className="px-2 py-0.5 text-xs rounded text-white"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
-                Fix
-              </button>
+          <Deck priority="high" className="xl:col-span-7">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-red-900/60">Match &amp; Scout</p>
+              <Action type="button" variant="secondary" onClick={() => setShowMatchPicker(true)}>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Fix Match
+              </Action>
             </div>
-            <div className="text-sm">
+            <p className="mt-3 font-display text-3xl text-slate-950">{displayMatchLabel(selectedMatch)}</p>
+
+            <div className="mt-4 space-y-2 text-sm">
               {matchOptions.length === 0 && (
-                <div className="text-amber-700">No matches with Team {ourTeamNumber || "your team"} were found at this event. Use manual values if needed.</div>
+                <p className="flex items-center gap-2 font-semibold text-amber-700">
+                  <AlertTriangle className="h-4 w-4" />
+                  No matches with Team {ourTeamNumber || "your team"} were found at this event. Use manual values if needed.
+                </p>
               )}
               {syncedPlan ? (
-                <div className="text-green-700">Detected match strategy form is synced for this match.</div>
+                <p className="flex items-center gap-2 font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Detected match strategy form is synced for this match.
+                </p>
               ) : (
-                <div className="text-amber-700">No synced match strategy form found for this match yet.</div>
+                <p className="flex items-center gap-2 font-semibold text-amber-700">
+                  <AlertTriangle className="h-4 w-4" />
+                  No synced match strategy form found for this match yet.
+                </p>
               )}
-              <div className="text-gray-700">Alerts show up below each robot field.</div>
+              <p className="text-slate-500">Mismatch alerts appear beneath each robot field below.</p>
             </div>
-            <label className="block text-sm font-medium text-gray-700">Scout Name</label>
-            <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
-          </div>
 
-          {robotBlock("Robot 1", robot1, setRobot1, robotMismatchByIndex[0])}
-          {robotBlock("Robot 2", robot2, setRobot2, robotMismatchByIndex[1])}
-          {robotBlock("Robot 3", robot3, setRobot3, robotMismatchByIndex[2])}
+            <div className="mt-5">
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Scout Name</label>
+              <input className="w-full font-data" value={userData?.displayName || ""} disabled />
+            </div>
+          </Deck>
 
-          <button
-            type="submit"
-            disabled={saving || !selectedMatch}
-            className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            {saving ? "Submitting..." : editMode ? "Update Drive Reflection Form" : "Submit Drive Reflection Form"}
-          </button>
-        </form>
+          <Deck priority={planMismatchMessages.length > 0 ? "critical" : "normal"} className="xl:col-span-5 xl:translate-y-6">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-amber-900/70">
+              <Radar className="h-3.5 w-3.5" />
+              Strategy Sync Status
+            </p>
+            {planMismatchMessages.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-bold text-red-800">Reflection diverges from the synced plan:</p>
+                <ul className="space-y-1 font-data text-xs text-red-800">
+                  {planMismatchMessages.map((message) => (
+                    <li key={message} className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      {message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-slate-600">
+                {syncedPlan
+                  ? "Everything you have entered so far lines up with the synced strategy plan for this match."
+                  : "Once a match strategy plan is synced for this match, differences will surface here in real time."}
+              </p>
+            )}
+          </Deck>
 
-        <div className="hidden md:block w-80 p-4">
-          <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
-            <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
+          <RobotDeck
+            index={1}
+            robot={robot1}
+            setRobot={setRobot1}
+            mismatch={robotMismatchByIndex[0]}
+            syncedPlan={syncedPlan}
+            priority="critical"
+            offset=""
+            key="robot-1"
+          />
+          <RobotDeck
+            index={2}
+            robot={robot2}
+            setRobot={setRobot2}
+            mismatch={robotMismatchByIndex[1]}
+            syncedPlan={syncedPlan}
+            priority="high"
+            offset="xl:translate-y-8"
+            key="robot-2"
+          />
+          <RobotDeck
+            index={3}
+            robot={robot3}
+            setRobot={setRobot3}
+            mismatch={robotMismatchByIndex[2]}
+            syncedPlan={syncedPlan}
+            priority="normal"
+            offset="xl:-translate-y-4"
+            key="robot-3"
+          />
+
+          <Deck priority="normal" className="xl:col-span-4">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-red-900/60">
+              <StickyNote className="h-4 w-4" />
+              Notes
+            </p>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              className="flex-1 border rounded p-2 resize-none"
-              placeholder="Optional notes..."
+              className="mt-4 h-56 w-full resize-none"
+              placeholder="Optional notes on the alliance, breakdowns, or anything the numbers won't show..."
             />
-          </div>
-        </div>
+          </Deck>
 
-        <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
-          <button
-            onClick={() => setMobileNotesOpen((prev) => !prev)}
-            className="px-2 py-4 rounded-l-xl text-white"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            {mobileNotesOpen ? ">" : "<"}
-          </button>
-        </div>
-        {mobileNotesOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNotesOpen(false)} />
-            <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
-                <button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+          <div className="xl:col-span-8 xl:col-start-5 flex items-center">
+            <Surface className="flex w-full flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-display text-xl text-slate-950">
+                  {editMode ? "Ready to update this reflection?" : "Ready to submit this reflection?"}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Robot data locks in the moment you submit — you can still fix the match above first.
+                </p>
               </div>
-              <textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
-                placeholder="Drive reflection notes..."
-              />
-            </div>
-          </>
-        )}
-        </div>
-      </div>
+              <Action type="submit" disabled={saving || !selectedMatch} className="justify-center px-8 py-3.5 text-base sm:w-auto">
+                {saving ? "Submitting..." : editMode ? "Update Drive Reflection" : "Submit Drive Reflection"}
+              </Action>
+            </Surface>
+          </div>
+        </form>
+      </HudViewport>
 
       <MatchPickerModal
         open={showMatchPicker}
@@ -1002,7 +1156,7 @@ function DriveReflectionFormContent() {
           if (target) setRobotTeamDefaults(target, ourTeamNumber);
         }}
       />
-    </div>
+    </HudCanvas>
   );
 }
 

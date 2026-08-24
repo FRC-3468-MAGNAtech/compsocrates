@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import Sidebar from "@/app/components/Sidebar";
-import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
@@ -18,6 +17,28 @@ import {
   fetchEventMatchesWithTeamAuth,
   mapTbaMatchToModalId,
 } from "@/app/utils/reefscapeMatchSync";
+import {
+  Action,
+  Chip,
+  CommandBar,
+  Deck,
+  HudCanvas,
+  HudViewport,
+  Surface,
+} from "@/app/components/Hud";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  ChevronLeft,
+  Hourglass,
+  NotebookPen,
+  Radar,
+  Search,
+  ShieldAlert,
+  Swords,
+  X as XIcon,
+} from "lucide-react";
 
 type RobotPlan = {
   teamNumber: string;
@@ -38,7 +59,13 @@ type MatchOption = {
 
 type MatchType = "practice" | "qualification" | "finals";
 
-type ModalMatchOption = ReefscapeMatchOption & {
+type ModalMatchOption = {
+  id: string;
+  label: string;
+  type: MatchType;
+  matchNumber: number;
+  scheduleTime: number;
+  finalsKind?: "bracket" | "series";
   sourceKey: string;
 };
 
@@ -54,6 +81,31 @@ type PitCapabilityDoc = {
   climbLevel2?: boolean;
   climbLevel3?: boolean;
 };
+
+const STARTING_POSITIONS = [
+  { value: "not-there", label: "Not There" },
+  { value: "outpost-trench", label: "Outpost Trench" },
+  { value: "outpost-side", label: "Outpost Side" },
+  { value: "outpost-bump", label: "Outpost Bump" },
+  { value: "middle", label: "Middle" },
+  { value: "depot-bump", label: "Depot Bump" },
+  { value: "depot-side", label: "Depot Side" },
+  { value: "depot-trench", label: "Depot Trench" },
+];
+
+const ROLE_OPTIONS = [
+  { value: "cycler", label: "Cycler" },
+  { value: "passer", label: "Passer" },
+  { value: "shooter", label: "Shooter" },
+  { value: "stealer", label: "Stealer" },
+];
+
+const CLIMB_OPTIONS = [
+  { value: "", label: "None" },
+  { value: "level-1", label: "Level 1" },
+  { value: "level-2", label: "Level 2" },
+  { value: "level-3", label: "Level 3" },
+];
 
 function buildFallbackMatchStrategyMatches(): MatchOption[] {
   const rows: MatchOption[] = [];
@@ -207,7 +259,8 @@ function isUserAttendingEvent(
   });
 }
 
-function MatchPickerModal({
+/** Floating glass overlay for match selection — asymmetric type-first, then a scannable match grid. */
+function MatchPickerOverlay({
   open,
   onClose,
   matches,
@@ -220,25 +273,152 @@ function MatchPickerModal({
   completed: Set<string>;
   onSelect: (key: string) => void;
 }) {
+  const [step, setStep] = useState<"type" | MatchType>("type");
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      setStep("type");
+      setFilter("");
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const rowsForStep =
+    step === "type"
+      ? []
+      : matches
+          .filter((match) => match.type === step)
+          .sort((a, b) => a.matchNumber - b.matchNumber)
+          .filter((match) => !filter || String(match.matchNumber).includes(filter.trim()));
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const graceSeconds = 10 * 60;
+  const scheduledNext = rowsForStep
+    .filter((row) => row.scheduleTime > 0 && row.scheduleTime >= nowSec - graceSeconds && !completed.has(row.id))
+    .sort((a, b) => a.scheduleTime - b.scheduleTime || a.matchNumber - b.matchNumber);
+  const resolvedNextNum =
+    scheduledNext[0]?.matchNumber ?? rowsForStep.find((row) => !completed.has(row.id))?.matchNumber ?? -1;
+
   return (
-    <ReefscapeMatchSelectModal
-      open={open}
-      onClose={onClose}
-      options={matches}
-      completed={completed}
-      onPick={(match) => onSelect(match.sourceKey || match.id)}
-    />
+    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 pt-16 sm:pt-24">
+      <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-sm" onClick={onClose} />
+      <Surface raised className="relative z-10 w-full max-w-3xl p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {step !== "type" && (
+              <button
+                type="button"
+                onClick={() => setStep("type")}
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/70 bg-white/50 text-slate-700 hover:bg-white/80"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            )}
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-red-900/60">Schedule Deck</p>
+              <h2 className="mt-1 font-display text-2xl text-slate-950">
+                {step === "type" ? "Select Match Type" : `${step[0].toUpperCase()}${step.slice(1)} Matches`}
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/70 bg-white/50 text-slate-700 hover:bg-white/80"
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        {step === "type" ? (
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {(["practice", "qualification", "finals"] as MatchType[]).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setStep(type)}
+                className="rounded-2xl border border-white/70 bg-white/45 px-4 py-6 text-center font-display text-lg text-slate-950 transition hover:-translate-y-0.5 hover:bg-white/75"
+              >
+                {type === "practice" ? "Practice" : type === "qualification" ? "Qualification" : "Finals"}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 flex items-center gap-2 rounded-full border border-amber-300/50 bg-white/50 px-4 py-2">
+              <Search className="h-4 w-4 text-slate-500" />
+              <input
+                value={filter}
+                onChange={(event) => setFilter(event.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Filter by match number..."
+                className="!min-h-0 flex-1 border-0 bg-transparent p-0 shadow-none focus:outline-none"
+              />
+            </div>
+            <div className="mt-4 max-h-[52vh] overflow-y-auto pr-1">
+              {rowsForStep.length === 0 ? (
+                <p className="p-6 text-center text-sm text-slate-500">No {step} matches were found for this event.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                  {rowsForStep.map((match) => {
+                    const done = completed.has(match.id);
+                    const isBeforeNext = resolvedNextNum > 0 && match.matchNumber < resolvedNextNum;
+                    const status = done || isBeforeNext ? "completed" : match.matchNumber === resolvedNextNum ? "next" : "upcoming";
+                    const timeString =
+                      match.scheduleTime > 0
+                        ? new Date(match.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                        : "TBD";
+                    return (
+                      <button
+                        key={match.id}
+                        type="button"
+                        onClick={() => {
+                          onSelect(match.sourceKey || match.id);
+                          onClose();
+                        }}
+                        className="relative rounded-2xl border border-white/70 bg-white/45 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-white/75"
+                      >
+                        <span
+                          className={`absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full text-white ${
+                            status === "completed" ? "bg-emerald-600" : status === "next" ? "bg-amber-500" : "bg-red-600"
+                          }`}
+                        >
+                          {status === "completed" ? (
+                            <Check className="h-3 w-3" />
+                          ) : status === "next" ? (
+                            <Hourglass className="h-3 w-3" />
+                          ) : (
+                            <XIcon className="h-3 w-3" />
+                          )}
+                        </span>
+                        <span className="font-data block text-base font-bold text-slate-950">
+                          {step === "finals" ? `F${match.matchNumber}` : match.matchNumber}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                          {timeString}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </Surface>
+    </div>
   );
 }
 
 function MatchStrategyFormContent() {
+  const router = useRouter();
   const { userData, teamTimeOverride } = useAuth();
   const searchParams = useSearchParams();
   const editId = searchParams.get("editId");
   const editCollectionParam = searchParams.get("editCollection");
   const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
-  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
   const [ourTeamNumber, setOurTeamNumber] = useState("");
@@ -520,6 +700,7 @@ function MatchStrategyFormContent() {
     }
 
     void loadMatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchKey]);
 
   useEffect(() => {
@@ -743,160 +924,239 @@ function MatchStrategyFormContent() {
     }
   }
 
-  const robotBlock = (
-    title: string,
-    robot: RobotPlan,
-    setRobot: (value: RobotPlan) => void,
-    syncStatus: { team: string; hasPitSync: boolean; climbConflict: boolean }
-  ) => (
-    <div className="bg-white rounded-xl shadow p-4 space-y-3">
-      <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{title}</h2>
-      <label className="block text-sm font-medium text-gray-700">Team Number</label>
-      <input className="w-full border rounded p-3" value={robot.teamNumber} onChange={(e) => setRobot({ ...robot, teamNumber: e.target.value.replace(/[^\d]/g, "") })} />
-      {syncStatus.team && !syncStatus.hasPitSync && (
-        <p className="text-xs text-amber-700">No pit form synced for team {syncStatus.team} at this event yet.</p>
-      )}
+  function handleMatchPick(key: string) {
+    setSelectedMatchKey(key);
+    let target = matchOptions.find((match) => match.key === key);
+    if (!target) {
+      const n = Number(String(key).replace(/\D/g, "")) || 1;
+      if (String(key).toLowerCase().startsWith("q")) {
+        target = { key: `q${n}`, label: `Q${n}`, scheduleTime: 0, teams: [] };
+      } else if (String(key).toLowerCase().startsWith("p")) {
+        target = { key: `p${n}`, label: `Practice ${n}`, scheduleTime: 0, teams: [] };
+      } else if (String(key).toLowerCase().startsWith("f")) {
+        target = { key: `f${n}`, label: `F${n}`, scheduleTime: 0, teams: [] };
+      }
+      if (target) {
+        const finalTarget = target;
+        setMatchOptions((prev) => (prev.some((row) => row.key === finalTarget.key) ? prev : [...prev, finalTarget]));
+      }
+    }
+    if (target) setRobotTeamDefaults(target, ourTeamNumber);
+  }
 
-        <label className="block text-sm font-medium text-gray-700">Starting Position</label>
-        <select className="w-full border rounded p-3" value={robot.startingPosition} onChange={(e) => setRobot({ ...robot, startingPosition: e.target.value })}>
-          <option value="">Select Position</option>
-          <option value="not-there">Not There</option>
-          <option value="outpost-trench">Outpost Trench</option>
-          <option value="outpost-side">Outpost Side</option>
-          <option value="outpost-bump">Outpost Bump</option>
-          <option value="middle">Middle</option>
-          <option value="depot-bump">Depot Bump</option>
-          <option value="depot-side">Depot Side</option>
-          <option value="depot-trench">Depot Trench</option>
-        </select>
-
-      <label className="block text-sm font-medium text-gray-700">Role</label>
-      <select className="w-full border rounded p-3" value={robot.role} onChange={(e) => setRobot({ ...robot, role: e.target.value })}>
-        <option value="">Select Role</option>
-        <option value="cycler">Cycler</option>
-        <option value="passer">Passer</option>
-        <option value="shooter">Shooter</option>
-        <option value="stealer">Stealer</option>
-      </select>
-
-      <label className="flex items-center gap-2"><input type="checkbox" checked={robot.autoClimb} onChange={(e) => setRobot({ ...robot, autoClimb: e.target.checked })} />Auto Climb</label>
-
-      <label className="block text-sm font-medium text-gray-700">Endgame Climb</label>
-      <select className="w-full border rounded p-3" value={robot.endgameClimb} onChange={(e) => setRobot({ ...robot, endgameClimb: e.target.value })}>
-        <option value="">None</option>
-        <option value="level-1">Level 1</option>
-        <option value="level-2">Level 2</option>
-        <option value="level-3">Level 3</option>
-      </select>
-      {syncStatus.climbConflict && (
-        <p className="text-xs text-red-700">Does not match pit capability for this team: selected climb is unavailable.</p>
-      )}
-    </div>
-  );
+  const robots = [
+    { title: "Robot 1", state: robot1, set: setRobot1, sync: pitSyncStatusByRobot[0] },
+    { title: "Robot 2", state: robot2, set: setRobot2, sync: pitSyncStatusByRobot[1] },
+    { title: "Robot 3", state: robot3, set: setRobot3, sync: pitSyncStatusByRobot[2] },
+  ] as const;
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-        <form onSubmit={submit} className="flex-1 p-4 space-y-4 max-w-3xl">
-          <div className="bg-white rounded-xl shadow p-4">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Match Strategy Form</h1>
-          </div>
+    <HudCanvas>
+      <CommandBar>
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="flex items-center gap-2 rounded-full py-1.5 pl-3 pr-4 text-sm font-bold text-slate-800 hover:text-red-800"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </button>
+        <Link href="/" className="hidden items-center gap-2 rounded-full py-1.5 pl-2 pr-4 sm:flex">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-red-800 via-red-600 to-amber-300 text-[10px] font-black text-white">
+            CS
+          </span>
+          <span className="font-display text-base text-slate-950">CompSocrates</span>
+        </Link>
+        <Action variant="secondary" onClick={() => setShowMatchPicker(true)}>
+          <Search className="h-4 w-4" />
+          Fix Match
+        </Action>
+      </CommandBar>
 
-          <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-lg font-semibold">Match:</span>
-              <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{displayMatchLabel(selectedMatch)}</span>
-              <button type="button" onClick={() => setShowMatchPicker(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
-            </div>
-            <div className="text-sm space-y-1">
+      <HudViewport>
+        <form onSubmit={submit} className="flex flex-col gap-6">
+          {/* Asymmetric header deck: dominant match-context panel, staggered scout-identity satellite */}
+          <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+            <Deck priority="critical">
+              <p className="text-xs font-black uppercase tracking-[0.3em] text-red-900/60">Alliance Huddle</p>
+              <h1 className="mt-3 font-display text-4xl text-slate-950 sm:text-5xl">Match Strategy Deck</h1>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <Chip icon={Swords} label="Match" value={displayMatchLabel(selectedMatch)} tone="crimson" />
+                <Chip icon={Radar} label="Team" value={ourTeamNumber || "—"} tone="gold" />
+              </div>
               {matchOptions.length === 0 && (
-                <div className="text-amber-700">No matches with Team {ourTeamNumber || "your team"} were found at this event. Use manual values if needed.</div>
+                <div className="mt-4 flex items-start gap-2 rounded-2xl border border-amber-300/60 bg-amber-50/60 px-4 py-3 text-sm font-semibold text-amber-900">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  No matches with Team {ourTeamNumber || "your team"} were found at this event. Use manual values if needed.
+                </div>
               )}
-              <div className="text-green-700">Detected pit form sync is active for this match.</div>
-              <div className="text-gray-700">Alerts show up below each robot field.</div>
-            </div>
-            <label className="block text-sm font-medium text-gray-700">Scout Name</label>
-            <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
+            </Deck>
+
+            <Deck priority="high" offset="lg:translate-x-4">
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-900/70">Scout</p>
+              <h2 className="mt-2 font-display text-2xl text-slate-950">{userData?.displayName || "Unassigned"}</h2>
+              <div className="mt-4 flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                <Check className="h-4 w-4" />
+                Pit form sync is active for this match
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Conflicts surface below each robot's climb selection.</p>
+            </Deck>
           </div>
 
-          {robotBlock("Robot 1", robot1, setRobot1, pitSyncStatusByRobot[0])}
-          {robotBlock("Robot 2", robot2, setRobot2, pitSyncStatusByRobot[1])}
-          {robotBlock("Robot 3", robot3, setRobot3, pitSyncStatusByRobot[2])}
+          {/* Head-to-head robot decks — staggered offsets in place of a rigid three-column row */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {robots.map((robot, index) => (
+              <Deck
+                key={robot.title}
+                priority="normal"
+                offset={index === 0 ? "lg:-translate-y-2" : index === 2 ? "lg:translate-y-2" : ""}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-display text-xl text-slate-950">{robot.title}</h2>
+                  {robot.sync.team && (
+                    <span
+                      className={`grid h-7 w-7 place-items-center rounded-full ${
+                        robot.sync.hasPitSync ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"
+                      }`}
+                      title={robot.sync.hasPitSync ? "Pit form synced" : "No pit form synced"}
+                    >
+                      {robot.sync.hasPitSync ? <Check className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+                    </span>
+                  )}
+                </div>
 
-          <button type="submit" disabled={saving || !selectedMatch} className="w-full py-3 rounded text-white font-semibold disabled:opacity-60" style={{ backgroundColor: "var(--primary-color)" }}>
-            {saving ? "Submitting..." : editMode ? "Update Match Strategy Form" : "Submit Match Strategy Form"}
-          </button>
-        </form>
+                <label className="mt-4 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Team Number
+                </label>
+                <input
+                  className="mt-2 w-full"
+                  value={robot.state.teamNumber}
+                  onChange={(event) => robot.set({ ...robot.state, teamNumber: event.target.value.replace(/[^\d]/g, "") })}
+                />
+                {robot.sync.team && !robot.sync.hasPitSync && (
+                  <p className="mt-1.5 text-xs font-semibold text-amber-800/80">
+                    No pit form synced for team {robot.sync.team} at this event yet.
+                  </p>
+                )}
 
-        <div className="hidden md:block w-80 p-4">
-          <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
-            <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              className="flex-1 border rounded p-2 resize-none"
-              placeholder="Optional notes..."
-            />
+                <label className="mt-4 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Starting Position
+                </label>
+                <select
+                  className="mt-2 w-full"
+                  value={robot.state.startingPosition}
+                  onChange={(event) => robot.set({ ...robot.state, startingPosition: event.target.value })}
+                >
+                  <option value="">Select Position</option>
+                  {STARTING_POSITIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="mt-4 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Role
+                </label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {ROLE_OPTIONS.map((option) => {
+                    const active = robot.state.role === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => robot.set({ ...robot.state, role: option.value })}
+                        className={`rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
+                          active
+                            ? "border-red-800/60 bg-gradient-to-br from-red-700 to-red-900 text-white"
+                            : "border-white/70 bg-white/45 text-slate-800 hover:bg-white/70"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => robot.set({ ...robot.state, autoClimb: !robot.state.autoClimb })}
+                  className={`mt-4 flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-2.5 text-left text-sm font-semibold transition ${
+                    robot.state.autoClimb
+                      ? "border-amber-300/70 bg-amber-50/60 text-amber-950"
+                      : "border-white/70 bg-white/40 text-slate-700 hover:bg-white/60"
+                  }`}
+                >
+                  Auto Climb
+                  <span
+                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${
+                      robot.state.autoClimb ? "border-amber-400 bg-amber-400 text-white" : "border-slate-300 bg-white/60 text-transparent"
+                    }`}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </span>
+                </button>
+
+                <label className="mt-4 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Endgame Climb
+                </label>
+                <select
+                  className="mt-2 w-full"
+                  value={robot.state.endgameClimb}
+                  onChange={(event) => robot.set({ ...robot.state, endgameClimb: event.target.value })}
+                >
+                  {CLIMB_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {robot.sync.climbConflict && (
+                  <div className="mt-2 flex items-start gap-2 rounded-xl border border-red-300/60 bg-red-50/60 px-3 py-2 text-xs font-semibold text-red-800">
+                    <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Does not match pit capability: selected climb is unavailable for this team.
+                  </div>
+                )}
+              </Deck>
+            ))}
           </div>
-        </div>
 
-        <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
-          <button
-            onClick={() => setMobileNotesOpen((prev) => !prev)}
-            className="px-2 py-4 rounded-l-xl text-white"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            {mobileNotesOpen ? ">" : "<"}
-          </button>
-        </div>
-        {mobileNotesOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNotesOpen(false)} />
-            <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
-                <button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+          {/* Notes satellite + submit action, asymmetric weighting toward notes */}
+          <div className="grid gap-6 xl:grid-cols-[0.65fr_1.35fr]">
+            <Deck priority="high">
+              <div className="flex items-center gap-2.5">
+                <NotebookPen className="h-5 w-5 text-red-800" />
+                <h2 className="font-display text-2xl text-slate-950">Strategy Notes</h2>
               </div>
               <textarea
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
-                placeholder="Strategy notes..."
+                className="mt-4 h-48 w-full resize-none"
+                placeholder="Alliance intent, priority sequencing, defensive assignments..."
               />
-            </div>
-          </>
-        )}
-        </div>
-      </div>
+            </Deck>
 
-      <MatchPickerModal
+            <Surface className="flex items-center p-5">
+              <button
+                type="submit"
+                disabled={saving || !selectedMatch}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-red-800/50 bg-gradient-to-br from-red-700 to-red-900 px-6 py-3.5 text-base font-bold text-white shadow-[0_16px_50px_rgba(139,0,0,0.32)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Submitting..." : editMode ? "Update Match Strategy Form" : "Submit Match Strategy Form"}
+              </button>
+            </Surface>
+          </div>
+        </form>
+      </HudViewport>
+
+      <MatchPickerOverlay
         open={showMatchPicker}
         onClose={() => setShowMatchPicker(false)}
         matches={modalMatchOptions}
         completed={modalCompleted}
-        onSelect={(key) => {
-          setSelectedMatchKey(key);
-          let target = matchOptions.find((match) => match.key === key);
-          if (!target) {
-            const n = Number(String(key).replace(/\D/g, "")) || 1;
-            if (String(key).toLowerCase().startsWith("q")) {
-              target = { key: `q${n}`, label: `Q${n}`, scheduleTime: 0, teams: [] };
-            } else if (String(key).toLowerCase().startsWith("p")) {
-              target = { key: `p${n}`, label: `Practice ${n}`, scheduleTime: 0, teams: [] };
-            } else if (String(key).toLowerCase().startsWith("f")) {
-              target = { key: `f${n}`, label: `F${n}`, scheduleTime: 0, teams: [] };
-            }
-            if (target) {
-              setMatchOptions((prev) => (prev.some((row) => row.key === target!.key) ? prev : [...prev, target!]));
-            }
-          }
-          if (target) setRobotTeamDefaults(target, ourTeamNumber);
-        }}
+        onSelect={handleMatchPick}
       />
-    </div>
+    </HudCanvas>
   );
 }
 

@@ -138,28 +138,28 @@ export default function AnalyticsConfigModal({
     MANUAL_FLAG_REASONS.find((reason) => reason.value === manualFlagReason)?.label || "Manual flag";
 
   return (
-    <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-        <div className="space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-sm">
+      <div className="glass-surface-raised w-full max-w-lg rounded-[1.75rem] p-6">
+        <div className="space-y-5">
           <div>
-            <h2 className="text-xl font-semibold">Config</h2>
-            <p className="text-sm text-gray-600">{entryLabel}</p>
-            {entrySubtitle && <p className="text-xs text-gray-500">{entrySubtitle}</p>}
+            <h2 className="font-display text-2xl text-slate-950">Entry Config</h2>
+            <p className="mt-1 font-data text-sm text-slate-700">{entryLabel}</p>
+            {entrySubtitle && <p className="font-data text-xs text-slate-500">{entrySubtitle}</p>}
           </div>
 
-          <div className="space-y-2">
-            <div className="font-semibold">Manual Flag</div>
+          <div className="space-y-2.5 rounded-2xl border border-amber-300/40 bg-white/40 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-800/80">Manual Flag</div>
             {isManualFlagged && (
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-slate-700">
                 Current reason: <span className="font-semibold">{manualReasonLabel}</span>
               </p>
             )}
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-xs font-semibold text-slate-600">
               Reason
               <select
                 value={manualFlagReason}
                 onChange={(event) => setManualFlagReason(event.target.value)}
-                className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                className="mt-1 w-full text-sm"
               >
                 {MANUAL_FLAG_REASONS.map((reason) => (
                   <option key={reason.value} value={reason.value}>
@@ -168,12 +168,12 @@ export default function AnalyticsConfigModal({
                 ))}
               </select>
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => void updateManualFlag(true)}
                 disabled={savingFlag}
-                className="px-3 py-1 rounded border border-red-300 bg-red-50 text-red-900 text-sm disabled:opacity-50"
+                className="inline-flex items-center rounded-full border border-red-800/50 bg-gradient-to-br from-red-700 to-red-900 px-4 py-2 text-xs font-bold text-white shadow-[0_10px_30px_rgba(139,0,0,0.24)] disabled:opacity-50"
               >
                 {isManualFlagged ? "Update Manual Flag" : "Add Manual Flag"}
               </button>
@@ -182,7 +182,7 @@ export default function AnalyticsConfigModal({
                   type="button"
                   onClick={() => void updateManualFlag(false)}
                   disabled={savingFlag}
-                  className="px-3 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-sm disabled:opacity-50"
+                  className="inline-flex items-center rounded-full border border-white/70 bg-white/50 px-4 py-2 text-xs font-bold text-slate-700 disabled:opacity-50"
                 >
                   Remove Manual Flag
                 </button>
@@ -190,33 +190,32 @@ export default function AnalyticsConfigModal({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="font-semibold">Stats Exclusion</div>
-            <p className="text-sm text-gray-600">
+          <div className="space-y-2.5 rounded-2xl border border-amber-300/40 bg-white/40 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-800/80">Stats Exclusion</div>
+            <p className="text-sm text-slate-600">
               Excluded entries stay visible here but will be ignored by stats and averages.
             </p>
             <button
               type="button"
               onClick={() => void toggleExclude()}
               disabled={savingExclude}
-              className={`px-3 py-1 rounded border text-sm disabled:opacity-50 ${
-                excludeFromStats ? "border-green-300 bg-green-50 text-green-900" : "border-gray-300 bg-gray-50 text-gray-800"
+              className={`inline-flex items-center rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50 ${
+                excludeFromStats
+                  ? "border-emerald-400/60 bg-emerald-50/70 text-emerald-900"
+                  : "border-white/70 bg-white/50 text-slate-700"
               }`}
             >
               {excludeFromStats ? "Include In Stats" : "Exclude From Stats"}
             </button>
           </div>
 
-          <div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full py-2 rounded text-white font-semibold"
-              style={{ backgroundColor: "var(--primary-color)" }}
-            >
-              Close
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-full border border-amber-300/70 bg-white/45 py-2.5 text-sm font-bold text-amber-950 shadow-[0_8px_30px_rgba(212,175,55,0.16)] hover:bg-amber-50/70"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>

@@ -2,9 +2,23 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where, type QueryDocumentSnapshot } from "firebase/firestore";
-import { Check, Hourglass, X as XIcon } from "lucide-react";
-import Sidebar from "@/app/components/Sidebar";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Pencil,
+  Plus,
+  Radio,
+  Repeat,
+  Timer,
+  Trash2,
+  UserCog,
+  X as XIcon,
+} from "lucide-react";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
@@ -15,7 +29,7 @@ import { type TBAMatch } from "@/app/utils/tba-api";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
 import { getEventsForGame, isInEventWindow } from "@/app/utils/analyticsEvents";
 import { getEffectiveNowSec } from "@/app/utils/teamTime";
-import { expandEventKeyAliases, normalizeEventKey } from "@/app/utils/events";
+import { expandEventKeyAliases, normalizeEventKey as _normalizeEventKey } from "@/app/utils/events";
 import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import {
   buildCompletedModalIdsFromTba,
@@ -24,9 +38,13 @@ import {
   getTbaScheduleTime,
   mapTbaMatchToModalId,
 } from "@/app/utils/reefscapeMatchSync";
+import { HudCanvas, HudViewport, CommandBar, Surface, Deck, PageIntro, Chip, Action, StatTile } from "@/app/components/Hud";
+
+/* ==========================================================================
+   Types — mirrored 1:1 from the scouting-form business logic reference.
+   ========================================================================== */
 
 type MatchType = "practice" | "qualification" | "finals";
-type MatchStatus = "completed" | "next" | "upcoming";
 
 type MatchOption = {
   id: string;
@@ -46,146 +64,6 @@ type AssignmentRow = {
   teamNumber?: number;
   scoutHumanPlayer?: boolean;
 };
-
-function TeamPickerModal({
-  open,
-  teams,
-  scoutedTeams,
-  assignedTeams,
-  subInStatuses,
-  highlightedTeams,
-  onClose,
-  onSelect,
-}: {
-  open: boolean;
-  teams: string[];
-  scoutedTeams: Set<string>;
-  assignedTeams?: Set<string>;
-  subInStatuses?: Record<string, "requested" | "assigned">;
-  highlightedTeams?: Set<string>;
-  onClose: () => void;
-  onSelect: (team: string) => void;
-}) {
-  return (
-    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
-      <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
-      <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
-        {teams.length === 0 ? (
-          <p className="p-3 text-sm text-gray-600">No robots detected for this match.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {teams.map((team) => {
-              const done = scoutedTeams.has(team);
-              const assigned = assignedTeams?.has(team);
-              const subStatus = subInStatuses?.[team];
-              const highlighted = highlightedTeams?.has(team);
-              const label = done
-                ? `${team} (Scouted)`
-                : subStatus === "assigned"
-                  ? `${team} (Sub Assigned)`
-                  : subStatus === "requested"
-                    ? `${team} (Sub Req)`
-                    : assigned
-                      ? `${team} (Assigned)`
-                      : team;
-              return (
-                <button
-                  key={team}
-                  type="button"
-                  disabled={done}
-                  onClick={() => {
-                    onSelect(team);
-                    onClose();
-                  }}
-                  className={`rounded-lg border p-3 text-sm text-left ${
-                    done
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
-                      : highlighted
-                        ? "bg-indigo-50 hover:bg-indigo-100"
-                        : "hover:bg-gray-50 border-red-400"
-                  }`}
-                  style={!done && highlighted ? { borderColor: "var(--primary-color)" } : undefined}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-4 w-full py-2 rounded text-white"
-        style={{ backgroundColor: "var(--primary-color)" }}
-      >
-        Close
-      </button>
-    </ReefscapeStyleModal>
-  );
-}
-
-function LeadScaleSelector({ value, onChange }: { value: number; onChange: (value: number) => void }) {
-  const safeValue = Math.min(5, Math.max(1, value || 1));
-  return (
-    <div className="space-y-1">
-      <input
-        type="range"
-        min={1}
-        max={5}
-        value={safeValue}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full"
-      />
-      <div className="flex justify-between text-[11px] text-gray-500">
-        {LEAD_SKILL_LEVELS.map((level) => (
-          <span key={level}>{level}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function buildFallbackScoutOptions(): MatchOption[] {
-  const rows: MatchOption[] = [];
-  for (let n = 1; n <= 20; n += 1) {
-    rows.push({
-      id: `p${n}`,
-      label: `Practice ${n}`,
-      type: "practice",
-      matchNumber: n,
-      scheduleTime: 0,
-      teams: [],
-      redTeams: [],
-      blueTeams: [],
-    });
-  }
-  for (let n = 1; n <= 80; n += 1) {
-    rows.push({
-      id: `q${n}`,
-      label: `Qualification ${n}`,
-      type: "qualification",
-      matchNumber: n,
-      scheduleTime: 0,
-      teams: [],
-      redTeams: [],
-      blueTeams: [],
-    });
-  }
-  for (let n = 1; n <= 3; n += 1) {
-    rows.push({
-      id: `f${n}`,
-      label: `Finals ${n}`,
-      type: "finals",
-      matchNumber: n,
-      scheduleTime: 0,
-      teams: [],
-      redTeams: [],
-      blueTeams: [],
-    });
-  }
-  return rows;
-}
 
 type FormState = {
   scoutName: string;
@@ -219,26 +97,6 @@ type FormState = {
   endgameHumanPlayerFuel: number;
   endgameFailedClimb: number;
   endgameStatus: string;
-  incidents: string[];
-  notes: string;
-};
-
-type ChargedUpFormState = {
-  scoutName: string;
-  teamNumber: string;
-  startingPosition: string;
-  mobility: boolean;
-  autoGridBottom: number;
-  autoGridMiddle: number;
-  autoGridTop: number;
-  autoGridMissed: boolean;
-  autoChargeStation: string;
-  teleopGridBottom: number;
-  teleopGridMiddle: number;
-  teleopGridTop: number;
-  teleopGridMissed: boolean;
-  teleopLinks: number;
-  endgameChargeStation: string;
   incidents: string[];
   notes: string;
 };
@@ -282,6 +140,10 @@ const CARRY_LABELS = ["0", "1-12", "13-23", "23-32", "33-42", "43-53", "54-64", 
 const BPS_MAX = BPS_LABELS.length - 1;
 const CARRY_MAX = CARRY_LABELS.length - 1;
 const LEAD_SKILL_LEVELS = [1, 2, 3, 4, 5];
+
+/* ==========================================================================
+   Pure helpers — ported verbatim from the reference business logic.
+   ========================================================================== */
 
 function convertPitScale(value: number, kind: "preload" | "bps" | "carry") {
   const n = Number(value || 0);
@@ -398,416 +260,18 @@ function isUserAttendingEvent(
   });
 }
 
-function estimateBalls(seconds: number, bpsScale: number, capacityBalls: number) {
-  return Math.max(0, Math.round(Math.min(Math.max(0, capacityBalls), (BPS[bpsScale] || 0) * seconds)));
-}
-
-function CycleTimer({
-  title,
-  values,
-  onAdd,
-  onDelete,
-}: {
-  title: string;
-  values: number[];
-  onAdd: (value: number) => void;
-  onDelete: (index: number) => void;
-}) {
-  const [running, setRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!running) return;
-    const id = window.setInterval(() => {
-      if (startRef.current === null) return;
-      setElapsed((performance.now() - startRef.current) / 1000);
-    }, 20);
-    return () => window.clearInterval(id);
-  }, [running]);
-
-  return (
-    <div className="border rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="font-semibold text-sm">{title}</span>
-        <span className="font-mono text-sm">{elapsed.toFixed(2)} s</span>
-      </div>
-      <button
-        type="button"
-        onClick={() => {
-          if (!running) {
-            startRef.current = performance.now();
-            setElapsed(0);
-            setRunning(true);
-            return;
-          }
-          setRunning(false);
-          onAdd(Number(elapsed.toFixed(2)));
-          setElapsed(0);
-          startRef.current = null;
-        }}
-        className="px-3 py-2 rounded text-white text-sm"
-        style={{ backgroundColor: running ? "#dc2626" : "var(--primary-color)" }}
-      >
-        {running ? "Stop" : "Start"}
-      </button>
-      {values.map((v, i) => (
-        <div key={`${title}-${i}-${v}`} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-          <span>Cycle {i + 1}: {v.toFixed(2)}</span>
-          <button
-            type="button"
-            onClick={() => onDelete(i)}
-            className="px-2 py-0.5 rounded border border-red-300 text-red-700 hover:bg-red-50"
-            aria-label={`Delete cycle ${i + 1}`}
-          >
-            Delete
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-function ClimbCounter({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (next: number) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
-      <div className="flex items-center gap-2">
-      <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="theme-stepper-btn">
-        -
-      </button>
-      <span className="w-8 text-center font-semibold">{value}</span>
-      <button type="button" onClick={() => onChange(value + 1)} className="theme-stepper-btn">
-        +
-      </button>
-      </div>
-    </div>
-  );
-}
-
-function FinalsMatchBox({
-  number,
-  row,
-  col,
-  status,
-  onPick,
-  label,
-  allowCompletedPick = false,
-}: {
-  number: number;
-  row: number;
-  col: number;
-  status: MatchStatus;
-  onPick: (matchNumber: number) => void;
-  label?: string;
-  allowCompletedPick?: boolean;
-}) {
-  const borderStyles: Record<MatchStatus, React.CSSProperties> = {
-    completed: { borderColor: "#16a34a" },
-    next: { borderColor: "#ca8a04" },
-    upcoming: { borderColor: "#ef4444" },
-  };
-  const badgeBg: Record<MatchStatus, string> = {
-    completed: "#16a34a",
-    next: "#ca8a04",
-    upcoming: "#ef4444",
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (status === "completed" && !allowCompletedPick) return;
-        onPick(number);
-      }}
-      disabled={status === "completed" && !allowCompletedPick}
-      className={`absolute w-[120px] min-h-[62px] text-xs rounded border text-left bg-white ${
-        status === "completed" && !allowCompletedPick ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"
-      }`}
-      style={{ left: col, top: row, ...(status === "completed" && !allowCompletedPick ? {} : borderStyles[status]) }}
-    >
-      <div
-        className="absolute top-0.5 right-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center"
-        style={{ backgroundColor: badgeBg[status] }}
-      >
-        {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
-      </div>
-      <div className="pt-1.5 pb-1 px-1.5">
-        <div className="font-semibold text-[11px] leading-tight">{label || `Match ${number}`}</div>
-      </div>
-    </button>
-  );
-}
-
-function FinalsBracket({
-  completed,
-  onPick,
-}: {
-  completed: Set<string>;
-  onPick: (matchNumber: number) => void;
-}) {
-  const B = { w: 120, h: 62, colGap: 60, row: 90 };
-  const col = (c: number) => (B.w + B.colGap) * c;
-  const r1_1 = 20;
-  const r1_2 = r1_1 + B.row;
-  const r1_3 = r1_2 + B.row + 30;
-  const r1_4 = r1_3 + B.row;
-  const r2_7 = (r1_1 + r1_2 + B.h) / 2 - B.h / 2;
-  const r2_8 = (r1_3 + r1_4 + B.h) / 2 - B.h / 2;
-  const r3_11 = (r2_7 + r2_8 + B.h) / 2 - B.h / 2;
-  const lower_5 = r1_4 + B.row + 50;
-  const lower_6 = lower_5 + B.row;
-  const lower_9 = lower_5 - 30;
-  const lower_10 = lower_6 - 30;
-  const lower_12 = (lower_9 + lower_10 + B.h) / 2 - B.h / 2;
-  const y13 = lower_9;
-  const yFinals = (r3_11 + y13 + B.h) / 2 - B.h / 2;
-  const c0 = 0;
-  const c1 = col(1);
-  const c2 = col(2);
-  const c3 = col(3);
-  const c4 = col(4);
-  const c5 = col(5);
-  const join1 = c0 + B.w + 30;
-  const join2 = c1 + B.w + 30;
-  const join3 = c2 + B.w + 30;
-  const join4 = c3 + B.w + 30;
-  const join5 = c4 + B.w + 30;
-  const totalWidth = c5 + B.w;
-  const firstOpen = Array.from({ length: 14 }, (_, i) => i + 1).find((n) => !completed.has(`f${n}`)) || -1;
-  const statusOf = (n: number): MatchStatus => (completed.has(`f${n}`) ? "completed" : n === firstOpen ? "next" : "upcoming");
-
-  return (
-    <div className="relative w-full flex justify-center py-6 overflow-x-auto">
-      <div style={{ width: totalWidth }}>
-        <div className="flex mb-4 gap-[60px] pl-0">
-          {[1, 2, 3, 4, 5, 6].map((r) => (
-            <div key={r} className="text-xs font-semibold text-gray-600 uppercase tracking-wide text-center" style={{ width: B.w }}>
-              Round {r}
-            </div>
-          ))}
-        </div>
-
-        <div className="relative" style={{ width: totalWidth, height: 600 }}>
-          <svg className="absolute inset-0 pointer-events-none overflow-visible" width={totalWidth} height={600}>
-            <g stroke="#9ca3af" strokeWidth="2" fill="none">
-              <path d={`M ${c0 + B.w} ${r1_1 + B.h / 2} H ${join1} V ${r1_2 + B.h / 2} H ${c0 + B.w}`} />
-              <path d={`M ${join1} ${r2_7 + B.h / 2} H ${c1}`} />
-              <path d={`M ${c0 + B.w} ${r1_3 + B.h / 2} H ${join1} V ${r1_4 + B.h / 2} H ${c0 + B.w}`} />
-              <path d={`M ${join1} ${r2_8 + B.h / 2} H ${c1}`} />
-              <path d={`M ${c1 + B.w} ${r2_7 + B.h / 2} H ${join2} V ${r2_8 + B.h / 2} H ${c1 + B.w}`} />
-              <path d={`M ${join2} ${r3_11 + B.h / 2} H ${c3}`} />
-              <path d={`M ${c1 + B.w} ${lower_5 + B.h / 2} H ${join2} V ${lower_9 + B.h / 2} H ${c2}`} />
-              <path d={`M ${c1 + B.w} ${lower_6 + B.h / 2} H ${join2} V ${lower_10 + B.h / 2} H ${c2}`} />
-              <path d={`M ${c2 + B.w} ${lower_9 + B.h / 2} H ${join3} V ${lower_10 + B.h / 2} H ${c2 + B.w}`} />
-              <path d={`M ${join3} ${lower_12 + B.h / 2} H ${c3}`} />
-              <path d={`M ${c3 + B.w} ${lower_12 + B.h / 2} H ${join4} V ${y13 + B.h / 2} H ${c4}`} />
-              <path d={`M ${c3 + B.w} ${r3_11 + B.h / 2} H ${join5} V ${yFinals + B.h / 2} H ${c5}`} />
-              <path d={`M ${c4 + B.w} ${y13 + B.h / 2} H ${join5} V ${yFinals + B.h / 2}`} />
-            </g>
-          </svg>
-
-          <FinalsMatchBox number={1} row={r1_1} col={c0} status={statusOf(1)} onPick={onPick} />
-          <FinalsMatchBox number={2} row={r1_2} col={c0} status={statusOf(2)} onPick={onPick} />
-          <FinalsMatchBox number={3} row={r1_3} col={c0} status={statusOf(3)} onPick={onPick} />
-          <FinalsMatchBox number={4} row={r1_4} col={c0} status={statusOf(4)} onPick={onPick} />
-          <FinalsMatchBox number={5} row={lower_5} col={c1} status={statusOf(5)} onPick={onPick} />
-          <FinalsMatchBox number={6} row={lower_6} col={c1} status={statusOf(6)} onPick={onPick} />
-          <FinalsMatchBox number={7} row={r2_7} col={c1} status={statusOf(7)} onPick={onPick} />
-          <FinalsMatchBox number={8} row={r2_8} col={c1} status={statusOf(8)} onPick={onPick} />
-          <FinalsMatchBox number={9} row={lower_9} col={c2} status={statusOf(9)} onPick={onPick} />
-          <FinalsMatchBox number={10} row={lower_10} col={c2} status={statusOf(10)} onPick={onPick} />
-          <FinalsMatchBox number={11} row={r3_11} col={c3} status={statusOf(11)} onPick={onPick} />
-          <FinalsMatchBox number={12} row={lower_12} col={c3} status={statusOf(12)} onPick={onPick} />
-          <FinalsMatchBox number={13} row={y13} col={c4} status={statusOf(13)} onPick={onPick} />
-          <FinalsMatchBox
-            number={14}
-            row={yFinals}
-            col={c5}
-            label="FINALS"
-            status={completed.has("f1") && completed.has("f2") && completed.has("f3") ? "completed" : "upcoming"}
-            allowCompletedPick
-            onPick={onPick}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MatchModal({
-  open,
-  onClose,
-  options,
-  completed,
-  onPick,
-}: {
-  open: boolean;
-  onClose: () => void;
-  options: MatchOption[];
-  completed: Set<string>;
-  onPick: (m: MatchOption) => void;
-}) {
-  const [step, setStep] = useState<"type" | MatchType>("type");
-  const [finalsStep, setFinalsStep] = useState<"bracket" | "number">("bracket");
-
-  useEffect(() => {
-    if (!open) {
-      setStep("type");
-      setFinalsStep("bracket");
-    }
-  }, [open]);
-
-  const current = options.filter((m) => m.type === step);
-  const firstOpen = current.find((m) => !completed.has(m.id))?.id || "";
-  const finalsById = new Map(options.filter((m) => m.type === "finals").map((m) => [m.id, m] as const));
-
-  return (
-    <ReefscapeStyleModal open={open} onClose={onClose} step={step}>
-        {step === "type" ? (
-          <>
-            <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Match Type</h2>
-            <div className="space-y-3">
-              <button type="button" className="w-full py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={() => setStep("practice")}>Practice</button>
-              <button type="button" className="w-full py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={() => setStep("qualification")}>Qualification</button>
-              <button type="button" className="w-full py-2 rounded text-white" style={{ backgroundColor: "var(--primary-color)" }} onClick={() => setStep("finals")}>Finals</button>
-            </div>
-          </>
-        ) : (
-          <>
-            {(step === "practice" || step === "qualification") && (
-              <>
-                <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>
-                  {step === "practice" ? "Practice Matches" : "Qualification Matches"}
-                </h2>
-                <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {current.length === 0 && (
-                    <div className="col-span-full border rounded p-3 text-sm text-gray-600">
-                      No matches available for this type yet.
-                    </div>
-                  )}
-                  {current.map((m) => {
-                    const done = completed.has(m.id);
-                    const status: MatchStatus = done ? "completed" : m.id === firstOpen ? "next" : "upcoming";
-                    const color = status === "completed" ? "#16a34a" : status === "next" ? "#ca8a04" : "#ef4444";
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        disabled={done}
-                        onClick={() => {
-                          if (done) return;
-                          onPick(m);
-                          onClose();
-                        }}
-                        className={`relative h-[86px] p-2 rounded-lg border text-left ${done ? "opacity-45 cursor-not-allowed bg-gray-100 border-gray-300" : "hover:bg-gray-50"}`}
-                        style={done ? undefined : { borderColor: color }}
-                      >
-                        <div className="absolute top-0.5 left-0.5 text-[10px] px-1 py-0.5 rounded-full text-white inline-flex items-center justify-center" style={{ backgroundColor: color }}>
-                          {status === "completed" ? <Check size={10} /> : status === "next" ? <Hourglass size={10} /> : <XIcon size={10} />}
-                        </div>
-                        <div className="mt-3">
-                          <div className="font-semibold text-sm">{m.label}</div>
-                          <div className="text-xs text-gray-600">{m.scheduleTime > 0 ? new Date(m.scheduleTime * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  className="w-full mt-4 py-2 rounded text-white"
-                  style={{ backgroundColor: "var(--primary-color)" }}
-                  onClick={onClose}
-                >
-                  Close
-                </button>
-              </>
-            )}
-
-            {step === "finals" && (
-              <>
-                {finalsStep === "bracket" && (
-                  <FinalsBracket
-                    completed={new Set(Array.from(completed).filter((id) => id.startsWith("f")))}
-                    onPick={(matchNumber) => {
-                      if (matchNumber === 14) {
-                        setFinalsStep("number");
-                        return;
-                      }
-                      const key = `f${matchNumber}`;
-                      const picked = finalsById.get(key) || {
-                        id: key,
-                        label: `Finals ${matchNumber}`,
-                        type: "finals" as const,
-                        matchNumber,
-                        scheduleTime: 0,
-                        teams: [],
-                      };
-                      onPick(picked);
-                      onClose();
-                    }}
-                  />
-                )}
-                {finalsStep === "number" && (
-                  <>
-                    <div className="flex items-center justify-between mb-6">
-                      <button
-                        type="button"
-                        onClick={() => setFinalsStep("bracket")}
-                        className="text-gray-600 hover:text-gray-900 flex items-center gap-2"
-                      >
-                        ← Back to Bracket
-                      </button>
-                      <h2 className="text-xl font-semibold">Select Finals Match Number</h2>
-                      <div className="w-32" />
-                    </div>
-                    <p className="text-gray-600 mb-6 text-center">Which finals match are you scouting?</p>
-                    <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
-                      {[1, 2, 3].map((matchNum) => (
-                        <button
-                          key={matchNum}
-                          type="button"
-                          onClick={() => {
-                            const key = `f${matchNum}`;
-                            const picked = finalsById.get(key) || {
-                              id: key,
-                              label: `Finals ${matchNum}`,
-                              type: "finals" as const,
-                              matchNumber: matchNum,
-                              scheduleTime: 0,
-                              teams: [],
-                            };
-                            onPick(picked);
-                            onClose();
-                          }}
-                          disabled={completed.has(`f${matchNum}`)}
-                          className={`group relative p-8 border-2 border-gray-300 rounded-2xl transition-all ${completed.has(`f${matchNum}`) ? "opacity-45 cursor-not-allowed bg-gray-100" : "hover:border-red-500 hover:bg-red-50 hover:shadow-lg"}`}
-                        >
-                          <div className="text-center">
-                            <div className="text-5xl font-bold mb-3 group-hover:scale-110 transition-transform" style={{ color: "var(--primary-color)" }}>
-                              F{matchNum}
-                            </div>
-                            <div className="text-sm font-medium text-gray-600 group-hover:text-gray-900">{`Finals ${matchNum}`}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </>
-        )}
-    </ReefscapeStyleModal>
-  );
+function buildFallbackScoutOptions(): MatchOption[] {
+  const rows: MatchOption[] = [];
+  for (let n = 1; n <= 20; n += 1) {
+    rows.push({ id: `p${n}`, label: `Practice ${n}`, type: "practice", matchNumber: n, scheduleTime: 0, teams: [], redTeams: [], blueTeams: [] });
+  }
+  for (let n = 1; n <= 80; n += 1) {
+    rows.push({ id: `q${n}`, label: `Qualification ${n}`, type: "qualification", matchNumber: n, scheduleTime: 0, teams: [], redTeams: [], blueTeams: [] });
+  }
+  for (let n = 1; n <= 3; n += 1) {
+    rows.push({ id: `f${n}`, label: `Finals ${n}`, type: "finals", matchNumber: n, scheduleTime: 0, teams: [], redTeams: [], blueTeams: [] });
+  }
+  return rows;
 }
 
 function parsePlayoffSlotFromKey(rawValue: string, compLevel: "sf" | "qf"): number | null {
@@ -826,27 +290,6 @@ function parseFinalsSeriesNumberFromKey(rawValue: string): number | null {
   if (setNum === 1 && matchNum >= 1 && matchNum <= 3) return matchNum;
   if (setNum >= 1 && setNum <= 3 && matchNum === 1) return setNum;
   return null;
-}
-
-function getPlayoffSlot(match: TBAMatch): number {
-  const fromKey = parsePlayoffSlotFromKey(String(match.key || ""), "sf");
-  if (fromKey !== null) return fromKey;
-  const fromSet = Number(match.set_number || 0);
-  if (fromSet > 0) return fromSet;
-  const fromMatch = Number(match.match_number || 0);
-  if (fromMatch > 0) return fromMatch;
-  return 1;
-}
-
-function getFinalsSeriesNumber(match: TBAMatch): number {
-  const fromKey = parseFinalsSeriesNumberFromKey(String(match.key || ""));
-  if (fromKey !== null) return fromKey;
-  const fromMatch = Number(match.match_number || 0);
-  if (fromMatch >= 1 && fromMatch <= 3) return fromMatch;
-  const fromSet = Number(match.set_number || 0);
-  if (fromSet >= 14 && fromSet <= 16) return fromSet - 13;
-  if (fromSet >= 1 && fromSet <= 3) return fromSet;
-  return 1;
 }
 
 function normalizeScoutedMatchId(value: unknown): string {
@@ -948,6 +391,254 @@ async function fetchCompletedMatchIds(
   }
   return completed;
 }
+
+/* ==========================================================================
+   Fresh visual primitives (HUD-native) — cycle timers, steppers, pickers.
+   All composed from Deck / Surface / Action / Chip; no legacy card markup.
+   ========================================================================== */
+
+function CycleTimer({
+  title,
+  values,
+  onAdd,
+  onDelete,
+  countedLabel,
+}: {
+  title: string;
+  values: number[];
+  onAdd: (value: number) => void;
+  onDelete: (index: number) => void;
+  countedLabel?: { counted: boolean };
+}) {
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => {
+      if (startRef.current === null) return;
+      setElapsed((performance.now() - startRef.current) / 1000);
+    }, 20);
+    return () => window.clearInterval(id);
+  }, [running]);
+
+  return (
+    <Surface className="p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Timer className="h-4 w-4 text-red-800/70" aria-hidden="true" />
+          <span className="text-sm font-bold text-slate-900">{title}</span>
+          {countedLabel && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                countedLabel.counted ? "bg-amber-200/70 text-amber-950" : "bg-slate-200/60 text-slate-600"
+              }`}
+            >
+              {countedLabel.counted ? "Counted" : "Not Counted"}
+            </span>
+          )}
+        </div>
+        <span className="font-data text-lg font-black text-red-800 tabular-nums">{elapsed.toFixed(2)}s</span>
+      </div>
+      <Action
+        variant={running ? "danger" : "primary"}
+        onClick={() => {
+          if (!running) {
+            startRef.current = performance.now();
+            setElapsed(0);
+            setRunning(true);
+            return;
+          }
+          setRunning(false);
+          onAdd(Number(elapsed.toFixed(2)));
+          setElapsed(0);
+          startRef.current = null;
+        }}
+        className="mt-3 min-h-[3rem] w-full"
+      >
+        {running ? "Stop Cycle" : "Start Cycle"}
+      </Action>
+      {values.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {values.map((v, i) => (
+            <div
+              key={`${title}-${i}-${v}`}
+              className="flex items-center gap-2 rounded-full border border-amber-300/50 bg-white/50 px-3 py-1.5 font-data text-xs font-semibold text-slate-800"
+            >
+              <span>#{i + 1}: {v.toFixed(2)}s</span>
+              <button
+                type="button"
+                onClick={() => onDelete(i)}
+                aria-label={`Delete cycle ${i + 1}`}
+                className="text-red-700 hover:text-red-900"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Surface>
+  );
+}
+
+function Stepper({ label, value, onChange }: { label: string; value: number; onChange: (next: number) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5">
+      <span className="text-sm font-semibold text-slate-700">{label}</span>
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="theme-stepper-btn" aria-label={`Decrease ${label}`}>
+          <Minus className="h-4 w-4" />
+        </button>
+        <span className="font-data w-8 text-center text-lg font-black text-slate-900 tabular-nums">{value}</span>
+        <button type="button" onClick={() => onChange(value + 1)} className="theme-stepper-btn" aria-label={`Increase ${label}`}>
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CounterPair({
+  scored,
+  onScored,
+  missed,
+  onMissed,
+}: {
+  scored: number;
+  onScored: (n: number) => void;
+  missed: number;
+  onMissed: (n: number) => void;
+}) {
+  return (
+    <div className="mt-2 grid grid-cols-1 gap-1 rounded-2xl border border-white/60 bg-white/35 p-3 sm:grid-cols-2 sm:gap-4">
+      <Stepper label="Scored Fuel" value={scored} onChange={onScored} />
+      <Stepper label="Missed Fuel" value={missed} onChange={onMissed} />
+    </div>
+  );
+}
+
+function ScaleSlider({
+  label,
+  scaleValue,
+  onChange,
+  max,
+  scaleLabel,
+  pitValue,
+}: {
+  label: string;
+  scaleValue: number;
+  onChange: (n: number) => void;
+  max: number;
+  scaleLabel: string;
+  pitValue: number | null;
+}) {
+  return (
+    <div className="py-1.5">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-sm font-semibold text-slate-700">{label}</span>
+        <span className="font-data text-xs font-bold text-red-800">
+          {scaleLabel}
+          {pitValue !== null && <span className="ml-2 text-slate-500">Pit: {pitValue}</span>}
+        </span>
+      </div>
+      <input type="range" min={0} max={max} value={scaleValue} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-red-700" />
+    </div>
+  );
+}
+
+function LeadScaleSelector({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const safeValue = Math.min(5, Math.max(1, value || 1));
+  return (
+    <div>
+      <input type="range" min={1} max={5} value={safeValue} onChange={(event) => onChange(Number(event.target.value))} className="w-full accent-red-700" />
+      <div className="mt-1 flex justify-between font-data text-[11px] font-semibold text-slate-500">
+        {LEAD_SKILL_LEVELS.map((level) => (
+          <span key={level}>{level}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TeamPickerModal({
+  open,
+  teams,
+  scoutedTeams,
+  assignedTeams,
+  subInStatuses,
+  highlightedTeams,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  teams: string[];
+  scoutedTeams: Set<string>;
+  assignedTeams?: Set<string>;
+  subInStatuses?: Record<string, "requested" | "assigned">;
+  highlightedTeams?: Set<string>;
+  onClose: () => void;
+  onSelect: (team: string) => void;
+}) {
+  return (
+    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
+      <h2 className="font-display text-2xl text-slate-950">Select Team</h2>
+      <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-2xl border border-amber-200/60 p-2">
+        {teams.length === 0 ? (
+          <p className="p-3 text-sm text-slate-600">No robots detected for this match.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {teams.map((team) => {
+              const done = scoutedTeams.has(team);
+              const assigned = assignedTeams?.has(team);
+              const subStatus = subInStatuses?.[team];
+              const highlighted = highlightedTeams?.has(team);
+              const label = done
+                ? `${team} (Scouted)`
+                : subStatus === "assigned"
+                  ? `${team} (Sub Assigned)`
+                  : subStatus === "requested"
+                    ? `${team} (Sub Req)`
+                    : assigned
+                      ? `${team} (Assigned)`
+                      : team;
+              return (
+                <button
+                  key={team}
+                  type="button"
+                  disabled={done}
+                  onClick={() => {
+                    onSelect(team);
+                    onClose();
+                  }}
+                  className={`rounded-xl border p-3 text-left font-data text-sm font-bold ${
+                    done
+                      ? "cursor-not-allowed border-slate-300 bg-slate-100 text-slate-400"
+                      : highlighted
+                        ? "border-amber-400 bg-amber-50 text-amber-950"
+                        : "border-red-300/60 bg-white hover:bg-red-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <Action variant="secondary" onClick={onClose} className="mt-4 w-full">
+        Close
+      </Action>
+    </ReefscapeStyleModal>
+  );
+}
+
+/* ==========================================================================
+   Scout form content — full logic parity with the flagship reference,
+   composed entirely from the floating-HUD primitive library.
+   ========================================================================== */
+
 function ScoutFormContent() {
   const router = useRouter();
   const { userData, teamTimeOverride } = useAuth();
@@ -1054,25 +745,6 @@ function ScoutFormContent() {
     incidents: [],
     notes: "",
   });
-  const [chargedUpForm, setChargedUpForm] = useState<ChargedUpFormState>({
-    scoutName: userData?.displayName || "",
-    teamNumber: "",
-    startingPosition: "",
-    mobility: false,
-    autoGridBottom: 0,
-    autoGridMiddle: 0,
-    autoGridTop: 0,
-    autoGridMissed: false,
-    autoChargeStation: "",
-    teleopGridBottom: 0,
-    teleopGridMiddle: 0,
-    teleopGridTop: 0,
-    teleopGridMissed: false,
-    teleopLinks: 0,
-    endgameChargeStation: "",
-    incidents: [],
-    notes: "",
-  });
 
   const [autoCycles, setAutoCycles] = useState<number[]>([]);
   const [transitionCycles, setTransitionCycles] = useState<number[]>([]);
@@ -1086,7 +758,6 @@ function ScoutFormContent() {
     if (!userData?.displayName) return;
     if (!editMode) {
       setForm((prev) => ({ ...prev, scoutName: userData.displayName }));
-      setChargedUpForm((prev) => ({ ...prev, scoutName: userData.displayName }));
       setLeadForm((prev) => ({ ...prev, scoutName: userData.displayName }));
     }
   }, [userData?.displayName]);
@@ -1107,16 +778,16 @@ function ScoutFormContent() {
         setEditEventKey(entryEventKey || null);
         const matchId = normalizeScoutedMatchId(data.matchId || data.matchKey || data.matchLabel || "");
         setEditMatchId(matchId);
-          if (searchParams.get("lead") === "1") {
-            const robots = Array.isArray(data.robots) ? data.robots : [];
-            const overall = (data.overallAlliance || {}) as Record<string, unknown>;
-            const rawAlliance = String(data.alliance || "");
-            const normalizedAlliance: LeadFormState["alliance"] =
-              rawAlliance === "red" || rawAlliance === "blue" ? rawAlliance : "";
-            setLeadForm((prev) => ({
-              ...prev,
-              scoutName: String(data.scoutName || prev.scoutName || ""),
-              alliance: normalizedAlliance,
+        if (searchParams.get("lead") === "1") {
+          const robots = Array.isArray(data.robots) ? data.robots : [];
+          const overall = (data.overallAlliance || {}) as Record<string, unknown>;
+          const rawAlliance = String(data.alliance || "");
+          const normalizedAlliance: LeadFormState["alliance"] =
+            rawAlliance === "red" || rawAlliance === "blue" ? rawAlliance : "";
+          setLeadForm((prev) => ({
+            ...prev,
+            scoutName: String(data.scoutName || prev.scoutName || ""),
+            alliance: normalizedAlliance,
             robot1TeamNumber: String((robots[0] as { teamNumber?: string } | undefined)?.teamNumber || ""),
             robot1Notes: String((robots[0] as { notes?: string } | undefined)?.notes || ""),
             robot1SkillLevel: Number((robots[0] as { skillLevel?: number } | undefined)?.skillLevel || 1),
@@ -1229,16 +900,15 @@ function ScoutFormContent() {
             setSelectedMatch((current) => current || fallback.find((m) => m.type === "qualification") || fallback[0] || null);
             return;
           }
-          // Fall through to load matches for the detected event even without assignments.
         }
 
-          const assignedEvent = leadMode && normalizedCurrent && normalizedCurrent !== "app-testing"
-            ? normalizedCurrent
-            : assignedEventCounts.size === 0
-              ? (normalizedCurrent || "app-testing")
-              : (normalizedCurrent && assignedEventCounts.has(normalizedCurrent))
-                ? normalizedCurrent
-                : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
+        const assignedEvent = leadMode && normalizedCurrent && normalizedCurrent !== "app-testing"
+          ? normalizedCurrent
+          : assignedEventCounts.size === 0
+            ? (normalizedCurrent || "app-testing")
+            : (normalizedCurrent && assignedEventCounts.has(normalizedCurrent))
+              ? normalizedCurrent
+              : Array.from(assignedEventCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "app-testing";
         setEventKey(assignedEvent);
         if (assignedEvent === "app-testing") {
           const fallback = buildFallbackScoutOptions();
@@ -1288,12 +958,8 @@ function ScoutFormContent() {
         matches.forEach((match) => {
           const modalId = mapTbaMatchToModalId(match);
           if (!modalId) return;
-          const redTeams = match.alliances.red.team_keys
-            .map((k) => k.replace("frc", "").trim())
-            .filter(Boolean);
-          const blueTeams = match.alliances.blue.team_keys
-            .map((k) => k.replace("frc", "").trim())
-            .filter(Boolean);
+          const redTeams = match.alliances.red.team_keys.map((k) => k.replace("frc", "").trim()).filter(Boolean);
+          const blueTeams = match.alliances.blue.team_keys.map((k) => k.replace("frc", "").trim()).filter(Boolean);
           const teams = [...redTeams, ...blueTeams];
           const scheduleTime = getTbaScheduleTime(match);
           const existing = teamsById.get(modalId);
@@ -1335,14 +1001,8 @@ function ScoutFormContent() {
         } else {
           const assignmentDocsByEvent = (
             await Promise.all(
-              expandEventKeyAliases(assignedEvent).map((eventKey) =>
-                getDocs(
-                  query(
-                    collection(db, "matchAssignments"),
-                    where("eventKey", "==", eventKey),
-                    where("scoutId", "==", userData.uid)
-                  )
-                )
+              expandEventKeyAliases(assignedEvent).map((key) =>
+                getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", key), where("scoutId", "==", userData.uid)))
               )
             )
           ).flatMap((snap) => snap.docs);
@@ -1370,8 +1030,8 @@ function ScoutFormContent() {
           try {
             const assignmentDocsAll = (
               await Promise.all(
-                expandEventKeyAliases(assignedEvent).map((eventKey) =>
-                  getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", eventKey)))
+                expandEventKeyAliases(assignedEvent).map((key) =>
+                  getDocs(query(collection(db, "matchAssignments"), where("eventKey", "==", key)))
                 )
               )
             ).flatMap((snap) => snap.docs);
@@ -1439,7 +1099,6 @@ function ScoutFormContent() {
         if (editMode && editTarget) {
           nextMatch = editTarget;
         } else if (leadMode) {
-          // Lead scout always goes to the next match, never assignment-locked.
           nextMatch = pickNextBySchedule(resolved) || pickFirstIncomplete(resolved);
         } else if (overrideEvent) {
           nextMatch = pickFirstIncomplete(resolved) || pickNextBySchedule(resolved);
@@ -1486,14 +1145,13 @@ function ScoutFormContent() {
     }
     void loadEventContext();
   }, [userData?.teamId, userData?.uid, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs, editMode, editEventKey, editMatchId, leadMode]);
+
   useEffect(() => {
     async function loadScouted() {
       if (!eventKey) return;
       const scoutingDocs = (
         await Promise.all(
-          expandEventKeyAliases(eventKey).map((key) =>
-            getDocs(query(collection(db, "scouting"), where("eventKey", "==", key)))
-          )
+          expandEventKeyAliases(eventKey).map((key) => getDocs(query(collection(db, "scouting"), where("eventKey", "==", key))))
         )
       ).flatMap((snap) => snap.docs);
       const counts: Record<string, number> = {};
@@ -1606,10 +1264,7 @@ function ScoutFormContent() {
   const selectedMatchId = selectedMatch?.id || "";
   const selectedTeams = selectedMatch?.teams || [];
   const selectedScoutedTeams = useMemo(() => new Set(scoutedTeamsByMatch[selectedMatchId] || []), [scoutedTeamsByMatch, selectedMatchId]);
-  const effectiveAssignedTeams = useMemo(
-    () => ({ ...assignedTeams, ...subInClaimsForUser }),
-    [assignedTeams, subInClaimsForUser]
-  );
+  const effectiveAssignedTeams = useMemo(() => ({ ...assignedTeams, ...subInClaimsForUser }), [assignedTeams, subInClaimsForUser]);
   const effectiveAssignedMatchIds = useMemo(() => {
     const next = new Set(assignedMatchIds);
     Object.keys(subInClaimsForUser).forEach((matchId) => next.add(matchId));
@@ -1635,39 +1290,17 @@ function ScoutFormContent() {
   const pitMismatchMessages = useMemo(() => {
     if (!pitSync.eventSynced) return [] as string[];
     const messages: string[] = [];
-    if (pitSync.preloadRaw !== null && !pitPreloadFits) {
-      messages.push(`Preload Capacity scale does not include pit value ${pitSync.preloadRaw}.`);
-    }
-    if (pitSync.bpsRaw !== null && !pitBpsFitsAuto) {
-      messages.push(`Autonomous Balls Per Second scale does not include pit value ${pitSync.bpsRaw}.`);
-    }
-    if (pitSync.bpsRaw !== null && !pitBpsFitsTele) {
-      messages.push(`Teleop Balls Per Second scale does not include pit value ${pitSync.bpsRaw}.`);
-    }
-    if (pitSync.carryRaw !== null && !pitCarryFitsAuto) {
-      messages.push(`Autonomous Carrying Capacity scale does not include pit value ${pitSync.carryRaw}.`);
-    }
-    if (pitSync.carryRaw !== null && !pitCarryFitsTele) {
-      messages.push(`Teleop Carrying Capacity scale does not include pit value ${pitSync.carryRaw}.`);
-    }
+    if (pitSync.preloadRaw !== null && !pitPreloadFits) messages.push(`Preload Capacity scale does not include pit value ${pitSync.preloadRaw}.`);
+    if (pitSync.bpsRaw !== null && !pitBpsFitsAuto) messages.push(`Autonomous Balls Per Second scale does not include pit value ${pitSync.bpsRaw}.`);
+    if (pitSync.bpsRaw !== null && !pitBpsFitsTele) messages.push(`Teleop Balls Per Second scale does not include pit value ${pitSync.bpsRaw}.`);
+    if (pitSync.carryRaw !== null && !pitCarryFitsAuto) messages.push(`Autonomous Carrying Capacity scale does not include pit value ${pitSync.carryRaw}.`);
+    if (pitSync.carryRaw !== null && !pitCarryFitsTele) messages.push(`Teleop Carrying Capacity scale does not include pit value ${pitSync.carryRaw}.`);
     return messages;
-  }, [
-    pitSync.eventSynced,
-    pitSync.preloadRaw,
-    pitSync.bpsRaw,
-    pitSync.carryRaw,
-    pitPreloadFits,
-    pitBpsFitsAuto,
-    pitBpsFitsTele,
-    pitCarryFitsAuto,
-    pitCarryFitsTele,
-  ]);
+  }, [pitSync.eventSynced, pitSync.preloadRaw, pitSync.bpsRaw, pitSync.carryRaw, pitPreloadFits, pitBpsFitsAuto, pitBpsFitsTele, pitCarryFitsAuto, pitCarryFitsTele]);
 
   function getFinalsDisplayLabel(match: MatchOption) {
     const id = String(match.id || "").toLowerCase();
-    if (!id.startsWith("sf") && !id.startsWith("qf")) {
-      return `Finals ${match.matchNumber}`;
-    }
+    if (!id.startsWith("sf") && !id.startsWith("qf")) return `Finals ${match.matchNumber}`;
     const matchNum = match.matchNumber;
     if (matchNum === 1) return "Upper Bracket Match 1";
     if (matchNum === 2) return "Upper Bracket Match 2";
@@ -1791,9 +1424,7 @@ function ScoutFormContent() {
     }
     const min = Math.min(start, end);
     const max = Math.max(start, end);
-    const matchesInRange = options.filter(
-      (match) => match.type === subInRangeType && match.matchNumber >= min && match.matchNumber <= max
-    );
+    const matchesInRange = options.filter((match) => match.type === subInRangeType && match.matchNumber >= min && match.matchNumber <= max);
     const assignedInRange = matchesInRange.filter((match) => effectiveAssignedMatchIds.has(match.id));
     if (assignedInRange.length === 0) {
       alert("No assigned matches found in that range.");
@@ -1842,22 +1473,11 @@ function ScoutFormContent() {
   useEffect(() => {
     if (overallAllianceTeamsTouched) return;
     if (!leadForm.alliance) return;
-    const teamList = [leadForm.robot1TeamNumber, leadForm.robot2TeamNumber, leadForm.robot3TeamNumber]
-      .map((team) => team.trim())
-      .filter(Boolean);
+    const teamList = [leadForm.robot1TeamNumber, leadForm.robot2TeamNumber, leadForm.robot3TeamNumber].map((team) => team.trim()).filter(Boolean);
     if (teamList.length === 0) return;
     const allianceLabel = leadForm.alliance.toUpperCase();
-    setLeadForm((prev) => ({
-      ...prev,
-      overallAllianceTeams: `${allianceLabel} / ${teamList.join(", ")}`,
-    }));
-  }, [
-    leadForm.alliance,
-    leadForm.robot1TeamNumber,
-    leadForm.robot2TeamNumber,
-    leadForm.robot3TeamNumber,
-    overallAllianceTeamsTouched,
-  ]);
+    setLeadForm((prev) => ({ ...prev, overallAllianceTeams: `${allianceLabel} / ${teamList.join(", ")}` }));
+  }, [leadForm.alliance, leadForm.robot1TeamNumber, leadForm.robot2TeamNumber, leadForm.robot3TeamNumber, overallAllianceTeamsTouched]);
 
   useEffect(() => {
     async function loadPitDefaults() {
@@ -1954,10 +1574,7 @@ function ScoutFormContent() {
     const carryCapFromScale = CARRY[Math.max(0, Math.min(CARRY_MAX, form.teleCarryScale))] || 0;
     const carryCap = pitSync.carryRaw !== null && pitCarryFitsTele ? pitSync.carryRaw : carryCapFromScale;
     const teleBps = pitSync.bpsRaw !== null && pitBpsFitsTele ? pitSync.bpsRaw : (BPS[form.teleBpsScale] || 0);
-    const estimated = endgameCycles.reduce(
-      (sum, sec) => sum + Math.max(0, Math.round(Math.min(Math.max(0, carryCap), teleBps * sec))),
-      0
-    );
+    const estimated = endgameCycles.reduce((sum, sec) => sum + Math.max(0, Math.round(Math.min(Math.max(0, carryCap), teleBps * sec))), 0);
     return resolveSectionFuel(estimated, form.endgameCounterOverride, form.endgameCounterMissedFuel);
   }
 
@@ -2156,21 +1773,9 @@ function ScoutFormContent() {
         isLeadScouting: true,
         entryType: "lead",
         robots: [
-          {
-            teamNumber: leadForm.robot1TeamNumber.trim(),
-            notes: leadForm.robot1Notes.trim(),
-            skillLevel: leadForm.robot1SkillLevel || 0,
-          },
-          {
-            teamNumber: leadForm.robot2TeamNumber.trim(),
-            notes: leadForm.robot2Notes.trim(),
-            skillLevel: leadForm.robot2SkillLevel || 0,
-          },
-          {
-            teamNumber: leadForm.robot3TeamNumber.trim(),
-            notes: leadForm.robot3Notes.trim(),
-            skillLevel: leadForm.robot3SkillLevel || 0,
-          },
+          { teamNumber: leadForm.robot1TeamNumber.trim(), notes: leadForm.robot1Notes.trim(), skillLevel: leadForm.robot1SkillLevel || 0 },
+          { teamNumber: leadForm.robot2TeamNumber.trim(), notes: leadForm.robot2Notes.trim(), skillLevel: leadForm.robot2SkillLevel || 0 },
+          { teamNumber: leadForm.robot3TeamNumber.trim(), notes: leadForm.robot3Notes.trim(), skillLevel: leadForm.robot3SkillLevel || 0 },
         ],
         overallAlliance: {
           teams: leadForm.overallAllianceTeams.trim(),
@@ -2250,384 +1855,252 @@ function ScoutFormContent() {
     closeLeadTeamPicker();
   }
   const fromPractice = searchParams.get("practice") === "1";
-  const [activeFormGame, setActiveFormGame] = useState<"CHARGED_UP" | "REBUILT">(
-    String(searchParams.get("game") || "").toUpperCase().replace(/[\s-]+/g, "_") === "CHARGED_UP" ? "CHARGED_UP" : "REBUILT"
-  );
+  const countsShiftsTwoFour = form.wonAuto !== form.hubActivationOverride;
+
+  /* ------------------------------------------------------------------
+     Render — floating HUD composition. Asymmetric offsets only bite on
+     large viewports; on phones every deck stacks full-width for one-
+     handed live-match use.
+     ------------------------------------------------------------------ */
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-          <div className="flex-1 p-4 space-y-6 max-w-3xl">
-            <div className="bg-white rounded-xl shadow p-4">
-              <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-                {leadMode ? "Lead Scout Form" : "Match Scout Form"}
-              </h1>
-              {leadMode ? (
-                <p className="text-sm text-gray-600 mb-2">Alliance-level observations for strategy and notes.</p>
-              ) : (
-                <>
-                  {fromPractice && (
-                    <p className="text-sm text-gray-600 mb-2">Opened from Practice Scouting.</p>
-                  )}
-                  {isHumanPlayerAssigned && (
-                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-2">
-                      <p className="text-sm font-medium text-yellow-800">
-                        This match, include the <strong>Human Player</strong> score.
-                      </p>
-                    </div>
-                  )}
-                  {pitSync.eventSynced ? (
-                    <p className="text-sm text-green-700 mb-2">Detected pit scout form is synced for this team and event.</p>
-                  ) : (
-                    <p className="text-sm text-amber-700 mb-2">No pit scout form synced for this team in this event yet.</p>
-                  )}
-                  {pitMismatchMessages.length > 0 && (
-                    <div className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-2">
-                      <p className="text-sm font-medium text-red-700">
-                        Warning: match scout scales do not match synced pit scout values for this team.
-                      </p>
-                      {pitMismatchMessages.map((message) => (
-                        <p key={message} className="text-xs text-red-700">
-                          {message}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 max-w-sm">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
-                    <select
-                      className="w-full border rounded p-2"
-                      value={activeFormGame}
-                      onChange={(e) => {
-                        if (e.target.value === "REEFSCAPE") {
-                          router.push("/scout-form-reefscape");
-                          return;
-                        }
-                        setActiveFormGame(e.target.value === "CHARGED_UP" ? "CHARGED_UP" : "REBUILT");
-                      }}
-                    >
-                      <option value="CHARGED_UP">CHARGED UP Form</option>
-                      <option value="REEFSCAPE">REEFSCAPE Form</option>
-                      <option value="REBUILT">REBUILT Form</option>
-                    </select>
-                  </div>
-                </>
-              )}
-            </div>
+    <HudCanvas>
+      <CommandBar>
+        <Action variant="ghost" onClick={() => router.push("/dashboard")} className="!px-4">
+          <ChevronLeft className="h-4 w-4" /> Dashboard
+        </Action>
+        <Chip label="Mode" value={leadMode ? "Lead" : "Match"} tone="crimson" icon={leadMode ? UserCog : Radio} />
+        <Chip label="Event" value={eventKey} tone="gold" />
+      </CommandBar>
 
-            <div className="bg-white rounded-xl shadow p-4 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-lg font-semibold">Assigned Match:</span>
-                <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
-                <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
-                  {!leadMode && (
-                    <button
-                      type="button"
-                      onClick={() => setSubInRequestOpen(true)}
-                      className="px-2 py-0.5 text-xs rounded text-white"
-                      style={{ backgroundColor: "#c2410c" }}
-                      disabled={subInSubmitting}
-                    >
-                      {subInSubmitting ? "Requesting..." : "Request Sub-In"}
-                  </button>
-                )}
+      <HudViewport>
+        <PageIntro
+          eyebrow={leadMode ? "Alliance Intelligence" : "Live Match Capture"}
+          title={leadMode ? "Lead Scout Form" : "Match Scout Form"}
+          subtitle={
+            leadMode
+              ? "Alliance-level observations for strategy and pick-list notes."
+              : fromPractice
+                ? "Opened from Practice Scouting."
+                : "Cycle-by-cycle fuel and climb capture for the assigned robot."
+          }
+          actions={
+            <>
+              <Chip label="Match" value={getSelectedMatchDisplay()} tone="crimson" />
+              <Action variant="secondary" onClick={() => setModalOpen(true)}>
+                <Pencil className="h-4 w-4" /> Fix Match
+              </Action>
+              {!leadMode && (
+                <Action variant="secondary" onClick={() => setSubInRequestOpen(true)} disabled={subInSubmitting}>
+                  <ArrowLeftRight className="h-4 w-4" />
+                  {subInSubmitting ? "Requesting..." : "Request Sub-In"}
+                </Action>
+              )}
+            </>
+          }
+        />
+
+        {!leadMode && isHumanPlayerAssigned && (
+          <Deck priority="high" className="mt-8">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700" />
+              <p className="text-sm font-bold text-amber-950">
+                This match, include the Human Player score.
+              </p>
+            </div>
+          </Deck>
+        )}
+
+        {!leadMode && (
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <StatTile
+              label="Pit Sync"
+              value={pitSync.eventSynced ? "Synced" : "Not Synced"}
+              unit={pitSync.eventSynced ? "detected" : "for this event"}
+            />
+            <StatTile label="Fuel Estimate" value={`${estimateAutoTotal() + estimateTeleTotal() + estimateEndgameTotal()}`} unit="projected total" />
+          </div>
+        )}
+
+        {!leadMode && pitMismatchMessages.length > 0 && (
+          <Deck priority="critical" className="mt-6">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-800" />
+              <div>
+                <p className="text-sm font-bold text-red-950">Match scales do not match the synced pit scout values.</p>
+                <ul className="mt-1 space-y-0.5 text-xs font-semibold text-red-800/90">
+                  {pitMismatchMessages.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
               </div>
             </div>
+          </Deck>
+        )}
 
-            {!leadMode && activeFormGame === "CHARGED_UP" && (
-              <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
-                  <label className="block text-sm font-medium text-gray-700">Scout Name</label>
-                  <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={chargedUpForm.scoutName} disabled />
-                  <label className="block text-sm font-medium text-gray-700">Team Number</label>
-                  <input
-                    className="w-full border rounded p-2"
-                    value={chargedUpForm.teamNumber}
-                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, teamNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    placeholder="Enter team number"
-                  />
-                  <label className="block text-sm font-medium text-gray-700">Starting Position</label>
-                  <select
-                    className="w-full border rounded p-2"
-                    value={chargedUpForm.startingPosition}
-                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, startingPosition: e.target.value }))}
-                  >
-                    <option value="">Select Position</option>
-                    <option value="Barrier Side">Barrier Side</option>
-                    <option value="Middle">Middle</option>
-                    <option value="Corner Side">Corner Side</option>
-                  </select>
-                </div>
-
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={chargedUpForm.mobility}
-                      onChange={(e) => setChargedUpForm((prev) => ({ ...prev, mobility: e.target.checked }))}
-                    />
-                    Mobility
-                  </label>
-                  <h3 className="text-sm font-semibold text-gray-700">Auto Grids</h3>
-                  <ClimbCounter label="Bottom Row" value={chargedUpForm.autoGridBottom} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridBottom: next }))} />
-                  <ClimbCounter label="Middle Row" value={chargedUpForm.autoGridMiddle} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridMiddle: next }))} />
-                  <ClimbCounter label="Top Row" value={chargedUpForm.autoGridTop} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, autoGridTop: next }))} />
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={chargedUpForm.autoGridMissed}
-                      onChange={(e) => setChargedUpForm((prev) => ({ ...prev, autoGridMissed: e.target.checked }))}
-                    />
-                    Missed
-                  </label>
-                  <select
-                    className="w-full border rounded p-2"
-                    value={chargedUpForm.autoChargeStation}
-                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, autoChargeStation: e.target.value }))}
-                  >
-                    <option value="">Auto Charge Station</option>
-                    <option value="Docked">Docked</option>
-                    <option value="Engaged">Engaged</option>
-                  </select>
-                </div>
-
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleop</h2>
-                  <h3 className="text-sm font-semibold text-gray-700">Teleop Grids</h3>
-                  <ClimbCounter label="Bottom Row" value={chargedUpForm.teleopGridBottom} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridBottom: next }))} />
-                  <ClimbCounter label="Middle Row" value={chargedUpForm.teleopGridMiddle} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridMiddle: next }))} />
-                  <ClimbCounter label="Top Row" value={chargedUpForm.teleopGridTop} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopGridTop: next }))} />
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={chargedUpForm.teleopGridMissed}
-                      onChange={(e) => setChargedUpForm((prev) => ({ ...prev, teleopGridMissed: e.target.checked }))}
-                    />
-                    Missed
-                  </label>
-                  <ClimbCounter label="Link" value={chargedUpForm.teleopLinks} onChange={(next) => setChargedUpForm((prev) => ({ ...prev, teleopLinks: next }))} />
-                </div>
-
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Endgame</h2>
-                  <select
-                    className="w-full border rounded p-2"
-                    value={chargedUpForm.endgameChargeStation}
-                    onChange={(e) => setChargedUpForm((prev) => ({ ...prev, endgameChargeStation: e.target.value }))}
-                  >
-                    <option value="">Not Parked</option>
-                    <option value="Parked">Parked</option>
-                    <option value="Docked">Docked</option>
-                    <option value="Engaged">Engaged</option>
-                  </select>
-                </div>
-
-                <div className="bg-white rounded-xl shadow p-4 space-y-2">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>General</h2>
-                  {INCIDENTS.map((incident) => (
-                    <label key={incident.value} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={chargedUpForm.incidents.includes(incident.value)}
-                        onChange={(e) =>
-                          setChargedUpForm((prev) => ({
-                            ...prev,
-                            incidents: e.target.checked
-                              ? [...prev.incidents, incident.value]
-                              : prev.incidents.filter((value) => value !== incident.value),
-                          }))
-                        }
-                      />
-                      {incident.label}
-                    </label>
-                  ))}
-                </div>
-
-                <div className="bg-white rounded-xl shadow p-4">
-                  <button
-                    type="button"
-                    disabled
-                    className="w-full py-3 rounded text-white font-semibold"
-                    style={{ backgroundColor: "var(--primary-color)" }}
-                    onClick={() => alert("CHARGED UP match form submissions are disabled.")}
-                  >
-                    Submission Disabled for CHARGED UP
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {!leadMode && activeFormGame === "REBUILT" && (
-              <form
-                className="space-y-6"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submit();
-                }}
-              >
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
-                  <label className="block text-sm font-medium text-gray-700">Scout Name</label>
-                  <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={form.scoutName} disabled />
-                  <label className="block text-sm font-medium text-gray-700">Team Number</label>
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 border rounded p-2"
-                      placeholder={selectedTeams.length > 0 ? "Select team" : "Enter team number"}
-                      value={form.teamNumber}
-                      onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    />
-                    <button
-                      type="button"
-                      className="px-4 rounded border disabled:opacity-50"
-                      onClick={() => setShowTeamPicker(true)}
-                      disabled={selectedTeams.length === 0}
-                    >
-                      Pick
-                    </button>
+        {!leadMode ? (
+          <form
+            className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <div className="flex flex-col gap-6">
+              <Deck priority="high" offset="lg:mr-10">
+                <h2 className="font-display text-2xl text-slate-950">Pre-Match</h2>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Scout Name</label>
+                    <input className="w-full" value={form.scoutName} disabled />
                   </div>
-                  <label className="block text-sm font-medium text-gray-700">Starting Position</label>
-                  <select className="w-full border rounded p-2" value={form.startingPosition} onChange={(e) => setForm((p) => ({ ...p, startingPosition: e.target.value }))}>
-                    <option value="">Select Position</option>
-                    <option value="not-there">Not There</option>
-                    <option value="outpost-trench">Outpost Trench</option>
-                    <option value="outpost-side">Outpost Side</option>
-                    <option value="outpost-bump">Outpost Bump</option>
-                    <option value="middle">Middle</option>
-                    <option value="depot-bump">Depot Bump</option>
-                    <option value="depot-side">Depot Side</option>
-                    <option value="depot-trench">Depot Trench</option>
-                  </select>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Team Number</label>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1"
+                        inputMode="numeric"
+                        placeholder={selectedTeams.length > 0 ? "Select team" : "Enter team number"}
+                        value={form.teamNumber}
+                        onChange={(e) => setForm((p) => ({ ...p, teamNumber: e.target.value.replace(/[^\d]/g, "") }))}
+                      />
+                      <Action type="button" variant="secondary" onClick={() => setShowTeamPicker(true)} disabled={selectedTeams.length === 0} className="shrink-0">
+                        Pick
+                      </Action>
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Starting Position</label>
+                    <select className="w-full" value={form.startingPosition} onChange={(e) => setForm((p) => ({ ...p, startingPosition: e.target.value }))}>
+                      <option value="">Select Position</option>
+                      <option value="not-there">Not There</option>
+                      <option value="outpost-trench">Outpost Trench</option>
+                      <option value="outpost-side">Outpost Side</option>
+                      <option value="outpost-bump">Outpost Bump</option>
+                      <option value="middle">Middle</option>
+                      <option value="depot-bump">Depot Bump</option>
+                      <option value="depot-side">Depot Side</option>
+                      <option value="depot-trench">Depot Trench</option>
+                    </select>
+                  </div>
+                </div>
+              </Deck>
+
+              <Deck priority="critical" offset="lg:ml-10">
+                <h2 className="font-display text-2xl text-slate-950">Autonomous</h2>
+                <div className="mt-3">
+                  <ScaleSlider label="Preload Capacity" scaleValue={form.autoPreloadScale} onChange={(n) => setForm((p) => ({ ...p, autoPreloadScale: n }))} max={4} scaleLabel={PRELOAD_LABELS[Math.max(0, Math.min(4, form.autoPreloadScale))]} pitValue={pitSync.preloadRaw} />
+                  <ScaleSlider label="Balls Per Second" scaleValue={form.autoBpsScale} onChange={(n) => setForm((p) => ({ ...p, autoBpsScale: n }))} max={BPS_MAX} scaleLabel={BPS_LABELS[Math.max(0, Math.min(BPS_MAX, form.autoBpsScale))]} pitValue={pitSync.bpsRaw} />
+                  <ScaleSlider label="Carrying Capacity" scaleValue={form.autoCarryScale} onChange={(n) => setForm((p) => ({ ...p, autoCarryScale: n }))} max={CARRY_MAX} scaleLabel={CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, form.autoCarryScale))]} pitValue={pitSync.carryRaw} />
+                </div>
+                <div className="mt-4">
+                  <CycleTimer title="Auto Cycle Timer" values={autoCycles} onAdd={(v) => setAutoCycles((p) => [...p, v])} onDelete={(i) => setAutoCycles((p) => p.filter((_, idx) => idx !== i))} />
+                </div>
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Counter Override</p>
+                  <CounterPair scored={form.autoCounterOverride} onScored={(n) => setForm((p) => ({ ...p, autoCounterOverride: n }))} missed={form.autoCounterMissedFuel} onMissed={(n) => setForm((p) => ({ ...p, autoCounterMissedFuel: n }))} />
+                </div>
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Human Player</p>
+                  <div className="mt-2 rounded-2xl border border-white/60 bg-white/35 p-3">
+                    <Stepper label="Scored Fuel" value={form.autoHumanPlayerFuel} onChange={(n) => setForm((p) => ({ ...p, autoHumanPlayerFuel: n }))} />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Climb</p>
+                  <div className="mt-2 rounded-2xl border border-white/60 bg-white/35 p-3">
+                    <Stepper label="Failed Climb" value={form.autoFailedClimb} onChange={(n) => setForm((p) => ({ ...p, autoFailedClimb: n }))} />
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <label className="inline-flex min-h-[2.75rem] items-center gap-2 rounded-full border border-amber-300/60 bg-white/45 px-4 text-sm font-bold text-slate-800">
+                      <input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />
+                      Successful Climb
+                    </label>
+                    <label className="inline-flex min-h-[2.75rem] items-center gap-2 rounded-full border border-amber-300/60 bg-white/45 px-4 text-sm font-bold text-slate-800">
+                      <input type="checkbox" checked={form.wonAuto} onChange={(e) => setForm((p) => ({ ...p, wonAuto: e.target.checked }))} />
+                      Won Auto
+                    </label>
+                    <label className="inline-flex min-h-[2.75rem] items-center gap-2 rounded-full border border-amber-300/60 bg-white/45 px-4 text-sm font-bold text-slate-800">
+                      <input type="checkbox" checked={form.hubActivationOverride} onChange={(e) => setForm((p) => ({ ...p, hubActivationOverride: e.target.checked }))} />
+                      Hub Activation Override
+                    </label>
+                  </div>
+                </div>
+              </Deck>
+
+              <Deck priority="critical" offset="lg:mr-14">
+                <h2 className="font-display text-2xl text-slate-950">Teleoperated</h2>
+                <div className="mt-3">
+                  <ScaleSlider label="Balls Per Second" scaleValue={form.teleBpsScale} onChange={(n) => setForm((p) => ({ ...p, teleBpsScale: n }))} max={BPS_MAX} scaleLabel={BPS_LABELS[Math.max(0, Math.min(BPS_MAX, form.teleBpsScale))]} pitValue={pitSync.bpsRaw} />
+                  <ScaleSlider label="Carrying Capacity" scaleValue={form.teleCarryScale} onChange={(n) => setForm((p) => ({ ...p, teleCarryScale: n }))} max={CARRY_MAX} scaleLabel={CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, form.teleCarryScale))]} pitValue={pitSync.carryRaw} />
                 </div>
 
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Preload Capacity ({PRELOAD_LABELS[Math.max(0, Math.min(4, form.autoPreloadScale))]})
-                    {pitSync.preloadRaw !== null ? ` | Pit: ${pitSync.preloadRaw}` : ""}
-                  </label>
-                  <input type="range" min={0} max={4} value={form.autoPreloadScale} onChange={(e) => setForm((p) => ({ ...p, autoPreloadScale: Number(e.target.value) }))} className="w-full" />
-                  <label className="block text-sm font-medium text-gray-700">
-                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(BPS_MAX, form.autoBpsScale))]})
-                    {pitSync.bpsRaw !== null ? ` | Pit: ${pitSync.bpsRaw}` : ""}
-                  </label>
-                  <input type="range" min={0} max={BPS_MAX} value={form.autoBpsScale} onChange={(e) => setForm((p) => ({ ...p, autoBpsScale: Number(e.target.value) }))} className="w-full" />
-                  <label className="block text-sm font-medium text-gray-700">
-                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, form.autoCarryScale))]})
-                    {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
-                  </label>
-                  <input type="range" min={0} max={CARRY_MAX} value={form.autoCarryScale} onChange={(e) => setForm((p) => ({ ...p, autoCarryScale: Number(e.target.value) }))} className="w-full" />
-                  <CycleTimer
-                    title="Auto Cycle Timer"
-                    values={autoCycles}
-                    onAdd={(v) => setAutoCycles((p) => [...p, v])}
-                    onDelete={(index) => setAutoCycles((p) => p.filter((_, i) => i !== index))}
-                  />
-                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.autoCounterOverride} onChange={(next) => setForm((p) => ({ ...p, autoCounterOverride: next }))} />
-                  <ClimbCounter label="Missed Fuel" value={form.autoCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, autoCounterMissedFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.autoHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, autoHumanPlayerFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Climb</h3>
-                  <ClimbCounter label="Failed Climb" value={form.autoFailedClimb} onChange={(next) => setForm((p) => ({ ...p, autoFailedClimb: next }))} />
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.autoSuccessfulClimb} onChange={(e) => setForm((p) => ({ ...p, autoSuccessfulClimb: e.target.checked }))} />Successful Climb</label>
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.wonAuto} onChange={(e) => setForm((p) => ({ ...p, wonAuto: e.target.checked }))} />Won Auto</label>
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.hubActivationOverride} onChange={(e) => setForm((p) => ({ ...p, hubActivationOverride: e.target.checked }))} />Hub Activation Override</label>
+                <div className="mt-4">
+                  <CycleTimer title="Transition Shift" values={transitionCycles} onAdd={(v) => setTransitionCycles((p) => [...p, v])} onDelete={(i) => setTransitionCycles((p) => p.filter((_, idx) => idx !== i))} />
+                  <div className="mt-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Counter Override</p>
+                    <CounterPair scored={form.transitionCounterOverride} onScored={(n) => setForm((p) => ({ ...p, transitionCounterOverride: n }))} missed={form.transitionCounterMissedFuel} onMissed={(n) => setForm((p) => ({ ...p, transitionCounterMissedFuel: n }))} />
+                  </div>
                 </div>
 
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Teleoperated</h2>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Balls Per Second ({BPS_LABELS[Math.max(0, Math.min(BPS_MAX, form.teleBpsScale))]})
-                    {pitSync.bpsRaw !== null ? ` | Pit: ${pitSync.bpsRaw}` : ""}
-                  </label>
-                  <input type="range" min={0} max={BPS_MAX} value={form.teleBpsScale} onChange={(e) => setForm((p) => ({ ...p, teleBpsScale: Number(e.target.value) }))} className="w-full" />
-                  <label className="block text-sm font-medium text-gray-700">
-                    Carrying Capacity ({CARRY_LABELS[Math.max(0, Math.min(CARRY_MAX, form.teleCarryScale))]})
-                    {pitSync.carryRaw !== null ? ` | Pit: ${pitSync.carryRaw}` : ""}
-                  </label>
-                  <input type="range" min={0} max={CARRY_MAX} value={form.teleCarryScale} onChange={(e) => setForm((p) => ({ ...p, teleCarryScale: Number(e.target.value) }))} className="w-full" />
-                  <CycleTimer
-                    title="Transition Shift"
-                    values={transitionCycles}
-                    onAdd={(v) => setTransitionCycles((p) => [...p, v])}
-                    onDelete={(index) => setTransitionCycles((p) => p.filter((_, i) => i !== index))}
-                  />
-                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.transitionCounterOverride} onChange={(next) => setForm((p) => ({ ...p, transitionCounterOverride: next }))} />
-                  <ClimbCounter label="Missed Fuel" value={form.transitionCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, transitionCounterMissedFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
-                  <p className="text-xs text-gray-600">
-                    Counted shifts right now: Transition + {form.wonAuto !== form.hubActivationOverride ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}.
-                    Toggle <span className="font-medium">Won Auto</span> or <span className="font-medium">Hub Activation Override</span> to flip counted shifts.
-                  </p>
-                  <CycleTimer
-                    title={`Shift 1 ${form.wonAuto !== form.hubActivationOverride ? "(Not Counted)" : "(Counted)"}`}
-                    values={shift1Cycles}
-                    onAdd={(v) => setShift1Cycles((p) => [...p, v])}
-                    onDelete={(index) => setShift1Cycles((p) => p.filter((_, i) => i !== index))}
-                  />
-                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.shift1CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift1CounterOverride: next }))} />
-                  <ClimbCounter label="Missed Fuel" value={form.shift1CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift1CounterMissedFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
-                  <CycleTimer
-                    title={`Shift 2 ${form.wonAuto !== form.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
-                    values={shift2Cycles}
-                    onAdd={(v) => setShift2Cycles((p) => [...p, v])}
-                    onDelete={(index) => setShift2Cycles((p) => p.filter((_, i) => i !== index))}
-                  />
-                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.shift2CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift2CounterOverride: next }))} />
-                  <ClimbCounter label="Missed Fuel" value={form.shift2CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift2CounterMissedFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
-                  <CycleTimer
-                    title={`Shift 3 ${form.wonAuto !== form.hubActivationOverride ? "(Not Counted)" : "(Counted)"}`}
-                    values={shift3Cycles}
-                    onAdd={(v) => setShift3Cycles((p) => [...p, v])}
-                    onDelete={(index) => setShift3Cycles((p) => p.filter((_, i) => i !== index))}
-                  />
-                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.shift3CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift3CounterOverride: next }))} />
-                  <ClimbCounter label="Missed Fuel" value={form.shift3CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift3CounterMissedFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
-                  <CycleTimer
-                    title={`Shift 4 ${form.wonAuto !== form.hubActivationOverride ? "(Counted)" : "(Not Counted)"}`}
-                    values={shift4Cycles}
-                    onAdd={(v) => setShift4Cycles((p) => [...p, v])}
-                    onDelete={(index) => setShift4Cycles((p) => p.filter((_, i) => i !== index))}
-                  />
-                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.shift4CounterOverride} onChange={(next) => setForm((p) => ({ ...p, shift4CounterOverride: next }))} />
-                  <ClimbCounter label="Missed Fuel" value={form.shift4CounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, shift4CounterMissedFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: next }))} />
+                <div className="mt-4 rounded-2xl border border-amber-300/50 bg-amber-50/40 p-3 text-xs font-semibold text-amber-950">
+                  Counted shifts right now: Transition + {countsShiftsTwoFour ? "Shift 2 + Shift 4" : "Shift 1 + Shift 3"}. Toggle{" "}
+                  <span className="font-black">Won Auto</span> or <span className="font-black">Hub Activation Override</span> to flip counted shifts.
                 </div>
 
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Endgame</h2>
-                  <CycleTimer
-                    title="Endgame Cycle Timer"
-                    values={endgameCycles}
-                    onAdd={(v) => setEndgameCycles((p) => [...p, v])}
-                    onDelete={(index) => setEndgameCycles((p) => p.filter((_, i) => i !== index))}
-                  />
-                  <h3 className="text-sm font-semibold text-gray-700">Counter Override</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.endgameCounterOverride} onChange={(next) => setForm((p) => ({ ...p, endgameCounterOverride: next }))} />
-                  <ClimbCounter label="Missed Fuel" value={form.endgameCounterMissedFuel} onChange={(next) => setForm((p) => ({ ...p, endgameCounterMissedFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Human Player</h3>
-                  <ClimbCounter label="Scored Fuel" value={form.endgameHumanPlayerFuel} onChange={(next) => setForm((p) => ({ ...p, endgameHumanPlayerFuel: next }))} />
-                  <h3 className="text-sm font-semibold text-gray-700">Climb</h3>
-                  <ClimbCounter label="Failed Climb" value={form.endgameFailedClimb} onChange={(next) => setForm((p) => ({ ...p, endgameFailedClimb: next }))} />
-                  <select className="w-full border rounded p-2" value={form.endgameStatus} onChange={(e) => setForm((p) => ({ ...p, endgameStatus: e.target.value }))}>
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Human Player (Teleop)</p>
+                  <div className="mt-2 rounded-2xl border border-white/60 bg-white/35 p-3">
+                    <Stepper label="Scored Fuel" value={form.teleopHumanPlayerFuel} onChange={(n) => setForm((p) => ({ ...p, teleopHumanPlayerFuel: n }))} />
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-3">
+                    <CycleTimer title="Shift 1" countedLabel={{ counted: !countsShiftsTwoFour }} values={shift1Cycles} onAdd={(v) => setShift1Cycles((p) => [...p, v])} onDelete={(i) => setShift1Cycles((p) => p.filter((_, idx) => idx !== i))} />
+                    <CounterPair scored={form.shift1CounterOverride} onScored={(n) => setForm((p) => ({ ...p, shift1CounterOverride: n }))} missed={form.shift1CounterMissedFuel} onMissed={(n) => setForm((p) => ({ ...p, shift1CounterMissedFuel: n }))} />
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <CycleTimer title="Shift 2" countedLabel={{ counted: countsShiftsTwoFour }} values={shift2Cycles} onAdd={(v) => setShift2Cycles((p) => [...p, v])} onDelete={(i) => setShift2Cycles((p) => p.filter((_, idx) => idx !== i))} />
+                    <CounterPair scored={form.shift2CounterOverride} onScored={(n) => setForm((p) => ({ ...p, shift2CounterOverride: n }))} missed={form.shift2CounterMissedFuel} onMissed={(n) => setForm((p) => ({ ...p, shift2CounterMissedFuel: n }))} />
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <CycleTimer title="Shift 3" countedLabel={{ counted: !countsShiftsTwoFour }} values={shift3Cycles} onAdd={(v) => setShift3Cycles((p) => [...p, v])} onDelete={(i) => setShift3Cycles((p) => p.filter((_, idx) => idx !== i))} />
+                    <CounterPair scored={form.shift3CounterOverride} onScored={(n) => setForm((p) => ({ ...p, shift3CounterOverride: n }))} missed={form.shift3CounterMissedFuel} onMissed={(n) => setForm((p) => ({ ...p, shift3CounterMissedFuel: n }))} />
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <CycleTimer title="Shift 4" countedLabel={{ counted: countsShiftsTwoFour }} values={shift4Cycles} onAdd={(v) => setShift4Cycles((p) => [...p, v])} onDelete={(i) => setShift4Cycles((p) => p.filter((_, idx) => idx !== i))} />
+                    <CounterPair scored={form.shift4CounterOverride} onScored={(n) => setForm((p) => ({ ...p, shift4CounterOverride: n }))} missed={form.shift4CounterMissedFuel} onMissed={(n) => setForm((p) => ({ ...p, shift4CounterMissedFuel: n }))} />
+                  </div>
+                </div>
+              </Deck>
+
+              <Deck priority="high" offset="lg:ml-6">
+                <h2 className="font-display text-2xl text-slate-950">Endgame</h2>
+                <div className="mt-4">
+                  <CycleTimer title="Endgame Cycle Timer" values={endgameCycles} onAdd={(v) => setEndgameCycles((p) => [...p, v])} onDelete={(i) => setEndgameCycles((p) => p.filter((_, idx) => idx !== i))} />
+                </div>
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Counter Override</p>
+                  <CounterPair scored={form.endgameCounterOverride} onScored={(n) => setForm((p) => ({ ...p, endgameCounterOverride: n }))} missed={form.endgameCounterMissedFuel} onMissed={(n) => setForm((p) => ({ ...p, endgameCounterMissedFuel: n }))} />
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Human Player</p>
+                    <div className="mt-2 rounded-2xl border border-white/60 bg-white/35 p-3">
+                      <Stepper label="Scored Fuel" value={form.endgameHumanPlayerFuel} onChange={(n) => setForm((p) => ({ ...p, endgameHumanPlayerFuel: n }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Climb</p>
+                    <div className="mt-2 rounded-2xl border border-white/60 bg-white/35 p-3">
+                      <Stepper label="Failed Climb" value={form.endgameFailedClimb} onChange={(n) => setForm((p) => ({ ...p, endgameFailedClimb: n }))} />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Status At End of Match</label>
+                  <select className="w-full" value={form.endgameStatus} onChange={(e) => setForm((p) => ({ ...p, endgameStatus: e.target.value }))}>
                     <option value="">Status At End of Match</option>
                     <option value="parked">Parked</option>
                     <option value="level-1">Level 1</option>
@@ -2635,347 +2108,285 @@ function ScoutFormContent() {
                     <option value="level-3">Level 3</option>
                   </select>
                 </div>
+              </Deck>
 
-                <div className="bg-white rounded-xl shadow p-4 space-y-2">
-                  <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>General</h2>
+              <Deck priority="normal">
+                <h2 className="font-display text-2xl text-slate-950">General</h2>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {INCIDENTS.map((incident) => (
-                    <label key={incident.value} className="flex items-center gap-2">
-                      <input type="checkbox" checked={form.incidents.includes(incident.value)} onChange={(e) => setForm((p) => ({ ...p, incidents: e.target.checked ? [...p.incidents, incident.value] : p.incidents.filter((v) => v !== incident.value) }))} />
+                    <label
+                      key={incident.value}
+                      className="inline-flex min-h-[2.75rem] items-center gap-2 rounded-full border border-red-300/50 bg-white/45 px-4 text-sm font-bold text-slate-800"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.incidents.includes(incident.value)}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            incidents: e.target.checked ? [...p.incidents, incident.value] : p.incidents.filter((v) => v !== incident.value),
+                          }))
+                        }
+                      />
                       {incident.label}
                     </label>
                   ))}
                 </div>
+              </Deck>
 
-                <button type="submit" disabled={saving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
-                  {saving ? "Submitting..." : editMode ? "Update Match Scout Form" : "Submit Match Scout Form"}
-                </button>
-              </form>
-            )}
+              <Action type="submit" disabled={saving} className="min-h-[3.5rem] w-full text-base">
+                {saving ? "Submitting..." : editMode ? "Update Match Scout Form" : "Submit Match Scout Form"}
+              </Action>
+            </div>
 
-            {leadMode && (
-              <form className="space-y-6" onSubmit={submitLead}>
-              <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Pre-Match Info</h2>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-sm font-medium text-gray-700">Match Select</span>
-                  <span className="text-sm font-semibold" style={{ color: "var(--primary-color)" }}>{getSelectedMatchDisplay()}</span>
-                  <button type="button" onClick={() => setModalOpen(true)} className="px-2 py-0.5 text-xs rounded text-white" style={{ backgroundColor: "var(--primary-color)" }}>Fix</button>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-gray-700">Red/Blue Alliance</span>
+            <div className="flex flex-col gap-4 lg:sticky lg:top-28 lg:self-start">
+              <Deck priority="normal" className="hidden lg:flex lg:h-[calc(100vh-9rem)] lg:flex-col">
+                <h2 className="font-display text-xl text-slate-950">Notes</h2>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                  className="mt-3 flex-1 resize-none"
+                  placeholder="Optional notes..."
+                />
+              </Deck>
+            </div>
+          </form>
+        ) : (
+          <form className="mt-8 grid grid-cols-1 gap-6" onSubmit={submitLead}>
+            <Deck priority="high" offset="lg:mr-10">
+              <h2 className="font-display text-2xl text-slate-950">Pre-Match</h2>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <span className="text-sm font-semibold text-slate-700">Match Select</span>
+                <Chip label="Match" value={getSelectedMatchDisplay()} tone="crimson" />
+                <Action type="button" variant="secondary" onClick={() => setModalOpen(true)}>
+                  <Pencil className="h-4 w-4" /> Fix
+                </Action>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-slate-700">Alliance</span>
+                <Action type="button" variant={leadForm.alliance === "red" ? "danger" : "ghost"} onClick={() => setLeadForm((prev) => ({ ...prev, alliance: "red" }))}>
+                  Red
+                </Action>
+                <Action
+                  type="button"
+                  variant={leadForm.alliance === "blue" ? "primary" : "ghost"}
+                  onClick={() => setLeadForm((prev) => ({ ...prev, alliance: "blue" }))}
+                  className={leadForm.alliance === "blue" ? "!from-blue-700 !to-blue-900 !border-blue-800/50 !shadow-[0_12px_42px_rgba(30,64,175,0.28)]" : ""}
+                >
+                  Blue
+                </Action>
+                <Action type="button" variant="ghost" onClick={() => setLeadForm((prev) => ({ ...prev, alliance: prev.alliance === "red" ? "blue" : "red" }))}>
+                  <Repeat className="h-4 w-4" /> Swap
+                </Action>
+              </div>
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Scout Name</label>
+                <input className="w-full" value={leadForm.scoutName} disabled />
+              </div>
+            </Deck>
+
+            <Deck priority="normal" offset="lg:ml-8">
+              <h2 className="font-display text-2xl text-slate-950">Overall Alliance</h2>
+              <label className="mb-1 mt-3 block text-xs font-bold uppercase tracking-wide text-slate-500">Alliance Color / Team</label>
+              <input
+                className="w-full"
+                value={leadForm.overallAllianceTeams}
+                onChange={(e) => {
+                  setOverallAllianceTeamsTouched(true);
+                  setLeadForm((prev) => ({ ...prev, overallAllianceTeams: e.target.value }));
+                }}
+                placeholder="RED / 1111, 2222, 3333"
+              />
+              <label className="mb-1 mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">Notes</label>
+              <textarea className="w-full" rows={3} value={leadForm.overallAllianceNotes} onChange={(e) => setLeadForm((prev) => ({ ...prev, overallAllianceNotes: e.target.value }))} />
+              <label className="mb-1 mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">Skill Level</label>
+              <LeadScaleSelector value={leadForm.overallAllianceSkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, overallAllianceSkillLevel: value }))} />
+            </Deck>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              {(
+                [
+                  { key: "robot1" as const, team: leadForm.robot1TeamNumber, notes: leadForm.robot1Notes, skill: leadForm.robot1SkillLevel, offset: "lg:-mt-4" },
+                  { key: "robot2" as const, team: leadForm.robot2TeamNumber, notes: leadForm.robot2Notes, skill: leadForm.robot2SkillLevel, offset: "lg:mt-6" },
+                  { key: "robot3" as const, team: leadForm.robot3TeamNumber, notes: leadForm.robot3Notes, skill: leadForm.robot3SkillLevel, offset: "lg:-mt-2" },
+                ]
+              ).map((robot, index) => (
+                <Deck key={robot.key} priority="high" offset={robot.offset}>
+                  <h2 className="font-display text-xl text-slate-950">Robot {index + 1}</h2>
+                  <label className="mb-1 mt-3 block text-xs font-bold uppercase tracking-wide text-slate-500">Team Number</label>
                   <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setLeadForm((prev) => ({ ...prev, alliance: "red" }))}
-                      className={`px-3 py-1 rounded text-sm font-medium border ${leadForm.alliance === "red" ? "bg-red-600 text-white border-red-600" : "bg-gray-100 text-gray-700 border-gray-200"}`}
-                    >
-                      Red
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLeadForm((prev) => ({ ...prev, alliance: "blue" }))}
-                      className={`px-3 py-1 rounded text-sm font-medium border ${leadForm.alliance === "blue" ? "bg-blue-600 text-white border-blue-600" : "bg-gray-100 text-gray-700 border-gray-200"}`}
-                    >
-                      Blue
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLeadForm((prev) => ({
-                        ...prev,
-                        alliance: prev.alliance === "red" ? "blue" : "red",
-                      }))
-                    }
-                    className="px-3 py-1 rounded text-sm border border-gray-200 text-gray-700 hover:bg-gray-100"
-                  >
-                    Swap
-                  </button>
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-1">Scout Name</h3>
-                  <input className="w-full border rounded p-2 bg-gray-100 text-gray-600" value={leadForm.scoutName} disabled />
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Overall Alliance</h2>
-                <h3 className="text-sm font-semibold text-gray-700">Alliance Color / Team</h3>
-                <input
-                  className="w-full border rounded p-2"
-                  value={leadForm.overallAllianceTeams}
-                  onChange={(e) => {
-                    setOverallAllianceTeamsTouched(true);
-                    setLeadForm((prev) => ({ ...prev, overallAllianceTeams: e.target.value }));
-                  }}
-                  placeholder="RED / 1111, 2222, 3333"
-                />
-                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
-                <textarea
-                  className="w-full border rounded p-2"
-                  rows={3}
-                  value={leadForm.overallAllianceNotes}
-                  onChange={(e) => setLeadForm((prev) => ({ ...prev, overallAllianceNotes: e.target.value }))}
-                />
-                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
-                <LeadScaleSelector value={leadForm.overallAllianceSkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, overallAllianceSkillLevel: value }))} />
-              </div>
-
-              <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Robot 1</h2>
-                <h3 className="text-sm font-semibold text-gray-700">Team Number</h3>
-                <div className="flex gap-2 items-center">
-                  <input
-                    className="flex-1 border rounded p-2"
-                    value={leadForm.robot1TeamNumber}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot1TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    placeholder="Team #"
-                  />
-                  <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot1")}>Pick</button>
-                </div>
-                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
-                <textarea
-                  className="w-full border rounded p-2"
-                  rows={3}
-                  value={leadForm.robot1Notes}
-                  onChange={(e) => setLeadForm((prev) => ({ ...prev, robot1Notes: e.target.value }))}
-                />
-                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
-                <LeadScaleSelector value={leadForm.robot1SkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, robot1SkillLevel: value }))} />
-              </div>
-
-              <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Robot 2</h2>
-                <h3 className="text-sm font-semibold text-gray-700">Team Number</h3>
-                <div className="flex gap-2 items-center">
-                  <input
-                    className="flex-1 border rounded p-2"
-                    value={leadForm.robot2TeamNumber}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot2TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    placeholder="Team #"
-                  />
-                  <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot2")}>Pick</button>
-                </div>
-                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
-                <textarea
-                  className="w-full border rounded p-2"
-                  rows={3}
-                  value={leadForm.robot2Notes}
-                  onChange={(e) => setLeadForm((prev) => ({ ...prev, robot2Notes: e.target.value }))}
-                />
-                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
-                <LeadScaleSelector value={leadForm.robot2SkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, robot2SkillLevel: value }))} />
-              </div>
-
-              <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Robot 3</h2>
-                <h3 className="text-sm font-semibold text-gray-700">Team Number</h3>
-                <div className="flex gap-2 items-center">
-                  <input
-                    className="flex-1 border rounded p-2"
-                    value={leadForm.robot3TeamNumber}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, robot3TeamNumber: e.target.value.replace(/[^\d]/g, "") }))}
-                    placeholder="Team #"
-                  />
-                  <button type="button" className="px-3 py-2 rounded border" onClick={() => openLeadTeamPicker("robot3")}>Pick</button>
-                </div>
-                <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
-                <textarea
-                  className="w-full border rounded p-2"
-                  rows={3}
-                  value={leadForm.robot3Notes}
-                  onChange={(e) => setLeadForm((prev) => ({ ...prev, robot3Notes: e.target.value }))}
-                />
-                <h3 className="text-sm font-semibold text-gray-700">Skill Level</h3>
-                <LeadScaleSelector value={leadForm.robot3SkillLevel} onChange={(value) => setLeadForm((prev) => ({ ...prev, robot3SkillLevel: value }))} />
-              </div>
-
-              <button type="submit" disabled={leadSaving} className="w-full py-3 rounded text-white font-semibold" style={{ backgroundColor: "var(--primary-color)" }}>
-                {leadSaving ? "Submitting..." : editMode ? "Update Lead Scout Form" : "Submit Lead Scout Form"}
-              </button>
-              </form>
-            )}
-          </div>
-
-          {!leadMode && (
-            <>
-              <div className="hidden md:block w-80 p-4">
-                <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
-                  <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
-                  <textarea
-                    value={activeFormGame === "CHARGED_UP" ? chargedUpForm.notes : form.notes}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (activeFormGame === "CHARGED_UP") {
-                        setChargedUpForm((prev) => ({ ...prev, notes: value }));
-                      } else {
-                        setForm((p) => ({ ...p, notes: value }));
-                      }
-                    }}
-                    className="flex-1 border rounded p-2 resize-none"
-                    placeholder="Optional notes..."
-                  />
-                </div>
-              </div>
-
-              <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
-                <button onClick={() => setMobileNotesOpen((p) => !p)} className="px-2 py-4 rounded-l-xl text-white" style={{ backgroundColor: "var(--primary-color)" }}>{mobileNotesOpen ? ">" : "<"}</button>
-              </div>
-              {mobileNotesOpen && (
-                <div className="fixed inset-0 z-50 bg-white p-4">
-                  <div className="flex items-center justify-between mb-2"><h2 className="text-xl font-semibold">Notes</h2><button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
-                  <textarea
-                    value={activeFormGame === "CHARGED_UP" ? chargedUpForm.notes : form.notes}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (activeFormGame === "CHARGED_UP") {
-                        setChargedUpForm((prev) => ({ ...prev, notes: value }));
-                      } else {
-                        setForm((p) => ({ ...p, notes: value }));
-                      }
-                    }}
-                    className="w-full h-[calc(100%-3rem)] border rounded p-3 resize-none"
-                  />
-                </div>
-              )}
-            </>
-          )}
-
-            <ReefscapeMatchSelectModal
-              open={modalOpen}
-              onClose={() => setModalOpen(false)}
-              options={options}
-              completed={completedMatches}
-              assigned={effectiveAssignedMatchIds}
-              onPick={setSelectedMatch}
-            />
-            <ReefscapeStyleModal open={subInRequestOpen} onClose={() => setSubInRequestOpen(false)} step="qualification">
-              {subInRequestStep === "choice" ? (
-                <>
-                  <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--primary-color)" }}>Request Sub-In</h2>
-                  <p className="text-sm text-gray-600 mb-4">Pick a single match or request multiple matches.</p>
-                  <div className="space-y-3">
-                    <button
-                      type="button"
-                      className="w-full py-2 rounded text-white"
-                      style={{ backgroundColor: "var(--primary-color)" }}
-                      onClick={() => {
-                        setSubInRequestOpen(false);
-                        setSubInModalOpen(true);
+                    <input
+                      className="flex-1"
+                      inputMode="numeric"
+                      value={robot.team}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^\d]/g, "");
+                        setLeadForm((prev) => ({ ...prev, [`${robot.key}TeamNumber`]: value }));
                       }}
-                    >
-                      One Match
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-                      onClick={() => setSubInRequestStep("range")}
-                    >
-                      Multiple Matches
-                    </button>
+                      placeholder="Team #"
+                    />
+                    <Action type="button" variant="secondary" onClick={() => openLeadTeamPicker(robot.key)}>
+                      Pick
+                    </Action>
                   </div>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setSubInRequestStep("choice")}
-                    className="text-sm text-gray-600 hover:text-gray-900 mb-3"
-                  >
-                    {"\u2190 Back"}
-                  </button>
-                  <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Multiple Matches</h2>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Enter a range (x-y, inclusive). We will only request sub-ins for matches in that range that you are assigned to.
-                  </p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
-                      <select
-                        className="w-full border rounded p-2"
-                        value={subInRangeType}
-                        onChange={(event) => setSubInRangeType(event.target.value as MatchType)}
-                      >
-                        <option value="practice">Practice</option>
-                        <option value="qualification">Qualification</option>
-                        <option value="finals">Finals</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="flex-1 border rounded p-2"
-                        placeholder="Start (x)"
-                        value={subInRangeStart}
-                        onChange={(event) => setSubInRangeStart(event.target.value.replace(/[^\d]/g, ""))}
-                      />
-                      <span className="text-sm text-gray-500">to</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="flex-1 border rounded p-2"
-                        placeholder="End (y)"
-                        value={subInRangeEnd}
-                        onChange={(event) => setSubInRangeEnd(event.target.value.replace(/[^\d]/g, ""))}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-4 flex gap-2">
-                    <button
-                      type="button"
-                      className="flex-1 py-2 rounded text-white"
-                      style={{ backgroundColor: "var(--primary-color)" }}
-                      onClick={() => void submitSubInRange()}
-                      disabled={subInSubmitting}
-                    >
-                      {subInSubmitting ? "Requesting..." : "Request Range"}
-                    </button>
-                    <button
-                      type="button"
-                      className="flex-1 py-2 rounded border border-gray-300 font-semibold hover:bg-gray-50"
-                      onClick={() => setSubInRequestOpen(false)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              )}
-            </ReefscapeStyleModal>
-            <ReefscapeMatchSelectModal
-              open={subInModalOpen}
-              onClose={() => setSubInModalOpen(false)}
-              options={options}
-              completed={completedMatches}
-              assigned={effectiveAssignedMatchIds}
-              onPick={(match) => {
-                void submitSubInRequest(match);
-                setSubInModalOpen(false);
-              }}
-            />
-          <TeamPickerModal
-            open={showTeamPicker}
-            teams={selectedTeams}
-            scoutedTeams={selectedScoutedTeams}
-            assignedTeams={selectedAssignedTeams}
-            subInStatuses={selectedSubInStatuses}
-            highlightedTeams={highlightedAssignedTeams}
-            onClose={() => setShowTeamPicker(false)}
-            onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
-          />
-          <TeamPickerModal
-            open={leadTeamPickerOpen}
-            teams={leadAllianceTeams}
-            scoutedTeams={new Set()}
-            assignedTeams={new Set()}
-            subInStatuses={{}}
-            highlightedTeams={new Set()}
-            onClose={closeLeadTeamPicker}
-            onSelect={handleLeadTeamPick}
-          />
-        </div>
-      </div>
-    </div>
+                  <label className="mb-1 mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">Notes</label>
+                  <textarea
+                    className="w-full"
+                    rows={3}
+                    value={robot.notes}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, [`${robot.key}Notes`]: e.target.value }))}
+                  />
+                  <label className="mb-1 mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">Skill Level</label>
+                  <LeadScaleSelector value={robot.skill} onChange={(value) => setLeadForm((prev) => ({ ...prev, [`${robot.key}SkillLevel`]: value }))} />
+                </Deck>
+              ))}
+            </div>
+
+            <Action type="submit" disabled={leadSaving} className="min-h-[3.5rem] w-full text-base">
+              {leadSaving ? "Submitting..." : editMode ? "Update Lead Scout Form" : "Submit Lead Scout Form"}
+            </Action>
+          </form>
+        )}
+      </HudViewport>
+
+      {!leadMode && (
+        <>
+          <button
+            onClick={() => setMobileNotesOpen((p) => !p)}
+            className="fixed right-0 top-1/2 z-50 -translate-y-1/2 rounded-l-2xl border border-amber-300/50 bg-white/60 px-2 py-5 text-red-800 shadow-2xl shadow-red-900/20 backdrop-blur-xl lg:hidden"
+            aria-label="Toggle notes"
+          >
+            {mobileNotesOpen ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+          </button>
+          {mobileNotesOpen && (
+            <div className="fixed inset-0 z-50 bg-white/70 p-4 backdrop-blur-2xl lg:hidden">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-display text-2xl text-slate-950">Notes</h2>
+                <Action variant="secondary" onClick={() => setMobileNotesOpen(false)}>
+                  <XIcon className="h-4 w-4" /> Close
+                </Action>
+              </div>
+              <textarea
+                value={form.notes}
+                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                className="h-[calc(100%-4rem)] w-full resize-none"
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      <ReefscapeMatchSelectModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        options={options}
+        completed={completedMatches}
+        assigned={effectiveAssignedMatchIds}
+        onPick={setSelectedMatch}
+      />
+
+      <ReefscapeStyleModal open={subInRequestOpen} onClose={() => setSubInRequestOpen(false)} step="qualification">
+        {subInRequestStep === "choice" ? (
+          <>
+            <h2 className="font-display text-2xl text-slate-950">Request Sub-In</h2>
+            <p className="mt-2 text-sm text-slate-600">Pick a single match or request multiple matches.</p>
+            <div className="mt-4 flex flex-col gap-3">
+              <Action
+                onClick={() => {
+                  setSubInRequestOpen(false);
+                  setSubInModalOpen(true);
+                }}
+              >
+                One Match
+              </Action>
+              <Action variant="secondary" onClick={() => setSubInRequestStep("range")}>
+                Multiple Matches
+              </Action>
+            </div>
+          </>
+        ) : (
+          <>
+            <Action variant="ghost" onClick={() => setSubInRequestStep("choice")} className="mb-3">
+              <ChevronLeft className="h-4 w-4" /> Back
+            </Action>
+            <h2 className="font-display text-2xl text-slate-950">Multiple Matches</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Enter a range (x-y, inclusive). Only matches in that range that you are assigned to will be requested.
+            </p>
+            <div className="mt-4 flex flex-col gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Match Type</label>
+                <select className="w-full" value={subInRangeType} onChange={(event) => setSubInRangeType(event.target.value as MatchType)}>
+                  <option value="practice">Practice</option>
+                  <option value="qualification">Qualification</option>
+                  <option value="finals">Finals</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="flex-1"
+                  placeholder="Start (x)"
+                  value={subInRangeStart}
+                  onChange={(event) => setSubInRangeStart(event.target.value.replace(/[^\d]/g, ""))}
+                />
+                <span className="text-sm font-semibold text-slate-500">to</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="flex-1"
+                  placeholder="End (y)"
+                  value={subInRangeEnd}
+                  onChange={(event) => setSubInRangeEnd(event.target.value.replace(/[^\d]/g, ""))}
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Action onClick={() => void submitSubInRange()} disabled={subInSubmitting} className="flex-1">
+                {subInSubmitting ? "Requesting..." : "Request Range"}
+              </Action>
+              <Action variant="ghost" onClick={() => setSubInRequestOpen(false)} className="flex-1">
+                Cancel
+              </Action>
+            </div>
+          </>
+        )}
+      </ReefscapeStyleModal>
+
+      <ReefscapeMatchSelectModal
+        open={subInModalOpen}
+        onClose={() => setSubInModalOpen(false)}
+        options={options}
+        completed={completedMatches}
+        assigned={effectiveAssignedMatchIds}
+        onPick={(match) => {
+          void submitSubInRequest(match);
+          setSubInModalOpen(false);
+        }}
+      />
+
+      <TeamPickerModal
+        open={showTeamPicker}
+        teams={selectedTeams}
+        scoutedTeams={selectedScoutedTeams}
+        assignedTeams={selectedAssignedTeams}
+        subInStatuses={selectedSubInStatuses}
+        highlightedTeams={highlightedAssignedTeams}
+        onClose={() => setShowTeamPicker(false)}
+        onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
+      />
+      <TeamPickerModal
+        open={leadTeamPickerOpen}
+        teams={leadAllianceTeams}
+        scoutedTeams={new Set()}
+        assignedTeams={new Set()}
+        subInStatuses={{}}
+        highlightedTeams={new Set()}
+        onClose={closeLeadTeamPicker}
+        onSelect={handleLeadTeamPick}
+      />
+    </HudCanvas>
   );
 }
 

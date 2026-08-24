@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { addDoc, collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { ChevronLeft, ClipboardList, Download, EyeOff, Filter, Upload, Users } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import AnalyticsShell from "@/app/components/AnalyticsShell";
-import LoadingSpinner from "@/app/components/LoadingSpinner";
-import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
+import { Action, Chip, CommandBar, Deck, HudCanvas, HudViewport, PageIntro, Surface } from "@/app/components/Hud";
+import GlassNotesCell from "@/app/components/GlassNotesCell";
 import AnalyticsConfigModal from "@/app/components/AnalyticsConfigModal";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, getStoredAnalyticsGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText, formatMatchLabelShort, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean } from "@/app/utils/csvHelpers";
@@ -32,6 +33,27 @@ type MatchStrategyEntry = {
   excludeFromStats?: boolean;
 };
 
+type SortKey =
+  | "matchLabel"
+  | "scoutName"
+  | "r1Team"
+  | "r1Starting"
+  | "r1Role"
+  | "r1Auto"
+  | "r1End"
+  | "r2Team"
+  | "r2Starting"
+  | "r2Role"
+  | "r2Auto"
+  | "r2End"
+  | "r3Team"
+  | "r3Starting"
+  | "r3Role"
+  | "r3Auto"
+  | "r3End"
+  | "notes"
+  | "id";
+
 function MatchStrategyAnalyticsContent() {
   const { userData } = useAuth();
   const userRoles = getUserRoles(userData);
@@ -42,48 +64,27 @@ function MatchStrategyAnalyticsContent() {
   const canViewAdminColumns = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canDeleteEntries = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist;
   const canManageConfig = canDeleteEntries || userRoles.includes("lead-scout");
-  const canViewScoutNames =
-    isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || userRoles.includes("lead-scout");
+  const canViewScoutNames = isCoach || isTeamCoach || isTeamAdmin || isLeadStrategist || userRoles.includes("lead-scout");
   const canImportCsv = canDeleteEntries;
   const canExportCsv = canDeleteEntries;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canShowActions = canManageConfig || canDeleteEntries;
+  void canViewAdminColumns;
+
   const [entries, setEntries] = useState<MatchStrategyEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
+  const [selectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
-  const [sortKey, setSortKey] = useState<
-    | "matchLabel"
-    | "scoutName"
-    | "r1Team"
-    | "r1Starting"
-    | "r1Role"
-    | "r1Auto"
-    | "r1End"
-    | "r2Team"
-    | "r2Starting"
-    | "r2Role"
-    | "r2Auto"
-    | "r2End"
-    | "r3Team"
-    | "r3Starting"
-    | "r3Role"
-    | "r3Auto"
-    | "r3End"
-    | "notes"
-    | "id"
-  >("matchLabel");
+  const [sortKey, setSortKey] = useState<SortKey>("matchLabel");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [configEntry, setConfigEntry] = useState<MatchStrategyEntry | null>(null);
   const [hideNames, setHideNames] = useState(false);
 
   useEffect(() => {
-    const savedGame = localStorage.getItem("analytics-selected-game");
     const savedEvent = localStorage.getItem("analytics-selected-event");
     const savedPractice = localStorage.getItem("analytics-practice-matches-only");
-    if (savedGame === "REBUILT") setSelectedGame("REBUILT");
     if (savedEvent) setSelectedEvent(savedEvent);
     if (savedPractice !== null) setPracticeMatchesOnly(savedPractice === "true");
   }, []);
@@ -115,6 +116,11 @@ function MatchStrategyAnalyticsContent() {
         timestamp: entry.createdAt || entry.timestamp || entry.submittedAt || 0,
       })),
     [entries]
+  );
+
+  const eventOptions = useMemo(
+    () => [{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)],
+    [normalized, selectedGame]
   );
 
   const filtered = useMemo(() => {
@@ -184,7 +190,7 @@ function MatchStrategyAnalyticsContent() {
     });
   }, [filtered, sortDir, sortKey]);
 
-  function handleSort(key: typeof sortKey) {
+  function handleSort(key: SortKey) {
     setSortDir((prev) => (key === sortKey ? (prev === "asc" ? "desc" : "asc") : "asc"));
     setSortKey(key);
   }
@@ -206,52 +212,22 @@ function MatchStrategyAnalyticsContent() {
       return;
     }
     const header = [
-      "Match",
-      "Scout",
-      "R1 Team",
-      "R1 Starting Position",
-      "R1 Role",
-      "R1 Auto Climb",
-      "R1 Endgame Climb",
-      "R2 Team",
-      "R2 Starting Position",
-      "R2 Role",
-      "R2 Auto Climb",
-      "R2 Endgame Climb",
-      "R3 Team",
-      "R3 Starting Position",
-      "R3 Role",
-      "R3 Auto Climb",
-      "R3 Endgame Climb",
-      "Notes",
-      "Game",
-      "Event Key",
+      "Match", "Scout",
+      "R1 Team", "R1 Starting Position", "R1 Role", "R1 Auto Climb", "R1 Endgame Climb",
+      "R2 Team", "R2 Starting Position", "R2 Role", "R2 Auto Climb", "R2 Endgame Climb",
+      "R3 Team", "R3 Starting Position", "R3 Role", "R3 Auto Climb", "R3 Endgame Climb",
+      "Notes", "Game", "Event Key",
     ];
     const lines = filtered.map((entry) => {
       const r1 = entry.robots?.[0];
       const r2 = entry.robots?.[1];
       const r3 = entry.robots?.[2];
       return [
-        entry.matchLabel || "",
-        entry.scoutName || "",
-        r1?.teamNumber || "",
-        r1?.startingPosition || "",
-        r1?.role || "",
-        r1?.autoClimb ? "Y" : "N",
-        r1?.endgameClimb || "",
-        r2?.teamNumber || "",
-        r2?.startingPosition || "",
-        r2?.role || "",
-        r2?.autoClimb ? "Y" : "N",
-        r2?.endgameClimb || "",
-        r3?.teamNumber || "",
-        r3?.startingPosition || "",
-        r3?.role || "",
-        r3?.autoClimb ? "Y" : "N",
-        r3?.endgameClimb || "",
-        entry.notes || "",
-        entry.game || selectedGame,
-        entry.eventKey || selectedEvent,
+        entry.matchLabel || "", entry.scoutName || "",
+        r1?.teamNumber || "", r1?.startingPosition || "", r1?.role || "", r1?.autoClimb ? "Y" : "N", r1?.endgameClimb || "",
+        r2?.teamNumber || "", r2?.startingPosition || "", r2?.role || "", r2?.autoClimb ? "Y" : "N", r2?.endgameClimb || "",
+        r3?.teamNumber || "", r3?.startingPosition || "", r3?.role || "", r3?.autoClimb ? "Y" : "N", r3?.endgameClimb || "",
+        entry.notes || "", entry.game || selectedGame, entry.eventKey || selectedEvent,
       ].map(csvEscape).join(",");
     });
     const csv = [header.join(","), ...lines].join("\n");
@@ -359,191 +335,181 @@ function MatchStrategyAnalyticsContent() {
     event.target.value = "";
   }
 
+  const robotCols = (prefix: "r1" | "r2" | "r3", label: string) => (
+    <>
+      <th className="cursor-pointer" onClick={() => handleSort(`${prefix}Team` as SortKey)}>
+        {sortLabel(sortKey, sortDir, `${prefix}Team` as SortKey, `${label} Team`)}
+      </th>
+      <th className="cursor-pointer" onClick={() => handleSort(`${prefix}Starting` as SortKey)}>
+        {sortLabel(sortKey, sortDir, `${prefix}Starting` as SortKey, "Start Pos")}
+      </th>
+      <th className="cursor-pointer" onClick={() => handleSort(`${prefix}Role` as SortKey)}>
+        {sortLabel(sortKey, sortDir, `${prefix}Role` as SortKey, "Role")}
+      </th>
+      <th className="cursor-pointer" onClick={() => handleSort(`${prefix}Auto` as SortKey)}>
+        {sortLabel(sortKey, sortDir, `${prefix}Auto` as SortKey, "Auto Climb")}
+      </th>
+      <th className="cursor-pointer" onClick={() => handleSort(`${prefix}End` as SortKey)}>
+        {sortLabel(sortKey, sortDir, `${prefix}End` as SortKey, "Endgame")}
+      </th>
+    </>
+  );
+
   return (
-    <AnalyticsShell
-      entriesCount={filtered.length}
-      selectedGame={selectedGame}
-      onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
-      allowedGames={["REBUILT"]}
-      practiceMatchesOnly={practiceMatchesOnly}
-      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
-      selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)]}
-      onSelectedEventChange={setSelectedEvent}
-      extraControls={
-        canViewScoutNames ? (
-          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
-            <input
-              type="checkbox"
-              checked={hideNames}
-              onChange={(event) => setHideNames(event.target.checked)}
-            />
+    <HudCanvas>
+      <CommandBar>
+        <Link href="/analytics" className="flex items-center gap-2 rounded-full py-1.5 pl-2 pr-3 text-sm font-bold text-slate-800">
+          <ChevronLeft className="h-4 w-4" />
+          Analytics
+        </Link>
+        {canViewScoutNames && (
+          <Action variant={hideNames ? "primary" : "ghost"} onClick={() => setHideNames((v) => !v)}>
+            <EyeOff className="h-4 w-4" />
             Hide Names
-          </label>
-        ) : null
-      }
-    >
-      <h1 className="text-3xl font-bold mb-2 theme-text">Match Strategy Analytics</h1>
-      <p className="text-gray-600 mb-4">Per-match strategic plans.</p>
-      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-gray-400 text-white cursor-not-allowed disabled:opacity-100"
-          onClick={exportToCSV}
-          disabled
-          title={csvDisabledReason}
-        >
-          Export CSV
-        </button>
-        <label
-          className="px-3 py-1.5 text-sm rounded text-white bg-gray-400 cursor-not-allowed"
-          title={csvDisabledReason}
-        >
-          {importing ? "Importing..." : "Import CSV"}
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
-        </label>
-      </div>
-      {loading ? (
-        <LoadingSpinner message="Loading match strategy analytics..." />
-      ) : (
-        <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll">
-          <table>
-            <thead className="sticky-header">
-              <tr>
-                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th className="bg-blue-300 text-center" colSpan={15}>Robots</th>
-                <th className="bg-pink-300 text-center" colSpan={canShowActions ? 2 : 1}>General</th>
-              </tr>
-              <tr>
-                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                <th className="bg-blue-200 text-center" colSpan={5}>Robot 1</th>
-                <th className="bg-blue-200 text-center" colSpan={5}>Robot 2</th>
-                <th className="bg-blue-200 text-center" colSpan={5}>Robot 3</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                {canShowActions && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
-              </tr>
-              <tr>
-                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
-                  {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
-                </th>
-                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
-                  {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Team")}>
-                  {sortLabel(sortKey, sortDir, "r1Team", "Team Number")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Starting")}>
-                  {sortLabel(sortKey, sortDir, "r1Starting", "Starting Position")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Role")}>
-                  {sortLabel(sortKey, sortDir, "r1Role", "Role")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r1Auto")}>
-                  {sortLabel(sortKey, sortDir, "r1Auto", "Auto Climb")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r1End")}>
-                  {sortLabel(sortKey, sortDir, "r1End", "Endgame Climb")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Team")}>
-                  {sortLabel(sortKey, sortDir, "r2Team", "Team Number")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Starting")}>
-                  {sortLabel(sortKey, sortDir, "r2Starting", "Starting Position")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Role")}>
-                  {sortLabel(sortKey, sortDir, "r2Role", "Role")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r2Auto")}>
-                  {sortLabel(sortKey, sortDir, "r2Auto", "Auto Climb")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r2End")}>
-                  {sortLabel(sortKey, sortDir, "r2End", "Endgame Climb")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Team")}>
-                  {sortLabel(sortKey, sortDir, "r3Team", "Team Number")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Starting")}>
-                  {sortLabel(sortKey, sortDir, "r3Starting", "Starting Position")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Role")}>
-                  {sortLabel(sortKey, sortDir, "r3Role", "Role")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r3Auto")}>
-                  {sortLabel(sortKey, sortDir, "r3Auto", "Auto Climb")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("r3End")}>
-                  {sortLabel(sortKey, sortDir, "r3End", "Endgame Climb")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
-                  {sortLabel(sortKey, sortDir, "notes", "Notes")}
-                </th>
-                {canShowActions && (
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                    {sortLabel(sortKey, sortDir, "id", "Actions")}
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-                {sorted.map((entry) => {
-                  const r1 = entry.robots?.[0];
-                  const r2 = entry.robots?.[1];
-                  const r3 = entry.robots?.[2];
-                  return (
-                  <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
-                    <td className="sticky-left-0 font-semibold">{formatMatchLabelShort(entry.matchLabel || "")}</td>
-                    <td className="sticky-left-1">
-                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
-                    </td>
-                    <td>{r1?.teamNumber || "-"}</td>
-                    <td>{formatAnalyticsText(r1?.startingPosition)}</td>
-                    <td>{formatAnalyticsText(r1?.role)}</td>
-                    <td>{r1?.autoClimb ? "Y" : "N"}</td>
-                    <td>{formatAnalyticsText(r1?.endgameClimb)}</td>
-                    <td>{r2?.teamNumber || "-"}</td>
-                    <td>{formatAnalyticsText(r2?.startingPosition)}</td>
-                    <td>{formatAnalyticsText(r2?.role)}</td>
-                    <td>{r2?.autoClimb ? "Y" : "N"}</td>
-                    <td>{formatAnalyticsText(r2?.endgameClimb)}</td>
-                    <td>{r3?.teamNumber || "-"}</td>
-                    <td>{formatAnalyticsText(r3?.startingPosition)}</td>
-                    <td>{formatAnalyticsText(r3?.role)}</td>
-                    <td>{r3?.autoClimb ? "Y" : "N"}</td>
-                    <td>{formatAnalyticsText(r3?.endgameClimb)}</td>
-                    <td className="align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
-                      <ExpandableNotesCell text={entry.notes} />
-                    </td>
+          </Action>
+        )}
+      </CommandBar>
+
+      <HudViewport>
+        <PageIntro
+          eyebrow="Per-Match Playbooks"
+          title="Match Strategy"
+          subtitle="Robot roles, starting positions, and climb assignments plotted per match for every scouted alliance."
+          actions={<Chip icon={ClipboardList} label="Entries" value={filtered.length} tone="crimson" />}
+        />
+
+        <div className="mt-8 grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
+          <Surface className="flex flex-wrap items-center gap-4 p-4">
+            <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+              <Filter className="h-3.5 w-3.5" />
+              Event
+              <select
+                value={selectedEvent}
+                onChange={(e) => setSelectedEvent(e.target.value)}
+                className="!min-h-0 !py-1.5 text-sm font-semibold text-slate-900"
+              >
+                {eventOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+              <input
+                type="checkbox"
+                checked={practiceMatchesOnly}
+                onChange={(e) => setPracticeMatchesOnly(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Practice Only
+            </label>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Action variant="ghost" onClick={exportToCSV} disabled title={csvDisabledReason}>
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Action>
+              <label
+                className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-white/70 bg-white/35 px-5 py-2.5 text-sm font-bold text-slate-400"
+                title={csvDisabledReason}
+              >
+                <Upload className="h-4 w-4" />
+                {importing ? "Importing..." : "Import CSV"}
+                <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
+              </label>
+            </div>
+          </Surface>
+          <Chip icon={Users} label="Roster Rows" value={sorted.length} tone="gold" />
+        </div>
+
+        {loading ? (
+          <Surface className="mt-8 p-10 text-center text-sm text-slate-600">Loading match strategy analytics…</Surface>
+        ) : (
+          <Surface raised className="mt-8 overflow-hidden p-2">
+            <div className="table-scroll max-h-[70vh]">
+              <table className="sticky-header">
+                <thead>
+                  <tr>
+                    <th className="sticky-left-0 cursor-pointer" onClick={() => handleSort("matchLabel")}>
+                      {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
+                    </th>
+                    <th className="sticky-left-1 cursor-pointer" onClick={() => handleSort("scoutName")}>
+                      {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
+                    </th>
+                    {robotCols("r1", "R1")}
+                    {robotCols("r2", "R2")}
+                    {robotCols("r3", "R3")}
+                    <th className="cursor-pointer" onClick={() => handleSort("notes")}>
+                      {sortLabel(sortKey, sortDir, "notes", "Notes")}
+                    </th>
                     {canShowActions && (
-                      <td className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {canManageConfig && (
-                            <button
-                              type="button"
-                              onClick={() => setConfigEntry(entry)}
-                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
-                            >
-                              Config
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteEntry(entry)}
-                            className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                            style={{ backgroundColor: "#dc2626" }}
-                            disabled={!canDeleteEntries}
-                            title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
+                      <th className="cursor-pointer" onClick={() => handleSort("id")}>
+                        {sortLabel(sortKey, sortDir, "id", "Actions")}
+                      </th>
                     )}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {sorted.map((entry) => {
+                    const r1 = entry.robots?.[0];
+                    const r2 = entry.robots?.[1];
+                    const r3 = entry.robots?.[2];
+                    return (
+                      <tr key={entry.id} className={entry.excludeFromStats ? "opacity-50 line-through" : ""}>
+                        <td className="sticky-left-0 font-bold text-red-800">{formatMatchLabelShort(entry.matchLabel || "")}</td>
+                        <td className="sticky-left-1">{canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}</td>
+                        <td>{r1?.teamNumber || "-"}</td>
+                        <td>{formatAnalyticsText(r1?.startingPosition)}</td>
+                        <td>{formatAnalyticsText(r1?.role)}</td>
+                        <td>{r1?.autoClimb ? "Y" : "N"}</td>
+                        <td>{formatAnalyticsText(r1?.endgameClimb)}</td>
+                        <td>{r2?.teamNumber || "-"}</td>
+                        <td>{formatAnalyticsText(r2?.startingPosition)}</td>
+                        <td>{formatAnalyticsText(r2?.role)}</td>
+                        <td>{r2?.autoClimb ? "Y" : "N"}</td>
+                        <td>{formatAnalyticsText(r2?.endgameClimb)}</td>
+                        <td>{r3?.teamNumber || "-"}</td>
+                        <td>{formatAnalyticsText(r3?.startingPosition)}</td>
+                        <td>{formatAnalyticsText(r3?.role)}</td>
+                        <td>{r3?.autoClimb ? "Y" : "N"}</td>
+                        <td>{formatAnalyticsText(r3?.endgameClimb)}</td>
+                        <td className="text-left" style={{ minWidth: "220px", maxWidth: "360px" }}>
+                          <GlassNotesCell text={entry.notes} />
+                        </td>
+                        {canShowActions && (
+                          <td>
+                            <div className="flex items-center justify-center gap-2">
+                              {canManageConfig && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfigEntry(entry)}
+                                  className="rounded-full border border-amber-300/60 bg-white/50 px-3 py-1 text-[11px] font-bold text-amber-950"
+                                >
+                                  Config
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteEntry(entry)}
+                                disabled={!canDeleteEntries}
+                                title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                                className="rounded-full border border-red-800/50 bg-gradient-to-br from-red-700 to-red-900 px-3 py-1 text-[11px] font-bold text-white disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Surface>
+        )}
+      </HudViewport>
+
       {configEntry && canManageConfig && (
         <AnalyticsConfigModal
           open={Boolean(configEntry)}
@@ -555,14 +521,12 @@ function MatchStrategyAnalyticsContent() {
           entityType="matchStrategyPlan"
           excludeFromStats={Boolean(configEntry.excludeFromStats)}
           onExcludeChange={(excluded) => {
-            setEntries((prev) =>
-              prev.map((row) => (row.id === configEntry.id ? { ...row, excludeFromStats: excluded } : row))
-            );
+            setEntries((prev) => prev.map((row) => (row.id === configEntry.id ? { ...row, excludeFromStats: excluded } : row)));
             setConfigEntry((prev) => (prev ? { ...prev, excludeFromStats: excluded } : prev));
           }}
         />
       )}
-    </AnalyticsShell>
+    </HudCanvas>
   );
 }
 
@@ -573,4 +537,3 @@ export default function MatchStrategyAnalyticsPage() {
     </ProtectedRoute>
   );
 }
-

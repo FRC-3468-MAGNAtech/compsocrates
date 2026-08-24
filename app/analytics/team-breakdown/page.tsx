@@ -3,11 +3,19 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
+import { ChevronLeft, ExternalLink, Radar, Users } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import AnalyticsShell from "@/app/components/AnalyticsShell";
-import LoadingSpinner from "@/app/components/LoadingSpinner";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, getStoredAnalyticsGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import {
+  Action,
+  Chip,
+  CommandBar,
+  HudCanvas,
+  HudViewport,
+  PageIntro,
+  Surface,
+} from "@/app/components/Hud";
+import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, isPracticeScoutedEntry, type AnalyticsGame } from "@/app/utils/analyticsEvents";
 import { dedupeEntriesByMatchTeam } from "@/app/utils/entryDeduping";
 
 type ScoutingEntry = {
@@ -86,6 +94,7 @@ function normalizeTeamNumber(value: unknown) {
   return String(value || "").replace(/[^\d]/g, "");
 }
 
+// Scoring parity with app/analytics/team-breakdown (source of truth).
 function scoreEntry(entry: ScoutingEntry, game: AnalyticsGame): number {
   if (game === "REBUILT") {
     const autoFuel = Number(entry.auto?.estimatedFuel || 0);
@@ -127,7 +136,7 @@ function TeamBreakdownContent() {
   const [pitEntries, setPitEntries] = useState<PitEntry[]>([]);
   const [strategyEntries, setStrategyEntries] = useState<StrategyOrDriveEntry[]>([]);
   const [driveEntries, setDriveEntries] = useState<StrategyOrDriveEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -329,79 +338,127 @@ function TeamBreakdownContent() {
     void loadTeamNames();
   }, [teamRows, selectedEvent]);
 
-  return (
-    <AnalyticsShell
-      entriesCount={dedupedScoutingEntries.length + filteredPitEntries.length + filteredStrategyEntries.length + filteredDriveEntries.length}
-      selectedGame={selectedGame}
-      onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
-      practiceMatchesOnly={practiceMatchesOnly}
-      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
-      selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...eventOptions]}
-      onSelectedEventChange={setSelectedEvent}
-    >
-      <h1 className="text-3xl font-bold mb-2 theme-text">Team Breakdown</h1>
-      <p className="text-gray-600 mb-6">Open any team for cross-form details, event history, and capability comparisons.</p>
+  const allEventOptions = [{ id: "all", name: "All Events" }, ...eventOptions];
+  const filteredEntryCount =
+    dedupedScoutingEntries.length + filteredPitEntries.length + filteredStrategyEntries.length + filteredDriveEntries.length;
 
-      {loading ? (
-        <LoadingSpinner message="Loading team breakdown..." />
-      ) : (
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Score</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scouted Matches</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Seen</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Event</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {teamRows.map((row) => (
-                <tr key={row.teamNumber} data-analytics-search-item="true" className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-semibold">
-                    <Link
-                      href={`/analytics/team-breakdown/${row.teamNumber}`}
-                      className="text-blue-700 hover:underline"
-                      onClick={() => localStorage.removeItem("analytics-search-term")}
-                    >
-                      Team {row.teamNumber}
-                    </Link>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{teamNameByNumber[row.teamNumber] || `Team ${row.teamNumber}`}</td>
-                  <td className="px-6 py-4">{row.avgScore === null ? "-" : row.avgScore}</td>
-                  <td className="px-6 py-4">{row.matches}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {row.lastSeen > 0 ? new Date(row.lastSeen).toLocaleString() : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    {row.preferredEventKey && teamNameByNumber[row.teamNumber] ? (
-                      <Link
-                        href={`/event-details/${row.preferredEventKey}?tab=teams&team=${row.teamNumber}`}
-                        className="text-blue-700 hover:underline"
-                      >
-                        Open Team
-                      </Link>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {teamRows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
-                    No teams match the current filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+  return (
+    <HudCanvas>
+      <CommandBar>
+        <Link href="/analytics" className="flex items-center gap-2 rounded-full py-1.5 pl-2 pr-3 text-sm font-bold text-slate-800">
+          <ChevronLeft className="h-4 w-4" />
+          Analytics
+        </Link>
+        <Action variant={selectedGame === "REEFSCAPE" ? "primary" : "ghost"} onClick={() => setSelectedGame("REEFSCAPE")}>
+          Reefscape
+        </Action>
+        <Action variant={selectedGame === "REBUILT" ? "primary" : "ghost"} onClick={() => setSelectedGame("REBUILT")}>
+          Rebuilt
+        </Action>
+      </CommandBar>
+
+      <HudViewport>
+        <PageIntro
+          eyebrow="Cross-Form Roster"
+          title="Team Breakdown"
+          subtitle="Open any team for cross-form details, event history, and capability comparisons."
+          actions={<Chip icon={Users} label="Teams" value={teamRows.length} tone="crimson" />}
+        />
+
+        <div className="mt-8 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+          <Surface className="flex flex-wrap items-center gap-3 p-4">
+            <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+              Event
+              <select
+                value={selectedEvent}
+                onChange={(e) => setSelectedEvent(e.target.value)}
+                className="!min-h-0 !py-1.5 text-sm font-semibold text-slate-900"
+              >
+                {allEventOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+              <input
+                type="checkbox"
+                checked={practiceMatchesOnly}
+                onChange={(e) => setPracticeMatchesOnly(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Practice Only
+            </label>
+          </Surface>
+          <Chip label="Filtered Entries" value={filteredEntryCount} tone="gold" />
         </div>
-      )}
-    </AnalyticsShell>
+
+        {loading ? (
+          <Surface className="mt-8 p-10 text-center text-sm text-slate-600">Loading team breakdown…</Surface>
+        ) : (
+          <Surface raised className="mt-8 overflow-hidden p-2">
+            <div className="table-scroll max-h-[70vh]">
+              <table className="sticky-header">
+                <thead>
+                  <tr>
+                    <th className="sticky-left-0">Team</th>
+                    <th>Name</th>
+                    <th>Avg Score</th>
+                    <th>Scouted Matches</th>
+                    <th>Last Seen</th>
+                    <th>Event</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamRows.map((row) => (
+                    <tr key={row.teamNumber}>
+                      <td className="sticky-left-0 font-data font-bold text-red-800">
+                        <Link
+                          href={`/analytics/team-breakdown/${row.teamNumber}`}
+                          className="underline decoration-red-300 decoration-2 underline-offset-2 hover:text-red-900"
+                          onClick={() => localStorage.removeItem("analytics-search-term")}
+                        >
+                          {row.teamNumber}
+                        </Link>
+                      </td>
+                      <td>{teamNameByNumber[row.teamNumber] || `Team ${row.teamNumber}`}</td>
+                      <td className="font-data font-black">{row.avgScore === null ? "-" : row.avgScore}</td>
+                      <td className="font-data">{row.matches}</td>
+                      <td className="text-xs">{row.lastSeen > 0 ? new Date(row.lastSeen).toLocaleString() : "-"}</td>
+                      <td>
+                        {row.preferredEventKey && teamNameByNumber[row.teamNumber] ? (
+                          <Link
+                            href={`/event-details/${row.preferredEventKey}?tab=teams&team=${row.teamNumber}`}
+                            className="inline-flex items-center gap-1 text-red-800 underline decoration-red-300 decoration-2 underline-offset-2 hover:text-red-900"
+                          >
+                            Open <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {teamRows.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-500">
+                        No teams match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Surface>
+        )}
+
+        <Surface className="mt-8 flex items-center gap-3 p-4 text-xs text-slate-500">
+          <Radar className="h-4 w-4 text-red-800" />
+          Rows merge match scout, pit scout, match strategy, and drive reflection data for the active game and event filter.
+        </Surface>
+      </HudViewport>
+    </HudCanvas>
   );
 }
 
@@ -412,5 +469,3 @@ export default function TeamBreakdownPage() {
     </ProtectedRoute>
   );
 }
-
-

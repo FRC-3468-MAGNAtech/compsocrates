@@ -1,21 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, setDoc } from "firebase/firestore";
+import { ArrowLeft, CheckCircle2, ClipboardList, StickyNote, Wrench, XCircle } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
+import { getDashboardRoute } from "@/app/utils/dashboardRoute";
+import { Action, Chip, CommandBar, Deck, HudCanvas, HudViewport, PageIntro } from "@/app/components/Hud";
 
 function HelperFormContent() {
   const { userData } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("editId");
   const editCollectionParam = searchParams.get("editCollection");
   const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
-  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [teamNumber, setTeamNumber] = useState("");
   const [successful, setSuccessful] = useState(false);
   const [issueSolved, setIssueSolved] = useState("");
@@ -85,99 +87,105 @@ function HelperFormContent() {
     }
   }
 
+  const dashboardHref = getDashboardRoute(userData);
+
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-        <form onSubmit={handleSubmit} className="flex-1 p-4 space-y-4 max-w-3xl">
-          <div className="bg-white rounded-xl shadow p-4">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Helper Form
-            </h1>
-          </div>
+    <HudCanvas>
+      <CommandBar>
+        <Action variant="ghost" onClick={() => router.push(dashboardHref)}>
+          <ArrowLeft className="h-4 w-4" />
+          Dashboard
+        </Action>
+        <span className="hidden font-display text-sm text-slate-950 sm:inline">Pit Helper Log</span>
+        <Chip icon={Wrench} label="Role" value="Pit Team" tone="gold" />
+      </CommandBar>
 
-          <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
-            <label className="block text-sm font-medium text-gray-700">Scout Name</label>
-            <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
-
-            <label className="block text-sm font-medium text-gray-700">Team Number</label>
-            <input
-              className="w-full border rounded p-3"
-              value={teamNumber}
-              onChange={(e) => setTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
-              placeholder="Team Number"
-              required
+      <HudViewport>
+        <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-12">
+          <div className="xl:col-span-12">
+            <PageIntro
+              eyebrow="Pit Assistance Report"
+              title={editMode ? "Update Helper Entry" : "Helper Form"}
+              subtitle="Log the assist you gave another team's pit crew — what broke, whether it got fixed, and anything worth flagging before their next match."
             />
           </div>
 
-          <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Issue</h2>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={successful} onChange={(e) => setSuccessful(e.target.checked)} />
-              Were you successful?
+          <Deck priority="high" className="xl:col-span-7">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-red-900/60">Who You Helped</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Scout Name</label>
+                <input className="w-full font-data" value={userData?.displayName || ""} disabled />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Team Number Assisted</label>
+                <input
+                  className="w-full font-data"
+                  value={teamNumber}
+                  onChange={(e) => setTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
+                  placeholder="e.g. 118"
+                  required
+                />
+              </div>
+            </div>
+          </Deck>
+
+          <Deck priority="normal" className="xl:col-span-5 xl:translate-y-4">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-900/70">Outcome</p>
+            <button
+              type="button"
+              onClick={() => setSuccessful((prev) => !prev)}
+              className={`mt-4 flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                successful
+                  ? "border-emerald-400/60 bg-emerald-50/60 text-emerald-900"
+                  : "border-white/70 bg-white/40 text-slate-600"
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-bold">
+                {successful ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5 opacity-50" />}
+                Were you successful?
+              </span>
+              <span className="font-data text-xs uppercase tracking-[0.14em]">{successful ? "Yes" : "No"}</span>
+            </button>
+          </Deck>
+
+          <Deck priority="critical" className="xl:col-span-8">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-red-900/60">
+              <ClipboardList className="h-4 w-4" />
+              Issue Resolved
+            </p>
+            <label className="mb-1.5 mt-4 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+              Describe the issue(s) you solved
             </label>
-            <label className="block text-sm font-medium text-gray-700">Describe the issue(s) you solved</label>
             <textarea
-              className="w-full border rounded p-3 h-32"
+              className="h-36 w-full resize-none"
               value={issueSolved}
               onChange={(e) => setIssueSolved(e.target.value)}
               placeholder="What did you fix?"
             />
-          </div>
+          </Deck>
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            {saving ? "Submitting..." : editMode ? "Update Helper Form" : "Submit Helper Form"}
-          </button>
-        </form>
-
-        <div className="hidden md:block w-80 p-4">
-          <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
-            <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
+          <Deck priority="normal" className="xl:col-span-4 xl:-translate-y-3">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-red-900/60">
+              <StickyNote className="h-4 w-4" />
+              Notes
+            </p>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              className="flex-1 border rounded p-2 resize-none"
-              placeholder="Optional notes..."
+              className="mt-4 h-36 w-full resize-none"
+              placeholder="Optional additional notes..."
             />
-          </div>
-        </div>
+          </Deck>
 
-        <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
-          <button
-            onClick={() => setMobileNotesOpen((prev) => !prev)}
-            className="px-2 py-4 rounded-l-xl text-white"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            {mobileNotesOpen ? ">" : "<"}
-          </button>
-        </div>
-        {mobileNotesOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNotesOpen(false)} />
-            <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
-                <button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
-              </div>
-              <textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
-                placeholder="Helper notes..."
-              />
-            </div>
-          </>
-        )}
-        </div>
-      </div>
-    </div>
+          <div className="xl:col-span-12 flex justify-center pt-2">
+            <Action type="submit" disabled={saving} className="w-full max-w-md justify-center py-3.5 text-base">
+              {saving ? "Submitting..." : editMode ? "Update Helper Form" : "Submit Helper Form"}
+            </Action>
+          </div>
+        </form>
+      </HudViewport>
+    </HudCanvas>
   );
 }
 

@@ -1,79 +1,51 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDocs, getDoc, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import Sidebar from "@/app/components/Sidebar";
-import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { resolveDetectedTeamEvent } from "@/app/utils/eventDetection";
+import {
+  Action,
+  Chip,
+  CommandBar,
+  Deck,
+  HudCanvas,
+  HudViewport,
+  Surface,
+} from "@/app/components/Hud";
+import {
+  ArrowLeft,
+  Check,
+  Compass,
+  Gauge,
+  Lock,
+  NotebookPen,
+  Search,
+  Target,
+  X as XIcon,
+} from "lucide-react";
 
-type TeamPickerProps = {
-  open: boolean;
-  onClose: () => void;
-  teams: string[];
-  assignedTeams: Set<string>;
-  userTeams: Set<string>;
-  scoutedTeams: Set<string>;
-  onSelect: (team: string) => void;
-};
+const STARTING_POSITIONS = [
+  { value: "not-there", label: "Not There" },
+  { value: "outpost-trench", label: "Outpost Trench" },
+  { value: "outpost-side", label: "Outpost Side" },
+  { value: "outpost-bump", label: "Outpost Bump" },
+  { value: "middle", label: "Middle" },
+  { value: "depot-bump", label: "Depot Bump" },
+  { value: "depot-side", label: "Depot Side" },
+  { value: "depot-trench", label: "Depot Trench" },
+];
 
-function TeamPickerModal({ open, onClose, teams, assignedTeams, userTeams, scoutedTeams, onSelect }: TeamPickerProps) {
-  return (
-    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
-        <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
-        <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
-          {teams.length === 0 ? (
-            <p className="p-3 text-sm text-gray-600">No teams available.</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {teams.map((team) => {
-                const done = scoutedTeams.has(team);
-                const assigned = assignedTeams.has(team);
-                const mine = userTeams.has(team);
-                return (
-                  <button
-                    key={team}
-                    type="button"
-                    disabled={done}
-                    onClick={() => {
-                      onSelect(team);
-                      onClose();
-                    }}
-                    className={`rounded-lg border p-3 text-sm text-left ${
-                      done
-                        ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
-                        : mine
-                        ? "bg-indigo-50 border-indigo-400 text-indigo-900"
-                        : "hover:bg-gray-50 border-red-400"
-                    }`}
-                  >
-                    {done
-                      ? `${team} (Scouted)`
-                      : mine
-                      ? `${team} (Assigned)`
-                      : assigned
-                      ? `${team} (Assigned)`
-                      : team}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full py-2 rounded text-white"
-          style={{ backgroundColor: "var(--primary-color)" }}
-        >
-          Close
-        </button>
-    </ReefscapeStyleModal>
-  );
-}
+const BEST_AT_OPTIONS = [
+  { value: "cycling", label: "Cycling" },
+  { value: "passing", label: "Passing" },
+  { value: "shooting", label: "Shooting" },
+  { value: "stealing", label: "Stealing" },
+];
 
 function getFirstEventCodeFromTbaKey(key: string): string {
   const normalized = String(key || "").toLowerCase();
@@ -114,14 +86,109 @@ function parseManualTeamList(input: unknown): string[] {
   return [];
 }
 
+/** Floating glass overlay for the team picker — an asymmetric grid of team tiles, not a linear list. */
+function TeamPickerOverlay({
+  open,
+  onClose,
+  teams,
+  assignedTeams,
+  userTeams,
+  scoutedTeams,
+  onSelect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  teams: string[];
+  assignedTeams: Set<string>;
+  userTeams: Set<string>;
+  scoutedTeams: Set<string>;
+  onSelect: (team: string) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  useEffect(() => {
+    if (!open) setFilter("");
+  }, [open]);
+  if (!open) return null;
+
+  const filtered = teams.filter((team) => team.includes(filter.trim()));
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 pt-16 sm:pt-24">
+      <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-sm" onClick={onClose} />
+      <Surface raised className="relative z-10 w-full max-w-3xl p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-red-900/60">Assignment Deck</p>
+            <h2 className="mt-1 font-display text-2xl text-slate-950">Select a Team</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/70 bg-white/50 text-slate-700 hover:bg-white/80"
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-4 flex items-center gap-2 rounded-full border border-amber-300/50 bg-white/50 px-4 py-2">
+          <Search className="h-4 w-4 text-slate-500" />
+          <input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value.replace(/[^\d]/g, ""))}
+            placeholder="Filter by team number..."
+            className="!min-h-0 flex-1 border-0 bg-transparent p-0 shadow-none focus:outline-none"
+          />
+        </div>
+
+        <div className="mt-4 max-h-[55vh] overflow-y-auto pr-1">
+          {filtered.length === 0 ? (
+            <p className="p-6 text-center text-sm text-slate-500">No teams available.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              {filtered.map((team) => {
+                const done = scoutedTeams.has(team);
+                const mine = userTeams.has(team);
+                const assigned = assignedTeams.has(team);
+                return (
+                  <button
+                    key={team}
+                    type="button"
+                    disabled={done}
+                    onClick={() => {
+                      onSelect(team);
+                      onClose();
+                    }}
+                    className={`rounded-2xl border px-3 py-3 text-left transition ${
+                      done
+                        ? "cursor-not-allowed border-slate-300/60 bg-slate-100/60 text-slate-400"
+                        : mine
+                          ? "border-amber-300/70 bg-amber-50/60 text-amber-950 hover:-translate-y-0.5 hover:bg-amber-50/90"
+                          : "border-white/70 bg-white/50 text-slate-900 hover:-translate-y-0.5 hover:bg-white/80"
+                    }`}
+                  >
+                    <span className="font-data text-base font-bold">{team}</span>
+                    <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-[0.14em] opacity-60">
+                      {done ? "Scouted" : mine ? "Assigned to you" : assigned ? "Assigned" : "Open"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Surface>
+    </div>
+  );
+}
+
 function TeamStrategyFormContent() {
+  const router = useRouter();
   const { userData } = useAuth();
   const searchParams = useSearchParams();
   const editId = searchParams.get("editId");
   const editCollectionParam = searchParams.get("editCollection");
   const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
-  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [eventKey, setEventKey] = useState("app-testing");
   const [eventName, setEventName] = useState("Practice Event");
   const [showTeamPicker, setShowTeamPicker] = useState(false);
@@ -144,10 +211,6 @@ function TeamStrategyFormContent() {
     if (!eventKey || eventKey === "app-testing") return "Practice Event";
     return eventName || "Practice Event";
   }, [eventKey, eventName]);
-
-  useEffect(() => {
-    if (!userData?.displayName) return;
-  }, [userData?.displayName]);
 
   useEffect(() => {
     if (!editId) return;
@@ -375,7 +438,7 @@ function TeamStrategyFormContent() {
   }, [assignedTeamNumbers, scoutedTeams, editMode]);
 
   const canSubmit = useMemo(() => {
-    return teamNumber.trim().length > 0 && startingPosition && bestAt;
+    return teamNumber.trim().length > 0 && startingPosition !== "" && bestAt !== "";
   }, [teamNumber, startingPosition, bestAt]);
 
   const assignedTeamSet = useMemo(() => new Set(allAssignedTeamNumbers), [allAssignedTeamNumbers]);
@@ -430,128 +493,180 @@ function TeamStrategyFormContent() {
     }
   }
 
+  const capabilityToggles = [
+    { key: "clearsBump", label: "Clears Bump", value: clearsBump, set: setClearsBump },
+    { key: "clearsTrench", label: "Clears Trench", value: clearsTrench, set: setClearsTrench },
+    { key: "shootWhileIntaking", label: "Shoots While Intaking", value: shootWhileIntaking, set: setShootWhileIntaking },
+    { key: "moveAndShoot", label: "Moves and Shoots Simultaneously", value: moveAndShoot, set: setMoveAndShoot },
+  ] as const;
+
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-        <form onSubmit={handleSubmit} className="flex-1 p-4 space-y-4 max-w-3xl">
-          <div className="bg-white rounded-xl shadow p-4">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Team Strategy Form
-            </h1>
-          </div>
+    <HudCanvas>
+      <CommandBar>
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="flex items-center gap-2 rounded-full py-1.5 pl-3 pr-4 text-sm font-bold text-slate-800 hover:text-red-800"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </button>
+        <Link href="/" className="hidden items-center gap-2 rounded-full py-1.5 pl-2 pr-4 sm:flex">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-red-800 via-red-600 to-amber-300 text-[10px] font-black text-white">
+            CS
+          </span>
+          <span className="font-display text-base text-slate-950">CompSocrates</span>
+        </Link>
+        <Action variant="secondary" onClick={() => setShowTeamPicker(true)}>
+          <Search className="h-4 w-4" />
+          Pick Team
+        </Action>
+      </CommandBar>
 
-          <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-lg font-semibold">Event:</span>
-              <span className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>{eventLabel}</span>
-            </div>
-            <div className="text-sm text-gray-700">Use this layout to mirror match strategy planning format for cleaner review.</div>
-            <label className="block text-sm font-medium text-gray-700">Scout Name</label>
-            <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
+      <HudViewport>
+        {/* Asymmetric two-column strategy deck: dominant profile column, staggered satellite for notes */}
+        <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+          <div className="flex flex-col gap-6">
+            <Deck priority="critical">
+              <p className="text-xs font-black uppercase tracking-[0.3em] text-red-900/60">Pre-Event Scouting</p>
+              <h1 className="mt-3 font-display text-4xl text-slate-950 sm:text-5xl">Team Strategy Profile</h1>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <Chip icon={Compass} label="Event" value={eventLabel} tone="crimson" />
+                <Chip icon={Lock} label="Scout" value={userData?.displayName || "Unassigned"} tone="slate" />
+                {editMode && <Chip icon={NotebookPen} label="Mode" value="Editing Entry" tone="gold" />}
+              </div>
+            </Deck>
 
-            <label className="block text-sm font-medium text-gray-700">Team Number</label>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 border rounded p-3"
-                value={teamNumber}
-                onChange={(e) => setTeamNumber(e.target.value.replace(/[^\d]/g, ""))}
-                placeholder="Team Number"
+            <Deck priority="high" offset="lg:translate-x-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-900/70">Target</p>
+                  <h2 className="mt-2 font-display text-2xl text-slate-950">Team Number</h2>
+                </div>
+                {teamNumber && (
+                  <span className="font-data rounded-full border border-amber-300/60 bg-amber-50/60 px-4 py-1.5 text-2xl font-black text-red-800">
+                    {teamNumber}
+                  </span>
+                )}
+              </div>
+              <div className="mt-4 flex gap-3">
+                <input
+                  className="flex-1"
+                  value={teamNumber}
+                  onChange={(event) => setTeamNumber(event.target.value.replace(/[^\d]/g, ""))}
+                  placeholder="Enter team number"
+                  required
+                />
+                <Action type="button" variant="secondary" onClick={() => setShowTeamPicker(true)}>
+                  Browse
+                </Action>
+              </div>
+              {teamLoadNote && <p className="mt-2 text-xs font-semibold text-amber-800/80">{teamLoadNote}</p>}
+            </Deck>
+
+            <Deck priority="normal" offset="lg:-translate-x-3">
+              <div className="flex items-center gap-2.5">
+                <Target className="h-5 w-5 text-red-800" />
+                <h2 className="font-display text-2xl text-slate-950">Field Positioning</h2>
+              </div>
+              <label className="mt-4 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                Preferred Starting Position
+              </label>
+              <select
+                className="mt-2 w-full"
+                value={startingPosition}
+                onChange={(event) => setStartingPosition(event.target.value)}
                 required
-              />
-              <button type="button" onClick={() => setShowTeamPicker(true)} className="px-4 rounded border">Pick</button>
+              >
+                <option value="">Select Position</option>
+                {STARTING_POSITIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <label className="mt-5 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                Best At
+              </label>
+              <div className="mt-2 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                {BEST_AT_OPTIONS.map((option) => {
+                  const active = bestAt === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setBestAt(option.value)}
+                      className={`rounded-2xl border px-3 py-2.5 text-sm font-bold transition ${
+                        active
+                          ? "border-red-800/60 bg-gradient-to-br from-red-700 to-red-900 text-white shadow-[0_10px_30px_rgba(139,0,0,0.28)]"
+                          : "border-white/70 bg-white/45 text-slate-800 hover:bg-white/70"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Deck>
+
+            <Deck priority="normal" offset="lg:translate-x-2">
+              <div className="flex items-center gap-2.5">
+                <Gauge className="h-5 w-5 text-amber-700" />
+                <h2 className="font-display text-2xl text-slate-950">Robot Capabilities</h2>
+              </div>
+              <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                {capabilityToggles.map((toggle) => (
+                  <button
+                    key={toggle.key}
+                    type="button"
+                    onClick={() => toggle.set(!toggle.value)}
+                    className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                      toggle.value
+                        ? "border-amber-300/70 bg-amber-50/60 text-amber-950"
+                        : "border-white/70 bg-white/40 text-slate-700 hover:bg-white/60"
+                    }`}
+                  >
+                    {toggle.label}
+                    <span
+                      className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${
+                        toggle.value ? "border-amber-400 bg-amber-400 text-white" : "border-slate-300 bg-white/60 text-transparent"
+                      }`}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </Deck>
+
+            <Surface className="p-5">
+              <button
+                type="submit"
+                disabled={saving || !canSubmit}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-red-800/50 bg-gradient-to-br from-red-700 to-red-900 px-6 py-3.5 text-base font-bold text-white shadow-[0_16px_50px_rgba(139,0,0,0.32)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Submitting..." : editMode ? "Update Team Strategy Form" : "Submit Team Strategy Form"}
+              </button>
+            </Surface>
+          </div>
+
+          <Deck priority="high" className="xl:sticky xl:top-28 xl:self-start" offset="lg:-translate-x-2">
+            <div className="flex items-center gap-2.5">
+              <NotebookPen className="h-5 w-5 text-red-800" />
+              <h2 className="font-display text-2xl text-slate-950">Scout Notes</h2>
             </div>
-            {teamLoadNote && <p className="text-xs text-gray-500">{teamLoadNote}</p>}
-          </div>
-
-          <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Strategy</h2>
-
-            <label className="block text-sm font-medium text-gray-700">Preferred Starting Position</label>
-            <select className="w-full border rounded p-3" value={startingPosition} onChange={(e) => setStartingPosition(e.target.value)} required>
-              <option value="">Select Position</option>
-              <option value="not-there">Not There</option>
-              <option value="outpost-trench">Outpost Trench</option>
-              <option value="outpost-side">Outpost Side</option>
-              <option value="outpost-bump">Outpost Bump</option>
-              <option value="middle">Middle</option>
-              <option value="depot-bump">Depot Bump</option>
-              <option value="depot-side">Depot Side</option>
-              <option value="depot-trench">Depot Trench</option>
-            </select>
-
-            <label className="block text-sm font-medium text-gray-700">Best At</label>
-            <select className="w-full border rounded p-3" value={bestAt} onChange={(e) => setBestAt(e.target.value)} required>
-              <option value="">Select Best Role</option>
-              <option value="cycling">Cycling</option>
-              <option value="passing">Passing</option>
-              <option value="shooting">Shooting</option>
-              <option value="stealing">Stealing</option>
-            </select>
-
-            <label className="flex items-center gap-2"><input type="checkbox" checked={clearsBump} onChange={(e) => setClearsBump(e.target.checked)} />Clears Bump</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={clearsTrench} onChange={(e) => setClearsTrench(e.target.checked)} />Clears Trench</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={shootWhileIntaking} onChange={(e) => setShootWhileIntaking(e.target.checked)} />Can Shoot while Intaking</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={moveAndShoot} onChange={(e) => setMoveAndShoot(e.target.checked)} />Can Move and Shoot Simultaneously</label>
-          </div>
-
-          <div className="bg-white rounded-xl shadow p-4">
-            <button
-              type="submit"
-              disabled={saving || !canSubmit}
-              className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
-              style={{ backgroundColor: "var(--primary-color)" }}
-            >
-              {saving ? "Submitting..." : editMode ? "Update Team Strategy Form" : "Submit Team Strategy Form"}
-            </button>
-          </div>
-        </form>
-
-        <div className="hidden md:block w-80 p-4">
-          <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
-            <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              className="flex-1 border rounded p-2 resize-none"
-              placeholder="Optional notes..."
+              className="mt-4 h-64 w-full resize-none xl:h-[calc(100vh-22rem)]"
+              placeholder="Observations, tendencies, anything strategy should know..."
             />
-          </div>
-        </div>
+          </Deck>
+        </form>
+      </HudViewport>
 
-        <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
-          <button
-            onClick={() => setMobileNotesOpen((prev) => !prev)}
-            className="px-2 py-4 rounded-l-xl text-white"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            {mobileNotesOpen ? ">" : "<"}
-          </button>
-        </div>
-
-        {mobileNotesOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNotesOpen(false)} />
-            <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
-                <button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
-              </div>
-              <textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
-                placeholder="Team comments and observations..."
-              />
-            </div>
-          </>
-        )}
-        </div>
-      </div>
-
-      <TeamPickerModal
+      <TeamPickerOverlay
         open={showTeamPicker}
         onClose={() => setShowTeamPicker(false)}
         teams={availableTeams}
@@ -560,7 +675,7 @@ function TeamStrategyFormContent() {
         scoutedTeams={scoutedTeams}
         onSelect={setTeamNumber}
       />
-    </div>
+    </HudCanvas>
   );
 }
 
@@ -571,4 +686,3 @@ export default function TeamStrategyFormPage() {
     </ProtectedRoute>
   );
 }
-

@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
-import { Image as ImageIcon, Link as LinkIcon, Trash2 } from "lucide-react";
+import { Image as ImageIcon, Link as LinkIcon, Trash2, Search, X, Gauge, Boxes, ClipboardList, NotebookPen } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import Sidebar from "@/app/components/Sidebar";
-import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
+import { HudCanvas, HudViewport, CommandBar, Surface, Deck, PageIntro, Chip, Action } from "@/app/components/Hud";
 
 type PitFormState = {
   scoutName: string;
@@ -30,77 +29,6 @@ type PitFormState = {
   autoCycleDescription: string;
   notes: string;
 };
-
-function TeamPickerModal({
-  open,
-  teams,
-  assignedTeams,
-  userTeams,
-  scoutedTeams,
-  onClose,
-  onSelect,
-}: {
-  open: boolean;
-  teams: string[];
-  assignedTeams: Set<string>;
-  userTeams: Set<string>;
-  scoutedTeams: Set<string>;
-  onClose: () => void;
-  onSelect: (team: string) => void;
-}) {
-  return (
-    <ReefscapeStyleModal open={open} onClose={onClose} step="qualification">
-        <h2 className="text-xl font-semibold mb-4" style={{ color: "var(--primary-color)" }}>Select Team</h2>
-        <div className="max-h-[60vh] overflow-y-auto border rounded p-2">
-          {teams.length === 0 ? (
-            <p className="p-3 text-sm text-gray-600">No teams available.</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {teams.map((team) => {
-                const done = scoutedTeams.has(team);
-                const assigned = assignedTeams.has(team);
-                const mine = userTeams.has(team);
-                return (
-                  <button
-                    key={team}
-                    type="button"
-                    disabled={done}
-                    onClick={() => {
-                      onSelect(team);
-                      onClose();
-                    }}
-                    className={`rounded-lg border p-3 text-sm text-left ${
-                      done
-                        ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
-                        : mine
-                        ? "bg-indigo-50 border-indigo-400 text-indigo-900"
-                        : "hover:bg-gray-50 border-red-400"
-                    }`}
-                  >
-                    {done
-                      ? `${team} (Scouted)`
-                      : mine
-                      ? `${team} (Assigned)`
-                      : assigned
-                      ? `${team} (Assigned)`
-                      : team}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full py-2 rounded text-white"
-          style={{ backgroundColor: "var(--primary-color)" }}
-        >
-          Close
-        </button>
-    </ReefscapeStyleModal>
-  );
-}
 
 function getFirstEventCodeFromTbaKey(key: string): string {
   const normalized = String(key || "").toLowerCase();
@@ -127,6 +55,102 @@ function parseManualTeamCsv(raw: string): string[] {
     .map((num) => String(num));
 }
 
+/** Floating glass command palette — replaces the old boxed modal chrome entirely. */
+function TeamPickerDeck({
+  open,
+  teams,
+  assignedTeams,
+  userTeams,
+  scoutedTeams,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  teams: string[];
+  assignedTeams: Set<string>;
+  userTeams: Set<string>;
+  scoutedTeams: Set<string>;
+  onClose: () => void;
+  onSelect: (team: string) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  useEffect(() => {
+    if (open) setFilter("");
+  }, [open]);
+  if (!open) return null;
+  const visible = teams.filter((team) => team.includes(filter.trim()));
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/25 backdrop-blur-md" onClick={onClose} />
+      <Surface raised className="relative w-full max-w-2xl overflow-hidden">
+        <div className="flex items-center justify-between gap-4 border-b border-white/50 p-5">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-red-800/70">Assignment Roster</p>
+            <h2 className="font-display text-2xl text-slate-950">Select Team</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-white/70 bg-white/50 p-2 text-slate-700 transition hover:bg-white/80"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5">
+          <div className="relative mb-4">
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={filter}
+              onChange={(event) => setFilter(event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Filter by team number"
+              className="w-full !pl-10"
+            />
+          </div>
+          <div className="max-h-[52vh] overflow-y-auto rounded-[1.25rem] border border-white/50 bg-white/30 p-3">
+            {visible.length === 0 ? (
+              <p className="p-4 text-sm text-slate-500">No teams available.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {visible.map((team) => {
+                  const done = scoutedTeams.has(team);
+                  const assigned = assignedTeams.has(team);
+                  const mine = userTeams.has(team);
+                  return (
+                    <button
+                      key={team}
+                      type="button"
+                      disabled={done}
+                      onClick={() => {
+                        onSelect(team);
+                        onClose();
+                      }}
+                      className={`rounded-2xl border px-3 py-3 text-left font-data text-sm font-semibold transition ${
+                        done
+                          ? "cursor-not-allowed border-slate-200/70 bg-slate-100/60 text-slate-400"
+                          : mine
+                          ? "border-amber-300/70 bg-amber-50/70 text-amber-950 hover:-translate-y-0.5"
+                          : assigned
+                          ? "border-red-300/60 bg-red-50/60 text-red-950 hover:-translate-y-0.5"
+                          : "border-white/70 bg-white/50 text-slate-800 hover:-translate-y-0.5 hover:bg-white/75"
+                      }`}
+                    >
+                      <span className="block text-base">{team}</span>
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.14em] opacity-70">
+                        {done ? "Scouted" : mine ? "Assigned to you" : assigned ? "Assigned" : "Open"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </Surface>
+    </div>
+  );
+}
+
 function PitScoutFormContent() {
   const router = useRouter();
   const { userData } = useAuth();
@@ -135,7 +159,7 @@ function PitScoutFormContent() {
   const editCollectionParam = searchParams.get("editCollection");
   const editMode = Boolean(editId);
   const [saving, setSaving] = useState(false);
-  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [robotPictureUrlInput, setRobotPictureUrlInput] = useState("");
   const [eventKey, setEventKey] = useState("app-testing");
@@ -165,6 +189,7 @@ function PitScoutFormContent() {
     autoCycleDescription: "",
     notes: "",
   });
+
   function normalizeScaleInput(raw: string): string {
     const value = raw.trim().toLowerCase();
     if (!value) return "";
@@ -463,73 +488,99 @@ function PitScoutFormContent() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
-          <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
-            <div className="bg-white rounded-xl shadow p-4">
-              <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Pit Scout Form</h1>
-              <div className="mt-3 max-w-sm">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Form Select</label>
-                <select
-                  className="w-full border rounded p-2"
-                  value="REBUILT"
-                  onChange={(event) => {
-                    if (event.target.value === "REEFSCAPE") {
-                      router.push("/pit-scout-form-reefscape");
-                    }
-                  }}
-                >
-                  <option value="REEFSCAPE">REEFSCAPE Form</option>
-                  <option value="REBUILT">REBUILT Form</option>
-                </select>
+    <HudCanvas>
+      <CommandBar>
+        <Chip label="Game" value="REBUILT" tone="crimson" icon={Boxes} />
+        <select
+          className="!min-h-0 !rounded-full !border-amber-300/60 !bg-white/60 !py-1.5 !pl-4 !pr-8 text-xs font-bold uppercase tracking-wider text-slate-800"
+          value="REBUILT"
+          onChange={(event) => {
+            if (event.target.value === "REEFSCAPE") router.push("/pit-scout-form-reefscape");
+          }}
+        >
+          <option value="REEFSCAPE">REEFSCAPE Form</option>
+          <option value="REBUILT">REBUILT Form</option>
+        </select>
+        <Action variant="secondary" type="button" onClick={() => setShowTeamPicker(true)}>
+          <Search size={14} /> Pick Team
+        </Action>
+        <Action variant="ghost" type="button" onClick={() => setNotesOpen((prev) => !prev)}>
+          <NotebookPen size={14} /> Notes
+        </Action>
+      </CommandBar>
+
+      <HudViewport className="pb-40">
+        <PageIntro
+          eyebrow={editMode ? "Editing Existing Entry" : "Pit Intelligence Intake"}
+          title={<>Pit Scout <span className="gradient-text">Form</span></>}
+          subtitle="Log chassis, routine, and disposition data for a team's pit before qualification play begins."
+          actions={
+            <>
+              <Chip label="Event" value={eventKey} tone="gold" icon={Gauge} />
+              <Chip label="Scouted" value={scoutedTeams.size} tone="slate" icon={ClipboardList} />
+            </>
+          }
+        />
+
+        <form onSubmit={submitForm}>
+          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Identity block — wide, high priority */}
+            <Deck priority="high" className="lg:col-span-7">
+              <h2 className="font-display text-2xl text-slate-950">Identity</h2>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Scout Name</label>
+                  <input value={form.scoutName} disabled className="w-full" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Team Number</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={form.teamNumber}
+                      onChange={(event) => setForm({ ...form, teamNumber: event.target.value.replace(/[^\d]/g, "") })}
+                      placeholder="e.g. 4931"
+                      required
+                      className="flex-1 font-data"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTeamPicker(true)}
+                      className="theme-stepper-btn !w-auto !px-4 text-xs font-bold uppercase"
+                    >
+                      Pick
+                    </button>
+                  </div>
+                  {teamLoadNote && <p className="mt-1 text-[11px] text-slate-500">{teamLoadNote}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Robot Weight</label>
+                  <input
+                    value={form.robotWeight}
+                    onChange={(event) => setForm({ ...form, robotWeight: event.target.value })}
+                    placeholder="lbs"
+                    className="w-full"
+                  />
+                </div>
+                <label className="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.rookieTeam}
+                    onChange={(event) => setForm({ ...form, rookieTeam: event.target.checked })}
+                    className="!h-4 !w-4 !min-h-0 !rounded"
+                  />
+                  Rookie Team
+                </label>
               </div>
-            </div>
 
-            <div className="bg-white rounded-xl shadow p-4 space-y-3">
-              <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Information</h2>
-              <label className="block text-sm font-medium text-gray-700">Scout Name</label>
-              <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={form.scoutName} disabled />
-
-              <label className="block text-sm font-medium text-gray-700">Team Number</label>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 border rounded p-3"
-                  value={form.teamNumber}
-                  onChange={(event) => setForm({ ...form, teamNumber: event.target.value.replace(/[^\d]/g, "") })}
-                  placeholder="Team Number"
-                  required
-                />
-                <button type="button" className="px-4 rounded border" onClick={() => setShowTeamPicker(true)}>Pick</button>
-              </div>
-              {teamLoadNote && <p className="text-xs text-gray-500">{teamLoadNote}</p>}
-
-              <label className="block text-sm font-medium text-gray-700">Robot Weight</label>
-              <input
-                className="w-full border rounded p-3"
-                value={form.robotWeight}
-                onChange={(event) => setForm({ ...form, robotWeight: event.target.value })}
-                placeholder="Robot Weight"
-              />
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={form.rookieTeam}
-                  onChange={(event) => setForm({ ...form, rookieTeam: event.target.checked })}
-                  className="w-4 h-4"
-                />
-                Rookie Team
-              </label>
-
-              <label className="block text-sm font-medium text-gray-700">Picture of Robot</label>
-              <div className="rounded-lg border p-3 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-lg border flex items-center justify-center overflow-hidden bg-gray-100">
+              <div className="mt-5 rounded-2xl border border-white/60 bg-white/35 p-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Picture of Robot</p>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white/50">
                     {form.robotPictureUrl ? (
-                      <img src={form.robotPictureUrl} alt="Robot preview" className="w-full h-full object-cover" />
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={form.robotPictureUrl} alt="Robot preview" className="h-full w-full object-cover" />
                     ) : (
-                      <ImageIcon size={20} className="text-gray-500" />
+                      <ImageIcon size={22} className="text-slate-400" />
                     )}
                   </div>
                   <div className="flex-1 space-y-2">
@@ -538,154 +589,175 @@ function PitScoutFormContent() {
                       value={robotPictureUrlInput}
                       onChange={(event) => setRobotPictureUrlInput(event.target.value)}
                       placeholder="https://example.com/robot.jpg"
-                      className="w-full border rounded p-2"
+                      className="w-full font-data text-sm"
                     />
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={applyRobotPictureUrl}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded text-white"
-                        style={{ backgroundColor: "var(--primary-color)" }}
-                      >
-                        <LinkIcon size={14} />
-                        Apply URL
-                      </button>
-                      <button type="button" onClick={clearRobotPictureUrl} className="inline-flex items-center gap-2 px-3 py-2 rounded border">
-                        <Trash2 size={14} />
-                        Remove
-                      </button>
+                      <Action variant="primary" type="button" onClick={applyRobotPictureUrl} className="!px-4 !py-2 !text-xs">
+                        <LinkIcon size={13} /> Apply URL
+                      </Action>
+                      <Action variant="ghost" type="button" onClick={clearRobotPictureUrl} className="!px-4 !py-2 !text-xs">
+                        <Trash2 size={13} /> Remove
+                      </Action>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </Deck>
 
-            <div className="bg-white rounded-xl shadow p-4 space-y-3">
-              <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Disposition</h2>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.pitDisposition} onChange={(event) => setForm({ ...form, pitDisposition: event.target.checked })} />Friendly and easy to work with (Pit)</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.driveDisposition} onChange={(event) => setForm({ ...form, driveDisposition: event.target.checked })} />Friendly and easy to work with (Drive)</label>
-            </div>
+            {/* Disposition — narrow, offset upward slightly */}
+            <Deck className="lg:col-span-5 lg:mt-6">
+              <h2 className="font-display text-2xl text-slate-950">Disposition</h2>
+              <div className="mt-4 space-y-3">
+                <label className="flex items-center gap-3 rounded-2xl border border-white/60 bg-white/35 p-3 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.pitDisposition}
+                    onChange={(event) => setForm({ ...form, pitDisposition: event.target.checked })}
+                    className="!h-4 !w-4 !min-h-0 !rounded"
+                  />
+                  Friendly and easy to work with (Pit)
+                </label>
+                <label className="flex items-center gap-3 rounded-2xl border border-white/60 bg-white/35 p-3 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.driveDisposition}
+                    onChange={(event) => setForm({ ...form, driveDisposition: event.target.checked })}
+                    className="!h-4 !w-4 !min-h-0 !rounded"
+                  />
+                  Friendly and easy to work with (Drive)
+                </label>
+              </div>
+            </Deck>
 
-            <div className="bg-white rounded-xl shadow p-4 space-y-4">
-              <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Routine</h2>
+            {/* Routine — fuel + tower + cycles, asymmetric internal columns */}
+            <Deck priority="critical" className="lg:col-span-8">
+              <h2 className="font-display text-2xl text-slate-950">Routine</h2>
+              <div className="mt-5 grid grid-cols-1 gap-6 sm:grid-cols-3">
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-red-800/70">Fuel</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-500">Preload Capacity</label>
+                      <input
+                        value={form.fuelPreloadCapacity}
+                        onChange={(event) => setForm({ ...form, fuelPreloadCapacity: normalizeScaleInput(event.target.value) })}
+                        placeholder="Number or x"
+                        className="w-full font-data"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-500">Balls Per Second</label>
+                      <input
+                        value={form.fuelBallsPerSecond}
+                        onChange={(event) => setForm({ ...form, fuelBallsPerSecond: normalizeScaleInput(event.target.value) })}
+                        placeholder="Number or x"
+                        className="w-full font-data"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-500">Carrying Capacity</label>
+                      <input
+                        value={form.fuelCarryingCapacity}
+                        onChange={(event) => setForm({ ...form, fuelCarryingCapacity: normalizeScaleInput(event.target.value) })}
+                        placeholder="Number or x"
+                        className="w-full font-data"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-red-800/70">Tower</p>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <input type="checkbox" checked={form.climbLevel1} onChange={(event) => setForm({ ...form, climbLevel1: event.target.checked })} className="!h-4 !w-4 !min-h-0 !rounded" />
+                      Level 1 Climb
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <input type="checkbox" checked={form.climbLevel2} onChange={(event) => setForm({ ...form, climbLevel2: event.target.checked })} className="!h-4 !w-4 !min-h-0 !rounded" />
+                      Level 2 Climb
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <input type="checkbox" checked={form.climbLevel3} onChange={(event) => setForm({ ...form, climbLevel3: event.target.checked })} className="!h-4 !w-4 !min-h-0 !rounded" />
+                      Level 3 Climb
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-red-800/70">Cycles</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-500">Typical Fuel Cycle (s)</label>
+                      <input
+                        value={form.typicalFuelCycleTime}
+                        onChange={(event) => setForm({ ...form, typicalFuelCycleTime: event.target.value.replace(/[^\d.]/g, "") })}
+                        placeholder="Seconds"
+                        className="w-full font-data"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-500">Typical Climb Time (s)</label>
+                      <input
+                        value={form.typicalClimbTime}
+                        onChange={(event) => setForm({ ...form, typicalClimbTime: event.target.value.replace(/[^\d.]/g, "") })}
+                        placeholder="Seconds"
+                        className="w-full font-data"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Deck>
 
-              <h3 className="font-semibold text-gray-800">Fuel</h3>
-              <label className="block text-sm font-medium text-gray-700">Preload Capacity</label>
-              <input
-                type="text"
-                value={form.fuelPreloadCapacity}
-                onChange={(event) => setForm({ ...form, fuelPreloadCapacity: normalizeScaleInput(event.target.value) })}
-                className="w-full border rounded p-3"
-                placeholder="Number or x"
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Balls Per Second</label>
-              <input
-                type="text"
-                value={form.fuelBallsPerSecond}
-                onChange={(event) => setForm({ ...form, fuelBallsPerSecond: normalizeScaleInput(event.target.value) })}
-                className="w-full border rounded p-3"
-                placeholder="Number or x"
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Carrying Capacity</label>
-              <input
-                type="text"
-                value={form.fuelCarryingCapacity}
-                onChange={(event) => setForm({ ...form, fuelCarryingCapacity: normalizeScaleInput(event.target.value) })}
-                className="w-full border rounded p-3"
-                placeholder="Number or x"
-              />
-
-              <h3 className="font-semibold text-gray-800">Tower</h3>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.climbLevel1} onChange={(event) => setForm({ ...form, climbLevel1: event.target.checked })} />Level 1 Climb</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.climbLevel2} onChange={(event) => setForm({ ...form, climbLevel2: event.target.checked })} />Level 2 Climb</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.climbLevel3} onChange={(event) => setForm({ ...form, climbLevel3: event.target.checked })} />Level 3 Climb</label>
-
-              <h3 className="font-semibold text-gray-800">Cycles</h3>
-              <label className="block text-sm font-medium text-gray-700">Typical Fuel Cycle Time</label>
-              <input
-                type="text"
-                value={form.typicalFuelCycleTime}
-                onChange={(event) => setForm({ ...form, typicalFuelCycleTime: event.target.value.replace(/[^\d.]/g, "") })}
-                className="w-full border rounded p-3"
-                placeholder="Seconds"
-              />
-              <label className="block text-sm font-medium text-gray-700">Typical Climb Time</label>
-              <input
-                type="text"
-                value={form.typicalClimbTime}
-                onChange={(event) => setForm({ ...form, typicalClimbTime: event.target.value.replace(/[^\d.]/g, "") })}
-                className="w-full border rounded p-3"
-                placeholder="Seconds"
-              />
-            </div>
-
-            <div className="bg-white rounded-xl shadow p-4 space-y-3">
-              <h2 className="text-lg font-semibold" style={{ color: "var(--primary-color)" }}>Autonomous</h2>
-              <label className="block text-sm font-medium text-gray-700">Description of Auto Cycle</label>
+            {/* Autonomous — narrow companion, offset down */}
+            <Deck className="lg:col-span-4 lg:mt-10">
+              <h2 className="font-display text-2xl text-slate-950">Autonomous</h2>
+              <label className="mb-1 mt-4 block text-xs font-bold uppercase tracking-wider text-slate-500">Description of Auto Cycle</label>
               <textarea
                 value={form.autoCycleDescription}
                 onChange={(event) => setForm({ ...form, autoCycleDescription: event.target.value })}
-                className="w-full border rounded p-3 h-28"
+                className="h-40 w-full resize-none"
               />
-            </div>
+            </Deck>
+          </div>
 
-            <div className="sticky bottom-0 bg-gray-100 pt-4 pb-2">
-              <button
-                type="submit"
-                disabled={saving || !canSubmit}
-                className="w-full py-3 rounded text-white font-semibold disabled:opacity-50"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
+          <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-4">
+            <Surface raised className="flex w-full max-w-xl items-center gap-4 !rounded-full px-6 py-3">
+              <p className="hidden font-data text-xs text-slate-500 sm:block">
+                {canSubmit ? `Team ${form.teamNumber} ready to submit` : "Enter a team number to continue"}
+              </p>
+              <Action type="submit" disabled={saving || !canSubmit} className="ml-auto !px-8">
                 {saving ? "Submitting..." : editMode ? "Update Pit Scout Form" : "Submit Pit Scout Form"}
+              </Action>
+            </Surface>
+          </div>
+        </form>
+      </HudViewport>
+
+      {notesOpen && (
+        <div className="fixed inset-0 z-[65] flex items-start justify-end p-4 sm:p-6">
+          <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-md" onClick={() => setNotesOpen(false)} />
+          <Surface raised className="relative flex h-full w-full max-w-md flex-col p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-display text-2xl text-slate-950">Notes</h2>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="rounded-full border border-white/70 bg-white/50 p-2 text-slate-700 transition hover:bg-white/80"
+                aria-label="Close notes"
+              >
+                <X size={18} />
               </button>
             </div>
-          </form>
-
-          <div className="hidden md:block w-80 p-4">
-            <div className="bg-white rounded-xl shadow p-4 flex flex-col sticky top-4" style={{ height: "calc(100vh - 2rem)" }}>
-              <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--primary-color)" }}>Notes</h2>
-              <textarea
-                value={form.notes}
-                onChange={(event) => setForm({ ...form, notes: event.target.value })}
-                className="flex-1 border rounded p-2 resize-none"
-                placeholder="Optional notes..."
-              />
-            </div>
-          </div>
-
-          <div className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50">
-            <button
-              onClick={() => setMobileNotesOpen((prev) => !prev)}
-              className="px-2 py-4 rounded-l-xl text-white"
-              style={{ backgroundColor: "var(--primary-color)" }}
-            >
-              {mobileNotesOpen ? ">" : "<"}
-            </button>
-          </div>
-
-          {mobileNotesOpen && (
-            <>
-              <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNotesOpen(false)} />
-              <div className="fixed right-0 top-0 h-full w-screen bg-white shadow-xl p-4 z-50">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-xl font-semibold" style={{ color: "var(--primary-color)" }}>Notes</h2>
-                  <button onClick={() => setMobileNotesOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
-                </div>
-                <textarea
-                  value={form.notes}
-                  onChange={(event) => setForm({ ...form, notes: event.target.value })}
-                  className="w-full h-[calc(100%-3rem)] border rounded p-3 text-base resize-none"
-                  placeholder="Team comments and observations..."
-                />
-              </div>
-            </>
-          )}
+            <textarea
+              value={form.notes}
+              onChange={(event) => setForm({ ...form, notes: event.target.value })}
+              className="flex-1 w-full resize-none"
+              placeholder="Team comments and observations..."
+            />
+          </Surface>
         </div>
-      </div>
+      )}
 
-      <TeamPickerModal
+      <TeamPickerDeck
         open={showTeamPicker}
         teams={availableTeams}
         assignedTeams={assignedTeamSet}
@@ -694,7 +766,7 @@ function PitScoutFormContent() {
         onClose={() => setShowTeamPicker(false)}
         onSelect={(team) => setForm((prev) => ({ ...prev, teamNumber: team }))}
       />
-    </div>
+    </HudCanvas>
   );
 }
 
@@ -705,4 +777,3 @@ export default function PitScoutFormPage() {
     </ProtectedRoute>
   );
 }
-

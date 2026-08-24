@@ -1,14 +1,15 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { APP_EVENT_BY_KEY } from "@/app/utils/events";
 import { isEventActive } from "@/app/utils/eventDates";
+import { ShieldAlert, TriangleAlert } from "lucide-react";
+import { HudCanvas, HudViewport, CommandBar, Surface, Deck, PageIntro, Chip, Action } from "@/app/components/Hud";
 
 type PitScoutPlaceholder = {
   scoutName: string;
@@ -64,17 +65,21 @@ function PitScoutPlaceholderContent() {
   const showEventWarning = !isEventActive();
   if (!userData?.isTeamAdmin) {
     return (
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-2xl mx-auto bg-white rounded-xl shadow p-6">
-            <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Pit Scout Placeholder
-            </h1>
-            <p className="text-gray-600">This page is currently available only to team admins.</p>
-          </div>
-        </div>
-      </div>
+      <HudCanvas>
+        <HudViewport>
+          <Deck priority="critical" className="mx-auto max-w-xl">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl border border-red-300/60 bg-red-50/60 p-3 text-red-800">
+                <ShieldAlert size={24} />
+              </div>
+              <div>
+                <h1 className="font-display text-3xl text-slate-950">Pit Scout Placeholder</h1>
+                <p className="mt-2 text-sm text-slate-600">This page is currently available only to team admins.</p>
+              </div>
+            </div>
+          </Deck>
+        </HudViewport>
+      </HudCanvas>
     );
   }
   const [saving, setSaving] = useState(false);
@@ -117,90 +122,92 @@ function PitScoutPlaceholderContent() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 overflow-y-auto p-6">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-4">
-          <div className="bg-white rounded-xl shadow p-4">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
-              Pit Scout Form
-            </h1>
-            <p className="text-sm text-gray-600">REBUILT form view.</p>
-            <div className="mt-3 max-w-sm">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Form Select (Admin)</label>
-              <select
-                className="w-full border rounded p-2"
-                value="placeholder"
-                onChange={(event) => {
-                  if (event.target.value === "reefscape") {
-                    router.push("/pit-scout-form");
-                  }
-                }}
-              >
-                <option value="reefscape">REEFSCAPE Form</option>
-                <option value="placeholder">REBUILT Form</option>
-              </select>
-            </div>
-          </div>
-          {showEventWarning && (
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-              <p className="text-sm text-yellow-700">
-                Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
-              </p>
-            </div>
-          )}
+    <HudCanvas>
+      <CommandBar>
+        <Chip label="Mode" value="Admin" tone="crimson" />
+        <select
+          className="!min-h-0 !rounded-full !border-amber-300/60 !bg-white/60 !py-1.5 !pl-4 !pr-8 text-xs font-bold uppercase tracking-wider text-slate-800"
+          value="placeholder"
+          onChange={(event) => {
+            if (event.target.value === "reefscape") router.push("/pit-scout-form");
+          }}
+        >
+          <option value="reefscape">REEFSCAPE Form</option>
+          <option value="placeholder">REBUILT Form</option>
+        </select>
+      </CommandBar>
 
-          <div className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h2 className="text-lg font-semibold">Core Inputs</h2>
-            <input
-              type="text"
-              value={form.scoutName}
-              onChange={(event) => setForm({ ...form, scoutName: event.target.value })}
-              className="w-full border rounded p-3"
-              placeholder="Scout Name"
-              required
-            />
-            <input
-              type="text"
-              value={form.teamNumber}
-              onChange={(event) => setForm({ ...form, teamNumber: event.target.value })}
-              className="w-full border rounded p-3"
-              placeholder="Team Number"
-              required
-            />
-            <input
-              type="url"
-              value={form.robotPictureUrl}
-              onChange={(event) => setForm({ ...form, robotPictureUrl: event.target.value })}
-              className="w-full border rounded p-3"
-              placeholder="Picture of Robot URL"
-            />
-            <input
-              type="text"
-              value={form.autoCapabilities}
-              onChange={(event) => setForm({ ...form, autoCapabilities: event.target.value })}
-              className="w-full border rounded p-3"
-              placeholder="Capabilities in auto"
-            />
-            <textarea
-              value={form.notes}
-              onChange={(event) => setForm({ ...form, notes: event.target.value })}
-              className="w-full border rounded p-3 h-36"
-              placeholder="Placeholder notes"
-            />
+      <HudViewport className="pb-32">
+        <PageIntro
+          eyebrow="Admin-Only Quick Intake"
+          title={<>Pit Scout <span className="gradient-text">Placeholder</span></>}
+          subtitle="REBUILT form view. A minimal admin intake used to seed a placeholder pit entry."
+          actions={<Chip label="Access" value="Team Admin" tone="gold" />}
+        />
+
+        {showEventWarning && (
+          <Surface className="mt-6 flex items-start gap-3 border-l-4 !border-l-amber-400 p-4">
+            <TriangleAlert size={18} className="mt-0.5 shrink-0 text-amber-700" />
+            <p className="text-sm text-amber-900">
+              Note: Official scouting is only during events (Arkansas: March 18-21, Bayou: April 1-4).
+            </p>
+          </Surface>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <Deck priority="high" className="lg:col-span-7">
+              <h2 className="font-display text-2xl text-slate-950">Core Inputs</h2>
+              <div className="mt-4 space-y-4">
+                <input
+                  value={form.scoutName}
+                  onChange={(event) => setForm({ ...form, scoutName: event.target.value })}
+                  className="w-full"
+                  placeholder="Scout Name"
+                  required
+                />
+                <input
+                  value={form.teamNumber}
+                  onChange={(event) => setForm({ ...form, teamNumber: event.target.value })}
+                  className="w-full font-data"
+                  placeholder="Team Number"
+                  required
+                />
+                <input
+                  type="url"
+                  value={form.robotPictureUrl}
+                  onChange={(event) => setForm({ ...form, robotPictureUrl: event.target.value })}
+                  className="w-full font-data text-sm"
+                  placeholder="Picture of Robot URL"
+                />
+                <input
+                  value={form.autoCapabilities}
+                  onChange={(event) => setForm({ ...form, autoCapabilities: event.target.value })}
+                  className="w-full"
+                  placeholder="Capabilities in auto"
+                />
+              </div>
+            </Deck>
+
+            <Deck className="lg:col-span-5 lg:mt-8">
+              <h2 className="font-display text-2xl text-slate-950">Notes</h2>
+              <textarea
+                value={form.notes}
+                onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                className="mt-4 h-40 w-full resize-none"
+                placeholder="Placeholder notes"
+              />
+            </Deck>
           </div>
 
-          <button
-            type="submit"
-            disabled={!canSubmit || saving}
-            className="w-full py-3 rounded text-white font-semibold disabled:opacity-60"
-            style={{ backgroundColor: "var(--primary-color)" }}
-          >
-            {saving ? "Submitting..." : "Submit Pit Scout Form"}
-          </button>
+          <div className="mt-8 flex justify-end">
+            <Action type="submit" disabled={!canSubmit || saving} className="!px-8">
+              {saving ? "Submitting..." : "Submit Pit Scout Form"}
+            </Action>
+          </div>
         </form>
-      </div>
-    </div>
+      </HudViewport>
+    </HudCanvas>
   );
 }
 
@@ -211,4 +218,3 @@ export default function PitScoutPlaceholderPage() {
     </ProtectedRoute>
   );
 }
-

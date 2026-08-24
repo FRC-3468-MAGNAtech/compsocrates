@@ -2,11 +2,24 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
+import {
+  Database,
+  Download,
+  Flag,
+  Radar,
+  RefreshCw,
+  Trash2,
+  Upload,
+  UserX,
+  X,
+} from "lucide-react";
 import { db } from "@/app/firebase";
 import { useAuth } from "@/app/AuthContext";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import AnalyticsShell from "@/app/components/AnalyticsShell";
+import { Action, Chip, CommandBar, Deck, HudCanvas, HudViewport, PageIntro, StatTile, Surface } from "@/app/components/Hud";
 import {
   entryMatchesAnalyticsFilters,
   getExplicitMatchTypeFromLabel,
@@ -22,6 +35,35 @@ import { compareMatchLabels, compareSortValues, sortLabel, type SortDir } from "
 import { evaluateScoutingFlags, flagStateDocId, type StoredFlagState } from "@/app/utils/scoutingFlags";
 import { getUserRoles } from "@/app/utils/roles";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
+
+const ANALYTICS_NAV_LINKS: Array<{ href: string; label: string }> = [
+  { href: "/analytics", label: "Match Data" },
+  { href: "/analytics/match-strategy", label: "Match Strategy" },
+  { href: "/analytics/scout-status", label: "Scout Matrix" },
+  { href: "/analytics/team-breakdown", label: "Team Breakdown" },
+  { href: "/analytics/team-averages", label: "Team Averages" },
+  { href: "/analytics/robot-radar", label: "Robot Radar" },
+  { href: "/analytics/rankings", label: "Rankings" },
+  { href: "/analytics/pick-list", label: "Pick List" },
+  { href: "/analytics/performance-reliability", label: "Reliability" },
+  { href: "/analytics/match-breakdown", label: "Match Breakdown" },
+  { href: "/analytics/lead", label: "Lead Review" },
+  { href: "/analytics/pit", label: "Pit Intel" },
+  { href: "/analytics/team-strategy", label: "Team Strategy" },
+  { href: "/analytics/drive-reflection", label: "Drive Review" },
+  { href: "/analytics/helper", label: "Helper Reports" },
+];
+
+function canSeeScoutStatusLink(userData: ReturnType<typeof useAuth>["userData"]) {
+  const roles = getUserRoles(userData);
+  return (
+    Boolean(userData?.isTeamAdmin) ||
+    roles.includes("lead-scout") ||
+    roles.includes("lead-strategist") ||
+    roles.includes("team-coach") ||
+    userData?.role === "coach"
+  );
+}
 
 type Entry = {
   id: string;
@@ -75,8 +117,6 @@ type Entry = {
   notes: string;
   timestamp: number;
   estimatedScore?: number;
-  scoutedScore?: number;
-  mobility?: boolean;
   excludeFromStats?: boolean;
   accuracy?: number;
   accuracyScriptStatus?: string;
@@ -84,12 +124,6 @@ type Entry = {
   accuracyRobotBreakdown?: AccuracyRobotBreakdown[];
   accuracyUpdatedAt?: number;
   auto?: {
-    mobility?: boolean;
-    gridBottom?: number;
-    gridMiddle?: number;
-    gridTop?: number;
-    missed?: boolean;
-    chargeStation?: string;
     preloadScale?: number;
     bpsScale?: number;
     carryingScale?: number;
@@ -103,11 +137,6 @@ type Entry = {
     wonAuto?: boolean;
   };
   teleop?: {
-    gridBottom?: number;
-    gridMiddle?: number;
-    gridTop?: number;
-    missed?: boolean;
-    links?: number;
     bpsScale?: number;
     carryingScale?: number;
     transitionCycles?: number[];
@@ -130,7 +159,6 @@ type Entry = {
     estimatedFuel?: number;
   };
   endgame?: {
-    chargeStation?: string;
     cycleTimes?: number[];
     counterOverride?: number;
     counterOverrideMissedFuel?: number;
@@ -140,75 +168,6 @@ type Entry = {
     status?: string;
   };
 };
-
-function isAnalyticsGame(value: string): value is AnalyticsGame {
-  return value === "CHARGED_UP" || value === "REEFSCAPE" || value === "REBUILT";
-}
-
-function toFiniteNumber(value: unknown): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeChargedStation(value: unknown) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function chargedAutoStationPoints(value: unknown) {
-  const status = normalizeChargedStation(value);
-  if (status === "engaged") return 12;
-  if (status === "docked") return 8;
-  return 0;
-}
-
-function chargedEndgameStationPoints(value: unknown) {
-  const status = normalizeChargedStation(value);
-  if (status === "engaged") return 10;
-  if (status === "docked") return 6;
-  if (status === "parked") return 2;
-  return 0;
-}
-
-function getChargedUpBreakdown(e: Entry) {
-  const auto = {
-    mobility: Boolean(e.auto?.mobility ?? e.mobility),
-    gridBottom: toFiniteNumber(e.auto?.gridBottom),
-    gridMiddle: toFiniteNumber(e.auto?.gridMiddle),
-    gridTop: toFiniteNumber(e.auto?.gridTop),
-    missed: Boolean(e.auto?.missed),
-    chargeStation: e.auto?.chargeStation || "",
-  };
-  const autoPoints =
-    (auto.mobility ? 3 : 0) +
-    auto.gridBottom * 3 +
-    auto.gridMiddle * 4 +
-    auto.gridTop * 6 +
-    chargedAutoStationPoints(auto.chargeStation);
-
-  const teleop = {
-    gridBottom: toFiniteNumber(e.teleop?.gridBottom),
-    gridMiddle: toFiniteNumber(e.teleop?.gridMiddle),
-    gridTop: toFiniteNumber(e.teleop?.gridTop),
-    missed: Boolean(e.teleop?.missed),
-    links: toFiniteNumber(e.teleop?.links),
-  };
-  const teleopPoints = teleop.gridBottom * 2 + teleop.gridMiddle * 3 + teleop.gridTop * 5 + teleop.links * 5;
-
-  const endgame = {
-    chargeStation: e.endgame?.chargeStation || "",
-  };
-  const endgamePoints = chargedEndgameStationPoints(endgame.chargeStation);
-
-  return {
-    auto,
-    teleop,
-    endgame,
-    autoPoints,
-    teleopPoints,
-    endgamePoints,
-    total: autoPoints + teleopPoints + endgamePoints,
-  };
-}
 
 const INCIDENT_LABELS: Record<string, string> = {
   died: "Died During Match",
@@ -259,7 +218,6 @@ function scoreRebuiltEntry(e: Entry) {
 }
 
 function scoreEntry(e: Entry, game: AnalyticsGame) {
-  if (game === "CHARGED_UP") return getChargedUpBreakdown(e).total + Number(e.penaltyPoints || 0);
   if (game === "REBUILT") return scoreRebuiltEntry(e);
 
   let s = 0;
@@ -286,7 +244,6 @@ function scoreEntry(e: Entry, game: AnalyticsGame) {
 }
 
 function scoreEntryBase(e: Entry, game: AnalyticsGame) {
-  if (game === "CHARGED_UP") return getChargedUpBreakdown(e).total;
   if (game === "REBUILT") return scoreRebuiltEntry(e);
 
   let s = 0;
@@ -652,12 +609,6 @@ function displayEntryText(value: unknown) {
   return raw;
 }
 
-function displayGameLabel(game: unknown) {
-  const normalized = String(game || "REEFSCAPE").trim().toUpperCase();
-  if (normalized === "CHARGED_UP") return "CHARGED UP";
-  return normalized || "REEFSCAPE";
-}
-
 function toDisplayTitle(value: unknown) {
   const raw = displayEntryText(value);
   if (raw === "-") return raw;
@@ -760,9 +711,6 @@ type SortKey =
   | "matchLabel"
   | "accuracy"
   | "scriptStatus"
-  | "chargedAutoPoints"
-  | "chargedTeleopPoints"
-  | "chargedEndgamePoints"
   | "autoPreloadScale"
   | "autoBpsScale"
   | "autoCarryScale"
@@ -813,8 +761,7 @@ function AnalyticsPageContent() {
   const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
-    const savedGame = saved || "";
-    return isAnalyticsGame(savedGame) ? savedGame : "REEFSCAPE";
+    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
   });
   const [selectedEvent, setSelectedEvent] = useState(() => {
     if (typeof window === "undefined") return "all";
@@ -829,8 +776,7 @@ function AnalyticsPageContent() {
   const [importGame, setImportGame] = useState<AnalyticsGame>(() => {
     if (typeof window === "undefined") return "REEFSCAPE";
     const saved = localStorage.getItem("analytics-selected-game");
-    const savedGame = saved || "";
-    return isAnalyticsGame(savedGame) ? savedGame : "REEFSCAPE";
+    return saved === "REEFSCAPE" || saved === "REBUILT" ? saved : "REEFSCAPE";
   });
   const [importEvent, setImportEvent] = useState("app-testing");
   const [selectedAccuracyEntry, setSelectedAccuracyEntry] = useState<Entry | null>(null);
@@ -1309,7 +1255,6 @@ function AnalyticsPageContent() {
       const end = String(entry.endgame?.status || "").toLowerCase();
       const endgameClimb = end === "level-1" ? 10 : end === "level-2" ? 20 : end === "level-3" ? 30 : 0;
       const totalUsed = autoFuel + teleFuel + endgameFuel + autoClimb + endgameClimb;
-      const charged = getChargedUpBreakdown(entry);
       const computedAccuracy = allianceAccuracyByEntryId[entry.id];
       const accuracyValue = typeof (entry as Entry & { accuracy?: number }).accuracy === "number"
         ? Number((entry as Entry & { accuracy?: number }).accuracy)
@@ -1335,9 +1280,6 @@ function AnalyticsPageContent() {
         matchLabel: matchLabel(entry),
         accuracy: normalizedAccuracy,
         scriptStatus,
-        chargedAutoPoints: charged.autoPoints,
-        chargedTeleopPoints: charged.teleopPoints,
-        chargedEndgamePoints: charged.endgamePoints,
         autoPreloadScale: entry.auto?.preloadScale ?? 0,
         autoBpsScale: entry.auto?.bpsScale ?? 0,
         autoCarryScale: entry.auto?.carryingScale ?? 0,
@@ -2254,339 +2196,215 @@ function AnalyticsPageContent() {
     setAccuracyRecalcNonce(Date.now());
   }
 
+  const pathname = usePathname();
+  const flaggedCount = useMemo(
+    () =>
+      data.filter((entry) => {
+        const flagState = getEntryFlagState(entry);
+        if (flagState.dismissed) return Boolean(flagState.manualFlagged);
+        return evaluateScoutingFlags(entry as unknown as Record<string, unknown>).length > 0 || Boolean(flagState.manualFlagged);
+      }).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, flagStates]
+  );
+  const accuracyValues = data
+    .map((entry) => (typeof entry.accuracy === "number" ? entry.accuracy : null))
+    .filter((value): value is number => value !== null);
+  const avgAccuracy = accuracyValues.length > 0 ? Math.round(accuracyValues.reduce((sum, v) => sum + v, 0) / accuracyValues.length) : null;
+  const scoutStatusVisible = canSeeScoutStatusLink(userData);
+
   return (
-    <AnalyticsShell
-      entriesCount={data.length}
-      selectedGame={selectedGame}
-      onSelectedGameChange={(game) => handleGameChange(game as AnalyticsGame)}
-      allowedGames={["CHARGED_UP", "REEFSCAPE", "REBUILT"]}
-      practiceMatchesOnly={practiceMatchesOnly}
-      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
-      selectedEvent={selectedEvent}
-      eventOptions={eventOptions}
-      onSelectedEventChange={setSelectedEvent}
-      extraControls={
-        canViewScoutNames ? (
-          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
-            <input
-              type="checkbox"
-              checked={hideNames}
-              onChange={(event) => setHideNames(event.target.checked)}
+    <HudCanvas>
+      <CommandBar>
+        {ANALYTICS_NAV_LINKS.filter((link) => link.href !== "/analytics/scout-status" || scoutStatusVisible).map((link) => {
+          const active = pathname === link.href;
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wide transition ${
+                active
+                  ? "bg-gradient-to-br from-red-700 to-red-900 text-white shadow-[0_10px_30px_rgba(139,0,0,0.28)]"
+                  : "text-slate-700 hover:bg-white/60"
+              }`}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
+      </CommandBar>
+
+      <HudViewport>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <Deck priority="high">
+            <PageIntro
+              eyebrow="Live Scouting Ledger"
+              title="Match Analytics"
+              subtitle="Every scouted robot, every match, one dense frozen-column ledger — auto, teleop, endgame, and alliance accuracy in a single sweep."
+              actions={
+                <>
+                  <Chip label="Entries" value={data.length} tone="gold" icon={Database} />
+                  <Chip label="Game" value={selectedGame.replace("_", " ")} tone="crimson" icon={Radar} />
+                  {avgAccuracy !== null && <Chip label="Avg Accuracy" value={`${avgAccuracy}%`} tone="slate" />}
+                </>
+              }
             />
-            Hide Names
-          </label>
-        ) : null
-      }
-    >
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold mb-1 theme-text">Match Analytics</h1>
-        <p className="text-sm text-gray-600">Match scouting breakdown with sticky match/team columns.</p>
-      </div>
-      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-gray-400 text-white cursor-not-allowed disabled:opacity-100"
-          onClick={exportToCSV}
-          disabled
-          title={csvDisabledReason}
-        >
-          Export CSV
-        </button>
-        <label
-          className="px-3 py-1.5 text-sm rounded text-white bg-gray-400 cursor-not-allowed"
-          title={csvDisabledReason}
-        >
-          Import CSV
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
-        </label>
-        {(userData?.role === "coach" || Boolean(userData?.isTeamAdmin)) && (
-          <button
-            type="button"
-            onClick={handleRecalculateAccuracy}
-            className="px-3 py-1.5 text-sm rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            title="Recalculate accuracy for the current filter"
-            disabled={accuracyRecalcRunning}
-          >
-            {accuracyRecalcRunning ? "Recalculating..." : "Recalculate Accuracy"}
-          </button>
-        )}
-      </div>
+          </Deck>
 
-      {showImportDialog && (
-        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold mb-4">Import CSV</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Choose the game and event for this import.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Game</label>
-                <select
-                  value={importGame}
-                  onChange={(event) => {
-                    const next = event.target.value as AnalyticsGame;
-                    setImportGame(next);
-                    const nextOptions =
-                      next === "REBUILT"
-                        ? getEventOptionsForEntries([], next, rebuiltEventOptions)
-                        : getEventsForGame(next);
-                    setImportEvent(nextOptions[0]?.id || "app-testing");
-                  }}
-                  className="w-full border rounded p-2"
-                >
-                  <option value="CHARGED_UP">CHARGED UP</option>
-                  <option value="REEFSCAPE">REEFSCAPE</option>
-                  <option value="REBUILT">REBUILT</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Import As</label>
-                <select
-                  value={importMatchMode}
-                  onChange={(event) => setImportMatchMode(event.target.value as "official" | "practice-scouted")}
-                  className="w-full border rounded p-2"
-                >
-                  <option value="official">Official (Practice/Qualification/Finals)</option>
-                  <option value="practice-scouted">Practice Scouted Matches</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Event</label>
-                <select
-                  value={importEvent}
-                  onChange={(event) => setImportEvent(event.target.value)}
-                  className="w-full border rounded p-2"
-                >
-                  {importEventOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="mt-6 flex gap-2">
-              <button
-                onClick={runCSVImport}
-                disabled={importing}
-                className="flex-1 py-2 rounded bg-blue-600 text-white font-semibold disabled:opacity-60"
+          <Deck priority="critical" offset="xl:translate-y-6" className="flex flex-col gap-3">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-900/60">Filters</p>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={selectedGame}
+                onChange={(event) => handleGameChange(event.target.value as AnalyticsGame)}
+                className="h-10 flex-1 min-w-[9rem] px-4 text-sm font-bold"
               >
-                {importing ? "Importing..." : "Import"}
-              </button>
-              <button
-                onClick={() => {
-                  setShowImportDialog(false);
-                  setPendingImportFile(null);
-                }}
-                disabled={importing}
-                className="flex-1 py-2 rounded border border-gray-300 disabled:opacity-60"
+                <option value="REEFSCAPE">REEFSCAPE</option>
+                <option value="REBUILT">REBUILT</option>
+              </select>
+              <select
+                value={selectedEvent}
+                onChange={(event) => setSelectedEvent(event.target.value)}
+                className="h-10 flex-1 min-w-[9rem] px-4 text-sm font-bold"
               >
-                Cancel
-              </button>
+                {eventOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
+            <div className="flex flex-wrap gap-2">
+              <Action
+                type="button"
+                variant={practiceMatchesOnly ? "primary" : "ghost"}
+                onClick={() => setPracticeMatchesOnly((prev) => !prev)}
+                className="text-xs"
+              >
+                Practice Matches
+              </Action>
+              {canViewScoutNames && (
+                <Action
+                  type="button"
+                  variant={hideNames ? "primary" : "ghost"}
+                  onClick={() => setHideNames((prev) => !prev)}
+                  className="text-xs"
+                >
+                  <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                  Hide Names
+                </Action>
+              )}
+            </div>
+          </Deck>
         </div>
-      )}
 
-      <div ref={tableScrollRef} className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll overflow-x-auto">
-        {selectedGame === "CHARGED_UP" ? (
-          <table>
-            <thead className="sticky-header">
-              <tr>
-                <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
-                <th
-                  className="sticky-left-2 sticky-row-1 bg-yellow-300 text-center"
-                  colSpan={preMatchColSpan}
-                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
+        <Deck priority="normal" offset="xl:-translate-y-2" className="mt-6 flex flex-wrap items-center gap-3">
+          <Action type="button" variant="ghost" onClick={exportToCSV} disabled title={csvDisabledReason}>
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Export CSV
+          </Action>
+          <label
+            className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-white/70 bg-white/35 px-5 py-2.5 text-sm font-bold text-slate-500 opacity-60 backdrop-blur-xl"
+            title={csvDisabledReason}
+          >
+            <Upload className="h-4 w-4" aria-hidden="true" />
+            Import CSV
+            <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
+          </label>
+          {(userData?.role === "coach" || Boolean(userData?.isTeamAdmin)) && (
+            <Action
+              type="button"
+              variant="danger"
+              onClick={handleRecalculateAccuracy}
+              disabled={accuracyRecalcRunning}
+              title="Recalculate accuracy for the current filter"
+            >
+              <RefreshCw className={`h-4 w-4 ${accuracyRecalcRunning ? "animate-spin" : ""}`} aria-hidden="true" />
+              {accuracyRecalcRunning ? "Recalculating..." : "Recalculate Accuracy"}
+            </Action>
+          )}
+          <div className="ml-auto flex flex-wrap gap-3">
+            <StatTile label="Flagged" value={flaggedCount} />
+            <StatTile label="Filtered Rows" value={data.length} />
+          </div>
+        </Deck>
+
+        {showImportDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+            <Surface raised className="w-full max-w-md p-6">
+              <h2 className="font-display text-2xl text-slate-950">Import CSV</h2>
+              <p className="mt-2 text-sm text-slate-600">Choose the game and event for this import.</p>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Game</label>
+                  <select
+                    value={importGame}
+                    onChange={(event) => {
+                      const next = event.target.value as AnalyticsGame;
+                      setImportGame(next);
+                      const nextOptions =
+                        next === "REBUILT"
+                          ? getEventOptionsForEntries([], next, rebuiltEventOptions)
+                          : getEventsForGame(next);
+                      setImportEvent(nextOptions[0]?.id || "app-testing");
+                    }}
+                    className="w-full px-4"
+                  >
+                    <option value="REEFSCAPE">REEFSCAPE</option>
+                    <option value="REBUILT">REBUILT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Import As</label>
+                  <select
+                    value={importMatchMode}
+                    onChange={(event) => setImportMatchMode(event.target.value as "official" | "practice-scouted")}
+                    className="w-full px-4"
+                  >
+                    <option value="official">Official (Practice/Qualification/Finals)</option>
+                    <option value="practice-scouted">Practice Scouted Matches</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Event</label>
+                  <select
+                    value={importEvent}
+                    onChange={(event) => setImportEvent(event.target.value)}
+                    className="w-full px-4"
+                  >
+                    {importEventOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-6 flex gap-2">
+                <Action type="button" variant="primary" onClick={runCSVImport} disabled={importing} className="flex-1">
+                  {importing ? "Importing..." : "Import"}
+                </Action>
+                <Action
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowImportDialog(false);
+                    setPendingImportFile(null);
+                  }}
+                  disabled={importing}
+                  className="flex-1"
                 >
-                  Pre-Match
-                </th>
-                {showStartingPosSpacer && <th className="bg-yellow-300 text-center" colSpan={1} />}
-                <th className="bg-green-300 text-center" colSpan={7}>Autonomous</th>
-                <th className="bg-blue-300 text-center" colSpan={6}>Teleoperated</th>
-                <th className="bg-purple-300 text-center" colSpan={2}>Endgame</th>
-                <th className="bg-pink-300 text-center" colSpan={canViewAdminColumns ? 5 : 3}>General</th>
-                {canViewAdminColumns && <th className="bg-gray-300 text-center" colSpan={1} />}
-              </tr>
-              <tr>
-                <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={2}>Information</th>
-                <th
-                  className="sticky-left-2 sticky-row-2 bg-yellow-200 text-center"
-                  colSpan={preMatchColSpan}
-                  style={{ minWidth: startingPosVisible ? 192 : 96 }}
-                >
-                  Pre-Match
-                </th>
-                {showStartingPosSpacer && <th className="bg-yellow-200 text-center" colSpan={1} />}
-                <th className="bg-green-200 text-center" colSpan={1}>Mobility</th>
-                <th className="bg-green-200 text-center" colSpan={4}>Grids</th>
-                <th className="bg-green-200 text-center" colSpan={1}>Charge Station</th>
-                <th className="bg-green-200 text-center" colSpan={1}>Score</th>
-                <th className="bg-blue-200 text-center" colSpan={4}>Grids</th>
-                <th className="bg-blue-200 text-center" colSpan={1}>Links</th>
-                <th className="bg-blue-200 text-center" colSpan={1}>Score</th>
-                <th className="bg-purple-200 text-center" colSpan={1}>Charge Station</th>
-                <th className="bg-purple-200 text-center" colSpan={1}>Score</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Incidents</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Score</th>
-                <th className="bg-pink-200 text-center" colSpan={1}>Comments</th>
-                {canViewAdminColumns && <th className="bg-pink-200 text-center" colSpan={2}>Accuracy Script</th>}
-                {canViewAdminColumns && <th className="bg-gray-200 text-center" colSpan={1}>Actions</th>}
-              </tr>
-              <tr>
-                <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("matchLabel")}>
-                  {sortLabel(sortKey, sortDir, "matchLabel", "Match")}
-                </th>
-                <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
-                  {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
-                </th>
-                <th ref={scoutHeaderRef} className="sticky-left-2 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
-                  {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
-                </th>
-                <th ref={startingPosHeaderRef} className="cursor-pointer text-center" onClick={() => handleSort("startingPosition")}>
-                  {sortLabel(sortKey, sortDir, "startingPosition", "Starting Position")}
-                </th>
-                <th className="text-center">Mobility</th>
-                <th className="text-center">Bottom</th>
-                <th className="text-center">Middle</th>
-                <th className="text-center">Top</th>
-                <th className="text-center">Missed</th>
-                <th className="text-center">Status</th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("chargedAutoPoints")}>
-                  {sortLabel(sortKey, sortDir, "chargedAutoPoints", "Auto")}
-                </th>
-                <th className="text-center">Bottom</th>
-                <th className="text-center">Middle</th>
-                <th className="text-center">Top</th>
-                <th className="text-center">Missed</th>
-                <th className="text-center">Links</th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("chargedTeleopPoints")}>
-                  {sortLabel(sortKey, sortDir, "chargedTeleopPoints", "Teleop")}
-                </th>
-                <th className="text-center">Status</th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("chargedEndgamePoints")}>
-                  {sortLabel(sortKey, sortDir, "chargedEndgamePoints", "Endgame")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("incidents")}>
-                  {sortLabel(sortKey, sortDir, "incidents", "Incidents")}
-                </th>
-                <th className="cursor-pointer text-center" onClick={() => handleSort("score")}>
-                  {sortLabel(sortKey, sortDir, "score", "Total")}
-                </th>
-                <th className="cursor-pointer text-center" style={{ minWidth: "260px" }} onClick={() => handleSort("notes")}>
-                  {sortLabel(sortKey, sortDir, "notes", "Comments")}
-                </th>
-                {canViewAdminColumns && (
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("accuracy")}>
-                    {sortLabel(sortKey, sortDir, "accuracy", "Alliance Accuracy")}
-                  </th>
-                )}
-                {canViewAdminColumns && (
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("scriptStatus")}>
-                    {sortLabel(sortKey, sortDir, "scriptStatus", "Script Status")}
-                  </th>
-                )}
-                {canViewAdminColumns && (
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                    {sortLabel(sortKey, sortDir, "id", "Actions")}
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((entry) => {
-                const charged = getChargedUpBreakdown(entry);
-                const entryFlags = evaluateScoutingFlags(entry as unknown as Record<string, unknown>);
-                const flagState = getEntryFlagState(entry);
-                const isFlagDismissed = Boolean(flagState?.dismissed);
-                const isManualFlagged = Boolean(flagState?.manualFlagged);
-                const autoFlags = isFlagDismissed ? [] : entryFlags;
-                const flagCount = autoFlags.length + (isManualFlagged ? 1 : 0);
-                const isExcluded = Boolean(entry.excludeFromStats);
-                return (
-                <tr key={entry.id} className={isExcluded ? "line-through text-gray-500" : ""}>
-                  <td className="sticky-left-0 bg-white font-semibold text-center">{matchLabel(entry)}</td>
-                  <td className="sticky-left-1 bg-white font-semibold text-center">{displayEntryText(entry.teamNumber)}</td>
-                  <td className="sticky-left-2 bg-white text-center">
-                    {canViewScoutNames && !hideNames ? displayEntryText(entry.scoutName) : "-"}
-                  </td>
-                  <td className="text-center">{toDisplayTitle(entry.startingPosition)}</td>
-                  <td className="text-center">{charged.auto.mobility ? "Y" : "N"}</td>
-                  <td className="text-center">{charged.auto.gridBottom}</td>
-                  <td className="text-center">{charged.auto.gridMiddle}</td>
-                  <td className="text-center">{charged.auto.gridTop}</td>
-                  <td className="text-center">{charged.auto.missed ? "Y" : "N"}</td>
-                  <td className="text-center">{toDisplayTitle(charged.auto.chargeStation || "-")}</td>
-                  <td className="text-center font-semibold">{charged.autoPoints}</td>
-                  <td className="text-center">{charged.teleop.gridBottom}</td>
-                  <td className="text-center">{charged.teleop.gridMiddle}</td>
-                  <td className="text-center">{charged.teleop.gridTop}</td>
-                  <td className="text-center">{charged.teleop.missed ? "Y" : "N"}</td>
-                  <td className="text-center">{charged.teleop.links}</td>
-                  <td className="text-center font-semibold">{charged.teleopPoints}</td>
-                  <td className="text-center">{toDisplayTitle(charged.endgame.chargeStation || "-")}</td>
-                  <td className="text-center font-semibold">{charged.endgamePoints}</td>
-                  <td className="text-center">
-                    {entry.incidents?.map((incident) => INCIDENT_LABELS[incident] || incident).join(", ") || "-"}
-                  </td>
-                  <td className="text-center font-semibold">{scoreEntry(entry, selectedGame)}</td>
-                  <td className="text-left align-top" style={{ minWidth: "220px", maxWidth: "360px" }}>
-                    <ExpandableNotesCell text={entry.notes} />
-                  </td>
-                  {canViewAdminColumns && (
-                    <td className="text-center">
-                      {typeof (entry as Entry & { accuracy?: number }).accuracy === "number" ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedAccuracyEntry(entry);
-                            void loadAccuracyDetails(entry);
-                          }}
-                          className="underline decoration-dotted underline-offset-2"
-                          style={{ color: "var(--primary-color)" }}
-                        >
-                          {`${Math.round((entry as Entry & { accuracy?: number }).accuracy || 0)}%`}
-                        </button>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  )}
-                  {canViewAdminColumns && <td className="text-center">{formatScriptStatus(entry.scriptStatus)}</td>}
-                  {canViewAdminColumns && (
-                    <td className="text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {canManageFlags && (
-                          <button
-                            type="button"
-                            onClick={() => setFlagMenuEntry(entry)}
-                            disabled={flagSavingKey === flagStateDocId("scoutingEntry", entry.id)}
-                            className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
-                          >
-                            {`Config${flagCount > 0 ? ` (${flagCount})` : ""}`}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(event) => triggerDeleteEntry(entry, event)}
-                          onPointerUp={(event) => triggerDeleteEntry(entry, event)}
-                          className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                          style={{ backgroundColor: "#dc2626" }}
-                          disabled={!canDeleteEntries}
-                          title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : selectedGame === "REBUILT" ? (
-          <table>
+                  Cancel
+                </Action>
+              </div>
+            </Surface>
+          </div>
+        )}
+
+        <Deck priority="normal" offset="mt-6" className="p-0 lg:p-0">
+          <div ref={tableScrollRef} className="table-scroll h-[calc(100vh-320px)] overflow-x-auto rounded-[1.75rem]">
+            {selectedGame === "REBUILT" ? (
+              <table>
             <thead className="sticky-header">
               <tr>
                 <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={2}>Information</th>
@@ -3111,34 +2929,35 @@ function AnalyticsPageContent() {
           </tbody>
         </table>
         )}
-      </div>
+          </div>
+        </Deck>
 
-      {selectedAccuracyEntry && (
-        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold mb-3">Alliance Accuracy Details</h2>
+        {selectedAccuracyEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <Surface raised className="w-full max-w-md p-6">
+            <h2 className="font-display text-2xl text-slate-950">Alliance Accuracy</h2>
             {(() => {
               return (
-                <div className="space-y-2 text-sm">
-                  <p><span className="font-semibold">Match:</span> {accuracyDetails.matchLabelUsed || "-"}</p>
-                  <p><span className="font-semibold">Event:</span> {accuracyDetails.eventKeyUsed || "Unknown"}</p>
-                  <p><span className="font-semibold">Scouted Points:</span> {accuracyDetails.scoutedPoints}</p>
-                  <p><span className="font-semibold">Actual Points:</span> {accuracyDetails.actualPoints ?? "Unavailable"}</p>
+                <div className="mt-3 space-y-2 font-data text-sm text-slate-800">
+                  <p><span className="font-bold text-slate-950">Match:</span> {accuracyDetails.matchLabelUsed || "-"}</p>
+                  <p><span className="font-bold text-slate-950">Event:</span> {accuracyDetails.eventKeyUsed || "Unknown"}</p>
+                  <p><span className="font-bold text-slate-950">Scouted Points:</span> {accuracyDetails.scoutedPoints}</p>
+                  <p><span className="font-bold text-slate-950">Actual Points:</span> {accuracyDetails.actualPoints ?? "Unavailable"}</p>
                   <p>
-                    <span className="font-semibold">All Robots Scouted:</span>{" "}
+                    <span className="font-bold text-slate-950">All Robots Scouted:</span>{" "}
                     {accuracyModalLoading ? "Checking..." : accuracyDetails.allRobotsScouted === "yes" ? "Yes" : accuracyDetails.allRobotsScouted === "no" ? "No" : "Unknown"}
                   </p>
-                  <p><span className="font-semibold">Penalty Points:</span> {accuracyDetails.penaltyPoints}</p>
+                  <p><span className="font-bold text-slate-950">Penalty Points:</span> {accuracyDetails.penaltyPoints}</p>
                   {accuracyRobotBreakdown.length > 0 && (
                     <div className="pt-2">
-                      <p className="font-semibold mb-1">Score Breakdown</p>
+                      <p className="mb-1 font-bold text-slate-950">Score Breakdown</p>
                       <div className="space-y-1 text-xs">
                         {accuracyRobotBreakdown.map((row) => (
                           <p key={`${row.teamNumber}-${row.source}`}>
                             Team {row.teamNumber}: {row.total}{" "}
                             {row.source === "computed"
                               ? `(autoFuel=${row.autoFuel} + teleFuel=${row.teleFuel} + autoClimb=${row.autoClimb} + endgameClimb=${row.endgameClimb})`
-                              : `(${displayGameLabel(selectedAccuracyEntry?.game || selectedGame)} scorer)`}
+                              : "(REEFSCAPE scorer)"}
                           </p>
                         ))}
                       </div>
@@ -3148,21 +2967,18 @@ function AnalyticsPageContent() {
               );
             })()}
             <div className="mt-5">
-              <button
-                onClick={() => setSelectedAccuracyEntry(null)}
-                className="w-full py-2 rounded text-white font-semibold"
-                style={{ backgroundColor: "var(--primary-color)" }}
-              >
+              <Action type="button" variant="primary" onClick={() => setSelectedAccuracyEntry(null)} className="w-full">
+                <X className="h-4 w-4" aria-hidden="true" />
                 Close
-              </button>
+              </Action>
             </div>
-          </div>
+          </Surface>
         </div>
       )}
 
       {flagMenuEntry && canManageFlags && (
-        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <Surface raised className="w-full max-w-lg p-6">
               {(() => {
                 const flagState = getEntryFlagState(flagMenuEntry);
                 const stateId = flagStateDocId("scoutingEntry", flagMenuEntry.id);
@@ -3177,53 +2993,57 @@ function AnalyticsPageContent() {
                 "Manual flag";
 
               return (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div>
-                    <h2 className="text-xl font-semibold">Config</h2>
-                    <p className="text-sm text-gray-600">
-                      Match {matchLabel(flagMenuEntry)} • Team {displayEntryText(flagMenuEntry.teamNumber)}
+                    <h2 className="font-display text-2xl text-slate-950">Config</h2>
+                    <p className="font-data text-sm text-slate-600">
+                      Match {matchLabel(flagMenuEntry)} &bull; Team {displayEntryText(flagMenuEntry.teamNumber)}
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <div className="font-semibold">Auto Flags</div>
-                    {entryFlags.length === 0 && <p className="text-sm text-gray-600">No auto flags detected.</p>}
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-red-900/70">
+                      <Flag className="h-3.5 w-3.5" aria-hidden="true" />
+                      Auto Flags
+                    </div>
+                    {entryFlags.length === 0 && <p className="text-sm text-slate-600">No auto flags detected.</p>}
                     {entryFlags.length > 0 && (
                       <div className="space-y-2">
                         {entryFlags.map((flag) => (
-                          <div key={flag.code} className="rounded border border-amber-200 bg-amber-50 p-2 text-sm">
-                            <div className="font-semibold text-amber-900">{flag.label}</div>
-                            <div className="text-amber-800">{flag.detail}</div>
+                          <div key={flag.code} className="rounded-2xl border border-amber-300/50 bg-amber-50/60 p-3 text-sm backdrop-blur-sm">
+                            <div className="font-bold text-amber-950">{flag.label}</div>
+                            <div className="text-amber-900/80">{flag.detail}</div>
                           </div>
                         ))}
                         <div className="flex items-center gap-2">
-                          <button
+                          <Action
                             type="button"
+                            variant="secondary"
                             onClick={() => void setScoutingEntryFlagDismissed(flagMenuEntry.id, !isDismissed)}
                             disabled={flagSavingKey === stateId}
-                            className="px-3 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 text-sm disabled:opacity-50"
+                            className="text-xs"
                           >
                             {isDismissed ? "Restore Auto Flags" : "Dismiss Auto Flags"}
-                          </button>
-                          {isDismissed && <span className="text-xs text-gray-600">Auto flags are dismissed.</span>}
+                          </Action>
+                          {isDismissed && <span className="text-xs text-slate-600">Auto flags are dismissed.</span>}
                         </div>
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <div className="font-semibold">Manual Flag</div>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-red-900/70">Manual Flag</div>
                     {isManualFlagged && (
-                      <p className="text-sm text-gray-700">
-                        Current reason: <span className="font-semibold">{reasonLabel}</span>
+                      <p className="text-sm text-slate-700">
+                        Current reason: <span className="font-bold">{reasonLabel}</span>
                       </p>
                     )}
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-bold text-slate-700">
                       Reason
                       <select
                         value={manualFlagReason}
                         onChange={(event) => setManualFlagReason(event.target.value)}
-                        className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                        className="mt-1 w-full px-3 text-sm"
                       >
                         {MANUAL_FLAG_REASONS.map((reason) => (
                           <option key={reason.value} value={reason.value}>
@@ -3233,63 +3053,57 @@ function AnalyticsPageContent() {
                       </select>
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      <button
+                      <Action
                         type="button"
+                        variant="danger"
                         onClick={() => void setScoutingEntryManualFlag(flagMenuEntry.id, true, manualFlagReason)}
                         disabled={flagSavingKey === stateId}
-                        className="px-3 py-1 rounded border border-red-300 bg-red-50 text-red-900 text-sm disabled:opacity-50"
+                        className="text-xs"
                       >
                         {isManualFlagged ? "Update Manual Flag" : "Add Manual Flag"}
-                      </button>
+                      </Action>
                       {isManualFlagged && (
-                        <button
+                        <Action
                           type="button"
+                          variant="ghost"
                           onClick={() => void setScoutingEntryManualFlag(flagMenuEntry.id, false)}
                           disabled={flagSavingKey === stateId}
-                          className="px-3 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-sm disabled:opacity-50"
+                          className="text-xs"
                         >
                           Remove Manual Flag
-                        </button>
+                        </Action>
                       )}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <div className="font-semibold">Stats Exclusion</div>
-                    <p className="text-sm text-gray-600">
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-red-900/70">Stats Exclusion</div>
+                    <p className="text-sm text-slate-600">
                       Excluded entries stay visible here but will be ignored by stats and averages.
                     </p>
-                    <button
+                    <Action
                       type="button"
+                      variant={isExcluded ? "secondary" : "ghost"}
                       onClick={() => void setScoutingEntryExcluded(flagMenuEntry.id, !isExcluded)}
                       disabled={excludeSavingId === flagMenuEntry.id}
-                      className={`px-3 py-1 rounded border text-sm disabled:opacity-50 ${
-                        isExcluded
-                          ? "border-green-300 bg-green-50 text-green-900"
-                          : "border-gray-300 bg-gray-50 text-gray-800"
-                      }`}
+                      className="text-xs"
                     >
                       {isExcluded ? "Include In Stats" : "Exclude From Stats"}
-                    </button>
+                    </Action>
                   </div>
 
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setFlagMenuEntry(null)}
-                      className="w-full py-2 rounded text-white font-semibold"
-                      style={{ backgroundColor: "var(--primary-color)" }}
-                    >
-                      Close
-                    </button>
-                  </div>
+                  <Action type="button" variant="primary" onClick={() => setFlagMenuEntry(null)} className="w-full">
+                    <X className="h-4 w-4" aria-hidden="true" />
+                    Close
+                  </Action>
                 </div>
               );
             })()}
-          </div>
+          </Surface>
         </div>
       )}
-    </AnalyticsShell>
+      </HudViewport>
+    </HudCanvas>
   );
 }
 

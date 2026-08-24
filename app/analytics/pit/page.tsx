@@ -2,18 +2,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { Boxes, ClipboardList, Database, StickyNote, Users, X } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ExpandableNotesCell from "@/app/components/ExpandableNotesCell";
 import AnalyticsConfigModal from "@/app/components/AnalyticsConfigModal";
-import { entryMatchesAnalyticsFilters, getEventOptionsForEntries, getEventsForGame, isPracticeScoutedEntry, getStoredAnalyticsGame, type AnalyticsGame } from "@/app/utils/analyticsEvents";
+import { AnalyticsNotesProvider, useAnalyticsNotesSettings } from "@/app/components/AnalyticsNotesContext";
+import {
+  entryMatchesAnalyticsFilters,
+  getEventOptionsForEntries,
+  getEventsForGame,
+  isPracticeScoutedEntry,
+  type AnalyticsGame,
+} from "@/app/utils/analyticsEvents";
 import { formatAnalyticsText } from "@/app/utils/displayFormat";
 import { useAuth } from "@/app/AuthContext";
 import { csvEscape, normalizeHeader, parseCsvLine, splitCsvRecords, toBoolean, toNumber } from "@/app/utils/csvHelpers";
 import { compareSortValues, sortLabel, type SortDir } from "@/app/utils/sortHelpers";
 import { getUserRoles } from "@/app/utils/roles";
+import { Action, Chip, CommandBar, Deck, HudCanvas, HudViewport, PageIntro, Surface } from "@/app/components/Hud";
 
 type PitEntry = {
   id: string;
@@ -92,8 +100,49 @@ function fuelScaleDisplay(value: number | string | undefined): string {
   return Number.isFinite(parsed) ? String(parsed) : "x";
 }
 
+/** Column-group header tint — crimson/gold gradations only, never the old rainbow palette. */
+const GROUP_TINTS = [
+  "bg-red-900/10 text-red-950",
+  "bg-amber-400/20 text-amber-950",
+  "bg-red-800/15 text-red-950",
+  "bg-amber-500/20 text-amber-950",
+  "bg-slate-900/8 text-slate-900",
+];
+
+function GroupHeaderCell({ tone, colSpan, children }: { tone: number; colSpan: number; children: React.ReactNode }) {
+  return (
+    <th className={`text-center font-black uppercase tracking-[0.14em] ${GROUP_TINTS[tone % GROUP_TINTS.length]}`} colSpan={colSpan}>
+      {children}
+    </th>
+  );
+}
+
+function SortTh({
+  label,
+  active,
+  dir,
+  onClick,
+  sticky,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onClick: () => void;
+  sticky?: string;
+}) {
+  return (
+    <th
+      className={`cursor-pointer select-none text-center transition hover:bg-amber-100/60 ${sticky || ""}`}
+      onClick={onClick}
+    >
+      {label} {active ? (dir === "asc" ? "↑" : "↓") : "↕"}
+    </th>
+  );
+}
+
 function PitAnalyticsContent() {
   const { userData } = useAuth();
+  const { autoExpandNotes, setAutoExpandNotes } = useAnalyticsNotesSettings();
   const userRoles = getUserRoles(userData);
   const isCoach = userData?.role === "coach";
   const isTeamCoach = String(userData?.role || "").toLowerCase() === "team-coach" || (userData?.roles || []).includes("team-coach");
@@ -108,15 +157,16 @@ function PitAnalyticsContent() {
   const canExportCsv = canImportCsv;
   const csvDisabledReason = "Temporarily disabled due to bugs.";
   const canShowActions = canManageConfig || canDeleteEntries;
+  void canViewAdminColumns;
   const [entries, setEntries] = useState<PitEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [selectedEvent, setSelectedEvent] = useState("all");
   const [practiceMatchesOnly, setPracticeMatchesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importGame, setImportGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REEFSCAPE"));
+  const [importGame, setImportGame] = useState<AnalyticsGame>("REEFSCAPE");
   const [importEvent, setImportEvent] = useState("app-testing");
   const [configEntry, setConfigEntry] = useState<PitEntry | null>(null);
   const [hideNames, setHideNames] = useState(false);
@@ -191,6 +241,8 @@ function PitAnalyticsContent() {
       })),
     [entries]
   );
+
+  const eventOptions = useMemo(() => getEventOptionsForEntries(normalized, selectedGame), [normalized, selectedGame]);
 
   const filtered = useMemo(() => {
     const gameFiltered = normalized.filter((entry) => entryMatchesAnalyticsFilters(entry, selectedGame, selectedEvent));
@@ -513,59 +565,309 @@ function PitAnalyticsContent() {
     setEntries((prev) => prev.filter((row) => row.id !== entry.id));
   }
 
+  const effectiveEventOptions = [{ id: "all", name: "All Events" }, ...eventOptions];
+
   return (
-    <AnalyticsShell
-      entriesCount={filtered.length}
-      selectedGame={selectedGame}
-      onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
-      practiceMatchesOnly={practiceMatchesOnly}
-      onPracticeMatchesOnlyChange={setPracticeMatchesOnly}
-      selectedEvent={selectedEvent}
-      eventOptions={[{ id: "all", name: "All Events" }, ...getEventOptionsForEntries(normalized, selectedGame)]}
-      onSelectedEventChange={setSelectedEvent}
-      extraControls={
-        canViewScoutNames ? (
-          <label className="text-sm text-gray-600 flex items-center gap-2 mr-3">
-            <input
-              type="checkbox"
-              checked={hideNames}
-              onChange={(event) => setHideNames(event.target.checked)}
-            />
-            Hide Names
-          </label>
-        ) : null
-      }
-    >
-      <h1 className="text-3xl font-bold mb-2 theme-text">Pit Analytics</h1>
-      <p className="text-gray-600 mb-4">Pit scouting breakdown with sticky team/scout columns.</p>
-      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-4">
-        <button
-          className="px-3 py-1.5 text-sm rounded bg-gray-400 text-white cursor-not-allowed disabled:opacity-100"
-          onClick={exportToCSV}
-          disabled
-          title={csvDisabledReason}
+    <HudCanvas>
+      <CommandBar className="flex-wrap">
+        <Chip label="Game" value={selectedGame.replace("_", " ")} tone="crimson" icon={Boxes} />
+        <select
+          className="!min-h-0 !rounded-full !border-amber-300/60 !bg-white/60 !py-1.5 !pl-4 !pr-8 text-xs font-bold uppercase tracking-wider text-slate-800"
+          value={selectedGame}
+          onChange={(event) => setSelectedGame(event.target.value as AnalyticsGame)}
         >
-          Export CSV
-        </button>
-        <label
-          className="px-3 py-1.5 text-sm rounded text-white bg-gray-400 cursor-not-allowed"
-          title={csvDisabledReason}
+          <option value="REEFSCAPE">REEFSCAPE</option>
+          <option value="REBUILT">REBUILT</option>
+        </select>
+        <select
+          className="!min-h-0 max-w-40 !rounded-full !border-amber-300/60 !bg-white/60 !py-1.5 !pl-4 !pr-8 text-xs font-bold uppercase tracking-wider text-slate-800"
+          value={selectedEvent}
+          onChange={(event) => setSelectedEvent(event.target.value)}
         >
-          Import CSV
-          <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
-        </label>
-      </div>
+          {effectiveEventOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </select>
+        <Action
+          variant={practiceMatchesOnly ? "danger" : "ghost"}
+          onClick={() => setPracticeMatchesOnly((prev) => !prev)}
+        >
+          Practice
+        </Action>
+        {canViewScoutNames && (
+          <Action variant={hideNames ? "danger" : "ghost"} onClick={() => setHideNames((prev) => !prev)}>
+            <Users className="h-4 w-4" /> {hideNames ? "Names Hidden" : "Hide Names"}
+          </Action>
+        )}
+        <Action variant={autoExpandNotes ? "secondary" : "ghost"} onClick={() => setAutoExpandNotes(!autoExpandNotes)}>
+          <StickyNote className="h-4 w-4" /> Notes
+        </Action>
+      </CommandBar>
+
+      <HudViewport>
+        <PageIntro
+          eyebrow="Pit Intelligence"
+          title={
+            <>
+              Pit <span className="gradient-text">Analytics</span>
+            </>
+          }
+          subtitle="Chassis, drivetrain, and cycle-capability breakdowns for every scouted robot, with frozen team/scout columns for fast comparison."
+          actions={<Chip label="Entries" value={filtered.length} tone="gold" icon={Database} />}
+        />
+
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Deck offset="sm:-translate-y-1">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Export</p>
+            <p className="mt-2 text-sm text-slate-600">Download the currently filtered pit dataset as CSV.</p>
+            <Action variant="secondary" onClick={exportToCSV} disabled title={csvDisabledReason} className="mt-4">
+              Export CSV
+            </Action>
+          </Deck>
+          <Deck offset="sm:translate-y-1">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Import</p>
+            <p className="mt-2 text-sm text-slate-600">Bulk-load pit entries from a spreadsheet export.</p>
+            <label className="mt-4 inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-full border border-white/70 bg-white/35 px-5 py-2.5 text-sm font-bold text-slate-500 opacity-60" title={csvDisabledReason}>
+              Import CSV
+              <input type="file" accept=".csv" onChange={handleImportFilePick} className="hidden" disabled />
+            </label>
+          </Deck>
+        </div>
+
+        {loading ? (
+          <div className="mt-10">
+            <LoadingSpinner message="Loading pit analytics..." />
+          </div>
+        ) : (
+          <Deck className="mt-6 !p-0 overflow-hidden" priority="high">
+            <div className="table-scroll h-[calc(100vh-320px)] min-h-[420px]">
+              {selectedGame === "REBUILT" ? (
+                <table>
+                  <thead className="sticky-header">
+                    <tr>
+                      <GroupHeaderCell tone={0} colSpan={4}>
+                        Information
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={1} colSpan={3}>
+                        Friendliness
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={2} colSpan={3}>
+                        Fuel
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={3} colSpan={3}>
+                        Climb
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={4} colSpan={3}>
+                        Cycles
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={1} colSpan={canShowActions ? 2 : 1}>
+                        General
+                      </GroupHeaderCell>
+                    </tr>
+                    <tr>
+                      <SortTh label="Team" active={sortKey === "teamNumber"} dir={sortDir} onClick={() => handleSort("teamNumber")} sticky="sticky-left-0" />
+                      <SortTh label="Scout" active={sortKey === "scoutName"} dir={sortDir} onClick={() => handleSort("scoutName")} sticky="sticky-left-1" />
+                      <SortTh label="Robot Weight" active={sortKey === "robotWeight"} dir={sortDir} onClick={() => handleSort("robotWeight")} />
+                      <SortTh label="Rookie" active={sortKey === "rookieTeam"} dir={sortDir} onClick={() => handleSort("rookieTeam")} />
+                      <SortTh label="Pit Disposition" active={sortKey === "pitDisposition"} dir={sortDir} onClick={() => handleSort("pitDisposition")} />
+                      <SortTh label="Drive Disposition" active={sortKey === "driveDisposition"} dir={sortDir} onClick={() => handleSort("driveDisposition")} />
+                      <SortTh label="Robot Picture" active={sortKey === "robotPictureUrl"} dir={sortDir} onClick={() => handleSort("robotPictureUrl")} />
+                      <SortTh label="Preload" active={sortKey === "fuelPreloadCapacity"} dir={sortDir} onClick={() => handleSort("fuelPreloadCapacity")} />
+                      <SortTh label="Balls/Sec" active={sortKey === "fuelBallsPerSecond"} dir={sortDir} onClick={() => handleSort("fuelBallsPerSecond")} />
+                      <SortTh label="Carrying" active={sortKey === "fuelCarryingCapacity"} dir={sortDir} onClick={() => handleSort("fuelCarryingCapacity")} />
+                      <SortTh label="Climb L1" active={sortKey === "climbLevel1"} dir={sortDir} onClick={() => handleSort("climbLevel1")} />
+                      <SortTh label="Climb L2" active={sortKey === "climbLevel2"} dir={sortDir} onClick={() => handleSort("climbLevel2")} />
+                      <SortTh label="Climb L3" active={sortKey === "climbLevel3"} dir={sortDir} onClick={() => handleSort("climbLevel3")} />
+                      <SortTh label="Fuel Cycle Time" active={sortKey === "typicalFuelCycleTime"} dir={sortDir} onClick={() => handleSort("typicalFuelCycleTime")} />
+                      <SortTh label="Climb Time" active={sortKey === "typicalClimbTime"} dir={sortDir} onClick={() => handleSort("typicalClimbTime")} />
+                      <SortTh label="Auto Cycle" active={sortKey === "autoCycleDescription"} dir={sortDir} onClick={() => handleSort("autoCycleDescription")} />
+                      <SortTh label="Comments" active={sortKey === "notes"} dir={sortDir} onClick={() => handleSort("notes")} />
+                      {canShowActions && (
+                        <SortTh label="Actions" active={sortKey === "id"} dir={sortDir} onClick={() => handleSort("id")} />
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((entry) => (
+                      <tr key={entry.id} className={entry.excludeFromStats ? "line-through opacity-50" : ""}>
+                        <td className="sticky-left-0 font-bold">{entry.teamNumber || "-"}</td>
+                        <td className="sticky-left-1">{canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}</td>
+                        <td>{formatAnalyticsText(entry.robotWeight)}</td>
+                        <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
+                        <td>{dispositionToCell(entry.pitDisposition)}</td>
+                        <td>{dispositionToCell(entry.driveDisposition)}</td>
+                        <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
+                        <td>{fuelScaleDisplay(entry.fuelPreloadCapacity)}</td>
+                        <td>{fuelScaleDisplay(entry.fuelBallsPerSecond)}</td>
+                        <td>{fuelScaleDisplay(entry.fuelCarryingCapacity)}</td>
+                        <td>{entry.climbLevel1 ? "Y" : "N"}</td>
+                        <td>{entry.climbLevel2 ? "Y" : "N"}</td>
+                        <td>{entry.climbLevel3 ? "Y" : "N"}</td>
+                        <td>{formatAnalyticsText(entry.typicalFuelCycleTime)}</td>
+                        <td>{formatAnalyticsText(entry.typicalClimbTime)}</td>
+                        <td>{formatAnalyticsText(entry.autoCycleDescription)}</td>
+                        <td>
+                          <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
+                        </td>
+                        {canShowActions && (
+                          <td>
+                            <div className="flex items-center justify-center gap-2">
+                              {canManageConfig && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfigEntry(entry)}
+                                  className="rounded-full border border-amber-300/60 bg-white/60 px-2 py-1 text-[11px] font-bold text-amber-950"
+                                >
+                                  Config
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteEntry(entry)}
+                                disabled={!canDeleteEntries}
+                                title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                                className="rounded-full border border-red-800/50 bg-red-800/90 px-3 py-1 text-[11px] font-bold text-white disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table>
+                  <thead className="sticky-header">
+                    <tr>
+                      <GroupHeaderCell tone={0} colSpan={4}>
+                        Information
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={1} colSpan={3}>
+                        Friendliness
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={2} colSpan={2}>
+                        Drive
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={3} colSpan={2}>
+                        Coral
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={4} colSpan={2}>
+                        Algae
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={2} colSpan={4}>
+                        Field Plan
+                      </GroupHeaderCell>
+                      <GroupHeaderCell tone={1} colSpan={canShowActions ? 3 : 2}>
+                        General
+                      </GroupHeaderCell>
+                    </tr>
+                    <tr>
+                      <SortTh label="Team" active={sortKey === "teamNumber"} dir={sortDir} onClick={() => handleSort("teamNumber")} sticky="sticky-left-0" />
+                      <SortTh label="Scout" active={sortKey === "scoutName"} dir={sortDir} onClick={() => handleSort("scoutName")} sticky="sticky-left-1" />
+                      <SortTh label="Robot Weight" active={sortKey === "robotWeight"} dir={sortDir} onClick={() => handleSort("robotWeight")} />
+                      <SortTh label="Rookie" active={sortKey === "rookieTeam"} dir={sortDir} onClick={() => handleSort("rookieTeam")} />
+                      <SortTh label="Robot Picture" active={sortKey === "robotPictureUrl"} dir={sortDir} onClick={() => handleSort("robotPictureUrl")} />
+                      <SortTh label="Pit Disposition" active={sortKey === "pitDisposition"} dir={sortDir} onClick={() => handleSort("pitDisposition")} />
+                      <SortTh label="Drive Disposition" active={sortKey === "driveDisposition"} dir={sortDir} onClick={() => handleSort("driveDisposition")} />
+                      <SortTh label="Drive Base" active={sortKey === "driveBaseType"} dir={sortDir} onClick={() => handleSort("driveBaseType")} />
+                      <SortTh label="Center of Gravity" active={sortKey === "centerOfGravity"} dir={sortDir} onClick={() => handleSort("centerOfGravity")} />
+                      <SortTh label="Coral Collecting" active={sortKey === "coralCollecting"} dir={sortDir} onClick={() => handleSort("coralCollecting")} />
+                      <SortTh label="Coral Scoring" active={sortKey === "coralScoring"} dir={sortDir} onClick={() => handleSort("coralScoring")} />
+                      <SortTh label="Algae Collecting" active={sortKey === "algaeCollecting"} dir={sortDir} onClick={() => handleSort("algaeCollecting")} />
+                      <SortTh label="Algae Scoring" active={sortKey === "algaeScoring"} dir={sortDir} onClick={() => handleSort("algaeScoring")} />
+                      <SortTh label="Barge" active={sortKey === "bargeCapability"} dir={sortDir} onClick={() => handleSort("bargeCapability")} />
+                      <SortTh label="Auto" active={sortKey === "autoCapabilities"} dir={sortDir} onClick={() => handleSort("autoCapabilities")} />
+                      <SortTh label="Starting Positions" active={sortKey === "startingPositions"} dir={sortDir} onClick={() => handleSort("startingPositions")} />
+                      <SortTh label="Better At" active={sortKey === "betterAt"} dir={sortDir} onClick={() => handleSort("betterAt")} />
+                      <SortTh label="Rating" active={sortKey === "rating"} dir={sortDir} onClick={() => handleSort("rating")} />
+                      <SortTh label="Comments" active={sortKey === "notes"} dir={sortDir} onClick={() => handleSort("notes")} />
+                      {canShowActions && (
+                        <SortTh label="Actions" active={sortKey === "id"} dir={sortDir} onClick={() => handleSort("id")} />
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((entry) => (
+                      <tr key={entry.id} className={entry.excludeFromStats ? "line-through opacity-50" : ""}>
+                        <td className="sticky-left-0 font-bold">{entry.teamNumber || "-"}</td>
+                        <td className="sticky-left-1">{canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}</td>
+                        <td>{formatAnalyticsText(entry.robotWeight)}</td>
+                        <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
+                        <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
+                        <td>{dispositionToCell(entry.pitDisposition)}</td>
+                        <td>{dispositionToCell(entry.driveDisposition)}</td>
+                        <td>{formatAnalyticsText(entry.driveBaseType)}</td>
+                        <td>{formatAnalyticsText(entry.centerOfGravity)}</td>
+                        <td>{[entry.collectCoralStation && "Station", entry.collectCoralGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
+                        <td>{[entry.coralL4 && "L4", entry.coralL3 && "L3", entry.coralL2 && "L2", entry.coralL1 && "L1"].filter(Boolean).join(", ") || "-"}</td>
+                        <td>{[entry.collectAlgaeReef && "Reef", entry.collectAlgaeGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
+                        <td>{[entry.scoreProcessor && "Processor", entry.scoreNetRobot && "Net"].filter(Boolean).join(", ") || "-"}</td>
+                        <td>{formatAnalyticsText(entry.bargeCapability)}</td>
+                        <td>{formatAnalyticsText(entry.autoCapabilities)}</td>
+                        <td>{[entry.startingOpposite && "Opposite", entry.startingMiddle && "Middle", entry.startingProcessor && "Processor"].filter(Boolean).join(", ") || "-"}</td>
+                        <td>{formatAnalyticsText(entry.betterAt)}</td>
+                        <td>{entry.rating || "-"}</td>
+                        <td>
+                          <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
+                        </td>
+                        {canShowActions && (
+                          <td>
+                            <div className="flex items-center justify-center gap-2">
+                              {canManageConfig && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfigEntry(entry)}
+                                  className="rounded-full border border-amber-300/60 bg-white/60 px-2 py-1 text-[11px] font-bold text-amber-950"
+                                >
+                                  Config
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteEntry(entry)}
+                                disabled={!canDeleteEntries}
+                                title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
+                                className="rounded-full border border-red-800/50 bg-red-800/90 px-3 py-1 text-[11px] font-bold text-white disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Deck>
+        )}
+      </HudViewport>
 
       {showImportDialog && (
-        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold mb-4">Import CSV</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Choose the game and event for this import.
-            </p>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/25 backdrop-blur-md" onClick={() => (!importing ? setShowImportDialog(false) : null)} />
+          <Surface raised className="relative w-full max-w-md p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-2xl text-slate-950">Import CSV</h2>
+              <button
+                type="button"
+                onClick={() => setShowImportDialog(false)}
+                disabled={importing}
+                className="rounded-full border border-white/70 bg-white/50 p-2 text-slate-700 disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-slate-600">Choose the game and event for this import.</p>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Game</label>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Game</label>
                 <select
                   value={importGame}
                   onChange={(event) => {
@@ -573,19 +875,15 @@ function PitAnalyticsContent() {
                     setImportGame(next);
                     setImportEvent(getEventsForGame(next)[0]?.id || "app-testing");
                   }}
-                  className="w-full border rounded p-2"
+                  className="w-full"
                 >
                   <option value="REEFSCAPE">REEFSCAPE</option>
                   <option value="REBUILT">REBUILT</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Event</label>
-                <select
-                  value={importEvent}
-                  onChange={(event) => setImportEvent(event.target.value)}
-                  className="w-full border rounded p-2"
-                >
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Event</label>
+                <select value={importEvent} onChange={(event) => setImportEvent(event.target.value)} className="w-full">
                   {importEventOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.name}
@@ -595,306 +893,25 @@ function PitAnalyticsContent() {
               </div>
             </div>
             <div className="mt-6 flex gap-2">
-              <button
-                onClick={runCSVImport}
-                disabled={importing}
-                className="flex-1 py-2 rounded bg-blue-600 text-white font-semibold disabled:opacity-60"
-              >
+              <Action onClick={runCSVImport} disabled={importing} className="flex-1 justify-center">
                 {importing ? "Importing..." : "Import"}
-              </button>
-              <button
+              </Action>
+              <Action
+                variant="ghost"
                 onClick={() => {
                   setShowImportDialog(false);
                   setPendingImportFile(null);
                 }}
                 disabled={importing}
-                className="flex-1 py-2 rounded border border-gray-300 disabled:opacity-60"
+                className="flex-1 justify-center"
               >
                 Cancel
-              </button>
+              </Action>
             </div>
-          </div>
+          </Surface>
         </div>
       )}
 
-      {loading ? (
-        <LoadingSpinner message="Loading pit analytics..." />
-      ) : (
-        <div className="bg-white rounded-xl shadow h-[calc(100vh-270px)] table-scroll">
-          {selectedGame === "REBUILT" ? (
-            <table>
-              <thead className="sticky-header">
-                <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
-                  <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
-                  <th className="bg-blue-300 text-center" colSpan={3}>Fuel</th>
-                  <th className="bg-purple-300 text-center" colSpan={3}>Climb</th>
-                  <th className="bg-yellow-300 text-center" colSpan={3}>Cycles</th>
-                  <th className="bg-pink-300 text-center" colSpan={canShowActions ? 2 : 1}>General</th>
-                </tr>
-                <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={4}>Information</th>
-                  <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
-                  <th className="bg-blue-200 text-center" colSpan={3}>Fuel</th>
-                  <th className="bg-purple-200 text-center" colSpan={3}>Climb</th>
-                  <th className="bg-yellow-200 text-center" colSpan={3}>Cycles</th>
-                  <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                  {canShowActions && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
-                </tr>
-                <tr>
-                  <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
-                    {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
-                  </th>
-                  <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
-                    {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
-                    {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("rookieTeam")}>
-                    {sortLabel(sortKey, sortDir, "rookieTeam", "Rookie")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
-                    {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("pitDisposition")}>
-                    {sortLabel(sortKey, sortDir, "pitDisposition", "Pit Disposition")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("driveDisposition")}>
-                    {sortLabel(sortKey, sortDir, "driveDisposition", "Drive Disposition")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("fuelPreloadCapacity")}>
-                    {sortLabel(sortKey, sortDir, "fuelPreloadCapacity", "Preload")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("fuelBallsPerSecond")}>
-                    {sortLabel(sortKey, sortDir, "fuelBallsPerSecond", "Balls/Sec")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("fuelCarryingCapacity")}>
-                    {sortLabel(sortKey, sortDir, "fuelCarryingCapacity", "Carrying")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("climbLevel1")}>
-                    {sortLabel(sortKey, sortDir, "climbLevel1", "Climb L1")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("climbLevel2")}>
-                    {sortLabel(sortKey, sortDir, "climbLevel2", "Climb L2")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("climbLevel3")}>
-                    {sortLabel(sortKey, sortDir, "climbLevel3", "Climb L3")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("typicalFuelCycleTime")}>
-                    {sortLabel(sortKey, sortDir, "typicalFuelCycleTime", "Fuel Cycle Time")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("typicalClimbTime")}>
-                    {sortLabel(sortKey, sortDir, "typicalClimbTime", "Climb Time")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("autoCycleDescription")}>
-                    {sortLabel(sortKey, sortDir, "autoCycleDescription", "Auto Cycle")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
-                    {sortLabel(sortKey, sortDir, "notes", "Comments")}
-                  </th>
-                  {canShowActions && (
-                    <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                      {sortLabel(sortKey, sortDir, "id", "Actions")}
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((entry) => (
-                  <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
-                    <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
-                    <td className="sticky-left-1 bg-white">
-                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
-                    </td>
-                    <td>{formatAnalyticsText(entry.robotWeight)}</td>
-                    <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
-                    <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
-                    <td>{dispositionToCell(entry.pitDisposition)}</td>
-                    <td>{dispositionToCell(entry.driveDisposition)}</td>
-                    <td>{fuelScaleDisplay(entry.fuelPreloadCapacity)}</td>
-                    <td>{fuelScaleDisplay(entry.fuelBallsPerSecond)}</td>
-                    <td>{fuelScaleDisplay(entry.fuelCarryingCapacity)}</td>
-                    <td>{entry.climbLevel1 ? "Y" : "N"}</td>
-                    <td>{entry.climbLevel2 ? "Y" : "N"}</td>
-                    <td>{entry.climbLevel3 ? "Y" : "N"}</td>
-                    <td>{formatAnalyticsText(entry.typicalFuelCycleTime)}</td>
-                    <td>{formatAnalyticsText(entry.typicalClimbTime)}</td>
-                    <td>{formatAnalyticsText(entry.autoCycleDescription)}</td>
-                    <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
-                    {canShowActions && (
-                      <td className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {canManageConfig && (
-                            <button
-                              type="button"
-                              onClick={() => setConfigEntry(entry)}
-                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
-                            >
-                              Config
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteEntry(entry)}
-                            className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                            style={{ backgroundColor: "#dc2626" }}
-                            disabled={!canDeleteEntries}
-                            title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <table>
-              <thead className="sticky-header">
-                <tr>
-                  <th className="sticky-left-group sticky-row-1 bg-red-300 text-center" colSpan={4}>Information</th>
-                  <th className="bg-red-300 text-center" colSpan={3}>Friendliness</th>
-                  <th className="bg-yellow-300 text-center" colSpan={2}>Drive</th>
-                  <th className="bg-orange-300 text-center" colSpan={2}>Coral</th>
-                  <th className="bg-green-300 text-center" colSpan={2}>Algae</th>
-                  <th className="bg-blue-300 text-center" colSpan={4}>Field Plan</th>
-                  <th className="bg-pink-300 text-center" colSpan={canShowActions ? 3 : 2}>General</th>
-                </tr>
-                <tr>
-                  <th className="sticky-left-group sticky-row-2 bg-red-200 text-center" colSpan={4}>Information</th>
-                  <th className="bg-red-200 text-center" colSpan={3}>Friendliness</th>
-                  <th className="bg-yellow-200 text-center" colSpan={2}>Drive</th>
-                  <th className="bg-orange-200 text-center" colSpan={2}>Coral</th>
-                  <th className="bg-green-200 text-center" colSpan={2}>Algae</th>
-                  <th className="bg-blue-200 text-center" colSpan={4}>Field Plan</th>
-                  <th className="bg-pink-200 text-center" colSpan={1}>Rating</th>
-                  <th className="bg-pink-200 text-center" colSpan={1}>Notes</th>
-                  {canShowActions && <th className="bg-pink-200 text-center" colSpan={1}>Actions</th>}
-                </tr>
-                <tr>
-                  <th className="sticky-left-0 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("teamNumber")}>
-                    {sortLabel(sortKey, sortDir, "teamNumber", "Team")}
-                  </th>
-                  <th className="sticky-left-1 sticky-row-3 cursor-pointer text-center" onClick={() => handleSort("scoutName")}>
-                    {sortLabel(sortKey, sortDir, "scoutName", "Scout")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotWeight")}>
-                    {sortLabel(sortKey, sortDir, "robotWeight", "Robot Weight")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("rookieTeam")}>
-                    {sortLabel(sortKey, sortDir, "rookieTeam", "Rookie")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("robotPictureUrl")}>
-                    {sortLabel(sortKey, sortDir, "robotPictureUrl", "Robot Picture")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("pitDisposition")}>
-                    {sortLabel(sortKey, sortDir, "pitDisposition", "Pit Disposition")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("driveDisposition")}>
-                    {sortLabel(sortKey, sortDir, "driveDisposition", "Drive Disposition")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("driveBaseType")}>
-                    {sortLabel(sortKey, sortDir, "driveBaseType", "Drive Base")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("centerOfGravity")}>
-                    {sortLabel(sortKey, sortDir, "centerOfGravity", "Center of Gravity")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("coralCollecting")}>
-                    {sortLabel(sortKey, sortDir, "coralCollecting", "Coral Collecting")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("coralScoring")}>
-                    {sortLabel(sortKey, sortDir, "coralScoring", "Coral Scoring")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("algaeCollecting")}>
-                    {sortLabel(sortKey, sortDir, "algaeCollecting", "Algae Collecting")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("algaeScoring")}>
-                    {sortLabel(sortKey, sortDir, "algaeScoring", "Algae Scoring")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("bargeCapability")}>
-                    {sortLabel(sortKey, sortDir, "bargeCapability", "Barge")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("autoCapabilities")}>
-                    {sortLabel(sortKey, sortDir, "autoCapabilities", "Auto")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("startingPositions")}>
-                    {sortLabel(sortKey, sortDir, "startingPositions", "Starting Positions")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("betterAt")}>
-                    {sortLabel(sortKey, sortDir, "betterAt", "Better At")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("rating")}>
-                    {sortLabel(sortKey, sortDir, "rating", "Rating")}
-                  </th>
-                  <th className="cursor-pointer text-center" onClick={() => handleSort("notes")}>
-                    {sortLabel(sortKey, sortDir, "notes", "Comments")}
-                  </th>
-                  {canShowActions && (
-                    <th className="cursor-pointer text-center" onClick={() => handleSort("id")}>
-                      {sortLabel(sortKey, sortDir, "id", "Actions")}
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((entry) => (
-                  <tr key={entry.id} className={entry.excludeFromStats ? "line-through text-gray-500" : ""}>
-                    <td className="sticky-left-0 bg-white font-semibold">{entry.teamNumber || "-"}</td>
-                    <td className="sticky-left-1 bg-white">
-                      {canViewScoutNames && !hideNames ? entry.scoutName || "-" : "-"}
-                    </td>
-                    <td>{formatAnalyticsText(entry.robotWeight)}</td>
-                    <td>{typeof entry.rookieTeam === "boolean" ? (entry.rookieTeam ? "Y" : "N") : "-"}</td>
-                    <td>{entry.robotPictureUrl ? "Yes" : "No"}</td>
-                    <td>{dispositionToCell(entry.pitDisposition)}</td>
-                    <td>{dispositionToCell(entry.driveDisposition)}</td>
-                    <td>{formatAnalyticsText(entry.driveBaseType)}</td>
-                    <td>{formatAnalyticsText(entry.centerOfGravity)}</td>
-                    <td>{[entry.collectCoralStation && "Station", entry.collectCoralGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
-                    <td>{[entry.coralL4 && "L4", entry.coralL3 && "L3", entry.coralL2 && "L2", entry.coralL1 && "L1"].filter(Boolean).join(", ") || "-"}</td>
-                    <td>{[entry.collectAlgaeReef && "Reef", entry.collectAlgaeGround && "Ground"].filter(Boolean).join(", ") || "-"}</td>
-                    <td>{[entry.scoreProcessor && "Processor", entry.scoreNetRobot && "Net"].filter(Boolean).join(", ") || "-"}</td>
-                    <td>{formatAnalyticsText(entry.bargeCapability)}</td>
-                    <td>{formatAnalyticsText(entry.autoCapabilities)}</td>
-                    <td>{[entry.startingOpposite && "Opposite", entry.startingMiddle && "Middle", entry.startingProcessor && "Processor"].filter(Boolean).join(", ") || "-"}</td>
-                    <td>{formatAnalyticsText(entry.betterAt)}</td>
-                    <td>{entry.rating || "-"}</td>
-                    <ExpandableNotesCell text={entry.notes} className="text-left align-top" />
-                    {canShowActions && (
-                      <td className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {canManageConfig && (
-                            <button
-                              type="button"
-                              onClick={() => setConfigEntry(entry)}
-                              className="px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 text-xs disabled:opacity-50"
-                            >
-                              Config
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteEntry(entry)}
-                            className="px-3 py-1 rounded text-white text-sm touch-manipulation disabled:opacity-60"
-                            style={{ backgroundColor: "#dc2626" }}
-                            disabled={!canDeleteEntries}
-                            title={canDeleteEntries ? undefined : "Only coaches or team admins can delete entries."}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
       {configEntry && canManageConfig && (
         <AnalyticsConfigModal
           open={Boolean(configEntry)}
@@ -913,15 +930,16 @@ function PitAnalyticsContent() {
           }}
         />
       )}
-    </AnalyticsShell>
+    </HudCanvas>
   );
 }
 
 export default function PitAnalyticsPage() {
   return (
     <ProtectedRoute requireAuth={true} allowedRoles={["coach", "scout"]}>
-      <PitAnalyticsContent />
+      <AnalyticsNotesProvider>
+        <PitAnalyticsContent />
+      </AnalyticsNotesProvider>
     </ProtectedRoute>
   );
 }
-

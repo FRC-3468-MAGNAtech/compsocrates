@@ -3,10 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDoc, collection, getDoc, getDocs, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import Link from "next/link";
+import {
+  ArrowUpRight,
+  BadgeCheck,
+  ChevronDown,
+  ChevronUp,
+  Flag,
+  ScanEye,
+  ShieldAlert,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
-import AnalyticsShell from "@/app/components/AnalyticsShell";
-import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
 import { FormAccessOverrides, canAccessForm, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
 import {
@@ -15,13 +25,23 @@ import {
   getEventsForGame,
   isPracticeScoutedEntry,
   normalizeMatchLabel,
-  getStoredAnalyticsGame, type AnalyticsGame,
+  type AnalyticsGame,
 } from "@/app/utils/analyticsEvents";
 import { normalizeEventKey } from "@/app/utils/events";
 import { formatMatchLabelLong, getMatchLabelMeta } from "@/app/utils/displayFormat";
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import { computeRescoutDiff } from "@/app/utils/rescoutComparison";
+import {
+  Action,
+  Chip,
+  CommandBar,
+  Deck,
+  HudCanvas,
+  HudViewport,
+  PageIntro,
+  Surface,
+} from "@/app/components/Hud";
 
 type ScoutingEntry = {
   id: string;
@@ -150,11 +170,6 @@ function resolveAccuracy(entry: ScoutingEntry): number | null {
   return Number.isFinite(raw) ? raw : null;
 }
 
-function isAccuracyComplete(entry: ScoutingEntry): boolean {
-  const status = String(entry.accuracyScriptStatus || entry.scriptStatus || "").toLowerCase().trim();
-  return status === "complete";
-}
-
 function calculateAccuracy(scottedScore: number, officialScore: number): number {
   if (!officialScore) return 0;
   const error = Math.abs(officialScore - scottedScore);
@@ -191,7 +206,7 @@ function inferEventKeyFromMatchKey(matchKey: string): string {
 
 export default function AccuracyVerificationPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute formKey="accuracy-verification">
       <AccuracyVerificationContent />
     </ProtectedRoute>
   );
@@ -200,19 +215,15 @@ export default function AccuracyVerificationPage() {
 function AccuracyVerificationContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  const roles = getUserRoles(userData);
+  getUserRoles(userData);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const canSee = canAccessForm({ formKey: "accuracy-verification", user: userData, formAccessOverrides });
   const canManageAll = Boolean(userData?.isTeamAdmin);
 
-  useEffect(() => {
-    router.replace("/dashboard");
-  }, [router]);
-
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
   const [rescouts, setRescouts] = useState<RescoutEntry[]>([]);
-  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>(() => getStoredAnalyticsGame("REBUILT"));
+  const [selectedGame, setSelectedGame] = useState<AnalyticsGame>("REBUILT");
   const [selectedEvent, setSelectedEvent] = useState<string>("all");
   const [eventOptions, setEventOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [showAllCritical, setShowAllCritical] = useState(false);
@@ -845,238 +856,244 @@ function AccuracyVerificationContent() {
     router.push(`/analytics/accuracy-compare?${params.toString()}`);
   }
 
-  return null;
-
-  if (loading) {
-    return (
-      <AnalyticsShell
-        entriesCount={filteredEntries.length}
-        selectedGame={selectedGame}
-        onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
-        selectedEvent={selectedEvent}
-        eventOptions={eventOptions}
-        onSelectedEventChange={(eventId) => setSelectedEvent(eventId)}
-      >
-        <div className="py-10">
-          <LoadingSpinner message="Loading accuracy verification..." />
-        </div>
-      </AnalyticsShell>
-    );
-  }
-
   const criticalVisible = showAllCritical ? criticalFlags : criticalFlags.slice(0, 6);
   const highAccuracyVisible = showAllHighAccuracy ? highAccuracyMatches : highAccuracyMatches.slice(0, 6);
   const myVisible = showAllMine ? myRescouts : myRescouts.slice(0, 6);
   const allVisible = showAllAll ? rescouts : rescouts.slice(0, 6);
 
   return (
-    <AnalyticsShell
-      entriesCount={filteredEntries.length}
-      selectedGame={selectedGame}
-      onSelectedGameChange={(game) => setSelectedGame(game as AnalyticsGame)}
-      selectedEvent={selectedEvent}
-      eventOptions={eventOptions}
-      onSelectedEventChange={(eventId) => setSelectedEvent(eventId)}
-    >
-      <div className="space-y-6">
-        <div className="bg-white rounded-xl shadow p-6">
-          <h1 className="text-2xl font-bold" style={{ color: "var(--primary-color)" }}>
-            Accuracy Verification
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            High-accuracy matches are ready to be re-scouted by experienced scouts for verification.
-          </p>
-        </div>
-
-        <SectionCard
-          title="Critical Flagged Matches"
-          description="Matches where re-scouted accuracy diverges from live scouting."
-          items={criticalVisible}
-          emptyLabel="No critical flags yet."
-          showToggle={criticalFlags.length > 6}
-          onToggle={() => setShowAllCritical((v) => !v)}
-          showAll={showAllCritical}
+    <HudCanvas>
+      <CommandBar>
+        <Link href="/dashboard" className="flex items-center gap-2 rounded-full py-1.5 pl-2 pr-4">
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-red-800 via-red-600 to-amber-300 text-xs font-black text-white shadow-lg shadow-red-900/25">
+            CS
+          </span>
+          <span className="hidden font-display text-lg text-slate-950 sm:inline">CompSocrates</span>
+        </Link>
+        <select
+          value={selectedGame}
+          onChange={(event) => setSelectedGame(event.target.value as AnalyticsGame)}
+          className="!min-h-0 !rounded-full !border-transparent !bg-transparent px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-red-900"
         >
-          {criticalVisible.map((row) => (
-            <div key={row.id} className="border rounded-lg p-3">
-              <p className="font-semibold">
-                {row.matchLabel || "Match"} - Team {row.teamNumber ?? "-"}
-              </p>
-              <p className="text-xs text-gray-600">
-                {row.eventName || row.eventKey || "Event"} - {row.scoutName || "Rescout"}
-              </p>
-              <p className="text-xs text-gray-600">
-                Rescout Accuracy: {typeof row.accuracy === "number" ? `${row.accuracy}%` : "-"}
-              </p>
-              {row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance) && (
-                <button
-                  type="button"
-                  onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
-                  className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-50"
-                >
-                  Compare
-                </button>
-              )}
-            </div>
-          ))}
-        </SectionCard>
-
-        <SectionCard
-          title="High Accuracy Matches"
-          description="Matches with ≥75% alliance accuracy and a full 3-team alliance."
-          items={highAccuracyVisible}
-          emptyLabel="No high-accuracy matches available yet."
-          showToggle={highAccuracyMatches.length > 6}
-          onToggle={() => setShowAllHighAccuracy((v) => !v)}
-          showAll={showAllHighAccuracy}
+          <option value="REBUILT">Rebuilt</option>
+          <option value="REEFSCAPE">Reefscape</option>
+        </select>
+        <select
+          value={selectedEvent}
+          onChange={(event) => setSelectedEvent(event.target.value)}
+          className="!min-h-0 !rounded-full !border-transparent !bg-transparent px-3 py-1.5 text-xs font-semibold text-slate-700"
         >
-          {highAccuracyVisible.map((match) => (
-            <div key={match.key} className="border rounded-lg p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-semibold">{match.eventName}</p>
-                  <p className="text-sm text-gray-600">{match.matchLabel}</p>
-                </div>
-                <button
-                  className="px-3 py-1.5 rounded text-sm text-white"
-                  style={{ backgroundColor: "var(--primary-color)" }}
-                  onClick={() => {
-                    setActiveRescout(match);
-                    setActiveAlliance(match.alliances[0]);
-                  }}
-                >
-                  Re-scout
-                </button>
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                {match.alliances.map((alliance) => (
-                  <div key={`${match.key}-${alliance.alliance}`} className="bg-gray-50 rounded p-3">
-                    <p className="text-sm font-semibold">
-                      {alliance.alliance === "red" ? "Red Alliance" : "Blue Alliance"} - Accuracy{" "}
-                      {alliance.accuracy ?? "-"}%
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Scouts: {alliance.scouts.join(", ") || "Unknown"}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Teams: {alliance.teams.join(", ") || "-"}
-                    </p>
-                    {isRescoutComplete(match.eventKey, match.matchKey, alliance.alliance) && (
-                      <>
-                        <p className="text-xs text-gray-600 mt-2">
-                          Rescout Accuracy: {typeof getRescoutAccuracy(match.eventKey, match.matchKey, alliance.alliance) === "number"
-                            ? `${getRescoutAccuracy(match.eventKey, match.matchKey, alliance.alliance)}%`
-                            : "-"}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => openComparison(match.eventKey, match.matchKey, alliance.alliance)}
-                          className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-100"
-                        >
-                          Compare
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+          <option value="all">All Events</option>
+          {eventOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
           ))}
-        </SectionCard>
+        </select>
+        <Action variant="ghost" onClick={() => router.push("/dashboard")}>
+          Dashboard
+        </Action>
+      </CommandBar>
 
-        <SectionCard
-          title="Your Re-scouted Matches"
-          description="Matches you have re-scouted or are currently working on."
-          items={myVisible}
-          emptyLabel="You have not re-scouted any matches yet."
-          showToggle={myRescouts.length > 6}
-          onToggle={() => setShowAllMine((v) => !v)}
-          showAll={showAllMine}
-        >
-          {myVisible.map((row) => (
-            <div key={row.id} className="border rounded-lg p-3">
-              <p className="font-semibold">
-                {row.matchLabel || "Match"} - Team {row.teamNumber ?? "-"}
-              </p>
-              <p className="text-xs text-gray-600">
-                {row.eventName || row.eventKey || "Event"} - {row.status || "pending"}
-              </p>
-              <p className="text-xs text-gray-600">
-                Rescout Accuracy: {typeof row.accuracy === "number" ? `${row.accuracy}%` : "-"}
-              </p>
-              {row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance) && (
-                <button
-                  type="button"
-                  onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
-                  className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-50"
-                >
-                  Compare
-                </button>
-              )}
-            </div>
-          ))}
-        </SectionCard>
+      <HudViewport>
+        <PageIntro
+          eyebrow="Scout Trust Matrix"
+          title="Accuracy Verification"
+          subtitle="High-accuracy matches surface here first — ready for an experienced scout to re-walk the alliance and confirm the ground truth before it feeds strategy."
+          actions={<Chip icon={ScanEye} label="Entries" value={filteredEntries.length} tone="gold" />}
+        />
 
-          {canManageAll && (
-          <SectionCard
-            title="All Re-scouted Matches"
-            description="All re-scout submissions for this team."
-            items={allVisible}
-            emptyLabel="No re-scout submissions yet."
-            showToggle={rescouts.length > 6}
-            onToggle={() => setShowAllAll((v) => !v)}
-            showAll={showAllAll}
-          >
-            {allVisible.map((row) => (
-              <div key={row.id} className="border rounded-lg p-3">
-                <p className="font-semibold">
-                  {row.matchLabel || "Match"} - Team {row.teamNumber ?? "-"}
-                </p>
-                <p className="text-xs text-gray-600">
-                  {row.eventName || row.eventKey || "Event"} - {row.scoutName || "Scout"} - {row.status || "pending"}
-                </p>
-                <p className="text-xs text-gray-600">
-                  Rescout Accuracy: {typeof row.accuracy === "number" ? `${row.accuracy}%` : "-"}
-                </p>
-                {row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance) && (
-                  <button
-                    type="button"
-                    onClick={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
-                    className="mt-2 px-2 py-1 rounded border text-xs hover:bg-gray-50"
-                  >
-                    Compare
-                  </button>
-                )}
-                {canManageAll && (
-                  <div className="mt-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRescout(row.id)}
-                      className="px-2 py-1 rounded border text-xs text-red-700 border-red-200 hover:bg-red-50"
+        {loading ? (
+          <div className="mt-10 grid place-items-center py-20">
+            <Surface className="px-8 py-6 text-sm font-semibold text-slate-600">Loading accuracy verification…</Surface>
+          </div>
+        ) : (
+          <div className="mt-10 grid gap-6 xl:grid-cols-[1fr_0.72fr]">
+            {/* Left column: the primary high-accuracy re-scout queue, the dominant deck */}
+            <div className="flex flex-col gap-6">
+              <StackSection
+                icon={BadgeCheck}
+                priority="high"
+                eyebrow="Ready to verify"
+                title="High Accuracy Matches"
+                description="≥75% alliance accuracy with a complete 3-team alliance."
+                total={highAccuracyMatches.length}
+                visibleCount={highAccuracyVisible.length}
+                showAll={showAllHighAccuracy}
+                onToggle={() => setShowAllHighAccuracy((v) => !v)}
+                emptyLabel="No high-accuracy matches available yet."
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {highAccuracyVisible.map((match, index) => (
+                    <Surface
+                      key={match.key}
+                      interactive
+                      className={`p-4 ${index % 3 === 1 ? "sm:translate-y-3" : ""}`}
                     >
-                      Delete
-                    </button>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-800/70">{match.eventName}</p>
+                          <p className="mt-1 font-display text-xl text-slate-950">{match.matchLabel}</p>
+                        </div>
+                        <Action
+                          variant="primary"
+                          className="!px-3 !py-1.5 !text-xs"
+                          onClick={() => {
+                            setActiveRescout(match);
+                            setActiveAlliance(match.alliances[0]);
+                          }}
+                        >
+                          Re-scout
+                        </Action>
+                      </div>
+                      <div className="mt-4 flex flex-col gap-2">
+                        {match.alliances.map((alliance) => (
+                          <div
+                            key={`${match.key}-${alliance.alliance}`}
+                            className={`rounded-2xl border px-3 py-2.5 text-sm ${
+                              alliance.alliance === "red"
+                                ? "border-red-300/50 bg-red-50/40"
+                                : "border-sky-300/50 bg-sky-50/40"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-900">
+                                {alliance.alliance === "red" ? "Red" : "Blue"} Alliance
+                              </span>
+                              <span className="font-data font-bold text-red-800">{alliance.accuracy ?? "-"}%</span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Scouts: {alliance.scouts.join(", ") || "Unknown"}
+                            </p>
+                            <p className="text-xs text-slate-600">Teams: {alliance.teams.join(", ") || "-"}</p>
+                            {isRescoutComplete(match.eventKey, match.matchKey, alliance.alliance) && (
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className="font-data text-xs font-semibold text-slate-700">
+                                  Rescout:{" "}
+                                  {typeof getRescoutAccuracy(match.eventKey, match.matchKey, alliance.alliance) === "number"
+                                    ? `${getRescoutAccuracy(match.eventKey, match.matchKey, alliance.alliance)}%`
+                                    : "-"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => openComparison(match.eventKey, match.matchKey, alliance.alliance)}
+                                  className="inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-white/60 px-2.5 py-1 text-[11px] font-bold text-amber-950 hover:bg-white"
+                                >
+                                  Compare <ArrowUpRight className="h-3 w-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </Surface>
+                  ))}
+                </div>
+              </StackSection>
+
+              <StackSection
+                icon={Users}
+                priority="normal"
+                eyebrow="Your queue"
+                title="Your Re-scouted Matches"
+                description="Matches you have re-scouted or are currently working on."
+                total={myRescouts.length}
+                visibleCount={myVisible.length}
+                showAll={showAllMine}
+                onToggle={() => setShowAllMine((v) => !v)}
+                emptyLabel="You have not re-scouted any matches yet."
+              >
+                <div className="flex flex-col gap-3">
+                  {myVisible.map((row) => (
+                    <RescoutRow
+                      key={row.id}
+                      row={row}
+                      subtitle={row.status || "pending"}
+                      isComplete={Boolean(row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance))}
+                      onCompare={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
+                    />
+                  ))}
+                </div>
+              </StackSection>
+
+              {canManageAll && (
+                <StackSection
+                  icon={Users}
+                  priority="normal"
+                  eyebrow="Team oversight"
+                  title="All Re-scouted Matches"
+                  description="Every re-scout submission for this team."
+                  total={rescouts.length}
+                  visibleCount={allVisible.length}
+                  showAll={showAllAll}
+                  onToggle={() => setShowAllAll((v) => !v)}
+                  emptyLabel="No re-scout submissions yet."
+                >
+                  <div className="flex flex-col gap-3">
+                    {allVisible.map((row) => (
+                      <RescoutRow
+                        key={row.id}
+                        row={row}
+                        subtitle={`${row.scoutName || "Scout"} · ${row.status || "pending"}`}
+                        isComplete={Boolean(row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance))}
+                        onCompare={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
+                        onDelete={() => handleDeleteRescout(row.id)}
+                      />
+                    ))}
                   </div>
-                )}
-              </div>
-            ))}
-          </SectionCard>
+                </StackSection>
+              )}
+            </div>
+
+            {/* Right column: critical flags — the alarm deck, offset to feel like a satellite panel */}
+            <div className="flex flex-col gap-6 xl:translate-y-6">
+              <StackSection
+                icon={ShieldAlert}
+                priority="critical"
+                eyebrow="Needs attention"
+                title="Critical Flagged Matches"
+                description="Re-scouted accuracy diverges from live scouting by more than 5%."
+                total={criticalFlags.length}
+                visibleCount={criticalVisible.length}
+                showAll={showAllCritical}
+                onToggle={() => setShowAllCritical((v) => !v)}
+                emptyLabel="No critical flags yet."
+              >
+                <div className="flex flex-col gap-3">
+                  {criticalVisible.map((row) => (
+                    <RescoutRow
+                      key={row.id}
+                      row={row}
+                      subtitle={row.eventName || row.eventKey || "Event"}
+                      tone="critical"
+                      isComplete={Boolean(row.eventKey && row.matchKey && row.alliance && isRescoutComplete(row.eventKey, row.matchKey, row.alliance))}
+                      onCompare={() => openComparison(String(row.eventKey), String(row.matchKey), row.alliance || "red")}
+                    />
+                  ))}
+                </div>
+              </StackSection>
+            </div>
+          </div>
         )}
-      </div>
+      </HudViewport>
 
       {activeRescout && activeAlliance && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xl font-bold">Re-scout Match</h2>
-              <button onClick={() => setActiveRescout(null)} className="px-3 py-1 rounded border hover:bg-gray-50">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/30 p-4 backdrop-blur-sm">
+          <Surface raised className="w-full max-w-lg p-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-display text-2xl text-slate-950">Re-scout Match</h2>
+              <button
+                onClick={() => setActiveRescout(null)}
+                className="rounded-full border border-white/70 bg-white/50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-white/80"
+              >
                 Close
               </button>
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              {activeRescout?.eventName || "-"} - {activeRescout?.matchLabel || "-"} - {activeAlliance?.alliance?.toUpperCase() || ""} Alliance
+            <p className="mt-2 text-sm text-slate-600">
+              {activeRescout?.eventName || "-"} · {activeRescout?.matchLabel || "-"} ·{" "}
+              <span className="font-bold">{activeAlliance?.alliance?.toUpperCase() || ""} Alliance</span>
             </p>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="mt-5 flex flex-col gap-2.5">
               {(activeAlliance?.teams || []).map((team) => {
                 const key = `${normalizeEventKey(activeRescout?.eventKey || "")}::${normalizeMatchId(activeRescout?.matchKey || "")}::${team}`;
                 const exists = rescoutsByTeam.has(key);
@@ -1085,8 +1102,10 @@ function AccuracyVerificationContent() {
                     key={team}
                     disabled={exists || savingRescout}
                     onClick={() => void handleRescout(team)}
-                    className={`px-4 py-2 rounded border text-left ${
-                      exists ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "hover:bg-gray-50"
+                    className={`rounded-2xl border px-4 py-3 text-left font-data font-semibold transition ${
+                      exists
+                        ? "cursor-not-allowed border-slate-200 bg-slate-100/70 text-slate-400"
+                        : "border-amber-300/60 bg-white/60 text-slate-900 hover:bg-white/85"
                     }`}
                   >
                     Team {team} {exists ? "(Already Re-Scouted)" : ""}
@@ -1094,53 +1113,130 @@ function AccuracyVerificationContent() {
                 );
               })}
             </div>
-          </div>
+          </Surface>
         </div>
       )}
-    </AnalyticsShell>
+    </HudCanvas>
   );
 }
 
-type SectionCardProps = {
+type StackSectionProps = {
+  icon: React.ElementType;
+  priority: "normal" | "high" | "critical";
+  eyebrow: string;
   title: string;
   description?: string;
-  items: unknown[];
-  emptyLabel: string;
-  emptyContent?: React.ReactNode;
-  showToggle: boolean;
+  total: number;
+  visibleCount: number;
   showAll: boolean;
   onToggle: () => void;
+  emptyLabel: string;
   children: React.ReactNode;
 };
 
-function SectionCard({
+function StackSection({
+  icon: Icon,
+  priority,
+  eyebrow,
   title,
   description,
-  items,
-  emptyLabel,
-  emptyContent,
-  showToggle,
+  total,
+  visibleCount,
   showAll,
   onToggle,
+  emptyLabel,
   children,
-}: SectionCardProps) {
+}: StackSectionProps) {
   return (
-    <div className="bg-white rounded-xl shadow p-6">
+    <Deck priority={priority}>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          {description && <p className="text-sm text-gray-600 mt-1">{description}</p>}
+        <div className="flex items-start gap-3">
+          <div
+            className={`mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-full ${
+              priority === "critical"
+                ? "bg-red-800/90 text-white"
+                : priority === "high"
+                ? "bg-gradient-to-br from-amber-300 to-amber-500 text-red-950"
+                : "bg-white/60 text-red-800"
+            }`}
+          >
+            <Icon className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-red-900/60">{eyebrow}</p>
+            <h2 className="mt-1 font-display text-2xl text-slate-950">{title}</h2>
+            {description && <p className="mt-1 text-sm text-slate-600">{description}</p>}
+          </div>
         </div>
-        {showToggle && (
-          <button onClick={onToggle} className="text-sm px-3 py-1 rounded border hover:bg-gray-50">
-            {showAll ? "View Less" : "View All"}
+        {total > 6 && (
+          <button
+            onClick={onToggle}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/70 bg-white/50 px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-white/80"
+          >
+            {showAll ? "Less" : "All"} {showAll ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
         )}
       </div>
-      <div className="mt-4 space-y-3">
-        {items.length === 0 ? emptyContent ?? <p className="text-sm text-gray-500">{emptyLabel}</p> : children}
+      <div className="mt-5">{visibleCount === 0 ? <p className="text-sm text-slate-500">{emptyLabel}</p> : children}</div>
+    </Deck>
+  );
+}
+
+function RescoutRow({
+  row,
+  subtitle,
+  tone = "normal",
+  isComplete,
+  onCompare,
+  onDelete,
+}: {
+  row: RescoutEntry;
+  subtitle: string;
+  tone?: "normal" | "critical";
+  isComplete: boolean;
+  onCompare: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border px-4 py-3 ${
+        tone === "critical" ? "border-red-400/50 bg-red-50/50" : "border-white/70 bg-white/45"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-display text-base text-slate-950">
+            {row.matchLabel || "Match"} · Team {row.teamNumber ?? "-"}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-600">{subtitle}</p>
+        </div>
+        {tone === "critical" && <Flag className="h-4 w-4 shrink-0 text-red-700" />}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="font-data text-sm font-bold text-red-800">
+          {typeof row.accuracy === "number" ? `${row.accuracy}%` : "-"}
+        </span>
+        <div className="flex items-center gap-2">
+          {isComplete && (
+            <button
+              type="button"
+              onClick={onCompare}
+              className="inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-white/60 px-2.5 py-1 text-[11px] font-bold text-amber-950 hover:bg-white"
+            >
+              Compare <ArrowUpRight className="h-3 w-3" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="inline-flex items-center gap-1 rounded-full border border-red-300/60 bg-white/50 px-2.5 py-1 text-[11px] font-bold text-red-800 hover:bg-red-50"
+            >
+              <Trash2 className="h-3 w-3" /> Delete
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
