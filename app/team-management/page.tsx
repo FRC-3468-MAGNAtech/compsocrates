@@ -1,22 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, query, where, getDocs, updateDoc, setDoc, doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import RoleSelector from "@/app/components/RoleSelector";
 import { useAuth } from "@/app/AuthContext";
-import { X, Check, Clock } from "lucide-react";
+import { X, Check, Clock, Search, ShieldCheck, Users } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { getTeamName } from "@/app/utils/stats-calculator";
 import { updateSecureUserDoc } from "@/app/utils/secureUserDoc";
 import { deriveJoinRequestName } from "@/app/utils/joinRequestDisplay";
+import { normalizeMetricVisibilityRules, type MetricVisibilityRule } from "@/app/utils/privacyControls";
 import {
   FormAccessOverrides,
   FormKey,
   FORM_LABELS,
   FORM_ROLE_REQUIREMENT,
+  TEAM_ROLES,
   TeamRole,
   getRoleBadge,
   getRoleLabel,
@@ -53,6 +55,21 @@ type UserLookupRow = {
   email?: string;
 };
 
+type TeamMetadata = {
+  teamName?: string;
+  teamNumber?: string;
+  createdAt?: number;
+  verifiedOwnerId?: string;
+};
+
+const DEFAULT_METRIC_RULES: MetricVisibilityRule[] = [
+  { metricId: "autoFuel", label: "Auto Fuel", public: false, gameYear: "2026", eventKey: "all", teamNumber: "all", matchLevel: "all" },
+  { metricId: "teleopFuel", label: "Teleop Fuel", public: false, gameYear: "2026", eventKey: "all", teamNumber: "all", matchLevel: "all" },
+  { metricId: "endgameClimb", label: "Endgame Climb", public: false, gameYear: "2026", eventKey: "all", teamNumber: "all", matchLevel: "all" },
+  { metricId: "reefCoral", label: "REEFSCAPE Coral", public: false, gameYear: "2025", eventKey: "all", teamNumber: "all", matchLevel: "all" },
+  { metricId: "chargedGrid", label: "Charged Up Grid", public: false, gameYear: "2023", eventKey: "all", teamNumber: "all", matchLevel: "all" },
+];
+
 function TeamManagementContent() {
   const { userData, user } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -65,6 +82,10 @@ function TeamManagementContent() {
   const [showFormAccessModal, setShowFormAccessModal] = useState(false);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const [draftFormAccessOverrides, setDraftFormAccessOverrides] = useState<FormAccessOverrides>({});
+  const [teamMetadata, setTeamMetadata] = useState<TeamMetadata>({});
+  const [memberSearch, setMemberSearch] = useState("");
+  const [metricRules, setMetricRules] = useState<MetricVisibilityRule[]>(DEFAULT_METRIC_RULES);
+  const [savingMetricRules, setSavingMetricRules] = useState(false);
 
   const isUserAdmin = userData?.isTeamAdmin || false;
 
@@ -145,9 +166,13 @@ function TeamManagementContent() {
       setJoinRequests(requests);
 
       const teamDoc = await getDoc(doc(db, "teams", userData.teamId));
-      const overrides = normalizeFormAccessOverrides(teamDoc.exists() ? teamDoc.data().formAccessOverrides : null);
+      const teamData = teamDoc.exists() ? teamDoc.data() : {};
+      setTeamMetadata(teamData as TeamMetadata);
+      const overrides = normalizeFormAccessOverrides(teamData.formAccessOverrides);
       setFormAccessOverrides(overrides);
       setDraftFormAccessOverrides(overrides);
+      const storedRules = normalizeMetricVisibilityRules(teamData.metricVisibilityRules);
+      setMetricRules(storedRules.length > 0 ? storedRules : DEFAULT_METRIC_RULES);
 
       const name = await getTeamName(userData.teamId);
       setTeamName(name);
@@ -348,6 +373,53 @@ function TeamManagementContent() {
 
   const normalizedTeamLabel = teamName?.trim() || "Your Team";
   const displayTeamLabel = /^team\b/i.test(normalizedTeamLabel) ? normalizedTeamLabel : `Team ${normalizedTeamLabel}`;
+  const filteredMembers = useMemo(() => {
+    const term = memberSearch.trim().toLowerCase();
+    if (!term) return members;
+    return members.filter((member) => {
+      const badge = getRoleBadge(member.role, member.roles);
+      return [
+        member.displayName,
+        member.email,
+        member.uid,
+        member.role,
+        badge.label,
+        ...(member.roles || []),
+        ...(member.secondaryRoles || []),
+      ].some((value) => String(value || "").toLowerCase().includes(term));
+    });
+  }, [memberSearch, members]);
+  const adminCount = members.filter((member) => member.isTeamAdmin).length;
+  const roleCounts = useMemo(() => {
+    const counts = new Map<TeamRole, number>();
+    members.forEach((member) => {
+      getMemberRoles(member).forEach((role) => counts.set(role, (counts.get(role) || 0) + 1));
+    });
+    return counts;
+  }, [members]);
+
+  function updateMetricRule(index: number, updates: Partial<MetricVisibilityRule>) {
+    setMetricRules((prev) => prev.map((rule, ruleIndex) => (ruleIndex === index ? { ...rule, ...updates } : rule)));
+  }
+
+  async function saveMetricRules() {
+    if (!userData?.teamId || !isUserAdmin) return;
+    setSavingMetricRules(true);
+    try {
+      await updateDoc(doc(db, "teams", userData.teamId), {
+        metricVisibilityRules: metricRules,
+        publicMetricAnonymization: true,
+        metricVisibilityUpdatedAt: Date.now(),
+        metricVisibilityUpdatedBy: userData.uid,
+      });
+      alert("Metric visibility rules saved.");
+    } catch (error) {
+      console.error("Error saving metric visibility rules:", error);
+      alert("Could not save metric visibility rules.");
+    } finally {
+      setSavingMetricRules(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -376,7 +448,7 @@ function TeamManagementContent() {
             </div>
           )}
 
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+          <div className="bg-white/60 backdrop-blur-xl rounded-xl shadow-md p-6 mb-6 border border-amber-300/30">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold mb-1">{displayTeamLabel}</h2>
@@ -412,6 +484,105 @@ function TeamManagementContent() {
               </div>
             )}
           </div>
+
+          {isUserAdmin && (
+            <div className="grid xl:grid-cols-[1fr_1.4fr] gap-6 mb-6">
+              <div className="bg-white/60 backdrop-blur-xl rounded-xl shadow-md p-6 border border-amber-300/30">
+                <div className="flex items-center gap-3 mb-4">
+                  <ShieldCheck className="text-amber-600" size={24} />
+                  <div>
+                    <h2 className="text-xl font-semibold">Owner Verification</h2>
+                    <p className="text-sm text-gray-600">Roster and metadata review for legitimate team accounts.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                    <p className="text-xs text-gray-500">Members</p>
+                    <p className="text-2xl font-bold">{members.length}</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                    <p className="text-xs text-gray-500">Admins</p>
+                    <p className="text-2xl font-bold">{adminCount}</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                    <p className="text-xs text-gray-500">Team Number</p>
+                    <p className="text-lg font-bold">{teamMetadata.teamNumber || userData?.teamId}</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                    <p className="text-xs text-gray-500">Owner</p>
+                    <p className="text-sm font-semibold truncate">{teamMetadata.verifiedOwnerId || userData?.uid}</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {TEAM_ROLES.map((role) => (
+                    <span key={role} className="rounded-full bg-white/70 px-3 py-1 text-xs text-gray-700 border border-gray-200">
+                      {getRoleLabel(role)}: {roleCounts.get(role) || 0}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white/60 backdrop-blur-xl rounded-xl shadow-md p-6 border border-amber-300/30">
+                <h2 className="text-xl font-semibold mb-2">Public Metric Publishing</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Public exports use anonymized records and remove scout/member identity fields automatically.
+                </p>
+                <div className="space-y-3">
+                  {metricRules.map((rule, index) => (
+                    <div key={rule.metricId} className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <label className="flex items-center gap-2 font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={rule.public}
+                            onChange={(event) => updateMetricRule(index, { public: event.target.checked })}
+                          />
+                          {rule.label}
+                        </label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                          <input
+                            className="border rounded px-2 py-1"
+                            value={rule.gameYear}
+                            onChange={(event) => updateMetricRule(index, { gameYear: event.target.value })}
+                            placeholder="Year"
+                          />
+                          <input
+                            className="border rounded px-2 py-1"
+                            value={rule.eventKey}
+                            onChange={(event) => updateMetricRule(index, { eventKey: event.target.value || "all" })}
+                            placeholder="Event"
+                          />
+                          <input
+                            className="border rounded px-2 py-1"
+                            value={rule.teamNumber}
+                            onChange={(event) => updateMetricRule(index, { teamNumber: event.target.value || "all" })}
+                            placeholder="Team"
+                          />
+                          <select
+                            className="border rounded px-2 py-1"
+                            value={rule.matchLevel}
+                            onChange={(event) => updateMetricRule(index, { matchLevel: event.target.value as MetricVisibilityRule["matchLevel"] })}
+                          >
+                            <option value="all">All levels</option>
+                            <option value="practice">Practice</option>
+                            <option value="qualification">Qualification</option>
+                            <option value="playoff">Playoff</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => void saveMetricRules()}
+                  disabled={savingMetricRules}
+                  className="mt-4 px-4 py-2 rounded text-white font-semibold disabled:opacity-60 bg-gradient-to-r from-amber-400 via-rose-500 to-red-600"
+                >
+                  {savingMetricRules ? "Saving..." : "Save Visibility Rules"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {isUserAdmin && joinRequests.length > 0 && (
             <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
@@ -458,7 +629,21 @@ function TeamManagementContent() {
 
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Team Members</h2>
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Users size={22} className="text-amber-600" />
+                  <h2 className="text-xl font-semibold">Team Members</h2>
+                </div>
+                <label className="relative block md:w-80">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-rose-400"
+                    value={memberSearch}
+                    onChange={(event) => setMemberSearch(event.target.value)}
+                    placeholder="Search roster, role, or email"
+                  />
+                </label>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -471,7 +656,7 @@ function TeamManagementContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {members.map((member) => {
+                  {filteredMembers.map((member) => {
                     const badge = getRoleBadge(member.role, member.roles);
                     const memberRoles = getMemberRoles(member);
                     const primaryRole = normalizeLegacyRole(member.role);
@@ -521,6 +706,13 @@ function TeamManagementContent() {
                       </tr>
                     );
                   })}
+                  {filteredMembers.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
+                        No members match that search.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { collection, deleteDoc, doc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { Copy, FileText, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import { useAuth } from "@/app/AuthContext";
 import { db } from "@/app/firebase";
+import { OBJECTIVE_LIBRARY, type ObjectiveLibraryItem } from "@/app/utils/formObjectiveLibrary";
 
 type FieldType = "number" | "checkbox" | "text" | "select" | "rating" | "slider";
 
@@ -94,6 +96,7 @@ function FormBuilderContent() {
   const [selectedCloudFormId, setSelectedCloudFormId] = useState("");
   const [savedFormsModalOpen, setSavedFormsModalOpen] = useState(false);
   const [presetsModalOpen, setPresetsModalOpen] = useState(false);
+  const [objectiveFilter, setObjectiveFilter] = useState("All");
   
   const [newField, setNewField] = useState<FormField>({
     id: "",
@@ -108,19 +111,20 @@ function FormBuilderContent() {
   const matchSections = ["Pre-Match", "Autonomous", "Teleop", "Endgame", "Post-Match"];
   const pitSections = ["Information", "Disposition", "Robot", "Coral", "Algae", "Auto / Endgame"];
   const sections = formType === "pit" ? pitSections : matchSections;
+  const effectiveActiveSection = sections.includes(activeSection) ? activeSection : sections[0];
 
   useEffect(() => {
     async function loadCloudForms() {
-      await refreshCloudForms();
+      if (!userData?.teamId) return;
+      const cloudQuery = query(collection(db, "formPresets"), where("teamId", "==", userData.teamId));
+      const snapshot = await getDocs(cloudQuery);
+      setCloudForms(snapshot.docs.map((presetDoc) => ({
+        id: presetDoc.id,
+        ...(presetDoc.data() as { name: string; fields: FormField[]; formType?: "match" | "pit"; game?: "REEFSCAPE" | "REBUILT" }),
+      })));
     }
     void loadCloudForms();
   }, [userData?.teamId]);
-
-  useEffect(() => {
-    if (!sections.includes(activeSection)) {
-      setActiveSection(sections[0]);
-    }
-  }, [activeSection, sections]);
 
   function addField() {
     if (!newField.label) return;
@@ -131,7 +135,7 @@ function FormBuilderContent() {
       id: "",
       label: "",
       type: "number",
-      section: activeSection,
+      section: effectiveActiveSection,
       options: [],
       scaleLabels: ["", "", "", "", ""],
       required: false,
@@ -144,7 +148,8 @@ function FormBuilderContent() {
   }
 
   function duplicateField(field: FormField) {
-    const newId = `${field.id}_copy_${Date.now()}`;
+    const copyCount = fields.filter((item) => item.id.startsWith(`${field.id}_copy_`)).length + 1;
+    const newId = `${field.id}_copy_${copyCount}`;
     setFields([...fields, { ...field, id: newId, label: `${field.label} (Copy)` }]);
   }
 
@@ -294,6 +299,23 @@ function FormBuilderContent() {
     setShowAddField(false);
   }
 
+  function addObjectiveField(item: ObjectiveLibraryItem) {
+    const section = sections.includes(item.section) ? item.section : effectiveActiveSection;
+    setFields((prev) => [
+      ...prev,
+      {
+        id: `${item.id}_${prev.filter((field) => field.id.startsWith(`${item.id}_`)).length + 1}`,
+        label: item.label,
+        type: item.type,
+        section,
+        options: item.options,
+        scaleLabels: item.scaleLabels,
+        required: false,
+      },
+    ]);
+    setActiveSection(section);
+  }
+
   function openPresetsModal() {
     setPresetsModalOpen(true);
   }
@@ -306,6 +328,8 @@ function FormBuilderContent() {
     acc[section] = fields.filter(f => f.section === section);
     return acc;
   }, {} as Record<string, FormField[]>);
+  const objectiveCategories = ["All", ...Array.from(new Set(OBJECTIVE_LIBRARY.map((item) => item.category)))];
+  const filteredObjectives = OBJECTIVE_LIBRARY.filter((item) => objectiveFilter === "All" || item.category === objectiveFilter);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -404,18 +428,18 @@ function FormBuilderContent() {
                 <div key={section} className="bg-white rounded-xl shadow-md overflow-hidden">
                   <div
                     className="p-4 flex items-center justify-between cursor-pointer"
-                    style={{ backgroundColor: activeSection === section ? "var(--primary-color)" : "#f9fafb" }}
+                    style={{ backgroundColor: effectiveActiveSection === section ? "var(--primary-color)" : "#f9fafb" }}
                     onClick={() => setActiveSection(section)}
                   >
-                    <h2 className={`text-xl font-semibold ${activeSection === section ? "text-white" : "text-gray-900"}`}>
+                    <h2 className={`text-xl font-semibold ${effectiveActiveSection === section ? "text-white" : "text-gray-900"}`}>
                       {section}
                     </h2>
-                    <span className={`px-3 py-1 rounded-full text-sm ${activeSection === section ? "bg-white text-red-600" : "bg-gray-200"}`}>
+                    <span className={`px-3 py-1 rounded-full text-sm ${effectiveActiveSection === section ? "bg-white text-red-600" : "bg-gray-200"}`}>
                       {fieldsBySection[section].length} fields
                     </span>
                   </div>
 
-                  {activeSection === section && (
+                  {effectiveActiveSection === section && (
                     <div className="p-6 space-y-4">
                       {fieldsBySection[section].length === 0 ? (
                         <p className="text-gray-500 text-center py-8">No fields in this section yet</p>
@@ -450,7 +474,7 @@ function FormBuilderContent() {
                                   className="p-1.5 rounded hover:bg-gray-200"
                                   title="Move up"
                                 >
-                                  ↑
+                                  <ArrowUp size={16} />
                                 </button>
                               )}
                               {index < fieldsBySection[section].length - 1 && (
@@ -459,7 +483,7 @@ function FormBuilderContent() {
                                   className="p-1.5 rounded hover:bg-gray-200"
                                   title="Move down"
                                 >
-                                  ↓
+                                  <ArrowDown size={16} />
                                 </button>
                               )}
                               <button
@@ -467,14 +491,14 @@ function FormBuilderContent() {
                                 className="p-1.5 rounded hover:bg-blue-100 text-blue-600"
                                 title="Duplicate"
                               >
-                                📋
+                                <Copy size={16} />
                               </button>
                               <button
                                 onClick={() => removeField(field.id)}
                                 className="p-1.5 rounded hover:bg-red-100 text-red-600"
                                 title="Delete"
                               >
-                                🗑️
+                                <Trash2 size={16} />
                               </button>
                             </div>
                           </div>
@@ -632,7 +656,7 @@ function FormBuilderContent() {
                   </div>
                 ) : (
                   <div className="text-center py-8">
-                    <div className="text-4xl mb-4">📝</div>
+                    <FileText size={42} className="mx-auto mb-4 text-amber-600" />
                     <p className="text-gray-600 mb-4">
                       Click &quot;+ Add Field&quot; to create a new field, or click on an existing field to edit it.
                     </p>
@@ -657,6 +681,35 @@ function FormBuilderContent() {
                     <p>Total Fields: <strong>{fields.length}</strong></p>
                     <p>Required Fields: <strong>{fields.filter(f => f.required).length}</strong></p>
                     <p>Sections: <strong>{sections.length}</strong></p>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h3 className="font-semibold mb-2">Objective Library</h3>
+                  <select
+                    className="w-full border rounded-lg p-2 text-sm mb-3"
+                    value={objectiveFilter}
+                    onChange={(event) => setObjectiveFilter(event.target.value)}
+                  >
+                    {objectiveCategories.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {filteredObjectives.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => addObjectiveField(item)}
+                        className="w-full text-left rounded-lg border border-amber-300/30 bg-white/60 p-3 hover:border-red-300 hover:bg-rose-50/70"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold text-gray-900">{item.label}</span>
+                          <span className="text-[11px] uppercase text-gray-500">{item.type}</span>
+                        </div>
+                        <p className="text-xs text-gray-600">{item.game} / {item.category}</p>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -760,22 +813,8 @@ function FormBuilderContent() {
 
 export default function FormBuilderPage() {
   return (
-    <ProtectedRoute requireAuth={true} allowedRoles={["coach"]}>
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-8">
-            <div className="bg-white rounded-xl shadow-md p-8 border-l-4" style={{ borderColor: "var(--primary-color)" }}>
-              <h1 className="text-3xl font-bold mb-3" style={{ color: "var(--primary-color)" }}>
-                Form Builder
-              </h1>
-              <p className="text-gray-700">
-                This page is not ready yet and is temporarily blocked.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+    <ProtectedRoute requireAuth={true} allowedRoles={["coach", "team-coach", "lead-scout", "lead-strategist"]}>
+      <FormBuilderContent />
     </ProtectedRoute>
   );
 }

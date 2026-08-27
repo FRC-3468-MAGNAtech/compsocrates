@@ -67,6 +67,7 @@ function ProfileContent() {
   const [scoutingBreakdown, setScoutingBreakdown] = useState<
     BreakdownRow[]
   >([]);
+  const [breakdownSearch, setBreakdownSearch] = useState("");
   const [sortKey, setSortKey] = useState<
     "lastScoutedAt" | "season" | "game" | "event" | "match" | "scoutingType" | "difficulty" | "accuracy" | "count"
   >("lastScoutedAt");
@@ -290,12 +291,17 @@ function ProfileContent() {
   }, [params?.userId, userData?.teamId, userData?.uid]);
 
   const sortedBreakdown = useMemo(() => {
+    const term = breakdownSearch.trim().toLowerCase();
     const scoutingTypeOrder: Record<string, number> = {
       "Real Competition": 0,
       Competitive: 1,
       Trial: 2,
     };
-    const rows = [...scoutingBreakdown];
+    const rows = scoutingBreakdown.filter((row) => {
+      if (!term) return true;
+      return [row.season, row.game, row.event, row.match, row.scoutingType, row.difficulty]
+        .some((value) => String(value || "").toLowerCase().includes(term));
+    });
     rows.sort((a, b) => {
       const direction = sortDir === "asc" ? 1 : -1;
       switch (sortKey) {
@@ -322,7 +328,7 @@ function ProfileContent() {
       }
     });
     return rows;
-  }, [scoutingBreakdown, sortDir, sortKey]);
+  }, [breakdownSearch, scoutingBreakdown, sortDir, sortKey]);
 
   function handleSort(nextKey: typeof sortKey) {
     if (nextKey === sortKey) {
@@ -458,6 +464,12 @@ function ProfileContent() {
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">
                   By Season / Game / Event / Match / Type / Difficulty{canViewAccuracy ? " / Accuracy" : ""}
                 </h3>
+                <input
+                  className="mb-3 w-full max-w-md rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm outline-none focus:border-rose-400"
+                  value={breakdownSearch}
+                  onChange={(event) => setBreakdownSearch(event.target.value)}
+                  placeholder="Search events, matches, games, or difficulty"
+                />
                 {scoutingBreakdown.length === 0 ? (
                   <p className="text-sm text-gray-500">No scouting entries yet.</p>
                 ) : (

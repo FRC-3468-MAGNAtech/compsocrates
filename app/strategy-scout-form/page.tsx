@@ -9,6 +9,7 @@ import Sidebar from "@/app/components/Sidebar";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { resolveDetectedTeamEvent } from "@/app/utils/eventDetection";
+import { assertSubmissionsOpen } from "@/app/utils/submissionControls";
 
 type TeamPickerProps = {
   open: boolean;
@@ -384,6 +385,7 @@ function TeamStrategyFormContent() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!userData?.uid || !userData.teamId || !canSubmit) return;
+    if (!editMode && !(await assertSubmissionsOpen(userData.teamId))) return;
     setSaving(true);
     try {
       const payload = {

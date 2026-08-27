@@ -18,6 +18,7 @@ import {
   fetchEventMatchesWithTeamAuth,
   mapTbaMatchToModalId,
 } from "@/app/utils/reefscapeMatchSync";
+import { assertSubmissionsOpen } from "@/app/utils/submissionControls";
 
 type RobotReflection = {
   teamNumber: string;
@@ -756,6 +757,7 @@ function DriveReflectionFormContent() {
       alert("You must be logged in to submit.");
       return;
     }
+    if (!editMode && !(await assertSubmissionsOpen(userData.teamId))) return;
     if (!selectedMatch) {
       alert("Select a match first.");
       return;

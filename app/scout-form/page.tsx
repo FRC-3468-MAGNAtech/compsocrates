@@ -24,6 +24,7 @@ import {
   getTbaScheduleTime,
   mapTbaMatchToModalId,
 } from "@/app/utils/reefscapeMatchSync";
+import { assertSubmissionsOpen } from "@/app/utils/submissionControls";
 
 type MatchType = "practice" | "qualification" | "finals";
 type MatchStatus = "completed" | "next" | "upcoming";
@@ -1978,6 +1979,7 @@ function ScoutFormContent() {
       alert("You must be logged in to submit.");
       return;
     }
+    if (!editMode && !(await assertSubmissionsOpen(userData.teamId))) return;
     if (!selectedMatch) return alert("Select a match first.");
     if (!form.teamNumber.trim()) return alert("Team number required.");
     if (!editMode && selectedScoutedTeams.has(form.teamNumber.trim())) {
@@ -2118,6 +2120,7 @@ function ScoutFormContent() {
       alert("You must be logged in to submit.");
       return;
     }
+    if (!editMode && !(await assertSubmissionsOpen(userData.teamId))) return;
     if (!selectedMatch) return alert("Select a match first.");
     const safeEventKey = String(eventKey || "").trim();
     if (!safeEventKey) {

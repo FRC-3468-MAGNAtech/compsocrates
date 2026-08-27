@@ -8,7 +8,7 @@ import ProtectedRoute from "@/app/components/ProtectedRoute";
 import AnalyticsShell from "@/app/components/AnalyticsShell";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useAuth } from "@/app/AuthContext";
-import { FormAccessOverrides, canAccessForm, getUserRoles, normalizeFormAccessOverrides } from "@/app/utils/roles";
+import { FormAccessOverrides, canAccessForm, normalizeFormAccessOverrides } from "@/app/utils/roles";
 import {
   entryMatchesAnalyticsFilters,
   getEventOptionsForEntries,
@@ -22,6 +22,7 @@ import { formatMatchLabelLong, getMatchLabelMeta } from "@/app/utils/displayForm
 import { getEventMatches, type TBAMatch } from "@/app/utils/tba-api";
 import { fetchFirstSchedule, splitFirstAllianceTeams } from "@/app/utils/firstSchedule";
 import { computeRescoutDiff } from "@/app/utils/rescoutComparison";
+import { compareScoutToLead } from "@/app/utils/scoutVerification";
 
 type ScoutingEntry = {
   id: string;
@@ -150,11 +151,6 @@ function resolveAccuracy(entry: ScoutingEntry): number | null {
   return Number.isFinite(raw) ? raw : null;
 }
 
-function isAccuracyComplete(entry: ScoutingEntry): boolean {
-  const status = String(entry.accuracyScriptStatus || entry.scriptStatus || "").toLowerCase().trim();
-  return status === "complete";
-}
-
 function calculateAccuracy(scottedScore: number, officialScore: number): number {
   if (!officialScore) return 0;
   const error = Math.abs(officialScore - scottedScore);
@@ -200,14 +196,9 @@ export default function AccuracyVerificationPage() {
 function AccuracyVerificationContent() {
   const router = useRouter();
   const { userData } = useAuth();
-  const roles = getUserRoles(userData);
   const [formAccessOverrides, setFormAccessOverrides] = useState<FormAccessOverrides>({});
   const canSee = canAccessForm({ formKey: "accuracy-verification", user: userData, formAccessOverrides });
   const canManageAll = Boolean(userData?.isTeamAdmin);
-
-  useEffect(() => {
-    router.replace("/dashboard");
-  }, [router]);
 
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<ScoutingEntry[]>([]);
@@ -334,6 +325,44 @@ function AccuracyVerificationContent() {
       return Boolean(entryName && optionName && entryName === optionName);
     });
   }, [entries, selectedEvent, selectedGame]);
+
+  const leadVerificationRows = useMemo(() => {
+    const leadByMatch = new Map<string, ScoutingEntry>();
+    filteredEntries.forEach((entry) => {
+      const isLead =
+        Boolean((entry as ScoutingEntry & { isLeadScouting?: boolean }).isLeadScouting) ||
+        String(entry.entryType || entry.formType || "").toLowerCase().includes("lead");
+      if (!isLead) return;
+      const eventKey = normalizeEventKey(String(entry.eventKey || "").trim());
+      const matchKey = normalizeMatchId(resolveMatchKey(entry));
+      if (!eventKey || !matchKey) return;
+      leadByMatch.set(`${eventKey}::${matchKey}`, entry);
+    });
+
+    return filteredEntries
+      .filter((entry) => {
+        const isLead =
+          Boolean((entry as ScoutingEntry & { isLeadScouting?: boolean }).isLeadScouting) ||
+          String(entry.entryType || entry.formType || "").toLowerCase().includes("lead");
+        return !isLead && !isPracticeScoutedEntry(entry as Parameters<typeof isPracticeScoutedEntry>[0]);
+      })
+      .map((entry) => {
+        const eventKey = normalizeEventKey(String(entry.eventKey || "").trim());
+        const matchKey = normalizeMatchId(resolveMatchKey(entry));
+        const lead = leadByMatch.get(`${eventKey}::${matchKey}`);
+        if (!lead) return null;
+        return {
+          entry,
+          result: compareScoutToLead(
+            entry as unknown as Record<string, unknown>,
+            lead as unknown as Record<string, unknown>
+          ),
+        };
+      })
+      .filter((row): row is { entry: ScoutingEntry; result: ReturnType<typeof compareScoutToLead> } => Boolean(row))
+      .sort((a, b) => b.result.accuracy - a.result.accuracy)
+      .slice(0, 8);
+  }, [filteredEntries]);
 
   const matchListEventKeys = useMemo(() => {
     if (selectedEvent !== "all") return [selectedEvent];
@@ -469,7 +498,7 @@ function AccuracyVerificationContent() {
       .map((match) => {
         const eligibleAlliances = match.alliances
           .filter((alliance) => alliance.teams.length === 3 && (alliance.accuracy ?? 0) >= 75)
-          .sort((a, b) => (a.alliance === "red" ? -1 : 1));
+          .sort((a, b) => a.alliance.localeCompare(b.alliance));
         const bestAccuracy = eligibleAlliances.reduce(
           (max, alliance) => Math.max(max, alliance.accuracy ?? 0),
           0
@@ -845,8 +874,6 @@ function AccuracyVerificationContent() {
     router.push(`/analytics/accuracy-compare?${params.toString()}`);
   }
 
-  return null;
-
   if (loading) {
     return (
       <AnalyticsShell
@@ -887,6 +914,37 @@ function AccuracyVerificationContent() {
             High-accuracy matches are ready to be re-scouted by experienced scouts for verification.
           </p>
         </div>
+
+        <SectionCard
+          title="Lead Scout Verification Engine"
+          description="Junior submissions are compared against lead scout match logs using event-count and status tolerances."
+          items={leadVerificationRows}
+          emptyLabel="No lead/junior pairs are available for the current filters."
+          showToggle={false}
+          onToggle={() => {}}
+          showAll={false}
+        >
+          {leadVerificationRows.map(({ entry, result }) => (
+            <div key={entry.id} className="rounded-lg border border-amber-300/30 bg-white/70 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold">
+                    {resolveMatchLabel(entry)} - Team {entry.teamNumber || "-"}
+                  </p>
+                  <p className="text-xs text-gray-600">Scout: {entry.scoutName || "Unknown"}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${result.verified ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
+                  {result.verified ? "Verified" : "Review"} / {result.accuracy}%
+                </span>
+              </div>
+              {result.mismatches.length > 0 && (
+                <p className="mt-2 text-xs text-gray-600">
+                  Mismatches: {result.mismatches.map((item) => item.label).join(", ")}
+                </p>
+              )}
+            </div>
+          ))}
+        </SectionCard>
 
         <SectionCard
           title="Critical Flagged Matches"

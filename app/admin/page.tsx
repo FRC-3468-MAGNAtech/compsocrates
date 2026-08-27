@@ -164,6 +164,9 @@ function AdminPanelContent() {
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [timeInput, setTimeInput] = useState("");
   const [timeSaving, setTimeSaving] = useState(false);
+  const [submissionLockout, setSubmissionLockout] = useState(false);
+  const [lockoutReason, setLockoutReason] = useState("Submissions are temporarily disabled by your team admins.");
+  const [lockoutSaving, setLockoutSaving] = useState(false);
   const [formEditorOpen, setFormEditorOpen] = useState(false);
   const [selectedFormType, setSelectedFormType] = useState<FormTypeOption | null>(null);
   const [formGame, setFormGame] = useState<AnalyticsGame>("REBUILT");
@@ -214,7 +217,28 @@ function AdminPanelContent() {
     if (!userData?.teamId) return;
     const effectiveNow = getEffectiveNowMs(teamTimeOverride);
     setTimeInput(toLocalDateTimeInputValue(effectiveNow));
-  }, [userData?.teamId, teamTimeOverride?.enabled, teamTimeOverride?.offsetMs]);
+  }, [userData?.teamId, teamTimeOverride]);
+
+  useEffect(() => {
+    if (!userData?.teamId) return;
+    let isActive = true;
+    async function loadSubmissionControls() {
+      try {
+        const snap = await getDoc(doc(db, "teams", String(userData?.teamId || "")));
+        const data = snap.exists() ? snap.data() : {};
+        const controls = data.submissionControls as Record<string, unknown> | undefined;
+        if (!isActive) return;
+        setSubmissionLockout(Boolean(controls?.globalLockout));
+        setLockoutReason(String(controls?.lockoutReason || "Submissions are temporarily disabled by your team admins."));
+      } catch (error) {
+        console.error("Failed to load submission controls:", error);
+      }
+    }
+    void loadSubmissionControls();
+    return () => {
+      isActive = false;
+    };
+  }, [userData?.teamId]);
 
   async function savePreferredDashboard(nextValue: string) {
     if (!userData?.uid) return;
@@ -357,6 +381,31 @@ function AdminPanelContent() {
       alert("Unable to disable simulated time.");
     } finally {
       setTimeSaving(false);
+    }
+  }
+
+  async function saveSubmissionControls() {
+    if (!userData?.teamId || !userData?.uid) return;
+    setLockoutSaving(true);
+    try {
+      await setDoc(
+        doc(db, "teams", userData.teamId),
+        {
+          submissionControls: {
+            globalLockout: submissionLockout,
+            lockoutReason: lockoutReason.trim() || "Submissions are temporarily disabled by your team admins.",
+            updatedAt: Date.now(),
+            updatedBy: userData.uid,
+          },
+        },
+        { merge: true }
+      );
+      alert("Submission controls updated.");
+    } catch (error) {
+      console.error("Failed to save submission controls:", error);
+      alert("Unable to update submission controls.");
+    } finally {
+      setLockoutSaving(false);
     }
   }
 
@@ -643,6 +692,37 @@ function AdminPanelContent() {
                   Use Real Time
                 </button>
               </div>
+            </div>
+          </div>
+
+          <div className="bg-white/60 backdrop-blur-xl rounded-xl shadow-md p-6 border border-amber-300/30 mb-4">
+            <h2 className="text-xl font-semibold mb-2">Global Submission Lockout</h2>
+            <p className="text-sm text-gray-600 mb-3">
+              Temporarily disable new submissions across match, pit, strategy, drive, and lead scout forms.
+            </p>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-3">
+              <input
+                type="checkbox"
+                checked={submissionLockout}
+                onChange={(event) => setSubmissionLockout(event.target.checked)}
+              />
+              Disable new submissions
+            </label>
+            <textarea
+              className="w-full max-w-xl border rounded p-2 text-sm"
+              rows={2}
+              value={lockoutReason}
+              onChange={(event) => setLockoutReason(event.target.value)}
+            />
+            <div>
+              <button
+                type="button"
+                onClick={() => void saveSubmissionControls()}
+                disabled={lockoutSaving}
+                className="mt-3 px-4 py-2 rounded text-white font-semibold disabled:opacity-60 bg-gradient-to-r from-amber-400 via-rose-500 to-red-600"
+              >
+                {lockoutSaving ? "Saving..." : "Save Lockout"}
+              </button>
             </div>
           </div>
 

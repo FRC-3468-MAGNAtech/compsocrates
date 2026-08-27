@@ -18,6 +18,13 @@ import {
   fetchEventMatchesWithTeamAuth,
   mapTbaMatchToModalId,
 } from "@/app/utils/reefscapeMatchSync";
+import { assertSubmissionsOpen } from "@/app/utils/submissionControls";
+import {
+  buildTacticalPrediction,
+  type ConfidenceTier,
+  type PredictionEntry,
+  type PredictionSource,
+} from "@/app/utils/predictionEngine";
 
 type RobotPlan = {
   teamNumber: string;
@@ -25,6 +32,9 @@ type RobotPlan = {
   role: string;
   autoClimb: boolean;
   endgameClimb: string;
+  climbProbability?: number;
+  estimatedPoints?: number;
+  predictionSampleSize?: number;
 };
 
 type MatchOption = {
@@ -251,6 +261,9 @@ function MatchStrategyFormContent() {
   const [robot2, setRobot2] = useState<RobotPlan>({ teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" });
   const [robot3, setRobot3] = useState<RobotPlan>({ teamNumber: "", startingPosition: "", role: "", autoClimb: false, endgameClimb: "" });
   const [pitByTeam, setPitByTeam] = useState<Record<string, PitCapabilityDoc>>({});
+  const [predictionSource, setPredictionSource] = useState<PredictionSource>("combined");
+  const [confidenceTier, setConfidenceTier] = useState<ConfidenceTier>(85);
+  const [historicalEntries, setHistoricalEntries] = useState<PredictionEntry[]>([]);
   const [editEventKey, setEditEventKey] = useState<string | null>(null);
   const [editMatchKey, setEditMatchKey] = useState<string>("");
 
@@ -576,6 +589,59 @@ function MatchStrategyFormContent() {
         .filter(Boolean),
     [robot1.teamNumber, robot2.teamNumber, robot3.teamNumber]
   );
+  const robotTeamKey = selectedTeamNumbers.join("|");
+
+  useEffect(() => {
+    async function loadHistoricalEntries() {
+      const teams = robotTeamKey.split("|").filter(Boolean);
+      if (teams.length === 0) {
+        setHistoricalEntries([]);
+        return;
+      }
+      try {
+        const snap = await getDocs(collection(db, "scouting"));
+        const teamSet = new Set(teams);
+        const rows = snap.docs
+          .map((row) => row.data() as PredictionEntry)
+          .filter((row) => String(row.game || "REBUILT").toUpperCase() === "REBUILT")
+          .filter((row) => teamSet.has(String(row.teamNumber || "").trim()));
+        setHistoricalEntries(rows);
+      } catch (error) {
+        console.error("Failed to load tactical history:", error);
+        setHistoricalEntries([]);
+      }
+    }
+    void loadHistoricalEntries();
+  }, [robotTeamKey]);
+
+  const predictionsByTeam = useMemo(() => {
+    const next: Record<string, ReturnType<typeof buildTacticalPrediction>> = {};
+    selectedTeamNumbers.forEach((team) => {
+      next[team] = buildTacticalPrediction(team, historicalEntries, "REBUILT", predictionSource, confidenceTier);
+    });
+    return next;
+  }, [confidenceTier, historicalEntries, predictionSource, selectedTeamNumbers]);
+
+  useEffect(() => {
+    if (editMode) return;
+    const applyPrediction = (robot: RobotPlan): RobotPlan => {
+      const prediction = predictionsByTeam[String(robot.teamNumber || "").trim()];
+      if (!prediction) return robot;
+      return {
+        ...robot,
+        startingPosition: robot.startingPosition || prediction.startingPosition,
+        role: robot.role || prediction.role,
+        autoClimb: robot.autoClimb || prediction.climbProbability >= 75,
+        endgameClimb: robot.endgameClimb || (prediction.climbProbability >= 75 ? "level-1" : ""),
+        climbProbability: prediction.climbProbability,
+        estimatedPoints: prediction.estimatedPoints,
+        predictionSampleSize: prediction.sampleSize,
+      };
+    };
+    setRobot1((prev) => applyPrediction(prev));
+    setRobot2((prev) => applyPrediction(prev));
+    setRobot3((prev) => applyPrediction(prev));
+  }, [confidenceTier, editMode, predictionSource, predictionsByTeam, robotTeamKey]);
 
   useEffect(() => {
     async function loadPitSync() {
@@ -700,6 +766,7 @@ function MatchStrategyFormContent() {
       alert("You must be logged in to submit.");
       return;
     }
+    if (!editMode && !(await assertSubmissionsOpen(userData.teamId))) return;
     if (!selectedMatch) {
       alert("Select a match first.");
       return;
@@ -773,11 +840,24 @@ function MatchStrategyFormContent() {
       <label className="block text-sm font-medium text-gray-700">Role</label>
       <select className="w-full border rounded p-3" value={robot.role} onChange={(e) => setRobot({ ...robot, role: e.target.value })}>
         <option value="">Select Role</option>
-        <option value="cycler">Cycler</option>
-        <option value="passer">Passer</option>
-        <option value="shooter">Shooter</option>
-        <option value="stealer">Stealer</option>
+        <option value="Offense">Offense</option>
+        <option value="Defense">Defense</option>
+        <option value="Feeder">Feeder</option>
       </select>
+
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="rounded-lg border border-amber-300/30 bg-white/70 p-3">
+          <p className="text-xs text-gray-500">Climb Probability</p>
+          <p className="font-bold">{robot.climbProbability ?? 0}%</p>
+        </div>
+        <div className="rounded-lg border border-amber-300/30 bg-white/70 p-3">
+          <p className="text-xs text-gray-500">Point Projection</p>
+          <p className="font-bold">{robot.estimatedPoints ?? 0}</p>
+        </div>
+      </div>
+      <p className="text-xs text-gray-500">
+        Historical sample: {robot.predictionSampleSize ?? 0} rows at {confidenceTier}% confidence.
+      </p>
 
       <label className="flex items-center gap-2"><input type="checkbox" checked={robot.autoClimb} onChange={(e) => setRobot({ ...robot, autoClimb: e.target.checked })} />Auto Climb</label>
 
@@ -817,6 +897,32 @@ function MatchStrategyFormContent() {
               )}
               <div className="text-green-700">Detected pit form sync is active for this match.</div>
               <div className="text-gray-700">Alerts show up below each robot field.</div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Historical Source</label>
+                <select
+                  className="w-full border rounded p-2"
+                  value={predictionSource}
+                  onChange={(event) => setPredictionSource(event.target.value as PredictionSource)}
+                >
+                  <option value="official">Official Event Data</option>
+                  <option value="practice">Practice Scouted Data</option>
+                  <option value="combined">Combined Hybrid</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confidence</label>
+                <select
+                  className="w-full border rounded p-2"
+                  value={confidenceTier}
+                  onChange={(event) => setConfidenceTier(Number(event.target.value) as ConfidenceTier)}
+                >
+                  <option value={75}>75% Accuracy</option>
+                  <option value={85}>85% Accuracy</option>
+                  <option value={90}>90% Accuracy</option>
+                </select>
+              </div>
             </div>
             <label className="block text-sm font-medium text-gray-700">Scout Name</label>
             <input className="w-full border rounded p-3 bg-gray-100 text-gray-600" value={userData?.displayName || ""} disabled />
