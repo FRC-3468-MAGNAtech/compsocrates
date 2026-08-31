@@ -6,6 +6,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import SubmissionLockoutBanner from "@/app/components/SubmissionLockoutBanner";
 import ReefscapeMatchSelectModal, { type ReefscapeMatchOption } from "@/app/components/ReefscapeMatchSelectModal";
 import { useAuth } from "@/app/AuthContext";
 import { type TBAMatch } from "@/app/utils/tba-api";
@@ -888,6 +889,7 @@ function DriveReflectionFormContent() {
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
         <form onSubmit={submit} className="flex-1 p-4 space-y-4 max-w-3xl">
+          <SubmissionLockoutBanner teamId={userData?.teamId} />
           <div className="bg-white rounded-xl shadow p-4">
             <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
               Drive Reflection Form

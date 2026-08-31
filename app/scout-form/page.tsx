@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where, type QueryDocumentSnapshot } from "firebase/firestore";
 import { Check, Hourglass, X as XIcon } from "lucide-react";
 import Sidebar from "@/app/components/Sidebar";
+import SubmissionLockoutBanner from "@/app/components/SubmissionLockoutBanner";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
@@ -2263,6 +2264,7 @@ function ScoutFormContent() {
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
           <div className="flex-1 p-4 space-y-6 max-w-3xl">
+            <SubmissionLockoutBanner teamId={userData?.teamId} />
             <div className="bg-white rounded-xl shadow p-4">
               <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>
                 {leadMode ? "Lead Scout Form" : "Match Scout Form"}

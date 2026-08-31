@@ -7,6 +7,7 @@ import { Image as ImageIcon, Link as LinkIcon, Trash2 } from "lucide-react";
 import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
+import SubmissionLockoutBanner from "@/app/components/SubmissionLockoutBanner";
 import ReefscapeStyleModal from "@/app/components/ReefscapeStyleModal";
 import { useAuth } from "@/app/AuthContext";
 import { resolveDetectedTeamEventKey } from "@/app/utils/eventDetection";
@@ -470,6 +471,7 @@ function PitScoutFormContent() {
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row justify-center">
           <form onSubmit={submitForm} className="flex-1 p-4 space-y-6 max-w-3xl">
+            <SubmissionLockoutBanner teamId={userData?.teamId} />
             <div className="bg-white rounded-xl shadow p-4">
               <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--primary-color)" }}>Pit Scout Form</h1>
               <div className="mt-3 max-w-sm">

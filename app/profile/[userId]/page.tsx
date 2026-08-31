@@ -465,7 +465,7 @@ function ProfileContent() {
                   By Season / Game / Event / Match / Type / Difficulty{canViewAccuracy ? " / Accuracy" : ""}
                 </h3>
                 <input
-                  className="mb-3 w-full max-w-md rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm outline-none focus:border-rose-400"
+                  className="mb-3 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400"
                   value={breakdownSearch}
                   onChange={(event) => setBreakdownSearch(event.target.value)}
                   placeholder="Search events, matches, games, or difficulty"
