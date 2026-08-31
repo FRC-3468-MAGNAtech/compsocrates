@@ -6,6 +6,7 @@ import { db } from "@/app/firebase";
 import ProtectedRoute from "@/app/components/ProtectedRoute";
 import Sidebar from "@/app/components/Sidebar";
 import RoleSelector from "@/app/components/RoleSelector";
+import TeamAnnouncements from "@/app/components/TeamAnnouncements";
 import { useAuth } from "@/app/AuthContext";
 import { X, Check, Clock, Search, ShieldCheck, Users } from "lucide-react";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -448,7 +449,7 @@ function TeamManagementContent() {
             </div>
           )}
 
-          <div className="bg-white/60 backdrop-blur-xl rounded-xl shadow-md p-6 mb-6 border border-amber-300/30">
+          <div className="bg-white rounded-xl shadow-md p-6 mb-6 border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold mb-1">{displayTeamLabel}</h2>
@@ -487,7 +488,7 @@ function TeamManagementContent() {
 
           {isUserAdmin && (
             <div className="grid xl:grid-cols-[1fr_1.4fr] gap-6 mb-6">
-              <div className="bg-white/60 backdrop-blur-xl rounded-xl shadow-md p-6 border border-amber-300/30">
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
                 <div className="flex items-center gap-3 mb-4">
                   <ShieldCheck className="text-amber-600" size={24} />
                   <div>
@@ -496,40 +497,42 @@ function TeamManagementContent() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                     <p className="text-xs text-gray-500">Members</p>
                     <p className="text-2xl font-bold">{members.length}</p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                     <p className="text-xs text-gray-500">Admins</p>
                     <p className="text-2xl font-bold">{adminCount}</p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                     <p className="text-xs text-gray-500">Team Number</p>
                     <p className="text-lg font-bold">{teamMetadata.teamNumber || userData?.teamId}</p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                     <p className="text-xs text-gray-500">Owner</p>
                     <p className="text-sm font-semibold truncate">{teamMetadata.verifiedOwnerId || userData?.uid}</p>
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {TEAM_ROLES.map((role) => (
-                    <span key={role} className="rounded-full bg-white/70 px-3 py-1 text-xs text-gray-700 border border-gray-200">
+                    <span key={role} className="rounded-full bg-gray-50 px-3 py-1 text-xs text-gray-700 border border-gray-200">
                       {getRoleLabel(role)}: {roleCounts.get(role) || 0}
                     </span>
                   ))}
                 </div>
               </div>
 
-              <div className="bg-white/60 backdrop-blur-xl rounded-xl shadow-md p-6 border border-amber-300/30">
+              <TeamAnnouncements teamId={userData?.teamId} />
+
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
                 <h2 className="text-xl font-semibold mb-2">Public Metric Publishing</h2>
                 <p className="text-sm text-gray-600 mb-4">
                   Public exports use anonymized records and remove scout/member identity fields automatically.
                 </p>
                 <div className="space-y-3">
                   {metricRules.map((rule, index) => (
-                    <div key={rule.metricId} className="rounded-lg border border-gray-200 bg-white/70 p-3">
+                    <div key={rule.metricId} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <label className="flex items-center gap-2 font-semibold">
                           <input

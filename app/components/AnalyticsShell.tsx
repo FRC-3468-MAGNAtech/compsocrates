@@ -28,6 +28,7 @@ const analyticsLinks: Array<{ href: string; label: string } | { divider: true }>
   { href: "/analytics/pit", label: "Pit Analytics" },
   { href: "/analytics/team-strategy", label: "Team Strategy" },
   { href: "/analytics/match-strategy", label: "Match Strategy" },
+  { href: "/analytics/match-prediction", label: "Match Prediction" },
   { href: "/analytics/drive-reflection", label: "Drive Reflection" },
   { href: "/analytics/helper", label: "Helper Reports" },
   { divider: true },
