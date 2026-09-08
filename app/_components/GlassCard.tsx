@@ -25,7 +25,7 @@ export default function GlassCard({
 }: GlassCardProps) {
   return (
     <div
-      className={`${strong ? "glass-strong" : "glass"} rounded-3xl p-5 transition-all duration-300 ${accentRing[accent]} ${className}`}
+      className={`${strong ? "glass-strong" : "glass"} rounded-[2rem] p-5 transition-all duration-500 ease-out hover:-translate-y-1 ${accentRing[accent]} ${className}`}
       {...rest}
     >
       {children}
