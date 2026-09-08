@@ -7,13 +7,13 @@
   --cs-void-2: #0a0e1a;
   --cs-surface: rgba(255, 255, 255, 0.04);
   --cs-surface-strong: rgba(255, 255, 255, 0.07);
-  --cs-border: rgba(148, 255, 214, 0.14);
-  --cs-border-strong: rgba(148, 255, 214, 0.28);
+  --cs-border: rgba(255, 209, 102, 0.14);
+  --cs-border-strong: rgba(255, 209, 102, 0.28);
 
-  --cs-volt: #baff29;      /* signature accent - electric lime */
-  --cs-plasma: #ff3d81;    /* hot magenta */
-  --cs-current: #2ee6d6;   /* circuit teal */
-  --cs-signal: #7c5cff;    /* violet signal */
+  --cs-volt: #ff2438;      /* signature accent - crimson red */
+  --cs-plasma: #ffcc4d;    /* gold */
+  --cs-current: #ffffff;   /* white circuit highlight */
+  --cs-signal: #b3122e;    /* deep red signal */
   --cs-amber: #ffb545;     /* warning / energy amber */
 
   --cs-text: #eef2f6;
@@ -34,16 +34,16 @@ body {
 
 body {
   background-image:
-    radial-gradient(60rem 40rem at 85% -10%, rgba(186, 255, 41, 0.10), transparent 60%),
-    radial-gradient(50rem 35rem at -10% 20%, rgba(124, 92, 255, 0.16), transparent 60%),
-    radial-gradient(45rem 40rem at 100% 100%, rgba(255, 61, 129, 0.10), transparent 60%),
+    radial-gradient(60rem 40rem at 85% -10%, rgba(255, 36, 56, 0.10), transparent 60%),
+    radial-gradient(50rem 35rem at -10% 20%, rgba(179, 18, 46, 0.16), transparent 60%),
+    radial-gradient(45rem 40rem at 100% 100%, rgba(255, 204, 77, 0.10), transparent 60%),
     linear-gradient(180deg, #06070d 0%, #090b14 100%);
   background-attachment: fixed;
 }
 
 ::selection {
   background: var(--cs-volt);
-  color: #05130a;
+  color: #ffffff;
 }
 
 ::-webkit-scrollbar {
@@ -54,11 +54,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 255, 214, 0.18);
+  background: rgba(255, 209, 102, 0.18);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 255, 214, 0.32);
+  background: rgba(255, 209, 102, 0.32);
 }
 
 @layer utilities {
