@@ -2,282 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dalek — drop Dalek.woff2/.woff/.ttf into public/fonts/ to activate; until
-   then this 404s silently and h1/h2 fall through to Orbitron (self-hosted,
-   guaranteed to load), then system sans-serif. */
-@font-face {
-  font-family: "Dalek";
-  src:
-    url("/fonts/Dalek.woff2") format("woff2"),
-    url("/fonts/Dalek.woff") format("woff"),
-    url("/fonts/Dalek.ttf") format("truetype");
-  font-weight: 400 900;
-  font-display: swap;
-  font-style: normal;
-}
-
 :root {
-  --cs-crimson: #8b0000;
-  --cs-red: #dc2626;
-  --cs-gold: #d4af37;
-  --cs-gold-soft: #f5d66d;
-  --cs-slate: #f1f5f9;
-  --cs-marble: #e2e8f0;
-  --cs-ink: #0f172a;
-  --cs-muted: #64748b;
+  --cs-void: #06070d;
+  --cs-void-2: #0a0e1a;
+  --cs-surface: rgba(255, 255, 255, 0.04);
+  --cs-surface-strong: rgba(255, 255, 255, 0.07);
+  --cs-border: rgba(148, 255, 214, 0.14);
+  --cs-border-strong: rgba(148, 255, 214, 0.28);
 
-  --font-display: "Dalek", var(--font-orbitron, "Orbitron"), ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-inter, "Inter"), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-data: var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace, "SFMono-Regular", monospace;
+  --cs-volt: #baff29;      /* signature accent - electric lime */
+  --cs-plasma: #ff3d81;    /* hot magenta */
+  --cs-current: #2ee6d6;   /* circuit teal */
+  --cs-signal: #7c5cff;    /* violet signal */
+  --cs-amber: #ffb545;     /* warning / energy amber */
+
+  --cs-text: #eef2f6;
+  --cs-text-dim: #9aa6b8;
+  --cs-text-faint: #5c6678;
 }
 
 * {
-  box-sizing: border-box;
+  border-color: var(--cs-border);
 }
 
-html {
+html,
+body {
+  background: var(--cs-void);
+  color: var(--cs-text);
   min-height: 100%;
-  background: var(--cs-slate);
 }
 
 body {
-  min-height: 100vh;
-  margin: 0;
-  color: var(--cs-ink);
-  font-family: var(--font-body);
-  text-rendering: optimizeLegibility;
-  overflow-x: hidden;
-}
-
-h1,
-h2 {
-  font-family: var(--font-display);
-  letter-spacing: 0.01em;
+  background-image:
+    radial-gradient(60rem 40rem at 85% -10%, rgba(186, 255, 41, 0.10), transparent 60%),
+    radial-gradient(50rem 35rem at -10% 20%, rgba(124, 92, 255, 0.16), transparent 60%),
+    radial-gradient(45rem 40rem at 100% 100%, rgba(255, 61, 129, 0.10), transparent 60%),
+    linear-gradient(180deg, #06070d 0%, #090b14 100%);
+  background-attachment: fixed;
 }
 
 ::selection {
-  background: rgba(212, 175, 55, 0.4);
-  color: var(--cs-ink);
+  background: var(--cs-volt);
+  color: #05130a;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 255, 214, 0.18);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 255, 214, 0.32);
 }
 
 @layer utilities {
-  .font-display {
-    font-family: var(--font-display);
+  .glass {
+    background: var(--cs-surface);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--cs-border);
   }
-  .font-data {
-    font-family: var(--font-data);
+
+  .glass-strong {
+    background: var(--cs-surface-strong);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid var(--cs-border-strong);
   }
-  .text-balance {
-    text-wrap: balance;
+
+  .text-gradient-volt {
+    background: linear-gradient(90deg, var(--cs-volt), var(--cs-current));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
-}
 
-/* ==========================================================================
-   Ambient canvas — persistent radial glow blobs bleeding through every layer
-   ========================================================================== */
-.hud-canvas {
-  position: relative;
-  min-height: 100vh;
-  background: var(--cs-slate);
-}
-
-.hud-canvas::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(38rem 38rem at 8% 6%, rgba(220, 38, 38, 0.16), transparent 60%),
-    radial-gradient(42rem 42rem at 96% 22%, rgba(212, 175, 55, 0.22), transparent 62%),
-    radial-gradient(34rem 34rem at 24% 96%, rgba(139, 0, 0, 0.12), transparent 58%),
-    radial-gradient(26rem 26rem at 72% 82%, rgba(245, 214, 109, 0.18), transparent 55%),
-    linear-gradient(160deg, var(--cs-slate) 0%, var(--cs-marble) 100%);
-}
-
-.hud-canvas > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* ==========================================================================
-   Glass surfaces — extreme translucency, glossy top-edge sheen, gold/crimson
-   ambient drop glow
-   ========================================================================== */
-.glass-surface {
-  position: relative;
-  background: rgba(255, 255, 255, 0.4);
-  backdrop-filter: blur(28px) saturate(160%);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
-  border-top: 1px solid rgba(255, 255, 255, 0.85);
-  border-left: 1px solid rgba(255, 255, 255, 0.85);
-  border-bottom: 1px solid rgba(212, 175, 55, 0.28);
-  border-right: 1px solid rgba(220, 38, 38, 0.24);
-  box-shadow: 0 24px 90px -20px rgba(139, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-.glass-surface-raised {
-  background: rgba(255, 255, 255, 0.52);
-  backdrop-filter: blur(32px) saturate(170%);
-  -webkit-backdrop-filter: blur(32px) saturate(170%);
-  box-shadow: 0 30px 110px -18px rgba(212, 175, 55, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.glow-gold {
-  box-shadow: 0 8px 32px 0 rgba(212, 175, 55, 0.18);
-}
-.glow-crimson {
-  box-shadow: 0 8px 32px 0 rgba(139, 0, 0, 0.18);
-}
-
-.gradient-text {
-  background: linear-gradient(120deg, var(--cs-gold), var(--cs-crimson) 60%, var(--cs-gold-soft));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* ==========================================================================
-   Dense analytics tables
-   ========================================================================== */
-.table-scroll {
-  overflow: auto;
-  position: relative;
-  border-radius: 1.5rem;
-}
-
-.table-scroll table {
-  border-collapse: separate;
-  border-spacing: 0;
-  width: max-content;
-  min-width: 100%;
-  font-family: var(--font-data);
-}
-
-.table-scroll th,
-.table-scroll td {
-  border: 1px solid rgba(212, 175, 55, 0.22);
-  padding: 8px 12px;
-  text-align: center;
-  font-size: 12.5px;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.4);
-  vertical-align: middle;
-  color: var(--cs-ink);
-}
-
-.table-scroll th {
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  color: var(--cs-crimson);
-  background: rgba(255, 255, 255, 0.6);
-}
-
-.sticky-header th {
-  position: sticky;
-  top: 0;
-  z-index: 22;
-}
-
-.sticky-left-0,
-.sticky-left-1,
-.sticky-left-2 {
-  position: sticky !important;
-  z-index: 15 !important;
-  background: rgba(255, 255, 255, 0.72) !important;
-  box-shadow: 2px 0 8px rgba(139, 0, 0, 0.08);
-}
-.sticky-left-0 {
-  left: 0 !important;
-  min-width: 96px;
-}
-.sticky-left-1 {
-  left: 96px !important;
-}
-.sticky-left-2 {
-  left: 192px !important;
-  min-width: 96px;
-}
-
-@media (max-width: 1023px) {
-  .table-scroll tbody .sticky-left-0,
-  .table-scroll tbody .sticky-left-1,
-  .table-scroll tbody .sticky-left-2 {
-    position: static !important;
-    left: auto !important;
-    box-shadow: none !important;
+  .glow-orb {
+    filter: blur(60px);
+    opacity: 0.55;
   }
 }
 
-/* ==========================================================================
-   Form controls — pill inputs matching the glass language
-   ========================================================================== */
-input:not([type]),
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="number"],
-input[type="search"],
-input[type="url"],
-input[type="tel"],
-input[type="date"],
-input[type="time"],
-select,
-textarea {
-  min-height: 2.5rem;
-  border-radius: 999px;
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  background-color: rgba(255, 255, 255, 0.5);
-  color: var(--cs-ink);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px);
-}
-textarea {
-  border-radius: 1.25rem;
-}
-input:disabled,
-input[readonly],
-select:disabled,
-textarea:disabled {
-  background-color: rgba(241, 245, 249, 0.6);
-  opacity: 0.7;
-}
-input::placeholder,
-textarea::placeholder {
-  color: var(--cs-muted);
-}
-input:focus,
-select:focus,
-textarea:focus {
-  outline: 2px solid rgba(212, 175, 55, 0.5);
-  outline-offset: 1px;
-}
-select option {
-  background-color: #ffffff;
-  color: var(--cs-ink);
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-14px) translateX(6px); }
 }
 
-.theme-stepper-btn {
-  width: 2.25rem;
-  height: 2.25rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  border: 1px solid rgba(212, 175, 55, 0.45);
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--cs-crimson);
-  font-weight: 800;
-}
-.theme-stepper-btn:hover {
-  box-shadow: 0 10px 26px rgba(139, 0, 0, 0.14);
+.animate-float-slow {
+  animation: float-slow 9s ease-in-out infinite;
 }

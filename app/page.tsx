@@ -1,136 +1,66 @@
-"use client";
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowUpRight, Crosshair, Radar, ShieldCheck, Sparkles, Swords, Wrench } from "lucide-react";
-import { useAuth } from "@/app/AuthContext";
-import { getDashboardRoute } from "@/app/utils/dashboardRoute";
-import { Action, Chip, CommandBar, Deck, HudCanvas, HudViewport, PageIntro, Surface } from "@/app/components/Hud";
+import { ArrowRight, Radar, Swords, BarChart3, Zap } from "lucide-react";
+import GlassCard from "./_components/GlassCard";
 
-const capabilities = [
-  { icon: Swords, title: "Alliance Matchup Decks", body: "Head-to-head comparison surfaces built for a 5-minute pre-match huddle." },
-  { icon: ShieldCheck, title: "Scout Verification Matrix", body: "Practice entries cross-checked against ground truth before they ever reach strategy." },
-  { icon: Radar, title: "Team Trend Radar", body: "Consistency curves and capability profiles at a glance, not buried in a spreadsheet." },
-  { icon: Wrench, title: "Pit Capability Log", body: "Structured robot intake that feeds straight into matchup planning." },
-];
-
-export default function LandingPage() {
-  const router = useRouter();
-  const { user, userData } = useAuth();
-  const signedIn = Boolean(user && userData);
-  const dashboardHref = userData ? getDashboardRoute(userData) : "/dashboard";
-
+export default function HomePage() {
   return (
-    <HudCanvas>
-      <CommandBar>
-        <Link href="/" className="flex items-center gap-2 rounded-full py-1.5 pl-2 pr-4">
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-red-800 via-red-600 to-amber-300 text-xs font-black text-white shadow-lg shadow-red-900/25">
-            CS
-          </span>
-          <span className="font-display text-lg text-slate-950">CompSocrates</span>
-        </Link>
-        <Action variant="ghost" onClick={() => router.push("/login")}>
-          Log In
-        </Action>
-        <Action onClick={() => router.push(signedIn ? dashboardHref : "/signup")}>
-          {signedIn ? "Open HUD" : "Join a Team"}
-          <ArrowUpRight className="h-4 w-4" />
-        </Action>
-      </CommandBar>
+    <div className="relative -mt-6 min-h-[calc(100vh-6rem)]">
+      <div className="pointer-events-none absolute -top-10 right-0 h-96 w-96 rounded-full bg-[var(--cs-volt)] glow-orb animate-float-slow" />
+      <div className="pointer-events-none absolute top-64 left-0 h-80 w-80 rounded-full bg-[var(--cs-plasma)] glow-orb animate-float-slow" style={{ animationDelay: "1.5s" }} />
+      <div className="pointer-events-none absolute bottom-0 right-1/3 h-72 w-72 rounded-full bg-[var(--cs-signal)] glow-orb animate-float-slow" style={{ animationDelay: "3s" }} />
 
-      <HudViewport>
-        {/* Asymmetric hero — one dominant deck, two staggered satellites, deliberately not a symmetric row */}
-        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <Deck priority="critical" className="xl:row-span-2">
-            <p className="text-xs font-black uppercase tracking-[0.3em] text-red-900/60">Tactical Scouting HUD</p>
-            <h1 className="mt-4 font-display text-5xl leading-[1.05] text-slate-950 sm:text-6xl">
-              Field every <span className="gradient-text">advantage</span>
-            </h1>
-            <p className="mt-5 max-w-lg text-base leading-relaxed text-slate-600">
-              CompSocrates replaces the scouting binder with a floating command surface — live
-              match data, verified scout accuracy, and alliance strategy in one glass HUD.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Action onClick={() => router.push(signedIn ? dashboardHref : "/signup")}>
-                {signedIn ? "Open Command" : "Start Scouting"}
-                <ArrowUpRight className="h-4 w-4" />
-              </Action>
-              <Action variant="secondary" onClick={() => router.push("/login")}>
-                Team Access
-              </Action>
-            </div>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Chip icon={Sparkles} label="Mode" value="Live" tone="gold" />
-              <Chip icon={Crosshair} label="Focus" value="Alliance Strategy" tone="crimson" />
-            </div>
-          </Deck>
-
-          <Deck priority="high" offset="lg:translate-x-6">
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-900/70">Drive Coach View</p>
-            <h2 className="mt-3 font-display text-3xl text-slate-950">Matchup, Ranked</h2>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600">
-              High-priority signals — matchup fit, scout trust, robot trend — surface before anything else.
-            </p>
-          </Deck>
-
-          <Deck priority="normal" offset="lg:-translate-x-4 self-end">
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-red-900/60">Pit Intelligence</p>
-            <h2 className="mt-3 font-display text-3xl text-slate-950">Capability Logs</h2>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600">
-              Structured robot intake feeds directly into alliance planning — no re-keying.
-            </p>
-          </Deck>
+      <section className="relative z-10 flex flex-col items-start gap-6 py-16 sm:py-24">
+        <div className="flex items-center gap-2 rounded-full border border-[var(--cs-border-strong)] bg-white/[0.04] px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-[var(--cs-volt)]">
+          <Zap size={12} /> Season 2026 · Scouting Reimagined
         </div>
-
-        <div className="mt-16">
-          <PageIntro eyebrow="Capabilities" title="Built for the huddle, not the spreadsheet" />
-          <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            {capabilities.map((cap, index) => {
-              const Icon = cap.icon;
-              return (
-                <Surface
-                  key={cap.title}
-                  interactive
-                  className={`p-5 ${index === 1 ? "sm:translate-y-4" : index === 3 ? "sm:-translate-y-4" : ""}`}
-                >
-                  <div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-amber-100/80 to-white/40 text-red-800">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 font-display text-lg text-slate-950">{cap.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{cap.body}</p>
-                </Surface>
-              );
-            })}
-          </div>
+        <h1 className="max-w-3xl text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-7xl">
+          Scout sharper.
+          <br />
+          <span className="text-gradient-volt">Strategize faster.</span>
+        </h1>
+        <p className="max-w-xl text-base text-[var(--cs-text-dim)] sm:text-lg">
+          CompSocrates unifies match scouting, pit intel, and drive-team reflection into one
+          live command center — built for FRC teams who make decisions between matches, not after.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/signup"
+            className="flex items-center gap-2 rounded-2xl bg-[var(--cs-volt)] px-6 py-3 text-sm font-bold text-[#06210a] transition-transform hover:scale-[1.03]"
+          >
+            Get Started <ArrowRight size={16} />
+          </Link>
+          <Link
+            href="/login"
+            className="glass rounded-2xl px-6 py-3 text-sm font-semibold text-[var(--cs-text)] transition-colors hover:border-[var(--cs-border-strong)]"
+          >
+            Log In
+          </Link>
         </div>
+      </section>
 
-        <div className="mt-16">
-          <Deck priority="high" className="text-center">
-            <h2 className="font-display text-3xl text-slate-950">Bring your whole team onto one HUD</h2>
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-600">
-              Scouts, strategists, drive coaches, and judges — one dataset, one command surface.
-            </p>
-            <div className="mt-6 flex justify-center">
-              <Action onClick={() => router.push("/signup")}>
-                Create Your Team
-                <ArrowUpRight className="h-4 w-4" />
-              </Action>
-            </div>
-          </Deck>
-        </div>
-
-        <footer className="mt-16 flex flex-col items-center gap-2 text-center text-xs text-slate-500">
-          <div className="flex gap-4">
-            <Link href="/privacy-policy" className="hover:text-slate-800">
-              Privacy Policy
-            </Link>
-            <Link href="/terms-of-service" className="hover:text-slate-800">
-              Terms of Service
-            </Link>
-          </div>
-          <p>© 2026 CompSocrates.</p>
-        </footer>
-      </HudViewport>
-    </HudCanvas>
+      <section className="relative z-10 grid gap-5 pb-20 sm:grid-cols-3">
+        <GlassCard accent="volt" className="sm:translate-y-4">
+          <Swords size={22} className="mb-3 text-[var(--cs-volt)]" />
+          <h3 className="mb-1 text-lg font-bold">Live Match Scouting</h3>
+          <p className="text-sm text-[var(--cs-text-dim)]">
+            Fast-entry forms tuned for real-time capture, cycle counting, and endgame states.
+          </p>
+        </GlassCard>
+        <GlassCard accent="current">
+          <Radar size={22} className="mb-3 text-[var(--cs-current)]" />
+          <h3 className="mb-1 text-lg font-bold">Robot Radar &amp; Rankings</h3>
+          <p className="text-sm text-[var(--cs-text-dim)]">
+            Auto-generated pick lists, reliability scores, and multi-axis team comparisons.
+          </p>
+        </GlassCard>
+        <GlassCard accent="plasma" className="sm:translate-y-4">
+          <BarChart3 size={22} className="mb-3 text-[var(--cs-plasma)]" />
+          <h3 className="mb-1 text-lg font-bold">Role-Aware Dashboards</h3>
+          <p className="text-sm text-[var(--cs-text-dim)]">
+            Nine distinct views — from Drive Team to Judge/Awards — each surfacing what matters.
+          </p>
+        </GlassCard>
+      </section>
+    </div>
   );
 }
