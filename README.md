@@ -183,3 +183,5 @@ For visual work, run the Next dev server and inspect authenticated pages at desk
 - Form control readability
 - Mobile overlays
 - Text fit inside pills, cards, tabs, and buttons
+
+_Redeploy marker: 2026-10-20_
