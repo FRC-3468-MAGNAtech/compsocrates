@@ -183,3 +183,5 @@ For visual work, run the Next dev server and inspect authenticated pages at desk
 - Form control readability
 - Mobile overlays
 - Text fit inside pills, cards, tabs, and buttons
+
+> Branch note: CompSocrates-v1.5 is a snapshot of the v2 interface at 9e27936.
