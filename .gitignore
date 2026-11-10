@@ -46,3 +46,6 @@ next-env.d.ts
 
 # P24: Playwright screenshots of the practice workspace
 /e2e/screenshots/
+
+# keep the committed env template
+!.env.example
