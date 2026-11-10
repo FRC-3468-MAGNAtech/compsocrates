@@ -219,6 +219,18 @@ export default function LoginPage() {
               Sign up
             </Link>
           </p>
+
+          <p className="text-center text-xs text-[var(--muted-foreground)]">
+            By continuing, you agree to our{" "}
+            <Link href="/terms-of-service" className="underline underline-offset-4 hover:text-[var(--foreground)]">
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy-policy" className="underline underline-offset-4 hover:text-[var(--foreground)]">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </GlassPanel>
       </motion.div>
     </div>

@@ -46,11 +46,6 @@ const PENDING_PAGES: string[] = [
   "/analytics/match-prediction",
   "/analytics/performance-reliability",
   "/analytics/robot-radar",
-  "/events/:eventKey",
-  "/judge-book",
-  "/judge-book/:cardId",
-  "/privacy-policy",
-  "/terms-of-service",
 ];
 
 describe("legacy redirect table", () => {

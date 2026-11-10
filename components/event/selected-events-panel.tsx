@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -395,6 +396,13 @@ function EventRow({
       <Badge variant={status.variant} className="hidden shrink-0 sm:inline-flex">
         {status.label}
       </Badge>
+      <Link
+        href={`/events/${encodeURIComponent(event.code)}`}
+        aria-label={`Details for ${event.name}`}
+        className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-xs font-medium text-[var(--muted-foreground)] outline-none hover:bg-white/10 hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--glow),0.5)]"
+      >
+        Details
+      </Link>
       {reorder && (
         <>
           <button

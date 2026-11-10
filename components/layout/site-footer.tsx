@@ -18,12 +18,18 @@ export function SiteFooter({ className }: { className?: string }) {
       <span>
         &copy; {new Date().getFullYear()} CompEpicurus{teams && <> &mdash; {teams}</>}
       </span>
-      <nav aria-label="Footer" className="flex items-center gap-4">
+      <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
         <Link href="/credits" className="transition-colors hover:text-[var(--foreground)]">
           Credits
         </Link>
         <Link href="/changelog" className="transition-colors hover:text-[var(--foreground)]">
           Changelog
+        </Link>
+        <Link href="/privacy-policy" className="transition-colors hover:text-[var(--foreground)]">
+          Privacy Policy
+        </Link>
+        <Link href="/terms-of-service" className="transition-colors hover:text-[var(--foreground)]">
+          Terms of Service
         </Link>
       </nav>
     </footer>
