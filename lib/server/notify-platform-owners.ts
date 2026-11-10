@@ -3,6 +3,20 @@ import type { Firestore } from "firebase-admin/firestore";
 import { getAdminMessaging } from "@/lib/firebase/admin";
 import { appBaseUrl, platformOwnerEmails, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
+import { CS_OWNER_UIDS } from "@/config/cs";
+
+/**
+ * Push tokens of every platform owner: users carrying the `isPlatformOwner` mirror (email owners, written by sync-roles) plus the
+ * users whose uid is in `CS_OWNER_UIDS` (CS's owner layer has no mirror field, so they are read by id).
+ */
+async function platformOwnerPushTokens(db: Firestore): Promise<string[]> {
+  const [mirrored, byUid] = await Promise.all([
+    db.collection("users").where("isPlatformOwner", "==", true).get(),
+    Promise.all(CS_OWNER_UIDS.map((uid) => db.collection("users").doc(uid).get())),
+  ]);
+  const docs = [...mirrored.docs, ...byUid.filter((d) => d.exists)];
+  return [...new Set(docs.flatMap((d) => (Array.isArray(d.data()?.fcmTokens) ? (d.data()?.fcmTokens as string[]) : [])))];
+}
 
 /**
  * P20: tells the platform owner(s) a new application arrived. Two best-effort channels (the in-app badge on the
@@ -20,8 +34,7 @@ export async function notifyPlatformOwnersOfApplication(
   try {
     const messaging = getAdminMessaging();
     if (messaging) {
-      const owners = await db.collection("users").where("isPlatformOwner", "==", true).get();
-      const tokens = [...new Set(owners.docs.flatMap((d) => (Array.isArray(d.data().fcmTokens) ? (d.data().fcmTokens as string[]) : [])))];
+      const tokens = await platformOwnerPushTokens(db);
       if (tokens.length > 0) {
         await messaging.sendEachForMulticast({ tokens, notification: { title, body }, data: { applicationId: app.applicationId, url: "/admin" } });
       }
@@ -45,8 +58,7 @@ export async function notifyPlatformOwnersOfTemplate(db: Firestore, t: { templat
   try {
     const messaging = getAdminMessaging();
     if (messaging) {
-      const owners = await db.collection("users").where("isPlatformOwner", "==", true).get();
-      const tokens = [...new Set(owners.docs.flatMap((d) => (Array.isArray(d.data().fcmTokens) ? (d.data().fcmTokens as string[]) : [])))];
+      const tokens = await platformOwnerPushTokens(db);
       if (tokens.length > 0) await messaging.sendEachForMulticast({ tokens, notification: { title, body: `${t.authorName} sent a template for review.` }, data: { templateId: t.templateId, url: "/admin" } });
     }
   } catch (err) {

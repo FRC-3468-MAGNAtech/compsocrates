@@ -1,6 +1,7 @@
 "use client";
 
 import { auth } from "@/lib/firebase/client";
+import type { RoleId } from "@/lib/roles";
 
 export type CreateTeamResult = { joinCode: string; teamId: string };
 
@@ -19,14 +20,25 @@ async function authedPost(path: string, body: unknown): Promise<Record<string, u
   return json;
 }
 
-/** Validates a join code server-side and creates the caller's user doc — see app/api/team/join/route.ts. */
-export async function joinTeam(joinCode: string, name?: string): Promise<void> {
-  await authedPost("/api/team/join", { joinCode, name });
+export type JoinRequestResult = { requestId: string | null; alreadyPending: boolean; teamId: string; teamLabel: string };
+
+/**
+ * CS's join flow: files a PENDING join request for the team whose code was typed (it does NOT join the team: a team admin approves
+ * it in Team Management) and makes sure the caller has a CS-shaped user doc. See app/api/team/join/route.ts.
+ */
+export async function joinTeam(joinCode: string, opts: { name?: string; role?: RoleId } = {}): Promise<JoinRequestResult> {
+  const result = await authedPost("/api/team/join", { joinCode, name: opts.name, role: opts.role });
+  return {
+    requestId: typeof result.requestId === "string" ? result.requestId : null,
+    alreadyPending: result.alreadyPending === true,
+    teamId: String(result.teamId ?? ""),
+    teamLabel: String(result.teamLabel ?? ""),
+  };
 }
 
-/** Creates a new team (atomically, and only while enabled) and makes the caller its admin — see app/api/team/create/route.ts. */
-export async function createTeam(teamNumber: number, teamName?: string, name?: string): Promise<CreateTeamResult> {
-  const result = await authedPost("/api/team/create", { teamNumber, teamName, name });
+/** Creates a new team (atomically, and only while enabled) and makes the caller its admin and owner — see app/api/team/create/route.ts. */
+export async function createTeam(teamNumber: number, teamName?: string, name?: string, role?: RoleId): Promise<CreateTeamResult> {
+  const result = await authedPost("/api/team/create", { teamNumber, teamName, name, role });
   return { joinCode: String(result.joinCode), teamId: String(result.teamId) };
 }
 

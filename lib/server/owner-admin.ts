@@ -1,4 +1,5 @@
 import "server-only";
+import { isCsOwnerUid } from "@/config/cs";
 
 function parseEmailList(raw: string | undefined): Set<string> {
   if (!raw) return new Set();
@@ -17,11 +18,14 @@ export function isOwnerEmail(email: string | null | undefined): boolean {
 }
 
 /**
- * P20: is this verified ID token a **platform owner**? Checked on every platform-only server route against the
- * live OWNER_EMAILS list *and* a verified email (the `platformOwner` claim alone could be stale after someone is
- * removed from the env var), so revoking takes effect on the next request rather than the next sign-in.
+ * Is this verified ID token a **platform owner**? Two ways in, both checked live on every platform-only server route:
+ *  1. CS's owner layer (D1/D6): the token's uid is in `CS_OWNER_UIDS` (config/cs.ts). A uid cannot be spoofed, so no claim or
+ *     email check is needed.
+ *  2. CE's: a verified email in the server-only OWNER_EMAILS list *and* the `platformOwner` claim (the claim alone could be
+ *     stale after someone is removed from the env var), so revoking takes effect on the next request.
  */
-export function isPlatformOwnerToken(decoded: { email?: string | null; email_verified?: boolean; platformOwner?: unknown }): boolean {
+export function isPlatformOwnerToken(decoded: { uid?: string; email?: string | null; email_verified?: boolean; platformOwner?: unknown }): boolean {
+  if (isCsOwnerUid(decoded.uid)) return true;
   return decoded.platformOwner === true && decoded.email_verified === true && isOwnerEmail(decoded.email);
 }
 

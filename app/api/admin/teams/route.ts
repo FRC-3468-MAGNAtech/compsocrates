@@ -3,6 +3,8 @@ import { getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
 import { readFieldTeams } from "@/lib/field-teams";
+import { normalizeTeamCode, ownerUidOfTeam } from "@/data/cs/join-requests";
+import type { CsRecord } from "@/data/cs/types";
 
 /**
  * P20: the list behind Admin Panel > Recovery (platform owner only): every team account's FTC teams, who owns it, and
@@ -16,20 +18,29 @@ export async function GET(request: Request) {
   const db = getAdminFirestore();
   if (!db) return NextResponse.json({ ok: false, error: "Server isn't configured." }, { status: 503 });
 
-  const [teamsSnap, adminsSnap] = await Promise.all([db.collection("teams").get(), db.collection("users").where("isAdmin", "==", true).get()]);
+  // CS admins: `isTeamAdmin`, and the legacy `role == "coach"` the production rules also treat as admin (D6).
+  const [teamsSnap, adminsSnap, coachesSnap] = await Promise.all([
+    db.collection("teams").get(),
+    db.collection("users").where("isTeamAdmin", "==", true).get(),
+    db.collection("users").where("role", "==", "coach").get(),
+  ]);
   const adminsByTeam = new Map<string, { uid: string; name: string; email: string }[]>();
-  for (const d of adminsSnap.docs) {
-    const teamId = d.data().teamId as string | undefined;
+  const seen = new Set<string>();
+  for (const d of [...adminsSnap.docs, ...coachesSnap.docs]) {
+    if (seen.has(d.id)) continue;
+    seen.add(d.id);
+    const data = d.data();
+    const teamId = normalizeTeamCode(data.teamId);
     if (!teamId) continue;
     const list = adminsByTeam.get(teamId) ?? [];
-    list.push({ uid: d.id, name: String(d.data().name ?? ""), email: String(d.data().email ?? "") });
+    list.push({ uid: d.id, name: String(data.displayName ?? data.name ?? ""), email: String(data.email ?? "") });
     adminsByTeam.set(teamId, list);
   }
 
   const teams = teamsSnap.docs.map((d) => {
     const data = d.data();
     const admins = adminsByTeam.get(d.id) ?? [];
-    const ownerUid = typeof data.ownerUid === "string" ? data.ownerUid : null;
+    const ownerUid = ownerUidOfTeam(data as CsRecord) || null;
     return {
       teamId: d.id,
       accountName: typeof data.accountName === "string" ? data.accountName : null,

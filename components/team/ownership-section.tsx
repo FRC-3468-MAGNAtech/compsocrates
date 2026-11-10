@@ -44,7 +44,8 @@ export function OwnershipSection() {
   const [error, setError] = useState<string | null>(null);
 
   const pending = livePendingTransfer(team?.pendingTransfer, now);
-  const owner = members.find((m) => m.isOwner);
+  // CS's `verifiedOwnerId` (exposed as `team.ownerUid`) is authoritative; the `isOwner` mirror on user docs is the fallback.
+  const owner = members.find((m) => m.uid === team?.ownerUid) ?? members.find((m) => m.isOwner);
   const candidates = members.filter((m) => m.isAdmin && m.uid !== user?.uid);
   const teamNumbers = team ? readFieldTeams(team).map((t) => t.number) : [];
   const isRecipient = pending !== null && pending.toUid === user?.uid;

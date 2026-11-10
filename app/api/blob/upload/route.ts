@@ -3,7 +3,8 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { parsePageAccess } from "@/lib/page-access/access";
 import { verifyBearerToken } from "@/lib/server/require-user";
-import { authorizeBlobUpload, type BlobAuthDeps } from "@/lib/server/blob-auth";
+import { authorizeBlobUpload, blobUserFromCsDoc, type BlobAuthDeps } from "@/lib/server/blob-auth";
+import type { CsUserDoc } from "@/data/cs/types";
 
 // The token request is a few hundred bytes of JSON (the photo itself goes browser -> Vercel Blob directly).
 const MAX_BODY_BYTES = 8 * 1024;
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
   const deps: BlobAuthDeps = {
     getUser: async (id) => {
       const snap = await db.doc(`users/${id}`).get();
-      return snap.exists ? (snap.data() ?? null) : null;
+      return snap.exists ? blobUserFromCsDoc(id, (snap.data() ?? {}) as CsUserDoc) : null;
     },
     getPageAccessConfig: async (teamId) => {
       const snap = await db.doc(`teams/${teamId}/settings/pageAccess`).get();

@@ -2,6 +2,9 @@ import "server-only";
 import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
+import { ownerUidOfTeam } from "@/data/cs/join-requests";
+import type { CsUserDoc } from "@/data/cs/types";
+import { csUserToProfile } from "@/data/cs/users";
 import { platformAuditDoc, teamAuditDoc } from "@/lib/server/audit";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
 import { notifyPlatformOwnersOfTemplate } from "@/lib/server/notify-platform-owners";
@@ -35,11 +38,13 @@ type Caller = { uid: string; name: string; teamId: string | null; canManage: boo
 async function loadCaller(db: Firestore, decoded: DecodedIdToken): Promise<Caller> {
   const snap = await db.collection("users").doc(decoded.uid).get();
   const u = snap.exists ? snap.data()! : null;
+  // CS user doc (D1/D6): admin = `isTeamAdmin` (or a legacy coach), owner = the platform-owner list or the additive mirror.
+  const profile = u ? csUserToProfile(decoded.uid, u as CsUserDoc) : null;
   return {
     uid: decoded.uid,
-    name: typeof u?.name === "string" ? u.name : "Someone",
-    teamId: typeof u?.teamId === "string" ? u.teamId : null,
-    canManage: !!u && (u.isAdmin === true || u.isOwner === true),
+    name: profile?.name || "Someone",
+    teamId: typeof u?.teamId === "string" && u.teamId ? u.teamId : null,
+    canManage: !!profile && (profile.isAdmin || profile.isOwner),
     platform: isPlatformOwnerToken(decoded),
   };
 }
@@ -100,11 +105,11 @@ async function guardRequest(db: Firestore, teamId: string, alreadyPending: boole
 async function authorContact(db: Firestore, teamId: string): Promise<{ email: string; name: string } | null> {
   try {
     const team = await db.collection("teams").doc(teamId).get();
-    const ownerUid = team.data()?.ownerUid as string | undefined;
+    const ownerUid = ownerUidOfTeam(team.data());
     if (!ownerUid) return null;
     const u = await db.collection("users").doc(ownerUid).get();
     const email = u.data()?.email as string | undefined;
-    return email ? { email, name: (u.data()?.name as string | undefined) ?? "there" } : null;
+    return email ? { email, name: (u.data()?.displayName as string | undefined) || (u.data()?.name as string | undefined) || "there" } : null;
   } catch {
     return null;
   }

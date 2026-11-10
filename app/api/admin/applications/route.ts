@@ -6,8 +6,9 @@ import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
 import { APPLICATION_LIMITS, effectiveStatus, sanitizeLine, sanitizeText } from "@/lib/applications";
 import { migratedFieldTeamId } from "@/lib/field-teams";
 import { DEFAULT_ROLE_ID, type RoleId } from "@/lib/roles";
-import { defaultThemeId } from "@/lib/themes";
-import { randomJoinCode } from "@/lib/server/team-settings";
+import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, normalizeTeamCode } from "@/data/cs/join-requests";
+import type { CsUserDoc } from "@/data/cs/types";
+import { claimFreeTeamCode } from "@/lib/server/team-create";
 import { platformAuditDoc, teamAuditDoc } from "@/lib/server/audit";
 import { appBaseUrl, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
@@ -120,49 +121,30 @@ async function approve(db: Firestore, applicationId: string, actor: Actor): Prom
     if (status !== "pending") throw new RouteError(409, "already-decided", `This application is already ${status}.`);
 
     const userRef = db.collection("users").doc(app.applicantUid);
-    const [userSnap, numbersSnap, legacySnap] = await Promise.all([
+    const [userSnap, numbersSnap, legacySnap, code] = await Promise.all([
       txn.get(userRef),
       txn.get(db.collection("teams").where("fieldTeamNumbers", "array-contains", app.teamNumber).limit(1)),
-      txn.get(db.collection("teams").where("number", "==", app.teamNumber).limit(1)),
+      txn.get(db.collection("teams").where("teamNumber", "==", String(app.teamNumber)).limit(1)),
+      claimFreeTeamCode(db, txn),
     ]);
-    if (userSnap.exists) throw new RouteError(409, "already-member", "The applicant has already joined a team account.");
+    const applicant = userSnap.exists ? ((userSnap.data() ?? {}) as CsUserDoc) : null;
+    if (applicant && normalizeTeamCode(applicant.teamId) !== "") throw new RouteError(409, "already-member", "The applicant has already joined a team account.");
     if (!numbersSnap.empty || !legacySnap.empty) throw new RouteError(409, "account-exists", `An account for FTC ${app.teamNumber} already exists.`);
+    if (!code) throw new RouteError(503, "code-collision", "Couldn't pick a free join code. Try again.");
 
-    const teamRef = db.collection("teams").doc();
+    const teamRef = db.collection("teams").doc(code);
     const fieldTeam = { id: migratedFieldTeamId(app.teamNumber), number: app.teamNumber, name: app.teamName || "" };
     const role: RoleId = (app.role as RoleId) ?? DEFAULT_ROLE_ID;
 
-    txn.set(teamRef, {
-      number: app.teamNumber,
-      name: app.teamName || null,
-      fieldTeams: [fieldTeam],
-      fieldTeamIdList: [fieldTeam.id],
-      fieldTeamNumbers: [app.teamNumber],
-      ownerUid: app.applicantUid,
-      joinCode: randomJoinCode(),
-      activeEventCode: null,
-      activeSeasonId: null,
-      activeEvent: null,
-      activeEventCodes: [],
-      activeEvents: [],
-      applicationId,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    txn.set(userRef, {
-      name: app.applicantName,
-      email: app.applicantEmail,
-      teamId: teamRef.id,
-      primaryRole: role,
-      secondaryRoles: [],
-      isAdmin: true,
-      isOwner: true, // mirror of teams.ownerUid
-      fieldTeamIds: [fieldTeam.id],
-      themeId: defaultThemeId,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    // CS-shaped team (teamName, teamNumber string, verifiedOwnerId, selectedEvents) + the additive CE FTC-team fields and the
+    // application link; the applicant becomes its owner and team admin (merge: an existing CS user doc keeps all its other fields).
+    txn.set(teamRef, { ...buildNewTeamDoc({ teamNumber: app.teamNumber, teamName: app.teamName || "", ownerUid: app.applicantUid, fieldTeam }, Date.now()), applicationId });
+    const creatorPatch = buildCreatorUserPatch({ teamId: code, role, fieldTeamIds: [fieldTeam.id] });
+    if (applicant) txn.set(userRef, creatorPatch, { merge: true });
+    else txn.set(userRef, { ...buildBaseUserDoc({ uid: app.applicantUid, email: app.applicantEmail, displayName: app.applicantName, role }, Date.now()), ...creatorPatch });
     txn.update(appRef, { status: "approved", decidedAt: FieldValue.serverTimestamp(), decidedBy: actor.uid, teamId: teamRef.id });
     // The new account's own log gets a minimal entry (no applicant details); the platform log gets the full one.
-    txn.set(db.collection("auditLog").doc(), teamAuditDoc(teamRef.id, actor.uid, actor.name, "approve-team-application", { applicationId }, null, { ownerUid: app.applicantUid, teamNumber: app.teamNumber }));
+    txn.set(db.collection("auditLog").doc(), teamAuditDoc(teamRef.id, actor.uid, actor.name, "approve-team-application", { applicationId }, null, { verifiedOwnerId: app.applicantUid, teamNumber: app.teamNumber }));
     txn.set(db.collection("platformAuditLog").doc(), platformAuditDoc("approve-application", actor, { applicationId, teamId: teamRef.id, teamNumber: app.teamNumber, applicantUid: app.applicantUid }));
     return { teamId: teamRef.id, email: app.applicantEmail as string, name: app.applicantName as string, teamNumber: app.teamNumber as number };
   });

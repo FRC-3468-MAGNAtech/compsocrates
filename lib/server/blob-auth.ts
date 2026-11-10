@@ -4,22 +4,27 @@
 import { MAX_IMAGE_BYTES, ALLOWED_IMAGE_TYPES, parseBlobPath, uidTagOf, validateUploadRequest, type BlobPathParts } from "@/lib/blob/paths";
 import { canAccessPage, type AccessUser, type PageAccessConfig } from "@/lib/page-access/access";
 import { DEFAULT_ROLE_ID, ROLES, type RoleId } from "@/lib/roles";
+import { nonMatchTypeOfFormId, type NonMatchFormType } from "@/lib/forms/builtin";
+import type { CsUserDoc } from "@/data/cs/types";
+import { csUserToProfile } from "@/data/cs/users";
 
 /** The built-in forms each belong to a (restricted) page; the photo rules follow the page's access rules. */
-const FORM_PAGES: Record<string, string> = {
-  "lead-scout-v1": "lead-scout-form",
-  "pit-scout-v1": "pit-scout-form",
-  "team-strategy-v1": "team-strategy-form",
-  "match-strategy-v1": "match-strategy-form",
-  "drive-reflection-v1": "drive-reflection-form",
-  "helper-v1": "helper-form",
+const FORM_PAGES: Record<NonMatchFormType, string> = {
+  "lead-scout": "lead-scout-form",
+  "pit-scout": "pit-scout-form",
+  "team-strategy": "team-strategy-form",
+  "match-strategy": "match-strategy-form",
+  "drive-reflection": "drive-reflection-form",
+  helper: "helper-form",
 };
 
 /** Any other (custom) form is filled in from the Match Scout page, which is open to the whole team. */
 export const CUSTOM_FORM_PAGE_ID = "match-scout-form";
 
 export function pageIdForForm(formId: string): string {
-  return Object.prototype.hasOwnProperty.call(FORM_PAGES, formId) ? FORM_PAGES[formId] : CUSTOM_FORM_PAGE_ID;
+  // both seasons' ids ("pit-scout-v1" and "biobuzz-pit-scout-v1") map to the same page: a photo is allowed by the page, whichever season's form it came from
+  const type = nonMatchTypeOfFormId(formId);
+  return type ? FORM_PAGES[type] : CUSTOM_FORM_PAGE_ID;
 }
 
 /** What the client sends as `clientPayload` (a JSON string) with every upload. */
@@ -27,6 +32,16 @@ export type BlobClientPayload = { formId: string; kind: string; teamId: string; 
 
 /** The fields of `users/{uid}` this module reads. Everything is `unknown` because it comes from Firestore. */
 export type BlobUserDoc = { teamId?: unknown; primaryRole?: unknown; secondaryRoles?: unknown; isAdmin?: unknown; isOwner?: unknown };
+
+/**
+ * A stored CS `users/{uid}` document (displayName, role/roles, isTeamAdmin, teamId, ...) as the `BlobUserDoc` this module reads,
+ * through the data/cs adapter (D1/D6): roles from `role`/`roles`, admin from `isTeamAdmin` (or a legacy coach), owner from the
+ * platform-owner list or the additive owner mirror.
+ */
+export function blobUserFromCsDoc(uid: string, doc: CsUserDoc): BlobUserDoc {
+  const profile = csUserToProfile(uid, doc);
+  return { teamId: profile.teamId, primaryRole: profile.primaryRole, secondaryRoles: profile.secondaryRoles, isAdmin: profile.isAdmin, isOwner: profile.isOwner };
+}
 
 export type BlobAuthDeps = {
   /** `users/{uid}`, or null when it doesn't exist. */

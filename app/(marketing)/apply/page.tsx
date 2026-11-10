@@ -34,7 +34,7 @@ export default function ApplyPage() {
 
   // An approved applicant's profile appears moments after approval: take them in.
   useEffect(() => {
-    if (!loading && user && profile && latest && statusOf(latest) === "approved") router.replace("/dashboard");
+    if (!loading && user && profile?.teamId && latest && statusOf(latest) === "approved") router.replace("/dashboard");
   }, [loading, user, profile, latest, router]);
 
   const recheck = async () => {
@@ -104,7 +104,7 @@ export default function ApplyPage() {
         <p className="text-xs text-[var(--muted-foreground)]">After you sign up, choose &ldquo;Apply to create a team&rdquo; and we&apos;ll bring you back here.</p>
       </GlassPanel>
     );
-  } else if (profile) {
+  } else if (profile?.teamId) {
     content = (
       <GlassPanel strong className="flex flex-col gap-4 text-center">
         <h1 className="text-xl font-semibold">You&apos;re already on a team</h1>

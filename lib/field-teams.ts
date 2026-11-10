@@ -14,7 +14,7 @@ export const MAX_FIELD_TEAM_NAME = 60;
 export const MAX_ACCOUNT_NAME = 60;
 
 /** The shape of the team doc fields this module reads (a `TeamDoc` satisfies it; so does raw Admin SDK data). */
-export type FieldTeamSource = { fieldTeams?: unknown; number?: unknown; name?: unknown } | null | undefined;
+export type FieldTeamSource = { fieldTeams?: unknown; number?: unknown; name?: unknown; teamNumber?: unknown; teamName?: unknown } | null | undefined;
 
 /** The id the migration gives the account's original (single) team. Deterministic, so a half-finished or repeated migration always agrees with itself. */
 export function migratedFieldTeamId(number: number): string {
@@ -53,9 +53,12 @@ export function readFieldTeams(team: FieldTeamSource): FieldTeam[] {
     const valid = team.fieldTeams.filter(isFieldTeam).map((t) => ({ id: t.id, number: t.number, name: t.name }));
     if (valid.length > 0) return valid;
   }
-  const legacy = parseFieldTeamNumber(typeof team.number === "number" ? team.number : null);
+  // CS's own fields come first (`teamNumber` is a STRING there, `teamName` the name); the adapter's `number`/`name` follow.
+  const csNumber = typeof team.teamNumber === "string" || typeof team.teamNumber === "number" ? parseFieldTeamNumber(team.teamNumber) : null;
+  const legacy = csNumber ?? parseFieldTeamNumber(typeof team.number === "number" ? team.number : null);
   if (legacy === null) return [];
-  return [{ id: migratedFieldTeamId(legacy), number: legacy, name: typeof team.name === "string" ? team.name : "" }];
+  const name = typeof team.teamName === "string" ? team.teamName : typeof team.name === "string" ? team.name : "";
+  return [{ id: migratedFieldTeamId(legacy), number: legacy, name }];
 }
 
 /** "FTC 35792" — the label used everywhere (sidebar, headers, chips). */
@@ -160,8 +163,12 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   return next;
 }
 
-/** The fields written to `teams/{teamId}` when the FTC team list changes. `number`/`name` mirror the first team so anything still reading the legacy fields keeps working; `fieldTeamIdList` is the id mirror firestore.rules checks member assignments against. */
-export function fieldTeamsWrite(teams: readonly FieldTeam[]): { fieldTeams: FieldTeam[]; fieldTeamIdList: string[]; fieldTeamNumbers: number[]; number: number; name: string | null } {
+/**
+ * The fields written to `teams/{teamId}` when the FTC team list changes. `teamNumber` (a STRING) and `teamName` are CS's own
+ * fields and mirror the first team, so CS keeps showing the right team; `fieldTeams`, `fieldTeamIdList` and `fieldTeamNumbers`
+ * are CE additive fields (`fieldTeamIdList` is the id mirror firestore.rules checks member assignments against).
+ */
+export function fieldTeamsWrite(teams: readonly FieldTeam[]): { fieldTeams: FieldTeam[]; fieldTeamIdList: string[]; fieldTeamNumbers: number[]; teamNumber: string; teamName: string } {
   const first = teams[0];
   return {
     fieldTeams: teams.map((t) => ({ id: t.id, number: t.number, name: t.name })),
@@ -169,8 +176,8 @@ export function fieldTeamsWrite(teams: readonly FieldTeam[]): { fieldTeams: Fiel
     // P20: a queryable mirror of the numbers (Firestore can't query inside a list of maps), so "does an account already
     // have this FTC team?" can be answered with array-contains when someone applies for it.
     fieldTeamNumbers: teams.map((t) => t.number),
-    number: first.number,
-    name: first.name.trim() ? first.name.trim() : null,
+    teamNumber: String(first.number),
+    teamName: first.name.trim(),
   };
 }
 

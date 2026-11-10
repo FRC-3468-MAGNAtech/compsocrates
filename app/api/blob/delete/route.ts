@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { del } from "@vercel/blob";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
-import { authorizeBlobDelete } from "@/lib/server/blob-auth";
+import { authorizeBlobDelete, blobUserFromCsDoc } from "@/lib/server/blob-auth";
+import type { CsUserDoc } from "@/data/cs/types";
 
 const MAX_BODY_BYTES = 4 * 1024;
 
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
     deps: {
       getUser: async (id) => {
         const snap = await db.doc(`users/${id}`).get();
-        return snap.exists ? (snap.data() ?? null) : null;
+        return snap.exists ? blobUserFromCsDoc(id, (snap.data() ?? {}) as CsUserDoc) : null;
       },
     },
   });

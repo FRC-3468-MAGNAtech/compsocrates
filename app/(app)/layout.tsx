@@ -34,10 +34,11 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
     if (!user) router.replace("/login");
     // Signed in but no user doc yet (first-time Google sign-in, or anyone
     // who closed the tab before finishing Ã¢â‚¬â€ see docs/ASSUMPTIONS.md, P1b).
-    else if (!profile) router.replace("/finish-setup");
+    // CS user docs exist from signup with `teamId: ""` (a pending join request): same destination, which shows the pending state.
+    else if (!profile?.teamId) router.replace("/finish-setup");
   }, [loading, user, profile, router]);
 
-  if (loading || !user || !profile) {
+  if (loading || !user || !profile?.teamId) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="glass-card h-10 w-10 animate-pulse rounded-full" />

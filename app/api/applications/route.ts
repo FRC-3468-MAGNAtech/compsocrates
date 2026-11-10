@@ -14,6 +14,7 @@ import { notifyPlatformOwnersOfApplication } from "@/lib/server/notify-platform-
 import { appBaseUrl, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
 import { getRole } from "@/lib/roles";
+import { normalizeTeamCode } from "@/data/cs/join-requests";
 
 const HOUR_MS = 60 * 60 * 1000;
 const MAX_BODY_BYTES = 16 * 1024;
@@ -93,8 +94,9 @@ export async function POST(request: Request) {
   ];
   if (!ipLimit.allowed || !emailLimit.allowed) return fail(429, "rate-limited", "You've applied several times recently. Try again in an hour.");
 
-  // Already on a team?
-  if ((await db.collection("users").doc(decoded.uid).get()).exists) return fail(409, "already-member", "You're already on a team account.");
+  // Already on a team? (CS user docs exist from signup with `teamId: ""`, so only a non-empty teamId counts.)
+  const existingUser = await db.collection("users").doc(decoded.uid).get();
+  if (existingUser.exists && normalizeTeamCode(existingUser.data()?.teamId) !== "") return fail(409, "already-member", "You're already on a team account.");
 
   // One pending (not expired) application per applicant, email and team number.
   const pendingChecks = await Promise.all([
@@ -113,7 +115,8 @@ export async function POST(request: Request) {
   // An account for this FTC team already exists: they should join it, not create another.
   const [byNumbers, byLegacy] = await Promise.all([
     db.collection("teams").where("fieldTeamNumbers", "array-contains", input.teamNumber).limit(1).get(),
-    db.collection("teams").where("number", "==", input.teamNumber).limit(1).get(),
+    // CS's own field: `teamNumber` is a STRING.
+    db.collection("teams").where("teamNumber", "==", String(input.teamNumber)).limit(1).get(),
   ]);
   const existingAccountForNumber = !byNumbers.empty || !byLegacy.empty;
   if (existingAccountForNumber) {

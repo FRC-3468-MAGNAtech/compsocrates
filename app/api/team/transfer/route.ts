@@ -8,7 +8,13 @@ import { appBaseUrl, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
 import { sanitizeLine, sanitizeText } from "@/lib/applications";
 import { fieldTeamLabel, readFieldTeams } from "@/lib/field-teams";
+import { isAdminFromCsUser } from "@/data/cs/users";
+import { ownerUidOfTeam } from "@/data/cs/join-requests";
+import type { CsRecord } from "@/data/cs/types";
 import { TRANSFER_TTL_MS, canCancelTransfer, checkTransferRequest, checkTransferResponse, confirmationMatches, isRecentSignIn, isTeamOwner, readPendingTransfer } from "@/lib/team-owner";
+
+/** A user's display name (CS `displayName`, with CE's `name` as a fallback). */
+const nameOf = (u: DocumentData | undefined) => String(u?.displayName ?? u?.name ?? "");
 
 class RouteError extends Error {
   status: number;
@@ -26,13 +32,13 @@ const teamLabelOf = (team: DocumentData) => {
 };
 
 /**
- * P20: team ownership transfer. Every change to `teams.ownerUid` / `pendingTransfer` happens here (Admin SDK;
+ * P20: team ownership transfer. Every change to `teams.verifiedOwnerId` (CS's owner field) / `pendingTransfer` happens here (Admin SDK;
  * firestore.rules refuses both from any client), in transactions that re-check the state they depend on.
  *
  *  - request: the team owner picks an existing **admin with a verified email**, re-authenticates (a sign-in no
  *    older than 5 minutes, read from the token's `auth_time`) and types an FTC team number. That creates one
  *    pending transfer that expires after 7 days.
- *  - accept: the recipient takes ownership. `ownerUid` changes in one transaction; the previous owner stays an
+ *  - accept: the recipient takes ownership. `verifiedOwnerId` changes in one transaction (plus the additive `isOwner` mirror and `isTeamAdmin` on the users); the previous owner stays an
  *    **admin** but loses the owner protections; the new owner gets them. Nothing re-asserts the old owner later
  *    (sync-roles only ever fills in an account that has no owner at all).
  *  - decline (the recipient) / cancel (the owner or whoever requested it).
@@ -100,7 +106,7 @@ async function requestTransfer(db: Firestore, decoded: Decoded, user: DocumentDa
       typedNumber: typeof body.confirm === "string" ? body.confirm : "",
       authTimeSeconds: decoded.auth_time,
       nowMs,
-      target: targetData && targetAuth ? { uid: toUid, isAdmin: targetData.isAdmin === true, emailVerified: targetAuth.emailVerified } : null,
+      target: targetData && targetAuth ? { uid: toUid, isAdmin: isAdminFromCsUser(targetData), emailVerified: targetAuth.emailVerified } : null,
     });
     if (!check.ok) throw new RouteError(check.code === "reauth-required" ? 401 : check.code === "not-owner" ? 403 : 400, check.code, check.message);
 
@@ -108,9 +114,9 @@ async function requestTransfer(db: Firestore, decoded: Decoded, user: DocumentDa
     const record = {
       id,
       fromUid: decoded.uid,
-      fromName: sanitizeLine(user.name ?? "", 80),
+      fromName: sanitizeLine(nameOf(user), 80),
       toUid,
-      toName: sanitizeLine(targetData!.name ?? "", 80),
+      toName: sanitizeLine(nameOf(targetData!), 80),
       requestedAt: Timestamp.fromMillis(nowMs),
       expiresAt: Timestamp.fromMillis(nowMs + TRANSFER_TTL_MS),
     };
@@ -145,12 +151,12 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
       pending: team.pendingTransfer,
       uid: decoded.uid,
       nowMs,
-      recipient: { isAdmin: user.isAdmin === true, emailVerified: authRecord?.emailVerified === true },
+      recipient: { isAdmin: isAdminFromCsUser(user), emailVerified: authRecord?.emailVerified === true },
       forAccept: action === "accept",
     });
     if (!check.ok) throw new RouteError(check.code === "not-recipient" ? 403 : 409, check.code, check.message);
     const pending = readPendingTransfer(team.pendingTransfer)!;
-    const myName = sanitizeLine(user.name ?? "", 80);
+    const myName = sanitizeLine(nameOf(user), 80);
 
     if (action === "decline") {
       txn.update(teamRef, { pendingTransfer: FieldValue.delete() });
@@ -159,7 +165,7 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
     }
 
     // The request is only valid while the person who made it is still the owner (a forced recovery transfer in between voids it).
-    const currentOwner = typeof team.ownerUid === "string" && team.ownerUid ? team.ownerUid : pending.fromUid;
+    const currentOwner = ownerUidOfTeam(team as CsRecord) || pending.fromUid;
     const oldOwnerRef = db.collection("users").doc(currentOwner);
     const oldOwnerSnap = await txn.get(oldOwnerRef);
     if (currentOwner !== pending.fromUid) {
@@ -167,12 +173,13 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
       throw new RouteError(409, "stale", "This request is no longer valid because the account's owner changed.");
     }
 
-    txn.update(teamRef, { ownerUid: decoded.uid, pendingTransfer: FieldValue.delete() });
-    txn.update(db.collection("users").doc(decoded.uid), { isOwner: true, isAdmin: true });
+    // CS: the owner is `verifiedOwnerId`; `isOwner` is only the additive CE mirror, and ownership implies `isTeamAdmin`.
+    txn.update(teamRef, { verifiedOwnerId: decoded.uid, pendingTransfer: FieldValue.delete() });
+    txn.update(db.collection("users").doc(decoded.uid), { isOwner: true, isTeamAdmin: true });
     if (oldOwnerSnap.exists && currentOwner !== decoded.uid) txn.update(oldOwnerRef, { isOwner: false }); // stays an admin
     txn.set(
       db.collection("auditLog").doc(),
-      teamAuditDoc(teamRef.id, decoded.uid, myName, "transfer-ownership", { fromUid: currentOwner, fromName: pending.fromName, toUid: decoded.uid, toName: myName }, { ownerUid: currentOwner }, { ownerUid: decoded.uid })
+      teamAuditDoc(teamRef.id, decoded.uid, myName, "transfer-ownership", { fromUid: currentOwner, fromName: pending.fromName, toUid: decoded.uid, toName: myName }, { verifiedOwnerId: currentOwner }, { verifiedOwnerId: decoded.uid })
     );
     return { kind: "accepted" as const, team, pending, oldOwnerEmail: oldOwnerSnap.exists ? (oldOwnerSnap.data()?.email as string | undefined) : undefined, myName };
   });
@@ -196,7 +203,7 @@ async function cancel(db: Firestore, decoded: Decoded, user: DocumentData, teamR
       throw new RouteError(403, "not-allowed", "Only the owner, or whoever requested the transfer, can cancel it.");
     }
     txn.update(teamRef, { pendingTransfer: FieldValue.delete() });
-    txn.set(db.collection("auditLog").doc(), teamAuditDoc(teamRef.id, decoded.uid, sanitizeLine(user.name ?? "", 80), "cancel-ownership-transfer", { toUid: pending.toUid, toName: pending.toName }, null, null));
+    txn.set(db.collection("auditLog").doc(), teamAuditDoc(teamRef.id, decoded.uid, sanitizeLine(nameOf(user), 80), "cancel-ownership-transfer", { toUid: pending.toUid, toName: pending.toName }, null, null));
   });
   return NextResponse.json({ ok: true });
 }
@@ -223,22 +230,22 @@ async function forceTransfer(db: Firestore, decoded: Decoded, body: Record<strin
       throw new RouteError(400, "bad-confirmation", "Type one of this account's FTC team numbers exactly to confirm.");
     }
     const targetRef = db.collection("users").doc(toUid);
-    const oldOwnerUid = typeof team.ownerUid === "string" && team.ownerUid ? team.ownerUid : null;
+    const oldOwnerUid = ownerUidOfTeam(team as CsRecord) || null;
     const [targetSnap, oldSnap] = await Promise.all([txn.get(targetRef), oldOwnerUid && oldOwnerUid !== toUid ? txn.get(db.collection("users").doc(oldOwnerUid)) : Promise.resolve(null)]);
     if (!targetSnap.exists || targetSnap.data()?.teamId !== teamId) throw new RouteError(400, "no-target", "The new owner must be a member of that account.");
     if (!targetAuth?.emailVerified) throw new RouteError(400, "unverified-email", "The new owner hasn't verified their email.");
     if (oldOwnerUid === toUid) throw new RouteError(400, "self", "They already own this account.");
 
-    txn.update(teamRef, { ownerUid: toUid, pendingTransfer: FieldValue.delete() }); // a pending request from the old owner is void
-    txn.update(targetRef, { isOwner: true, isAdmin: true });
+    txn.update(teamRef, { verifiedOwnerId: toUid, pendingTransfer: FieldValue.delete() }); // a pending request from the old owner is void
+    txn.update(targetRef, { isOwner: true, isTeamAdmin: true });
     if (oldSnap?.exists && oldOwnerUid) txn.update(db.collection("users").doc(oldOwnerUid), { isOwner: false });
-    const newName = sanitizeLine(targetSnap.data()?.name ?? "", 80);
+    const newName = sanitizeLine(nameOf(targetSnap.data()), 80);
     txn.set(
       db.collection("auditLog").doc(),
-      teamAuditDoc(teamId, actor.uid, `${actor.name} (platform owner, recovery)`, "force-transfer-ownership", { toUid, toName: newName, reason }, { ownerUid: oldOwnerUid }, { ownerUid: toUid })
+      teamAuditDoc(teamId, actor.uid, `${actor.name} (platform owner, recovery)`, "force-transfer-ownership", { toUid, toName: newName, reason }, { verifiedOwnerId: oldOwnerUid }, { verifiedOwnerId: toUid })
     );
     txn.set(db.collection("platformAuditLog").doc(), platformAuditDoc("force-transfer-ownership", actor, { teamId, toUid, fromUid: oldOwnerUid, reason }));
-    return { team, newName, oldEmail: oldSnap?.exists ? (oldSnap.data()?.email as string | undefined) : undefined, oldName: oldSnap?.exists ? (oldSnap.data()?.name as string | undefined) : undefined };
+    return { team, newName, oldEmail: oldSnap?.exists ? (oldSnap.data()?.email as string | undefined) : undefined, oldName: oldSnap?.exists ? nameOf(oldSnap.data()) : undefined };
   });
 
   const label = teamLabelOf(done.team);

@@ -1,60 +1,13 @@
-import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { getAdminFirestore } from "@/lib/firebase/admin";
-import { verifyBearerToken } from "@/lib/server/require-user";
-import { DEFAULT_ROLE_ID } from "@/lib/roles";
-import { defaultThemeId } from "@/lib/themes";
-import { defaultMemberFieldTeamIds } from "@/lib/field-teams";
+import { requestToJoinTeam } from "@/lib/server/join-requests";
+import { readJsonBody, withCaller } from "@/lib/server/route-helpers";
 
 /**
- * Validates a join code and creates the caller's user doc server-side.
- * Not explicitly asked for by P1b (which only mandates a server route for
- * *creating* a team) — added alongside it to close a real gap: P1's
- * firestore.rules only checked that the target team *existed* on
- * users/{uid} create, never that the caller actually supplied a matching
- * join code, so any signed-in user could already join any team by id
- * without knowing its code. That was a low-severity trade-off worth
- * accepting for a single-team app (see P1-4), but P1b's "other teams"
- * language means more than one team can now exist, which makes the gap a
- * real cross-team access issue. See docs/ASSUMPTIONS.md (P1b).
+ * CS's join flow (docs/ROUTES.md D1/D6): files a PENDING `teamJoinRequests` row for the team whose uppercase code was typed
+ * (the code is the `teams/{CODE}` doc id), after making sure the caller has a CS-shaped user doc (`teamId: ""`). A team admin
+ * (or the platform owner) approves it from Team Management (`/api/team/join-requests/approve`), and only then does the
+ * user's `teamId` get set. It replaces CE's instant join-code join. Body: `{ joinCode, role?, name? }`.
  */
 export async function POST(request: Request) {
-  const decoded = await verifyBearerToken(request);
-  if (!decoded) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
-
-  const db = getAdminFirestore();
-  if (!db) return NextResponse.json({ ok: false, error: "Server isn't configured." }, { status: 503 });
-
-  const body = await request.json().catch(() => null);
-  const joinCode = typeof body?.joinCode === "string" ? body.joinCode.trim() : "";
-  const name = typeof body?.name === "string" && body.name.trim() ? body.name.trim() : decoded.name ?? "";
-  if (!joinCode) return NextResponse.json({ ok: false, error: "Enter a join code." }, { status: 400 });
-
-  const userRef = db.collection("users").doc(decoded.uid);
-  const existing = await userRef.get();
-  if (existing.exists) {
-    return NextResponse.json({ ok: false, error: "You're already on a team." }, { status: 409 });
-  }
-
-  const teamQuery = await db.collection("teams").where("joinCode", "==", joinCode).limit(1).get();
-  if (teamQuery.empty) {
-    return NextResponse.json({ ok: false, error: "That join code doesn't match any team." }, { status: 404 });
-  }
-  const teamDoc = teamQuery.docs[0];
-
-  await userRef.set({
-    name,
-    email: decoded.email ?? "",
-    teamId: teamDoc.id,
-    primaryRole: DEFAULT_ROLE_ID,
-    secondaryRoles: [],
-    isAdmin: false,
-    isOwner: false,
-    // P19: new members start on every FTC team of the account (an admin narrows it in Team Management).
-    fieldTeamIds: defaultMemberFieldTeamIds(teamDoc.data()),
-    themeId: defaultThemeId,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
-  return NextResponse.json({ ok: true, teamId: teamDoc.id });
+  const body = await readJsonBody(request);
+  return withCaller(request, (db, caller) => requestToJoinTeam(db, caller, { teamCode: body.joinCode, role: body.role, name: body.name }));
 }

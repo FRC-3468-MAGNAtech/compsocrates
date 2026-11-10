@@ -11,8 +11,12 @@ export const TRANSFER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** A transfer needs a sign-in no older than this (the client re-authenticates first; the server checks the token's auth_time). */
 export const REAUTH_MAX_AGE_SECONDS = 5 * 60;
 
-/** Who owns the account: `ownerUid` once it is set; until then (an account the bootstrap hasn't reached) the legacy per-user flag. */
-export function isTeamOwner(team: { ownerUid?: unknown } | null | undefined, uid: string, legacyOwnerFlag: boolean): boolean {
+/**
+ * Who owns the account: CS's `verifiedOwnerId` (or CE's additive `ownerUid`) once it is set; until then (an account the
+ * bootstrap hasn't reached) the legacy per-user flag.
+ */
+export function isTeamOwner(team: { verifiedOwnerId?: unknown; ownerUid?: unknown } | null | undefined, uid: string, legacyOwnerFlag: boolean): boolean {
+  if (team && typeof team.verifiedOwnerId === "string" && team.verifiedOwnerId) return team.verifiedOwnerId === uid;
   if (team && typeof team.ownerUid === "string" && team.ownerUid) return team.ownerUid === uid;
   return legacyOwnerFlag;
 }

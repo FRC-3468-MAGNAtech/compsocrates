@@ -156,8 +156,8 @@ describe("moveItem / fieldTeamsWrite", () => {
     expect(moveItem([1, 2, 3], 0, 5)).toEqual([1, 2, 3]);
   });
   it("mirrors the first team into the legacy fields and the id list", () => {
-    expect(fieldTeamsWrite([B, A])).toEqual({ fieldTeams: [B, A], fieldTeamIdList: ["fteam_b", "ft-35792"], fieldTeamNumbers: [35794, 35792], number: 35794, name: "Beta" });
-    expect(fieldTeamsWrite([C]).name).toBeNull();
+    expect(fieldTeamsWrite([B, A])).toEqual({ fieldTeams: [B, A], fieldTeamIdList: ["fteam_b", "ft-35792"], fieldTeamNumbers: [35794, 35792], teamNumber: "35794", teamName: "Beta" });
+    expect(fieldTeamsWrite([C]).teamName).toBe("");
   });
 });
 
@@ -231,5 +231,17 @@ describe("migration planners (idempotent)", () => {
     expect(plan).toEqual([{ uid: "old", fieldTeamIds: ["ft-35792", "fteam_b"] }]);
     // after applying it, a second pass is empty
     expect(planMemberMigration([{ uid: "old", fieldTeamIds: ["ft-35792", "fteam_b"] }], [A, B])).toEqual([]);
+  });
+});
+
+describe("readFieldTeams on a raw CS team doc", () => {
+  it("reads CS's string teamNumber and teamName", () => {
+    expect(readFieldTeams({ teamNumber: "3468", teamName: "MAGNAtech" })).toEqual([{ id: "ft-3468", number: 3468, name: "MAGNAtech" }]);
+    expect(readFieldTeams({ teamNumber: "254B", teamName: "x" })).toEqual([]);
+    expect(readFieldTeams({ teamNumber: 254 })).toEqual([{ id: "ft-254", number: 254, name: "" }]);
+  });
+  it("prefers explicit fieldTeams and the adapter's number/name when there is no CS field", () => {
+    expect(readFieldTeams({ number: 12, name: "Adapter" })).toEqual([{ id: "ft-12", number: 12, name: "Adapter" }]);
+    expect(readFieldTeams({ fieldTeams: [{ id: "a", number: 1, name: "A" }], teamNumber: "9" })).toEqual([{ id: "a", number: 1, name: "A" }]);
   });
 });

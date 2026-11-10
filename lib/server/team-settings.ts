@@ -1,13 +1,12 @@
 import "server-only";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
+import { generateTeamCode } from "@/data/cs/join-requests";
 
 export const APP_SETTINGS_PATH = "appSettings/global";
 
+/** A random uppercase join code (the `teams/{CODE}` doc id). Collisions are checked by the caller (`pickFreeTeamCode`). */
 export function randomJoinCode(length = 6): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O/1/I
-  let out = "";
-  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
+  return generateTeamCode(Math.random, length);
 }
 
 /** The default when appSettings/global doesn't exist yet: enabled only if no team exists. */

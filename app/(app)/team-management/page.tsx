@@ -12,6 +12,7 @@ import { applyBulkAssignment, fieldTeamLabel, matchesTeamFilter, sameIdSet } fro
 import { useFieldTeams } from "@/lib/field-teams-context";
 import { assignMembersToFieldTeams } from "@/lib/field-teams-actions";
 import { MemberRow } from "@/components/team/member-row";
+import { JoinRequestsPanel } from "@/components/team/join-requests-panel";
 import { MemberEditorDialog } from "@/components/team/member-editor-dialog";
 import { MemberAccessDialog } from "@/components/page-access/page-access-panel";
 import { useAuth } from "@/lib/auth";
@@ -125,7 +126,7 @@ export default function TeamManagementPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Team Management</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">Roles, admin access, and the team join code.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Roles, admin access, join requests, and the team join code.</p>
         </div>
       </div>
 
@@ -166,6 +167,9 @@ export default function TeamManagementPage() {
           </div>
         )}
       </GlassPanel>
+
+      {/* CS's approval queue: people who asked to join with the team code wait here for an admin. */}
+      {isAdmin && profile?.teamId && <JoinRequestsPanel teamId={profile.teamId} />}
 
       <GlassPanel className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">

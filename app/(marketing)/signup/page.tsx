@@ -60,13 +60,14 @@ export default function SignupPage() {
   // P20: set while an applicant's new account is being sent on to /apply, so the join screen below doesn't flash in between.
   const [applying, setApplying] = useState(false);
 
+  // CS user docs exist from signup with `teamId: ""`: only a profile with a team goes to the dashboard.
   useEffect(() => {
-    if (!loading && user && profile) router.replace("/dashboard");
+    if (!loading && user && profile?.teamId) router.replace("/dashboard");
   }, [loading, user, profile, router]);
 
   useEffect(() => {
     if (!enrolled) return;
-    if (profile) {
+    if (profile?.teamId) {
       router.push("/dashboard");
       return;
     }
@@ -76,9 +77,9 @@ export default function SignupPage() {
     return () => clearTimeout(timeout);
   }, [enrolled, profile, router]);
 
-  // Google created the account but there's no profile yet — hand off to the
-  // same join/create screen Finish Setup uses, instead of duplicating it.
-  if (!loading && user && !profile && !enrolled && !applying) {
+  // Google created the account but there's no team yet (no profile, or a CS profile with an empty teamId, which also covers a
+  // pending join request) — hand off to the same join/create/pending screen Finish Setup uses, instead of duplicating it.
+  if (!loading && user && !profile?.teamId && !enrolled && !applying && !submitting) {
     return <TeamEnrollmentScreen greeting={user.displayName ? `Hi, ${user.displayName}` : undefined} onComplete={() => router.push("/dashboard")} />;
   }
 
@@ -95,8 +96,13 @@ export default function SignupPage() {
         return;
       }
       await signup(name, email, password);
-      await enrollment.enroll(name);
-      setEnrolled(true); // stays "submitting" (see below) until the effect above navigates
+      const result = await enrollment.enroll(name);
+      if (result.requested) {
+        // Joining is an approval queue (CS): the request is filed, the user is not on the team yet. Finish Setup shows the pending state.
+        router.push("/finish-setup");
+        return;
+      }
+      setEnrolled(true); // a created team: stays "submitting" (see below) until the effect above navigates
     } catch (err) {
       setApplying(false);
       setError(authErrorMessage(err));
@@ -178,7 +184,7 @@ export default function SignupPage() {
           <div className="text-center">
             <h1 className="text-2xl font-semibold">Join the team</h1>
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-              Create your CompEpicurus scouting account.
+              Create your CompSocrates scouting account.
             </p>
           </div>
 
