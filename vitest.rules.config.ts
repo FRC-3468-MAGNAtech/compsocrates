@@ -3,8 +3,11 @@ import path from "node:path";
 
 // Separate from vitest.config.ts (which excludes these files) because both
 // need the Firebase Emulator Suite (Auth + Firestore) running — see
-// package.json's test:rules script and docs/ASSUMPTIONS.md (unverified in
-// this environment: no Java / firebase-tools available here).
+// package.json's test:rules script. The emulator runs under the demo project
+// in .firebaserc (demo-*: it can never reach a real Firebase project); the
+// tests read GCLOUD_PROJECT, which `firebase emulators:exec` exports.
+// firestore.rules.test.ts alone: `firebase emulators:exec --only firestore
+// "npx vitest run --config vitest.rules.config.ts firestore.rules.test.ts"`.
 export default defineConfig({
   resolve: {
     alias: {

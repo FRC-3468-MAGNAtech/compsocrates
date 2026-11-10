@@ -1,179 +1,189 @@
 rules_version = '2';
 
-// See docs/ARCHITECTURE.md for the data model and docs/ASSUMPTIONS.md for
-// the trade-offs noted inline below (prefixed "P1:"/"P1b:").
+// =====================================================================================================================
+// CompSocrates rebuild: Firestore rules (docs/ROUTES.md D1, D2, D6, D7, D10).
+//
+// STRUCTURE
+//   1. CS PRODUCTION RULES (docs/cs-firestore.rules), kept verbatim in behavior for every collection CS already has:
+//      users, teams, teamJoinRequests, practiceMatches, scouting, leadScouting, practiceSessions, pitScouting,
+//      matchAssignments, pitAssignments, practiceAssignments, strategyScouting, matchStrategyPlans, driveScouting,
+//      helperReports, formPresets, accuracyRescouts. Do not tighten or loosen these without the owner's approval. Where CS
+//      is more open than is ideal, a "CS-OPEN" comment records it (so the owner can decide later); the behavior is unchanged.
+//   2. ADDITIONS for collections the rebuild's client uses that CS's rules lack (they fell through to the catch-all deny):
+//      scoutingFlagStates, teamAnnouncements, subInRequests, judgeBookCards (legacy), versionReleases (legacy), plus every
+//      CompEpicurus-only collection the kept CE features need. Their logic is CE's, rewritten on top of CS user fields.
+//   3. The catch-all deny, as in CS.
+//
+// CE HELPERS ON CS FIELDS
+//   isAdmin()   = the CS owner uid, or users/{uid}.isTeamAdmin == true, or users/{uid}.role == "coach"  (D6: CS's admin test)
+//   myTeamId()  = users/{uid}.teamId (CS's own function)
+//   roles       = users/{uid}.role, .roles[], .secondaryRoles[] (canonical ids like "lead-scout" AND the legacy CS values
+//                 "scout", "coach", "lead_scout", "lead_strategist", "pit_scout", "judge_awards")
+//   isAdmin() is team-agnostic on purpose (as in CE); every team-scoped rule below ALSO checks sameTeam(<doc's teamId>).
+//
+// Additive CE fields the client writes onto CS user/team docs (glassLayerLevel, lastSeenChangelogAt, fcmTokens, workspace
+// prefs, fieldTeamIds, avatar, themeId, colorMode, activeForms, usePlaceholderVideo, libraryBackfilled, changelogSeeded,
+// judgeBookCards, fieldTeams ...) need no special rule: CS's users rule lets the owner of the doc (self) write any field and
+// its teams rule lets a team admin write any field, so they pass. (CE's per-field shape checks were deliberately NOT
+// carried over: they would tighten CS's behavior.)
+// =====================================================================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() {
+    // ---------------------------------------------------------------------------------------------------------------
+    // CS helpers (verbatim from the production rules)
+    // ---------------------------------------------------------------------------------------------------------------
+    function signedIn() {
       return request.auth != null;
     }
 
-    function myProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function sameTeam(teamId) {
-      return isSignedIn() && myProfile().teamId == teamId;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && myProfile().isAdmin == true;
-    }
-
-    // P20: the account's team owner (what "owner" means inside a team account; FIX2's protections follow
-    // it). `teams/{teamId}.ownerUid` is authoritative and only the server routes write it (sync-roles'
-    // bootstrap, the transfer routes, team creation/approval). Until an account has an `ownerUid` (the
-    // bootstrap hasn't reached it yet) the legacy per-user `isOwner` flag still counts, so the existing
-    // owner is never locked out in between. After that, a stale flag counts for nothing.
-    function ownerUidOf(teamId) {
-      return get(/databases/$(database)/documents/teams/$(teamId)).data.get('ownerUid', null);
+    // CS hardcodes ONE owner uid. It is kept as this single explicit constant (never add others here without the
+    // owner's approval): it is CS's platform owner, who may update/delete any team and import practice matches.
+    function ownerUid() {
+      return "veKYze7lFOOjZj8Vwnp9erZGTjs2";
     }
 
     function isOwner() {
-      return isSignedIn() && (ownerUidOf(myProfile().teamId) == request.auth.uid
-        || (ownerUidOf(myProfile().teamId) == null && myProfile().get('isOwner', false) == true));
+      return signedIn() && request.auth.uid == ownerUid();
     }
 
-    // P20: is this user doc's owner of its account? (the same rule, for the row being edited)
-    function isOwnerRow(uid, teamId) {
-      return ownerUidOf(teamId) == uid || (ownerUidOf(teamId) == null && resource.data.get('isOwner', false) == true);
+    function myUserDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
-    // P20: the platform owner (an email in the server-only OWNER_EMAILS, verified). Carried as the
-    // `platformOwner` custom claim that app/api/auth/sync-roles sets; the claim is the only thing rules can
-    // see, and it grants access to the application tools only (see teamApplications below), never to
-    // another account's scouting data.
-    function isPlatformOwner() {
-      return isSignedIn() && 'platformOwner' in request.auth.token && request.auth.token.platformOwner == true;
+    function myUserDocExists() {
+      return signedIn() && exists(myUserDocPath());
     }
 
-    // FIX2: who may use the member-management powers below — admins, and owners
-    // (who are always admins in practice, but this doesn't depend on that).
-    function canManageMembers() {
-      return isAdmin() || isOwner();
+    function myUserDoc() {
+      return get(myUserDocPath());
     }
 
-    // P25: an avatar choice ({type, value}), on a profile and mirrored on the user doc. No uploads exist: a Google
-    // picture is an https URL on googleusercontent.com, a preset is one of the app's ids, initials carry nothing.
-    function validAvatar(a) {
-      return a is map && a.keys().hasOnly(['type', 'value']) && a.keys().hasAll(['type', 'value'])
-        && a.type in ['google', 'initials', 'preset']
-        && a.value is string && a.value.size() <= 500
-        && (a.type == 'google' ? a.value.matches('^https://lh[0-9]\\.googleusercontent\\.com/[^ ]*$')
-          : (a.type == 'preset' ? a.value.matches('^[a-z0-9-]{1,24}$') : a.value.size() <= 4));
+    function myTeamId() {
+      return myUserDocExists() ? myUserDoc().data.teamId : "";
     }
 
-    // P25: an absent avatar is fine (initials apply); a present one must be valid.
-    function validUserAvatar(d) {
-      return d.get('avatar', null) == null || validAvatar(d.avatar);
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
     }
 
-    // P25: another member's user doc, for "are they an admin / the owner".
+    function isTeamAdmin(teamId) {
+      return myUserDocExists()
+        && teamId is string
+        && teamId != ""
+        && myTeamId() == teamId
+        && (myUserDoc().data.isTeamAdmin == true || myUserDoc().data.role == "coach");
+    }
+
+    function isImportEventKey(value) {
+      return value is string
+        && (
+          value == "week0"
+          || value == "2026week0"
+          || value == "2025cmptx"
+          || value == "2023mslr"
+          || value == "2023lake"
+          || value == "2026tuis"
+          || value == "2026okok"
+          || value == "2026cosp"
+          || value == "2026arli"
+        );
+    }
+
+    function isMigrationImportWrite() {
+      return signedIn()
+        && request.auth.uid == ownerUid()
+        && (
+          (request.resource != null && isImportEventKey(request.resource.data.eventKey))
+          || (resource != null && isImportEventKey(resource.data.eventKey))
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // CE-style helpers, rebuilt on CS user fields (used by the ADDITIONS section only)
+    // ---------------------------------------------------------------------------------------------------------------
+
+    // The signed-in user belongs to this (non-empty) team. Unlike CS's raw myTeamId() comparison, an empty or missing
+    // teamId never matches.
+    function sameTeam(teamId) {
+      return myUserDocExists() && teamId is string && teamId != "" && myTeamId() == teamId;
+    }
+
+    // A doc id of the form `{teamId}_{rest}` that belongs to the caller's team. Lets a `get` of a doc that does not exist
+    // yet (so there is no resource.data.teamId to compare) still be answered. Assumes team codes contain no regex
+    // metacharacters (CS codes are upper-case alphanumeric join codes).
+    function idInMyTeam(id) {
+      return myUserDocExists() && myTeamId() is string && myTeamId() != "" && id.matches('^' + myTeamId() + '_.+$');
+    }
+
+    // D6: CS's admin test (isTeamAdmin or the legacy role "coach"), plus the CS owner. NOT scoped to a team by itself.
+    function isAdmin() {
+      return isOwner() || (myUserDocExists()
+        && (myUserDoc().data.get('isTeamAdmin', false) == true || myUserDoc().data.get('role', null) == 'coach'));
+    }
+
+    // The same test for another user's doc data (profiles, who is an admin).
+    function isAdminData(d) {
+      return d.get('isTeamAdmin', false) == true || d.get('role', null) == 'coach';
+    }
+
     function userDocOf(uid) {
       return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
-    // P25: is this uid the owner of the account (teams.ownerUid, or the legacy flag until one is set)?
-    function isOwnerUid(uid, teamId) {
-      return ownerUidOf(teamId) == uid || (ownerUidOf(teamId) == null && userDocOf(uid).get('isOwner', false) == true);
+    // The platform owner: the CS owner uid, or the `platformOwner` custom claim the server's sync-roles route sets. It opens
+    // team applications, template review and the platform audit log, and nothing else: no team's scouting data.
+    function isPlatformOwner() {
+      return isOwner() || (signedIn() && 'platformOwner' in request.auth.token && request.auth.token.platformOwner == true);
     }
 
-    // FIX1: the ids in lib/roles.ts's ROLES — keep in sync when a role is added.
-    function validRoleIds() {
-      return ['match-scout', 'pit-scout', 'pit-team', 'drive-team', 'lead-scout',
-              'lead-strategist', 'team-coach', 'media', 'judge-awards'];
+    // Is this uid the owner of a team account: the CS owner, or the team doc's verifiedOwnerId / ownerUid.
+    function isTeamOwnerUid(uid, teamId) {
+      return uid == ownerUid()
+        || get(/databases/$(database)/documents/teams/$(teamId)).data.get('verifiedOwnerId', null) == uid
+        || get(/databases/$(database)/documents/teams/$(teamId)).data.get('ownerUid', null) == uid;
     }
 
-    // FIX1: a team can have several active events. `activeEventCode` stays
-    // as the *primary* (so pre-FIX1 readers keep working) and
-    // `activeEventCodes` is the full list. Only checked when the write
-    // actually carries `activeEventCodes`, so a pre-migration team doc (and
-    // the old single-event write) still passes. Rules can't loop over a list,
-    // so the per-element "is a string" check isn't expressible here — only
-    // admins can write this field (see below) and lib/active-events.ts
-    // always builds it from event codes; see docs/ASSUMPTIONS.md (FIX1).
-    function validActiveEvents() {
-      let d = request.resource.data;
-      return !('activeEventCodes' in d) || (
-        d.activeEventCodes is list
-        && d.activeEventCodes.size() <= 10
-        && (d.activeEventCode == null
-          ? d.activeEventCodes.size() == 0
-          // FIX4: the primary is always the FIRST event in the order.
-          : d.activeEventCode is string && d.activeEventCodes.size() >= 1 && d.activeEventCodes[0] == d.activeEventCode)
-        && (!('activeEvents' in d) || (d.activeEvents is list && d.activeEvents.size() == d.activeEventCodes.size()))
-      );
+    // Legacy CS role values -> the canonical ids (lib/roles.ts normalizeLegacyRole). A rule can't map over a list, so
+    // each legacy spelling is appended when its canonical id is wanted. (Unknown role strings, which the client treats as
+    // Match Scout, are not matched here; that only affects "match-scout" defaults, and no restricted page has one.)
+    function expandRoles(roles) {
+      return roles
+        .concat('team-coach' in roles ? ['coach'] : [])
+        .concat('match-scout' in roles ? ['scout'] : [])
+        .concat('lead-scout' in roles ? ['lead_scout'] : [])
+        .concat('lead-strategist' in roles ? ['lead_strategist'] : [])
+        .concat('pit-scout' in roles ? ['pit_scout'] : [])
+        .concat('judge-awards' in roles ? ['judge_awards'] : []);
     }
 
-    // P19: an account can have several FTC teams (`fieldTeams`: [{id, number, name}]). Only
-    // checked when the resulting doc carries `fieldTeams`, so a pre-migration team doc still
-    // passes. Rules can't project a list of maps, so `fieldTeamIdList` (a plain list of the ids,
-    // same order, written alongside by lib/field-teams.ts's fieldTeamsWrite()) is what member
-    // assignments are checked against below; the check here is that it is present and the same
-    // length. Per-entry shape (number 1-5 digits, unique) can't be expressed in rules — only
-    // admins/owners can write this and the Team Settings editor validates it first (see
-    // docs/ASSUMPTIONS.md, P19). `accountName` is an optional bounded string.
-    function validFieldTeams() {
-      let d = request.resource.data;
-      return (!('fieldTeams' in d) || (
-          d.fieldTeams is list
-          && d.fieldTeams.size() >= 1 && d.fieldTeams.size() <= 10
-          && 'fieldTeamIdList' in d && d.fieldTeamIdList is list
-          && d.fieldTeamIdList.size() == d.fieldTeams.size()))
-        && (!('accountName' in d) || d.accountName == null || (d.accountName is string && d.accountName.size() <= 60));
-    }
-
-    // P19: a member's `fieldTeamIds` may only change to a list of ids that exist on the account.
-    // `getAfter` (not `get`) so one batch can add an FTC team and assign members to it together.
-    // Unchanged is always fine, so a role edit never fails because an old assignment went stale.
-    function validMemberFieldTeams(teamId) {
-      let d = request.resource.data;
-      return d.get('fieldTeamIds', null) == resource.data.get('fieldTeamIds', null)
-        || (d.fieldTeamIds is list && d.fieldTeamIds.size() <= 10
-            && d.fieldTeamIds.hasOnly(getAfter(/databases/$(database)/documents/teams/$(teamId)).data.get('fieldTeamIdList', [])));
-    }
-
-    // P21: `teams.activeForms` maps a season id to the form scouts fill in for it ({ biobuzz: "my-form" }). Only checked
-    // when the resulting doc carries it. The season ids are the code-defined ones in lib/seasons.ts: keep in sync when a
-    // season is added. (Whether the named form exists is the writer's job (lib/forms/firestore-store.ts setActiveForm
-    // checks) and readers fall back to the season's built-in form when it doesn't.)
-    function validActiveForms() {
-      let d = request.resource.data;
-      return !('activeForms' in d) || (
-        d.activeForms is map
-        && d.activeForms.keys().hasOnly(['biobuzz'])
-        && (!('biobuzz' in d.activeForms) || (d.activeForms.biobuzz is string && d.activeForms.biobuzz.size() >= 1 && d.activeForms.biobuzz.size() <= 40))
-      );
-    }
-
-    // P12: who may edit the shared Pick List — admins, or members whose primary
-    // OR secondary role is one of these. Mirrors lib/pick-list/permissions.ts's
-    // PICK_LIST_EDITOR_ROLES: keep both in sync.
-    function canEditPickList() {
-      let p = myProfile();
-      let editors = ['lead-strategist', 'lead-scout', 'team-coach', 'drive-team'];
-      return isSignedIn() && (p.isAdmin == true || p.primaryRole in editors || p.secondaryRoles.hasAny(editors));
-    }
-
-    // P26: page access. `canAccessPage()` in lib/page-access/access.ts is the twin of this (keep both in sync): an admin
-    // (the owner is always one) can always; otherwise a person can use a restricted page when one of their roles (primary OR
-    // secondary) is in the page's role list in `teams/{teamId}/settings/pageAccess`, or the page is in their member
-    // `grant` list, and the page is NOT in their `deny` list. The doc stores, beside the editable `roleGrants`, a
-    // `pageRoles` mirror (page id -> the roles that have it) because rules can't loop over a map or a list. Until an admin
-    // session has created the doc (a one-time, idempotent migration), and for a page the doc doesn't list, the page's
-    // default roles apply: each call site below passes them (the same ones as the PAGES registry in lib/page-access/pages.ts).
-    function pageAccessPath() {
-      return /databases/$(database)/documents/teams/$(myProfile().teamId)/settings/pageAccess;
+    // The caller's roles: `role` plus `roles[]` plus `secondaryRoles[]`.
+    function myRoleList() {
+      let d = myUserDoc().data;
+      return [d.get('role', '')].concat(d.get('roles', [])).concat(d.get('secondaryRoles', []));
     }
 
     function hasAnyRoleOf(roles) {
-      return myProfile().primaryRole in roles || myProfile().secondaryRoles.hasAny(roles);
+      return myUserDocExists() && myRoleList().hasAny(expandRoles(roles));
+    }
+
+    // Mirrors lib/pick-list/permissions.ts PICK_LIST_EDITOR_ROLES: keep in sync.
+    function canEditPickList() {
+      return signedIn() && (isAdmin() || hasAnyRoleOf(['lead-strategist', 'lead-scout', 'team-coach', 'drive-team']));
+    }
+
+    // Page access. `canAccessPage()` in lib/page-access/access.ts is the twin of this (keep both in sync): an admin can
+    // always; otherwise a restricted page is open when one of the caller's roles is in the page's role list in
+    // `teams/{teamId}/settings/pageAccess` (mirror `pageRoles`) or the page is in the member's `grant` list, and the page is
+    // NOT in their `deny` list. Until an admin session has created the doc, and for a page the doc does not list, the page's
+    // default roles apply (each call site passes them: the same as the PAGES registry in lib/page-access/pages.ts).
+    function pageAccessPath() {
+      return /databases/$(database)/documents/teams/$(myTeamId())/settings/pageAccess;
     }
 
     function pageAccessAllowed(pageId, defaultRoles) {
-      return isSignedIn() && (
-        myProfile().isAdmin == true
+      return myUserDocExists() && (
+        isAdmin()
         || (exists(pageAccessPath())
           ? (((get(pageAccessPath()).data.get('pageRoles', {}).get(pageId, null) == null
                 ? hasAnyRoleOf(defaultRoles)
@@ -183,7 +193,7 @@ service cloud.firestore {
           : hasAnyRoleOf(defaultRoles)));
     }
 
-    // P26: the restricted pages that can be requested (the ids in lib/page-access/pages.ts; keep in sync).
+    // The restricted pages that can be requested (the ids in lib/page-access/pages.ts; keep in sync).
     function requestablePageIds() {
       return ['lead-scout-form', 'pit-scout-form', 'team-strategy-form', 'match-strategy-form', 'drive-reflection-form',
               'helper-form', 'scout-status', 'scout-accuracy', 'assignments', 'event-selection', 'team-management'];
@@ -197,40 +207,69 @@ service cloud.firestore {
         && d.updatedAt == request.time;
     }
 
-    match /teams/{teamId} {
-      // P1b: no more public read. Team lookup by join code, the first-run
-      // "does a team exist" check, and team creation itself all moved
-      // server-side (app/api/team/join, app/api/team/create — both use the
-      // Admin SDK, which bypasses these rules entirely) once more than one
-      // team could exist, closing the P1-4 trade-off this replaced.
-      allow get: if sameTeam(teamId);
-      allow list: if false;
+    // =================================================================================================================
+    // 1. CS PRODUCTION COLLECTIONS (behavior unchanged)
+    // =================================================================================================================
 
-      // P1b: teams are only ever created via /api/team/create's
-      // transaction (Admin SDK) — never directly by a client.
-      allow create: if false;
+    match /users/{uid} {
+      allow create: if isSelf(uid);
 
-      // Admins of *this* team can still update its settings directly
-      // (active events/season — see lib/team.ts's setActiveEvents) the same
-      // way as P1, FIX1 adding the active-events shape check above. P19: `fieldTeams` /
-      // `accountName` ride the same rule (admins and the owner), with their shape check.
-      // P20: `ownerUid` and `pendingTransfer` are server-only (the transfer routes): nobody can write
-      // them from a client, admins and the owner included.
-      allow update: if sameTeam(teamId) && canManageMembers() && validActiveEvents() && validFieldTeams() && validActiveForms()
-        && request.resource.data.get('ownerUid', null) == resource.data.get('ownerUid', null)
-        && request.resource.data.get('pendingTransfer', null) == resource.data.get('pendingTransfer', null);
+      allow read: if isSelf(uid)
+        || isOwner()
+        || (
+          signedIn()
+          && myUserDocExists()
+          && resource.data.teamId is string
+          && resource.data.teamId != ""
+          && myTeamId() == resource.data.teamId
+        );
+
+      // CS-OPEN: a member may update ANY field of their own user doc, including `role`, `isTeamAdmin` and `teamId`
+      // (self-promotion to team admin, or moving to another team). CS's production behavior, kept as is. This is also what
+      // lets the client save its additive fields (glassLayerLevel, lastSeenChangelogAt, fcmTokens, workspace prefs,
+      // avatar, theme ...) with no extra rule. A team admin may update teammates (Team Management), and may adopt a user
+      // with no team into their own team.
+      allow update: if isSelf(uid)
+        || isOwner()
+        || (
+          signedIn()
+          && (
+            isTeamAdmin(resource.data.teamId)
+            || (
+              request.resource.data.teamId is string
+              && request.resource.data.teamId != ""
+              && isTeamAdmin(request.resource.data.teamId)
+              && (
+                !("teamId" in resource.data)
+                || resource.data.teamId == null
+                || resource.data.teamId == ""
+              )
+            )
+          )
+        );
+
       allow delete: if false;
+    }
 
-      // P26: settings docs of the account. Only `pageAccess` exists today: every teammate reads it (the navigation and the
-      // route guard need it), only admins write it (never deleted). The Admin Panel's Page Access screen is its only writer.
+    // Team docs are `teams/{TEAMCODE}`. A team admin writes any field (selectedEvents, teamName, ... and the additive CE
+    // ones: activeForms, fieldTeams, usePlaceholderVideo, libraryBackfilled, changelogSeeded, judgeBookCards ...).
+    // CS-OPEN: `create` is open to any signed-in user (any id), and a team admin can also write `verifiedOwnerId`.
+    match /teams/{teamId} {
+      allow read: if signedIn() && myUserDocExists() && myTeamId() == teamId;
+      allow create: if signedIn();
+      allow update, delete: if isOwner() || (signedIn() && isTeamAdmin(teamId));
+
+      // Settings docs of the account (CE page access). Only `pageAccess` exists: every teammate reads it (the navigation
+      // and route guard need it), only admins write it, never deleted. Nested under teams/{teamId}, which CS's rule does
+      // not cascade to.
       match /settings/{docId} {
         allow read: if sameTeam(teamId);
         allow create, update: if docId == 'pageAccess' && sameTeam(teamId) && isAdmin() && validPageAccessDoc(request.resource.data);
         allow delete: if false;
       }
 
-      // P26: "Request access" on the no-access screen. One doc per person and page (id `{uid}_{pageId}`): the person creates
-      // their own (pending) and may ask again after a denial; admins read them all and decide (status only). Nobody deletes.
+      // "Request access" on the no-access screen. One doc per person and page (id `{uid}_{pageId}`): the person creates
+      // their own (pending) and may ask again after a denial; admins read them all and decide (status only). Never deleted.
       match /pageAccessRequests/{requestId} {
         allow read: if sameTeam(teamId) && (isAdmin() || resource.data.uid == request.auth.uid);
         allow create: if sameTeam(teamId)
@@ -262,82 +301,190 @@ service cloud.firestore {
       }
     }
 
-    match /users/{uid} {
-      allow read: if isSignedIn() && sameTeam(resource.data.teamId);
+    match /teamJoinRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.teamId is string
+        && request.resource.data.teamId != "";
 
-      // P1b: user docs are only ever created via /api/team/join or
-      // /api/team/create (Admin SDK) — never directly by a client. This
-      // also closes a P1 gap where the create rule checked a target team
-      // *existed* but never that the caller's `teamId` actually matched a
-      // join code they supplied, which would have let anyone join any team
-      // by id once more than one could exist.
-      allow create: if false;
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isTeamAdmin(resource.data.teamId)
+        || isOwner()
+      );
 
-      // You can update your own profile, but never teamId, primaryRole,
-      // secondaryRoles, isAdmin, or isOwner — those are admin-only (or,
-      // for isOwner, nobody — see below).
-      allow update: if isSignedIn() && request.auth.uid == uid
-        && request.resource.data.teamId == resource.data.teamId
-        && request.resource.data.primaryRole == resource.data.primaryRole
-        && request.resource.data.secondaryRoles == resource.data.secondaryRoles
-        && request.resource.data.isAdmin == resource.data.isAdmin
-        && request.resource.data.isOwner == resource.data.isOwner
-        // P20: the platform-owner mirror is server-written too (the sync route sets it from OWNER_EMAILS).
-        && request.resource.data.get('isPlatformOwner', false) == resource.data.get('isPlatformOwner', false)
-        // P19: which FTC teams a member is assigned to is admin-only — you can't change your own
-        // (an admin changes theirs through the rule below). `.get` because pre-migration docs lack it.
-        && request.resource.data.get('fieldTeamIds', null) == resource.data.get('fieldTeamIds', null)
-        // P25: the avatar mirror is the member's own, and must be a valid choice.
-        && validUserAvatar(request.resource.data);
-
-      // Team Management's role editor — the matrix is mirrored by canEditMember()
-      // in lib/member-access.ts, so keep the two in sync:
-      //  - Admins (and the owner) edit the roles of any NON-owner member, other
-      //    admins and themselves included, and grant/revoke admin for them.
-      //  - An owner's row can be edited only by that owner — never by another
-      //    admin (FIX2; before this the owner was locked out of their own row too).
-      //    The owner's admin flag must stay true: owner access can't be removed.
-      //  - isOwner / isPlatformOwner are never writable by a client; the server routes set them (Admin SDK).
-      //  - teamId can't be moved, so nobody can remove a member from the team.
-      //  - Last-admin safeguard: an admin can't remove their *own* admin flag.
-      //    Rules can't count admins, but this is equivalent and race-free — the
-      //    last admin can only be demoted by themself (blocked here), and two
-      //    admins demoting each other at once fail because the second write no
-      //    longer passes isAdmin(). It only ever blocks removing admin status, never
-      //    a role edit. To step down, ask another admin.
-      //  - the roles written must be real role ids and isAdmin a boolean.
-      allow update: if sameTeam(resource.data.teamId) && canManageMembers()
-        && request.resource.data.isOwner == resource.data.isOwner
-        && request.resource.data.get('isPlatformOwner', false) == resource.data.get('isPlatformOwner', false)
-        && request.resource.data.teamId == resource.data.teamId
-        // P25: an admin's edit of someone's roles can't touch their avatar (that is the member's own choice).
-        && request.resource.data.get('avatar', null) == resource.data.get('avatar', null)
-        && request.resource.data.isAdmin is bool
-        && request.resource.data.primaryRole in validRoleIds()
-        && request.resource.data.secondaryRoles is list
-        && request.resource.data.secondaryRoles.size() <= 9
-        && request.resource.data.secondaryRoles.hasOnly(validRoleIds())
-        && validMemberFieldTeams(resource.data.teamId)
-        // P20: "is this row the owner" follows teams.ownerUid (the legacy flag only until an owner is set).
-        && (isOwnerRow(uid, resource.data.teamId)
-          ? (request.auth.uid == uid && isOwner() && request.resource.data.isAdmin == true)
-          : (request.auth.uid != uid || request.resource.data.isAdmin == true));
-
-      allow delete: if false;
+      allow update, delete: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isTeamAdmin(resource.data.teamId)
+        || isOwner()
+      );
     }
 
-    // P25: profiles/{uid} — a member's public/private profile (display name, bio, pronouns, avatar, visibility).
-    // Readable by:
-    //  - the member themself (always), and a teammate who is an admin (always);
-    //  - any other teammate when the profile is public — or when the member is an admin or the owner, who are always
-    //    treated as public whatever their saved preference says (so promotion applies at once and demotion brings
-    //    their preference back without a write).
-    // A teammate who may not read it gets "permission denied" (the page shows the limited "This profile is private"
-    // card from the account's own user doc: name, role, avatar). `resource == null` is allowed for a teammate so
-    // "has no profile yet" isn't an error. Only the member writes their own profile; an admin can only CLEAR a
-    // teammate's bio and pronouns (never write them, never touch the owner's), and the client logs each clear to
-    // auditLog in the same batch. An admin's visibility can't be changed while they are an admin (the toggle is
-    // disabled; the saved preference is kept for after a demotion). Never deleted.
+    match /practiceMatches/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isMigrationImportWrite();
+    }
+
+    // CS-OPEN: every collection below up to `accuracyRescouts` is read/write for ANY signed-in user, of any team (the
+    // match entries, lead, practice, pit, strategy, drive and helper data, and the assignment docs). There is no team
+    // scoping, so any account can read or overwrite another team's scouting data. Production CS behavior, kept as is; the
+    // owner can tighten it later (the client always writes `teamId`, so a `teamId == myTeamId()` rule would work).
+    // `practiceSessions` is also the CE live-lobby store's sibling and is used by the rebuilt practice flow.
+    match /scouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /leadScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /practiceSessions/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /pitScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /matchAssignments/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /pitAssignments/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /practiceAssignments/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /strategyScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /matchStrategyPlans/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /driveScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /helperReports/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /formPresets/{docId} {
+      allow create: if signedIn()
+        && myUserDocExists()
+        && request.resource.data.teamId == myTeamId();
+
+      allow read: if signedIn()
+        && myUserDocExists()
+        && resource.data.teamId == myTeamId();
+
+      allow update, delete: if signedIn()
+        && myUserDocExists()
+        && resource.data.teamId == myTeamId();
+    }
+
+    match /accuracyRescouts/{docId} {
+      allow read: if signedIn()
+        && myUserDocExists()
+        && resource.data.teamId == myTeamId();
+
+      allow create, update, delete: if signedIn()
+        && myUserDocExists()
+        && request.resource.data.teamId == myTeamId();
+    }
+
+    // =================================================================================================================
+    // 2. ADDITIONS: collections the rebuild's client uses that CS's rules lack
+    // =================================================================================================================
+
+    // ---- CS data the production rules forgot -------------------------------------------------------------------------
+
+    // scoutingFlagStates/{entityType:entityId}: dismissed / manual flag / exclude-from-accuracy state of one entry (the doc id
+    // is `scoutingEntry:<entryId>`, so it carries no team: the doc's own `teamId` scopes it). Every teammate reads; the
+    // Scout Accuracy page's people (admins; by default lead scouts and team coaches; configurable) write. `get` of a flag
+    // state that does not exist yet is allowed (the entry editor reads it first).
+    match /scoutingFlagStates/{docId} {
+      allow get: if signedIn() && (resource == null || sameTeam(resource.data.teamId));
+      allow list: if sameTeam(resource.data.teamId);
+      allow create: if pageAccessAllowed('scout-accuracy', ['lead-scout', 'team-coach'])
+        && sameTeam(request.resource.data.teamId);
+      allow update: if pageAccessAllowed('scout-accuracy', ['lead-scout', 'team-coach'])
+        && sameTeam(resource.data.teamId)
+        && request.resource.data.teamId == resource.data.teamId;
+      allow delete: if pageAccessAllowed('scout-accuracy', ['lead-scout', 'team-coach'])
+        && sameTeam(resource.data.teamId);
+    }
+
+    // teamAnnouncements: the dashboard's announcement board. Same as CS's client: any teammate posts (as themselves),
+    // every teammate reads, a team admin deletes. Posts are not edited.
+    match /teamAnnouncements/{docId} {
+      allow read: if sameTeam(resource.data.teamId);
+      allow create: if sameTeam(request.resource.data.teamId)
+        && request.resource.data.get('authorId', null) == request.auth.uid;
+      allow update: if false;
+      allow delete: if sameTeam(resource.data.teamId) && isTeamAdmin(resource.data.teamId);
+    }
+
+    // D7: subInRequests/{id}: sub-in requests (lib/sub-ins). Team-scoped (the doc has `teamId`). Every teammate reads; any
+    // member creates their own open request (`requestedById` is the creator); any OTHER member claims an open one
+    // (status -> claimed, claimedById = themself, nothing else changes); the requester cancels their own open one
+    // (status -> cancelled, nothing else changes); a team admin deletes (single or "clear all").
+    match /subInRequests/{docId} {
+      allow read: if sameTeam(resource.data.teamId);
+      allow create: if sameTeam(request.resource.data.teamId)
+        && request.resource.data.requestedById == request.auth.uid
+        && request.resource.data.status == 'open';
+      allow update: if sameTeam(resource.data.teamId)
+        && request.resource.data.teamId == resource.data.teamId
+        && request.resource.data.requestedById == resource.data.requestedById
+        && resource.data.status == 'open'
+        && (
+          (resource.data.requestedById != request.auth.uid
+            && request.resource.data.status == 'claimed'
+            && request.resource.data.claimedById == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedById', 'claimedByName', 'claimedAt']))
+          || (resource.data.requestedById == request.auth.uid
+            && request.resource.data.status == 'cancelled'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+        );
+      allow delete: if sameTeam(resource.data.teamId) && isTeamAdmin(resource.data.teamId);
+    }
+
+    // judgeBookCards: LEGACY top-level collection (the cards live on the team doc; the client reads this one only while the
+    // array is empty, best effort). Read by the card's team; a team admin may update or delete a card that is still here
+    // (the client writes back cards it read from it), but nothing creates new ones.
+    match /judgeBookCards/{docId} {
+      allow read: if sameTeam(resource.data.teamId);
+      allow update, delete: if sameTeam(resource.data.teamId) && isTeamAdmin(resource.data.teamId);
+      allow create: if false;
+    }
+
+    // versionReleases: LEGACY release notes (now on the team doc / changelog). Read-only for signed-in users; only the
+    // CS owner writes. Nothing in the rebuild's client writes it.
+    match /versionReleases/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isOwner();
+    }
+
+    // ---- CompEpicurus-only collections -------------------------------------------------------------------------------
+
+    // A member's public/private profile (display name, bio, pronouns, avatar, visibility); the avatar is mirrored on the
+    // user doc. Readable by the member and by teammates (see below). A teammate who may not read it gets "permission denied"
+    // (the page shows the limited card). Only the member writes their own profile; an admin may only CLEAR a teammate's bio
+    // and pronouns (never the owner's). Never deleted.
+    function validAvatar(a) {
+      return a is map && a.keys().hasOnly(['type', 'value']) && a.keys().hasAll(['type', 'value'])
+        && a.type in ['google', 'initials', 'preset']
+        && a.value is string && a.value.size() <= 500
+        && (a.type == 'google' ? a.value.matches('^https://lh[0-9]\\.googleusercontent\\.com/[^ ]*$')
+          : (a.type == 'preset' ? a.value.matches('^[a-z0-9-]{1,24}$') : a.value.size() <= 4));
+    }
+
     function validProfile(d) {
       return d.keys().hasOnly(['teamId', 'displayName', 'bio', 'pronouns', 'avatar', 'visibility', 'updatedAt'])
         && d.keys().hasAll(['teamId', 'displayName', 'bio', 'pronouns', 'avatar', 'visibility', 'updatedAt'])
@@ -350,26 +497,26 @@ service cloud.firestore {
     }
 
     match /profiles/{uid} {
-      allow get: if isSignedIn() && (
+      allow get: if signedIn() && (
         request.auth.uid == uid
         || (resource == null
-          ? sameTeam(userDocOf(uid).teamId)
+          ? sameTeam(userDocOf(uid).get('teamId', ''))
           : (sameTeam(resource.data.teamId)
-            && (isAdmin() || resource.data.visibility == 'public' || userDocOf(uid).get('isAdmin', false) == true))));
+            && (isAdmin() || resource.data.visibility == 'public' || isAdminData(userDocOf(uid))))));
 
-      allow create: if isSignedIn() && request.auth.uid == uid
-        && request.resource.data.teamId == myProfile().teamId
+      allow create: if signedIn() && request.auth.uid == uid
+        && sameTeam(request.resource.data.teamId)
         && validProfile(request.resource.data)
         && (!isAdmin() || request.resource.data.visibility == 'public');
 
-      allow update: if isSignedIn() && (
+      allow update: if signedIn() && (
         (request.auth.uid == uid
           && request.resource.data.teamId == resource.data.teamId
           && validProfile(request.resource.data)
           && (!isAdmin() || request.resource.data.visibility == resource.data.visibility))
         || (request.auth.uid != uid
           && isAdmin() && sameTeam(resource.data.teamId)
-          && !isOwnerUid(uid, resource.data.teamId)
+          && !isTeamOwnerUid(uid, resource.data.teamId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bio', 'pronouns', 'updatedAt'])
           && request.resource.data.bio == '' && request.resource.data.pronouns == ''
           && request.resource.data.updatedAt == request.time));
@@ -377,26 +524,24 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // P1b: appSettings/global holds teamCreationEnabled. Every read and
-    // write goes through API routes using the Admin SDK (app/api/public/config,
-    // app/api/team/create, app/api/admin/team-creation) — no client ever
-    // needs direct access, so it's denied outright, including to admins.
+    // Server-only (Admin SDK bypasses rules): no client access at all, admins and owners included.
+    //  - appSettings: platform switches (team creation).  - rateLimits: hashed-IP/email counters of the submit route.
+    //  - teamTransfers: ownership transfer bookkeeping.
     match /appSettings/{document} {
       allow read, write: if false;
     }
+    match /rateLimits/{limitId} {
+      allow read, write: if false;
+    }
+    match /teamTransfers/{transferId} {
+      allow read, write: if false;
+    }
 
-    // P20: team applications. Every write is a server route (Admin SDK): the public submit route,
-    // and the platform owner's decide route. Clients only ever read.
-    //  - teamApplications: the platform owner reads them all (the review queue); an applicant reads
-    //    only their own (queries must filter on applicantUid), which is what the status page shows.
-    //    Nothing on this doc is private from the applicant: the reviewer's notes, the verification
-    //    signals and the hashed IP live in applicationPrivate.
-    //  - applicationPrivate / applicationBlocks / platformAuditLog: platform owner reads; nobody writes.
-    //  - rateLimits: the submit route's hashed-IP / hashed-email counters; no client access at all.
-    // The platform owner's claim opens these collections and nothing else: it gives no read access to
-    // any account's scouting data (the rules above and below are all scoped by teamId, not by claim).
+    // Team applications. Every write is a server route; clients only read. The platform owner reads the review queue; an
+    // applicant reads only their own (queries must filter on applicantUid). applicationPrivate / applicationBlocks /
+    // platformAuditLog: platform owner reads, nobody writes. The owner's claim opens these collections and nothing else.
     match /teamApplications/{applicationId} {
-      allow read: if isPlatformOwner() || (isSignedIn() && resource.data.applicantUid == request.auth.uid);
+      allow read: if isPlatformOwner() || (signedIn() && resource.data.applicantUid == request.auth.uid);
       allow write: if false;
     }
     match /applicationPrivate/{applicationId} {
@@ -411,82 +556,15 @@ service cloud.firestore {
       allow read: if isPlatformOwner();
       allow write: if false;
     }
-    match /rateLimits/{limitId} {
-      allow read, write: if false;
-    }
 
-    match /scoutEntries/{entryId} {
-      allow read: if sameTeam(resource.data.teamId);
-
-      // Create as yourself (CSV import also writes with the importing
-      // admin's own uid — see components/analytics/import-csv-dialog.tsx).
-      allow create: if isSignedIn()
-        && request.resource.data.uid == request.auth.uid
-        && sameTeam(request.resource.data.teamId);
-
-      allow update, delete: if sameTeam(resource.data.teamId) && isAdmin();
-    }
-
-    // P3: practiceSessions/{sessionId} — the doc id IS the Session ID (see
-    // lib/practice-sessions.ts's claimSessionId). Readable by the whole team
-    // (leaderboards need every member's sessions); a scout can keep
-    // updating their own session only while it's still in-progress/paused —
-    // once completed, further edits are admin-only, same pattern as
-    // scoutEntries.
-    //
-    // FIX3: `get` is allowed on a doc that doesn't exist yet. Starting a session
-    // reserves its id in a transaction that first *reads* the candidate id
-    // (lib/claim-doc.ts) — and `sameTeam(resource.data.teamId)` on a missing doc
-    // is an evaluation error, i.e. denied, which showed up as the raw "Missing or
-    // insufficient permissions" the moment a scout picked a match. An existing
-    // session of another team is still unreadable; the only thing a missing-doc
-    // read reveals is that the id is free. List queries are unchanged (they must
-    // still carry the team filter).
-    match /practiceSessions/{sessionId} {
-      allow get: if resource == null || sameTeam(resource.data.teamId);
-      allow list: if sameTeam(resource.data.teamId);
-
-      allow create: if isSignedIn()
-        && request.resource.data.uid == request.auth.uid
-        && sameTeam(request.resource.data.teamId);
-
-      allow update: if sameTeam(resource.data.teamId) && (
-        (resource.data.uid == request.auth.uid && resource.data.status in ["in-progress", "paused"])
-        || isAdmin()
-      );
-
-      // P4: the owner can delete their own session while it's still
-      // in-progress or paused — "Change Match," "Cancel"/"End Session," and
-      // the Resume banner's "Discard" all explicitly save nothing, and
-      // claimSessionId() already wrote a stub doc the moment a match was
-      // picked, so without this those abandoned attempts would linger
-      // forever and wrongly show up as "Opened" in Match Select.
-      //
-      // P5: admins can ALSO delete a *completed* session — this is what
-      // Scout Accuracy's "Hard Reset Scout Data" needs (it deletes every
-      // completed session, and their scoutEntries, for one scout+category).
-      // This supersedes P4's "once completed, never deletable by anyone,
-      // admin included" note — seeing a real, specified need for exactly
-      // that capability is reason enough to extend it. Deliberately scoped
-      // to `status == "completed"` only, not a blanket `isAdmin()`: an
-      // in-progress/paused session still can't be deleted by anyone but its
-      // own owner (an admin yanking a session out from under someone
-      // actively scouting it was never asked for, and P4's own test for
-      // that stays intact below).
-      allow delete: if sameTeam(resource.data.teamId) && (
-        (resource.data.uid == request.auth.uid && resource.data.status in ["in-progress", "paused"])
-        || (isAdmin() && resource.data.status == "completed")
-      );
-    }
-
-    // P15: a library match's origin. A doc written before P15 has no `origin`
-    // field and came from the API, so every check reads it with a default.
+    // libraryMatches/{matchId}: the shared practice library. Deliberately NOT team-scoped: public competition data, the same
+    // for every team (so any team's admin can write any library match: an accepted trade-off). A hand-entered ("manual")
+    // match lives only under a manual event; `origin` never changes on an existing doc; only manual matches are deleted.
+    // `published`: members read only published matches (their query must filter `published == true`), admins read all.
     function libOrigin(d) {
       return d.get('origin', 'api');
     }
 
-    // P15: the doc id of a library match is `${eventCode}_${P|Q|F}${matchNumber}`
-    // (lib/library/ids.ts's libraryMatchId); this recomputes it from the doc's own fields.
     function libMatchIdFor(d) {
       return d.eventCode + '_'
         + (d.matchType == 'Practice' ? 'P' : (d.matchType == 'Qualification' ? 'Q' : 'F'))
@@ -494,19 +572,12 @@ service cloud.firestore {
     }
 
     function validLibAlliance(a) {
-      // 2 teams (FTC, and every pre-FRC doc) or 3 (FRC): rules can't read the app's alliance-size config, so the
-      // bound is the widest legal alliance; lib/library/manual-match.ts enforces the configured size before the write.
       return a.teams is list && a.teams.size() >= 2 && a.teams.size() <= 3
         && a.score is int && a.score >= 0 && a.score <= 9999
         && a.penaltyPoints is int && a.penaltyPoints >= 0 && a.penaltyPoints <= a.score
         && a.difficulty in ['easy', 'medium', 'hard'];
     }
 
-    // P15: a hand-entered match. It may only live under a *manual* event (so it can
-    // never sit under an API event's code), its id must be the one its fields give,
-    // and its alliance numbers must make sense. Rules can't loop, so the team
-    // numbers inside `teams` aren't type-checked — lib/library/manual-match.ts
-    // validates them before the write.
     function validManualMatch(matchId, d) {
       return d.origin == 'manual'
         && d.published is bool
@@ -524,28 +595,8 @@ service cloud.firestore {
         && (!('needsReview' in d) || d.needsReview is bool);
     }
 
-    // P3: libraryMatches/{matchId} — deliberately NOT teamId-scoped. This is
-    // public, real FTC competition data (the same for every team), not this
-    // team's own scouting data — see docs/ASSUMPTIONS.md for the resulting
-    // trade-off (any team's admin can write any match in the shared
-    // library, acceptable while the app is realistically single-team).
-    //
-    // P15 adds hand-entered ("manual") matches to the same collection:
-    //  - `published`: members read only matches with `published == true`; admins read
-    //    all. Rules aren't filters, so a non-admin's *query* must itself ask for
-    //    `published == true` (lib/match-library.ts does) — an unfiltered list is
-    //    rejected. The field is read strictly on purpose: `resource.data.get('published',
-    //    true)` would also let an unfiltered query through (the default makes it
-    //    provable — caught by the emulator tests) and expose unpublished matches. The
-    //    cost: a pre-P15 doc has no `published` field, so it stays admin-only until the
-    //    one-time backfill (lib/library/store.ts) stamps it.
-    //  - `origin` can never change on an existing doc, so an API import/refresh can't
-    //    overwrite a manual match and a manual write can't overwrite an API match —
-    //    even if a client tries to (lib/library/ids.ts's decideMatchWrite skips them first).
-    //  - API-origin writes can't land under a manual event's code.
-    //  - Only manual matches can be deleted.
     match /libraryMatches/{matchId} {
-      allow read: if isSignedIn() && (resource.data.published == true || isAdmin());
+      allow read: if signedIn() && (resource.data.published == true || isAdmin());
 
       allow create: if isAdmin() && (
         (libOrigin(request.resource.data) == 'api'
@@ -564,13 +615,10 @@ service cloud.firestore {
       allow delete: if isAdmin() && libOrigin(resource.data) == 'manual';
     }
 
-    // P15: libraryEvents/{eventCode} — one doc per imported or hand-made event
-    // (`origin`, `eventName`, `seasonId`, optional `date`, `sourceUrl`,
-    // `defaultVideoUrl`). Every member reads; admins write. `origin` is fixed at
-    // creation, so a manual event's code can never be taken over by an API import
-    // (or the reverse). Only a manual event can be deleted.
+    // libraryEvents/{eventCode}: one doc per imported or hand-made event. Every signed-in user reads; admins write. `origin`
+    // is fixed at creation; only a manual event can be deleted.
     match /libraryEvents/{eventCode} {
-      allow read: if isSignedIn();
+      allow read: if signedIn();
       allow create: if isAdmin()
         && request.resource.data.origin in ['api', 'manual']
         && request.resource.data.eventCode == eventCode
@@ -590,61 +638,38 @@ service cloud.firestore {
       allow delete: if isAdmin() && resource.data.origin == 'manual';
     }
 
-    // P6: eventAttendance/{teamId}_{eventCode} — one doc per (team, event),
-    // `uids` the list of attending members. Admin-only write (the
-    // Assignments page's attendance checklist); every team member can read
-    // it (it drives the Scout Accuracy Event filter and People's
-    // "Attending" badge). P5 guessed a different, read-only, one-doc-per-uid
-    // shape for this collection before P6 existed — see docs/ASSUMPTIONS.md
-    // (P6) for the reconciliation.
+    // eventAttendance/{teamId}_{eventCode}: `uids`, the attending members. Every teammate reads; whoever has the
+    // Assignments page access writes (admins; by default lead scouts; configurable). Never deleted.
     match /eventAttendance/{id} {
-      allow read: if sameTeam(resource.data.teamId);
-      // P26: gated by the Assignments page's access (admins always; by default Lead Scouts; an admin can grant or deny others).
+      allow get: if idInMyTeam(id);
+      allow list: if sameTeam(resource.data.teamId);
       allow create, update: if pageAccessAllowed('assignments', ['lead-scout']) && sameTeam(request.resource.data.teamId);
       allow delete: if false;
     }
 
-    // P5: auditLog/{id} — one entry per admin-only scout-data action (Hard
-    // Reset, Dismiss Flag, Exclude/Include). Write-once: never updated or
-    // deleted by anyone, including admins, so it stays a trustworthy
-    // record. Not read by any P5 page — P9's Admin tools will.
-    //
-    // P12: Pick List editors who aren't admins (Lead Strategist, ...) may write
-    // *only* `edit-pick-list` entries — each pick-list change is logged in the same
-    // transaction as the change itself, so the log has to accept their writes.
-    // They still can't read the log.
+    // auditLog/{id}: write-once record of admin actions. Admins of the team read; any teammate creates an entry as
+    // themselves, but a non-admin only for `edit-pick-list` (pick-list editors) or `edit-form-entry` (editing your own
+    // entry). Never updated or deleted by anyone.
     match /auditLog/{id} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn()
+      allow read: if isAdmin() && sameTeam(resource.data.teamId);
+      allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
         && sameTeam(request.resource.data.teamId)
-        // P29: a scout editing their own form entry logs it ('edit-form-entry'); they still can't read the log
         && (isAdmin() || (request.resource.data.action == 'edit-pick-list' && canEditPickList()) || request.resource.data.action == 'edit-form-entry');
       allow update, delete: if false;
     }
 
-    // P27: formEntries/{entryId}: the entries of the team's other forms (Lead Scout, Pit Scout, Team Strategy, Match Strategy, Drive Reflection, Helper and
-    // custom ones). Match Scout entries stay in scoutEntries. Every teammate reads. CREATE needs the right page access (P26) for the form's type, as yourself
-    // and in your own team: the page ids and default roles below are the ones in lib/page-access/pages.ts (keep in sync); a 'custom' form is open to the team.
-    // UPDATE: an admin may edit anything but who, where and what form it is; the person who wrote it may only change `values`, `stickyNotes` and `updatedAt`
-    // (a photo that finished uploading after submit is attached this way, and notes are edited). DELETE: admins only.
-    function formEntryCreateAllowed(formType) {
-      return formType == 'lead-scout' ? pageAccessAllowed('lead-scout-form', ['lead-scout'])
-        : formType == 'pit-scout' ? pageAccessAllowed('pit-scout-form', ['pit-scout'])
-        : formType == 'team-strategy' ? pageAccessAllowed('team-strategy-form', ['lead-strategist'])
-        : formType == 'match-strategy' ? pageAccessAllowed('match-strategy-form', ['lead-strategist'])
-        : formType == 'drive-reflection' ? pageAccessAllowed('drive-reflection-form', ['drive-team'])
-        : formType == 'helper' ? pageAccessAllowed('helper-form', ['pit-scout', 'pit-team'])
-        : formType == 'custom';
-    }
-
+    // formEntries/{entryId}: entries of the team's CUSTOM forms (the built-in forms store in CS's collections: pitScouting,
+    // leadScouting, ... above). Every teammate reads; any teammate creates as themselves in their own team; an admin edits
+    // anything but who, where and what form; the author edits only `values`, `stickyNotes` and `updatedAt` (photos attached
+    // after submit, notes); admins delete.
     function validFormEntry(d) {
       return d.keys().hasAll(['teamId', 'uid', 'scoutName', 'formId', 'formVersion', 'formType', 'eventCode', 'values', 'stickyNotes', 'excluded', 'flags', 'createdAt', 'updatedAt'])
         && d.keys().hasOnly(['teamId', 'uid', 'scoutName', 'formId', 'formVersion', 'formType', 'eventCode', 'matchKey', 'alliance', 'teamNumber', 'values',
                              'stickyNotes', 'linkedEntryId', 'planDifferences', 'flags', 'excluded', 'createdAt', 'updatedAt'])
         && d.formId is string && d.formId.matches('^[A-Za-z0-9_-]{1,40}$')
         && d.formVersion is int && d.formVersion >= 0
-        && d.formType in ['lead-scout', 'pit-scout', 'team-strategy', 'match-strategy', 'drive-reflection', 'helper', 'custom']
+        && d.formType == 'custom'
         && d.scoutName is string && d.scoutName.size() <= 80
         && d.eventCode is string && d.eventCode.size() <= 40
         && (!('matchKey' in d) || d.matchKey == null || (d.matchKey is string && d.matchKey.size() <= 40))
@@ -662,11 +687,10 @@ service cloud.firestore {
     match /formEntries/{entryId} {
       allow read: if sameTeam(resource.data.teamId);
 
-      allow create: if isSignedIn()
+      allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
         && sameTeam(request.resource.data.teamId)
-        && validFormEntry(request.resource.data)
-        && formEntryCreateAllowed(request.resource.data.formType);
+        && validFormEntry(request.resource.data);
 
       allow update: if sameTeam(resource.data.teamId) && (
         (isAdmin()
@@ -683,12 +707,8 @@ service cloud.firestore {
       allow delete: if sameTeam(resource.data.teamId) && isAdmin();
     }
 
-    // P21: forms/{teamId}_{formId}: one form of one account, the working draft plus the latest published version number
-    // (see lib/forms/resolve.ts FormDoc). Every teammate reads (scouts fill the active form in); only admins and the owner write
-    // (the same people who can manage members: `can('manageForms')`). Forms are never deleted, only archived, so an entry's
-    // formId always resolves. A form's doc can't be moved to another team or id, and its published version only goes up.
-    // Rules can't validate the nested form (sections, fields) element by element: the builder validates it with the shared
-    // zod schema before every write (lib/forms/validate.ts), the same one the stores run.
+    // forms/{teamId}_{formId}: one form of one team (working draft + latest published version number). Every teammate reads;
+    // admins write; never deleted (only archived). A form can't move to another team or id; its published version only goes up.
     function validFormDoc(d) {
       return d.teamId is string && d.formId is string && d.formId.matches('^[A-Za-z0-9_-]{1,40}$')
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 120
@@ -699,15 +719,15 @@ service cloud.firestore {
     }
 
     match /forms/{docId} {
-      allow get: if isSignedIn() && docId.split('_')[0] == myProfile().teamId;
-      allow list: if isSignedIn() && sameTeam(resource.data.teamId);
+      allow get: if idInMyTeam(docId);
+      allow list: if sameTeam(resource.data.teamId);
 
-      allow create: if canManageMembers()
+      allow create: if isAdmin()
         && sameTeam(request.resource.data.teamId)
         && docId == request.resource.data.teamId + '_' + request.resource.data.formId
         && validFormDoc(request.resource.data);
 
-      allow update: if canManageMembers()
+      allow update: if isAdmin()
         && sameTeam(resource.data.teamId)
         && request.resource.data.teamId == resource.data.teamId
         && request.resource.data.formId == resource.data.formId
@@ -718,10 +738,10 @@ service cloud.firestore {
       allow delete: if false;
 
       // Published versions are immutable: created once, in the same transaction that bumps the form doc's publishedVersion to
-      // that number (getAfter), and never updated or deleted — so the form an old entry was scouted with is always recoverable.
+      // that number (getAfter), never updated or deleted.
       match /versions/{v} {
-        allow read: if isSignedIn() && docId.split('_')[0] == myProfile().teamId;
-        allow create: if canManageMembers()
+        allow read: if idInMyTeam(docId);
+        allow create: if isAdmin()
           && sameTeam(request.resource.data.teamId)
           && docId == request.resource.data.teamId + '_' + request.resource.data.formId
           && request.resource.data.version is int && request.resource.data.version >= 1
@@ -736,17 +756,10 @@ service cloud.firestore {
       }
     }
 
-    // P23: formTemplates/{id}: a form saved as a template. Visibility: private (only the owning account), public-pending (waiting for the platform
-    // owner), public (any signed-in user can read it), rejected (back with the author, with a reason).
-    //  - A signed-in user reads `public` templates; an account reads its own in any state; the platform owner reads `public-pending` ones (to review
-    //    them) and public ones. Nobody else can read a private or rejected template: not another account, and not the platform owner either. List
-    //    queries must carry the matching filter (visibility == 'public', ownerTeamId == my team, or visibility == 'public-pending' for the platform owner).
-    //  - An account's admins and owner create a template (private, version 1, no uses or reports) and edit or delete it **only while it is private or
-    //    rejected**; editing a rejected one makes it private again. Everything else is server-only (app/api/templates, Admin SDK): asking to publish,
-    //    sending an update to a public template, approving, rejecting, taking down, marking official, reports and counting a use (so `importCount`,
-    //    `official` and `visibility` can't be forged from a browser).
-    //  - Rules can't validate the nested form, so the server re-validates it (strict parse, no blocking problems, sanitized text, size) before anything
-    //    becomes public; a private template is only ever seen by its own account.
+    // formTemplates/{id}: a form saved as a template. Visibility: private (own team only), public-pending (waiting for the
+    // platform owner), public (any signed-in user reads), rejected (back with the author). A team's admins create a private
+    // template and edit/delete it only while private or rejected; everything else (publish, approve, reports, use counts) is
+    // server-only. List queries must carry the matching filter.
     function validTemplateShape(d) {
       return d.ownerTeamId is string && d.authorName is string && d.authorName.size() <= 80
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 80
@@ -759,11 +772,11 @@ service cloud.firestore {
     }
 
     match /formTemplates/{id} {
-      allow get, list: if isSignedIn() && (resource.data.visibility == 'public'
+      allow get, list: if signedIn() && (resource.data.visibility == 'public'
         || sameTeam(resource.data.ownerTeamId)
         || (isPlatformOwner() && resource.data.visibility == 'public-pending'));
 
-      allow create: if canManageMembers()
+      allow create: if isAdmin()
         && sameTeam(request.resource.data.ownerTeamId)
         && request.resource.data.visibility == 'private'
         && request.resource.data.version == 1
@@ -773,7 +786,7 @@ service cloud.firestore {
         && !('hasPendingUpdate' in request.resource.data)
         && validTemplateShape(request.resource.data);
 
-      allow update: if canManageMembers()
+      allow update: if isAdmin()
         && sameTeam(resource.data.ownerTeamId)
         && resource.data.visibility in ['private', 'rejected']
         && request.resource.data.visibility == 'private'
@@ -785,16 +798,14 @@ service cloud.firestore {
         && !('hasPendingUpdate' in request.resource.data)
         && validTemplateShape(request.resource.data);
 
-      allow delete: if canManageMembers()
+      allow delete: if isAdmin()
         && sameTeam(resource.data.ownerTeamId)
         && resource.data.visibility in ['private', 'rejected'];
 
-      // A public template's pending update (server-written). Its author's account and the platform owner can read it.
       match /updates/{n} {
-        allow read: if isPlatformOwner() || (isSignedIn() && sameTeam(get(/databases/$(database)/documents/formTemplates/$(id)).data.ownerTeamId));
+        allow read: if isPlatformOwner() || (signedIn() && sameTeam(get(/databases/$(database)/documents/formTemplates/$(id)).data.ownerTeamId));
         allow write: if false;
       }
-      // Reports and use-counts: server-written, readable by the platform owner only.
       match /reports/{teamId} {
         allow read: if isPlatformOwner();
         allow write: if false;
@@ -805,18 +816,10 @@ service cloud.firestore {
       }
     }
 
-    // P12: pickLists/{teamId}_{eventCode} — the shared alliance-selection board:
-    // an ordered list of team numbers we plan to pick, edited live by several
-    // people. Every team member can read it (the doc id carries the team id, so
-    // this works for a list that doesn't exist yet — the first read of a new
-    // event must not be denied); only pick-list editors can write, and only as
-    // themselves, to the id their own team/event give. Writes happen inside
-    // transactions that re-apply each edit to the latest list (lib/pick-list/
-    // store.ts), so two editors never overwrite each other. Rules can't loop,
-    // so the *elements* of `picked` aren't type-checked — only that it's a list
-    // of at most 100 — the writer is an editor and lib/pick-list/ops.ts builds it.
+    // pickLists/{teamId}_{eventCode}: the shared alliance-selection board. Every teammate reads (also a list that does not
+    // exist yet); only pick-list editors write, as themselves, to the id their own team/event give. Never deleted.
     match /pickLists/{id} {
-      allow read: if isSignedIn() && id.split('_')[0] == myProfile().teamId;
+      allow read: if idInMyTeam(id);
 
       allow create: if canEditPickList()
         && sameTeam(request.resource.data.teamId)
@@ -839,12 +842,9 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // P14: the shape of a changelog entry — keep in sync with lib/changelog/
-    // index.ts (limits) and store.ts (the only writer). Rules can't loop over
-    // `changes`, so its elements aren't type-checked here (the editor validates
-    // them and entryFromData() drops anything malformed on read); only that it's
-    // a list of 1-40. A published entry carries the time it went live in
-    // `publishedAt` (drives the unread dot); a draft has it null.
+    // changelog/{id}: admin-edited release notes. Members read PUBLISHED entries only (their query must filter
+    // `status == "published"`); admins of the team read and write everything. A published entry keeps its `publishedAt`
+    // through edits. Keep the shape in sync with lib/changelog/index.ts and store.ts.
     function validChangelog(d) {
       return d.keys().hasOnly(['teamId', 'version', 'title', 'date', 'summary', 'changes', 'status', 'pinned', 'createdBy', 'createdAt', 'updatedAt', 'publishedAt'])
         && d.keys().hasAll(['teamId', 'version', 'title', 'date', 'summary', 'changes', 'status', 'pinned', 'createdBy', 'createdAt', 'updatedAt', 'publishedAt'])
@@ -861,13 +861,6 @@ service cloud.firestore {
         && (d.status == 'published' ? d.publishedAt is timestamp : d.publishedAt == null);
     }
 
-    // P14: changelog/{id} — admin-edited release notes. Members read *published*
-    // entries only; drafts are admin-only. Rules aren't filters, so a member's
-    // list query must itself ask for `status == "published"` (lib/changelog/
-    // store.ts does) — an unfiltered list is rejected, not silently trimmed.
-    // Admins of the team read and write everything. A published entry keeps its
-    // original `publishedAt` through edits, so fixing a typo doesn't re-light
-    // everyone's unread dot.
     match /changelog/{id} {
       allow read: if sameTeam(resource.data.teamId) && (resource.data.status == 'published' || isAdmin());
 
@@ -888,14 +881,8 @@ service cloud.firestore {
       allow delete: if isAdmin() && sameTeam(resource.data.teamId);
     }
 
-    // P14: credits/{teamId} — the single, admin-edited Credits page: ordered
-    // `sections`, each with ordered `entries`. Every member reads it (the id
-    // is the team id, so a page that hasn't been saved yet still reads as
-    // "missing", not "denied"); only admins write, always as themselves,
-    // through the transaction in lib/credits/store.ts. Rules can't loop, so
-    // the sections' contents aren't type-checked — only that it's a list of at
-    // most 20; the editors enforce https-only links and lib/credits/ops.ts
-    // sanitizeSections() discards anything malformed on read.
+    // credits/{teamId}: the single, admin-edited Credits page. Every teammate reads (a page not saved yet reads as missing,
+    // not denied); admins write as themselves. Never deleted.
     match /credits/{id} {
       allow read: if sameTeam(id);
       allow create, update: if isAdmin()
@@ -909,21 +896,10 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // P16: who may edit the Scout Status setup — admins, or members whose primary OR
-    // secondary role is Lead Scout. Mirrors lib/scout-status/permissions.ts's
-    // SCOUT_TARGET_EDITOR_ROLES: keep both in sync.
-    function canEditScoutTargets() {
-      let p = myProfile();
-      return isSignedIn() && (p.isAdmin == true || p.primaryRole == 'lead-scout' || p.secondaryRoles.hasAny(['lead-scout']));
-    }
-
-    // P16: the shape of a scoutTargets doc (lib/scout-status/store.ts is the only writer).
-    // Rules can't loop over maps, so the contents of `ranges`/`maxOverrides`/`individual`
-    // aren't type-checked — only that they're maps of a bounded size; the page validates
-    // the range text and clamps numbers, and setupFromData() drops anything malformed on read.
+    // scoutTargets/{teamId}_{eventCode}: the per-event setup behind Scout Status. Every teammate reads; whoever has the Scout
+    // Status page access writes (admins; by default lead scouts and team coaches). Never deleted.
     function validScoutTargets(id, d) {
       return d.keys().hasOnly(['teamId', 'eventCode', 'ranges', 'maxOverrides', 'individual', 'extraScouts', 'teamTargets', 'updatedBy', 'updatedAt'])
-        // P30: teamTargets (teams-per-scout for Pit Scout and Team Strategy) is optional
         && (!('teamTargets' in d) || (d.teamTargets is map && d.teamTargets.size() <= 2))
         && d.keys().hasAll(['teamId', 'eventCode', 'ranges', 'maxOverrides', 'individual', 'extraScouts', 'updatedBy', 'updatedAt'])
         && d.teamId is string && d.eventCode is string
@@ -936,15 +912,10 @@ service cloud.firestore {
         && d.updatedAt is timestamp;
     }
 
-    // P16: scoutTargets/{teamId}_{eventCode} — the per-event setup behind the Scout Status
-    // page: range text per category, max-match overrides, per-scout targets, and scouts added
-    // by hand. Every team member reads it (as a team-scoped query — a doc that doesn't exist
-    // yet can't be read directly, see FIX3); only admins and Lead Scouts write, as themselves,
-    // to the id their own team/event give. Never deleted.
     match /scoutTargets/{id} {
-      allow read: if sameTeam(resource.data.teamId);
+      allow get: if idInMyTeam(id);
+      allow list: if sameTeam(resource.data.teamId);
 
-      // P26: gated by the Scout Status page's access (admins always; by default Lead Scouts and Team Coaches; configurable).
       allow create: if pageAccessAllowed('scout-status', ['lead-scout', 'team-coach'])
         && sameTeam(request.resource.data.teamId)
         && validScoutTargets(id, request.resource.data);
@@ -958,105 +929,80 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // P6: assignments/{teamId}_{eventCode} — the published scouting
-    // schedule, `current` + one level of `previous` for undo (see
-    // lib/assignments.ts). Admin-only write (generating/publishing/manual
-    // cell swaps all go through `publishAssignments`/`swapAssignmentSlot`,
-    // both plain `setDoc`/`updateDoc` calls gated by this rule, not an API
-    // route — same pattern as every other admin-only collection here).
-    // Every team member can read their own team's schedule (Match Scout
-    // Form and My Scouting both need to read it, not just admins).
+    // assignments/{teamId}_{eventCode}: CE's published scouting schedule (`current` + one level of `previous`). Every
+    // teammate reads; whoever has the Assignments page access writes. Pit and Team Strategy schedules live here too
+    // ({teamId}_{eventCode}_{pit|teamStrategy}, with a `kind`): a doc that names a kind must be one of the two and have the
+    // matching id. (CS's own matchAssignments / pitAssignments / practiceAssignments / teamAssignments are separate
+    // collections, covered above.)
     match /assignments/{id} {
-      allow read: if sameTeam(resource.data.teamId);
-      // P26: the same Assignments page access as the attendance list above.
-      // P31: the Pit Scouting and Team Strategy assignments live here too ({teamId}_{eventCode}_{pit|teamStrategy}, with a `kind`): same readers, same writers;
-      // a doc that names a kind must be one of the two and have the matching id, so one kind can't overwrite another's or Match Scouting's.
+      allow get: if idInMyTeam(id);
+      allow list: if sameTeam(resource.data.teamId);
       allow create, update: if pageAccessAllowed('assignments', ['lead-scout']) && sameTeam(request.resource.data.teamId)
         && (!('kind' in request.resource.data) || (request.resource.data.kind in ['pit', 'teamStrategy'] && request.resource.data.eventCode is string
           && id == request.resource.data.teamId + '_' + request.resource.data.eventCode + '_' + request.resource.data.kind));
       allow delete: if false;
     }
 
-    // P7: liveMatches/{eventCode_matchKey} — presence while scouting a
-    // livestreamed real match. The parent doc itself is never written (no
-    // fields of its own); only its scouts subcollection exists, one doc
-    // per active scout. Deliberately NOT teamId-scoped at the match-key
-    // level, same reasoning as libraryMatches (P3-6) — a real match is the
-    // same match no matter which team is watching it — but every scout's
-    // OWN presence doc carries teamId, which is what actually scopes read
-    // access and the join-rules bookkeeping to one team at a time.
+    // liveMatches/{matchKey}/scouts/{uid}: presence while scouting a livestreamed real match. The parent doc is never
+    // written; each scout's OWN presence doc carries `teamId`, which scopes read access to one team.
     match /liveMatches/{matchKey} {
       allow read, write: if false;
 
       match /scouts/{uid} {
         allow read: if sameTeam(resource.data.teamId);
-        allow create, update: if isSignedIn()
+        allow create, update: if signedIn()
           && request.auth.uid == uid
           && request.resource.data.uid == uid
           && sameTeam(request.resource.data.teamId);
-        allow delete: if isSignedIn() && request.auth.uid == uid;
+        allow delete: if signedIn() && request.auth.uid == uid;
       }
     }
 
-    // FIX3: COLLECTION-GROUP queries. A `collectionGroup("scouts")` or
-    // `collectionGroup("players")` query is only allowed by a rule written with a
-    // recursive wildcard — the nested `match .../scouts/{uid}` rules above and below
-    // don't apply to it, so these queries were denied outright (the practice landing
-    // page's "who's live" and "my lobby" lookups, the Presence panel, the live pill).
-    // Same conditions as the nested rules; the player rule also lets you read your own
-    // player docs, which is what the "which lobby am I in" query (where uid == you) proves.
+    // COLLECTION-GROUP queries (`collectionGroup("scouts")`, `collectionGroup("players")`) need rules written with a recursive
+    // wildcard; the nested rules above and below do not apply to them. Same conditions as the nested rules; the player
+    // rule also lets you read your own player docs (the "which lobby am I in" query).
     match /{path=**}/scouts/{uid} {
       allow read: if sameTeam(resource.data.teamId);
     }
     match /{path=**}/players/{uid} {
-      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || sameTeam(resource.data.teamId));
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || sameTeam(resource.data.teamId));
     }
 
-    // P7: notifications/{sessionId} — one per scout per resolved live
-    // alliance ("Scores are available"), doc id is the session id so
-    // app/api/cron/poll-live-scores / app/api/live/check-scores can check
-    // existence for idempotency before creating one. Only ever written by
-    // the Admin SDK (bypasses these rules entirely) — clients can read
-    // their own, nothing else.
+    // notifications/{sessionId}: written only by the Admin SDK; a user reads their own.
     match /notifications/{id} {
       allow read: if sameTeam(resource.data.teamId) && resource.data.uid == request.auth.uid;
       allow write: if false;
     }
 
-    // P8: lobbies/{lobbyId} — the doc id IS the shareable join code (see
-    // lib/lobby.ts's claimLobbyId). Readable by the whole team (so "Join
-    // with code" can look a lobby up before the joiner has a player doc of
-    // their own yet); only the host can change the lobby doc itself
-    // (settings, match selection, pairing, status, their own heartbeat) —
-    // per the prompt's own spec. Per-pair accuracy is instead written by
-    // app/api/lobby/resolve-results (Admin SDK, bypasses these rules
-    // entirely) since a pair's two sessions belong to two different
-    // players and neither rule below lets one teammate write another's
-    // session — see docs/ASSUMPTIONS.md (P8).
-    //
-    // FIX3: the lobby code is reserved the same way as a Session ID (read the
-    // candidate, then create), so `get` is allowed on a missing doc — see
-    // practiceSessions above. Lists still need the team filter.
+    // lobbies/{lobbyId}: live practice lobbies; the doc id IS the shareable join code. Readable by the whole team; only the
+    // host changes the lobby doc; per-pair accuracy is written by app/api/lobby/resolve-results (Admin SDK). `get` is
+    // allowed on a missing doc (the code is reserved by read-then-create). Lists need the team filter.
     match /lobbies/{lobbyId} {
-      allow get: if resource == null || sameTeam(resource.data.teamId);
+      allow get: if signedIn() && (resource == null || sameTeam(resource.data.teamId));
       allow list: if sameTeam(resource.data.teamId);
-      allow create: if isSignedIn()
+      allow create: if signedIn()
         && request.resource.data.hostUid == request.auth.uid
         && sameTeam(request.resource.data.teamId);
       allow update: if sameTeam(resource.data.teamId) && resource.data.hostUid == request.auth.uid;
       allow delete: if false;
 
-      // Presence/roster only — robot/alliance/pairId live on the lobby
-      // doc's own `pairing` array (host-written), not here, precisely
-      // because a player may only write their own player doc.
+      // Presence/roster only: a player may only write their own player doc.
       match /players/{uid} {
         allow read: if sameTeam(resource.data.teamId);
-        allow create, update: if isSignedIn()
+        allow create, update: if signedIn()
           && request.auth.uid == uid
           && request.resource.data.uid == uid
           && sameTeam(request.resource.data.teamId);
-        allow delete: if isSignedIn() && request.auth.uid == uid;
+        allow delete: if signedIn() && request.auth.uid == uid;
       }
+    }
+
+    // =================================================================================================================
+    // 3. Everything else: closed (as in CS). Server-only collections (e.g. the legacy `scoutEntries`, `imports`) are reached
+    //    through the Admin SDK, which bypasses rules.
+    // =================================================================================================================
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
