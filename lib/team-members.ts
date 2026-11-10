@@ -6,8 +6,9 @@ import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import type { MemberAccess } from "@/lib/member-access";
 import type { RoleId } from "@/lib/roles";
-import { parseAvatar } from "@/lib/profile/model";
 import type { AvatarChoice } from "@/lib/profile/config";
+import type { CsUserDoc } from "@/data/cs/types";
+import { csUserToMember, profilePatchToCsUser } from "@/data/cs/users";
 
 export type TeamMember = {
   uid: string;
@@ -24,13 +25,9 @@ export type TeamMember = {
   avatar?: AvatarChoice;
   /** P25: when the account joined the team (ms), from the user doc's createdAt; absent on old docs. */
   joinedAtMs?: number;
+  /** D1: the raw CS `role` string (may be a legacy value such as "coach"), so a role edit keeps CS's own admin rule consistent. */
+  legacyRole?: string;
 };
-
-/** A Firestore Timestamp (or anything with toMillis) as ms; undefined when it isn't one. */
-function timestampMs(value: unknown): number | undefined {
-  if (value && typeof value === "object" && "toMillis" in value && typeof (value as { toMillis: unknown }).toMillis === "function") return (value as { toMillis: () => number }).toMillis();
-  return undefined;
-}
 
 /** Realtime roster for a team — backs both Team Management (editable, admin-only) and People (read-only). */
 export function useTeamMembers(teamId: string | null) {
@@ -52,21 +49,7 @@ export function useTeamMembers(teamId: string | null) {
       q,
       (snap) => {
         setMembers(
-          snap.docs.map((d) => {
-            const data = d.data();
-            return {
-              uid: d.id,
-              name: data.name,
-              email: data.email,
-              primaryRole: data.primaryRole,
-              secondaryRoles: data.secondaryRoles ?? [],
-              isAdmin: !!data.isAdmin,
-              isOwner: !!data.isOwner,
-              fieldTeamIds: Array.isArray(data.fieldTeamIds) ? (data.fieldTeamIds as string[]) : undefined,
-              avatar: data.avatar ? parseAvatar(data.avatar) : undefined,
-              joinedAtMs: timestampMs(data.createdAt),
-            };
-          })
+          snap.docs.map((d) => csUserToMember(d.id, d.data() as CsUserDoc))
         );
         setLoaded(true);
       },
@@ -93,7 +76,7 @@ export function useTeamMembers(teamId: string | null) {
  */
 export async function updateMemberAccess(
   actor: { teamId: string; uid: string; name: string },
-  member: Pick<TeamMember, "uid" | "name"> & MemberAccess,
+  member: Pick<TeamMember, "uid" | "name" | "legacyRole"> & MemberAccess,
   changes: Partial<MemberAccess>
 ) {
   if (Object.keys(changes).length === 0) return;
@@ -108,7 +91,8 @@ export async function updateMemberAccess(
   const after: MemberAccess = { ...before, ...changes };
 
   const batch = writeBatch(db);
-  batch.update(doc(db, "users", member.uid), changes);
+  // D1/D10: CS field names (role, roles, secondaryRoles, isTeamAdmin), merge write, nothing else on the doc is touched.
+  batch.set(doc(db, "users", member.uid), profilePatchToCsUser(changes, { role: member.legacyRole }), { merge: true });
   batch.set(
     newAuditLogRef(),
     buildAuditEntry(actor.teamId, actor.uid, actor.name, "edit-member-roles", { targetUid: member.uid, targetName: member.name }, before, after)

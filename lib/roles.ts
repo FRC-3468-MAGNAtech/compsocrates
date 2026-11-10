@@ -41,3 +41,33 @@ export const DEFAULT_ROLE_ID: RoleId = "match-scout";
 export function getRole(id: string): Role {
   return ROLES.find((r) => r.id === id) ?? ROLES[0];
 }
+
+const ROLE_IDS: readonly string[] = ROLES.map((r) => r.id);
+
+/** True for one of the nine canonical role ids. */
+export function isRoleId(value: unknown): value is RoleId {
+  return typeof value === "string" && ROLE_IDS.includes(value);
+}
+
+/**
+ * CS `normalizeLegacyRole` (app/utils/roles.ts): the nine canonical ids pass through; the legacy values CS data still
+ * holds (`coach`, `scout`, `lead_scout`, `lead_strategist`, `pit_scout`, `judge_awards`) map to their canonical id;
+ * anything else is a Match Scout.
+ */
+export function normalizeLegacyRole(role: string | null | undefined): RoleId {
+  const safe = (role || "").trim().toLowerCase();
+  if (isRoleId(safe)) return safe;
+  if (safe === "coach") return "team-coach";
+  if (safe === "scout") return "match-scout";
+  if (safe === "lead_scout") return "lead-scout";
+  if (safe === "lead_strategist") return "lead-strategist";
+  if (safe === "pit_scout") return "pit-scout";
+  if (safe === "judge_awards" || safe === "judgeawards") return "judge-awards";
+  return "match-scout";
+}
+
+/** Roles in canonical order (the order of `ROLES`), de-duplicated. */
+export function sortRolesCanonical(roles: Iterable<RoleId>): RoleId[] {
+  const set = new Set(roles);
+  return ROLES.map((r) => r.id).filter((id) => set.has(id));
+}

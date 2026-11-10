@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { FtcEvent } from "@/lib/ftc/types";
-import { buildActiveEventsFields, type ActiveEventsState } from "@/lib/active-events";
+import type { ActiveEventsState } from "@/lib/active-events";
+import type { CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
+import { csTeamToTeamDoc, selectedEventsPatch } from "@/data/cs/teams";
 import type { FieldTeam } from "@/lib/field-teams";
 
 export type TeamDoc = {
@@ -43,6 +45,20 @@ export type TeamDoc = {
   activeEventCodes?: string[];
   /** Denormalized copies of every active event, same reason as `activeEvent`. */
   activeEvents?: FtcEvent[];
+  /** D1: CS's `selectedEvents` (TBA keys): the SINGLE source of truth for the active events. `activeEvents` and friends above are derived from it on read. */
+  selectedEvents?: string[];
+  /** D1: CS `submissionControls` as stored. Use `submissionLockout` to gate a new submission. */
+  submissionControls?: CsSubmissionControls;
+  /** D1: the lockout CS's `assertSubmissionsOpen` enforces on every NEW submission (edit mode bypasses it). */
+  submissionLockout?: SubmissionLockout;
+  /** D1: CS `eventAttendees` ({ eventKey: (uid | name)[] }), passed through untouched. */
+  eventAttendees?: Record<string, string[]>;
+  /** D1: CS `manualTeamListsByEvent`, passed through untouched. */
+  manualTeamListsByEvent?: Record<string, unknown>;
+  /** D1: CS `formAccessOverrides` ({ formKey: uid[] }), passed through untouched. */
+  formAccessOverrides?: Record<string, string[]>;
+  /** D1: CS `timeOverride`, passed through untouched. */
+  timeOverride?: NonNullable<CsTeamDoc["timeOverride"]>;
   /** P3: admin-set in Match Library. Optional — absent on teams created before this field existed, treat as `false`. */
   usePlaceholderVideo?: boolean;
   /** P14: set (in the same transaction that creates them) once the starter changelog drafts have been seeded, so they're never recreated after an admin deletes them. */
@@ -78,7 +94,7 @@ export function useTeamDoc(teamId: string | null) {
     const unsubscribe = onSnapshot(
       doc(db, "teams", teamId),
       (snap) => {
-        setTeam(snap.exists() ? (snap.data() as TeamDoc) : null);
+        setTeam(snap.exists() ? csTeamToTeamDoc(snap.id, snap.data() as CsTeamDoc) : null);
         setLoaded(true);
       },
       (err) => {
@@ -93,9 +109,13 @@ export function useTeamDoc(teamId: string | null) {
   return { team, loaded };
 }
 
-/** FIX1: writes the whole multi-event selection plus the legacy primary-event fields. Admin-gated at the call site (Event Selection page) via usePermissions(); also enforced in firestore.rules. */
+/**
+ * FIX1 / D1: writes the multi-event selection to CS's `selectedEvents` (TBA keys, primary first, de-duplicated, max 10) with a merge
+ * write, and to nothing else: `selectedEvents` is the single source of truth, every other team field is left untouched. Admin-gated at
+ * the call site (Event Selection page) via usePermissions(); also enforced in firestore.rules.
+ */
 export async function setActiveEvents(teamId: string, state: ActiveEventsState) {
-  await updateDoc(doc(db, "teams", teamId), buildActiveEventsFields(state));
+  await setDoc(doc(db, "teams", teamId), selectedEventsPatch(state), { merge: true });
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */

@@ -20,7 +20,9 @@ import {
   type AuthError,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import type { CsUserDoc } from "@/data/cs/types";
+import { csUserToProfile, profilePatchToCsUser } from "@/data/cs/users";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { syncFieldTeams, syncRoles } from "@/lib/team-enrollment";
 import type { RoleId } from "@/lib/roles";
@@ -91,6 +93,13 @@ export type UserDoc = {
   workspacePhoneSplit?: number;
   /** P25: the member's avatar choice, mirrored from their profile so teammates (and the limited "private profile" card) can show it. Absent = initials. */
   avatar?: AvatarChoice;
+  /** D1 (CS profile fields, additive): kept from the CS user doc. */
+  bio?: string;
+  photoURL?: string;
+  profileVisibility?: "team" | "public" | "private";
+  profileComplete?: boolean;
+  experiencedScout?: boolean;
+  preferredDashboard?: string;
 };
 
 export type GoogleLinkPrompt = { email: string };
@@ -137,6 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [linkedProviders, setLinkedProviders] = useState<string[]>([]);
   const [pendingGoogleLink, setPendingGoogleLink] = useState<GoogleLinkPrompt | null>(null);
   const pendingGoogleCredential = useRef<AuthCredential | null>(null);
+  // The raw CS user doc behind `profile` (D1/D10): writers need its role fields to keep CS's `role`/`roles` consistent.
+  const rawUserDoc = useRef<CsUserDoc | null>(null);
   const [ownerPendingVerification, setOwnerPendingVerification] = useState(false);
 
   const onSignedIn = async (signedInUser: FirebaseUser) => {
@@ -216,7 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onSnapshot(
       doc(db, "users", user.uid),
       (snap) => {
-        setProfile(snap.exists() ? (snap.data() as UserDoc) : null);
+        rawUserDoc.current = snap.exists() ? (snap.data() as CsUserDoc) : null;
+        setProfile(snap.exists() ? csUserToProfile(snap.id, snap.data() as CsUserDoc) : null);
         setProfileLoaded(true);
       },
       (err) => {
@@ -322,7 +334,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateUserProfile = async (patch: Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "activeFieldTeamId" | "avatar">>) => {
     if (!auth.currentUser) throw new Error("Not signed in.");
-    await updateDoc(doc(db, "users", auth.currentUser.uid), patch);
+    // CS field names, merge write: unknown CS fields (encryptedUserData, ...) are never touched (D10).
+    await setDoc(doc(db, "users", auth.currentUser.uid), profilePatchToCsUser(patch, rawUserDoc.current ?? {}), { merge: true });
   };
 
   const resendVerificationEmail = async () => {

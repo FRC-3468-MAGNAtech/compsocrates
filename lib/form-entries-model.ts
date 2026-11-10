@@ -4,6 +4,7 @@ import type { MatchType } from "@/lib/ftc/types";
 import type { ScoutEntry } from "@/lib/scout-entries";
 import { derivedComments } from "@/lib/scout-entries";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
+import type { CsFormCollection } from "@/data/cs/form-field-keys";
 
 // P27: `formEntries/{entryId}`: one entry of one of the team's non-match-scout forms (Lead Scout, Pit Scout, Team Strategy, Match Strategy, Drive Reflection,
 // Helper, custom). Match Scout entries stay in `scoutEntries`. Pure (no Firestore client): the hooks are in lib/form-entries.ts.
@@ -11,6 +12,38 @@ import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 export type FormEntryType = Exclude<FormType, "match-scout">;
 
 export type FormEntryFlag = { id: string; reason: string; note?: string; addedAt: string };
+
+/**
+ * Where an entry that came from CompSocrates's collections sits, and the original CS strings that CE's own columns cannot hold, so rewriting an unchanged
+ * entry never changes them (docs/ROUTES.md D1, D10; the converters are in data/cs/forms.ts). Absent on entries that CE created itself (custom forms, new entries).
+ */
+export type FormEntryLegacy = {
+  /** The Firestore collection the doc lives in (`scouting` for a lead row written through CS's permission fallback). */
+  collection: CsFormCollection | "scouting";
+  /** The doc's own `game` (absent = CS treats the doc as REEFSCAPE or REBUILT depending on the form; a write must not add one). */
+  game?: string;
+  /** The doc's own `eventKey` before alias resolution (`2025lake` for `eventCode` `2026lake`). */
+  eventKey?: string;
+  matchKey?: string;
+  matchId?: string;
+  matchLabel?: string;
+  matchType?: string;
+  matchNumber?: string;
+  /** The doc's team number string when it is not just `String(teamNumber)` (`"254B"`, `" 254"`). */
+  teamNumber?: string;
+  /** The doc's own time fields as read (`createdAt`, `submittedAt`, `timestamp`). */
+  times: { createdAt?: number; submittedAt?: number; timestamp?: number };
+  /** For fields stored under an alias path: value key -> the path actually read, so a write goes back to the same place. */
+  paths?: Record<string, string>;
+  /** How many `robots[]` the doc had. */
+  robotCount?: number;
+  /** The raw `excludeFromStats` when the doc had one. */
+  excludeFromStats?: boolean;
+  /** The flag state excluded the entry from accuracy (`scoutingFlagStates.excludeFromAccuracy`). */
+  excludedByAccuracy?: boolean;
+  /** CS's own "practice scouting" marker (`isPracticeScouting` / `practiceMode` / `practiceSessionId`), not the same as a practice match. */
+  practiceScouted?: boolean;
+};
 
 export type FormEntry = {
   id: string;
@@ -34,6 +67,8 @@ export type FormEntry = {
   excluded: boolean;
   createdAtMs: number;
   updatedAtMs: number;
+  /** Set on entries read from CS's collections (see `FormEntryLegacy`). */
+  legacy?: FormEntryLegacy;
 };
 
 /** The match as one short key, the way scouts say it: P1, Q12, F3 (every playoff match is F, as everywhere else). */
