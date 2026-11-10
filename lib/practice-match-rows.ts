@@ -16,6 +16,9 @@ export type MatchRow = {
   hasVideo: boolean;
   /** P15: hand-entered rather than imported from the FIRST API — shown as a small "Manual" tag. */
   manual?: boolean;
+  /** The match's event name and, for a match imported from CS's `practiceMatches` (read-only), where it came from: what a CS-readable session records for the match. */
+  eventName?: string;
+  cs?: LibraryMatch["cs"];
   status: MatchRowStatus;
   /** True when the most relevant session (the completed one, or an open one) belongs to the viewer. */
   byYou: boolean;
@@ -43,7 +46,8 @@ export function buildMatchRows(
   for (const match of matches) {
     for (const alliance of ["red", "blue"] as const) {
       const side = match.alliances[alliance];
-      if (side.difficulty !== difficulty) continue;
+      // An alliance with no teams is one CS never imported (it only keeps alliances that have a video): nothing to scout.
+      if (side.difficulty !== difficulty || side.teams.length === 0) continue;
 
       const relevant = sessions.filter((s) => s.libraryMatchId === match.id && s.alliance === alliance);
       const completed = relevant.filter((s) => s.status === "completed");
@@ -69,6 +73,8 @@ export function buildMatchRows(
         difficulty: side.difficulty,
         hasVideo: match.video !== null,
         manual: match.origin === "manual",
+        eventName: match.eventName,
+        ...(match.cs ? { cs: match.cs } : {}),
         status,
         byYou,
       });

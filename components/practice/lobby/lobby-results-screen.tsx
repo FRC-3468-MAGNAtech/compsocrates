@@ -48,7 +48,7 @@ export function LobbyResultsScreen({
   onExit: () => void;
 }) {
   const { sessions } = useLobbySessions(lobby.teamId, lobby.id);
-  const { matches } = useLibraryMatchesBySeason(lobby.seasonId);
+  const { matches } = useLibraryMatchesBySeason(lobby.seasonId, { includeImported: false });
   const [detailPair, setDetailPair] = useState<PairResult | null>(null);
   const [startingAgain, setStartingAgain] = useState(false);
 

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { isValidAllianceTeams } from "@/config/alliance";
+import { normalizeEventKey } from "@/config/event";
+import { CS_PRACTICE_MATCHES, csPracticeMatchesToLibrary, mergeLibraryMatches } from "@/data/cs/practice";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
 import { getDifficulty, type Difficulty } from "@/lib/difficulty";
@@ -64,6 +66,12 @@ export type LibraryMatch = {
   updatedAt?: string;
   /** P15, manual matches only. */
   notes?: string;
+  /**
+   * D1: set on a match read from CS's `practiceMatches` (written only by the owner's import scripts, so read-only here and never in
+   * `libraryMatches`). `docIds` are CS's per-alliance doc ids (a practice session written for the match stores the one for its alliance as
+   * `matchId`), `matchKey` is CS's own key. Absent on every CE-curated match.
+   */
+  cs?: { matchKey: string; docIds: Partial<Record<"red" | "blue", string>> };
 };
 
 const COLLECTION = "libraryMatches";
@@ -181,6 +189,46 @@ export async function importLibraryEvent(seasonId: string, eventCode: string): P
   return { eventName, imported, skipped, skippedManual };
 }
 
+const CS_IMPORT_TTL_MS = 10 * 60 * 1000;
+let csImportCache: { at: number; promise: Promise<LibraryMatch[]> } | null = null;
+
+/**
+ * D1: the matches in CS's `practiceMatches`, read once and cached for the session (the collection is only ever written by the owner's
+ * import scripts). Clients cannot write it, so these are merged into the scout-facing lists read-only (flagged by `LibraryMatch.cs`) and
+ * never shown in the admin tables. A read the rules deny, or an unconfigured app, is just no imported matches.
+ */
+export function loadCsImportedMatches(): Promise<LibraryMatch[]> {
+  if (!isFirebaseConfigured()) return Promise.resolve([]);
+  if (csImportCache && Date.now() - csImportCache.at < CS_IMPORT_TTL_MS) return csImportCache.promise;
+  const promise = getDocs(collection(db, CS_PRACTICE_MATCHES))
+    .then((snap) => csPracticeMatchesToLibrary(snap.docs.map((d) => ({ id: d.id, data: d.data() }))))
+    .catch((err) => {
+      console.warn("practiceMatches (CS import) read failed:", err);
+      csImportCache = null;
+      return [] as LibraryMatch[];
+    });
+  csImportCache = { at: Date.now(), promise };
+  return promise;
+}
+
+/** The CS-imported matches, once loaded; empty until then and when `enabled` is false. */
+export function useCsImportedMatches(enabled: boolean): LibraryMatch[] {
+  const [imported, setImported] = useState<LibraryMatch[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    void loadCsImportedMatches().then((rows) => {
+      if (!cancelled) setImported(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+  return enabled ? imported : [];
+}
+
+const compareLibraryMatches = (a: LibraryMatch, b: LibraryMatch) => (a.matchType === b.matchType ? a.matchNumber - b.matchNumber : a.matchType.localeCompare(b.matchType));
+
 /**
  * Realtime subscription to one event's library matches, sorted by match type then number.
  *
@@ -218,7 +266,13 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
     return unsubscribe;
   }, [eventCode, includeUnpublished]);
 
-  return { matches, loaded };
+  // D1: scout-facing lists (no drafts) also show CS's imported practice matches for this event, read-only; an admin table does not.
+  const imported = useCsImportedMatches(Boolean(eventCode) && !includeUnpublished);
+  const merged = useMemo(
+    () => (imported.length > 0 && eventCode ? mergeLibraryMatches(matches, imported, (m) => m.eventCode === normalizeEventKey(eventCode)).sort(compareLibraryMatches) : matches),
+    [matches, imported, eventCode]
+  );
+  return { matches: merged, loaded };
 }
 
 /**
@@ -228,7 +282,9 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
  * Difficulty > Match). Separate from `useLibraryMatches` (one event, for
  * the Admin Panel's per-event table) since the query key differs.
  */
-export function useLibraryMatchesBySeason(seasonId: string | null) {
+export function useLibraryMatchesBySeason(seasonId: string | null, options: { includeImported?: boolean } = {}) {
+  // Lobbies resolve their match server-side from `libraryMatches`, so they ask for CE's own matches only (`includeImported: false`).
+  const includeImported = options.includeImported ?? true;
   const [matches, setMatches] = useState<LibraryMatch[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   // FIX3: a failed subscription is surfaced (with a Retry) instead of looking like an empty library.
@@ -263,7 +319,9 @@ export function useLibraryMatchesBySeason(seasonId: string | null) {
     return unsubscribe;
   }, [seasonId, attempt]);
 
-  return { matches, loaded, error, retry: () => setAttempt((n) => n + 1) };
+  const imported = useCsImportedMatches(Boolean(seasonId) && includeImported);
+  const merged = useMemo(() => (imported.length > 0 ? mergeLibraryMatches(matches, imported, (m) => m.seasonId === seasonId).sort(compareLibraryMatches) : matches), [matches, imported, seasonId]);
+  return { matches: merged, loaded, error, retry: () => setAttempt((n) => n + 1) };
 }
 
 /**
@@ -303,7 +361,10 @@ export function useAllLibraryMatches(enabled: boolean = true, options: { include
     return unsubscribe;
   }, [enabled, includeUnpublished]);
 
-  return { matches, loaded };
+  // D1: scout-facing lists (no drafts) also show CS's imported practice matches, read-only; an admin table (drafts included) does not.
+  const imported = useCsImportedMatches(enabled && !includeUnpublished);
+  const merged = useMemo(() => (imported.length > 0 ? mergeLibraryMatches(matches, imported) : matches), [matches, imported]);
+  return { matches: merged, loaded };
 }
 
 export async function setLibraryMatchVideo(id: string, video: LibraryVideo | null): Promise<void> {

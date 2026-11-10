@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { doc, onSnapshot, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, onSnapshot, runTransaction } from "firebase/firestore";
+import type { CsTeamDoc } from "@/data/cs/types";
+import { csPickListMeta, csPickListToPicked, pickedToCsPickList } from "@/data/cs/pick-list";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { applyPickOp, samePicks, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
 
-// Persistence for the shared Pick List board (P12): `pickLists/{teamId}_{eventCode}`.
+// Persistence for the shared Pick List board (P12). D1: CS keeps one list per team at `teams/{teamId}.pickList`
+// (`{ picks: [{ teamNumber, pickOrder }], updatedAt, updatedBy }`, data/cs/pick-list.ts), so the board reads and writes that field
+// whichever event it shows. CS stores the editor's uid only, so `updatedByName` is null on read. The CE `pickLists` collection is no longer used.
 
 export type PickListDoc = {
   teamId: string;
@@ -19,7 +23,7 @@ export type PickListDoc = {
   updatedAtMs: number | null;
 };
 
-const COLLECTION = "pickLists";
+const COLLECTION = "teams";
 
 export function pickListId(teamId: string, eventCode: string): string {
   return `${teamId}_${eventCode}`;
@@ -35,21 +39,16 @@ export function pickListId(teamId: string, eventCode: string): string {
  * nothing, e.g. adding a team someone else already added.
  */
 export async function editPickList(ctx: { teamId: string; eventCode: string; uid: string; name: string }, op: PickOp): Promise<boolean> {
-  const ref = doc(db, COLLECTION, pickListId(ctx.teamId, ctx.eventCode));
+  const ref = doc(db, COLLECTION, ctx.teamId);
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
-    const before = sanitizePicks(snap.exists() ? snap.data().picked : []);
+    const stored = snap.exists() ? (snap.data() as CsTeamDoc).pickList : undefined;
+    const before = sanitizePicks(csPickListToPicked(stored));
     const after = applyPickOp(before, op);
     if (samePicks(before, after)) return false;
 
-    tx.set(ref, {
-      teamId: ctx.teamId,
-      eventCode: ctx.eventCode,
-      picked: after,
-      updatedBy: ctx.uid,
-      updatedByName: ctx.name,
-      updatedAt: serverTimestamp(),
-    });
+    // A merge write of the one field (every other team field is untouched); unknown fields of the stored list are carried over.
+    tx.set(ref, { pickList: pickedToCsPickList(stored, after, ctx.uid, Date.now()) }, { merge: true });
     // The audit trail rides in the same transaction, so a change can never land unlogged.
     tx.set(newAuditLogRef(), buildAuditEntry(ctx.teamId, ctx.uid, ctx.name, "edit-pick-list", { eventCode: ctx.eventCode, op: op.type }, { picked: before }, { picked: after }));
     return true;
@@ -82,26 +81,19 @@ export function usePickList(teamId: string | null, eventCode: string | null, act
     // A new event's list isn't loaded until its first snapshot — don't flash the previous one.
     setLoaded(false);
     const unsubscribe = onSnapshot(
-      doc(db, COLLECTION, pickListId(teamId, eventCode)),
+      doc(db, COLLECTION, teamId),
       (snap) => {
-        if (!snap.exists()) {
+        const stored = snap.exists() ? (snap.data() as CsTeamDoc).pickList : undefined;
+        if (!stored) {
           setList(null);
         } else {
-          const data = snap.data();
-          const updatedAt = data.updatedAt as { toMillis?: () => number } | null | undefined;
-          setList({
-            teamId: data.teamId,
-            eventCode: data.eventCode,
-            picked: sanitizePicks(data.picked),
-            updatedBy: data.updatedBy ?? null,
-            updatedByName: data.updatedByName ?? null,
-            updatedAtMs: updatedAt?.toMillis ? updatedAt.toMillis() : null,
-          });
+          const meta = csPickListMeta(stored);
+          setList({ teamId, eventCode, picked: sanitizePicks(csPickListToPicked(stored)), updatedBy: meta.updatedBy, updatedByName: null, updatedAtMs: meta.updatedAtMs });
         }
         setLoaded(true);
       },
       (err) => {
-        console.error("pickLists subscription failed:", err);
+        console.error("team pickList subscription failed:", err);
         setList(null);
         setLoaded(true);
       }

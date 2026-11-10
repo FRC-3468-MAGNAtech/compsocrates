@@ -150,7 +150,7 @@ export default function AssignmentsPage() {
 
   const handleSwap = (matchType: string, matchNumber: number, slot: SlotId, newScoutUid: string | null) => {
     if (!teamId || !eventCode) return;
-    void swapAssignmentSlot(teamId, eventCode, matchType as never, matchNumber, slot, newScoutUid);
+    void swapAssignmentSlot(teamId, eventCode, matchType as never, matchNumber, slot, newScoutUid, assignments?.current?.slots);
   };
 
   const myAssignments = !assignments?.current || !user ? [] : assignments.current.slots.filter((s) => s.scoutUid === user.uid);

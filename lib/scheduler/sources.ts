@@ -22,8 +22,8 @@ export function libraryMatchesToInputs(matches: LibraryMatch[], difficulty: Diff
     .map((m) => ({
       matchType: m.matchType,
       matchNumber: m.matchNumber,
-      red: m.alliances.red.difficulty === difficulty ? [...m.alliances.red.teams] : null,
-      blue: m.alliances.blue.difficulty === difficulty ? [...m.alliances.blue.teams] : null,
+      red: m.alliances.red.difficulty === difficulty && m.alliances.red.teams.length > 0 ? [...m.alliances.red.teams] : null,
+      blue: m.alliances.blue.difficulty === difficulty && m.alliances.blue.teams.length > 0 ? [...m.alliances.blue.teams] : null,
     }))
     .filter((m) => m.red !== null || m.blue !== null);
 }

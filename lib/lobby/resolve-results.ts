@@ -1,9 +1,14 @@
 import "server-only";
 import { FieldValue, type Firestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
+import { csDocToScoutEntry } from "@/data/cs/scouting";
+import type { CsRecord } from "@/data/cs/types";
 import { resolveLobbyPairScoring } from "@/lib/lobby/scoring";
 import type { LobbyDoc } from "@/lib/lobby";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { ScoutEntry } from "@/lib/scout-entries";
+
+/** CS's collection of scouted entries (official, live and practice rows alike; D1). */
+const SCOUTING = "scouting";
 
 async function hadPriorCompletedAttempt(
   db: Firestore,
@@ -73,9 +78,12 @@ export async function resolveLobbyResults(db: Firestore, lobbyId: string): Promi
     const entryIds = docs.map((d) => d.data().entryIds?.[0] as string | undefined);
     if (entryIds.some((id) => !id)) continue;
 
-    const entrySnaps = await Promise.all(entryIds.map((id) => db.collection("scoutEntries").doc(id!).get()));
+    // D1: the pair's entries are CS `scouting` docs, read through the adapter.
+    const entrySnaps = await Promise.all(entryIds.map((id) => db.collection(SCOUTING).doc(id!).get()));
     if (entrySnaps.some((s) => !s.exists)) continue;
-    const groupEntries = entrySnaps.map((s) => ({ id: s.id, ...s.data() }) as ScoutEntry);
+    const adapted = entrySnaps.map((s) => csDocToScoutEntry(s.id, s.data() as CsRecord));
+    if (adapted.some((e) => e === null)) continue;
+    const groupEntries = adapted as ScoutEntry[];
 
     const libraryMatchId = lobby.libraryMatchId;
     const priors = await Promise.all(docs.map((d) => hadPriorCompletedAttempt(db, lobby.teamId, d.data().uid, libraryMatchId, pair.alliance, d.id)));

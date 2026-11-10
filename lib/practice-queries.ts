@@ -46,6 +46,9 @@ export const completedAttemptQuery = (db: Firestore, teamId: string, uid: string
     limit(1)
   );
 
+/** One scout's sessions by CS's `scoutId` (every doc CE writes carries it too): the way to find a snapshot CS wrote, which has no `uid` or `status`. */
+export const scoutSessionsQuery = (db: Firestore, teamId: string, uid: string) => query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("scoutId", "==", uid));
+
 export const lobbySessionsQuery = (db: Firestore, teamId: string, lobbyId: string) => query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("lobbyId", "==", lobbyId));
 
 /** Who is scouting one live match. Presence docs carry `teamId`, and the query must ask for it for the rule to hold. */

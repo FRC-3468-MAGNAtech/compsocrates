@@ -138,3 +138,26 @@ describe("pickRandomMatchRow", () => {
     expect(pickRandomMatchRow([])).toBeNull();
   });
 });
+
+describe("buildMatchRows with a CS-imported match", () => {
+  it("skips an alliance CS never imported and carries the CS source for session writes", () => {
+    const imported = makeMatch({
+      id: "cs:2026arli_Q12",
+      matchNumber: 12,
+      alliances: {
+        red: { teams: [254, 971, 1678], score: 88, penaltyPoints: 6, difficulty: "medium" },
+        blue: { teams: [], score: 0, penaltyPoints: 0, difficulty: "medium" },
+      },
+      cs: { matchKey: "2026arli_qm12", docIds: { red: "d-red" } },
+    });
+    const rows = buildMatchRows([imported], [], "uid-1", "medium");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ libraryMatchId: "cs:2026arli_Q12", alliance: "red", cs: { docIds: { red: "d-red" } }, eventName: "Rookie Rumble" });
+  });
+
+  it("a session CS wrote counts as scouted for the same imported match and alliance", () => {
+    const imported = makeMatch({ id: "cs:2026arli_Q12", matchNumber: 12, alliances: { red: { teams: [1, 2, 3], score: 88, penaltyPoints: 0, difficulty: "medium" }, blue: { teams: [], score: 0, penaltyPoints: 0, difficulty: "medium" } } });
+    const session = makeSession({ libraryMatchId: "cs:2026arli_Q12", alliance: "red", status: "completed", uid: "uid-9" });
+    expect(buildMatchRows([imported], [session], "uid-1", "medium")[0]).toMatchObject({ status: "scouted", byYou: false });
+  });
+});

@@ -10,9 +10,10 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { csSessionToPractice, practicePatchToCsFields, type SessionWriteContext } from "@/data/cs/practice";
 import { tryClaimDoc } from "@/lib/claim-doc";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
-import { completedAttemptQuery, ownPausedSessionQuery, teamLiveSessionsQuery, teamSessionsQuery, teamSoloSessionsQuery } from "@/lib/practice-queries";
+import { completedAttemptQuery, ownPausedSessionQuery, scoutSessionsQuery, teamLiveSessionsQuery, teamSessionsQuery } from "@/lib/practice-queries";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/ftc/types";
@@ -77,6 +78,9 @@ export type PracticeSession = {
   streamEndSec: number | null;
 };
 
+// D1: sessions live in CS's `practiceSessions` (data/cs/practice.ts). A CE-written session carries CE's fields (uid, kind, status, ...)
+// AND the CS ones (scoutId, eventKey, matchId/Key/Number/Type, scores, epoch-ms timestamps), so CS reads it too; a CS-written snapshot
+// reads here as a completed solo session. CS's live-lobby docs share the collection and are not sessions: they are skipped on read.
 const COLLECTION = "practiceSessions";
 
 const SESSION_ID_PREFIXES: Record<SessionKind, string> = { solo: "PS-", live: "LV-", lobby: "LB-" };
@@ -133,19 +137,31 @@ export async function claimSessionId(teamId: string, uid: string, kind: SessionK
       uid,
       kind,
       status: "in-progress" satisfies SessionStatus,
-      startedAt: new Date().toISOString(),
+      // CS fields (epoch ms, as CS writes them): the scout's uid, the live flag, and the time CS sorts on.
+      scoutId: uid,
+      isLivePracticeScouting: kind === "live",
+      startedAt: Date.now(),
+      timestamp: Date.now(),
       createdAt: serverTimestamp(),
     },
     maxAttempts
   );
 }
 
-function toSession(id: string, data: Record<string, unknown>): PracticeSession {
-  return { id, ...data } as PracticeSession;
+/** A `practiceSessions` doc as a session; null for a doc that is not one (CS's live-lobby docs). */
+function toSession(id: string, data: Record<string, unknown>): PracticeSession | null {
+  return csSessionToPractice(id, data);
 }
 
-export async function updatePracticeSession(sessionId: string, patch: Partial<PracticeSession>): Promise<void> {
-  await updateDoc(doc(db, COLLECTION, sessionId), patch);
+const isSession = (s: PracticeSession | null): s is PracticeSession => s !== null;
+
+/**
+ * Merge-updates a session. The patch is written together with its CS-named counterparts (`practicePatchToCsFields`), so the doc stays
+ * readable by CS: pass `context` (the library match, the session kind) when the patch sets the match, since the CS match fields come
+ * from the match and the patch alone does not carry them.
+ */
+export async function updatePracticeSession(sessionId: string, patch: Partial<PracticeSession>, context?: SessionWriteContext): Promise<void> {
+  await updateDoc(doc(db, COLLECTION, sessionId), { ...patch, ...practicePatchToCsFields(patch, context) });
 }
 
 export async function getPracticeSession(sessionId: string): Promise<PracticeSession | null> {
@@ -206,9 +222,10 @@ export function useTeamPracticeSessions(teamId: string | null) {
     }
     setError(null);
     const unsubscribe = onSnapshot(
-      teamSoloSessionsQuery(db, teamId),
+      // CS's own snapshots carry no `kind`, so the team's sessions are read and filtered here instead of querying `kind == "solo"`.
+      teamSessionsQuery(db, teamId),
       (snap) => {
-        setSessions(snap.docs.map((d) => toSession(d.id, d.data())));
+        setSessions(snap.docs.map((d) => toSession(d.id, d.data())).filter(isSession).filter((s) => s.kind === "solo"));
         setLoaded(true);
       },
       (err) => {
@@ -245,7 +262,7 @@ export function useTeamLiveSessions(teamId: string | null) {
     const unsubscribe = onSnapshot(
       teamLiveSessionsQuery(db, teamId),
       (snap) => {
-        setSessions(snap.docs.map((d) => toSession(d.id, d.data())));
+        setSessions(snap.docs.map((d) => toSession(d.id, d.data())).filter(isSession));
         setLoaded(true);
       },
       (err) => {
@@ -281,7 +298,7 @@ export function useAllTeamPracticeSessions(teamId: string | null) {
     const unsubscribe = onSnapshot(
       teamSessionsQuery(db, teamId),
       (snap) => {
-        setSessions(snap.docs.map((d) => toSession(d.id, d.data())));
+        setSessions(snap.docs.map((d) => toSession(d.id, d.data())).filter(isSession));
         setLoaded(true);
       },
       (err) => {
@@ -335,7 +352,18 @@ export async function hasCompletedAttemptBefore(
   alliance: AllianceColor
 ): Promise<boolean> {
   const snap = await getDocs(completedAttemptQuery(db, teamId, uid, libraryMatchId, alliance));
-  return !snap.empty;
+  if (!snap.empty) return true;
+  // A CS-written snapshot has no `status` / `uid`: look through the scout's sessions by `scoutId` for the same match and alliance.
+  try {
+    const own = await getDocs(scoutSessionsQuery(db, teamId, uid));
+    return own.docs.some((d) => {
+      const s = toSession(d.id, d.data());
+      return s !== null && s.status === "completed" && s.libraryMatchId === libraryMatchId && s.alliance === alliance;
+    });
+  } catch (err) {
+    console.warn("scout practiceSessions lookup failed:", err);
+    return false;
+  }
 }
 
 /**

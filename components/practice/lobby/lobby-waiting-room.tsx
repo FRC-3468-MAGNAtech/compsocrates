@@ -40,7 +40,7 @@ export function LobbyWaitingRoom({
   const { user } = useAuth();
   const { team } = useTeamDoc(lobby.teamId);
   const usePlaceholder = team?.usePlaceholderVideo ?? false;
-  const { matches } = useLibraryMatchesBySeason(lobby.seasonId);
+  const { matches } = useLibraryMatchesBySeason(lobby.seasonId, { includeImported: false });
   const playableMatches = useMemo(() => matches.filter((m) => playable(m, usePlaceholder)), [matches, usePlaceholder]);
   const chosenMatch = matches.find((m) => m.id === lobby.libraryMatchId) ?? null;
 

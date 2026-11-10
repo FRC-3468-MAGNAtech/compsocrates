@@ -1,17 +1,19 @@
 "use client";
 
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { normalizeEventKey } from "@/config/event";
+import { CS_MATCH_ASSIGNMENTS, csRowsToSlots, isTeamMirrorRow, type CsAssignmentRow } from "@/data/cs/assignments";
+import { teamRowsQuery } from "@/lib/assignment-io";
+import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
-import { parseScheduleSlots } from "@/lib/scheduler/parse";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 
 /**
- * Every event's published schedule slots for the team, by event code — one
- * team-scoped query rather than one document read per event (a document that
- * does not exist yet cannot be read directly under firestore.rules, and Scout
- * Status looks at several events at once).
+ * Every event's published schedule slots for the team, by event code (TBA key) — one team-scoped query of CS's `matchAssignments`
+ * (D1) rather than one read per event; Scout Status looks at several events at once. Team-strategy mirror rows are not match
+ * slots and are skipped. Robot positions are not derived here (no schedule is fetched for every event): Scout Status counts a
+ * scout's matches, it does not read the slot id.
  */
 export function useTeamAssignmentSlots(teamId: string | null): { slotsByEvent: Map<string, ScheduleSlot[]>; loaded: boolean } {
   const [slotsByEvent, setSlotsByEvent] = useState<Map<string, ScheduleSlot[]>>(new Map());
@@ -25,14 +27,21 @@ export function useTeamAssignmentSlots(teamId: string | null): { slotsByEvent: M
       return;
     }
     const unsubscribe = onSnapshot(
-      query(collection(db, "assignments"), where("teamId", "==", teamId)),
+      teamRowsQuery(CS_MATCH_ASSIGNMENTS, teamId),
       (snap) => {
-        // P31: the Pit Scouting / Team Strategy docs (they have a `kind`) share the collection; only the Match Scouting schedule has slots
-        setSlotsByEvent(new Map(snap.docs.filter((d) => d.data().kind === undefined).map((d) => [String(d.data().eventCode), parseScheduleSlots((d.data() as { current?: { slots?: unknown } }).current?.slots)])));
+        const byEvent = new Map<string, CsAssignmentRow[]>();
+        for (const d of snap.docs) {
+          const data = d.data();
+          if (isTeamMirrorRow(data)) continue;
+          const eventKey = normalizeEventKey(String(data.eventKey ?? ""));
+          if (!eventKey) continue;
+          byEvent.set(eventKey, [...(byEvent.get(eventKey) ?? []), { id: d.id, data }]);
+        }
+        setSlotsByEvent(new Map([...byEvent].map(([eventKey, rows]) => [eventKey, csRowsToSlots(rows)])));
         setLoaded(true);
       },
       (err) => {
-        reportFirestoreError("assignments (team) subscription failed", err, `assignments where teamId == ${teamId}`);
+        reportFirestoreError("matchAssignments (team) subscription failed", err, `${CS_MATCH_ASSIGNMENTS} where teamId == ${teamId}`);
         setSlotsByEvent(new Map());
         setLoaded(true);
       }

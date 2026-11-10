@@ -117,7 +117,7 @@ export default function PracticeScoutingPage() {
         lobbyId: null,
         pairId: null,
         finishedAt: null,
-      });
+      }, { match: { id: row.libraryMatchId, eventCode: row.eventCode, eventName: row.eventName ?? "", matchType: row.matchType, matchNumber: row.matchNumber, cs: row.cs } });
       setActiveSessionId(sessionId);
       setStep("session");
     } catch (err) {

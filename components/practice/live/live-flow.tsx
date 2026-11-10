@@ -172,7 +172,7 @@ export function LiveFlow({
         streamUrl: effective.streamUrl ?? "",
         streamStartSec: null,
         streamEndSec: null,
-      });
+      }, { match: libraryMatch ?? null });
       setSessionId(newSessionId);
       setStep("session");
     } catch (err) {

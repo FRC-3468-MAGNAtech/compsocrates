@@ -9,17 +9,16 @@ import { buildGameSchema, unionForms } from "@/lib/analytics/game-schema";
 import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
 import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
 import type { Form } from "@/lib/forms/types";
-import type { ScoutEntry } from "@/lib/scout-entries";
+import { getEntries } from "@/lib/scout-entries";
 
 /**
- * Exactly the prompt's own list — users, scoutEntries, practiceSessions,
- * assignments, attendance (`eventAttendance`), auditLog — each scoped to
- * this team. `teams` (just this team's own doc) and `libraryMatches`
- * (shared, not teamId-scoped) are handled separately below. Collections
- * added after this prompt was written (liveMatches, notifications,
- * lobbies) are deliberately left out — see docs/ASSUMPTIONS.md (P9).
+ * The collections the team's data lives in, each scoped to this team. D1: these are CS's collections (`scouting`, the four
+ * assignment collections), not CE's `scoutEntries` / `assignments` / `eventAttendance`: event attendance and the pick list are
+ * fields of the `teams` doc, which is exported with it below. `teams` (just this team's own doc) and `libraryMatches` (shared,
+ * not teamId-scoped) are handled separately. Collections added later (liveMatches, notifications, lobbies) are deliberately
+ * left out — see docs/ASSUMPTIONS.md (P9).
  */
-const TEAM_SCOPED_COLLECTIONS = ["users", "scoutEntries", "practiceSessions", "assignments", "eventAttendance", "auditLog"] as const;
+const TEAM_SCOPED_COLLECTIONS = ["users", "scouting", "practiceSessions", "matchAssignments", "pitAssignments", "teamAssignments", "practiceAssignments", "auditLog"] as const;
 
 export type BackupSummary = { collection: string; count: number }[];
 
@@ -55,12 +54,11 @@ export async function exportAllDataJson(teamId: string, actorUid: string, actorN
 }
 
 /**
- * Every scoutEntries doc for the team (any source), as one CSV, names never anonymized (this is an admin-only export). P21: the columns are the union of
+ * Every scouted entry of the team (any source: official, live and practice rows of CS's `scouting`, read through the adapter), as one CSV, names never anonymized (this is an admin-only export). P21: the columns are the union of
  * the forms the entries were scouted with (`resolveForm` finds each entry's form; the default knows only the built-ins), so custom-form entries export too.
  */
 export async function exportEntriesCsv(teamId: string, actorUid: string, actorName: string, resolveForm: FormResolver = builtinFormResolver): Promise<number> {
-  const snap = await getDocs(query(collection(db, "scoutEntries"), where("teamId", "==", teamId)));
-  const entries = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ScoutEntry[];
+  const entries = await getEntries(teamId);
   const used = new Map<string, Form>();
   for (const e of entries) {
     const f = resolveForm(e);

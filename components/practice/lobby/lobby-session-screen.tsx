@@ -55,7 +55,7 @@ export function LobbySessionScreen({
   const form = useLockedForm(lobby.seasonId);
   const { team } = useTeamDoc(lobby.teamId);
   const usePlaceholder = team?.usePlaceholderVideo ?? false;
-  const { matches } = useLibraryMatchesBySeason(lobby.seasonId);
+  const { matches } = useLibraryMatchesBySeason(lobby.seasonId, { includeImported: false });
   const chosenMatch = matches.find((m) => m.id === lobby.libraryMatchId) ?? null;
   const { sessions } = useLobbySessions(lobby.teamId, lobby.id);
 
@@ -121,7 +121,7 @@ export function LobbySessionScreen({
           streamUrl: null,
           streamStartSec: null,
           streamEndSec: null,
-        });
+        }, { match: chosenMatch });
         setSessionId(id);
       } catch (err) {
         setError(describeFirestoreError("Couldn't start your session.", err));
