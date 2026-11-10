@@ -24,7 +24,65 @@ export type PhaseScore = {
   auto: number;
   teleop: number;
   endgame: number;
+  /** auto + teleop + endgame (+ `penalty` when present, as CS adds penalty points to REEFSCAPE and CHARGED_UP totals). */
   total: number;
+  /** Penalty points added to `total` (REEFSCAPE and CHARGED_UP only, read from the doc's `penaltyPoints`). Omitted when the game has none. */
+  penalty?: number;
+};
+
+/** Auto-flag codes CS raises on a scouting entry (app/utils/scoutingFlags.ts). */
+export type ScoutingFlagCode = "human-player-heavy" | "auto-only-no-teleop" | "zero-main-scoring";
+
+export type ScoutingFlag = {
+  code: ScoutingFlagCode;
+  label: string;
+  detail: string;
+};
+
+/** One compared metric of lead-vs-junior verification (app/utils/scoutVerification.ts). `key` is a dotted CS doc path. */
+export type VerificationMetric = {
+  key: string;
+  label: string;
+  tolerance: number;
+};
+
+export type VerificationResult = {
+  verified: boolean;
+  /** Whole percent (0..100). */
+  accuracy: number;
+  matchedMetrics: number;
+  totalMetrics: number;
+  mismatches: Array<{ key: string; label: string; junior: number; lead: number; delta: number }>;
+};
+
+export type PredictionSource = "official" | "practice" | "combined";
+export type ConfidenceTier = 75 | 85 | 90;
+
+export type TacticalPrediction = {
+  teamNumber: string;
+  startingPosition: string;
+  role: "Offense" | "Defense" | "Feeder";
+  /** Whole percent (0..100). */
+  climbProbability: number;
+  estimatedPoints: number;
+  sampleSize: number;
+  confidenceTier: ConfidenceTier;
+};
+
+/** One field of a rescout (exemplar) comparison (app/utils/rescoutComparison.ts). */
+export type RescoutField = {
+  key: string;
+  label: string;
+  original: unknown;
+  exemplar: unknown;
+  diff: number;
+  weight: number;
+};
+
+export type RescoutDiff = {
+  /** Weighted difference as a percent with one decimal (0 = identical). */
+  diffPercent: number;
+  fields: RescoutField[];
 };
 
 export interface GamePlugin {
@@ -52,4 +110,22 @@ export interface GamePlugin {
 
   /** Score flat form values (used live by the form's score bar). Must equal `scoreDoc(valuesToDoc(v))`. */
   scoreValues(values: GameValues): PhaseScore;
+
+  /** Default flat values for an empty form (REBUILT only; read-only games return `{}`). */
+  defaultValues?(): GameValues;
+
+  /** Auto-flags for a CS doc, as CS's `evaluateScoutingFlags` raises them. */
+  flags?(doc: CsDoc): ScoutingFlag[];
+
+  /** Lead-vs-junior verification (CS `compareScoutToLead`). */
+  verify?(junior: CsDoc, lead: CsDoc, options?: { metrics?: readonly VerificationMetric[]; threshold?: number }): VerificationResult;
+
+  /** Tactical prediction for one team (CS `buildTacticalPrediction`), scored with this game's `scoreDoc`. */
+  predict?(teamNumber: string, docs: readonly CsDoc[], source: PredictionSource, confidenceTier: ConfidenceTier): TacticalPrediction;
+
+  /** Field-by-field diff of a scouted doc against an exemplar (CS `computeRescoutDiff`). */
+  compareToExemplar?(original: CsDoc, exemplar: CsDoc): RescoutDiff;
 }
+
+/** A plugin with every optional member present; what the registry hands out. */
+export type FullGamePlugin = Required<GamePlugin>;
