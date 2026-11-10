@@ -33,7 +33,7 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   // Events
   { from: "/event-selection", to: "/event" },
   { from: "/event-details", to: "/event" },
-  { from: "/event-details/:eventKey", to: "/event/:eventKey" },
+  { from: "/event-details/:eventKey", to: "/events/:eventKey" },
 
   // Forms
   { from: "/scout-form", to: "/lead-scout-form", whenQuery: { key: "lead", value: "1" } },

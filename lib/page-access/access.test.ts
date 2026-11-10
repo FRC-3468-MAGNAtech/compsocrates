@@ -20,7 +20,7 @@ import { ROLES } from "@/lib/roles";
 
 const user = (over: Partial<AccessUser> = {}): AccessUser => ({ uid: "u1", isAdmin: false, isOwner: false, primaryRole: "match-scout", secondaryRoles: [], ...over });
 
-const OPEN = ["dashboard", "match-scout-form", "analytics", "practice-scouting", "my-scouting", "people", "changelog", "credits", "account-settings", "match-list"];
+const OPEN = ["dashboard", "match-scout-form", "analytics", "practice-scouting", "my-scouting", "people", "changelog", "credits", "account-settings", "match-list", "event-details", "judge-book"];
 const DEFAULTS: Record<string, string[]> = {
   "lead-scout-form": ["lead-scout"],
   "pit-scout-form": ["pit-scout"],

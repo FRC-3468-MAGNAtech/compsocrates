@@ -46,7 +46,7 @@ const PENDING_PAGES: string[] = [
   "/analytics/match-prediction",
   "/analytics/performance-reliability",
   "/analytics/robot-radar",
-  "/event/:eventKey",
+  "/events/:eventKey",
   "/judge-book",
   "/judge-book/:cardId",
   "/privacy-policy",

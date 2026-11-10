@@ -22,6 +22,7 @@ import {
   Wrench,
   Lightbulb,
   HandHelping,
+  BookOpen,
 } from "lucide-react";
 
 export type NavItem = {
@@ -47,6 +48,7 @@ export const mainNav: NavItem[] = [
   { href: "/practice-scouting", label: "Practice Scouting", icon: FlaskConical },
   { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },
   { href: "/my-scouting", label: "My Scouting", icon: UserCircle },
+  { href: "/judge-book", label: "Judge Book", icon: BookOpen, matchPrefix: true },
   { href: "/people", label: "People", icon: Users },
   { href: "/team-management", label: "Team Management", icon: UsersRound },
 ];
@@ -74,4 +76,10 @@ export const analyticsNav: { href: string; label: string; group?: string }[] = [
   { href: "/analytics/team-breakdown", label: "Team Breakdown" },
   { href: "/analytics/pick-list", label: "Pick List" },
   { href: "/analytics/scout-status", label: "Scout Status" },
+  // CS-only analytics (docs/ROUTES.md)
+  { href: "/analytics/match-prediction", label: "Match Prediction" },
+  { href: "/analytics/performance-reliability", label: "Performance & Reliability" },
+  { href: "/analytics/robot-radar", label: "Robot Radar" },
+  { href: "/analytics/accuracy-compare", label: "Accuracy Compare" },
+  { href: "/analytics/accuracy-verification", label: "Accuracy Verification" },
 ];

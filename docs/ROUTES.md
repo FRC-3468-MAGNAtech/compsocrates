@@ -5,7 +5,7 @@ Status: **Adopted without a separate approval pause.** You asked me to keep runn
 ## Principles
 1. **CE's route is the route.** Where a page exists in both apps, the CE URL wins and the CS URL redirects to it.
 2. **Flat, predictable URLs.** CS-only pages get a CE-style name under an existing section (`/analytics/*`, `/event/*`). No `-form-reefscape` or `-placeholder` variants.
-3. **Event context is handled once.** The active events come from one provider (`ActiveEventsProvider`, fed by a single team-doc subscription). No page re-resolves the event, re-reads the team doc or calls the TBA match endpoint on its own. Pages that need a specific event take `?event=<key>`, as CE's `/scout` already does.
+3. **Event context is handled once.** The active events come from one provider (`ActiveEventsProvider`, fed by a single team-doc subscription). No page re-resolves the event, re-reads the team doc or calls the TBA match endpoint on its own. Event details live at `/events/[eventKey]` (plural, so the open page is not caught by the restricted `/event` page). Pages that need a specific event take `?event=<key>`, as CE's `/scout` already does.
 4. **One shell.** Every signed-in page lives under `app/(app)/layout.tsx`, so no page imports `Sidebar` or wraps itself in `ProtectedRoute`. Access is a `page-access` registry entry.
 5. **Every old CS URL redirects.** Redirects are permanent (308) and are generated from one table. A unit test lists every CS route and fails if one has no target.
 6. **Role dashboards** collapse to `/dashboard` plus a `?role=` query. The old nine routes redirect to it.
@@ -43,7 +43,7 @@ Redirect type: **=** same URL (kept), **→** redirect to the new URL.
 |---|---|---|
 | `/event-selection` | `/event` → | |
 | `/event-details` | `/event` → | |
-| `/event-details/[eventKey]` | `/event/[eventKey]` → | **New page** (CS-only): teams, schedule, rankings for one event |
+| `/event-details/[eventKey]` | `/events/[eventKey]` → | **New page** (CS-only): teams, schedule, rankings for one event |
 | `/match-list` | `/match-list` = | |
 
 ### Forms

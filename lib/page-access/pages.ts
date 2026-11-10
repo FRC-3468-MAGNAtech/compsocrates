@@ -36,6 +36,10 @@ export const PAGES: PageDef[] = [
   { id: "credits", title: "Credits", routes: ["/credits"], access: "open", defaultRoles: [] },
   { id: "account-settings", title: "Account Settings", routes: ["/account"], access: "open", defaultRoles: [] },
   { id: "match-list", title: "Match List", routes: ["/match-list"], access: "open", defaultRoles: [] },
+  // CS-only pages (docs/ROUTES.md). CS gated both with sign-in only. `/events/[eventKey]` is plural so it is not caught by the
+  // restricted `/event` (Active Events) page above.
+  { id: "event-details", title: "Event Details", routes: ["/events"], access: "open", defaultRoles: [] },
+  { id: "judge-book", title: "Judge Book", routes: ["/judge-book"], access: "open", defaultRoles: [] },
 
   // --- restricted (configurable) -----------------------------------------------------------------------------
   { id: "lead-scout-form", title: "Lead Scout Form", routes: ["/lead-scout-form"], access: "restricted", defaultRoles: ["lead-scout"] },
