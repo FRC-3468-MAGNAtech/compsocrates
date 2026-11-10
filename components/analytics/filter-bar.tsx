@@ -18,7 +18,7 @@ import {
   type PracticeModeFilter,
   type PracticeSourceFilter,
 } from "@/lib/analytics/filters";
-import { getEnabledSeasons } from "@/lib/seasons";
+import { getAnalyticsSeasons } from "@/lib/seasons";
 import { cn } from "@/lib/utils";
 
 const MODE_LABELS: Record<PracticeModeFilter, string> = { all: "Both", trial: "Trial", competitive: "Competitive" };
@@ -55,7 +55,7 @@ export function AnalyticsFilterBar() {
     [singleMode, filters, single.code]
   );
   const { scopeCount, usedCount, loaded } = useAnalyticsEntries(countFilters, raw ? { applyAccuracy: false, includeExcluded: true } : undefined);
-  const games = getEnabledSeasons();
+  const games = getAnalyticsSeasons();
 
   return (
     <div className="glass-card flex flex-col gap-3 p-4">

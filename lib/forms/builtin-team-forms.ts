@@ -65,7 +65,7 @@ const base = { tags: [] as string[], version: 1, status: "published" as const, s
 /** Lead Scout: an alliance box (notes and a 1-5 skill) and one box per team (team selector, notes, 1-5 skill). */
 export const LEAD_SCOUT_FORM: Form = {
   ...base,
-  id: "lead-scout-v1",
+  id: "biobuzz-lead-scout-v1",
   name: "Lead Scout",
   description: "A lead scout's read of an alliance in a match: notes and a 1-5 skill level for the alliance and for each of its teams.",
   formType: "lead-scout",
@@ -92,7 +92,7 @@ const strategySections = (roleLabel: string, autoLabel: string): FormSection[] =
 /** Match Strategy: the plan, made before the match: each team's role and whether it will score in auto. */
 export const MATCH_STRATEGY_FORM: Form = {
   ...base,
-  id: "match-strategy-v1",
+  id: "biobuzz-match-strategy-v1",
   name: "Match Strategy",
   description: "The plan for a match, made before it: each team's role and whether it will score in auto.",
   formType: "match-strategy",
@@ -104,13 +104,13 @@ export const MATCH_STRATEGY_FORM: Form = {
 /** Drive Reflection: the same questions after the match, prefilled from the plan, with every difference marked. */
 export const DRIVE_REFLECTION_FORM: Form = {
   ...base,
-  id: "drive-reflection-v1",
+  id: "biobuzz-drive-reflection-v1",
   name: "Drive Reflection",
   description: "What actually happened, recorded after the match. Prefilled from the Match Strategy for the same event, match and alliance, with differences marked.",
   formType: "drive-reflection",
   tags: ["reflection"],
   stickyNotes: { enabled: true, defaultOpen: false },
-  compareWith: { formId: "match-strategy-v1", matchOn: ["eventCode", "matchKey", "alliance"], fieldMap: { role: "role", auto: "auto" } },
+  compareWith: { formId: "biobuzz-match-strategy-v1", matchOn: ["eventCode", "matchKey", "alliance"], fieldMap: { role: "role", auto: "auto" } },
   sections: strategySections("Role", "Scored in auto"),
 };
 

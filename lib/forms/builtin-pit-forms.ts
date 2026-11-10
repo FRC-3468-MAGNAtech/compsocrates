@@ -27,7 +27,7 @@ const numberField = (id: string, key: string, label: string, extra: Partial<Form
 
 export const PIT_SCOUT_FORM: Form = {
   ...base,
-  id: "pit-scout-v1",
+  id: "biobuzz-pit-scout-v1",
   name: "Pit Scout",
   description: "A team's robot as seen in the pit: weight, photos, capabilities, capacity, cycle time and the planned auto cycle.",
   formType: "pit-scout",
@@ -102,7 +102,7 @@ export const PIT_SCOUT_FORM: Form = {
 
 export const TEAM_STRATEGY_FORM: Form = {
   ...base,
-  id: "team-strategy-v1",
+  id: "biobuzz-team-strategy-v1",
   name: "Team Strategy",
   description: "What a team is best at and what it can do, from a strategist's point of view.",
   formType: "team-strategy",
@@ -142,7 +142,7 @@ export const TEAM_STRATEGY_FORM: Form = {
 
 export const HELPER_FORM: Form = {
   ...base,
-  id: "helper-v1",
+  id: "biobuzz-helper-v1",
   name: "Helper",
   description: "For people who help other teams in the pit: which team, whether the help worked, and what the issue was.",
   formType: "helper",

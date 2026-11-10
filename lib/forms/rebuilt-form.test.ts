@@ -65,7 +65,7 @@ describe("REBUILT built-in form", () => {
     expect(builtinHash("rebuilt")).toMatch(/./);
     expect(Object.keys(BUILTIN_FORMS)).toEqual(expect.arrayContaining(["rebuilt", "biobuzz", "lead-scout-v1", "pit-scout-v1"]));
     expect(DEFAULT_SEASON_ID).toBe("rebuilt");
-    expect(SEASONS.map((s) => s.id)).toEqual(["rebuilt", "biobuzz"]);
+    expect(SEASONS.map((s) => s.id)).toEqual(["rebuilt", "reefscape", "charged_up", "biobuzz"]); // the two retired games are read-only seasons
     expect(getSeason()).toMatchObject({ id: "rebuilt", name: "REBUILT", apiSeason: 2026, formId: "rebuilt" });
     expect(getSeason("biobuzz").formId).toBe("biobuzz");
     expect(GAMES.rebuilt.id).toBe("rebuilt");

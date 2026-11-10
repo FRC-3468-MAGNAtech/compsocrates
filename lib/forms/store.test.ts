@@ -211,7 +211,23 @@ describe("resolution and the active form per season", () => {
     await s.saveDraft(pitForm());
     const list = listFormSummaries(s.catalog());
     // the built-ins (REBUILT, BIOBUZZ and, since P28, Lead Scout, Match Strategy and Drive Reflection) and the custom form
-    expect(list.map((f) => f.id).sort()).toEqual(["biobuzz", "drive-reflection-v1", "helper-v1", "lead-scout-v1", "match-strategy-v1", "pit-scout-v1", "pit-v1", "rebuilt", "team-strategy-v1"]);
+    expect(list.map((f) => f.id).sort()).toEqual([
+      "biobuzz",
+      "biobuzz-drive-reflection-v1",
+      "biobuzz-helper-v1",
+      "biobuzz-lead-scout-v1",
+      "biobuzz-match-strategy-v1",
+      "biobuzz-pit-scout-v1",
+      "biobuzz-team-strategy-v1",
+      "drive-reflection-v1",
+      "helper-v1",
+      "lead-scout-v1",
+      "match-strategy-v1",
+      "pit-scout-v1",
+      "pit-v1",
+      "rebuilt",
+      "team-strategy-v1",
+    ]); // the retired games (reefscape, charged_up) resolve by id but are not listed
   });
 });
 

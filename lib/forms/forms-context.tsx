@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { useTeamDoc } from "@/lib/team";
 import { getSeason } from "@/lib/seasons";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { DEFAULT_FORM_ID, getBuiltinForm } from "@/lib/forms/builtin";
 import { unionForms } from "@/lib/analytics/game-schema";
 import type { Form } from "@/lib/forms/types";
 import { activeFormIdFor, canBeActive, emptyCatalog, listFormSummaries, resolveForm, resolveFormForEntry, versionKey, type FormCatalog, type FormDoc, type FormSummary } from "@/lib/forms/resolve";
@@ -58,7 +58,7 @@ export function buildFormsValue(catalog: FormCatalog, loaded: boolean, activeFor
     // An active form that can't be resolved (archived, unpublished) falls back to the season's built-in default: scouting never breaks.
     activeFormFor: (seasonId) => {
       const id = idFor(seasonId);
-      return (canBeActive(catalog, id) ? latest(id) : null) ?? latest(getSeason(seasonId).formId) ?? BIOBUZZ_FORM;
+      return (canBeActive(catalog, id) ? latest(id) : null) ?? latest(getSeason(seasonId).formId) ?? (getBuiltinForm(DEFAULT_FORM_ID) as Form);
     },
   };
 }

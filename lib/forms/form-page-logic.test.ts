@@ -25,9 +25,9 @@ describe("the built-in match-based forms", () => {
       expect(BUILTIN_FORMS[f.id]).toBe(f);
     }
     expect(forms.map((f) => [f.id, f.formType])).toEqual([
-      ["lead-scout-v1", "lead-scout"],
-      ["match-strategy-v1", "match-strategy"],
-      ["drive-reflection-v1", "drive-reflection"],
+      ["biobuzz-lead-scout-v1", "lead-scout"],
+      ["biobuzz-match-strategy-v1", "match-strategy"],
+      ["biobuzz-drive-reflection-v1", "drive-reflection"],
     ]);
   });
 
@@ -55,12 +55,12 @@ describe("the built-in match-based forms", () => {
   it("Drive Reflection: the same fields (scored, not will score) and a comparison with the Match Strategy for the same event, match and alliance", () => {
     expect(DRIVE_REFLECTION_FORM.sections[1].fields.map((f) => f.key)).toEqual(MATCH_STRATEGY_FORM.sections[1].fields.map((f) => f.key));
     expect(DRIVE_REFLECTION_FORM.sections[1].fields[2].label).toBe("Scored in auto");
-    expect(DRIVE_REFLECTION_FORM.compareWith).toEqual({ formId: "match-strategy-v1", matchOn: ["eventCode", "matchKey", "alliance"], fieldMap: { role: "role", auto: "auto" } });
+    expect(DRIVE_REFLECTION_FORM.compareWith).toEqual({ formId: "biobuzz-match-strategy-v1", matchOn: ["eventCode", "matchKey", "alliance"], fieldMap: { role: "role", auto: "auto" } });
     expect(DRIVE_REFLECTION_FORM.stickyNotes?.enabled).toBe(true);
   });
 
   it("the Drive Reflection finds and compares against the Match Strategy entry", () => {
-    const plan = { id: "plan", formId: "match-strategy-v1", eventCode: "EVT", matchKey: "Q5", alliance: "red", createdAtMs: 1, values: { t1_role: "hive", t1_auto: true, t2_role: "flower", t2_auto: false } };
+    const plan = { id: "plan", formId: "biobuzz-match-strategy-v1", eventCode: "EVT", matchKey: "Q5", alliance: "red", createdAtMs: 1, values: { t1_role: "hive", t1_auto: true, t2_role: "flower", t2_auto: false } };
     const found = findPlanEntry([plan], DRIVE_REFLECTION_FORM.compareWith!, { eventCode: "EVT", matchKey: "Q5", alliance: "red" });
     expect(found?.id).toBe("plan");
     const pairs = expandFieldMap(DRIVE_REFLECTION_FORM, DRIVE_REFLECTION_FORM.compareWith!.fieldMap, 2);
@@ -123,7 +123,7 @@ describe("page logic", () => {
     const values = { ...defaultValues(DRIVE_REFLECTION_FORM), t1_role: "hive", t2_role: "flower", t3_role: "garden" };
     const notes = [{ id: "1", text: "  late  ", color: "yellow", createdAt: 1 }, { id: "2", text: " ", color: "yellow", createdAt: 2 }];
     const doc = buildSubmission(DRIVE_REFLECTION_FORM, answers, values, notes, 2, { differences: 1, linkedEntryId: "plan" });
-    expect(doc).toMatchObject({ formId: "drive-reflection-v1", formType: "drive-reflection", eventCode: "EVT", matchKey: "Q5", alliance: "red", linkedEntryId: "plan", planDifferences: 1 });
+    expect(doc).toMatchObject({ formId: "biobuzz-drive-reflection-v1", formType: "drive-reflection", eventCode: "EVT", matchKey: "Q5", alliance: "red", linkedEntryId: "plan", planDifferences: 1 });
     expect(doc).not.toHaveProperty("teamNumber");
     expect(doc.values).toMatchObject({ t1_role: "hive", t2_role: "flower" });
     expect(Object.keys(doc.values).some((k) => k.startsWith("t3_"))).toBe(false);

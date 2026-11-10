@@ -6,6 +6,7 @@ import { FormPageView, type PickedMatch } from "@/components/forms/form-page";
 import { PhotoUploadProvider } from "@/components/forms/photo-upload";
 import { MatchPickerDialog } from "@/components/scout/match-picker-dialog";
 import { FieldLabel } from "@/components/scout/field-inputs";
+import { useSubmissionLockout } from "@/components/forms/submission-lockout";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
 import { useActiveEvents } from "@/lib/active-event";
@@ -17,7 +18,7 @@ import { editOwnFormEntry, saveFormEntry, useFormEntries } from "@/lib/form-entr
 import { rookieSuggestion } from "@/lib/forms/pit-suggest";
 import type { PlanCandidate } from "@/lib/forms/compare";
 import { useForms } from "@/lib/forms/forms-context";
-import { getBuiltinForm } from "@/lib/forms/builtin";
+import { getBuiltinForm, seasonFormId } from "@/lib/forms/builtin";
 import type { FtcEvent } from "@/lib/ftc/types";
 import { myAssignedTeams, type TeamAssignKind } from "@/lib/team-assignments/model";
 import { useTeamAssignmentDocs } from "@/lib/team-assignments/store";
@@ -40,7 +41,7 @@ function MatchPickerSlot({ label, event, matchKey, disabled, onPick }: { label: 
 
 /** A match-based form page on live data: the account's active events, the FIRST schedule and teams, the plan entries, and `formEntries` for saving. */
 export function FormPage({
-  formId,
+  formId: pageFormId,
   title,
   subtitle,
   hideEventPickerIfSingle,
@@ -60,6 +61,9 @@ export function FormPage({
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const forms = useForms();
+  const lockout = useSubmissionLockout(teamId);
+  // CS rebuild: the page names the REBUILT form; the running program's season decides which set is used (REBUILT, or BIOBUZZ under EVENT_PROGRAM=ftc)
+  const formId = seasonFormId(pageFormId);
   const form = forms.latest(formId) ?? getBuiltinForm(formId);
   const { events, primaryCode, loaded } = useActiveEvents();
   const ordered = useMemo(() => orderPrimaryFirst({ events, primaryCode }), [events, primaryCode]);
@@ -117,6 +121,7 @@ export function FormPage({
         suggestFor={suggestFor}
         hideEventPickerIfSingle={hideEventPickerIfSingle}
         photoKind={photoKind}
+        lockout={lockout}
         assignedTeams={assigned}
         onUpdate={(entry, patch) => {
           if (!teamId || !user || !profile) return Promise.reject(new Error("Not signed in."));

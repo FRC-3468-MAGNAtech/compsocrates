@@ -3,6 +3,10 @@ import { formContentHash } from "@/lib/forms/hash";
 import { TEAM_BUILTIN_FORMS } from "@/lib/forms/builtin-team-forms";
 import { PIT_BUILTIN_FORMS } from "@/lib/forms/builtin-pit-forms";
 import { REBUILT_FORM } from "@/lib/forms/builtin-rebuilt";
+import { REBUILT_NON_MATCH_FORMS } from "@/lib/forms/builtin-rebuilt-forms";
+import { LEGACY_FORM_IDS, LEGACY_GAME_FORMS } from "@/lib/forms/builtin-legacy-games";
+import { DEFAULT_SEASON_ID, getSeason } from "@/lib/seasons";
+import type { CsFormType } from "@/data/cs/form-field-keys";
 
 // P21: the forms that live in code. BIOBUZZ is just the first one: this file is the ONLY place in the app that names a
 // game element. It must behave exactly like the pre-v2 hard-coded form (lib/forms/fixtures/biobuzz-v1.ts is the frozen
@@ -140,11 +144,70 @@ export const BIOBUZZ_FORM: Form = {
   createdBy: "system",
 };
 
-/** Every form defined in code, by id. An account's override (copy-on-write) of one of these lives in Firestore and wins when it exists. */
-export const BUILTIN_FORMS: Readonly<Record<string, Form>> = { rebuilt: REBUILT_FORM, biobuzz: BIOBUZZ_FORM, ...TEAM_BUILTIN_FORMS, ...PIT_BUILTIN_FORMS };
+/**
+ * Every form defined in code, by id. An account's override (copy-on-write) of one of these lives in Firestore and wins when it exists.
+ * The six non-match forms exist twice: the REBUILT set under the adapter's ids ("pit-scout-v1", ...) and the BIOBUZZ set under "biobuzz-pit-scout-v1", ...
+ * (see `seasonFormId`). REEFSCAPE and CHARGED UP are read-only (`READ_ONLY_FORM_IDS`).
+ */
+export const BUILTIN_FORMS: Readonly<Record<string, Form>> = {
+  rebuilt: REBUILT_FORM,
+  biobuzz: BIOBUZZ_FORM,
+  ...LEGACY_GAME_FORMS,
+  ...REBUILT_NON_MATCH_FORMS,
+  ...TEAM_BUILTIN_FORMS,
+  ...PIT_BUILTIN_FORMS,
+};
 
-/** CS rebuild: REBUILT is the default match form. BIOBUZZ stays registered as the second built-in (FTC). */
-export const DEFAULT_FORM_ID = "rebuilt";
+/** CS rebuild: the default match form follows the season of the running program (REBUILT for FRC; BIOBUZZ with EVENT_PROGRAM=ftc). */
+export const DEFAULT_FORM_ID: string = getSeason(DEFAULT_SEASON_ID).formId;
+
+/**
+ * Forms that resolve by id (so old entries keep their columns) but are never offered for a new entry: not in the forms panel, not an "active form", not a
+ * scouting page's form. The two retired games (docs/ROUTES.md D3).
+ */
+export const READ_ONLY_FORM_IDS: ReadonlySet<string> = new Set(LEGACY_FORM_IDS);
+export const isReadOnlyForm = (id: string): boolean => READ_ONLY_FORM_IDS.has(id);
+
+/** The six non-match form types CS persists, as the adapter names them (data/cs/form-field-keys.ts). */
+export type NonMatchFormType = CsFormType;
+
+/** Each season's id for each non-match form. REBUILT's are the ids the CS adapter attributes entries to; BIOBUZZ's keep their own. */
+export const SEASON_NON_MATCH_FORM_IDS: Readonly<Record<string, Readonly<Record<NonMatchFormType, string>>>> = {
+  rebuilt: {
+    "pit-scout": "pit-scout-v1",
+    "lead-scout": "lead-scout-v1",
+    "team-strategy": "team-strategy-v1",
+    "match-strategy": "match-strategy-v1",
+    "drive-reflection": "drive-reflection-v1",
+    helper: "helper-v1",
+  },
+  biobuzz: {
+    "pit-scout": "biobuzz-pit-scout-v1",
+    "lead-scout": "biobuzz-lead-scout-v1",
+    "team-strategy": "biobuzz-team-strategy-v1",
+    "match-strategy": "biobuzz-match-strategy-v1",
+    "drive-reflection": "biobuzz-drive-reflection-v1",
+    helper: "biobuzz-helper-v1",
+  },
+};
+
+const NON_MATCH_TYPE_BY_ID = new Map<string, NonMatchFormType>(
+  Object.values(SEASON_NON_MATCH_FORM_IDS).flatMap((ids) => (Object.entries(ids) as [NonMatchFormType, string][]).map(([type, id]) => [id, type] as const))
+);
+
+/** The non-match form type of a built-in id of either season ("pit-scout-v1", "biobuzz-pit-scout-v1"), or null for any other id. */
+export const nonMatchTypeOfFormId = (id: string): NonMatchFormType | null => NON_MATCH_TYPE_BY_ID.get(id) ?? null;
+
+/**
+ * The form id a page should use for a non-match form in a season (default: the running program's season). Pass either season's id for the form
+ * ("pit-scout-v1" or "biobuzz-pit-scout-v1") or a form type; an id that is not one of the six (a custom form) comes back unchanged.
+ */
+export function seasonFormId(idOrType: string, seasonId: string = DEFAULT_SEASON_ID): string {
+  const type = (Object.hasOwn(SEASON_NON_MATCH_FORM_IDS.rebuilt, idOrType) ? idOrType : nonMatchTypeOfFormId(idOrType)) as NonMatchFormType | null;
+  if (!type) return idOrType;
+  const season = SEASON_NON_MATCH_FORM_IDS[seasonId] ?? SEASON_NON_MATCH_FORM_IDS[DEFAULT_SEASON_ID] ?? SEASON_NON_MATCH_FORM_IDS.rebuilt;
+  return season[type];
+}
 
 export { REBUILT_FORM };
 
