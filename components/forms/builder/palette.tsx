@@ -29,6 +29,8 @@ const TYPE_HINT: Record<UserFieldType, string> = {
   image: "Take or attach photos",
   sequence: "Ordered steps",
   matrix: "Grid of checkboxes",
+  timerList: "Stopwatch that records cycles",
+  notice: "Read-only line of text",
 };
 
 /** Where a click-to-add goes: the selected category, the category of the selected field, else the first category after Pre-Match. */

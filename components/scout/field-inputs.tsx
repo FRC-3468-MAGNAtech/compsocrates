@@ -177,7 +177,11 @@ export function FieldTip({ label, tip }: { label: string; tip: string }) {
 
 // --- P27: slider, step sequence, checkbox grid ---------------------------------------------------------------------------------
 
-/** An integer range with a big thumb, optional tick marks and end labels (a native range input, so it works with touch, keyboard and screen readers). */
+/**
+ * An integer range with a big thumb, optional tick marks and end labels (a native range input, so it works with touch, keyboard and screen readers).
+ * With `stepLabels` it is a labelled scale: the stored value is still the number on the track (an index when `min` is 0 and `step` is 1), but the
+ * readout, the screen-reader text and (with `ticks`) the marks show each step's label ("4-6") instead of the number.
+ */
 export function SliderField({
   id,
   label,
@@ -187,6 +191,7 @@ export function SliderField({
   step,
   ticks,
   endLabels,
+  stepLabels,
   disabled,
   onChange,
 }: {
@@ -198,10 +203,14 @@ export function SliderField({
   step: number;
   ticks?: boolean;
   endLabels?: { min?: string; max?: string };
+  /** One label per step, in order: the current step's label replaces its number in the readout. */
+  stepLabels?: string[];
   disabled?: boolean;
   onChange: (value: number) => void;
 }) {
   const count = Math.floor((max - min) / step) + 1;
+  const labelOf = (v: number): string => stepLabels?.[Math.round((v - min) / step)] ?? String(v);
+  const labelled = !!stepLabels && stepLabels.length === count;
   const marks = ticks && count > 1 && count <= 21 ? Array.from({ length: count }, (_, i) => min + i * step) : [];
   const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
   return (
@@ -217,18 +226,18 @@ export function SliderField({
           value={value}
           disabled={disabled}
           aria-label={label}
-          aria-valuetext={`${value} of ${max}`}
+          aria-valuetext={labelled ? labelOf(value) : `${value} of ${max}`}
           style={{ ["--slider-fill" as string]: `${pct}%` }}
           onChange={(e) => onChange(Number(e.target.value))}
         />
-        <output htmlFor={id} className="w-8 shrink-0 text-center text-lg font-semibold tabular-nums" data-testid="slider-value">
-          {value}
+        <output htmlFor={id} className={cn("shrink-0 text-center text-lg font-semibold tabular-nums", labelled ? "min-w-14" : "w-8")} data-testid="slider-value">
+          {labelled ? labelOf(value) : value}
         </output>
       </div>
       {marks.length > 0 && (
         <div className="flex justify-between px-2 text-[10px] tabular-nums text-[var(--muted-foreground)]" aria-hidden>
           {marks.map((m) => (
-            <span key={m}>{m}</span>
+            <span key={m}>{labelled ? labelOf(m) : m}</span>
           ))}
         </div>
       )}

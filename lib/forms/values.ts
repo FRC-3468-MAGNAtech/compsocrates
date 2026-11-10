@@ -34,6 +34,7 @@ export function defaultFieldValue(field: FormField): FormValue {
       return 0;
     case "image":
     case "sequence":
+    case "timerList":
       return [];
     case "matrix":
       return Object.fromEntries(matrixCells(field).map((c) => [c, false]));
@@ -84,6 +85,28 @@ function clampNumber(field: FormField, raw: number): number {
   if (field.type === "counter") n = Math.round(n);
   else if (field.decimals !== undefined) n = Math.round(n * 10 ** field.decimals) / 10 ** field.decimals;
   return n;
+}
+
+/** The defaults of a `timerList`: the longest single cycle (seconds) and the most cycles one list holds. CS records cycles to 0.01 s. */
+export const TIMER_LIST_DEFAULTS = { maxSeconds: 3600, maxCycles: 100 } as const;
+
+/** Recorded durations cleaned: finite numbers above 0, to 0.01 s, none longer than `max` (default 3600 s), at most `maxCycles` (default 100) kept (the first ones). */
+export function coerceTimerList(field: Pick<FormField, "max" | "maxCycles">, raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const longest = field.max !== undefined && field.max > 0 ? field.max : TIMER_LIST_DEFAULTS.maxSeconds;
+  const out: number[] = [];
+  for (const item of raw) {
+    const n = typeof item === "number" ? item : typeof item === "string" && item.trim() !== "" ? Number(item) : NaN;
+    if (!Number.isFinite(n) || n <= 0) continue;
+    out.push(Math.round(Math.min(longest, n) * 100) / 100);
+  }
+  return out.slice(0, field.maxCycles ?? TIMER_LIST_DEFAULTS.maxCycles);
+}
+
+/** Total and average of a list of cycle durations, in seconds (0 for an empty list). */
+export function timerStats(list: readonly number[]): { count: number; total: number; avg: number } {
+  const total = list.reduce((a, b) => a + b, 0);
+  return { count: list.length, total: Math.round(total * 100) / 100, avg: list.length > 0 ? Math.round((total / list.length) * 100) / 100 : 0 };
 }
 
 const isHttps = (url: unknown): url is string => typeof url === "string" && url.length <= 600 && /^https:\/\/[^\s]+$/.test(url);
@@ -148,6 +171,8 @@ export function coerceFieldValue(field: FormField, raw: unknown): FormValue {
       return typeof raw === "string" ? raw.slice(0, field.type === "text" ? 500 : 5000) : "";
     case "image":
       return coerceImages(field, raw);
+    case "timerList":
+      return coerceTimerList(field, raw);
     case "sequence":
       return normalizeSequence(field.steps ?? [], Array.isArray(raw) ? raw : []);
     case "matrix": {
@@ -187,7 +212,10 @@ export function isAnswered(field: FormField, value: unknown): boolean {
       return value !== "" && value !== undefined && value !== null && Number.isFinite(Number(value));
     case "image":
     case "sequence":
+    case "timerList":
       return Array.isArray(value) && value.length > 0;
+    case "notice":
+      return false; // an info line holds no answer
     case "matrix":
       return !!value && typeof value === "object" && Object.values(value as Record<string, boolean>).some((v) => v === true);
     default:

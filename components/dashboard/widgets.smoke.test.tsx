@@ -154,7 +154,7 @@ function makeData(role: RoleId, mode: "rich" | "loading" | "empty"): DashboardDa
     : [];
 
   const eventEntries = allEntries.filter((e) => e.source === "event" && e.eventCode === EVENT.code);
-  const usedEntries = selectAnalyticsEntries({ entries: allEntries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, events: { kind: "custom", codes: [EVENT.code] } }, activeEventCodes: [] }).used;
+  const usedEntries = selectAnalyticsEntries({ entries: allEntries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, gameId: "biobuzz", events: { kind: "custom", codes: [EVENT.code] } }, activeEventCodes: [] }).used;
   const teamNames = new Map(teams.map((t) => [t.teamNumber, t.nameShort]));
   const teamStats = buildAllTeamStats(usedEntries, BIOBUZZ_FORM_SCHEMA, teamNames);
   const ranked = rankTeams(teamStats, "avgTotal");

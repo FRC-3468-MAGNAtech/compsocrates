@@ -1,7 +1,8 @@
-import type { CompareWith, FieldType, Form, FormField, FormGroup, FormSection, FormType, GroupRepeat, PhaseKey, StickyNotesConfig, SystemFieldType, UserFieldType, VisibleWhen } from "@/lib/forms/types";
+import type { CompareWith, FieldType, Form, FormField, FormGroup, FormSection, FormType, GroupRepeat, PhaseKey, StickyNotesConfig, SystemFieldType, UserFieldType } from "@/lib/forms/types";
 import { systemFieldsFor } from "@/lib/forms/new-form";
 import { isSystemField as isSystemFieldBase } from "@/lib/forms/types";
 import { FORM_LIMITS, scoringModesFor } from "@/lib/forms/validate";
+import { conditionKeys, remapConditionKeys } from "@/lib/forms/visibility";
 
 // P22: the pure editing operations behind the Form Builder. Every function takes a Form and returns a new Form (never mutates), so the
 // builder's undo/redo history is just a stack of forms, and every operation is unit-tested without a UI. Nothing here knows a game.
@@ -139,6 +140,8 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
   image: "Photos",
   sequence: "Step sequence",
   matrix: "Checkbox grid",
+  timerList: "Cycle timers",
+  notice: "Info line",
   matchPicker: "Match picker",
   teamPicker: "Team picker",
   scoutName: "Scout name",
@@ -155,7 +158,7 @@ export function defaultField(form: Form, type: UserFieldType, label?: string, ra
     type,
     label: text,
     scoring: { mode: "none" },
-    analytics: { include: true, aggregate: type === "counter" || type === "number" || type === "rating" || type === "slider" ? "avg" : type === "text" || type === "textarea" || type === "image" ? "list" : type === "select" || type === "radio" || type === "sequence" ? "last" : "rate" },
+    analytics: { include: true, aggregate: type === "counter" || type === "number" || type === "rating" || type === "slider" ? "avg" : type === "text" || type === "textarea" || type === "image" ? "list" : type === "select" || type === "radio" || type === "sequence" ? "last" : type === "timerList" ? "avg" : "rate" },
   };
   switch (type) {
     case "slider":
@@ -171,6 +174,10 @@ export function defaultField(form: Form, type: UserFieldType, label?: string, ra
           { id: "end", label: "End", maxCount: 1, pin: "last" },
         ],
       };
+    case "timerList":
+      return { ...base, max: 3600, maxCycles: 100, analytics: { include: true, aggregate: "avg" } };
+    case "notice":
+      return { ...base, analytics: { include: false } };
     case "matrix":
       return {
         ...base,
@@ -236,7 +243,7 @@ export function removeField(form: Form, fieldId: string): Form {
   if (!hit || isSystemField(hit.field)) return form;
   const key = hit.field.key;
   const next: Form = { ...form, sections: form.sections.map((s) => ({ ...s, fields: s.fields.filter((f) => f.id !== fieldId) })) };
-  return mapFields(next, (f) => (f.visibleWhen?.fieldKey === key ? dropCondition(f) : f));
+  return mapFields(next, (f) => (f.visibleWhen && conditionKeys(f.visibleWhen).includes(key) ? dropCondition(f) : f));
 }
 
 const dropCondition = (f: FormField): FormField => {
@@ -339,7 +346,7 @@ export function setFieldKey(form: Form, fieldId: string, newKey: string, publish
   aliases = Object.fromEntries(Object.entries(aliases).filter(([from, to]) => from !== to));
   const renamed = mapFields(form, (f) => {
     if (f.id === fieldId) return { ...f, key: newKey };
-    return f.visibleWhen?.fieldKey === old ? { ...f, visibleWhen: { ...f.visibleWhen, fieldKey: newKey } as VisibleWhen } : f;
+    return f.visibleWhen && conditionKeys(f.visibleWhen).includes(old) ? { ...f, visibleWhen: remapConditionKeys(f.visibleWhen, (k) => (k === old ? newKey : undefined)) } : f;
   });
   const next: Form = { ...renamed };
   if (Object.keys(aliases).length > 0) next.keyAliases = aliases;
@@ -369,7 +376,7 @@ export function removeSection(form: Form, sectionId: string): Form {
   if (!section || section.fields.some(isSystemField)) return form;
   const gone = new Set(section.fields.map((f) => f.key));
   const next: Form = { ...form, sections: form.sections.filter((s) => s.id !== sectionId) };
-  return mapFields(next, (f) => (f.visibleWhen && gone.has(f.visibleWhen.fieldKey) ? dropCondition(f) : f));
+  return mapFields(next, (f) => (f.visibleWhen && conditionKeys(f.visibleWhen).some((k) => gone.has(k)) ? dropCondition(f) : f));
 }
 
 export function moveSectionBy(form: Form, sectionId: string, delta: -1 | 1): Form {
@@ -483,8 +490,8 @@ export function cloneFields(
   }
   for (const f of out) {
     if (!f.visibleWhen) continue;
-    const to = keyMap.get(f.visibleWhen.fieldKey);
-    if (to) f.visibleWhen = { ...f.visibleWhen, fieldKey: to } as VisibleWhen;
+    // a condition survives only when every field it reads was cloned too
+    if (conditionKeys(f.visibleWhen).every((k) => keyMap.has(k))) f.visibleWhen = remapConditionKeys(f.visibleWhen, (k) => keyMap.get(k));
     else delete f.visibleWhen;
   }
   return { fields: out, keyMap };
@@ -601,9 +608,9 @@ export function changeFieldType(form: Form, fieldId: string, type: UserFieldType
     if (type === "number") Object.assign(next, { decimals: 0 });
     if (type === "rating") Object.assign(next, { scale: 5 });
     // P27: a slider, photos, a sequence and a grid start from their own defaults (nothing carries over from the old type)
-    if (type === "slider" || type === "image" || type === "sequence" || type === "matrix") {
-      const { min, max, step, ticks, endLabels, maxCount, capture, steps, rows, cols, disabledCells } = fresh;
-      Object.assign(next, JSON.parse(JSON.stringify({ min, max, step, ticks, endLabels, maxCount, capture, steps, rows, cols, disabledCells })));
+    if (type === "slider" || type === "image" || type === "sequence" || type === "matrix" || type === "timerList") {
+      const { min, max, step, ticks, endLabels, stepLabels, maxCycles, maxCount, capture, steps, rows, cols, disabledCells } = fresh;
+      Object.assign(next, JSON.parse(JSON.stringify({ min, max, step, ticks, endLabels, stepLabels, maxCycles, maxCount, capture, steps, rows, cols, disabledCells })));
     }
     if (CHOICE_TYPES.has(type)) next.options = f.options && f.options.length >= 2 ? f.options : fresh.options;
     if (NUMERIC_TYPES.has(type) && f.unrealisticAbove !== undefined && NUMERIC_TYPES.has(f.type)) next.unrealisticAbove = f.unrealisticAbove;

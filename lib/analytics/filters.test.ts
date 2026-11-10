@@ -48,7 +48,7 @@ describe("parseFilters", () => {
 
   it("reads every control", () => {
     expect(parse("events=uswabon1,USWASEQ&practice=1&mode=trial&source=live&acc=85")).toEqual({
-      gameId: "biobuzz",
+      gameId: DEFAULT_FILTERS.gameId,
       events: { kind: "custom", codes: ["USWABON1", "USWASEQ"] },
       practice: true,
       practiceMode: "trial",
@@ -59,7 +59,7 @@ describe("parseFilters", () => {
   });
 
   it("ignores invalid values instead of producing an impossible state", () => {
-    expect(parse("game=nonsense").gameId).toBe("biobuzz");
+    expect(parse("game=nonsense").gameId).toBe(DEFAULT_FILTERS.gameId);
     expect(parse("mode=banana&practice=1").practiceMode).toBe("all");
     expect(parse("source=banana&practice=1").practiceSource).toBe("all");
     expect(parse("acc=abc").accuracy).toBeNull();

@@ -24,7 +24,7 @@ const DEVICES: { id: Device; label: string; icon: typeof Smartphone }[] = [
 
 /** What changes the shape of the rendered form (so the preview remounts and re-applies defaults), as a cheap signature. */
 function signature(form: Form): string {
-  return JSON.stringify([form.scoringEnabled, form.phaseLabels, form.sections.map((s) => [s.id, s.visible, s.phase, s.accent, s.groups, s.fields.map((f) => [f.id, f.key, f.type, f.required, f.default, f.options, f.visibleWhen, f.min, f.max, f.step, f.scale, f.decimals, f.ui, f.tip, f.helpText, f.label, f.scoring, f.steps, f.rows, f.cols, f.disabledCells, f.maxCount, f.capture, f.endLabels, f.ticks])]), form.formType, form.compareWith, form.stickyNotes]);
+  return JSON.stringify([form.scoringEnabled, form.scoring, form.phaseLabels, form.sections.map((s) => [s.id, s.visible, s.phase, s.accent, s.groups, s.fields.map((f) => [f.id, f.key, f.type, f.required, f.default, f.options, f.visibleWhen, f.min, f.max, f.step, f.scale, f.decimals, f.ui, f.tip, f.helpText, f.label, f.scoring, f.steps, f.rows, f.cols, f.disabledCells, f.maxCount, f.capture, f.endLabels, f.ticks, f.stepLabels, f.maxCycles])]), form.formType, form.compareWith, form.stickyNotes]);
 }
 
 export function LivePreview({ form, framed = true }: { form: Form; framed?: boolean }) {

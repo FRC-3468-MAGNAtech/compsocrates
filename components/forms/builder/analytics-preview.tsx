@@ -20,6 +20,7 @@ export function defaultAggregate(f: Pick<FormField, "type">): AggregateKind {
     case "counter":
     case "number":
     case "rating":
+    case "timerList":
       return "avg";
     case "text":
     case "textarea":

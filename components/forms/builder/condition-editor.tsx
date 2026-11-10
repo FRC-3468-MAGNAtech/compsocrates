@@ -51,7 +51,7 @@ export function ConditionEditor({ field }: { field: FormField }) {
   // A condition can wait on a simple answer only: not a system picker, a photo/sequence/grid, or anything inside a per-team repeating group (its values are per slot).
   const candidates = useMemo(() => {
     const inRepeat = new Set(form.sections.flatMap((s) => s.fields.filter((f) => repeatGroupOf(s, f)).map((f) => f.id)));
-    return allFormFields(form).filter((f) => f.id !== field.id && !isSystemField(f) && f.type !== "image" && f.type !== "sequence" && f.type !== "matrix" && !inRepeat.has(f.id));
+    return allFormFields(form).filter((f) => f.id !== field.id && !isSystemField(f) && f.type !== "image" && f.type !== "sequence" && f.type !== "matrix" && f.type !== "timerList" && f.type !== "notice" && !inRepeat.has(f.id));
   }, [form, field.id]);
   const when = field.visibleWhen;
   const target = when ? allFormFields(form).find((f) => f.key === when.fieldKey) : undefined;
@@ -75,7 +75,15 @@ export function ConditionEditor({ field }: { field: FormField }) {
         hint={candidates.length === 0 && !when ? "Add another field first: a condition needs one to depend on." : "A hidden field isn't scored, isn't required and isn't counted in stats."}
         disabled={candidates.length === 0 && !when}
       />
-      {when && (
+      {when && when.op === "xor" && (
+        <div className="flex flex-col gap-2 text-xs text-[var(--muted-foreground)]">
+          <p>
+            {when.value === false ? "Shown while both or neither of" : "Shown while exactly one of"} <span className="font-mono">{when.fieldKey}</span> and <span className="font-mono">{when.otherFieldKey}</span> is on. This two-field condition comes with the form;
+            choose &ldquo;Always&rdquo; above to remove it.
+          </p>
+        </div>
+      )}
+      {when && when.op !== "xor" && (
         <>
           <SelectRow
             label="…this field"

@@ -34,6 +34,7 @@ export function valueSlots(form: Pick<Form, "sections">): ValueSlot[] {
     for (const field of section.fields) {
       const group = repeatGroupOf(section, field);
       const system = isSystemField(field);
+      if (field.type === "notice") continue; // an info line holds no value
       if (group) {
         for (let slot = 1; slot <= group.repeat.maxSlots; slot++) out.push({ storageKey: slotKey(slot, field.key), field, section, slot });
       } else if (!system) out.push({ storageKey: field.key, field, section, slot: null });

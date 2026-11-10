@@ -78,7 +78,8 @@ function diffField(before: FormField, after: FormField, beforeSection: FormSecti
     if (added.length + removed.length + repointed.length + relabelled.length === 0) details.push("Options reordered");
     impact = or(impact, { scores: repointed.length > 0 || (scoring && removed.length > 0), data: removed.length > 0 || added.length > 0 });
   }
-  for (const k of ["min", "max", "step", "decimals", "scale"] as const) {
+  if (!same(before.stepLabels, after.stepLabels)) details.push("Step labels changed");
+  for (const k of ["min", "max", "step", "decimals", "scale", "maxCycles"] as const) {
     if (before[k] !== after[k]) {
       details.push(`${k[0].toUpperCase()}${k.slice(1)} ${before[k] ?? "—"} → ${after[k] ?? "—"}`);
       impact = or(impact, { scores: scoring && k !== "step", data: k === "scale" || k === "decimals" });
@@ -146,6 +147,10 @@ export function diffForms(before: Form, after: Form): FormDiff {
   if (before.scoringEnabled !== after.scoringEnabled) {
     form.push(after.scoringEnabled ? "Scoring turned on" : "Scoring turned off (entries get no score or accuracy)");
     impact = or(impact, { scores: true, data: true });
+  }
+  if (!same(before.scoring, after.scoring)) {
+    form.push(after.scoring ? `Custom scoring: ${after.scoring.scorer}` : "Custom scoring removed (fields score by their own rules)");
+    impact = or(impact, { scores: true, data: false });
   }
   if (!same(before.keyAliases, after.keyAliases)) form.push("Key aliases changed");
   if (!same(before.phaseLabels, after.phaseLabels)) form.push("Phase labels changed");

@@ -26,6 +26,40 @@ export function SliderSettings({ field, patch }: { field: FormField; patch: Patc
   );
 }
 
+export function ScaleLabelsSettings({ field, patch }: { field: FormField; patch: Patch }) {
+  const min = field.min ?? 1;
+  const max = field.max ?? 5;
+  const step = field.step && field.step > 0 ? field.step : 1;
+  const steps = Math.floor((max - min) / step) + 1;
+  const labels = field.stepLabels ?? [];
+  return (
+    <Group title="Scale labels" defaultOpen={labels.length > 0}>
+      <TextRow
+        label="Step labels"
+        multiline
+        value={labels.join("\n")}
+        maxLength={FORM_LIMITS.stepLabel * (FORM_LIMITS.sliderSteps + 1)}
+        onChange={(v) => {
+          const lines = v.split("\n").map((l) => l.slice(0, FORM_LIMITS.stepLabel));
+          patch({ stepLabels: lines.some((l) => l.trim() !== "") ? lines : undefined }, `sl:${field.id}:labels`);
+        }}
+        hint={`One label per line, in order, for each of the ${steps} steps (for example "1-3"). The scout sees the label; the stored answer is the step's position (a minimum of 0 and a step of 1 store 0, 1, 2…).`}
+      />
+      {labels.length > 0 && labels.length !== steps && <p className="text-xs text-amber-300">You have {labels.length} labels for {steps} steps.</p>}
+    </Group>
+  );
+}
+
+export function TimerSettings({ field, patch }: { field: FormField; patch: Patch }) {
+  return (
+    <Group title="Cycle timers">
+      <NumberRow label="Longest cycle (seconds)" value={field.max ?? 3600} min={1} step={1} onChange={(v) => patch({ max: v === undefined ? undefined : Math.max(1, v) })} hint="A watch left running is capped at this when it's stopped." />
+      <NumberRow label="Most cycles" value={field.maxCycles ?? 100} min={1} max={FORM_LIMITS.timerCycles} step={1} onChange={(v) => patch({ maxCycles: v === undefined ? undefined : Math.round(v) })} hint={`1 to ${FORM_LIMITS.timerCycles}.`} />
+      <p className="text-xs text-[var(--muted-foreground)]">Scouts press Start, then Stop to record each cycle. Analytics gets the cycle count, total and average seconds.</p>
+    </Group>
+  );
+}
+
 export function ImageSettings({ field, patch }: { field: FormField; patch: Patch }) {
   return (
     <Group title="Photos">

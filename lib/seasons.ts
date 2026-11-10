@@ -12,9 +12,12 @@ export type Season = {
   enabled: boolean;
 };
 
-export const SEASONS: Season[] = [{ id: "biobuzz", name: "BIOBUZZ", apiSeason: 2026, formId: "biobuzz", enabled: true }];
+export const SEASONS: Season[] = [
+  { id: "rebuilt", name: "REBUILT", apiSeason: 2026, formId: "rebuilt", enabled: true },
+  { id: "biobuzz", name: "BIOBUZZ", apiSeason: 2026, formId: "biobuzz", enabled: true },
+];
 
-export const DEFAULT_SEASON_ID = "biobuzz";
+export const DEFAULT_SEASON_ID = "rebuilt";
 
 export function getSeason(id: string = DEFAULT_SEASON_ID): Season {
   return SEASONS.find((s) => s.id === id) ?? SEASONS[0];

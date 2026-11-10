@@ -396,7 +396,7 @@ describe("the accuracy filter drives every number", () => {
   const entries = [rawEntry("a", 1, 95), rawEntry("a", 2, 70), rawEntry("a", 3, null), rawEntry("a", 4, 75)];
   const ctx = buildEventContext({ eventCode: "EV1", matches: [1, 2, 3, 4].map((n) => official("Qualification", n)), setup: EMPTY_SETUP, enabled: ALL });
   const rowsFor = (accuracy: number | null) => {
-    const { used } = selectAnalyticsEntries({ entries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, accuracy }, activeEventCodes: ["EV1"] });
+    const { used } = selectAnalyticsEntries({ entries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, gameId: "biobuzz", accuracy }, activeEventCodes: ["EV1"] });
     const rows = buildScoutRows({ scouts: [{ uid: "a", name: "A", role: null, inTargets: true }], entries: used, events: [ctx], targets: new Map(), assignedSlots: new Map(), hasAssignments: false, playedFraction: 1 });
     return { row: rows[0], coverage: buildCoverage({ events: [ctx], entries: used, practiceDataset: false }) };
   };

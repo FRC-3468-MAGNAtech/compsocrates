@@ -34,7 +34,7 @@ function entry(id: string, overrides: Partial<ScoutEntry> = {}): ScoutEntry {
 const complete = (pct: number): AccuracyResult => ({ status: "complete", value: pct / 100, scoutedTotal: 1, penaltyPoints: 0, officialScore: 1 });
 const session = (accuracy: number | null, excluded = false): SessionAccuracy => ({ accuracy, excluded, scoutedTotal: 1, penaltyPoints: 0, officialScore: 1 });
 
-const filters = (over: Partial<AnalyticsFilters> = {}): AnalyticsFilters => ({ ...DEFAULT_FILTERS, ...over });
+const filters = (over: Partial<AnalyticsFilters> = {}): AnalyticsFilters => ({ ...DEFAULT_FILTERS, gameId: "biobuzz", ...over }) // these fixtures are BIOBUZZ entries, and the default game is now REBUILT;
 
 describe("toAnalyticsEntry", () => {
   it("takes a real-event entry's stored alliance accuracy as a 0-100 percent", () => {

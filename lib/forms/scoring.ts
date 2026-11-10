@@ -1,5 +1,6 @@
 import type { Form, FormField, FormValues } from "@/lib/forms/types";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
+import { resolveCustomScorer, runCustomScorer } from "@/lib/forms/custom-scorers";
 
 // P21: scoring from the schema. One function used everywhere a form's values become a score: the live scout form,
 // practice scouting, CSV import, rescoring and the admin entry editor.
@@ -37,8 +38,9 @@ export function fieldPoints(field: FormField, value: unknown): number {
  * doesn't hold, scores nothing), and a form with `scoringEnabled: false` always scores zero. Points roll into the
  * phase of the section the field sits in.
  */
-export function calculateScore(form: Pick<Form, "sections" | "scoringEnabled">, values: FormValues): ScoreResult {
+export function calculateScore(form: Pick<Form, "sections" | "scoringEnabled" | "scoring">, values: FormValues): ScoreResult {
   const byPhase: Record<string, number> = {};
+  if (form.scoringEnabled && form.scoring?.mode === "custom") return customScore(form.scoring.scorer, values);
   if (form.scoringEnabled) {
     const visible = visibleFieldKeys(form, values);
     for (const section of form.sections) {
@@ -53,6 +55,18 @@ export function calculateScore(form: Pick<Form, "sections" | "scoringEnabled">, 
   return { auto: byPhase.auto ?? 0, teleop: byPhase.teleop ?? 0, endgame: byPhase.endgame ?? 0, total, byPhase };
 }
 
+/**
+ * Custom scoring (`form.scoring`): the registered scorer's phase totals become `byPhase` (zero phases left out, like field scoring) and its own
+ * `total` is the total. An unknown scorer scores 0 (`checkForm` reports it as an error, so a published form can't name one).
+ */
+function customScore(scorerKey: string, values: FormValues): ScoreResult {
+  const scorer = resolveCustomScorer(scorerKey);
+  const s = scorer ? runCustomScorer(scorer, values) : { auto: 0, teleop: 0, endgame: 0, total: 0 };
+  const byPhase: Record<string, number> = {};
+  for (const phase of ["auto", "teleop", "endgame"] as const) if (s[phase] !== 0) byPhase[phase] = s[phase];
+  return { auto: s.auto, teleop: s.teleop, endgame: s.endgame, total: s.total, byPhase };
+}
+
 /** The shape stored on an entry: the three standard subtotals and the total, plus `byPhase` only when some other phase scored (so BIOBUZZ entries stay byte-identical to before). */
 export function storableScore(result: ScoreResult): { auto: number; teleop: number; endgame: number; total: number; byPhase?: Record<string, number> } {
   const extra = Object.entries(result.byPhase).some(([phase, pts]) => phase !== "auto" && phase !== "teleop" && phase !== "endgame" && pts !== 0);
@@ -64,9 +78,10 @@ export function storableScore(result: ScoreResult): { auto: number; teleop: numb
  * The highest score the form can give, where that can be computed: `null` for the total (and for a phase) when some scoring
  * field has no upper bound (a counter with no max and no cap). Conditional fields are assumed reachable.
  */
-export function maxScore(form: Pick<Form, "sections" | "scoringEnabled">): { total: number | null; byPhase: Record<string, number | null> } {
+export function maxScore(form: Pick<Form, "sections" | "scoringEnabled" | "scoring">): { total: number | null; byPhase: Record<string, number | null> } {
   const byPhase: Record<string, number | null> = {};
   if (!form.scoringEnabled) return { total: 0, byPhase };
+  if (form.scoring?.mode === "custom") return { total: null, byPhase: { auto: null, teleop: null, endgame: null } }; // a game scorer has no declared ceiling
   for (const section of form.sections) {
     for (const field of section.fields) {
       const rule = field.scoring;

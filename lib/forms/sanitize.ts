@@ -35,6 +35,7 @@ export function textSlots(form: Form): TextSlot[] {
       for (const k of ["helpText", "tip", "placeholder"] as const) if (typeof f[k] === "string") out.push({ path: `${at} ${k}`, value: f[k] as string });
       if (typeof f.default === "string") out.push({ path: `${at} default`, value: f.default });
       for (const o of f.options ?? []) out.push({ path: `${at} option "${o.label}"`, value: o.label });
+      for (const [i, l] of (f.stepLabels ?? []).entries()) out.push({ path: `${at} step label ${i + 1}`, value: l });
       for (const k of ["label", "category", "csvHeader", "element"] as const) if (typeof f.analytics?.[k] === "string") out.push({ path: `${at} analytics ${k}`, value: f.analytics[k] as string });
     }
   }
@@ -64,6 +65,7 @@ export function mapFormText(form: Form, fn: (s: string) => string): Form {
           placeholder: opt(f.placeholder),
           default: typeof f.default === "string" ? fn(f.default) : f.default,
           options: f.options?.map((o) => ({ ...o, label: fn(o.label) })),
+          stepLabels: f.stepLabels?.map(fn),
           analytics: f.analytics ? clean({ ...f.analytics, label: opt(f.analytics.label), category: opt(f.analytics.category), csvHeader: opt(f.analytics.csvHeader), element: opt(f.analytics.element) }) : undefined,
         }) as typeof f
       ),

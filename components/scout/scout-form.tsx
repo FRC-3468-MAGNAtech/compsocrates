@@ -1,8 +1,8 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarX2, CheckCircle2, Send, UserCog } from "lucide-react";
+import { CalendarX2, CheckCircle2, CloudOff, Info, Send, UserCog } from "lucide-react";
 import Link from "next/link";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { CheckboxTile } from "@/components/scout/checkbox-tile";
 import { ACCENT_TOKENS, FieldIcon } from "@/components/scout/field-icons";
 import { FieldLabel, FieldTip, MatrixField, NumberField, RadioTiles, RatingStars, SelectField, SliderField } from "@/components/scout/field-inputs";
 import { SequenceField } from "@/components/scout/sequence-field";
+import { TimerList } from "@/components/scout/timer-list";
 import { PhotoField } from "@/components/forms/photo-field";
 import { PlanDiffIcon } from "@/components/forms/plan-diff-icon";
 import { TeamSelect, type TeamOption } from "@/components/forms/team-select";
@@ -26,8 +27,12 @@ import { TeamPickerDialog } from "@/components/scout/team-picker-dialog";
 import { springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { ConnectionChip } from "@/components/layout/connection-chip";
+import { connectionNotice } from "@/lib/connection-notice";
 import { calculateScore, type ScoreResult } from "@/lib/forms/scoring";
-import { defaultValues, validateValues } from "@/lib/forms/values";
+import { defaultValues, normalizeValues, validateValues } from "@/lib/forms/values";
+import { browserDraftStorage, clearDraft, DRAFT_DEBOUNCE_MS, draftAge, hasProgress, loadDraft, loadLastDraft, matchKeyOf, saveDraft, type Draft } from "@/lib/forms/draft";
+import { settleSubmit } from "@/lib/forms/submit-state";
 import { fieldWithRole } from "@/lib/forms/meta";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
 import { isSystemField, phaseLabel, type FormValue, type Form, type FormField, type FormSection, type FormValues, type ImageValue } from "@/lib/forms/types";
@@ -89,6 +94,11 @@ export type ScoutFormProps = {
   onCommentsChange?: (text: string) => void;
   /** May return a Promise (e.g. the parent's saveEntry()) — the success animation and reset only fire once it resolves. A thrown/rejected call leaves the form as-is so the parent can show its own error state. */
   onSubmit?: (values: ScoutFormValues, score: ScoreResult) => void | Promise<void>;
+  /**
+   * Turns on draft protection (autosave to this device, a "Restore draft?" banner, cleared on a successful submit) for this user. The draft key is
+   * user + form + match + team. Omit it for modes with nothing to protect (the practice workspaces).
+   */
+  draftUserId?: string;
 };
 
 const FLAG_SECTION_NOTE = "These don't affect score but are saved with the submission.";
@@ -220,9 +230,37 @@ function RenderedFieldControl({ form, field, value, locked, error, onChange, sto
           step={field.step ?? 1}
           ticks={field.ticks}
           endLabels={field.endLabels}
+          stepLabels={field.stepLabels}
           disabled={locked}
           onChange={(v) => onChange(k, v)}
         />
+      );
+    case "timerList":
+      // the TimerList is its own labelled group (it carries the label itself), so it isn't wrapped in a second label
+      return (
+        <div data-field-key={k}>
+          <TimerList
+            label={field.label}
+            helpText={field.helpText}
+            icon={icon}
+            value={Array.isArray(value) ? (value as unknown[]).filter((n): n is number => typeof n === "number") : []}
+            maxSeconds={field.max}
+            maxCycles={field.maxCycles}
+            disabled={locked}
+            onChange={(v) => onChange(k, v)}
+          />
+          {error && <p role="alert" className="mt-1 text-xs font-medium text-red-300">{error}</p>}
+        </div>
+      );
+    case "notice":
+      return (
+        <div data-field-key={k} role="note" className="glass-card flex items-start gap-3 px-4 py-3 text-sm">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-[var(--muted-foreground)]" aria-hidden />
+          <div className="min-w-0">
+            <div className="font-semibold">{field.label}</div>
+            {field.helpText && <div className="text-xs text-[var(--muted-foreground)]">{field.helpText}</div>}
+          </div>
+        </div>
       );
     case "sequence":
       return wrap(<SequenceField label={field.label} steps={field.steps ?? []} value={Array.isArray(value) ? (value as string[]) : []} disabled={locked} onChange={(v) => onChange(k, v)} />);
@@ -304,6 +342,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     commentsMode,
     comments,
     onCommentsChange,
+    draftUserId,
   },
   ref
 ) {
@@ -322,6 +361,12 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  /** A submit the browser is holding for the server (offline or slow): the entry is safe on this device and the connection chip shows it as pending. */
+  const [queuedOffline, setQueuedOffline] = useState(false);
+  /** A draft found on this device, offered to the scout ("Restore draft?"). */
+  const [draftOffer, setDraftOffer] = useState<Draft<AssignedMatch> | null>(null);
+  const dismissedDrafts = useRef(new Set<string>());
+  const submittingRef = useRef(false);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
   const scoutName = prefill?.scoutName ?? "";
@@ -369,6 +414,77 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     onChange?.(currentValues(), score);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, teamNumber, assignedMatch]);
+
+  // --- draft protection: autosave to this device, offer to restore, clear on submit ---
+  const latest = useRef({ values, teamNumber, assignedMatch });
+  useEffect(() => {
+    latest.current = { values, teamNumber, assignedMatch };
+  }, [values, teamNumber, assignedMatch]);
+  const matchKey = matchKeyOf(assignedMatch);
+
+  const flushDraft = useCallback(() => {
+    if (!draftUserId || submittingRef.current) return;
+    const storage = browserDraftStorage();
+    const now = latest.current;
+    if (!storage || !hasProgress(schema, now.values)) return;
+    saveDraft<AssignedMatch>(storage, { uid: draftUserId, formId: schema.id }, { match: now.assignedMatch, teamNumber: now.teamNumber, values: now.values }, matchKeyOf(now.assignedMatch));
+  }, [draftUserId, schema]);
+
+  useEffect(() => {
+    if (!draftUserId) return;
+    const timer = setTimeout(flushDraft, DRAFT_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [draftUserId, flushDraft, values, teamNumber, assignedMatch]);
+
+  useEffect(() => {
+    if (!draftUserId) return;
+    // a tab that is closed or backgrounded can't wait for the debounce
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushDraft();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flushDraft);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flushDraft);
+    };
+  }, [draftUserId, flushDraft]);
+
+  // Offer a stored draft: the one for the picked match + team, else (before both are picked) the latest one, e.g. after a reload.
+  useEffect(() => {
+    if (!draftUserId) return;
+    const storage = browserDraftStorage();
+    if (!storage) return;
+    const found =
+      matchKey !== null && teamNumber !== null
+        ? loadDraft<AssignedMatch>(storage, { uid: draftUserId, formId: schema.id, matchKey, teamNumber })
+        : loadLastDraft<AssignedMatch>(storage, draftUserId, schema.id);
+    const offer =
+      found && hasProgress(schema, found.values) && !dismissedDrafts.current.has(String(found.savedAt)) && JSON.stringify(found.values) !== JSON.stringify(latest.current.values) ? found : null;
+    // Deliberate: reads localStorage (an external system) when the picked match or team changes, then offers what it found.
+    setDraftOffer(offer);
+  }, [draftUserId, schema, matchKey, teamNumber]);
+
+  const restoreDraft = () => {
+    if (!draftOffer) return;
+    dismissedDrafts.current.add(String(draftOffer.savedAt));
+    const restored = normalizeValues(schema, draftOffer.values as Record<string, unknown>);
+    setAssignedMatch(draftOffer.match);
+    setTeamNumber(draftOffer.teamNumber);
+    setValues(restored);
+    if (popout && commentsField) onCommentsChange?.(typeof restored[commentsField.key] === "string" ? (restored[commentsField.key] as string) : "");
+    setFieldErrors({});
+    setValidation({});
+    setDraftOffer(null);
+  };
+
+  const discardDraft = () => {
+    if (!draftOffer || !draftUserId) return;
+    dismissedDrafts.current.add(String(draftOffer.savedAt));
+    const storage = browserDraftStorage();
+    if (storage) clearDraft(storage, { uid: draftUserId, formId: schema.id, matchKey: matchKeyOf(draftOffer.match), teamNumber: draftOffer.teamNumber });
+    setDraftOffer(null);
+  };
 
   const runValidation = () => {
     const missingMatch = !hideMatchPicker && !assignedMatch;
@@ -445,14 +561,32 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
       return;
     }
     setSubmitting(true);
+    submittingRef.current = true;
+    const snapshot = currentValues();
+    const draftIdentity = draftUserId ? { uid: draftUserId, formId: schema.id, matchKey: matchKeyOf(snapshot.match), teamNumber: snapshot.teamNumber } : null;
     try {
-      await onSubmit?.(currentValues(), score);
+      // Offline, Firestore keeps the write in its local queue and the promise never settles: don't hold the form on "Submitting..." for that.
+      const { outcome, settled } = await settleSubmit(onSubmit?.(snapshot, score), { isOffline: () => typeof navigator !== "undefined" && !navigator.onLine });
+      const storage = draftIdentity ? browserDraftStorage() : null;
+      if (storage && draftIdentity) clearDraft(storage, draftIdentity);
+      if (outcome === "queued") {
+        setQueuedOffline(true);
+        settled.then(
+          () => setQueuedOffline(false),
+          () => {
+            // The server refused a write we had called saved: put the work back in the draft so it isn't lost (the parent shows its own error).
+            setQueuedOffline(false);
+            if (storage && draftUserId) saveDraft<AssignedMatch>(storage, { uid: draftUserId, formId: schema.id }, { match: snapshot.match, teamNumber: snapshot.teamNumber, values: snapshot.values }, matchKeyOf(snapshot.match));
+          }
+        );
+      }
       setJustSubmitted(true);
       setTimeout(() => setJustSubmitted(false), 2200);
       reset();
     } catch {
       // The parent's onSubmit is responsible for surfacing its own error UI.
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -576,6 +710,24 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
 
   return (
     <div data-scout-form-mode={mode} className={cn("flex flex-col gap-4", compact ? "pb-2" : "pb-4")}>
+      {draftOffer && (
+        <GlassPanel role="region" aria-label="Unsaved draft found" data-testid="draft-banner" className="flex flex-wrap items-center gap-3 p-4">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold">Restore draft?</div>
+            <div className="text-xs text-[var(--muted-foreground)]">
+              {draftOffer.match ? matchLabel(draftOffer.match) : "No match picked"}
+              {draftOffer.teamNumber ? ` · Team ${draftOffer.teamNumber}` : ""} &middot; saved {draftAge(draftOffer.savedAt)}
+            </div>
+          </div>
+          <Button size="lg" onClick={restoreDraft}>
+            Restore
+          </Button>
+          <Button size="lg" variant="glass" onClick={discardDraft}>
+            Discard
+          </Button>
+        </GlassPanel>
+      )}
+
       {!compact && <SectionNav sections={sections} activeId={activeSectionId} />}
 
       {renderedSections.map(({ section, fields }) => {
@@ -624,7 +776,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
       )}
 
       <AnimatePresence>
-        {justSubmitted && (
+        {(justSubmitted || queuedOffline) && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -632,8 +784,18 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
             transition={springSnappy}
             className="glass-strong fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-5 py-3 text-sm font-medium shadow-2xl"
           >
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            Match logged &mdash; ready for the next one.
+            {queuedOffline ? (
+              <>
+                <CloudOff className="h-4 w-4 text-amber-300" />
+                <span role="status">Saved on this device &mdash; syncs when you&apos;re back online.</span>
+                <ConnectionChip connection={connectionNotice(typeof navigator !== "undefined" && !navigator.onLine, 1)} className="ml-1 px-2" />
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                Match logged &mdash; ready for the next one.
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

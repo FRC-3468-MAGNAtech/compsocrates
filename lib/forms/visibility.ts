@@ -11,7 +11,21 @@ export function conditionHolds(when: VisibleWhen, values: FormValues): boolean {
       return typeof when.value === "boolean" ? v === when.value : String(v ?? "") === String(when.value);
     case "gt":
       return typeof v === "number" ? v > when.value : typeof v === "string" && v.trim() !== "" && Number(v) > when.value;
+    case "xor":
+      // exactly one of the two is checked (or, with value: false, both or neither)
+      return ((v === true) !== (values[when.otherFieldKey] === true)) === (when.value ?? true);
   }
+}
+
+/** Every field key a condition reads (one, or two for `xor`). */
+export function conditionKeys(when: VisibleWhen): string[] {
+  return when.op === "xor" ? [when.fieldKey, when.otherFieldKey] : [when.fieldKey];
+}
+
+/** The condition with each key it reads passed through `map` (a rename, or a clone's new keys); `undefined` from `map` means "keep the key". */
+export function remapConditionKeys(when: VisibleWhen, map: (key: string) => string | undefined): VisibleWhen {
+  const fieldKey = map(when.fieldKey) ?? when.fieldKey;
+  return when.op === "xor" ? { ...when, fieldKey, otherFieldKey: map(when.otherFieldKey) ?? when.otherFieldKey } : ({ ...when, fieldKey } as VisibleWhen);
 }
 
 /**
@@ -34,7 +48,7 @@ export function visibleFieldKeys(form: Pick<Form, "sections">, values: FormValue
     let result = true;
     if (when) {
       trail.add(key);
-      result = resolve(when.fieldKey, trail) && conditionHolds(when, values);
+      result = conditionKeys(when).every((k) => resolve(k, trail)) && conditionHolds(when, values);
       trail.delete(key);
     }
     memo.set(key, result);

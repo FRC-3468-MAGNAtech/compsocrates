@@ -40,6 +40,9 @@ export type FieldType =
   | "image"
   | "sequence"
   | "matrix"
+  // CS rebuild: a list of recorded durations (cycle timers), and a read-only line of text that shows or hides with a condition
+  | "timerList"
+  | "notice"
   // system fields: required where the form type needs them, locked, can be moved within Pre-Match but never deleted or retyped
   | "matchPicker"
   | "teamPicker"
@@ -51,7 +54,7 @@ export type FieldType =
 export const SYSTEM_FIELD_TYPES = ["matchPicker", "teamPicker", "scoutName", "eventPicker", "alliancePicker"] as const;
 export type SystemFieldType = (typeof SYSTEM_FIELD_TYPES)[number];
 
-export const USER_FIELD_TYPES = ["toggle", "counter", "checkbox", "number", "text", "textarea", "select", "radio", "rating", "slider", "image", "sequence", "matrix"] as const;
+export const USER_FIELD_TYPES = ["toggle", "counter", "checkbox", "number", "text", "textarea", "select", "radio", "rating", "slider", "image", "sequence", "matrix", "timerList", "notice"] as const;
 export type UserFieldType = (typeof USER_FIELD_TYPES)[number];
 
 /** The fixed storage key of each system field (it lives on the entry itself: `match`, `teamNumber`, ...). */
@@ -94,17 +97,22 @@ export type StickyNote = { id: string; text: string; color: string; createdAt: n
 export type FieldValue = boolean | number | string;
 /**
  * What one field stores. Most are plain (boolean, number, string); P27 adds a list of step ids (`sequence`), one boolean per cell keyed
- * `${rowKey}_${colKey}` (`matrix`) and a list of photos (`image`).
+ * `${rowKey}_${colKey}` (`matrix`) and a list of photos (`image`). A `timerList` stores its recorded durations in seconds (`number[]`).
  */
-export type FormValue = FieldValue | string[] | Record<string, boolean> | ImageValue[];
+export type FormValue = FieldValue | string[] | number[] | Record<string, boolean> | ImageValue[];
 /** Values keyed by field `key`: what an entry stores, what the form edits, what scoring reads. */
 export type FormValues = Record<string, FormValue>;
 
-/** A simple condition on another field: equals / greater than / checked. A field with `visibleWhen` is shown (and counted) only while it holds. */
+/**
+ * A simple condition on another field: equals / greater than / checked. A field with `visibleWhen` is shown (and counted) only while it holds.
+ * `xor` is the one two-field condition: it holds while exactly one of `fieldKey` and `otherFieldKey` is checked (REBUILT's shift parity: Won Auto
+ * XOR Hub Activation Override). `value: false` inverts it (it then holds while both or neither is checked).
+ */
 export type VisibleWhen =
   | { fieldKey: string; op: "checked" }
   | { fieldKey: string; op: "equals"; value: string | number | boolean }
-  | { fieldKey: string; op: "gt"; value: number };
+  | { fieldKey: string; op: "gt"; value: number }
+  | { fieldKey: string; op: "xor"; otherFieldKey: string; value?: boolean };
 
 export type ScoringMode = "none" | "whenOn" | "perTally" | "perUnit" | "byOption";
 /**
@@ -192,6 +200,13 @@ export type FormField = {
   /** slider: the labels at the two ends, and tick marks along the track (`min`, `max` and `step` are the integer range). */
   endLabels?: { min?: string; max?: string };
   ticks?: boolean;
+  /**
+   * slider as a labelled scale: one label per step, in order (`stepLabels[i]` names the step `min + i * step`). The stored value stays the step's
+   * INDEX when `min` is 0 and `step` is 1 (CS's BPS / carry / preload scales store 0..N and show "1-3", "4-6"...). The control shows the current step's label.
+   */
+  stepLabels?: string[];
+  /** timerList: `max` is the longest single cycle in seconds (default 3600) and `maxCycles` how many cycles one list holds (default 100). */
+  maxCycles?: number;
   /** image: how many photos (default 1) and whether a phone opens its camera. */
   maxCount?: number;
   capture?: boolean;
@@ -235,6 +250,12 @@ export type FormSection = {
   accent?: FieldUi["color"];
 };
 
+/**
+ * Form-level scoring that is not a sum of per-field rules. `custom`: the score comes from the scorer registered under `scorer` (lib/forms/custom-scorers.ts;
+ * `game:REBUILT` is the REBUILT game plugin's `scoreValues`), and the fields' own `scoring` rules are ignored.
+ */
+export type FormScoring = { mode: "custom"; scorer: string };
+
 export type Form = {
   id: string;
   name: string;
@@ -245,6 +266,8 @@ export type Form = {
   version: number;
   status: FormStatus;
   scoringEnabled: boolean;
+  /** CS rebuild: custom scoring. Absent = the sum of the fields' own rules (every form before REBUILT). */
+  scoring?: FormScoring;
   sections: FormSection[];
   /** P27: the sticky notes panel setting. */
   stickyNotes?: StickyNotesConfig;

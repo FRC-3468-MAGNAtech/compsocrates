@@ -1,8 +1,9 @@
 import type { ScoutEntry } from "@/lib/scout-entries";
 import type { MatchType } from "@/lib/ftc/types";
 import { BIOBUZZ_FORM, DEFAULT_FORM_ID } from "@/lib/forms/builtin";
+import { REBUILT_FORM } from "@/lib/forms/builtin-rebuilt";
 import { entryValues } from "@/lib/forms/legacy";
-import { matrixCells, resolveAlias } from "@/lib/forms/values";
+import { coerceTimerList, matrixCells, resolveAlias, timerStats } from "@/lib/forms/values";
 import { repeatGroupOf, slotKey } from "@/lib/forms/repeat";
 import { countSteps, parseSequenceSummary, summarizeSequence } from "@/lib/forms/sequence";
 import { joinNotes } from "@/lib/forms/values";
@@ -103,6 +104,7 @@ function fieldColumnType(f: FormField): ColumnType | null {
     case "text":
     case "teamPicker":
     case "sequence":
+    case "timerList":
       return "text";
     case "image":
       return "photos";
@@ -128,6 +130,8 @@ function fieldColumn(form: Form, section: FormSection, field: FormField, type: C
     if (type === "count") return typeof v === "number" ? v : Number(v) || 0;
     if (field.type === "select" || field.type === "radio") return field.options?.find((o) => o.value === v)?.label ?? String(v);
     if (field.type === "sequence") return Array.isArray(v) ? summarizeSequence(field.steps ?? [], v as string[]) : "";
+    // cycle timers: the recorded seconds joined with " | " ("12.5 | 8.25"), which CSV import reads back
+    if (field.type === "timerList") return Array.isArray(v) ? (v as unknown[]).join(" | ") : "";
     if (field.type === "image") return Array.isArray(v) ? (v as ImageValue[]).map((p) => p.url).join(" | ") : "";
     return typeof v === "string" ? v : String(v);
   };
@@ -137,7 +141,11 @@ function fieldColumn(form: Form, section: FormSection, field: FormField, type: C
       ? (cell, values) => {
           values[key] = parseSequenceSummary(field.steps ?? [], cell);
         }
-      : field.type === "image"
+      : field.type === "timerList"
+        ? (cell, values) => {
+            values[key] = coerceTimerList(field, cell.split("|").map((s) => s.trim()));
+          }
+        : field.type === "image"
         ? (cell, values) => {
             values[key] = cell
               .split("|")
@@ -214,6 +222,17 @@ function columnsForField(form: Form, section: FormSection, field: FormField, val
     const suffix = slot === null ? "" : ` (team ${slot})`;
     if (field.type === "image") {
       out.push({ key: `${vk}__count`, phase: section.title, category, label: `${label} (photos)${suffix}`, type: "count", sortable: true, width: 110, derived: true, getValue: (e) => (Array.isArray(valuesOf(e)[vk]) ? (valuesOf(e)[vk] as unknown[]).length : null) });
+    }
+    if (field.type === "timerList") {
+      const list = (e: ScoutEntry): number[] | null => {
+        const v = valuesOf(e)[vk];
+        return Array.isArray(v) ? coerceTimerList(field, v) : null;
+      };
+      const derived = (suffix2: string, text: string, pick: (s: ReturnType<typeof timerStats>) => number) =>
+        out.push({ key: `${vk}__${suffix2}`, phase: section.title, category, label: `${label} (${text})${suffix}`, type: "count", sortable: true, width: 110, derived: true, getValue: (e) => { const l = list(e); return l === null ? null : pick(timerStats(l)); } });
+      derived("count", "cycles", (s) => s.count);
+      derived("total", "total s", (s) => s.total);
+      derived("avg", "avg s", (s) => s.avg);
     }
     if (field.type === "sequence") {
       for (const step of field.steps ?? []) {
@@ -295,8 +314,12 @@ export function buildGameSchema(form: Form): GameSchema {
 
   if (form.scoringEnabled) {
     const scoringPhases: string[] = [];
-    for (const s of form.sections) {
-      if (s.fields.some((f) => f.scoring && f.scoring.mode !== "none") && !scoringPhases.includes(s.phase)) scoringPhases.push(s.phase);
+    // custom scoring (a game plugin) scores the three standard phases; field scoring scores the phases whose fields have a rule
+    if (form.scoring?.mode === "custom") scoringPhases.push("auto", "teleop", "endgame");
+    else {
+      for (const s of form.sections) {
+        if (s.fields.some((f) => f.scoring && f.scoring.mode !== "none") && !scoringPhases.includes(s.phase)) scoringPhases.push(s.phase);
+      }
     }
     for (const phase of scoringPhases) {
       const standard = phase in STANDARD_SCORE_KEY;
@@ -377,6 +400,7 @@ export function unionForms(forms: readonly Form[]): Form {
 /** The built-in forms' analytics tables, by form id. Account forms (custom or edited) are derived on demand with `buildGameSchema`. */
 export const GAMES: Record<string, GameSchema> = {
   [BIOBUZZ_FORM.id]: buildGameSchema(BIOBUZZ_FORM),
+  [REBUILT_FORM.id]: buildGameSchema(REBUILT_FORM),
 };
 
 export const BIOBUZZ_SCHEMA: GameSchema = GAMES[BIOBUZZ_FORM.id];

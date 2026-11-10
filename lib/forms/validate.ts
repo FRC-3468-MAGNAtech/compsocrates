@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { repeatGroupOf, slotKey } from "@/lib/forms/repeat";
+import { hasCustomScorer } from "@/lib/forms/custom-scorers";
 import {
   FORM_TYPES,
   REQUIRED_SYSTEM_FIELDS,
@@ -41,6 +42,10 @@ export const FORM_LIMITS = {
   matrixAxis: 12,
   repeatSlots: 4,
   compareFields: 100,
+  /** CS rebuild: a labelled scale's step label, the most steps a slider has, and the most cycles one `timerList` holds. */
+  stepLabel: 24,
+  sliderSteps: 100,
+  timerCycles: 200,
 } as const;
 
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
@@ -57,6 +62,7 @@ const visibleWhen = z.discriminatedUnion("op", [
   z.object({ fieldKey: z.string().regex(KEY), op: z.literal("checked") }).strict(),
   z.object({ fieldKey: z.string().regex(KEY), op: z.literal("equals"), value: z.union([z.string().max(80), finite, z.boolean()]) }).strict(),
   z.object({ fieldKey: z.string().regex(KEY), op: z.literal("gt"), value: finite }).strict(),
+  z.object({ fieldKey: z.string().regex(KEY), op: z.literal("xor"), otherFieldKey: z.string().regex(KEY), value: z.boolean().optional() }).strict(),
 ]);
 
 const colorToken = z.enum(["default", "primary", "secondary", "accent", "success", "warning", "danger"]);
@@ -108,6 +114,8 @@ const fieldSchema = z
     tip: text(FORM_LIMITS.tip).optional(),
     endLabels: z.object({ min: text(40).optional(), max: text(40).optional() }).strict().optional(),
     ticks: z.boolean().optional(),
+    stepLabels: z.array(text(FORM_LIMITS.stepLabel)).max(FORM_LIMITS.sliderSteps + 1).optional(),
+    maxCycles: z.number().int().min(1).max(FORM_LIMITS.timerCycles).optional(),
     maxCount: z.number().int().min(1).max(FORM_LIMITS.imagesPerField).optional(),
     capture: z.boolean().optional(),
     steps: z
@@ -164,6 +172,7 @@ export const formSchema = z
     version: z.number().int().min(0),
     status: z.enum(["draft", "published"]),
     scoringEnabled: z.boolean(),
+    scoring: z.object({ mode: z.literal("custom"), scorer: z.string().regex(/^[A-Za-z][A-Za-z0-9_:.-]{0,59}$/) }).strict().optional(),
     sections: z.array(sectionSchema).max(FORM_LIMITS.sections),
     stickyNotes: z.object({ enabled: z.boolean(), defaultOpen: z.boolean() }).strict().optional(),
     compareWith: z
@@ -349,7 +358,18 @@ export function checkForm(form: Form): FormIssue[] {
       const step = f.step ?? 1;
       if (!(min < max)) err("slider-range", `"${f.label}": the minimum must be below the maximum.`, ctx);
       else if (!(step > 0) || !Number.isInteger(min) || !Number.isInteger(max) || !Number.isInteger(step)) err("slider-step", `"${f.label}": the range and step must be whole numbers, and the step above 0.`, ctx);
-      else if ((max - min) / step > 100) err("slider-steps", `"${f.label}": a slider can have at most 100 steps.`, ctx);
+      else if ((max - min) / step > FORM_LIMITS.sliderSteps) err("slider-steps", `"${f.label}": a slider can have at most ${FORM_LIMITS.sliderSteps} steps.`, ctx);
+      else if (f.stepLabels && f.stepLabels.length > 0 && f.stepLabels.length !== Math.floor((max - min) / step) + 1) {
+        err("slider-labels", `"${f.label}" has ${f.stepLabels.length} step labels but ${Math.floor((max - min) / step) + 1} steps. Give each step exactly one label.`, ctx);
+      }
+    }
+    if (f.type === "timerList") {
+      if (f.max !== undefined && !(f.max > 0)) err("timer-max", `"${f.label}": the longest cycle must be above 0 seconds.`, ctx);
+      if (f.scoring && f.scoring.mode !== "none") err("scoring-mode", `"${f.label}": cycle timers can't score points by themselves.`, ctx);
+    }
+    if (f.type === "notice") {
+      if (f.required) err("notice-required", `"${f.label}" is an info line: it holds no answer, so it can't be required.`, ctx);
+      if (f.statRoles?.length) err("stat-role-type", `"${f.label}": info lines can't carry stat roles.`, ctx);
     }
     if (f.type === "image" && f.statRoles?.length) err("stat-role-type", `"${f.label}": photos can't carry stat roles.`, ctx);
     if (f.type === "sequence") {
@@ -407,10 +427,13 @@ export function checkForm(form: Form): FormIssue[] {
     }
   }
 
-  if (form.scoringEnabled && scoringFields === 0) err("scoring-empty", "Scoring is on, but no field scores any points.");
+  if (form.scoring) {
+    if (!form.scoringEnabled) warn("scoring-custom-off", "Custom scoring is set, but scoring is off, so nothing is scored.");
+    if (!hasCustomScorer(form.scoring.scorer)) err("scorer-unknown", `The custom scorer "${form.scoring.scorer}" doesn't exist.`);
+  } else if (form.scoringEnabled && scoringFields === 0) err("scoring-empty", "Scoring is on, but no field scores any points.");
 
   // conditions: must reference a real, other field, be satisfiable, and not form a cycle
-  const deps = new Map<string, string>();
+  const deps = new Map<string, string[]>();
   for (const f of fields) {
     const w = f.visibleWhen;
     if (!w) continue;
@@ -423,22 +446,41 @@ export function checkForm(form: Form): FormIssue[] {
       err("condition-self", `"${f.label}" can't depend on itself.`, { id: f.id });
       continue;
     }
-    deps.set(f.key, target.key);
+    deps.set(f.key, [target.key]);
+    if (w.op === "xor") {
+      const other = byKey.get(w.otherFieldKey);
+      if (!other) {
+        err("condition-missing", `"${f.label}" is shown depending on a field that doesn't exist ("${w.otherFieldKey}").`, { id: f.id });
+        continue;
+      }
+      if (other.key === f.key) {
+        err("condition-self", `"${f.label}" can't depend on itself.`, { id: f.id });
+        continue;
+      }
+      deps.set(f.key, [target.key, other.key]);
+      for (const t of [target, other]) if (!BOOLEAN.has(t.type)) err("condition-unreachable", `"${f.label}" compares "${t.label}", but that isn't a toggle or checkbox, so it would never show.`, { id: f.id });
+    }
     if (w.op === "checked" && !BOOLEAN.has(target.type)) err("condition-unreachable", `"${f.label}" waits for "${target.label}" to be checked, but that isn't a toggle or checkbox, so it would never show.`, { id: f.id });
     if (w.op === "gt" && !NUMERIC.has(target.type)) err("condition-unreachable", `"${f.label}" waits for "${target.label}" to be above a number, but that isn't a numeric field, so it would never show.`, { id: f.id });
     if (w.op === "equals" && CHOICE.has(target.type) && !(target.options ?? []).some((o) => o.value === String(w.value))) {
       err("condition-unreachable", `"${f.label}" waits for "${target.label}" to equal "${String(w.value)}", which isn't one of its options, so it would never show.`, { id: f.id });
     }
   }
+  // a cycle: following the conditions (one or two fields each) from a field leads back to it
+  const reaches = (from: string, goal: string, seen: Set<string>): boolean => {
+    for (const next of deps.get(from) ?? []) {
+      if (next === goal) return true;
+      if (seen.has(next)) continue;
+      seen.add(next);
+      if (reaches(next, goal, seen)) return true;
+    }
+    return false;
+  };
+  const cyclic = [...deps.keys()].filter((k) => reaches(k, k, new Set()));
   for (const start of deps.keys()) {
-    const seen = new Set<string>([start]);
-    for (let cur = deps.get(start); cur !== undefined; cur = deps.get(cur)) {
-      if (seen.has(cur)) {
-        const f = byKey.get(start)!;
-        err("condition-cycle", `"${f.label}" is part of a circular chain of conditions, so none of it can ever show.`, { id: f.id });
-        break;
-      }
-      seen.add(cur);
+    if (cyclic.includes(start) || cyclic.some((c) => reaches(start, c, new Set()))) {
+      const f = byKey.get(start)!;
+      err("condition-cycle", `"${f.label}" is part of a circular chain of conditions, so none of it can ever show.`, { id: f.id });
     }
   }
 

@@ -8,7 +8,7 @@ import { FIELD_ICON_NAMES } from "@/components/scout/field-icons";
 import { Group, NumberRow, SelectRow, SwitchRow, TextRow } from "@/components/forms/builder/controls";
 import { ConditionEditor } from "@/components/forms/builder/condition-editor";
 import { OptionsEditor } from "@/components/forms/builder/options-editor";
-import { ImageSettings, MatrixSettings, SequenceSettings, SliderSettings } from "@/components/forms/builder/p27-inspectors";
+import { ImageSettings, MatrixSettings, ScaleLabelsSettings, SequenceSettings, SliderSettings, TimerSettings } from "@/components/forms/builder/p27-inspectors";
 import { useBuilder } from "@/components/forms/builder/context";
 import { changeFieldType, duplicateField, FIELD_TYPE_LABEL, findField, isSystemField, keyFromLabel, keyProblem, moveFieldBy, removeField, setFieldKey, uniqueKey, updateField } from "@/lib/forms/edit";
 import { scoringModesFor, FORM_LIMITS } from "@/lib/forms/validate";
@@ -205,6 +205,8 @@ export function FieldInspector({ field }: { field: FormField }) {
         </Group>
       )}
       {field.type === "slider" && <SliderSettings field={field} patch={patch} />}
+      {field.type === "slider" && <ScaleLabelsSettings field={field} patch={patch} />}
+      {field.type === "timerList" && <TimerSettings field={field} patch={patch} />}
       {field.type === "image" && <ImageSettings field={field} patch={patch} />}
       {field.type === "sequence" && <SequenceSettings field={field} patch={patch} />}
       {field.type === "matrix" && <MatrixSettings field={field} patch={patch} />}

@@ -162,6 +162,7 @@ function MatchScoutFormContent() {
           setAutoLoadNext(false);
         }}
         prefill={{ scoutName: name, ...effectiveLoaded }}
+        draftUserId={user?.uid}
         onSubmit={handleSubmit}
       />
       </StickyNotesLayout>
