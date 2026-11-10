@@ -10,7 +10,7 @@ export function PlaceholderBanner({ className }: { className?: string }) {
       )}
     >
       <Construction className="h-4 w-4 shrink-0" />
-      <span>Placeholder page &mdash; showing sample data, not yet connected to a real backend.</span>
+      <span>Placeholder page &mdash; this feature is not built in this version yet.</span>
     </div>
   );
 }

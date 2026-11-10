@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { PageTransition } from "@/components/layout/page-transition";
-import { PlaceholderBanner } from "@/components/ui/placeholder-banner";
 import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
 import { LibraryBackfill } from "@/components/admin/library-backfill";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -26,53 +25,15 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
   // P24: the practice workspace's Focus mode hides the sidebar and the mobile top bar (lib/shell-immersive.tsx).
   const [immersive, setImmersive] = useState(false);
   const immersiveValue = useImmersiveValue(immersive, setImmersive);
-  const pathname = usePathname();
   const router = useRouter();
   const { user, profile, loading } = useAuth();
   // One subscription for the offline / unsynced badge, shared by the sidebar and the mobile top bar.
   const connection = useConnectionNotice();
-  // Pages wired to real data (Firestore/FIRST API) as of P1-P3 — everything
-  // else here still runs on lib/mock-data.ts. Update this list as more
-  // pages stop being placeholders.
-  const REALIZED_PAGES = [
-    "/event",
-    "/scout",
-    "/analytics/match-scout",
-    "/analytics/team-averages",
-    "/analytics/rankings",
-    "/analytics/match-breakdown",
-    "/analytics/team-breakdown",
-    "/analytics/pick-list",
-    "/analytics/scout-status",
-    "/dashboard",
-    "/match-list",
-    "/lead-scout-form",
-    "/match-strategy-form",
-    "/drive-reflection-form",
-    "/pit-scout-form",
-    "/team-strategy-form",
-    "/helper-form",
-    "/analytics/teams",
-    "/people",
-    "/profile",
-    "/team-management",
-    "/team-settings",
-    "/account",
-    "/admin",
-    "/practice-scouting",
-    "/scout-accuracy",
-    "/my-scouting",
-    "/assignments",
-    "/changelog",
-    "/credits",
-  ];
-  const isPlaceholderPage = !REALIZED_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/login");
     // Signed in but no user doc yet (first-time Google sign-in, or anyone
-    // who closed the tab before finishing — see docs/ASSUMPTIONS.md, P1b).
+    // who closed the tab before finishing Ã¢â‚¬â€ see docs/ASSUMPTIONS.md, P1b).
     else if (!profile) router.replace("/finish-setup");
   }, [loading, user, profile, router]);
 
@@ -98,7 +59,6 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
           <main className="min-w-0">
             <VerifyEmailBanner className="mb-4" />
             <OwnershipTransferBanner className="mb-4" />
-            {isPlaceholderPage && <PlaceholderBanner className="mb-4" />}
             <LiveMatchPill />
             <PageTransition>
               <PageGuard>{children}</PageGuard>
