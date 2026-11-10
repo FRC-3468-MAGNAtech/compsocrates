@@ -10,6 +10,7 @@ import { FormCoverageWidget, FormMissingTeamsWidget, HelperLogWidget, MyAssigned
 import { NextMatchWidget, OurResultsWidget, UpcomingMatchesWidget } from "@/components/dashboard/widgets/schedule-widgets";
 import { AttendanceWidget, EventOverviewWidget, InterventionWidget, ScoutingHealthWidget } from "@/components/dashboard/widgets/team-coach";
 import { StrengthBulletsWidget, TeamSummaryWidget } from "@/components/dashboard/widgets/judge";
+import { SubInRequestsWidget } from "@/components/dashboard/widgets/sub-ins";
 import type { DashboardWidget } from "@/lib/dashboard/types";
 import type { RoleId } from "@/lib/roles";
 
@@ -31,6 +32,7 @@ export const dashboardRegistry: Record<RoleId, DashboardWidget[]> = {
     { id: "resume", title: "Resume", size: "small", render: () => <ResumeWidget /> },
     { id: "my-entries", title: "My entries here", size: "small", render: () => <MySubmissionsWidget /> },
     { id: "recent-practice", title: "Recent practice", size: "medium", render: () => <RecentPracticeWidget /> },
+    { id: "sub-ins", title: "Sub-in requests", size: "medium", render: () => <SubInRequestsWidget /> },
   ],
 
   "pit-scout": [
@@ -83,6 +85,7 @@ export const dashboardRegistry: Record<RoleId, DashboardWidget[]> = {
     { id: "scouting-health", title: "Scouting health", size: "small", render: () => <ScoutingHealthWidget /> },
     { id: "intervention", title: "Mentor Intervention", size: "medium", render: () => <InterventionWidget /> },
     { id: "attendance", title: "Attendance", size: "small", render: () => <AttendanceWidget /> },
+    { id: "sub-ins", title: "Sub-in requests", size: "medium", render: () => <SubInRequestsWidget /> },
   ],
 
   media: [

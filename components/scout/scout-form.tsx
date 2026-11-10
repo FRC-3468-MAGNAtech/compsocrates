@@ -2,7 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarX2, CheckCircle2, CloudOff, Info, Send, UserCog } from "lucide-react";
+import { CalendarX2, CheckCircle2, CloudOff, Info, Send, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,13 @@ import { TeamSelect, type TeamOption } from "@/components/forms/team-select";
 import type { PhotoTarget } from "@/components/forms/photo-upload";
 import { SectionNav, type ScoutSection } from "@/components/scout/section-nav";
 import { ScoreBar } from "@/components/scout/score-bar";
-import { MatchPickerDialog, type AssignedMatch } from "@/components/scout/match-picker-dialog";
+import { MatchPickerDialog, type AssignedMatch, type MatchMark } from "@/components/scout/match-picker-dialog";
 import { TeamPickerDialog } from "@/components/scout/team-picker-dialog";
+import { ConfirmDialog } from "@/components/scout/confirm-dialog";
+import { pitMismatchMessages, pitPrefill, type PitValues } from "@/components/scout/pit-sync";
+import type { TeamMark } from "@/components/scout/team-status";
+import { SubmissionLockoutBanner } from "@/components/forms/submission-lockout";
+import type { SubmissionLockout } from "@/data/cs/types";
 import { springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
@@ -99,6 +104,18 @@ export type ScoutFormProps = {
    * user + form + match + team. Omit it for modes with nothing to protect (the practice workspaces).
    */
   draftUserId?: string;
+  /** CS submission lockout: blocks a NEW submission (Submit is disabled and the reason is shown). Leave out for modes that are not event scouting. */
+  lockout?: SubmissionLockout;
+  /** The team picker's marks for the picked match (Scouted, Sub Assigned, Sub Req, Assigned). A robot marked Scouted asks "Submit anyway?" on submit (CS duplicate-scouted confirm). */
+  teamMarks?: (match: AssignedMatch | null) => ReadonlyMap<number, TeamMark>;
+  /** The scout's own robot in a match (an assignment or a sub-in they took): picking the match fills the team in and the picker highlights it. */
+  myTeamFor?: (match: AssignedMatch) => number | null;
+  /** CS pit-sync: the picked team's pit numbers. Prefills the scale sliders once per team and warns (confirm on submit) when the scales no longer contain them. */
+  pit?: { loaded: boolean; forTeam: (teamNumber: number) => PitValues | null };
+  /** Marks in the match picker's lists: Scouted (already has an entry) and Assigned (to this scout). */
+  matchPickerMarks?: (type: AssignedMatch["type"], matchNumber: number) => MatchMark | null;
+  /** The "Request Sub-In" control, shown beside the match button (event scouting only; the page owns the data). */
+  subInControl?: ReactNode;
 };
 
 const FLAG_SECTION_NOTE = "These don't affect score but are saved with the submission.";
@@ -343,6 +360,12 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     comments,
     onCommentsChange,
     draftUserId,
+    lockout,
+    teamMarks,
+    myTeamFor,
+    pit,
+    matchPickerMarks,
+    subInControl,
   },
   ref
 ) {
@@ -356,7 +379,10 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
 
   const [matchDialogOpen, setMatchDialogOpen] = useState(false);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
-  const [subInRequested, setSubInRequested] = useState(false);
+  /** Which "Submit anyway?" question is open (CS asked them with window.confirm, one after the other). */
+  const [confirming, setConfirming] = useState<"duplicate" | "pit" | null>(null);
+  /** The team whose pit numbers already filled the sliders (so a live pit update or a re-render does not overwrite the scout's own changes). */
+  const pitAppliedFor = useRef<number | null>(null);
   const [validation, setValidation] = useState<{ match?: boolean; team?: boolean }>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -404,6 +430,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     if (popout) onCommentsChange?.(typeof prefill?.values?.[commentsField!.key] === "string" ? (prefill.values[commentsField!.key] as string) : "");
     setValidation({});
     setFieldErrors({});
+    pitAppliedFor.current = null;
   };
 
   const score = useMemo(() => calculateScore(schema, values), [schema, values]);
@@ -471,6 +498,8 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     const restored = normalizeValues(schema, draftOffer.values as Record<string, unknown>);
     setAssignedMatch(draftOffer.match);
     setTeamNumber(draftOffer.teamNumber);
+    // the draft's own scale answers win over the pit numbers
+    pitAppliedFor.current = draftOffer.teamNumber;
     setValues(restored);
     if (popout && commentsField) onCommentsChange?.(typeof restored[commentsField.key] === "string" ? (restored[commentsField.key] as string) : "");
     setFieldErrors({});
@@ -485,6 +514,32 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     if (storage) clearDraft(storage, { uid: draftUserId, formId: schema.id, matchKey: matchKeyOf(draftOffer.match), teamNumber: draftOffer.teamNumber });
     setDraftOffer(null);
   };
+
+  // --- CS pit-sync: prefill the scales from the picked team's pit entry, once per team ---
+  const pitValues = pit && teamNumber !== null ? pit.forTeam(teamNumber) : null;
+  const pitPrefillKey = pitValues ? JSON.stringify(pitValues) : null;
+  useEffect(() => {
+    if (teamNumber === null) {
+      pitAppliedFor.current = null;
+      return;
+    }
+    if (!pitValues) {
+      // another team without pit numbers: picking the first one again later fills its sliders again, as CS did on every pick
+      if (pit?.loaded && pitAppliedFor.current !== teamNumber) pitAppliedFor.current = null;
+      return;
+    }
+    if (pitAppliedFor.current === teamNumber) return;
+    pitAppliedFor.current = teamNumber;
+    const patch = pitPrefill(pitValues);
+    // Deliberate: the pit entry is external data that arrives after the team is picked; it fills the sliders once.
+    setValues((v) => ({ ...v, ...patch }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamNumber, pitPrefillKey]);
+  const pitWarnings = useMemo(() => pitMismatchMessages(pitValues, values), [pitValues, values]);
+  const pitSynced = pitValues !== null;
+  const matchMarks = useMemo(() => teamMarks?.(assignedMatch) ?? null, [teamMarks, assignedMatch]);
+  const alreadyScouted = teamNumber !== null && matchMarks?.get(teamNumber) === "scouted";
+  const locked = !!lockout?.locked;
 
   const runValidation = () => {
     const missingMatch = !hideMatchPicker && !assignedMatch;
@@ -547,12 +602,16 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     });
   };
 
-  const requestSubIn = () => {
-    setSubInRequested(true);
-    setTimeout(() => setSubInRequested(false), 3000);
+  /** CS: picking a match you are assigned to (or took as a sub-in) fills in your robot. */
+  const selectMatch = (m: AssignedMatch) => {
+    setAssignedMatch(m);
+    const mine = myTeamFor?.(m) ?? null;
+    if (mine !== null) setTeamNumber(mine);
   };
 
-  const handleSubmit = async () => {
+  /** CS order: lockout, validation, "already scouted" confirm, pit-mismatch confirm, then save. */
+  const handleSubmit = (acknowledged: { duplicate?: boolean; pit?: boolean } = {}) => {
+    if (locked) return;
     if (!runValidation()) {
       // Scroll to the first problem: the match picker, else the team, else the first field with an error.
       const firstErrorKey = Object.keys(validateValues(schema, values))[0];
@@ -560,6 +619,18 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
       target?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
+    if (!acknowledged.duplicate && alreadyScouted) {
+      setConfirming("duplicate");
+      return;
+    }
+    if (!acknowledged.pit && pitWarnings.length > 0) {
+      setConfirming("pit");
+      return;
+    }
+    void commitSubmit();
+  };
+
+  const commitSubmit = async () => {
     setSubmitting(true);
     submittingRef.current = true;
     const snapshot = currentValues();
@@ -628,12 +699,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
         <Button size="lg" className="gap-2" disabled={isLocked("match")} onClick={() => setMatchDialogOpen(true)}>
           {assignedMatch ? matchLabel(assignedMatch) : "Pick match"}
         </Button>
-        {!isLocked("match") && (
-          <Button size="lg" variant="glass" className="gap-2" onClick={requestSubIn}>
-            <UserCog className="h-4 w-4" /> Request Sub-In
-          </Button>
-        )}
-        {subInRequested && <Badge variant="success">Sub-in request sent</Badge>}
+        {!isLocked("match") && subInControl}
       </div>
       {validation.match && <p className="text-sm font-medium text-red-300">Select a match before submitting.</p>}
       {assignedMatch && (
@@ -675,6 +741,29 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
           </Button>
         )}
         {validation.team && <p className="mt-1 text-sm font-medium text-red-300">Select a team before submitting.</p>}
+        {alreadyScouted && (
+          <p role="status" data-testid="already-scouted-note" className="mt-2 text-xs font-medium text-amber-300">
+            Team {teamNumber} is already scouted for this match.
+          </p>
+        )}
+        {pit && teamNumber !== null && (
+          <div className="mt-2 flex flex-col gap-2" data-testid="pit-sync">
+            <p role="status" className={cn("text-xs", pitSynced ? "text-emerald-300" : "text-[var(--muted-foreground)]")}>
+              {!pit.loaded ? "Checking for a pit scout entry…" : pitSynced ? "Pit scout entry found for this team and event: the scales were filled from it." : "No pit scout entry synced for this team in this event yet."}
+            </p>
+            {pitWarnings.length > 0 && (
+              <div role="alert" data-testid="pit-mismatch" className="flex items-start gap-2 rounded-2xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <div>
+                  <p className="font-semibold">Match scout scales do not match the pit scout values for this team.</p>
+                  {pitWarnings.map((message) => (
+                    <p key={message}>{message}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -710,6 +799,8 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
 
   return (
     <div data-scout-form-mode={mode} className={cn("flex flex-col gap-4", compact ? "pb-2" : "pb-4")}>
+      {lockout && <SubmissionLockoutBanner lockout={lockout} editAllowed={false} />}
+
       {draftOffer && (
         <GlassPanel role="region" aria-label="Unsaved draft found" data-testid="draft-banner" className="flex flex-wrap items-center gap-3 p-4">
           <div className="min-w-0 flex-1">
@@ -753,7 +844,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
       })}
 
       {showSubmitButton && (
-        <Button size="lg" className="mt-1 gap-2 self-start" onClick={handleSubmit} disabled={submitting}>
+        <Button size="lg" className="mt-1 gap-2 self-start" onClick={() => handleSubmit()} disabled={submitting || locked} data-testid="scout-submit">
           <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit match"}
         </Button>
       )}
@@ -761,7 +852,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
       {schema.scoringEnabled && <ScoreBar score={score} phases={scorePhases} />}
 
       {!hideMatchPicker && (
-        <MatchPickerDialog open={matchDialogOpen} onOpenChange={setMatchDialogOpen} activeEvent={activeEvent} onSelect={setAssignedMatch} />
+        <MatchPickerDialog open={matchDialogOpen} onOpenChange={setMatchDialogOpen} activeEvent={activeEvent} onSelect={selectMatch} marks={matchPickerMarks} />
       )}
 
       {activeEvent && (
@@ -771,9 +862,36 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
           eventCode={activeEvent.code}
           season={activeEvent.season}
           priorityTeamNumbers={assignedMatch ? [...assignedMatch.match.redTeams, ...assignedMatch.match.blueTeams] : undefined}
+          marks={matchMarks ?? undefined}
+          highlightTeam={assignedMatch ? (myTeamFor?.(assignedMatch) ?? null) : null}
           onSelect={setTeamNumber}
         />
       )}
+
+      <ConfirmDialog
+        open={confirming === "duplicate"}
+        onOpenChange={(o) => !o && setConfirming((c) => (c === "duplicate" ? null : c))}
+        title="Already scouted"
+        description="That robot has already been scouted for this match. Submit anyway?"
+        confirmLabel="Submit anyway"
+        onConfirm={() => handleSubmit({ duplicate: true })}
+        testId="confirm-duplicate"
+      />
+      <ConfirmDialog
+        open={confirming === "pit"}
+        onOpenChange={(o) => !o && setConfirming((c) => (c === "pit" ? null : c))}
+        title="Scales don't match the pit scout"
+        description="Match scout scales do not match the synced pit scout values for this event. Submit anyway?"
+        confirmLabel="Submit anyway"
+        onConfirm={() => handleSubmit({ duplicate: true, pit: true })}
+        testId="confirm-pit"
+      >
+        <ul className="list-disc space-y-1 pl-5 text-[var(--muted-foreground)]">
+          {pitWarnings.map((message) => (
+            <li key={message}>{message}</li>
+          ))}
+        </ul>
+      </ConfirmDialog>
 
       <AnimatePresence>
         {(justSubmitted || queuedOffline) && (

@@ -9,6 +9,8 @@ import type { PhotoTarget } from "@/components/forms/photo-upload";
 import { usePhotoUploads } from "@/components/forms/photo-upload";
 import type { TeamOption } from "@/components/forms/team-select";
 import { Button } from "@/components/ui/button";
+import { SubmissionLockoutBanner } from "@/components/forms/submission-lockout";
+import type { SubmissionLockout } from "@/data/cs/types";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 import type { PlanCandidate } from "@/lib/forms/compare";
 import { allianceTeamsFor, allianceTitle, buildSubmission, resetSlotValues, validateSubmission } from "@/lib/forms/form-page-logic";
@@ -59,13 +61,15 @@ export type FormPageViewProps = {
   hideEventPickerIfSingle?: boolean;
   /** P29: the kind of photo path (pit photos go under `pit/`). */
   photoKind?: string;
+  /** CS submission lockout (`submissionControls.globalLockout`): blocks NEW submissions with the reason. Editing an earlier entry bypasses it, as CS edit mode does. */
+  lockout?: SubmissionLockout;
 };
 
 /** The Lead Scout's alliance box says "RED / 1111, 2222"; the section whose id is `alliance` is the one. */
 const ALLIANCE_SECTION = "alliance";
 
 export function FormPageView(props: FormPageViewProps) {
-  const { form, title, subtitle, events, eventsLoaded, defaultEventCode, scoutName, matches, teams, planEntries, renderMatchPicker, onSave, onEventChange, myUid, existingEntries = [], onUpdate, assignedTeams, suggestFor, hideEventPickerIfSingle, photoKind = "form" } = props;
+  const { form, title, subtitle, events, eventsLoaded, defaultEventCode, scoutName, matches, teams, planEntries, renderMatchPicker, onSave, onEventChange, myUid, existingEntries = [], onUpdate, assignedTeams, suggestFor, hideEventPickerIfSingle, photoKind = "form", lockout } = props;
   const uploads = usePhotoUploads();
 
   const [entry, setEntry] = useState<FormEntryState>(() => ({ eventCode: defaultEventCode ?? "", matchKey: null, alliance: null, teamNumber: null, scoutName }));
@@ -170,6 +174,10 @@ export function FormPageView(props: FormPageViewProps) {
   };
 
   const submit = async () => {
+    if (lockout?.locked && !editing) {
+      setSaveError(lockout.reason);
+      return;
+    }
     const answers = { ...entry, eventCode, scoutName };
     const problems = validateSubmission(form, answers, values, slotCount);
     setErrors(problems);
@@ -221,6 +229,7 @@ export function FormPageView(props: FormPageViewProps) {
   return (
     <div className="flex flex-col gap-4 pb-24" data-testid="form-page">
       <Header title={title} subtitle={subtitle} />
+      {lockout && <SubmissionLockoutBanner lockout={lockout} />}
       {assignedTeams && assignedTeams.length > 0 && (
         <section aria-label="My assigned teams" className="glass-card flex flex-col gap-2 p-3" data-testid="assigned-teams">
           <div className="flex items-center justify-between gap-2 text-sm">
@@ -301,7 +310,7 @@ export function FormPageView(props: FormPageViewProps) {
 
       {/* a bar that stays at the bottom of the screen, so the one-handed reach to Submit never needs a scroll */}
       <div className="glass-overlay sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-20 flex flex-wrap items-center gap-3 rounded-2xl p-2" data-testid="submit-bar">
-        <Button type="button" onClick={() => void submit()} disabled={saving} className="h-12 gap-2 px-6" data-testid="submit-form">
+        <Button type="button" onClick={() => void submit()} disabled={saving || (!!lockout?.locked && !editing)} className="h-12 gap-2 px-6" data-testid="submit-form">
           <Send className="h-4 w-4" aria-hidden /> {saving ? "Saving…" : editing ? "Save changes" : "Submit"}
         </Button>
         {saveError && (

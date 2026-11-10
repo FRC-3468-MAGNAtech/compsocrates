@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CalendarRange } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -11,6 +11,14 @@ import { StickyNotesLayout } from "@/components/forms/sticky-notes-panel";
 import { notesForSave } from "@/lib/sticky-notes";
 import type { StickyNote } from "@/lib/forms/types";
 import type { AssignedMatch } from "@/components/scout/match-picker-dialog";
+import { useSubmissionLockout } from "@/components/forms/submission-lockout";
+import { RequestSubIn } from "@/components/sub-ins/request-sub-in";
+import { pitValuesFromEntries } from "@/components/scout/pit-sync";
+import { assignedTeamsFor, myTeamFor, scoutedTeamsFor, teamMarks, type TeamMark } from "@/components/scout/team-status";
+import { useFormEntries } from "@/lib/form-entries";
+import { claimedAssignments, marksForMatch, subInMatchKey } from "@/lib/sub-ins/model";
+import { useSubInRequests } from "@/lib/sub-ins/store";
+import type { ScheduleSlot } from "@/lib/scheduler/types";
 import { useActiveEvents } from "@/lib/active-event";
 import { orderPrimaryFirst, pickDefaultActiveEvent } from "@/lib/active-events";
 import { useAuth } from "@/lib/auth";
@@ -76,11 +84,56 @@ function MatchScoutFormContent() {
 
   const { assignments } = useAssignments(teamId, activeEvent?.code ?? null);
   const { entries } = useTeamScoutEntries(teamId);
+  const eventCode = activeEvent?.code ?? null;
+  const lockout = useSubmissionLockout(teamId);
+  const { requests: subIns } = useSubInRequests(teamId);
+  // sub-in windows are hours long; a minute's resolution is plenty for the picker marks
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // The matches I am responsible for: my published assignments plus the sub-ins I took (CS `effectiveAssignedTeams`).
+  const uid = user?.uid ?? null;
+  const publishedSlots = assignments?.current?.slots;
+  // (no manual useMemo/useCallback below: React Compiler memoizes these, and rejects hand-written deps that it cannot prove stable)
+  const claims = eventCode && uid ? claimedAssignments(subIns, eventCode, uid) : [];
+  const published = publishedSlots ?? [];
+  const allSlots: ScheduleSlot[] = [
+    ...published,
+    ...claims
+      .filter((c) => !published.some((s) => s.scoutUid === uid && s.matchType === c.matchType && s.matchNumber === c.matchNumber && s.teamNumber === c.teamNumber))
+      .map((c): ScheduleSlot => ({ matchType: c.matchType, matchNumber: c.matchNumber, slot: "red1", teamNumber: c.teamNumber, scoutUid: uid })),
+  ];
+
+  // pit-sync (CS loadPitDefaults): this event's pit entries of the team; the form looks one team up
+  const pitEntries = useFormEntries(teamId, { formType: "pit-scout", eventCode: eventCode ?? undefined });
+  const pit = useMemo(() => ({ loaded: pitEntries.loaded, forTeam: (team: number) => pitValuesFromEntries(pitEntries.entries.filter((e) => e.teamNumber === team)) }), [pitEntries]);
+
+  const marksFor = (match: AssignedMatch | null): ReadonlyMap<number, TeamMark> => {
+    if (!match || !eventCode) return new Map();
+    const { type, match: m } = match;
+    return teamMarks({
+      scouted: scoutedTeamsFor(entries, eventCode, type, m.matchNumber),
+      sub: marksForMatch(subIns, eventCode, subInMatchKey(type, m.matchNumber), tick),
+      assigned: assignedTeamsFor(allSlots, type, m.matchNumber),
+    });
+  };
+  /** CS match picker marks: scouted (an entry exists for the match) beats assigned (a robot of mine is in it). */
+  const matchMarkFor = (type: AssignedMatch["type"], matchNumber: number): "scouted" | "assigned" | null => {
+    if (!eventCode) return null;
+    if (entries.some((e) => e.source === "event" && e.eventCode === eventCode && e.matchType === type && e.matchNumber === matchNumber)) return "scouted";
+    return allSlots.some((s) => s.scoutUid === uid && s.matchType === type && s.matchNumber === matchNumber) ? "assigned" : null;
+  };
+  const myTeam = (match: AssignedMatch) => (uid ? myTeamFor(allSlots, claims, uid, match.type, match.match.matchNumber) : null);
+  // slots still to hand over: mine, not scouted yet
+  const handOverable = uid && eventCode ? allSlots.filter((s) => s.scoutUid === uid && !scoutedTeamsFor(entries.filter((e) => e.uid === uid), eventCode, s.matchType, s.matchNumber).has(s.teamNumber)) : [];
   // P28: the sticky notes written while scouting this robot (saved with the entry; the old Comments column folds them in)
   const [notes, setNotes] = useState<StickyNote[]>([]);
   const [loadedAssignment, setLoadedAssignment] = useState<{ match: AssignedMatch; teamNumber: number } | null>(null);
 
-  const nextAssignment = assignments?.current && user && activeEvent ? findNextAssignment(assignments.current.slots, user.uid, activeEvent.code, entries) : null;
+  const nextAssignment = user && activeEvent && allSlots.length > 0 ? findNextAssignment(allSlots, user.uid, activeEvent.code, entries) : null;
 
   // An explicit load wins; otherwise a `?load=next` link loads the next assignment as soon as it's known.
   const effectiveLoaded =
@@ -96,16 +149,26 @@ function MatchScoutFormContent() {
 
   const handleSubmit = async (values: ScoutFormValues, score: ScoreResult) => {
     if (!profile || !user || !activeEvent || !values.match || values.teamNumber === null) return;
+    // CS assertSubmissionsOpen: a locked team takes no new entry (the form already disables Submit; this is the backstop).
+    if (lockout.locked) throw new Error(lockout.reason);
 
-    await saveEntry(profile.teamId, user.uid, {
-      scoutName: name,
-      eventCode: activeEvent.code,
-      matchType: values.match.type,
-      matchNumber: values.match.match.matchNumber,
-      teamNumber: values.teamNumber,
-      ...entryPayloadFor(form, values.values, score, { stickyNotes: notesForSave(notes) }),
-    });
+    // Clear the notes BEFORE awaiting the save: offline, the write waits in Firestore's queue and the promise stays pending, and notes left on screen
+    // would be copied into the next robot's entry. A save that fails puts them back (ahead of anything typed since).
+    const submittedNotes = notes;
     setNotes([]);
+    try {
+      await saveEntry(profile.teamId, user.uid, {
+        scoutName: name,
+        eventCode: activeEvent.code,
+        matchType: values.match.type,
+        matchNumber: values.match.match.matchNumber,
+        teamNumber: values.teamNumber,
+        ...entryPayloadFor(form, values.values, score, { stickyNotes: notesForSave(submittedNotes) }),
+      });
+    } catch (error) {
+      setNotes((current) => [...submittedNotes, ...current]);
+      throw error;
+    }
     // Recomputes the whole event's accuracy/flags (not just this entry) so a
     // different robot's entry can flip from "Needs Robots" to resolved once
     // its alliance partner is scouted too. Fire-and-forget: it never throws
@@ -163,6 +226,20 @@ function MatchScoutFormContent() {
         }}
         prefill={{ scoutName: name, ...effectiveLoaded }}
         draftUserId={user?.uid}
+        lockout={lockout}
+        teamMarks={marksFor}
+        myTeamFor={myTeam}
+        matchPickerMarks={matchMarkFor}
+        pit={pit}
+        subInControl={
+          <RequestSubIn
+            teamId={teamId}
+            eventKey={eventCode}
+            actor={uid ? { uid, name: name || "Scout" } : null}
+            assigned={handOverable}
+            requests={subIns}
+          />
+        }
         onSubmit={handleSubmit}
       />
       </StickyNotesLayout>

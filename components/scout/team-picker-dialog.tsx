@@ -9,6 +9,7 @@ import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
 import { Button } from "@/components/ui/button";
 import { useFtcQuery } from "@/lib/events/use-event-query";
 import { getTeamsForEvent } from "@/lib/events/actions";
+import { TEAM_MARK_LABEL, type TeamMark } from "@/components/scout/team-status";
 import type { FtcTeam } from "@/lib/ftc/types";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,8 @@ export function TeamPickerDialog({
   eventCode,
   season,
   priorityTeamNumbers,
+  marks,
+  highlightTeam,
   onSelect,
 }: {
   open: boolean;
@@ -25,6 +28,10 @@ export function TeamPickerDialog({
   eventCode: string;
   season: number;
   priorityTeamNumbers?: number[];
+  /** CS TeamPickerModal marks for the picked match: Scouted (not pickable here, as in CS), Sub Assigned, Sub Req, Assigned. */
+  marks?: ReadonlyMap<number, TeamMark>;
+  /** The scout's own robot in this match: ringed like CS's highlighted team and listed first. */
+  highlightTeam?: number | null;
   onSelect: (teamNumber: number) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -39,12 +46,13 @@ export function TeamPickerDialog({
     const filtered = q
       ? list.filter((t) => String(t.teamNumber).includes(q) || t.nameShort.toLowerCase().includes(q))
       : list;
+    const rank = (n: number) => (n === highlightTeam ? 0 : prioritized.has(n) ? 1 : 2);
     return [...filtered].sort((a, b) => {
-      const aP = prioritized.has(a.teamNumber) ? 0 : 1;
-      const bP = prioritized.has(b.teamNumber) ? 0 : 1;
+      const aP = rank(a.teamNumber);
+      const bP = rank(b.teamNumber);
       return aP !== bP ? aP - bP : a.teamNumber - b.teamNumber;
     });
-  }, [teamsQuery.data, search, priorityTeamNumbers]);
+  }, [teamsQuery.data, search, priorityTeamNumbers, highlightTeam]);
 
   const handleOpenChange = (next: boolean) => {
     onOpenChange(next);
@@ -145,6 +153,8 @@ export function TeamPickerDialog({
                     key={team.teamNumber}
                     team={team}
                     prioritized={priorityTeamNumbers?.includes(team.teamNumber) ?? false}
+                    mark={marks?.get(team.teamNumber) ?? null}
+                    highlighted={team.teamNumber === highlightTeam}
                     onClick={() => {
                       onSelect(team.teamNumber);
                       handleOpenChange(false);
@@ -166,21 +176,32 @@ export function TeamPickerDialog({
   );
 }
 
-function TeamRow({ team, prioritized, onClick }: { team: FtcTeam; prioritized: boolean; onClick: () => void }) {
+const MARK_VARIANT: Record<TeamMark, "success" | "warning" | "glass" | "outline"> = { scouted: "success", subAssigned: "warning", subRequested: "warning", assigned: "glass" };
+
+function TeamRow({ team, prioritized, mark, highlighted, onClick }: { team: FtcTeam; prioritized: boolean; mark: TeamMark | null; highlighted: boolean; onClick: () => void }) {
+  const done = mark === "scouted";
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={done}
+      aria-label={`${team.teamNumber} ${team.nameShort}${mark ? `, ${TEAM_MARK_LABEL[mark]}` : ""}`}
+      data-testid={`team-row-${team.teamNumber}`}
+      data-mark={mark ?? undefined}
       className={cn(
-        "glass-card flex items-center justify-between gap-3 p-3.5 text-left transition-colors hover:bg-white/8",
-        prioritized && "ring-1 ring-[rgba(var(--glow),0.5)]"
+        "glass-card flex min-h-14 items-center justify-between gap-3 p-3.5 text-left transition-colors hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-50",
+        (prioritized || highlighted) && "ring-1 ring-[rgba(var(--glow),0.5)]",
+        highlighted && "ring-2"
       )}
     >
       <div className="min-w-0">
         <div className="font-semibold">{team.teamNumber}</div>
         <div className="truncate text-xs text-[var(--muted-foreground)]">{team.nameShort}</div>
       </div>
-      {prioritized && <Badge variant="accent">In match</Badge>}
+      <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+        {mark && <Badge variant={MARK_VARIANT[mark]}>{TEAM_MARK_LABEL[mark]}</Badge>}
+        {prioritized && <Badge variant="accent">In match</Badge>}
+      </div>
     </button>
   );
 }

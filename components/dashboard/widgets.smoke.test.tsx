@@ -1,5 +1,5 @@
 import { renderToString } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { selectAnalyticsEntries } from "@/lib/analytics/entries";
 import { DEFAULT_FILTERS } from "@/lib/analytics/filters";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
@@ -15,8 +15,19 @@ import { BIOBUZZ_FORM_SCHEMA, calculateScore } from "@/lib/scout-form/schema";
 import { computeScoutStats } from "@/lib/scout-stats/engine";
 import type { ScoutCategory } from "@/lib/scout-stats/types";
 import type { TeamMember } from "@/lib/team-members";
+import { buildSubInRequest, claimPatch, type SubInRequest } from "@/lib/sub-ins/model";
 import { dashboardRegistry } from "./registry";
 import { HeaderStrip } from "./header-strip";
+
+// The sub-in widget owns its realtime listener (the provider doesn't load it): replace it with a fixed list. The "loading" and "empty" modes
+// below pass no requests; the "rich" mode shows what `subInFixture` holds.
+const subInFixture: { requests: SubInRequest[] } = { requests: [] };
+vi.mock("@/lib/sub-ins/store", () => ({
+  useSubInRequests: () => ({ requests: subInFixture.requests, loaded: true }),
+  claimSubIn: async () => ({ ok: true }),
+  cancelSubIn: async () => ({ ok: true }),
+  clearAllSubIns: async () => ({ ok: true }),
+}));
 
 // A smoke harness for the dashboard (P13): every widget of every role is
 // rendered against realistic, loading, and empty data. It can't judge layout,
@@ -278,7 +289,8 @@ describe("dashboard widgets render against every data shape", () => {
     it(`${role}: the loading state is a skeleton (aria-busy) for every data-backed widget`, () => {
       const data = makeData(role, "loading");
       for (const w of dashboardRegistry[role]) {
-        if (w.id.endsWith("-soon") || w.id === "team-lookup") continue;
+        // sub-ins: its data comes from its own listener (mocked above, always loaded), so it cannot show the provider's loading state
+        if (w.id.endsWith("-soon") || w.id === "team-lookup" || w.id === "sub-ins") continue;
         const html = render(data, w.render());
         // A few widgets are interactive shells that stay usable while loading (e.g. the lookup box) — everything else must skeleton.
         expect(html.includes('aria-busy="true"'), `${role}/${w.id} should show a skeleton while loading`).toBe(true);
@@ -294,6 +306,44 @@ describe("what the widgets show", () => {
     expect(html).toContain("Team 222");
     expect(html).toContain("Scout now");
     expect(html).toContain("load=next");
+  });
+
+  it("Sub-ins: lists the event's open request with Take sub-in, my own with Delete request, a taken one as Sub Assigned", () => {
+    const now = Date.now();
+    const base = { teamId: "team", eventKey: EVENT.code, now: now - 60_000 };
+    const mk = (id: string, who: { uid: string; name: string }, matchNumber: number, teamNumber: number, extra: Partial<SubInRequest> = {}): SubInRequest => ({
+      id,
+      ...buildSubInRequest({ ...base, actor: who, target: { matchType: "Qualification", matchNumber, teamNumber } }),
+      ...extra,
+    });
+    subInFixture.requests = [
+      mk("a", { uid: "u2", name: "Bo Scout" }, 12, 254),
+      mk("b", { uid: "u1", name: "Ann Scout" }, 14, 971),
+      mk("c", { uid: "u2", name: "Bo Scout" }, 16, 1678, claimPatch({ uid: "u3", name: "Cy Scout" }, now)),
+      mk("d", { uid: "u2", name: "Bo Scout" }, 18, 118, { status: "cancelled" }),
+      mk("e", { uid: "u2", name: "Bo Scout" }, 20, 148, { eventKey: "OTHER" }),
+    ];
+    try {
+      for (const role of ["match-scout", "team-coach"] as const) {
+        const widget = dashboardRegistry[role].find((w) => w.id === "sub-ins");
+        expect(widget, role).toBeTruthy();
+        const html = render(makeData(role, "rich"), widget!.render());
+        expect(html).toContain("Qualification 12");
+        expect(html).toContain("Take sub-in");
+        expect(html).toContain("Delete request");
+        expect(html).toContain("Sub Assigned");
+        expect(html).toContain("Cy Scout");
+        expect(html).not.toContain("Qualification 18");
+        expect(html).not.toContain("Qualification 20");
+      }
+    } finally {
+      subInFixture.requests = [];
+    }
+  });
+
+  it("Sub-ins: says so when nobody has asked", () => {
+    const html = render(makeData("match-scout", "empty"), dashboardRegistry["match-scout"].find((w) => w.id === "sub-ins")!.render());
+    expect(html).toContain("No open sub-in requests");
   });
 
   it("Match Scout: shows a paused session to resume and a pending live robot", () => {

@@ -6,6 +6,7 @@ import { CalendarX2, Clock, Keyboard, List } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
@@ -16,6 +17,9 @@ import type { FtcEvent, FtcMatch, MatchType } from "@/lib/ftc/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 
 export type AssignedMatch = { type: MatchType; match: FtcMatch };
+
+/** CS match picker marks: a match already scouted, or one assigned to the scout. */
+export type MatchMark = "scouted" | "assigned";
 
 const TABS: { value: MatchType; label: string }[] = [
   { value: "Practice", label: "Practice" },
@@ -28,11 +32,14 @@ export function MatchPickerDialog({
   onOpenChange,
   activeEvent,
   onSelect,
+  marks,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   activeEvent: FtcEvent | null;
   onSelect: (assigned: AssignedMatch) => void;
+  /** Optional marks for the practice and qualification lists (Scouted / Assigned to you). */
+  marks?: (type: MatchType, matchNumber: number) => MatchMark | null;
 }) {
   const [tab, setTab] = useState<MatchType>("Qualification");
   const [manualMode, setManualMode] = useState(false);
@@ -159,6 +166,7 @@ export function MatchPickerDialog({
                 eventCode={activeEvent.code}
                 season={activeEvent.season}
                 type="Practice"
+                marks={marks}
                 onSelect={(match) => choose({ type: "Practice", match })}
               />
             </TabsContent>
@@ -167,6 +175,7 @@ export function MatchPickerDialog({
                 eventCode={activeEvent.code}
                 season={activeEvent.season}
                 type="Qualification"
+                marks={marks}
                 onSelect={(match) => choose({ type: "Qualification", match })}
               />
             </TabsContent>
@@ -216,11 +225,13 @@ function MatchList({
   season,
   type,
   onSelect,
+  marks,
 }: {
   eventCode: string;
   season: number;
   type: MatchType;
   onSelect: (match: FtcMatch) => void;
+  marks?: (type: MatchType, matchNumber: number) => MatchMark | null;
 }) {
   const query = useFtcQuery(`matches:${eventCode}:${season}:${type}`, () => getMatchesForEvent(eventCode, type, season));
 
@@ -257,13 +268,17 @@ function MatchList({
           key={m.id}
           type="button"
           onClick={() => onSelect(m)}
-          className="glass-card flex flex-wrap items-center justify-between gap-2 p-3.5 text-left transition-colors hover:bg-white/8"
+          className="glass-card flex min-h-14 flex-wrap items-center justify-between gap-2 p-3.5 text-left transition-colors hover:bg-white/8"
         >
           <div className="flex items-center gap-3">
             <span className="font-semibold">
               {MATCH_TYPE_PREFIX[type]}
               {m.matchNumber}
             </span>
+            {(() => {
+              const mark = marks?.(type, m.matchNumber) ?? null;
+              return mark ? <Badge variant={mark === "scouted" ? "success" : "accent"}>{mark === "scouted" ? "Scouted" : "Assigned"}</Badge> : null;
+            })()}
             {m.startTime && (
               <span className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]">
                 <Clock className="h-3 w-3" />
