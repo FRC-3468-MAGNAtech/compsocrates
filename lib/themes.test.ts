@@ -51,7 +51,7 @@ describe("theme registry", () => {
 
   it("has the whole solid catalog, with a light and a dark set each", () => {
     const solid = group("Solid").themes;
-    expect(solid.map((t) => t.name)).toEqual(["Team Colors", "BIOBUZZ", "Evergreen", "Ocean", "Amethyst", "Blossom", "Obsidian", "Pearl", "Slate"]);
+    expect(solid.map((t) => t.name)).toEqual(["Team Colors", "BIOBUZZ", "CompSocrates", "Evergreen", "Ocean", "Amethyst", "Blossom", "Obsidian", "Pearl", "Slate"]);
     for (const t of solid) {
       expect(t.kind).toBe("solid");
       expect(hasModes(t)).toBe(true);

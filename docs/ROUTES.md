@@ -118,4 +118,4 @@ Redirect type: **=** same URL (kept), **→** redirect to the new URL.
 
 ## Redirect implementation
 - `config/legacy-redirects.ts` holds the table. `next.config.ts` turns it into `redirects()` (permanent, with `has` for the `?lead=1` case).
-- `config/legacy-redirects.test.ts` asserts that every route in the CS route inventory (83 `page.tsx` files) appears in the table or is kept as is, and that no target is itself redirected.
+- `config/legacy-redirects.test.ts` asserts that every route in the CS route inventory (71 `page.tsx` files, counted from the CS copy) appears in the table or is kept as is, and that no target is itself redirected.

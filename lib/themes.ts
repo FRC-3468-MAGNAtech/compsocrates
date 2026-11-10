@@ -68,6 +68,36 @@ const solid: ThemeDefinition[] = [
     // Amber is too light to carry white text, so the light mode deepens it to a honey brown that can.
     light: { primary: "#b45309", accent: "#d97706", secondary: "#92400e", glow: "#d97706" },
   }),
+  // Recreation of CompSocrates's own palette (CS `light-compsocrates` / `dark-compsocrates`: primary #c42221, accent #8b1818,
+  // dark page #0f1117 on surface #171a22). Added next to the CE themes, not instead of them (docs/ROUTES.md D9).
+  // The accent #8b1818 is too dark to read on the dark page, so dark mode lifts accent and secondary to lighter reds.
+  solidTheme({
+    id: "compsocrates",
+    name: "CompSocrates",
+    tagline: "CompSocrates red",
+    primary: "#c42221",
+    accent: "#8b1818",
+    secondary: "#e5484d",
+    glow: "#c42221",
+    dark: {
+      primary: "#d63a39",
+      accent: "#e5484d",
+      secondary: "#f08a8c",
+      textOnAccent: "#ffffff",
+      surfaces: {
+        background: "#0f1117",
+        foreground: "#e5e7eb",
+        mutedForeground: "#cbd5e1",
+        blobs: ["#2a0f10", "#12141b", "#1c1012"],
+        glassBg: "rgba(255, 255, 255, 0.06)",
+        glassBgStrong: "rgba(255, 255, 255, 0.1)",
+        glassBorder: "rgba(255, 255, 255, 0.13)",
+        overlayColor: "#171a22",
+        overlayBorder: "rgba(255, 255, 255, 0.18)",
+      },
+    },
+    light: { textOnAccent: "#ffffff" },
+  }),
   solidTheme({ id: "evergreen", name: "Evergreen", tagline: "Forest green", primary: "#16a34a", accent: "#84cc16", secondary: "#a3e635" }),
   solidTheme({ id: "ocean", name: "Ocean", tagline: "Deep blue", primary: "#2563eb", accent: "#06b6d4", secondary: "#38bdf8" }),
   solidTheme({ id: "amethyst", name: "Amethyst", tagline: "Royal purple", primary: "#9333ea", accent: "#c084fc", secondary: "#e879f9" }),
