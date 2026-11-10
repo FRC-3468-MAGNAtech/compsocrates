@@ -40,13 +40,7 @@ function pageExists(url: string, patterns: string[]): boolean {
  * Pages the route map promises but that are not built yet. Phase 4 shrinks this list; the test below fails if a
  * page is listed here after it exists, so the list cannot go stale.
  */
-const PENDING_PAGES: string[] = [
-  "/analytics/accuracy-compare",
-  "/analytics/accuracy-verification",
-  "/analytics/match-prediction",
-  "/analytics/performance-reliability",
-  "/analytics/robot-radar",
-];
+const PENDING_PAGES: string[] = [];
 
 describe("legacy redirect table", () => {
   it("covers every CS route exactly once (redirect, kept, page redirect or unreachable)", () => {

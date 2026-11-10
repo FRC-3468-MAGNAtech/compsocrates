@@ -29,6 +29,7 @@ const DEFAULTS: Record<string, string[]> = {
   "drive-reflection-form": ["drive-team"],
   "helper-form": ["pit-scout", "pit-team"],
   "scout-status": ["lead-scout", "team-coach"],
+  "accuracy-verification": ["team-coach"],
   "scout-accuracy": ["lead-scout", "team-coach"],
   assignments: ["lead-scout"],
   "event-selection": ["lead-scout", "lead-strategist", "team-coach"],
@@ -164,7 +165,7 @@ describe("editing and parsing", () => {
     expect(parsePageAccess(undefined)).toEqual(defaultPageAccessConfig());
     const parsed = parsePageAccess({ roleGrants: { "lead-scout": ["assignments", "ghost-page", "dashboard"] }, memberOverrides: { u9: { grant: ["helper-form", "nope"], deny: [] }, u8: { grant: [], deny: [] } } });
     expect(parsed.roleGrants["lead-scout"]).toEqual(["assignments"]);
-    expect(parsed.roleGrants["team-coach"]).toEqual(["scout-status", "scout-accuracy", "event-selection", "team-management"]); // not in the doc: the defaults
+    expect(parsed.roleGrants["team-coach"]).toEqual(["scout-status", "accuracy-verification", "scout-accuracy", "event-selection", "team-management"]); // not in the doc: the defaults
     expect(parsed.memberOverrides).toEqual({ u9: { grant: ["helper-form"], deny: [] } });
   });
 

@@ -49,6 +49,8 @@ export const PAGES: PageDef[] = [
   { id: "drive-reflection-form", title: "Drive Reflection Form", routes: ["/drive-reflection-form"], access: "restricted", defaultRoles: ["drive-team"] },
   { id: "helper-form", title: "Helper Form", routes: ["/helper-form"], access: "restricted", defaultRoles: ["pit-scout", "pit-team"] },
   { id: "scout-status", title: "Scout Status", routes: ["/analytics/scout-status"], access: "restricted", defaultRoles: ["lead-scout", "team-coach"] },
+  // CS gated both of these to team-coach (`canAccessForm("accuracy-verification")`); the longer routes win over the open `/analytics`.
+  { id: "accuracy-verification", title: "Accuracy Verification", routes: ["/analytics/accuracy-verification", "/analytics/accuracy-compare"], access: "restricted", defaultRoles: ["team-coach"] },
   { id: "scout-accuracy", title: "Scout Accuracy", routes: ["/scout-accuracy"], access: "restricted", defaultRoles: ["lead-scout", "team-coach"] },
   { id: "assignments", title: "Assignments", routes: ["/assignments"], access: "restricted", defaultRoles: ["lead-scout"] },
   { id: "event-selection", title: "Event Selection", routes: ["/event"], access: "restricted", defaultRoles: ["lead-scout", "lead-strategist", "team-coach"] },

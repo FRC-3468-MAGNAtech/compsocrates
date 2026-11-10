@@ -2,6 +2,7 @@ import type { ScoutEntry } from "@/lib/scout-entries";
 import type { MatchType } from "@/lib/ftc/types";
 import { BIOBUZZ_FORM, DEFAULT_FORM_ID } from "@/lib/forms/builtin";
 import { REBUILT_FORM } from "@/lib/forms/builtin-rebuilt";
+import { CHARGED_UP_FORM, REEFSCAPE_FORM } from "@/lib/forms/builtin-legacy-games";
 import { entryValues } from "@/lib/forms/legacy";
 import { coerceTimerList, matrixCells, resolveAlias, timerStats } from "@/lib/forms/values";
 import { repeatGroupOf, slotKey } from "@/lib/forms/repeat";
@@ -401,6 +402,9 @@ export function unionForms(forms: readonly Form[]): Form {
 export const GAMES: Record<string, GameSchema> = {
   [BIOBUZZ_FORM.id]: buildGameSchema(BIOBUZZ_FORM),
   [REBUILT_FORM.id]: buildGameSchema(REBUILT_FORM),
+  // the retired games (read-only forms, docs/ROUTES.md D3): their old CS entries get columns like any other form's
+  [REEFSCAPE_FORM.id]: buildGameSchema(REEFSCAPE_FORM),
+  [CHARGED_UP_FORM.id]: buildGameSchema(CHARGED_UP_FORM),
 };
 
 export const BIOBUZZ_SCHEMA: GameSchema = GAMES[BIOBUZZ_FORM.id];
