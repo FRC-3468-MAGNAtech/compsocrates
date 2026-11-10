@@ -1,7 +1,8 @@
 import "server-only";
 import { FieldValue, type Firestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import type { Messaging } from "firebase-admin/messaging";
-import { fetchMatchesForEventInternal } from "@/lib/ftc/matches-internal";
+import { ALLIANCE_SIZE } from "@/config/alliance";
+import { fetchMatchesForEventInternal } from "@/lib/events/matches-internal";
 import type { FtcMatch } from "@/lib/ftc/types";
 import { LIVE_CONFIG } from "@/lib/live/config";
 import { isAllianceReadyToNotify } from "@/lib/live/notify";
@@ -40,9 +41,10 @@ export async function resolvePendingLiveMatches(db: Firestore, messaging: Messag
   let resolved = 0;
 
   for (const docs of groups.values()) {
-    if (docs.length !== 2) continue; // alliance not yet covered by two completed sessions
-    const [a, b] = docs;
-    const da = a.data();
+    const da = docs[0].data();
+    // A session records the whole alliance it belongs to; that length (2 for FTC, 3 for FRC) is how many completed sessions cover it.
+    const required: number = Array.isArray(da.allianceTeams) && da.allianceTeams.length > 0 ? da.allianceTeams.length : ALLIANCE_SIZE;
+    if (docs.length !== required) continue; // alliance not yet covered by every robot's completed session
 
     const matchCacheKey = `${da.eventCode}|${da.matchType}`;
     let matches = matchCache.get(matchCacheKey);
@@ -58,19 +60,14 @@ export async function resolvePendingLiveMatches(db: Firestore, messaging: Messag
     const match = matches.find((m) => m.matchNumber === da.matchNumber);
     if (!match) continue;
 
-    const entryIdA: string | undefined = a.data().entryIds?.[0];
-    const entryIdB: string | undefined = b.data().entryIds?.[0];
-    if (!entryIdA || !entryIdB) continue;
+    const entryIds = docs.map((d) => d.data().entryIds?.[0] as string | undefined);
+    if (entryIds.some((id) => !id)) continue;
 
-    const [entrySnapA, entrySnapB] = await Promise.all([
-      db.collection("scoutEntries").doc(entryIdA).get(),
-      db.collection("scoutEntries").doc(entryIdB).get(),
-    ]);
-    if (!entrySnapA.exists || !entrySnapB.exists) continue;
-    const entryA = { id: entrySnapA.id, ...entrySnapA.data() } as ScoutEntry;
-    const entryB = { id: entrySnapB.id, ...entrySnapB.data() } as ScoutEntry;
+    const entrySnaps = await Promise.all(entryIds.map((id) => db.collection("scoutEntries").doc(id!).get()));
+    if (entrySnaps.some((s) => !s.exists)) continue;
+    const entries = entrySnaps.map((s) => ({ id: s.id, ...s.data() }) as ScoutEntry);
 
-    const result = resolveLiveAllianceScoring(match, da.alliance, [entryA, entryB]);
+    const result = resolveLiveAllianceScoring(match, da.alliance, entries);
     if (!result) continue; // score hasn't posted yet
 
     const batch = db.batch();
@@ -83,23 +80,19 @@ export async function resolvePendingLiveMatches(db: Firestore, messaging: Messag
         flags: result.sessionFlags,
       });
     }
-    batch.update(db.collection("scoutEntries").doc(entryA.id), {
-      accuracy: result.entryAccuracy,
-      autoFlags: result.entryAutoFlags[entryA.id] ?? [],
-    });
-    batch.update(db.collection("scoutEntries").doc(entryB.id), {
-      accuracy: result.entryAccuracy,
-      autoFlags: result.entryAutoFlags[entryB.id] ?? [],
-    });
+    for (const entry of entries) {
+      batch.update(db.collection("scoutEntries").doc(entry.id), {
+        accuracy: result.entryAccuracy,
+        autoFlags: result.entryAutoFlags[entry.id] ?? [],
+      });
+    }
     await batch.commit();
     resolved++;
 
     const notifyEligible = isAllianceReadyToNotify(
-      [
-        { uid: entryA.uid, submittedAt: entryA.submittedAt },
-        { uid: entryB.uid, submittedAt: entryB.submittedAt },
-      ],
-      LIVE_CONFIG.LIVE_BOTH_ROBOTS_WINDOW_MINUTES
+      entries.map((e) => ({ uid: e.uid, submittedAt: e.submittedAt })),
+      LIVE_CONFIG.LIVE_BOTH_ROBOTS_WINDOW_MINUTES,
+      required
     );
     if (notifyEligible) {
       await notifyScoutsForSessions(db, messaging, docs, da.teamId);

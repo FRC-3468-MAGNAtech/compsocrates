@@ -1,3 +1,4 @@
+import { ALLIANCE_SIZE } from "@/config/alliance";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 
 // O. EPA — an "expected points added" rating computed from an event's OFFICIAL
@@ -23,8 +24,12 @@ export type EpaResult = {
 
 export const DEFAULT_EPA_PASSES = 2;
 
-/** Teams in a 2-robot FTC alliance; also the divisor when spreading an error across the alliance. */
-export const DEFAULT_ALLIANCE_SIZE = 2;
+/**
+ * The configured alliance size (FRC 3, FTC 2): the fallback prior divisor when no alliance
+ * has teams. `computeEpa` itself divides by each alliance's actual team count, so 2-team
+ * FTC data still works under a 3-robot configuration.
+ */
+export const DEFAULT_ALLIANCE_SIZE = ALLIANCE_SIZE;
 
 /** `max(0.1, 1 / (n + 1))` — the first match moves a rating all the way to fit, later ones nudge it, and it never stops learning. */
 export function learningRate(matchesAlreadyPlayed: number): number {
@@ -58,9 +63,11 @@ export function computeEpa(matches: EpaMatch[], options: { passes?: number } = {
 
   const alliances = matches.flatMap((m) => [m.red, m.blue]).filter((a) => a.teams.length > 0);
   const averageScore = alliances.reduce((sum, a) => sum + a.score, 0) / (alliances.length || 1);
+  // The data is the source of truth for alliance size: the mean team count of what was actually played.
+  const averageSize = alliances.reduce((sum, a) => sum + a.teams.length, 0) / (alliances.length || 1) || DEFAULT_ALLIANCE_SIZE;
   for (const a of alliances) {
     for (const t of a.teams) {
-      if (!epa.has(t)) epa.set(t, averageScore / DEFAULT_ALLIANCE_SIZE);
+      if (!epa.has(t)) epa.set(t, averageScore / averageSize);
     }
   }
 

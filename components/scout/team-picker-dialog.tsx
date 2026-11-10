@@ -7,8 +7,8 @@ import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
 import { Button } from "@/components/ui/button";
-import { useFtcQuery } from "@/lib/ftc/use-ftc-query";
-import { getTeamsForEvent } from "@/lib/ftc/actions";
+import { useFtcQuery } from "@/lib/events/use-event-query";
+import { getTeamsForEvent } from "@/lib/events/actions";
 import type { FtcTeam } from "@/lib/ftc/types";
 import { cn } from "@/lib/utils";
 

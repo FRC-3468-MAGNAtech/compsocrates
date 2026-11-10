@@ -8,7 +8,7 @@
  */
 
 export type AllianceAccuracyInput = {
-  /** One entry per robot on the alliance (FTC alliances are 2 robots) — already resolved by the caller. */
+  /** One entry per robot on the alliance (2 for FTC, 3 for FRC: however many the caller resolved) — already resolved by the caller. */
   robotScores: number[];
   /** Points awarded to this alliance from the opponent's penalties — already folded into `officialScore` by the FIRST API, included here separately per the accuracy formula. See docs/ASSUMPTIONS.md (P3) for which raw API field this comes from. */
   penaltyPoints: number;

@@ -2,8 +2,8 @@
 
 import { useMemo } from "react";
 import { AlertTriangle, Trophy } from "lucide-react";
-import { useFtcQuery } from "@/lib/ftc/use-ftc-query";
-import { getPlayoffBracket } from "@/lib/ftc/actions";
+import { useFtcQuery } from "@/lib/events/use-event-query";
+import { getPlayoffBracket } from "@/lib/events/actions";
 import type { BracketMatch, BracketStructure, FtcMatch } from "@/lib/ftc/types";
 import { cn } from "@/lib/utils";
 

@@ -5,10 +5,19 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import { SLOT_IDS, type ScheduleResult, type SlotId } from "@/lib/scheduler/types";
+import { ALLIANCE_SIZE, allianceSlots, slotIndex, slotLabel } from "@/config/alliance";
+import type { ScheduleResult, SlotId } from "@/lib/scheduler/types";
 import type { TeamMember } from "@/lib/team-members";
 
-const SLOT_LABELS: Record<SlotId, string> = { red1: "Red 1", red2: "Red 2", blue1: "Blue 1", blue2: "Blue 2" };
+/**
+ * The grid's columns: Red 1..n then Blue 1..n, where n is the widest alliance in the schedule itself
+ * (a legacy 2-slot FTC schedule keeps its 4 columns even when the event is configured for 3), or the
+ * configured alliance size while there are no slots yet.
+ */
+function slotColumns(slots: ScheduleResult["slots"]): SlotId[] {
+  const widest = slots.reduce((max, s) => Math.max(max, slotIndex(s.slot) + 1), 0);
+  return allianceSlots(widest || ALLIANCE_SIZE) as SlotId[];
+}
 
 function nameFor(members: TeamMember[], uid: string | null): string {
   if (!uid) return "—";
@@ -16,7 +25,7 @@ function nameFor(members: TeamMember[], uid: string | null): string {
 }
 
 /**
- * Matches as rows, Red1/Red2/Blue1/Blue2 as columns, scout names in cells,
+ * Matches as rows, Red 1..n / Blue 1..n as columns (n = 2 for FTC, 3 for FRC), scout names in cells,
  * per-scout totals at the bottom. Editable (click a cell to swap) when
  * `onSwap` is given — omitted for the read-only view non-admins see and
  * for an unpublished draft (only takes `slots`/`counts`/`fair`/`warning`,
@@ -37,6 +46,8 @@ export function ScheduleGrid({
   const matchKeys = [...new Map(version.slots.map((s) => [`${s.matchType}-${s.matchNumber}`, { matchType: s.matchType, matchNumber: s.matchNumber }])).values()];
   matchKeys.sort((a, b) => a.matchNumber - b.matchNumber || a.matchType.localeCompare(b.matchType));
 
+  const columns = slotColumns(version.slots);
+
   const cell = (matchType: string, matchNumber: number, slot: SlotId) =>
     version.slots.find((s) => s.matchType === matchType && s.matchNumber === matchNumber && s.slot === slot) ?? null;
 
@@ -46,8 +57,8 @@ export function ScheduleGrid({
         <THead>
           <TR>
             <TH>Match</TH>
-            {SLOT_IDS.map((slot) => (
-              <TH key={slot}>{SLOT_LABELS[slot]}</TH>
+            {columns.map((slot) => (
+              <TH key={slot}>{slotLabel(slot)}</TH>
             ))}
           </TR>
         </THead>
@@ -58,7 +69,7 @@ export function ScheduleGrid({
                 {MATCH_TYPE_PREFIX[matchType as keyof typeof MATCH_TYPE_PREFIX]}
                 {matchNumber}
               </TD>
-              {SLOT_IDS.map((slot) => {
+              {columns.map((slot) => {
                 const slotData = cell(matchType, matchNumber, slot);
                 const isEditing =
                   editing?.matchType === matchType && editing.matchNumber === matchNumber && editing.slot === slot;

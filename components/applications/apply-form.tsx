@@ -10,7 +10,7 @@ import { Turnstile, turnstileSiteKey } from "@/components/auth/turnstile";
 import { ApiError } from "@/lib/api-client";
 import { fetchStartToken, submitApplication } from "@/lib/applications-client";
 import { APPLICATION_LIMITS } from "@/lib/applications";
-import { getTeamByNumber } from "@/lib/ftc/actions";
+import { getTeamByNumber } from "@/lib/events/actions";
 import { parseFieldTeamNumber } from "@/lib/field-teams";
 import { ROLES, getRole, type RoleId } from "@/lib/roles";
 

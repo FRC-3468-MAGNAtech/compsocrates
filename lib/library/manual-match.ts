@@ -1,3 +1,4 @@
+import { ALLIANCE_SIZE } from "@/config/alliance";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { getDifficulty, type Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/ftc/types";
@@ -16,8 +17,12 @@ export type RawMatch = {
   matchNumber: string;
   red1: string;
   red2: string;
+  /** Used only when the alliance size is 3 (FRC); ignored for 2-robot events. */
+  red3: string;
   blue1: string;
   blue2: string;
+  /** Used only when the alliance size is 3 (FRC); ignored for 2-robot events. */
+  blue3: string;
   redScore: string;
   blueScore: string;
   redPenalty: string;
@@ -35,8 +40,10 @@ export const emptyRawMatch = (): RawMatch => ({
   matchNumber: "",
   red1: "",
   red2: "",
+  red3: "",
   blue1: "",
   blue2: "",
+  blue3: "",
   redScore: "",
   blueScore: "",
   redPenalty: "",
@@ -47,7 +54,19 @@ export const emptyRawMatch = (): RawMatch => ({
   notes: "",
 });
 
-export type ManualAlliance = { teams: [number, number]; score: number; penaltyPoints: number };
+export type TeamField = "red1" | "red2" | "red3" | "blue1" | "blue2" | "blue3";
+
+/** The team input fields of one alliance, `size` of them: ("red", 3) is red1, red2, red3. */
+export function allianceTeamFields(color: "red" | "blue", size: number = ALLIANCE_SIZE): TeamField[] {
+  return ([1, 2, 3] as const).slice(0, Math.min(size, 3)).map((i) => `${color}${i}` as TeamField);
+}
+
+/** Every team input field for an event of this alliance size, red first. */
+export function teamFieldsFor(size: number = ALLIANCE_SIZE): TeamField[] {
+  return [...allianceTeamFields("red", size), ...allianceTeamFields("blue", size)];
+}
+
+export type ManualAlliance = { teams: number[]; score: number; penaltyPoints: number };
 
 export type ValidMatch = {
   matchType: MatchType;
@@ -70,6 +89,8 @@ export type ValidateOptions = {
   defaultVideoUrl?: string | null;
   /** Used when `matchType` is blank (CSV/paste event defaults). */
   defaultMatchType?: MatchType | null;
+  /** Robots per alliance to require. Defaults to the configured event's (FRC 3, FTC 2). */
+  allianceSize?: number;
 };
 
 function parseWhole(value: string, max: number): number | null {
@@ -90,20 +111,21 @@ export function validateRawMatch(raw: RawMatch, options: ValidateOptions = {}): 
   const matchNumber = parseWhole(raw.matchNumber, MAX_MATCH_NUMBER);
   if (matchNumber === null || matchNumber < 1) errors.matchNumber = `Enter a match number from 1 to ${MAX_MATCH_NUMBER}.`;
 
-  // Teams: 1-5 digits, all four distinct
-  const teamFields = ["red1", "red2", "blue1", "blue2"] as const;
-  const teams: Partial<Record<(typeof teamFields)[number], number>> = {};
+  // Teams: 1-5 digits, all distinct
+  const allianceSize = options.allianceSize ?? ALLIANCE_SIZE;
+  const teamFields = teamFieldsFor(allianceSize);
+  const teams: Partial<Record<TeamField, number>> = {};
   for (const field of teamFields) {
     const t = raw[field].trim();
     if (!/^\d{1,5}$/.test(t) || Number(t) < 1) errors[field] = "Use a team number of 1-5 digits.";
     else teams[field] = Number(t);
   }
-  const seen = new Map<number, (typeof teamFields)[number]>();
+  const seen = new Map<number, TeamField>();
   for (const field of teamFields) {
     const n = teams[field];
     if (n === undefined) continue;
     if (seen.has(n)) {
-      errors[field] ??= `Team ${n} is already in this match — all four teams must be different.`;
+      errors[field] ??= `Team ${n} is already in this match — all ${teamFields.length} teams must be different.`;
     } else seen.set(n, field);
   }
 
@@ -168,8 +190,8 @@ export function validateRawMatch(raw: RawMatch, options: ValidateOptions = {}): 
     match: {
       matchType,
       matchNumber,
-      red: { teams: [teams.red1!, teams.red2!], score: redScore, penaltyPoints: redPenalty },
-      blue: { teams: [teams.blue1!, teams.blue2!], score: blueScore, penaltyPoints: bluePenalty },
+      red: { teams: allianceTeamFields("red", allianceSize).map((f) => teams[f]!), score: redScore, penaltyPoints: redPenalty },
+      blue: { teams: allianceTeamFields("blue", allianceSize).map((f) => teams[f]!), score: blueScore, penaltyPoints: bluePenalty },
       video,
       notes: raw.notes.trim(),
     },
@@ -189,8 +211,10 @@ export function matchToRaw(m: {
     matchNumber: String(m.matchNumber),
     red1: String(m.alliances.red.teams[0] ?? ""),
     red2: String(m.alliances.red.teams[1] ?? ""),
+    red3: String(m.alliances.red.teams[2] ?? ""),
     blue1: String(m.alliances.blue.teams[0] ?? ""),
     blue2: String(m.alliances.blue.teams[1] ?? ""),
+    blue3: String(m.alliances.blue.teams[2] ?? ""),
     redScore: String(m.alliances.red.score),
     blueScore: String(m.alliances.blue.score),
     redPenalty: String(m.alliances.red.penaltyPoints),
@@ -204,7 +228,7 @@ export function matchToRaw(m: {
 
 /** A stored library match as the validated shape (for sanity checks against the event's other matches). */
 export function libraryMatchToValid(m: LibraryMatch): ValidMatch {
-  const side = (a: LibraryMatch["alliances"]["red"]): ManualAlliance => ({ teams: [a.teams[0] ?? 0, a.teams[1] ?? 0], score: a.score, penaltyPoints: a.penaltyPoints });
+  const side = (a: LibraryMatch["alliances"]["red"]): ManualAlliance => ({ teams: [...a.teams], score: a.score, penaltyPoints: a.penaltyPoints });
   return { matchType: m.matchType, matchNumber: m.matchNumber, red: side(m.alliances.red), blue: side(m.alliances.blue), video: m.video ? { youtubeUrl: m.video.youtubeUrl, startSec: m.video.startSec ?? null, endSec: m.video.endSec ?? null } : null, notes: m.notes ?? "" };
 }
 
@@ -302,7 +326,7 @@ export function scoreOutlier(score: number, others: number[]): { low: number; hi
  * Non-blocking warnings for a valid match: it replaces an existing match with
  * the same id, an alliance score is far from the event's other matches, or the
  * clip is very long. (The "same team twice in one match" case is a hard error
- * in validateRawMatch — all four teams must be distinct.)
+ * in validateRawMatch — every team in the match must be distinct.)
  */
 export function matchWarnings(match: ValidMatch, ctx: { event: Pick<EventRef, "eventCode">; existingIds: ReadonlySet<string>; siblings: ValidMatch[] }): string[] {
   const warnings: string[] = [];

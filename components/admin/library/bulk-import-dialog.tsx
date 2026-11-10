@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { downloadTextFile } from "@/lib/download";
-import { bulkTemplateCsv, summarizeBulk, validateBulk } from "@/lib/library/bulk";
+import { BULK_COLUMNS, bulkTemplateCsv, summarizeBulk, validateBulk } from "@/lib/library/bulk";
 import { validateEventForm, type EventFormErrors, type EventFormInput } from "@/lib/library/event-form";
 import { parseMatchType } from "@/lib/library/ids";
 import { createManualEvent, upsertManualMatches, type Actor, type LibraryEvent, type UpsertResult } from "@/lib/library/store";
@@ -242,10 +242,10 @@ export function BulkImportDialog({
                   setText(e.target.value);
                   setResult(null);
                 }}
-                placeholder={"matchType\tmatchNumber\tred1\tred2\tblue1\tblue2\tredScore\tblueScore\tredPenalty\tbluePenalty\tyoutubeUrl\tstartSec\tendSec\tnotes"}
+                placeholder={BULK_COLUMNS.join("\t")}
                 spellCheck={false}
               />
-              <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">With or without the header row. Columns: matchType, matchNumber, red1, red2, blue1, blue2, redScore, blueScore, redPenalty, bluePenalty, youtubeUrl, startSec, endSec, notes. Times can be 90, 1:30, or 1:02:30; startSec and endSec may be blank (blank start = from the beginning, blank end = until the video ends).</p>
+              <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">With or without the header row. Columns: {BULK_COLUMNS.join(", ")}. Times can be 90, 1:30, or 1:02:30; startSec and endSec may be blank (blank start = from the beginning, blank end = until the video ends).</p>
             </div>
           </section>
 

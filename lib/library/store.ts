@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, writeBatch, type WriteBatch } from "firebase/firestore";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
-import { getEvent } from "@/lib/ftc/actions";
+import { getEvent } from "@/lib/events/actions";
 import { generateManualEventCode, decideMatchWrite, originOf, validateEventCode, type LibraryOrigin } from "@/lib/library/ids";
 import { buildManualMatchDoc, manualMatchId, type ValidMatch } from "@/lib/library/manual-match";
 import { validateEventForm, type EventFormErrors, type EventFormInput } from "@/lib/library/event-form";

@@ -72,7 +72,7 @@ export function SessionScreen({
   const videoRef = useRef<VideoPlayerHandle>(null);
 
   const season = getSeason(session.seasonId);
-  // The season's form, fixed for this session so both robots are scouted with the same version.
+  // The season's form, fixed for this session so every robot is scouted with the same version.
   const form = useLockedForm(session.seasonId);
   const teamNumber = session.robots[robotIndex];
   const isLastRobot = robotIndex === session.robots.length - 1;
@@ -124,15 +124,16 @@ export function SessionScreen({
     try {
       await saveRobotEntry(robot);
       const entries = await getEntriesForSession(session.teamId, session.id);
-      const [first, second] = entries;
-      if (!first || !second) throw new Error("Couldn't find both robots' entries.");
+      // One entry per scouted robot (2 for FTC, 3 for FRC); every one must be there to score the alliance.
+      const allianceEntries = entries.slice(0, session.robots.length);
+      if (allianceEntries.length < session.robots.length) throw new Error("Couldn't find every robot's entries.");
 
       const alliance = session.alliance!;
       const officialAlliance = libraryMatch.alliances[alliance];
       // A form with scoring off has nothing to compare to the official score: accuracy is "n/a" (null), never an error (P21).
       const { accuracy, scoutedTotal } = form.scoringEnabled
         ? computeAllianceAccuracy({
-            robotScores: [first.score.total, second.score.total],
+            robotScores: allianceEntries.map((e) => e.score.total),
             penaltyPoints: officialAlliance.penaltyPoints,
             officialScore: officialAlliance.score,
           })
@@ -144,7 +145,7 @@ export function SessionScreen({
         alliance
       );
       const flags: PendingSessionFlag[] = evaluatePracticeSessionFlags({
-        entries: [first, second],
+        entries: allianceEntries,
         mode: session.mode,
         videoProgressAtFinish: videoEnded ? 1 : videoProgressNow(),
         priorCompletedAttempt,

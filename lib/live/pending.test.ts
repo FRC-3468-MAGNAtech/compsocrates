@@ -68,3 +68,39 @@ describe("computePendingLiveRobots", () => {
     expect(computePendingLiveRobots(sessions, "scout-b")).toHaveLength(0);
   });
 });
+
+describe("computePendingLiveRobots — 3-robot alliances", () => {
+  const trio = { allianceTeams: [100, 200, 300] };
+
+  it("lists both uncovered robots when a scout covered only one of three", () => {
+    const pending = computePendingLiveRobots([liveSession({ id: "s1", uid: "scout-a", ...trio })], "scout-a");
+    expect(pending.map((p) => p.teamNumber)).toEqual([200, 300]);
+    expect(pending.every((p) => p.sessionId === "s1" && p.allianceTeams.length === 3)).toBe(true);
+  });
+
+  it("drops a robot once someone else covers it, keeping the other", () => {
+    const sessions = [
+      liveSession({ id: "s1", uid: "scout-a", ...trio }),
+      liveSession({ id: "s2", uid: "scout-b", robots: [300], completedRobots: [300], ...trio }),
+    ];
+    expect(computePendingLiveRobots(sessions, "scout-a").map((p) => p.teamNumber)).toEqual([200]);
+  });
+
+  it("does not list a robot twice when the scout scouted two robots of the alliance themselves", () => {
+    const sessions = [
+      liveSession({ id: "s1", uid: "scout-a", ...trio }),
+      liveSession({ id: "s2", uid: "scout-a", robots: [200], completedRobots: [200], ...trio }),
+    ];
+    const pending = computePendingLiveRobots(sessions, "scout-a");
+    expect(pending.map((p) => p.teamNumber)).toEqual([300]);
+  });
+
+  it("has nothing pending once all three are covered", () => {
+    const sessions = [
+      liveSession({ id: "s1", uid: "scout-a", ...trio }),
+      liveSession({ id: "s2", uid: "scout-b", robots: [200], ...trio }),
+      liveSession({ id: "s3", uid: "scout-c", robots: [300], status: "in-progress", ...trio }),
+    ];
+    expect(computePendingLiveRobots(sessions, "scout-a")).toHaveLength(0);
+  });
+});

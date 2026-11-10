@@ -72,8 +72,12 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
   const accuracy = session.accuracy!;
   const status = getStatus(accuracy);
   const percentColor = getPercentColor(accuracy);
-  const myEntry = entries.find((e) => e.teamNumber === session.robots[0]);
-  const partnerEntry = entries.find((e) => e.teamNumber !== session.robots[0]);
+  // This scout's own robot first, then every other robot on the alliance (1 for FTC, 2 for FRC).
+  const allianceTeams = session.allianceTeams ?? session.robots;
+  const robotStats = [session.robots[0], ...allianceTeams.filter((t) => t !== session.robots[0])].map((team) => ({
+    team,
+    total: entries.find((e) => e.teamNumber === team)?.score.total ?? 0,
+  }));
   const difference = (session.scoutedTotal ?? 0) - (session.officialScore ?? 0);
 
   return (
@@ -88,9 +92,10 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
 
       <GlassPanel className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Comparison</h2>
-        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Stat label={`Team ${session.robots[0]}`} value={myEntry?.score.total ?? 0} />
-          <Stat label={partnerEntry ? `Team ${partnerEntry.teamNumber}` : "Partner"} value={partnerEntry?.score.total ?? 0} />
+        <div className={`grid grid-cols-2 gap-3 text-sm ${COMPARISON_COLUMNS[robotStats.length + 2] ?? "sm:grid-cols-4"}`}>
+          {robotStats.map((r) => (
+            <Stat key={r.team} label={`Team ${r.team}`} value={r.total} />
+          ))}
           <Stat label="+ Penalties" value={session.penaltyPoints ?? 0} />
           <Stat label="= Scouted total" value={session.scoutedTotal ?? 0} emphasize />
         </div>
@@ -108,6 +113,9 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
     </div>
   );
 }
+
+// Full literal class names so Tailwind picks them up: the robots' tiles plus the penalties and total tiles.
+const COMPARISON_COLUMNS: Record<number, string> = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" };
 
 function Stat({ label, value, emphasize, signed }: { label: string; value: number; emphasize?: boolean; signed?: boolean }) {
   const display = signed && value > 0 ? `+${value}` : String(value);

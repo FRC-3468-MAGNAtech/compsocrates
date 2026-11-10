@@ -1,8 +1,17 @@
+import { ALLIANCE_SIZE, slotAlliance, slotId, slotIndex } from "@/config/alliance";
 import { mulberry32, seededShuffle } from "./rng";
-import { SLOT_IDS, type MatchInput, type ScheduleResult, type ScheduleSettings, type ScheduleSlot, type SlotId } from "./types";
+import type { MatchInput, ScheduleResult, ScheduleSettings, ScheduleSlot, SlotId } from "./types";
 
 const DEFAULT_INTERVAL_SIZE = 4;
-const BATCH_SIZE = 4;
+/**
+ * How many scouts one match needs at full capacity: both alliances' robots (4 for FTC, 6 for FRC).
+ * Taken from the data (the longest alliance in the schedule) so a 2-team FTC schedule still
+ * batches 4 under an event configured for 3; falls back to the configured size with no data.
+ */
+function batchSizeFor(matches: MatchInput[]): number {
+  const perAlliance = matches.reduce((max, m) => Math.max(max, m.red?.length ?? 0, m.blue?.length ?? 0), 0);
+  return 2 * (perAlliance || ALLIANCE_SIZE);
+}
 /** A scout counts as "recently used" (soft-avoided for the next pick) if they were assigned in this many of the immediately preceding matches. */
 const CONSECUTIVE_WINDOW = 2;
 
@@ -10,18 +19,18 @@ type SlotDescriptor = { slot: SlotId; teamNumber: number };
 
 function matchSlotDescriptors(match: MatchInput): SlotDescriptor[] {
   const descriptors: SlotDescriptor[] = [];
-  if (match.red) {
-    descriptors.push({ slot: "red1", teamNumber: match.red[0] }, { slot: "red2", teamNumber: match.red[1] });
-  }
-  if (match.blue) {
-    descriptors.push({ slot: "blue1", teamNumber: match.blue[0] }, { slot: "blue2", teamNumber: match.blue[1] });
-  }
+  // One slot per team actually in the match (an FTC match has 2 even if the event is configured for 3).
+  if (match.red) match.red.forEach((teamNumber, i) => descriptors.push({ slot: slotId("red", i) as SlotId, teamNumber }));
+  if (match.blue) match.blue.forEach((teamNumber, i) => descriptors.push({ slot: slotId("blue", i) as SlotId, teamNumber }));
   return descriptors;
 }
 
-/** Ensures SLOT_IDS order in output regardless of which alliances exist. */
+/** Red before blue, then by position within the alliance. */
+const slotRank = (slot: SlotId): number => (slotAlliance(slot) === "red" ? 0 : 100) + slotIndex(slot);
+
+/** Ensures slot order in output regardless of which alliances exist. */
 function sortDescriptors(descriptors: SlotDescriptor[]): SlotDescriptor[] {
-  return [...descriptors].sort((a, b) => SLOT_IDS.indexOf(a.slot) - SLOT_IDS.indexOf(b.slot));
+  return [...descriptors].sort((a, b) => slotRank(a.slot) - slotRank(b.slot));
 }
 
 /** Picks up to `size` distinct scouts from `pool`, preferring the fewest assignments so far and not recently (consecutively) used, with seeded random tie-breaking. */
@@ -122,7 +131,7 @@ export function generateSchedule(matches: MatchInput[], settings: ScheduleSettin
   // own doc comment for why a sliding window over one shuffled order
   // replaces a fixed, disjoint group partition.
   const order = seededShuffle(scouts, rng);
-  const windowSize = Math.min(BATCH_SIZE, scouts.length);
+  const windowSize = Math.min(batchSizeFor(matches), scouts.length);
   const intervalSize = settings.intervalSize ?? DEFAULT_INTERVAL_SIZE;
 
   const slots: ScheduleSlot[] = [];

@@ -14,8 +14,8 @@ export type OurMatch = {
   /** "Q12" — P / Q / F prefixed. */
   label: string;
   alliance: AllianceColor;
-  /** Our alliance partner (null if the roster isn't published). */
-  partner: number | null;
+  /** Our alliance partners: one for FTC, two for FRC (empty if the roster isn't published). */
+  partners: number[];
   opponents: number[];
   /** Scheduled start as an instant, or null when the API gave none. Always a *schedule*, never a promise. */
   startMs: number | null;
@@ -46,7 +46,7 @@ export function buildOurMatches(matches: OfficialMatch[], ourTeam: number | null
       match,
       label: formatMatch(match),
       alliance,
-      partner: mine.teams.find((t) => t !== ourTeam) ?? null,
+      partners: mine.teams.filter((t) => t !== ourTeam),
       opponents: theirs.teams,
       startMs: parseEventTime(match.startTime, timeZone),
       played: match.played,

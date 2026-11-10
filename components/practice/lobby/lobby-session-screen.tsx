@@ -105,9 +105,7 @@ export function LobbySessionScreen({
           matchNumber: chosenMatch?.matchNumber ?? null,
           alliance: myPair.alliance,
           robots: [myRobot],
-          allianceTeams: chosenMatch
-            ? (chosenMatch.alliances[myPair.alliance].teams as [number, number])
-            : null,
+          allianceTeams: chosenMatch ? [...chosenMatch.alliances[myPair.alliance].teams] : null,
           completedRobots: [],
           entryIds: [],
           accuracy: null,

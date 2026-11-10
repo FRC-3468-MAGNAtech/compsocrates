@@ -89,6 +89,22 @@ describe("computeEpa", () => {
     expect(r.matchesPlayed.get(1)).toBe(1);
   });
 
+  it("works for 3-robot alliances: starts at average / 3 and fits a lone match exactly", () => {
+    // red 90, blue 30 -> average 60 -> initial 20 per team. Red predicted 60, error +30, learning rate 1 -> each red team +10 = 30;
+    // blue predicted 60, error -30 -> each blue team -10 = 10.
+    const r = computeEpa([{ red: { teams: [1, 2, 3], score: 90 }, blue: { teams: [4, 5, 6], score: 30 } }], { passes: 1 });
+    for (const t of [1, 2, 3]) expect(r.epa.get(t)).toBeCloseTo(30);
+    for (const t of [4, 5, 6]) expect(r.epa.get(t)).toBeCloseTo(10);
+  });
+
+  it("works for 3-robot alliances: starts at average / 3 and fits a lone match exactly", () => {
+    // red 90, blue 30 -> average 60 -> initial 20 per team. Red predicted 60, error +30, learning rate 1 -> each red team +10 = 30;
+    // blue predicted 60, error -30 -> each blue team -10 = 10.
+    const r = computeEpa([{ red: { teams: [1, 2, 3], score: 90 }, blue: { teams: [4, 5, 6], score: 30 } }], { passes: 1 });
+    for (const t of [1, 2, 3]) expect(r.epa.get(t)).toBeCloseTo(30);
+    for (const t of [4, 5, 6]) expect(r.epa.get(t)).toBeCloseTo(10);
+  });
+
   it("predicts both alliances from pre-match ratings (red/blue order can't matter)", () => {
     const a = computeEpa([{ red: { teams: [1, 2], score: 60 }, blue: { teams: [3, 4], score: 20 } }]);
     const b = computeEpa([{ red: { teams: [3, 4], score: 20 }, blue: { teams: [1, 2], score: 60 } }]);

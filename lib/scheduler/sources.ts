@@ -1,17 +1,18 @@
+import { isValidAllianceTeams } from "@/config/alliance";
 import type { FtcMatch } from "@/lib/ftc/types";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchInput } from "./types";
 
-/** An "Event schedule"/"Live" match source — skips matches without exactly 2 teams per alliance, same convention as `lib/match-library.ts`'s import. */
+/** An "Event schedule"/"Live" match source — skips matches whose alliances don't have a plausible team count (2 up to the configured alliance size), same convention as `lib/match-library.ts`'s import. */
 export function ftcMatchesToInputs(matches: FtcMatch[]): MatchInput[] {
   return matches
-    .filter((m) => m.redTeams.length === 2 && m.blueTeams.length === 2)
+    .filter((m) => isValidAllianceTeams(m.redTeams) && isValidAllianceTeams(m.blueTeams))
     .map((m) => ({
       matchType: m.type,
       matchNumber: m.matchNumber,
-      red: [m.redTeams[0], m.redTeams[1]] as [number, number],
-      blue: [m.blueTeams[0], m.blueTeams[1]] as [number, number],
+      red: [...m.redTeams],
+      blue: [...m.blueTeams],
     }));
 }
 
@@ -21,8 +22,8 @@ export function libraryMatchesToInputs(matches: LibraryMatch[], difficulty: Diff
     .map((m) => ({
       matchType: m.matchType,
       matchNumber: m.matchNumber,
-      red: m.alliances.red.difficulty === difficulty ? (m.alliances.red.teams as [number, number]) : null,
-      blue: m.alliances.blue.difficulty === difficulty ? (m.alliances.blue.teams as [number, number]) : null,
+      red: m.alliances.red.difficulty === difficulty ? [...m.alliances.red.teams] : null,
+      blue: m.alliances.blue.difficulty === difficulty ? [...m.alliances.blue.teams] : null,
     }))
     .filter((m) => m.red !== null || m.blue !== null);
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Radio } from "lucide-react";
+import { ALLIANCE_SIZE, isValidAllianceTeams, slotId, slotLabel } from "@/config/alliance";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -12,9 +13,9 @@ import { LiveResultsScreen } from "@/components/practice/live/live-results-scree
 import { useAuth } from "@/lib/auth";
 import { useActiveEvents } from "@/lib/active-event";
 import { pickDefaultActiveEvent } from "@/lib/active-events";
-import { useFtcQuery } from "@/lib/ftc/use-ftc-query";
-import { getEvents, getMatchesForEvent } from "@/lib/ftc/actions";
-import { getDefaultSeason } from "@/lib/ftc/config";
+import { useFtcQuery } from "@/lib/events/use-event-query";
+import { getEvents, getMatchesForEvent } from "@/lib/events/actions";
+import { getDefaultSeason } from "@/lib/events/config";
 import { parseStreamUrl } from "@/lib/live/stream";
 import { determineJoinOption, type CoveredRobot } from "@/lib/live/join-rules";
 import { liveMatchKey, useLiveMatchScouts } from "@/lib/live-presence";
@@ -26,16 +27,19 @@ import { LoadError } from "@/components/practice/load-error";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
 type LiveStep = "link" | "event" | "match" | "robot" | "session" | "results";
-type Roster = { red: [number, number]; blue: [number, number] };
+/** Each alliance's team numbers: 2 for an FTC match, 3 for FRC (the match's own length when it is posted, ALLIANCE_SIZE when typed in by hand). */
+type Roster = { red: number[]; blue: number[] };
 export type ResumePendingRobot = {
   eventCode: string;
   matchType: MatchType;
   matchNumber: number;
   alliance: AllianceColor;
   teamNumber: number;
-  allianceTeams: [number, number];
+  allianceTeams: number[];
   streamUrl: string | null;
 };
+
+const emptyAlliance = (): number[] => Array.from({ length: ALLIANCE_SIZE }, () => 0);
 
 export function LiveFlow({
   onExit,
@@ -85,9 +89,11 @@ export function LiveFlow({
   const matches: FtcMatch[] = matchType === "Qualification" ? (qualQuery.data ?? []) : (playoffQuery.data ?? []);
   const officialMatch = matches.find((m) => m.matchNumber === matchNumber) ?? null;
   const roster: Roster | null =
-    officialMatch && officialMatch.redTeams.length === 2 && officialMatch.blueTeams.length === 2
-      ? { red: [officialMatch.redTeams[0], officialMatch.redTeams[1]], blue: [officialMatch.blueTeams[0], officialMatch.blueTeams[1]] }
-      : manualRoster;
+    officialMatch && isValidAllianceTeams(officialMatch.redTeams) && isValidAllianceTeams(officialMatch.blueTeams)
+      ? { red: [...officialMatch.redTeams], blue: [...officialMatch.blueTeams] }
+      : manualRoster && [...manualRoster.red, ...manualRoster.blue].every((t) => t > 0)
+        ? manualRoster
+        : null;
 
   const playedMatchNumbers = matches.filter((m) => m.played).map((m) => m.matchNumber);
   const suggestedMatchNumber = playedMatchNumbers.length > 0 ? Math.max(...playedMatchNumbers) + 1 : matches.length > 0 ? 1 : null;
@@ -308,24 +314,24 @@ export function LiveFlow({
                 <p className="text-xs text-[var(--muted-foreground)]">
                   This match isn&apos;t posted yet — enter both alliances&apos; team numbers manually.
                 </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    placeholder="Red 1"
-                    onChange={(e) => setManualRoster((r) => ({ red: [Number(e.target.value) || 0, r?.red[1] ?? 0], blue: r?.blue ?? [0, 0] }))}
-                  />
-                  <Input
-                    placeholder="Red 2"
-                    onChange={(e) => setManualRoster((r) => ({ red: [r?.red[0] ?? 0, Number(e.target.value) || 0], blue: r?.blue ?? [0, 0] }))}
-                  />
-                  <Input
-                    placeholder="Blue 1"
-                    onChange={(e) => setManualRoster((r) => ({ blue: [Number(e.target.value) || 0, r?.blue[1] ?? 0], red: r?.red ?? [0, 0] }))}
-                  />
-                  <Input
-                    placeholder="Blue 2"
-                    onChange={(e) => setManualRoster((r) => ({ blue: [r?.blue[0] ?? 0, Number(e.target.value) || 0], red: r?.red ?? [0, 0] }))}
-                  />
-                </div>
+                {(["red", "blue"] as AllianceColor[]).map((side) => (
+                  <div key={side} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${ALLIANCE_SIZE}, minmax(0, 1fr))` }}>
+                    {Array.from({ length: ALLIANCE_SIZE }, (_, i) => (
+                      <Input
+                        key={i}
+                        placeholder={slotLabel(slotId(side, i))}
+                        inputMode="numeric"
+                        onChange={(e) =>
+                          setManualRoster((r) => {
+                            const next: Roster = { red: r?.red ?? emptyAlliance(), blue: r?.blue ?? emptyAlliance() };
+                            next[side] = next[side].map((t, j) => (j === i ? Number(e.target.value) || 0 : t));
+                            return next;
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                ))}
               </div>
             )}
             <Button size="lg" disabled={matchNumber === null || !roster} onClick={() => setStep("robot")}>
@@ -374,29 +380,32 @@ export function LiveFlow({
               </>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3">
-                  {(["red", "blue"] as AllianceColor[]).map((side) =>
-                    roster[side].map((team) => {
-                      const disabled = joinOption.kind === "choice" && joinOption.alliance !== side;
-                      return (
-                        <GlassPanel
-                          key={`${side}-${team}`}
-                          interactive={!disabled}
-                          onClick={() => {
-                            if (disabled) return;
-                            setAlliance(side);
-                            setTeamNumber(team);
-                          }}
-                          className={`flex flex-col items-center gap-1 p-4 ${disabled ? "opacity-40" : ""} ${
-                            teamNumber === team && alliance === side ? "ring-2 ring-[var(--color-primary)]" : ""
-                          }`}
-                        >
-                          <span className="font-semibold">Team {team}</span>
-                          <Badge className={side === "red" ? "bg-red-500/15 text-red-300" : "bg-blue-500/15 text-blue-300"}>{side}</Badge>
-                        </GlassPanel>
-                      );
-                    })
-                  )}
+                <div className="flex flex-col gap-3">
+                  {(["red", "blue"] as AllianceColor[]).map((side) => (
+                    <div key={side} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${roster[side].length}, minmax(0, 1fr))` }}>
+                      {roster[side].map((team) => {
+                        // A "choice" covers a whole alliance (the other one) or just a partly covered alliance's uncovered robots.
+                        const disabled = joinOption.kind === "choice" && (joinOption.alliance !== side || !joinOption.teamNumbers.includes(team));
+                        return (
+                          <GlassPanel
+                            key={`${side}-${team}`}
+                            interactive={!disabled}
+                            onClick={() => {
+                              if (disabled) return;
+                              setAlliance(side);
+                              setTeamNumber(team);
+                            }}
+                            className={`flex flex-col items-center gap-1 p-4 ${disabled ? "opacity-40" : ""} ${
+                              teamNumber === team && alliance === side ? "ring-2 ring-[var(--color-primary)]" : ""
+                            }`}
+                          >
+                            <span className="font-semibold">Team {team}</span>
+                            <Badge className={side === "red" ? "bg-red-500/15 text-red-300" : "bg-blue-500/15 text-blue-300"}>{side}</Badge>
+                          </GlassPanel>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
                 <Button size="lg" disabled={!teamNumber || !alliance || claiming} onClick={() => handleClaimAndStart()}>
                   {claiming ? "Starting…" : "Start scouting"}

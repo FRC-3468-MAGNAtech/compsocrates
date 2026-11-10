@@ -2,7 +2,7 @@ import type { FtcMatch } from "@/lib/ftc/types";
 import type { AccuracyResult, ScoutEntry } from "@/lib/scout-entries";
 import { computeAllianceAccuracy as computeAccuracy } from "@/lib/accuracy/engine";
 
-function latestEntryForTeam(entries: ScoutEntry[], teamNumber: number): ScoutEntry | null {
+function latestEntryForTeam(entries: readonly ScoutEntry[], teamNumber: number): ScoutEntry | null {
   const candidates = entries.filter((e) => e.teamNumber === teamNumber && !e.excluded);
   if (candidates.length === 0) return null;
   return candidates.reduce((latest, e) => (e.submittedAt > latest.submittedAt ? e : latest));
@@ -18,14 +18,14 @@ function latestEntryForTeam(entries: ScoutEntry[], teamNumber: number): ScoutEnt
  * scale) is unchanged from before the refactor — see docs/ASSUMPTIONS.md
  * (P3) for why the engine itself returns a 0-100 scale instead.
  *
- * Needs both alliance robots scouted (FTC alliances are 2 robots) and an
+ * Needs every alliance robot scouted (all of `allianceTeams`: 2 for FTC, 3 for FRC) and an
  * official score before a number can be produced at all.
  */
 export function computeAllianceAccuracy(
   allianceTeams: number[],
   officialScore: number | null,
   penaltyPoints: number | null,
-  matchEntries: ScoutEntry[]
+  matchEntries: readonly ScoutEntry[]
 ): AccuracyResult {
   const robotEntries = allianceTeams.map((team) => latestEntryForTeam(matchEntries, team));
   if (allianceTeams.length === 0 || robotEntries.some((e) => e === null)) {

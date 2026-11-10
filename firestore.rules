@@ -494,7 +494,9 @@ service cloud.firestore {
     }
 
     function validLibAlliance(a) {
-      return a.teams is list && a.teams.size() == 2
+      // 2 teams (FTC, and every pre-FRC doc) or 3 (FRC): rules can't read the app's alliance-size config, so the
+      // bound is the widest legal alliance; lib/library/manual-match.ts enforces the configured size before the write.
+      return a.teams is list && a.teams.size() >= 2 && a.teams.size() <= 3
         && a.score is int && a.score >= 0 && a.score <= 9999
         && a.penaltyPoints is int && a.penaltyPoints >= 0 && a.penaltyPoints <= a.score
         && a.difficulty in ['easy', 'medium', 'hard'];
@@ -502,7 +504,7 @@ service cloud.firestore {
 
     // P15: a hand-entered match. It may only live under a *manual* event (so it can
     // never sit under an API event's code), its id must be the one its fields give,
-    // and its alliance numbers must make sense. Rules can't loop, so the two team
+    // and its alliance numbers must make sense. Rules can't loop, so the team
     // numbers inside `teams` aren't type-checked — lib/library/manual-match.ts
     // validates them before the write.
     function validManualMatch(matchId, d) {

@@ -18,7 +18,7 @@ export type LiveScoringPatch = {
 
 /**
  * Computes everything that needs writing once a live alliance is fully
- * scouted (one entry per robot) and the official match has posted scores
+ * scouted (one entry per robot of the alliance) and the official match has posted scores
  * — shared by the immediate client-side check (right after a scout
  * submits) and the server-side `/api/cron/poll-live-scores` /
  * `/api/live/check-scores` routes (Admin SDK). Pure — no Firestore access
@@ -37,7 +37,7 @@ export type LiveScoringPatch = {
  * querying the rest of this team's event history, a scope simplification
  * for live mode (see docs/ASSUMPTIONS.md, P7).
  */
-export function resolveLiveAllianceScoring(match: FtcMatch, alliance: AllianceColor, entries: [ScoutEntry, ScoutEntry]): LiveScoringPatch | null {
+export function resolveLiveAllianceScoring(match: FtcMatch, alliance: AllianceColor, entries: readonly ScoutEntry[]): LiveScoringPatch | null {
   const allianceTeams = alliance === "red" ? match.redTeams : match.blueTeams;
   const officialScore = alliance === "red" ? match.redScore : match.blueScore;
   const penaltyPoints = (alliance === "red" ? match.redPenaltyPoints : match.bluePenaltyPoints) ?? 0;
@@ -60,13 +60,13 @@ export function resolveLiveAllianceScoring(match: FtcMatch, alliance: AllianceCo
 
   const entryAutoFlags: Record<string, AutoFlag[]> = {};
   for (const entry of entries) {
-    const other = entries.find((e) => e.id !== entry.id)!;
+    const others = entries.filter((e) => e.id !== entry.id);
     const ctx: FlagContext = {
       match,
       allianceTeams,
       officialAllianceScore: officialScore,
       allianceAccuracy: entryAccuracy,
-      sameMatchEntries: [other],
+      sameMatchEntries: others,
       sameTeamEntries: [],
     };
     const triggeredIds = evaluateAutoFlagRuleIds(entry, ctx);

@@ -110,11 +110,17 @@ describe("buildOurMatches", () => {
   it("works out alliance color, partner, and opponents", () => {
     const q3 = ours.find((m) => m.label === "Q3")!;
     expect(q3.alliance).toBe("red");
-    expect(q3.partner).toBe(111);
+    expect(q3.partners).toEqual([111]);
     expect(q3.opponents).toEqual([222, 333]);
     const q12 = ours.find((m) => m.label === "Q12")!;
     expect(q12.alliance).toBe("blue");
-    expect(q12.partner).toBe(444);
+    expect(q12.partners).toEqual([444]);
+  });
+
+  it("lists both partners on a 3-robot alliance, in roster order", () => {
+    const frc = buildOurMatches([match({ matchNumber: 7, red: { teams: [111, US, 222] }, blue: { teams: [333, 444, 555] } })], US, null);
+    expect(frc[0].partners).toEqual([111, 222]);
+    expect(frc[0].opponents).toEqual([333, 444, 555]);
   });
 
   it("scores a played match from our side, as FIRST reports it", () => {

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { isValidAllianceTeams } from "@/config/alliance";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
-import { getEvent, getMatchesForEvent } from "@/lib/ftc/actions";
+import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
 import { getDifficulty, type Difficulty } from "@/lib/difficulty";
 import { parseVideoCsv } from "@/lib/library/video-csv";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
@@ -131,7 +132,8 @@ export async function importLibraryEvent(seasonId: string, eventCode: string): P
         skipped++;
         continue;
       }
-      if (match.redTeams.length !== 2 || match.blueTeams.length !== 2) {
+      // A plausible alliance is 2 teams (FTC) up to the event's alliance size (FRC 3); anything else is skipped.
+      if (!isValidAllianceTeams(match.redTeams) || !isValidAllianceTeams(match.blueTeams)) {
         skipped++;
         continue;
       }

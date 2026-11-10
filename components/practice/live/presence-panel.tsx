@@ -1,6 +1,7 @@
 "use client";
 
 import { Radio, UserPlus } from "lucide-react";
+import { ALLIANCE_SIZE } from "@/config/alliance";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,9 +14,9 @@ import type { ResumePendingRobot } from "@/components/practice/live/live-flow";
  * this team's scouts is actively on some live match — per the prompt, this
  * is specifically the "someone needs a partner" signal, not a general
  * "who's live right now" roster. Joining this way is always the "forced
- * onto the same alliance's other robot" case (see lib/live/join-rules.ts)
- * since by definition only one robot is covered when this panel shows at
- * all — so it reuses the exact same "claim a session for a known robot"
+ * onto the same alliance's other robot" case (see lib/live/join-rules.ts):
+ * the panel only shows while one alliance is partly covered, and the join
+ * button takes the first robot nobody is on — so it reuses the exact same "claim a session for a known robot"
  * path as the Pending Robots list, just with its target derived from the
  * active scout's own session instead of a completed one.
  */
@@ -29,7 +30,12 @@ export function PresencePanel({ teamId, onJoin }: { teamId: string | null; onJoi
     list.push(s);
     byMatch.set(s.matchKey, list);
   }
-  const soloMatches = [...byMatch.entries()].filter(([, list]) => list.length === 1);
+  // A match "needs a partner" while its scouts are all on one alliance and don't yet cover every robot on it
+  // (one scout of two for FTC; one or two of three for FRC).
+  const soloMatches = [...byMatch.entries()].filter(([, list]) => {
+    const size = sessions.find((s) => s.id === list[0].sessionId)?.allianceTeams?.length ?? ALLIANCE_SIZE;
+    return list.length < size && new Set(list.map((s) => s.alliance)).size === 1;
+  });
 
   if (soloMatches.length === 0) return null;
 
@@ -38,7 +44,7 @@ export function PresencePanel({ teamId, onJoin }: { teamId: string | null; onJoi
       {soloMatches.map(([matchKey, list]) => {
         const scout = list[0];
         const theirSession = sessions.find((s) => s.id === scout.sessionId);
-        const otherTeam = theirSession?.allianceTeams?.find((t) => t !== scout.robot);
+        const otherTeam = theirSession?.allianceTeams?.find((t) => !list.some((s) => s.robot === t));
         return (
           <GlassPanel key={matchKey} strong className="flex flex-wrap items-center gap-3 border-sky-400/30">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-500/15">

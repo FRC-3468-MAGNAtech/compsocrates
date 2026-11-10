@@ -1,20 +1,25 @@
+import { allianceSlots, type AllianceColor } from "@/config/alliance";
 import type { MatchType } from "@/lib/ftc/types";
 
-export type SlotId = "red1" | "red2" | "blue1" | "blue2";
+/** "red1" ... "blue4". Legacy FTC docs only ever hold index 1 and 2; FRC adds 3. */
+export type SlotId = `${AllianceColor}${1 | 2 | 3 | 4}`;
 
-export const SLOT_IDS: SlotId[] = ["red1", "red2", "blue1", "blue2"];
+/** The configured event's slots (`ALLIANCE_SIZE` per alliance), red first. */
+export const SLOT_IDS: SlotId[] = allianceSlots() as SlotId[];
 
 /**
  * One match's teams, generic across match sources (event schedule, practice
  * library, live). An alliance is `null` when it's excluded for this source
  * (e.g. a practice-library alliance whose own difficulty doesn't match the
- * difficulty the admin picked) — its two slots are simply never generated.
+ * difficulty the admin picked) — its slots are simply never generated. An
+ * alliance's length is the data's own (2 for an FTC match even when the event
+ * is configured for 3), so slot ids follow the array, not the config.
  */
 export type MatchInput = {
   matchType: MatchType;
   matchNumber: number;
-  red: [number, number] | null;
-  blue: [number, number] | null;
+  red: number[] | null;
+  blue: number[] | null;
 };
 
 export type RotationPattern = "rotate-each-match" | "custom-interval" | "constant-same-order";

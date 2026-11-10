@@ -42,3 +42,35 @@ describe("determineJoinOption", () => {
     expect(result.kind).toBe("forced");
   });
 });
+
+describe("determineJoinOption — 3-robot alliances", () => {
+  const RED3 = [100, 200, 300];
+  const BLUE3 = [400, 500, 600];
+  const c = (teamNumber: number, alliance: "red" | "blue") => ({ teamNumber, alliance });
+
+  it("lets the joiner pick between the two uncovered robots when one of three is covered", () => {
+    expect(determineJoinOption([c(100, "red")], RED3, BLUE3)).toEqual({ kind: "choice", alliance: "red", teamNumbers: [200, 300] });
+  });
+
+  it("forces the last uncovered robot once two of three are covered", () => {
+    expect(determineJoinOption([c(100, "red"), c(300, "red")], RED3, BLUE3)).toEqual({ kind: "forced", alliance: "red", teamNumber: 200 });
+  });
+
+  it("offers the whole other alliance once one is fully covered (all three)", () => {
+    expect(determineJoinOption([c(100, "red"), c(200, "red"), c(300, "red")], RED3, BLUE3)).toEqual({ kind: "choice", alliance: "blue", teamNumbers: BLUE3 });
+  });
+
+  it("returns 'none' when both alliances are fully covered", () => {
+    const covered = [...RED3.map((t) => c(t, "red")), ...BLUE3.map((t) => c(t, "blue"))];
+    expect(determineJoinOption(covered, RED3, BLUE3)).toEqual({ kind: "none" });
+  });
+
+  it("completes the first partly covered alliance when both are partly covered", () => {
+    const result = determineJoinOption([c(100, "red"), c(400, "blue"), c(500, "blue")], RED3, BLUE3);
+    expect(result).toEqual({ kind: "choice", alliance: "red", teamNumbers: [200, 300] });
+  });
+
+  it("still treats a 2-team (FTC) alliance as full at two", () => {
+    expect(determineJoinOption([c(100, "red"), c(200, "red")], RED, BLUE)).toEqual({ kind: "choice", alliance: "blue", teamNumbers: BLUE });
+  });
+});

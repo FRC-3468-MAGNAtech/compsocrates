@@ -28,7 +28,8 @@ function tripsUnrealisticScoringRule(entry: ScoutEntry): boolean {
 }
 
 export type PracticeFlagInput = {
-  entries: [ScoutEntry, ScoutEntry];
+  /** One entry per scouted robot of the alliance (2 for FTC, 3 for FRC). */
+  entries: readonly ScoutEntry[];
   mode: SessionMode;
   /** 0-1, how much of the video had played when the session finished — null if unknown/not applicable (e.g. Trial, where this flag never applies). */
   videoProgressAtFinish: number | null;
@@ -46,17 +47,16 @@ export type PendingSessionFlag = Omit<SessionFlag, "dismissed">;
  */
 export function evaluatePracticeSessionFlags(input: PracticeFlagInput): PendingSessionFlag[] {
   const flags: PendingSessionFlag[] = [];
-  const [first, second] = input.entries;
 
-  if (first.score.total === 0 && second.score.total === 0) {
+  if (input.entries.length > 0 && input.entries.every((e) => e.score.total === 0)) {
     flags.push({
       type: "zero-entries",
       title: "Zero Entries",
-      detail: "Both entries have all-zero scoring.",
+      detail: input.entries.length === 2 ? "Both entries have all-zero scoring." : "All entries have all-zero scoring.",
     });
   }
 
-  if (tripsUnrealisticScoringRule(first) || tripsUnrealisticScoringRule(second)) {
+  if (input.entries.some(tripsUnrealisticScoringRule)) {
     flags.push({
       type: "unrealistic-entry",
       title: "Unrealistic Entry",

@@ -26,9 +26,9 @@ import {
   type EventSort,
   type EventStatusFilter,
 } from "@/lib/ftc/event-status";
-import { useFtcQuery } from "@/lib/ftc/use-ftc-query";
-import { getEvents, getMatchesForEvent, getTeamsForEvent } from "@/lib/ftc/actions";
-import { getDefaultSeason, getSelectableSeasons } from "@/lib/ftc/config";
+import { useFtcQuery } from "@/lib/events/use-event-query";
+import { getEvents, getMatchesForEvent, getTeamsForEvent } from "@/lib/events/actions";
+import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
 import { cardEntranceVariants, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { EventLifecycleStatus, FtcEvent, FtcMatch } from "@/lib/ftc/types";

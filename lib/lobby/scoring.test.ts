@@ -79,3 +79,22 @@ describe("resolveLobbyPairScoring", () => {
     expect(result.flags.some((f) => f.type === "finished-early")).toBe(false);
   });
 });
+
+describe("resolveLobbyPairScoring — 3-robot alliances", () => {
+  const m3: LibraryMatch = (() => {
+    const base = match({ teams: [100, 200, 300], score: 90 });
+    return { ...base, alliances: { ...base.alliances, blue: { ...base.alliances.blue, teams: [400, 500, 600] } } };
+  })();
+
+  it("scores a group of three entries against the official score", () => {
+    const entries = [entry({ id: "e1", total: 30 }), entry({ id: "e2", total: 30 }), entry({ id: "e3", total: 25 })];
+    const result = resolveLobbyPairScoring(m3, "red", entries, "trial", false);
+    expect(result.scoutedTotal).toBe(85);
+    expect(result.accuracy).toBeCloseTo((1 - 5 / 90) * 100, 5);
+  });
+
+  it("flags Zero Entries when all three are zero", () => {
+    const entries = [entry({ id: "e1", total: 0 }), entry({ id: "e2", total: 0 }), entry({ id: "e3", total: 0 })];
+    expect(resolveLobbyPairScoring(m3, "red", entries, "trial", false).flags.map((f) => f.type)).toContain("zero-entries");
+  });
+});

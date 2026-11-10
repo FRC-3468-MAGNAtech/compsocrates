@@ -1,4 +1,4 @@
-import { getMatchesForEvent } from "@/lib/ftc/actions";
+import { getMatchesForEvent } from "@/lib/events/actions";
 import type { FtcMatch, MatchType } from "@/lib/ftc/types";
 import { formatMatch } from "@/lib/analytics/game-schema";
 import { getEventEntries, notApplicableAccuracy, updateEntry, type AccuracyResult, type AutoFlag } from "@/lib/scout-entries";

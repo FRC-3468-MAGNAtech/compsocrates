@@ -18,13 +18,23 @@ import type { PracticeSession } from "@/lib/practice-sessions";
 
 type PairResult = {
   pair: PairAssignment;
-  sessions: [PracticeSession, PracticeSession];
+  /** One session per player in the group (2 for FTC, 3 for FRC). */
+  sessions: PracticeSession[];
   accuracy: number;
 };
 
 function nameFor(players: LobbyPlayer[], uid: string): string {
   return players.find((p) => p.uid === uid)?.name ?? "Unknown";
 }
+
+/** "Ada & Bo" for a pair, "Ada, Bo & Cy" for three. */
+function namesFor(players: LobbyPlayer[], uids: readonly string[]): string {
+  const names = uids.map((uid) => nameFor(players, uid));
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
+// Full literal class names so Tailwind picks them up: one tile per robot plus penalties and total.
+const BREAKDOWN_COLUMNS: Record<number, string> = { 2: "sm:grid-cols-4", 3: "sm:grid-cols-5" };
 
 export function LobbyResultsScreen({
   lobby,
@@ -47,8 +57,8 @@ export function LobbyResultsScreen({
   const incomplete: PairAssignment[] = [];
   for (const pair of pairing) {
     const pairSessions = sessions.filter((s) => s.pairId === pair.pairId);
-    if (pairSessions.length === 2 && pairSessions.every((s) => s.accuracy !== null)) {
-      complete.push({ pair, sessions: [pairSessions[0], pairSessions[1]], accuracy: pairSessions[0].accuracy! });
+    if (pairSessions.length === pair.playerUids.length && pairSessions.every((s) => s.accuracy !== null)) {
+      complete.push({ pair, sessions: pairSessions, accuracy: pairSessions[0].accuracy! });
     } else {
       incomplete.push(pair);
     }
@@ -88,7 +98,7 @@ export function LobbyResultsScreen({
             <Trophy className="h-8 w-8 text-amber-400" />
             <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Winner</span>
             <span className="text-lg font-bold">
-              {nameFor(players, winner.item.pair.playerUids[0])} &amp; {nameFor(players, winner.item.pair.playerUids[1])}
+              {namesFor(players, winner.item.pair.playerUids)}
             </span>
             <span className={`text-5xl font-bold tabular-nums ${getPercentColor(winner.item.accuracy)}`}>
               {Math.round(winner.item.accuracy)}%
@@ -116,7 +126,7 @@ export function LobbyResultsScreen({
                   #{r.rank}
                 </Badge>
                 <span className="text-sm font-medium">
-                  {nameFor(players, r.item.pair.playerUids[0])} &amp; {nameFor(players, r.item.pair.playerUids[1])}
+                  {namesFor(players, r.item.pair.playerUids)}
                 </span>
                 <span className={`ml-auto text-sm font-semibold tabular-nums ${getPercentColor(r.item.accuracy)}`}>
                   {Math.round(r.item.accuracy)}%
@@ -134,7 +144,7 @@ export function LobbyResultsScreen({
             {incomplete.map((pair) => (
               <div key={pair.pairId} className="glass-card flex items-center gap-3 p-3 opacity-70">
                 <span className="text-sm">
-                  {nameFor(players, pair.playerUids[0])} &amp; {nameFor(players, pair.playerUids[1])}
+                  {namesFor(players, pair.playerUids)}
                 </span>
                 <Badge variant="outline" className="ml-auto text-[10px]">
                   Did not finish
@@ -184,25 +194,24 @@ function PairDetail({ teamId, players, result }: { teamId: string; players: Lobb
     };
   }, [teamId, result]);
 
-  const [sessionA, sessionB] = result.sessions;
-  const entryA = entries?.find((e) => e.id === sessionA.entryIds[0]);
-  const entryB = entries?.find((e) => e.id === sessionB.entryIds[0]);
+  const first = result.sessions[0];
 
   return (
     <div className="flex flex-col gap-4">
       <DialogTitle>
-        {nameFor(players, sessionA.uid)} &amp; {nameFor(players, sessionB.uid)}
+        {namesFor(players, result.sessions.map((s) => s.uid))}
       </DialogTitle>
       {!entries ? (
         <div className="glass-card h-32 animate-pulse" />
       ) : (
-        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Stat label={`Team ${sessionA.robots[0]} (${nameFor(players, sessionA.uid)})`} value={entryA?.score.total ?? 0} />
-          <Stat label={`Team ${sessionB.robots[0]} (${nameFor(players, sessionB.uid)})`} value={entryB?.score.total ?? 0} />
-          <Stat label="+ Penalties" value={sessionA.penaltyPoints ?? 0} />
-          <Stat label="= Scouted total" value={sessionA.scoutedTotal ?? 0} emphasize />
-          <Stat label="Official score" value={sessionA.officialScore ?? 0} />
-          <Stat label="Difference" value={(sessionA.scoutedTotal ?? 0) - (sessionA.officialScore ?? 0)} signed />
+        <div className={`grid grid-cols-2 gap-3 text-sm ${BREAKDOWN_COLUMNS[result.sessions.length] ?? "sm:grid-cols-4"}`}>
+          {result.sessions.map((s) => (
+            <Stat key={s.id} label={`Team ${s.robots[0]} (${nameFor(players, s.uid)})`} value={entries?.find((e) => e.id === s.entryIds[0])?.score.total ?? 0} />
+          ))}
+          <Stat label="+ Penalties" value={first.penaltyPoints ?? 0} />
+          <Stat label="= Scouted total" value={first.scoutedTotal ?? 0} emphasize />
+          <Stat label="Official score" value={first.officialScore ?? 0} />
+          <Stat label="Difference" value={(first.scoutedTotal ?? 0) - (first.officialScore ?? 0)} signed />
         </div>
       )}
     </div>

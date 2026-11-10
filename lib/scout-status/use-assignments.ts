@@ -2,9 +2,9 @@
 
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import type { AssignmentsDoc } from "@/lib/assignments";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
+import { parseScheduleSlots } from "@/lib/scheduler/parse";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 
 /**
@@ -28,7 +28,7 @@ export function useTeamAssignmentSlots(teamId: string | null): { slotsByEvent: M
       query(collection(db, "assignments"), where("teamId", "==", teamId)),
       (snap) => {
         // P31: the Pit Scouting / Team Strategy docs (they have a `kind`) share the collection; only the Match Scouting schedule has slots
-        setSlotsByEvent(new Map(snap.docs.filter((d) => d.data().kind === undefined).map((d) => [String(d.data().eventCode), ((d.data() as AssignmentsDoc).current?.slots ?? []) as ScheduleSlot[]])));
+        setSlotsByEvent(new Map(snap.docs.filter((d) => d.data().kind === undefined).map((d) => [String(d.data().eventCode), parseScheduleSlots((d.data() as { current?: { slots?: unknown } }).current?.slots)])));
         setLoaded(true);
       },
       (err) => {

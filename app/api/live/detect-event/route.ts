@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getEvents } from "@/lib/ftc/actions";
-import { getDefaultSeason } from "@/lib/ftc/config";
+import { getEvents } from "@/lib/events/actions";
+import { getDefaultSeason } from "@/lib/events/config";
 import { matchEventFromText } from "@/lib/live/matching";
 import { parseStreamUrl } from "@/lib/live/stream";
 

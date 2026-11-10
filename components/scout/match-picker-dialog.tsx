@@ -10,8 +10,8 @@ import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
 import { BracketPicker } from "@/components/scout/bracket-picker";
-import { useFtcQuery } from "@/lib/ftc/use-ftc-query";
-import { getMatchesForEvent } from "@/lib/ftc/actions";
+import { useFtcQuery } from "@/lib/events/use-event-query";
+import { getMatchesForEvent } from "@/lib/events/actions";
 import type { FtcEvent, FtcMatch, MatchType } from "@/lib/ftc/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 

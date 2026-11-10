@@ -164,6 +164,60 @@ describe("generateSchedule — prioritized teams", () => {
   });
 });
 
+describe("generateSchedule — 3-robot alliances (FRC)", () => {
+  const frcMatches = (count: number): MatchInput[] =>
+    Array.from({ length: count }, (_, i) => ({
+      matchType: "Qualification" as const,
+      matchNumber: i + 1,
+      red: [i * 6 + 1, i * 6 + 2, i * 6 + 3],
+      blue: [i * 6 + 4, i * 6 + 5, i * 6 + 6],
+    }));
+
+  it("generates red1-red3 and blue1-blue3 in order, one slot per team", () => {
+    const result = generateSchedule(frcMatches(1), { scoutUids: scoutIds(6), pattern: "rotate-each-match", seed: 1 });
+    expect(result.slots.map((s) => s.slot)).toEqual(["red1", "red2", "red3", "blue1", "blue2", "blue3"]);
+    expect(result.slots.map((s) => s.teamNumber)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  for (const pattern of PATTERNS) {
+    it(`fills all six slots with six different scouts when there are six (pattern "${pattern}")`, () => {
+      const result = generateSchedule(frcMatches(10), { scoutUids: scoutIds(6), pattern, seed: 3 });
+      for (let m = 1; m <= 10; m++) {
+        const uids = result.slots.filter((s) => s.matchNumber === m).map((s) => s.scoutUid);
+        expect(uids.every((u) => u !== null)).toBe(true);
+        expect(new Set(uids).size).toBe(6);
+      }
+    });
+  }
+
+  it("keeps assignment counts within 1 for rotate-each-match and constant-same-order", () => {
+    for (const pattern of ["rotate-each-match", "constant-same-order"] as RotationPattern[]) {
+      for (let n = 1; n <= 14; n++) {
+        const result = generateSchedule(frcMatches(20), { scoutUids: scoutIds(n), pattern, seed: 42 });
+        const counts = Object.values(result.counts);
+        expect(Math.max(...counts) - Math.min(...counts), `${pattern} ${n}`).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it("gives a single scout one slot per match, not three", () => {
+    const result = generateSchedule(frcMatches(3), { scoutUids: ["only"], pattern: "rotate-each-match", seed: 1 });
+    expect(result.slots.filter((s) => s.scoutUid !== null)).toHaveLength(3);
+  });
+
+  it("only assigns a prioritized team's slot", () => {
+    const result = generateSchedule(frcMatches(4), { scoutUids: scoutIds(6), pattern: "rotate-each-match", prioritizedTeams: [3], seed: 2 });
+    const assigned = result.slots.filter((s) => s.scoutUid !== null);
+    expect(assigned.every((s) => s.teamNumber === 3 && s.slot === "red3")).toBe(true);
+  });
+
+  it("still handles a 2-team (FTC) match with the same code: two slots per alliance, batches of 4", () => {
+    const result = generateSchedule(makeMatches(5), { scoutUids: scoutIds(8), pattern: "rotate-each-match", seed: 1 });
+    expect(result.slots.filter((s) => s.matchNumber === 1).map((s) => s.slot)).toEqual(["red1", "red2", "blue1", "blue2"]);
+    expect(result.slots.some((s) => s.slot === "red3")).toBe(false);
+  });
+});
+
 describe("generateSchedule — edge cases", () => {
   it("leaves everything unassigned and warns when no scouts are selected", () => {
     const result = generateSchedule(makeMatches(3), { scoutUids: [], pattern: "rotate-each-match", seed: 1 });

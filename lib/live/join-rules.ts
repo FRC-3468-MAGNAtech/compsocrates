@@ -4,7 +4,8 @@ export type CoveredRobot = { teamNumber: number; alliance: AllianceColor };
 
 export type JoinOption =
   | { kind: "forced"; alliance: AllianceColor; teamNumber: number }
-  | { kind: "choice"; alliance: AllianceColor; teamNumbers: [number, number] }
+  /** Pick any of `teamNumbers` on `alliance`: the whole other alliance, or (3-robot alliances) the robots still uncovered on a partly covered one. */
+  | { kind: "choice"; alliance: AllianceColor; teamNumbers: number[] }
   | { kind: "none" };
 
 /**
@@ -18,19 +19,23 @@ export type JoinOption =
  * completing an alliance over starting a third; see docs/ASSUMPTIONS.md
  * (P7).
  */
-export function determineJoinOption(covered: CoveredRobot[], redTeams: [number, number], blueTeams: [number, number]): JoinOption {
+export function determineJoinOption(covered: CoveredRobot[], redTeams: readonly number[], blueTeams: readonly number[]): JoinOption {
   const byAlliance: Record<AllianceColor, number[]> = {
     red: covered.filter((c) => c.alliance === "red").map((c) => c.teamNumber),
     blue: covered.filter((c) => c.alliance === "blue").map((c) => c.teamNumber),
   };
-  const teams: Record<AllianceColor, [number, number]> = { red: redTeams, blue: blueTeams };
+  const teams: Record<AllianceColor, readonly number[]> = { red: redTeams, blue: blueTeams };
 
   if (byAlliance.red.length === 0 && byAlliance.blue.length === 0) return { kind: "none" };
 
+  // A partly covered alliance is completed first. One robot left is forced (always the case for
+  // 2-robot alliances); with 3-robot alliances and two left, the joiner picks between them.
   for (const alliance of ["red", "blue"] as AllianceColor[]) {
-    if (byAlliance[alliance].length === 1) {
-      const remaining = teams[alliance].find((t) => !byAlliance[alliance].includes(t));
-      if (remaining !== undefined) return { kind: "forced", alliance, teamNumber: remaining };
+    const n = byAlliance[alliance].length;
+    if (n >= 1 && n < teams[alliance].length) {
+      const remaining = teams[alliance].filter((t) => !byAlliance[alliance].includes(t));
+      if (remaining.length === 1) return { kind: "forced", alliance, teamNumber: remaining[0] };
+      if (remaining.length > 1) return { kind: "choice", alliance, teamNumbers: remaining };
     }
   }
 
@@ -38,8 +43,8 @@ export function determineJoinOption(covered: CoveredRobot[], redTeams: [number, 
     ["red", "blue"],
     ["blue", "red"],
   ] as [AllianceColor, AllianceColor][]) {
-    if (byAlliance[alliance].length === 2 && byAlliance[other].length === 0) {
-      return { kind: "choice", alliance: other, teamNumbers: teams[other] };
+    if (byAlliance[alliance].length >= teams[alliance].length && byAlliance[other].length === 0) {
+      return { kind: "choice", alliance: other, teamNumbers: [...teams[other]] };
     }
   }
 

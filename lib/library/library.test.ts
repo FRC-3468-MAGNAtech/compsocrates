@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getDifficulty } from "@/lib/difficulty";
-import { BULK_COLUMNS, bulkTemplateCsv, splitBulkText, summarizeBulk, validateBulk } from "./bulk";
+import { bulkColumns, bulkTemplateCsv as bulkTemplateCsvFor, splitBulkText, summarizeBulk, validateBulk as validateBulkFor, type BulkInput } from "./bulk";
 import { validateEventForm } from "./event-form";
 import { decideMatchWrite, generateManualEventCode, libraryMatchId, normalizeEventCode, originOf, parseMatchType, validateEventCode } from "./ids";
 import {
@@ -11,14 +11,23 @@ import {
   matchToRaw,
   matchWarnings,
   scoreOutlier,
-  validateRawMatch,
+  validateRawMatch as validateRawMatchFor,
   type RawMatch,
+  type ValidateOptions,
   type ValidMatch,
 } from "./manual-match";
 import { formatTime, parseTimeInput, validateVideoWindow } from "./time";
 import { canonicalYouTubeUrl, parseYouTubeUrl } from "./youtube-url";
 
 const ID = "dQw4w9WgXcQ";
+
+// The suites below are the original 2-robot (FTC) behavior, so they pin the alliance size to 2 (the configured default is 3 for FRC).
+// The 3-robot suites sit at the bottom of the file, and the 2-team legacy cases keep running under the default in the 'legacy' block.
+const FTC_SIZE = 2;
+const validateRawMatch = (r: RawMatch, o: ValidateOptions = {}) => validateRawMatchFor(r, { allianceSize: FTC_SIZE, ...o });
+const validateBulk = (input: BulkInput) => validateBulkFor({ allianceSize: FTC_SIZE, ...input });
+const bulkTemplateCsv = () => bulkTemplateCsvFor(FTC_SIZE);
+const BULK_COLUMNS = bulkColumns(FTC_SIZE);
 
 describe("parseYouTubeUrl", () => {
   it("reads every common link form", () => {
@@ -692,5 +701,89 @@ describe("buildManualMatchDoc", () => {
   it("difficulty always follows the (possibly edited) scores", () => {
     const edited = validateRawMatch(raw({ redScore: "30", redPenalty: "0" })).match!;
     expect(buildManualMatchDoc(edited, event, { published: true }, options, "u", "n").alliances.red.difficulty).toBe("easy");
+  });
+});
+
+// --- 3-robot (FRC) alliances ----------------------------------------------------------------
+
+describe("3-robot alliances: validateRawMatch", () => {
+  const raw3 = (over: Partial<RawMatch> = {}): RawMatch => raw({ red3: "1678", blue3: "2056", ...over });
+  const v3 = (r: RawMatch) => validateRawMatchFor(r, { allianceSize: 3 });
+
+  it("accepts a full 3-team row and keeps team order within each alliance", () => {
+    const r = v3(raw3());
+    expect(r.ok).toBe(true);
+    expect(r.match?.red.teams).toEqual([254, 971, 1678]);
+    expect(r.match?.blue.teams).toEqual([118, 1114, 2056]);
+  });
+
+  it("requires the third team of each alliance", () => {
+    const r = v3(raw3({ red3: "", blue3: "x" }));
+    expect(r.ok).toBe(false);
+    expect(Object.keys(r.errors).sort()).toEqual(["blue3", "red3"]);
+  });
+
+  it("flags a team repeated anywhere in the match, including across alliances", () => {
+    const r = v3(raw3({ blue3: "254" }));
+    expect(r.errors.blue3).toContain("254");
+    expect(r.errors.blue3).toContain("all 6 teams");
+    expect(v3(raw3({ red3: "971" })).errors.red3).toBeTruthy();
+  });
+
+  it("ignores the third-team fields for a 2-robot event", () => {
+    const r = validateRawMatchFor(raw3({ red3: "garbage" }), { allianceSize: 2 });
+    expect(r.ok).toBe(true);
+    expect(r.match?.red.teams).toEqual([254, 971]);
+  });
+
+  it("round-trips a stored 3-team match through matchToRaw, and a legacy 2-team doc too (with blank third fields)", () => {
+    const three = v3(raw3()).match!;
+    const doc3 = { matchType: three.matchType, matchNumber: three.matchNumber, alliances: { red: three.red, blue: three.blue }, video: three.video, notes: three.notes };
+    expect(matchToRaw(doc3).red3).toBe("1678");
+    expect(v3(matchToRaw(doc3)).match).toEqual(three);
+
+    const two = validateRawMatch(raw()).match!;
+    const doc2 = { matchType: two.matchType, matchNumber: two.matchNumber, alliances: { red: two.red, blue: two.blue }, video: two.video, notes: two.notes };
+    expect(matchToRaw(doc2).red3).toBe("");
+    expect(validateRawMatch(matchToRaw(doc2)).match).toEqual(two);
+  });
+
+  it("builds a library doc whose alliances carry all three teams", () => {
+    const match = v3(raw3()).match!;
+    const fields = buildManualMatchFields(match, { eventCode: "MAN-T", eventName: "T", seasonId: "s" });
+    expect(fields.alliances.red.teams).toEqual([254, 971, 1678]);
+    expect(fields.alliances.blue.teams).toEqual([118, 1114, 2056]);
+  });
+});
+
+describe("3-robot alliances: bulk entry", () => {
+  const input = (text: string, allianceSize = 3): BulkInput => ({ text, event: { eventCode: "MAN-T" }, defaults: { matchType: null, youtubeUrl: "" }, existing: new Map(), allianceSize });
+
+  it("has a template with red3 and blue3 whose own example rows validate", () => {
+    const csv = bulkTemplateCsvFor(3);
+    expect(csv.split(/\r?\n/)[0]).toBe("matchType,matchNumber,red1,red2,red3,blue1,blue2,blue3,redScore,blueScore,redPenalty,bluePenalty,youtubeUrl,startSec,endSec,notes");
+    expect(summarizeBulk(validateBulkFor(input(csv)))).toMatchObject({ total: 2, valid: 2, errors: 0 });
+  });
+
+  it("keeps the 2-robot template exactly as before", () => {
+    expect(bulkTemplateCsvFor(2).split(/\r?\n/)[0]).toBe("matchType,matchNumber,red1,red2,blue1,blue2,redScore,blueScore,redPenalty,bluePenalty,youtubeUrl,startSec,endSec,notes");
+  });
+
+  it("reads headerless rows in the 3-robot column order", () => {
+    const result = validateBulkFor(input("Q,1,254,971,1678,118,1114,2056,142,98,6,0,,,,"));
+    expect(result.rows[0].errors).toEqual([]);
+    expect(result.rows[0].match?.red.teams).toEqual([254, 971, 1678]);
+  });
+
+  it("reports a legacy 4-team file as missing the third-team columns when the event is 3-robot", () => {
+    const result = validateBulkFor(input("matchType,matchNumber,red1,red2,blue1,blue2,redScore,blueScore\nQ,1,254,971,118,1114,142,98"));
+    expect(result.columnErrors).toEqual(expect.arrayContaining(["Missing column: red3.", "Missing column: blue3."]));
+    // ...but the same file is fine for a 2-robot event.
+    expect(validateBulkFor(input("matchType,matchNumber,red1,red2,blue1,blue2,redScore,blueScore\nQ,1,254,971,118,1114,142,98", 2)).columnErrors).toEqual([]);
+  });
+
+  it("labels errors for the third team", () => {
+    const result = validateBulkFor(input("matchType,matchNumber,red1,red2,red3,blue1,blue2,blue3,redScore,blueScore\nQ,1,254,971,x,118,1114,2056,142,98"));
+    expect(result.rows[0].errors.join(" ")).toMatch(/Red 3/);
   });
 });

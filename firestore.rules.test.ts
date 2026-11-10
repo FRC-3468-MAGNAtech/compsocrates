@@ -640,6 +640,15 @@ describe("assignments/{teamId}_{eventCode} (P6)", () => {
     await assertSucceeds(setDoc(doc(db, "assignments", `${TEAM_ID}_USWABON1`), { teamId: TEAM_ID, eventCode: "USWABON1", current: version, previous: null }));
   });
 
+  it("accepts the versioned slots[] with a legacy 2-slot alliance and with a third slot (the rules don't enumerate slot ids)", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    const slot = (s: string, teamNumber: number) => ({ matchType: "Qualification", matchNumber: 1, slot: s, teamNumber, scoutUid: SCOUT_UID });
+    const legacy = { ...version, slots: [slot("red1", 1), slot("red2", 2), slot("blue1", 3), slot("blue2", 4)] };
+    const three = { ...version, slots: [slot("red1", 1), slot("red2", 2), slot("red3", 5), slot("blue1", 3), slot("blue2", 4), slot("blue3", 6)] };
+    await assertSucceeds(setDoc(doc(db, "assignments", `${TEAM_ID}_LEGACY2`), { teamId: TEAM_ID, eventCode: "LEGACY2", current: legacy, previous: null }));
+    await assertSucceeds(setDoc(doc(db, "assignments", `${TEAM_ID}_FRC3`), { teamId: TEAM_ID, eventCode: "FRC3", current: three, previous: legacy }));
+  });
+
   it("blocks a non-admin from creating a schedule", async () => {
     const db = testEnv.authenticatedContext(SCOUT_UID).firestore();
     await assertFails(setDoc(doc(db, "assignments", `${TEAM_ID}_USWABON2`), { teamId: TEAM_ID, eventCode: "USWABON2", current: version, previous: null }));
@@ -2126,7 +2135,7 @@ describe("P15: libraryMatches and libraryEvents (manual matches, publishing, ori
       await assertSucceeds(create(asAdmin(), 4, { matchType: "Playoff" }, `${MANUAL_EVENT}_F4`));
     });
 
-    it("validates the alliance numbers: penalty never above score, whole non-negative scores, 2 teams, a real difficulty", async () => {
+    it("validates the alliance numbers: penalty never above score, whole non-negative scores, 2 or 3 teams, a real difficulty", async () => {
       await assertFails(create(asAdmin(), 3, { alliances: { red: alliance(10, 11), blue: alliance(60) } }));
       await assertFails(create(asAdmin(), 3, { alliances: { red: alliance(-1), blue: alliance(60) } }));
       await assertFails(create(asAdmin(), 3, { alliances: { red: alliance(10.5), blue: alliance(60) } }));
@@ -2134,6 +2143,13 @@ describe("P15: libraryMatches and libraryEvents (manual matches, publishing, ori
       await assertFails(create(asAdmin(), 3, { alliances: { red: alliance(10, 0, { difficulty: "brutal" }), blue: alliance(60) } }));
       await assertFails(create(asAdmin(), 3, { alliances: { red: alliance(10000), blue: alliance(60) } }));
       await assertSucceeds(create(asAdmin(), 3, { alliances: { red: alliance(10, 10), blue: alliance(0) } }));
+    });
+
+    it("accepts 3-team (FRC) alliances alongside legacy 2-team ones, and nothing wider", async () => {
+      await assertSucceeds(create(asAdmin(), 5, { alliances: { red: alliance(10, 0, { teams: [254, 971, 1678] }), blue: alliance(60, 0, { teams: [118, 1114, 2056] }) } })); // FRC
+      await assertSucceeds(create(asAdmin(), 6, { alliances: { red: alliance(10, 0, { teams: [254, 971, 1678] }), blue: alliance(60) } })); // mixed: each alliance is checked on its own
+      await assertFails(create(asAdmin(), 7, { alliances: { red: alliance(10, 0, { teams: [254, 971, 1678, 118] }), blue: alliance(60) } }));
+      await assertFails(create(asAdmin(), 8, { alliances: { red: alliance(10, 0, { teams: [] }), blue: alliance(60) } }));
     });
 
     it("validates the rest of the shape", async () => {
@@ -2265,17 +2281,17 @@ describe("P15: the documents lib/library really builds are accepted by the rules
     });
   });
 
-  const CSV_HEADER = "matchType,matchNumber,red1,red2,blue1,blue2,redScore,blueScore,redPenalty,bluePenalty,youtubeUrl,startSec,endSec,notes";
+  const CSV_HEADER = "matchType,matchNumber,red1,red2,red3,blue1,blue2,blue3,redScore,blueScore,redPenalty,bluePenalty,youtubeUrl,startSec,endSec,notes";
   const csvRows = (count: number) =>
-    Array.from({ length: count }, (_, i) => `Q,${i + 1},${100 + i},${200 + i},${300 + i},${400 + i},${20 + i * 5},${60 + i * 3},${i % 4},0,https://youtu.be/dQw4w9WgXcQ?si=abc,${i * 10}:00,${i * 10 + 3}:00,row ${i + 1}`).join("\n");
+    Array.from({ length: count }, (_, i) => `Q,${i + 1},${100 + i},${200 + i},${250 + i},${300 + i},${400 + i},${450 + i},${20 + i * 5},${60 + i * 3},${i % 4},0,https://youtu.be/dQw4w9WgXcQ?si=abc,${i * 10}:00,${i * 10 + 3}:00,row ${i + 1}`).join("\n");
 
   it("accepts a single manual match built by buildManualMatchDoc, and an edit of it (full replace, keeping its creator and import time)", async () => {
-    const parsed = validateRawMatch({ ...emptyRawMatch(), matchNumber: "7", red1: "254", red2: "971", blue1: "118", blue2: "1114", redScore: "142", blueScore: "98", redPenalty: "6", youtubeUrl: "https://youtu.be/dQw4w9WgXcQ?t=70", end: "3:40" });
+    const parsed = validateRawMatch({ ...emptyRawMatch(), matchNumber: "7", red1: "254", red2: "971", red3: "1678", blue1: "118", blue2: "1114", blue3: "2056", redScore: "142", blueScore: "98", redPenalty: "6", youtubeUrl: "https://youtu.be/dQw4w9WgXcQ?t=70", end: "3:40" }, { allianceSize: 3 });
     expect(parsed.ok).toBe(true);
     const created = buildManualMatchDoc(parsed.match!, eventRef, null, { newPublished: true, newNeedsReview: false }, ADMIN_UID, NOW);
     await assertSucceeds(setDoc(doc(asAdmin(), "libraryMatches", `${EVENT}_Q7`), created));
 
-    const edited = validateRawMatch({ ...emptyRawMatch(), matchNumber: "7", red1: "254", red2: "971", blue1: "118", blue2: "1114", redScore: "30", blueScore: "98", youtubeUrl: "https://youtu.be/dQw4w9WgXcQ", end: "3:40" });
+    const edited = validateRawMatch({ ...emptyRawMatch(), matchNumber: "7", red1: "254", red2: "971", red3: "1678", blue1: "118", blue2: "1114", blue3: "2056", redScore: "30", blueScore: "98", youtubeUrl: "https://youtu.be/dQw4w9WgXcQ", end: "3:40" }, { allianceSize: 3 });
     await assertSucceeds(setDoc(doc(asAdmin(), "libraryMatches", `${EVENT}_Q7`), buildManualMatchDoc(edited.match!, eventRef, created, { newPublished: true, newNeedsReview: false }, ADMIN_UID, "2026-11-06T00:00:00.000Z")));
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       const data = (await getDoc(doc(ctx.firestore(), "libraryMatches", `${EVENT}_Q7`))).data();
@@ -2285,7 +2301,7 @@ describe("P15: the documents lib/library really builds are accepted by the rules
   });
 
   it("runs the whole bulk flow: import 40 rows unpublished (one batch + audit) → members see none → Publish all → members see all", async () => {
-    const result = validateBulk({ text: `${CSV_HEADER}\n${csvRows(40)}`, event: eventRef, defaults: { matchType: null, youtubeUrl: "" }, existing: new Map() });
+    const result = validateBulk({ text: `${CSV_HEADER}\n${csvRows(40)}`, event: eventRef, defaults: { matchType: null, youtubeUrl: "" }, existing: new Map(), allianceSize: 3 });
     const summary = summarizeBulk(result);
     expect(summary).toMatchObject({ total: 40, valid: 40, errors: 0, creates: 40 });
 
@@ -2315,7 +2331,7 @@ describe("P15: the documents lib/library really builds are accepted by the rules
   });
 
   it("accepts the bulk follow-ups: set a video link on many, rename the event (copied onto its matches), unpublish, delete", async () => {
-    const parsed = validateRawMatch({ ...emptyRawMatch(), matchNumber: "1", red1: "1", red2: "2", blue1: "3", blue2: "4", redScore: "50", blueScore: "40" });
+    const parsed = validateRawMatch({ ...emptyRawMatch(), matchNumber: "1", red1: "1", red2: "2", red3: "5", blue1: "3", blue2: "4", blue3: "6", redScore: "50", blueScore: "40" }, { allianceSize: 3 });
     await assertSucceeds(setDoc(doc(asAdmin(), "libraryMatches", `${EVENT}_Q1`), buildManualMatchDoc(parsed.match!, eventRef, null, { newPublished: true, newNeedsReview: false }, ADMIN_UID, NOW)));
     const db = asAdmin();
     const m = doc(db, "libraryMatches", `${EVENT}_Q1`);

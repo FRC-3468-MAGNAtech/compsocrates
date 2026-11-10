@@ -1,21 +1,31 @@
+import { ALLIANCE_SIZE } from "@/config/alliance";
 import { parseCsv, serializeCsv } from "@/lib/analytics/csv";
 import type { MatchType } from "@/lib/ftc/types";
 import { originOf, type LibraryOrigin } from "@/lib/library/ids";
-import { manualMatchId, matchLabel, validateRawMatch, type EventRef, type RawField, type RawMatch, type ValidMatch } from "@/lib/library/manual-match";
+import { emptyRawMatch, manualMatchId, matchLabel, teamFieldsFor, validateRawMatch, type EventRef, type RawField, type RawMatch, type TeamField, type ValidMatch } from "@/lib/library/manual-match";
 
 // Bulk entry for ONE event (P15): a CSV file or text pasted from a spreadsheet,
 // validated row by row before anything is saved. Pure. The event is chosen
 // once by the caller and applied to every row — there is no event column to
 // repeat (an optional `eventCode` column is allowed, but must match).
 
-/** The template's columns, in order. `eventCode` is optional and not part of it. */
-export const BULK_COLUMNS = ["matchType", "matchNumber", "red1", "red2", "blue1", "blue2", "redScore", "blueScore", "redPenalty", "bluePenalty", "youtubeUrl", "startSec", "endSec", "notes"] as const;
-type BulkColumn = (typeof BULK_COLUMNS)[number] | "eventCode";
+const TAIL_COLUMNS = ["redScore", "blueScore", "redPenalty", "bluePenalty", "youtubeUrl", "startSec", "endSec", "notes"] as const;
+type TemplateColumn = "matchType" | "matchNumber" | TeamField | (typeof TAIL_COLUMNS)[number];
+
+/** The template's columns, in order, for an event of this alliance size (FTC: red1, red2, blue1, blue2; FRC adds red3 and blue3). `eventCode` is optional and not part of it. */
+export function bulkColumns(size: number = ALLIANCE_SIZE): TemplateColumn[] {
+  return ["matchType", "matchNumber", ...teamFieldsFor(size), ...TAIL_COLUMNS];
+}
+
+/** The configured event's template columns. */
+export const BULK_COLUMNS: readonly TemplateColumn[] = bulkColumns();
+type BulkColumn = TemplateColumn | "eventCode";
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const HEADER_ALIASES: Record<string, BulkColumn> = {
-  ...Object.fromEntries([...BULK_COLUMNS, "eventCode"].map((c) => [norm(c), c as BulkColumn])),
+  // Every column of the widest alliance, so a header naming red3/blue3 is understood whatever the configured size.
+  ...Object.fromEntries([...bulkColumns(3), "eventCode"].map((c) => [norm(c), c as BulkColumn])),
   type: "matchType",
   match: "matchNumber",
   matchno: "matchNumber",
@@ -28,15 +38,17 @@ const HEADER_ALIASES: Record<string, BulkColumn> = {
   event: "eventCode",
 };
 
-const REQUIRED_COLUMNS: BulkColumn[] = ["matchNumber", "red1", "red2", "blue1", "blue2", "redScore", "blueScore"];
+const requiredColumns = (size: number): BulkColumn[] => ["matchNumber", ...teamFieldsFor(size), "redScore", "blueScore"];
 
 const FIELD_FOR_COLUMN: Record<Exclude<BulkColumn, "eventCode">, RawField> = {
   matchType: "matchType",
   matchNumber: "matchNumber",
   red1: "red1",
   red2: "red2",
+  red3: "red3",
   blue1: "blue1",
   blue2: "blue2",
+  blue3: "blue3",
   redScore: "redScore",
   blueScore: "blueScore",
   redPenalty: "redPenalty",
@@ -52,8 +64,10 @@ const FIELD_LABELS: Record<RawField, string> = {
   matchNumber: "Match number",
   red1: "Red 1",
   red2: "Red 2",
+  red3: "Red 3",
   blue1: "Blue 1",
   blue2: "Blue 2",
+  blue3: "Blue 3",
   redScore: "Red score",
   blueScore: "Blue score",
   redPenalty: "Red penalty",
@@ -96,11 +110,12 @@ export type BulkResult = {
   rows: BulkRow[];
 };
 
-export function bulkTemplateCsv(): string {
+export function bulkTemplateCsv(size: number = ALLIANCE_SIZE): string {
+  const red = (a: string[]) => a.slice(0, size);
   return serializeCsv([
-    [...BULK_COLUMNS],
-    ["Q", "1", "254", "971", "118", "1114", "142", "98", "6", "0", "", "", "", ""],
-    ["Q", "2", "6672", "8110", "3468", "7244", "76", "104", "0", "12", "", "", "", "Example row — replace or delete"],
+    bulkColumns(size),
+    ["Q", "1", ...red(["254", "971", "1678"]), ...red(["118", "1114", "2056"]), "142", "98", "6", "0", "", "", "", ""],
+    ["Q", "2", ...red(["6672", "8110", "148"]), ...red(["3468", "7244", "4414"]), "76", "104", "0", "12", "", "", "", "Example row — replace or delete"],
   ]);
 }
 
@@ -125,21 +140,23 @@ export type BulkInput = {
   defaults: BulkDefaults;
   /** Ids already in the target event, with their origin — to tell create from update and refuse to overwrite API matches. */
   existing: ReadonlyMap<string, { origin?: unknown }>;
+  /** Robots per alliance (defaults to the configured event's). */
+  allianceSize?: number;
 };
 
-export function validateBulk({ text, event, defaults, existing }: BulkInput): BulkResult {
+export function validateBulk({ text, event, defaults, existing, allianceSize = ALLIANCE_SIZE }: BulkInput): BulkResult {
   const table = splitBulkText(text);
   if (table.length === 0) return { columnErrors: ["Nothing to import — paste some rows or choose a file."], hasHeader: false, rows: [] };
 
   const headerColumns = detectHeader(table[0]);
   const dataStart = headerColumns ? 1 : 0;
   // Without a header the columns are the template's, in order.
-  const columns: (BulkColumn | null)[] = headerColumns ?? [...BULK_COLUMNS];
+  const columns: (BulkColumn | null)[] = headerColumns ?? bulkColumns(allianceSize);
 
   const columnErrors: string[] = [];
   if (headerColumns) {
     const present = new Set(headerColumns.filter(Boolean));
-    for (const col of REQUIRED_COLUMNS) if (!present.has(col)) columnErrors.push(`Missing column: ${col}.`);
+    for (const col of requiredColumns(allianceSize)) if (!present.has(col)) columnErrors.push(`Missing column: ${col}.`);
     if (!present.has("matchType") && !defaults.matchType) columnErrors.push("Missing column: matchType (or choose a default match type).");
   }
   if (columnErrors.length > 0) return { columnErrors, hasHeader: true, rows: [] };
@@ -149,7 +166,7 @@ export function validateBulk({ text, event, defaults, existing }: BulkInput): Bu
     const cells = table[i];
     if (cells.every((c) => c.trim() === "")) continue;
 
-    const raw: RawMatch = { matchType: "", matchNumber: "", red1: "", red2: "", blue1: "", blue2: "", redScore: "", blueScore: "", redPenalty: "", bluePenalty: "", youtubeUrl: "", start: "", end: "", notes: "" };
+    const raw: RawMatch = { ...emptyRawMatch(), matchType: "" };
     let rowEventCode = "";
     columns.forEach((col, c) => {
       if (!col) return;
@@ -159,7 +176,7 @@ export function validateBulk({ text, event, defaults, existing }: BulkInput): Bu
     });
 
     const errors: string[] = [];
-    const result = validateRawMatch(raw, { defaultVideoUrl: defaults.youtubeUrl, defaultMatchType: defaults.matchType });
+    const result = validateRawMatch(raw, { defaultVideoUrl: defaults.youtubeUrl, defaultMatchType: defaults.matchType, allianceSize });
     for (const [field, message] of Object.entries(result.errors)) errors.push(`${FIELD_LABELS[field as RawField]}: ${message}`);
     if (rowEventCode !== "" && rowEventCode.toUpperCase() !== event.eventCode.toUpperCase()) {
       errors.push(`Event: this row's eventCode "${rowEventCode}" doesn't match the target event ${event.eventCode}. Leave it blank or fix it.`);

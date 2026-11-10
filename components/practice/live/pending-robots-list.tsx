@@ -26,7 +26,7 @@ export function PendingRobotsList({ onStart }: { onStart: (target: ResumePending
       </h2>
       <div className="flex flex-col gap-2">
         {pending.map((p) => (
-          <div key={p.sessionId} className="glass-card flex flex-wrap items-center gap-3 p-3">
+          <div key={`${p.sessionId}-${p.teamNumber}`} className="glass-card flex flex-wrap items-center gap-3 p-3">
             <Badge variant="glass" className="font-mono">
               {MATCH_TYPE_PREFIX[p.matchType]}
               {p.matchNumber}

@@ -217,3 +217,31 @@ describe("buildSessionRescorePlan — live", () => {
     expect(plan).toHaveLength(0);
   });
 });
+
+describe("buildSessionRescorePlan — 3-robot alliances", () => {
+  const match3 = (): LibraryMatch => {
+    const base = libraryMatch({ teams: [100, 200, 300], score: 90 });
+    return { ...base, alliances: { ...base.alliances, blue: { ...base.alliances.blue, teams: [400, 500, 600] } } };
+  };
+  const lib3 = new Map([["USWABON1_Q1", match3()]]);
+
+  it("rescores a solo session once all three robots' entries exist, and skips one that has only two", () => {
+    const solo = session({ id: "s1", robots: [100, 200, 300], accuracy: 12 });
+    const three = [100, 200, 300].map((teamNumber, i) => entry({ id: `e${i + 1}`, total: 30, sessionId: "s1", teamNumber }));
+    const plan = buildSessionRescorePlan([solo], three, lib3, new Map(), {});
+    expect(plan).toHaveLength(1);
+    expect(plan[0].sessionIds).toEqual(["s1"]);
+    expect(plan[0].entryWrites.every((w) => ["e1", "e2", "e3"].includes(w.entryId))).toBe(true);
+    expect(buildSessionRescorePlan([solo], three.slice(0, 2), lib3, new Map(), {})).toEqual([]);
+  });
+
+  it("rescores a lobby group only when all three players' sessions are there", () => {
+    const group = [100, 200, 300].map((robot, i) => session({ id: `s${i + 1}`, kind: "lobby", lobbyId: "LB-1", pairId: "pair-1", robots: [robot] }));
+    const entries = group.map((s, i) => entry({ id: `e${i + 1}`, total: 30, sessionId: s.id, teamNumber: s.robots[0] }));
+    const plan = buildSessionRescorePlan(group, entries, lib3, new Map(), {});
+    expect(plan).toHaveLength(1);
+    expect(plan[0].sessionIds).toEqual(["s1", "s2", "s3"]);
+    expect(plan[0].scoutNames).toHaveLength(3);
+    expect(buildSessionRescorePlan(group.slice(0, 2), entries, lib3, new Map(), {})).toEqual([]);
+  });
+});

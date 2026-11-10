@@ -129,3 +129,23 @@ describe("evaluatePracticeSessionFlags", () => {
     expect(result).toEqual([]);
   });
 });
+
+describe("evaluatePracticeSessionFlags — 3-robot alliances", () => {
+  const zero = makeEntry();
+  const nonZero = makeEntry({ score: { auto: 20, teleop: 0, endgame: 0, total: 20 } });
+  const base = { mode: "trial" as const, videoProgressAtFinish: null, priorCompletedAttempt: false };
+
+  it("flags Zero Entries only when all three entries score zero", () => {
+    expect(evaluatePracticeSessionFlags({ ...base, entries: [zero, zero, zero] }).map((f) => f.type)).toContain("zero-entries");
+    expect(evaluatePracticeSessionFlags({ ...base, entries: [zero, zero, nonZero] }).map((f) => f.type)).not.toContain("zero-entries");
+  });
+
+  it("flags Unrealistic Entry when the third entry trips the rule", () => {
+    const unrealistic = makeEntry({ fields: { ...initialScoutEntryFields, autoTipHive: 10 }, score: { auto: 200, teleop: 0, endgame: 0, total: 200 } });
+    expect(evaluatePracticeSessionFlags({ ...base, entries: [nonZero, nonZero, unrealistic] }).map((f) => f.type)).toContain("unrealistic-entry");
+  });
+
+  it("flags nothing for no entries at all", () => {
+    expect(evaluatePracticeSessionFlags({ ...base, entries: [] })).toEqual([]);
+  });
+});

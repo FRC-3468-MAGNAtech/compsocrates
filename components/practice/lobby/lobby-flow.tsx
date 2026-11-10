@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronLeft, Users } from "lucide-react";
+import { ALLIANCE_SIZE } from "@/config/alliance";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { LobbyWaitingRoom } from "@/components/practice/lobby/lobby-waiting-room";
@@ -90,7 +91,7 @@ export function LobbyFlow({
           <Users className="h-8 w-8 text-[var(--color-primary)]" />
           <h2 className="text-lg font-bold">Host a Live Practice Lobby</h2>
           <p className="max-w-sm text-sm text-[var(--muted-foreground)]">
-            Everyone scouts the same match at once, in pairs — results show a winner and a leaderboard, like Kahoot.
+            Everyone scouts the same match at once, in {ALLIANCE_SIZE === 2 ? "pairs" : `groups of ${ALLIANCE_SIZE}`} — results show a winner and a leaderboard, like Kahoot.
           </p>
           {error && <LoadError failure={error} />}
           <Button size="lg" disabled={creating} onClick={handleHost}>

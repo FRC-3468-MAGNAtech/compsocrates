@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { parseMatchType } from "@/lib/library/ids";
-import { emptyRawMatch, libraryMatchToValid, manualMatchId, matchToRaw, matchWarnings, nextMatchNumber, validateRawMatch, type RawField, type RawMatch } from "@/lib/library/manual-match";
+import { ALLIANCE_SIZE } from "@/config/alliance";
+import { allianceTeamFields, emptyRawMatch, libraryMatchToValid, manualMatchId, matchToRaw, matchWarnings, nextMatchNumber, validateRawMatch, type RawField, type RawMatch } from "@/lib/library/manual-match";
 import { countCompletedSessionsForMatch, upsertManualMatches, type Actor, type LibraryEvent } from "@/lib/library/store";
 import type { LibraryMatch } from "@/lib/match-library";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,9 @@ export type MatchDialogMode = { kind: "new" } | { kind: "edit"; match: LibraryMa
  * fast entry and bulk import); sanity warnings never block saving. Mount with a
  * fresh `key` per open.
  */
+// One input per robot on the alliance, plus its score and penalty: full literal class names so Tailwind picks them up.
+const ALLIANCE_ROW_COLUMNS: Record<number, string> = { 2: "sm:grid-cols-4", 3: "sm:grid-cols-5" };
+
 export function ManualMatchDialog({
   open,
   onOpenChange,
@@ -116,7 +120,7 @@ export function ManualMatchDialog({
   const title = mode.kind === "edit" ? "Edit match" : mode.kind === "duplicate" ? "Duplicate match" : "Add match";
 
   const teamField = (field: RawField, label: string, tone: "red" | "blue") => (
-    <div>
+    <div key={field}>
       <Label htmlFor={`mm-${field}`} className={tone === "red" ? "text-red-300" : "text-blue-300"}>
         {label}
       </Label>
@@ -184,15 +188,13 @@ export function ManualMatchDialog({
             {editing && <p className="col-span-full text-xs text-[var(--muted-foreground)]">To renumber a match, duplicate it and delete the original.</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 rounded-2xl border border-red-400/20 bg-red-500/5 p-3 sm:grid-cols-4">
-            {teamField("red1", "Red team 1", "red")}
-            {teamField("red2", "Red team 2", "red")}
+          <div className={cn("grid grid-cols-2 gap-3 rounded-2xl border border-red-400/20 bg-red-500/5 p-3", ALLIANCE_ROW_COLUMNS[ALLIANCE_SIZE] ?? "sm:grid-cols-4")}>
+            {allianceTeamFields("red").map((field, i) => teamField(field, `Red team ${i + 1}`, "red"))}
             {numberField("redScore", "Red score", "red")}
             {numberField("redPenalty", "Red penalty pts", "red")}
           </div>
-          <div className="grid grid-cols-2 gap-3 rounded-2xl border border-blue-400/20 bg-blue-500/5 p-3 sm:grid-cols-4">
-            {teamField("blue1", "Blue team 1", "blue")}
-            {teamField("blue2", "Blue team 2", "blue")}
+          <div className={cn("grid grid-cols-2 gap-3 rounded-2xl border border-blue-400/20 bg-blue-500/5 p-3", ALLIANCE_ROW_COLUMNS[ALLIANCE_SIZE] ?? "sm:grid-cols-4")}>
+            {allianceTeamFields("blue").map((field, i) => teamField(field, `Blue team ${i + 1}`, "blue"))}
             {numberField("blueScore", "Blue score", "blue")}
             {numberField("bluePenalty", "Blue penalty pts", "blue")}
           </div>

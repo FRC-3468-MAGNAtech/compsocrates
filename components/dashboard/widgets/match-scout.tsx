@@ -7,6 +7,7 @@ import { Widget } from "@/components/dashboard/widget";
 import { KeyNumber, useNow } from "@/components/dashboard/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { slotLabel } from "@/config/alliance";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { useDashboard } from "@/lib/dashboard/data";
@@ -15,8 +16,6 @@ import { timeAgo } from "@/lib/dashboard/time";
 import { computePendingLiveRobots } from "@/lib/live/pending";
 import type { ScoutCategory } from "@/lib/scout-stats/types";
 import { cn } from "@/lib/utils";
-
-const SLOT_LABEL = { red1: "Red 1", red2: "Red 2", blue1: "Blue 1", blue2: "Blue 2" } as const;
 
 /** My next unscouted assignment, with a button that opens the Match Scout Form with it already loaded. */
 export function NextAssignmentWidget() {
@@ -44,7 +43,7 @@ export function NextAssignmentWidget() {
       {slot && (
         <>
           <KeyNumber
-            label={`${MATCH_TYPE_PREFIX[slot.matchType]}${slot.matchNumber} · ${SLOT_LABEL[slot.slot]}`}
+            label={`${MATCH_TYPE_PREFIX[slot.matchType]}${slot.matchNumber} · ${slotLabel(slot.slot)}`}
             value={<>Team {slot.teamNumber}</>}
             hint="Scout this robot next"
           />
@@ -122,7 +121,7 @@ export function ResumeWidget() {
           <div className="text-sm font-semibold">
             {pending.length} pending live {pending.length === 1 ? "robot" : "robots"}
           </div>
-          <div className="text-xs text-[var(--muted-foreground)]">An alliance partner nobody has scouted yet.</div>
+          <div className="text-xs text-[var(--muted-foreground)]">An alliance robot nobody has scouted yet.</div>
         </div>
       )}
       <Link href="/practice-scouting" className="mt-auto self-start">

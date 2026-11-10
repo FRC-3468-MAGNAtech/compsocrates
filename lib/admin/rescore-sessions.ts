@@ -92,13 +92,13 @@ export function buildSessionRescorePlan(
   const completed = sessions.filter((s) => s.status === "completed" && matchesFilter(s, filter));
   const patches: SessionRescorePatch[] = [];
 
-  // Solo: one session owns both robots' entries.
+  // Solo: one session owns every robot's entries (2 for FTC, 3 for FRC).
   for (const session of completed.filter((s) => s.kind === "solo")) {
     if (!session.libraryMatchId || !session.alliance) continue;
     const match = libraryMatchesById.get(session.libraryMatchId);
     const sessionEntries = entriesBySessionId.get(session.id) ?? [];
-    if (!match || sessionEntries.length !== 2) continue;
-    const rescored = sessionEntries.map((e) => rescoredEntry(e, resolveForm)) as [ScoutEntry, ScoutEntry];
+    if (!match || sessionEntries.length !== session.robots.length) continue;
+    const rescored = sessionEntries.map((e) => rescoredEntry(e, resolveForm));
     const result = resolveLobbyPairScoring(match, session.alliance, rescored, session.mode, false);
 
     const entryWrites = sessionEntries
@@ -122,7 +122,7 @@ export function buildSessionRescorePlan(
     });
   }
 
-  // Lobby: two sessions (one per player) share a pairId.
+  // Lobby: the group's sessions (one per player: 2 for FTC, 3 for FRC) share a pairId.
   const lobbyGroups = new Map<string, PracticeSession[]>();
   for (const session of completed.filter((s) => s.kind === "lobby")) {
     if (!session.lobbyId || !session.pairId) continue;
@@ -132,37 +132,33 @@ export function buildSessionRescorePlan(
     lobbyGroups.set(key, list);
   }
   for (const group of lobbyGroups.values()) {
-    if (group.length !== 2) continue;
-    const [a, b] = group;
+    const [a] = group;
     if (!a.libraryMatchId || !a.alliance) continue;
     const match = libraryMatchesById.get(a.libraryMatchId);
-    const entryA = (entriesBySessionId.get(a.id) ?? [])[0];
-    const entryB = (entriesBySessionId.get(b.id) ?? [])[0];
-    if (!match || !entryA || !entryB) continue;
-    const [rescoredA, rescoredB] = [rescoredEntry(entryA, resolveForm), rescoredEntry(entryB, resolveForm)];
-    const result = resolveLobbyPairScoring(match, a.alliance, [rescoredA, rescoredB], a.mode, false);
+    // A complete group has one session per robot on the alliance, as the match itself lists them.
+    if (!match || group.length !== match.alliances[a.alliance].teams.length) continue;
+    const groupEntries = group.map((s) => (entriesBySessionId.get(s.id) ?? [])[0]);
+    if (groupEntries.some((e) => !e)) continue;
+    const originals = groupEntries as ScoutEntry[];
+    const rescoredAll = originals.map((e) => rescoredEntry(e, resolveForm));
+    const result = resolveLobbyPairScoring(match, a.alliance, rescoredAll, a.mode, false);
 
-    const entryWrites = [entryScoreWrite(entryA, rescoredA), entryScoreWrite(entryB, rescoredB)].filter(
-      (w): w is NonNullable<typeof w> => w !== null
-    );
+    const entryWrites = originals.map((orig, i) => entryScoreWrite(orig, rescoredAll[i])).filter((w): w is NonNullable<typeof w> => w !== null);
     const sessionPatch = { accuracy: result.accuracy, scoutedTotal: result.scoutedTotal, officialScore: result.officialScore, penaltyPoints: result.penaltyPoints, flags: result.flags };
 
     patches.push({
-      sessionIds: [a.id, b.id],
+      sessionIds: group.map((s) => s.id),
       kind: "lobby",
       matchLabel: matchLabelFor(a),
-      scoutNames: [a.scoutName, b.scoutName],
+      scoutNames: group.map((s) => s.scoutName),
       before: a.accuracy,
       after: result.accuracy,
-      sessionWrites: [
-        { sessionId: a.id, patch: sessionPatch },
-        { sessionId: b.id, patch: sessionPatch },
-      ],
+      sessionWrites: group.map((s) => ({ sessionId: s.id, patch: sessionPatch })),
       entryWrites,
     });
   }
 
-  // Live: two sessions (one per robot) share eventCode+matchType+matchNumber+alliance.
+  // Live: the alliance's sessions (one per robot: 2 for FTC, 3 for FRC) share eventCode+matchType+matchNumber+alliance.
   const liveGroups = new Map<string, PracticeSession[]>();
   for (const session of completed.filter((s) => s.kind === "live")) {
     if (!session.eventCode || !session.matchType || session.matchNumber === null || !session.alliance) continue;
@@ -172,24 +168,24 @@ export function buildSessionRescorePlan(
     liveGroups.set(key, list);
   }
   for (const group of liveGroups.values()) {
-    if (group.length !== 2) continue;
-    const [a, b] = group;
+    const [a] = group;
     const matchKey = `${a.eventCode}|${a.matchType}|${a.matchNumber}`;
     const match = liveMatchesByKey.get(matchKey);
-    const entryA = (entriesBySessionId.get(a.id) ?? [])[0];
-    const entryB = (entriesBySessionId.get(b.id) ?? [])[0];
-    if (!match || !entryA || !entryB || !a.alliance) continue;
-    const [rescoredA, rescoredB] = [rescoredEntry(entryA, resolveForm), rescoredEntry(entryB, resolveForm)];
-    const result = resolveLiveAllianceScoring(match, a.alliance, [rescoredA, rescoredB]);
+    if (!match || !a.alliance) continue;
+    // A complete group has one session per robot on the alliance, as the official match lists them.
+    if (group.length !== (a.alliance === "red" ? match.redTeams : match.blueTeams).length) continue;
+    const groupEntries = group.map((s) => (entriesBySessionId.get(s.id) ?? [])[0]);
+    if (groupEntries.some((e) => !e)) continue;
+    const originals = groupEntries as ScoutEntry[];
+    const rescoredAll = originals.map((e) => rescoredEntry(e, resolveForm));
+    const result = resolveLiveAllianceScoring(match, a.alliance, rescoredAll);
     if (!result) continue; // official score not posted
 
-    const entryWrites = [entryScoreWrite(entryA, rescoredA), entryScoreWrite(entryB, rescoredB)].filter(
-      (w): w is NonNullable<typeof w> => w !== null
-    );
+    const entryWrites = originals.map((orig, i) => entryScoreWrite(orig, rescoredAll[i])).filter((w): w is NonNullable<typeof w> => w !== null);
     // Live entries also get the real-event-style accuracy/autoFlags pair
     // (see `resolveLiveAllianceScoring`'s own doc comment) — always written,
     // regardless of whether the score itself changed.
-    for (const id of [entryA.id, entryB.id]) {
+    for (const id of originals.map((e) => e.id)) {
       entryWrites.push({ entryId: id, patch: { accuracy: result.entryAccuracy, autoFlags: result.entryAutoFlags[id] ?? [] } });
     }
     const sessionPatch = {
@@ -201,16 +197,13 @@ export function buildSessionRescorePlan(
     };
 
     patches.push({
-      sessionIds: [a.id, b.id],
+      sessionIds: group.map((s) => s.id),
       kind: "live",
       matchLabel: matchLabelFor(a),
-      scoutNames: [a.scoutName, b.scoutName],
+      scoutNames: group.map((s) => s.scoutName),
       before: a.accuracy,
       after: result.sessionAccuracy,
-      sessionWrites: [
-        { sessionId: a.id, patch: sessionPatch },
-        { sessionId: b.id, patch: sessionPatch },
-      ],
+      sessionWrites: group.map((s) => ({ sessionId: s.id, patch: sessionPatch })),
       entryWrites,
     });
   }

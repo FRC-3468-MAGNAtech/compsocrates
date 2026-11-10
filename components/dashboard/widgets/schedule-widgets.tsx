@@ -47,9 +47,18 @@ export function NextMatchWidget({ title = "Next match", showOpponents = false, s
           </div>
           <Countdown startMs={next.startMs} timeZone={t.timeZone} large={size !== "small"} />
           <div className="text-sm">
-            <span className="text-[var(--muted-foreground)]">Partner </span>
-            {next.partner !== null ? <TeamLink teamNumber={next.partner} eventCode={code} /> : <span className="text-[var(--muted-foreground)]">TBD</span>}
-            {next.partner !== null && t.teamNames.get(next.partner) && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">{t.teamNames.get(next.partner)}</span>}
+            <span className="text-[var(--muted-foreground)]">{next.partners.length > 1 ? "Partners " : "Partner "}</span>
+            {next.partners.length === 0 ? (
+              <span className="text-[var(--muted-foreground)]">TBD</span>
+            ) : (
+              next.partners.map((p, i) => (
+                <span key={p}>
+                  {i > 0 && <span className="text-[var(--muted-foreground)]"> · </span>}
+                  <TeamLink teamNumber={p} eventCode={code} />
+                  {t.teamNames.get(p) && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">{t.teamNames.get(p)}</span>}
+                </span>
+              ))
+            )}
           </div>
           {showOpponents && (
             <div className="text-sm">
@@ -96,7 +105,9 @@ export function UpcomingMatchesWidget({ title = "Upcoming schedule", limit = 5, 
             <span className="min-w-10 rounded-lg bg-white/10 px-2 py-0.5 text-center font-mono text-xs font-semibold">{m.label}</span>
             <span className="flex-1 truncate text-xs text-[var(--muted-foreground)]">{m.startMs !== null ? `Scheduled ${formatScheduled(m.startMs, t.timeZone)}` : "Time TBD"}</span>
             <AllianceChip color={m.alliance} className="hidden sm:inline-flex" />
-            {m.partner !== null && <TeamLink teamNumber={m.partner} eventCode={code} className="text-xs" />}
+            {m.partners.map((p) => (
+              <TeamLink key={p} teamNumber={p} eventCode={code} className="text-xs" />
+            ))}
           </div>
         ))}
       </div>

@@ -90,9 +90,15 @@ export function HeaderStrip() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-lg bg-white/10 px-2.5 py-1 font-mono text-sm font-semibold">{next.label}</span>
               <AllianceChip color={next.alliance} />
-              {next.partner !== null && (
+              {next.partners.length > 0 && (
                 <span className="text-xs text-[var(--muted-foreground)]">
-                  with <TeamLink teamNumber={next.partner} eventCode={code} className="text-xs text-[var(--foreground)]" />
+                  with{" "}
+                  {next.partners.map((p, i) => (
+                    <span key={p}>
+                      {i > 0 && ", "}
+                      <TeamLink teamNumber={p} eventCode={code} className="text-xs text-[var(--foreground)]" />
+                    </span>
+                  ))}
                 </span>
               )}
             </div>

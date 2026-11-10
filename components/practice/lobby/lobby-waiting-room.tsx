@@ -15,7 +15,7 @@ import { useAuth } from "@/lib/auth";
 import { useTeamDoc } from "@/lib/team";
 import { useLibraryMatchesBySeason, type LibraryMatch } from "@/lib/match-library";
 import { pickRandomLobbyMatch, sortMatchesByDifficultyTarget } from "@/lib/lobby/match-select";
-import { assignPairs } from "@/lib/lobby/pairing";
+import { assignPairs, canStartLobby, lobbyGroupSize, lobbyStartBlocker } from "@/lib/lobby/pairing";
 import { mulberry32, randomSeed } from "@/lib/scheduler/rng";
 import { isPlayerActive, leaveLobbyPlayer, resetPlayerSubmitted, updateLobby, type LobbyDoc, type LobbyPlayer } from "@/lib/lobby";
 import { LOBBY_CONFIG } from "@/lib/lobby/config";
@@ -70,14 +70,10 @@ export function LobbyWaitingRoom({
   }, [user, myPlayer?.submitted, lobby.id]);
 
   const scoutingPlayers = players.filter((p) => p.uid !== lobby.hostUid || lobby.settings.hostScouts);
-  const canStart = scoutingPlayers.length >= 4 && scoutingPlayers.length % 2 === 0;
-  const startDisabledReason = !chosenMatch
-    ? "Waiting on a match to be chosen."
-    : scoutingPlayers.length < 4
-      ? "Need an even number of players, at least 4."
-      : scoutingPlayers.length % 2 !== 0
-        ? "Need an even number of players, at least 4."
-        : null;
+  // One player per robot, so a group is one alliance's robot count (a pair for FTC, three for FRC).
+  const groupSize = lobbyGroupSize(chosenMatch ? { red: chosenMatch.alliances.red.teams, blue: chosenMatch.alliances.blue.teams } : null);
+  const canStart = canStartLobby(scoutingPlayers.length, groupSize);
+  const startDisabledReason = !chosenMatch ? "Waiting on a match to be chosen." : lobbyStartBlocker(scoutingPlayers.length, groupSize);
 
   const handleCopyCode = async () => {
     try {
@@ -95,8 +91,8 @@ export function LobbyWaitingRoom({
     setError(null);
     try {
       const allianceTeams = {
-        red: chosenMatch.alliances.red.teams as [number, number],
-        blue: chosenMatch.alliances.blue.teams as [number, number],
+        red: chosenMatch.alliances.red.teams,
+        blue: chosenMatch.alliances.blue.teams,
       };
       const pairing = assignPairs(
         scoutingPlayers.map((p) => p.uid),

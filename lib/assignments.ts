@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/ftc/types";
+import { parseScheduleSlots } from "@/lib/scheduler/parse";
 import type { RotationPattern, ScheduleSlot } from "@/lib/scheduler/types";
 
 export type AssignmentMatchSource = "event" | "practice" | "live";
@@ -44,6 +45,26 @@ export type AssignmentsDoc = {
 
 const COLLECTION = "assignments";
 
+function normalizeVersion(raw: unknown): AssignmentVersion | null {
+  if (!raw || typeof raw !== "object") return null;
+  return { ...(raw as AssignmentVersion), slots: parseScheduleSlots((raw as { slots?: unknown }).slots) };
+}
+
+/**
+ * A stored `assignments/{teamId}_{eventCode}` doc as `AssignmentsDoc`. Same versioned
+ * `current.slots[]` model as the 2-robot app: a legacy doc with only red1/red2/blue1/blue2
+ * reads as-is, and a 3-robot doc just also has red3/blue3 slots.
+ */
+export function parseAssignmentsDoc(id: string, data: Record<string, unknown>): AssignmentsDoc {
+  return {
+    id,
+    teamId: typeof data.teamId === "string" ? data.teamId : "",
+    eventCode: typeof data.eventCode === "string" ? data.eventCode : "",
+    current: normalizeVersion(data.current),
+    previous: normalizeVersion(data.previous),
+  };
+}
+
 function docId(teamId: string, eventCode: string): string {
   return `${teamId}_${eventCode}`;
 }
@@ -63,7 +84,7 @@ export function useAssignments(teamId: string | null, eventCode: string | null) 
     const unsubscribe = onSnapshot(
       doc(db, COLLECTION, docId(teamId, eventCode)),
       (snap) => {
-        setAssignments(snap.exists() ? ({ id: snap.id, ...snap.data() } as AssignmentsDoc) : null);
+        setAssignments(snap.exists() ? parseAssignmentsDoc(snap.id, snap.data()) : null);
         setLoaded(true);
       },
       (err) => {

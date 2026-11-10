@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getMatchesForEvent, getRankingsForEvent, getTeamsForEvent } from "@/lib/ftc/actions";
+import { getMatchesForEvent, getRankingsForEvent, getTeamsForEvent } from "@/lib/events/actions";
 import { ftcMatchToOfficial, type OfficialMatch } from "@/lib/analytics/match-breakdown";
 import type { FtcRanking, FtcTeam, MatchType } from "@/lib/ftc/types";
 

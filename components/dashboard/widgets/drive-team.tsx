@@ -9,7 +9,7 @@ import { buildMatchBreakdowns } from "@/lib/analytics/match-breakdown";
 import { useDashboard, useOurTeamEvent } from "@/lib/dashboard/data";
 import { cn } from "@/lib/utils";
 
-/** The partner and both opponents for the next match: average, auto/teleop strengths, and reliability — straight from scouted `TeamStats`. */
+/** The partner(s) and opponents for the next match (one partner and two opponents for FTC, two and three for FRC): average, auto/teleop strengths, and reliability — straight from scouted `TeamStats`. */
 export function MatchPreviewWidget({ opponentsOnly = false, title }: { opponentsOnly?: boolean; title?: string }) {
   const d = useDashboard();
   const next = d.nextMatch;
@@ -18,7 +18,7 @@ export function MatchPreviewWidget({ opponentsOnly = false, title }: { opponents
 
   const rows = next
     ? [
-        ...(opponentsOnly || next.partner === null ? [] : [{ team: next.partner, role: "Partner" }]),
+        ...(opponentsOnly ? [] : next.partners.map((team) => ({ team, role: "Partner" }))),
         ...next.opponents.map((t) => ({ team: t, role: "Opponent" })),
       ]
     : [];

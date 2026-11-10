@@ -2,23 +2,26 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown, Film } from "lucide-react";
+import { slotLabel } from "@/config/alliance";
 import { FieldError, MATCH_TYPE_OPTIONS, WarningList, selectClass } from "@/components/admin/library/shared";
 import { VideoMarker } from "@/components/admin/library/video-marker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { parseMatchType } from "@/lib/library/ids";
-import { emptyRawMatch, libraryMatchToValid, matchLabel, matchWarnings, nextMatchNumber, validateRawMatch, type RawField, type RawMatch } from "@/lib/library/manual-match";
+import { emptyRawMatch, libraryMatchToValid, matchLabel, matchWarnings, nextMatchNumber, teamFieldsFor, validateRawMatch, type RawField, type RawMatch } from "@/lib/library/manual-match";
 import { upsertManualMatches, type Actor, type LibraryEvent } from "@/lib/library/store";
 import type { LibraryMatch } from "@/lib/match-library";
 import { cn } from "@/lib/utils";
 
-const COLUMNS: { field: RawField; label: string; width: string; tone?: "red" | "blue" }[] = [
+type Column = { field: RawField; label: string; width: string; tone?: "red" | "blue" };
+
+/** One team column per robot on each alliance (Red 1..n, Blue 1..n), n = the configured alliance size. */
+const TEAM_COLUMNS: Column[] = teamFieldsFor().map((field) => ({ field, label: slotLabel(field), width: "w-20", tone: field.startsWith("red") ? "red" : "blue" }));
+
+const COLUMNS: Column[] = [
   { field: "matchNumber", label: "#", width: "w-16" },
-  { field: "red1", label: "Red 1", width: "w-20", tone: "red" },
-  { field: "red2", label: "Red 2", width: "w-20", tone: "red" },
-  { field: "blue1", label: "Blue 1", width: "w-20", tone: "blue" },
-  { field: "blue2", label: "Blue 2", width: "w-20", tone: "blue" },
+  ...TEAM_COLUMNS,
   { field: "redScore", label: "Red score", width: "w-20", tone: "red" },
   { field: "blueScore", label: "Blue score", width: "w-20", tone: "blue" },
   { field: "redPenalty", label: "Red pen.", width: "w-16", tone: "red" },

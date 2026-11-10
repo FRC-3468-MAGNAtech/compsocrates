@@ -9,7 +9,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { HoverTip } from "@/components/ui/hover-tip";
 import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getTeamByNumber } from "@/lib/ftc/actions";
+import { getTeamByNumber } from "@/lib/events/actions";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
 import { useTeamMembers } from "@/lib/team-members";

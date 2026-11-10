@@ -67,28 +67,20 @@ export async function resolveLobbyResults(db: Firestore, lobbyId: string): Promi
   let resolved = 0;
   for (const pair of lobby.pairing) {
     const docs = sessionsByPairId.get(pair.pairId);
-    if (!docs || docs.length !== 2) continue; // incomplete pair — "did not finish"
+    // The group is complete when every one of its players (2 for FTC, 3 for FRC) has a completed session.
+    if (!docs || docs.length !== pair.playerUids.length) continue; // incomplete group — "did not finish"
 
-    const [a, b] = docs;
-    const da = a.data();
-    const entryIdA: string | undefined = da.entryIds?.[0];
-    const entryIdB: string | undefined = b.data().entryIds?.[0];
-    if (!entryIdA || !entryIdB) continue;
+    const entryIds = docs.map((d) => d.data().entryIds?.[0] as string | undefined);
+    if (entryIds.some((id) => !id)) continue;
 
-    const [entrySnapA, entrySnapB] = await Promise.all([
-      db.collection("scoutEntries").doc(entryIdA).get(),
-      db.collection("scoutEntries").doc(entryIdB).get(),
-    ]);
-    if (!entrySnapA.exists || !entrySnapB.exists) continue;
-    const entryA = { id: entrySnapA.id, ...entrySnapA.data() } as ScoutEntry;
-    const entryB = { id: entrySnapB.id, ...entrySnapB.data() } as ScoutEntry;
+    const entrySnaps = await Promise.all(entryIds.map((id) => db.collection("scoutEntries").doc(id!).get()));
+    if (entrySnaps.some((s) => !s.exists)) continue;
+    const groupEntries = entrySnaps.map((s) => ({ id: s.id, ...s.data() }) as ScoutEntry);
 
-    const [priorA, priorB] = await Promise.all([
-      hadPriorCompletedAttempt(db, lobby.teamId, a.data().uid, lobby.libraryMatchId, pair.alliance, a.id),
-      hadPriorCompletedAttempt(db, lobby.teamId, b.data().uid, lobby.libraryMatchId, pair.alliance, b.id),
-    ]);
+    const libraryMatchId = lobby.libraryMatchId;
+    const priors = await Promise.all(docs.map((d) => hadPriorCompletedAttempt(db, lobby.teamId, d.data().uid, libraryMatchId, pair.alliance, d.id)));
 
-    const result = resolveLobbyPairScoring(match, pair.alliance, [entryA, entryB], lobby.mode, priorA || priorB);
+    const result = resolveLobbyPairScoring(match, pair.alliance, groupEntries, lobby.mode, priors.some(Boolean));
 
     const batch = db.batch();
     for (const sessionDoc of docs) {

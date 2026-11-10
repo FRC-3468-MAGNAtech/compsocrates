@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useForms } from "@/lib/forms/forms-context";
 import { SEASONS, getSeason, DEFAULT_SEASON_ID } from "@/lib/seasons";
-import { getMatchesForEvent } from "@/lib/ftc/actions";
+import { getMatchesForEvent } from "@/lib/events/actions";
 import { importLibraryEvent, useAllLibraryMatches } from "@/lib/match-library";
 import { useAllTeamPracticeSessions } from "@/lib/practice-sessions";
 import { useTeamScoutEntries } from "@/lib/scout-entries";

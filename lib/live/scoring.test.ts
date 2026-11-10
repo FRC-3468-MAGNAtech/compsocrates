@@ -94,3 +94,33 @@ describe("resolveLiveAllianceScoring", () => {
     expect(unrealistic?.dismissed).toBe(true);
   });
 });
+
+describe("resolveLiveAllianceScoring — 3-robot alliances", () => {
+  const m = match({ redTeams: [100, 200, 300], blueTeams: [400, 500, 600], redScore: 90 });
+  const three = [
+    entry({ id: "e1", teamNumber: 100, total: 30 }),
+    entry({ id: "e2", teamNumber: 200, total: 30 }),
+    entry({ id: "e3", teamNumber: 300, total: 30 }),
+  ];
+
+  it("sums all three robots against the official score", () => {
+    const result = resolveLiveAllianceScoring(m, "red", three);
+    expect(result).not.toBeNull();
+    expect(result!.sessionScoutedTotal).toBe(90);
+    expect(result!.sessionAccuracy).toBeCloseTo(100, 5);
+    expect(result!.entryAccuracy.status).toBe("complete");
+    expect(Object.keys(result!.entryAutoFlags).sort()).toEqual(["e1", "e2", "e3"]);
+  });
+
+  it("is not complete (null) until every robot of the alliance has an entry", () => {
+    expect(resolveLiveAllianceScoring(m, "red", three.slice(0, 2))).toBeNull();
+  });
+
+  it("flags Zero Entries only when all three scored nothing", () => {
+    const zero = (id: string, teamNumber: number) => entry({ id, teamNumber, total: 0 });
+    const allZero = resolveLiveAllianceScoring(m, "red", [zero("e1", 100), zero("e2", 200), zero("e3", 300)]);
+    expect(allZero!.sessionFlags.map((f) => f.type)).toContain("zero-entries");
+    const oneScored = resolveLiveAllianceScoring(m, "red", [zero("e1", 100), zero("e2", 200), entry({ id: "e3", teamNumber: 300, total: 5 })]);
+    expect(oneScored!.sessionFlags.map((f) => f.type)).not.toContain("zero-entries");
+  });
+});

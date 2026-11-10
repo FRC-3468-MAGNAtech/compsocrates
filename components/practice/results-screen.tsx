@@ -42,8 +42,8 @@ export function ResultsScreen({
     return <div className="glass-card h-64 animate-pulse" />;
   }
 
-  const robot1 = entries.find((e) => e.teamNumber === session.robots[0]) ?? entries[0];
-  const robot2 = entries.find((e) => e.teamNumber === session.robots[1]) ?? entries[1];
+  // One comparison tile per scouted robot (2 for FTC, 3 for FRC), in scouting order.
+  const robotStats = session.robots.map((team, i) => ({ team, total: (entries.find((e) => e.teamNumber === team) ?? entries[i])?.score.total ?? 0 }));
   const accuracy = session.accuracy;
   const status = getStatus(accuracy);
   const percentColor = getPercentColor(accuracy);
@@ -71,9 +71,10 @@ export function ResultsScreen({
 
       <GlassPanel className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Comparison</h2>
-        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Stat label={`Team ${session.robots[0]}`} value={robot1?.score.total ?? 0} />
-          <Stat label={`Team ${session.robots[1]}`} value={robot2?.score.total ?? 0} />
+        <div className={`grid grid-cols-2 gap-3 text-sm ${COMPARISON_COLUMNS[robotStats.length + 2] ?? "sm:grid-cols-4"}`}>
+          {robotStats.map((r) => (
+            <Stat key={r.team} label={`Team ${r.team}`} value={r.total} />
+          ))}
           <Stat label="+ Penalties" value={session.penaltyPoints ?? officialAlliance.penaltyPoints} />
           <Stat label="= Your total" value={session.scoutedTotal ?? 0} emphasize />
         </div>
@@ -96,6 +97,9 @@ export function ResultsScreen({
     </div>
   );
 }
+
+// Full literal class names so Tailwind picks them up: the robots' tiles plus the penalties and total tiles.
+const COMPARISON_COLUMNS: Record<number, string> = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" };
 
 function Stat({ label, value, emphasize, signed }: { label: string; value: number; emphasize?: boolean; signed?: boolean }) {
   const display = signed && value > 0 ? `+${value}` : String(value);
