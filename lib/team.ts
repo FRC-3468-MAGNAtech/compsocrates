@@ -65,8 +65,7 @@ export type TeamDoc = {
 
 /**
  * Realtime subscription to the *caller's own* team doc — `teamId` comes
- * from their profile (`useAuth().profile?.teamId`), not a fixed id (see
- * docs/ASSUMPTIONS.md, P1b: team docs now get an auto-generated id, created
+ * from their profile (`useAuth().profile?.teamId`), not a fixed id (team docs get an auto-generated id, created
  * via /api/team/create, since more than one can exist). Pass `null` while
  * the caller's profile hasn't loaded yet, or isn't on a team at all.
  */

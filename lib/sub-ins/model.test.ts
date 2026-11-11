@@ -33,7 +33,7 @@ const make = (over: Partial<SubInRequest> = {}): SubInRequest => ({
 });
 
 describe("keys and labels", () => {
-  it("uses CE match keys and CS-style labels", () => {
+  it("uses app match keys and CS-style labels", () => {
     expect(subInMatchKey("Qualification", 12)).toBe("Q12");
     expect(subInMatchKey("Practice", 3)).toBe("P3");
     expect(subInMatchKey("Playoff", 7)).toBe("F7");

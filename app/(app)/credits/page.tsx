@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth";
 import type { CreditsOp } from "@/lib/credits/ops";
 import { useCredits } from "@/lib/credits/store";
 import { usePermissions } from "@/lib/permissions";
+import { BRAND } from "@/config/brand";
 
 export default function CreditsPage() {
   const { user, profile } = useAuth();
@@ -38,7 +39,7 @@ export default function CreditsPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Credits</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">The people, tools, and data behind CompEpicurus.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">The people, tools, and data behind {BRAND.name}.</p>
         </div>
         <CreditsEditToggle canEdit={isAdmin && loaded && !loadError} editing={inEditMode} unsavedCount={saving} onEdit={() => setEditing(true)} onDone={() => setEditing(false)} />
       </div>

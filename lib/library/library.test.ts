@@ -431,17 +431,21 @@ describe("optional times in CSV and pasted rows", () => {
 describe("difficulty comes from the typed scores", () => {
   it("is computed per alliance with the shared getDifficulty, and again on every edit", () => {
     const event = { eventCode: "MAN-T", eventName: "T", seasonId: "rebuilt" };
-    const first = buildManualMatchFields(validateRawMatch(raw({ redScore: "30", blueScore: "95", redPenalty: "0" })).match!, event);
-    expect(first.alliances.red.difficulty).toBe(getDifficulty(30));
+    const first = buildManualMatchFields(validateRawMatch(raw({ redScore: "150", blueScore: "450", redPenalty: "0" })).match!, event);
+    expect(first.alliances.red.difficulty).toBe(getDifficulty(150, "rebuilt"));
     expect(first.alliances.red.difficulty).toBe("easy");
     expect(first.alliances.blue.difficulty).toBe("hard");
     // Editing the score to something else gives a different tier — nothing is cached.
-    const edited = buildManualMatchFields(validateRawMatch(raw({ redScore: "60", blueScore: "40", redPenalty: "0" })).match!, event);
+    const edited = buildManualMatchFields(validateRawMatch(raw({ redScore: "300", blueScore: "180", redPenalty: "0" })).match!, event);
     expect(edited.alliances.red.difficulty).toBe("medium");
     expect(edited.alliances.blue.difficulty).toBe("easy");
-    // The boundaries from lib/difficulty.ts.
-    for (const [score, tier] of [[40, "easy"], [41, "medium"], [79, "medium"], [80, "hard"]] as const) {
+    // The boundaries from lib/difficulty.ts: REBUILT uses 200 / 400, CHARGED UP (its own season id) 80 / 120.
+    for (const [score, tier] of [[200, "easy"], [201, "medium"], [400, "medium"], [401, "hard"]] as const) {
       expect(buildManualMatchFields(validateRawMatch(raw({ redScore: String(score), redPenalty: "0" })).match!, event).alliances.red.difficulty).toBe(tier);
+    }
+    const chargedUp = { ...event, seasonId: "charged_up" };
+    for (const [score, tier] of [[80, "easy"], [81, "medium"], [120, "medium"], [121, "hard"]] as const) {
+      expect(buildManualMatchFields(validateRawMatch(raw({ redScore: String(score), redPenalty: "0" })).match!, chargedUp).alliances.red.difficulty).toBe(tier);
     }
   });
 

@@ -1,14 +1,14 @@
 /**
- * Adapter between CS's flat assignment collections and CE's assignment model (docs/ROUTES.md D1, D10). No React, no Firebase.
+ * Adapter between CS's flat assignment collections and the app's assignment model (docs/ROUTES.md D1, D10). No React, no Firebase.
  *
  * CS stores one document per scout x match (`matchAssignments`) or per scout x team (`pitAssignments`, `teamAssignments`,
  * plus a `matchAssignments` mirror of team-strategy rows with `assignmentType: "team"`, `matchKey: "team"`) and
- * `practiceAssignments` (library practice matches: `practiceMatchId`, `matchKey: "pN"`). CE keeps one versioned document with
+ * `practiceAssignments` (library practice matches: `practiceMatchId`, `matchKey: "pN"`). The app keeps one versioned document with
  * `current.slots[]` (a slot is one robot of one match: `red1` .. `blue3`) and `current.teams[]`. The converters here:
  *
- *  READ   `csRowsToSlots` / `csRowsToVersion`   flat rows -> CE slots/version (slot ids derived from the match schedule)
- *         `csTeamRowsToDocs`                   pit/team rows -> CE `TeamAssignmentsDoc`s
- *  WRITE  `slotsToCsRows`, `teamsToCsRows`       CE version -> the flat docs that should exist
+ *  READ   `csRowsToSlots` / `csRowsToVersion`   flat rows -> app slots/version (slot ids derived from the match schedule)
+ *         `csTeamRowsToDocs`                   pit/team rows -> app `TeamAssignmentsDoc`s
+ *  WRITE  `slotsToCsRows`, `teamsToCsRows`       app version -> the flat docs that should exist
  *         `planAssignmentWrite`                 existing rows + desired rows -> creates / patches / removals (minimal, keyed by
  *                                               match + team, so unchanged rows and their unknown fields are never touched, D10)
  *  EVENT ATTENDANCE (`teams.eventAttendees`)    `attendeeUidsForEvent` (uid or display name on read), `attendeesPatch` (uids on write)
@@ -17,7 +17,7 @@
  * index of the team in the match's red or blue alliance, from the schedule the caller passes as a `ScheduleLookup`. When the
  * schedule has no such match (not fetched yet, practice-library matches, a team that is not in the match any more) the row is
  * placed in the first free slot of the match in `assignedAt, teamNumber` order. The CS writers never read the position, so
- * the fallback only affects how CE's grid lays the row out, never what is stored.
+ * the fallback only affects how the app's grid lays the row out, never what is stored.
  */
 import { allianceSlots, isSlotId, slotAlliance, slotIndex } from "@/config/alliance";
 import { EVENT_CONFIG, expandEventKeyAliases, normalizeEventKey } from "@/config/event";
@@ -82,12 +82,12 @@ export function rowIsForEvent(data: CsRecord, eventCode: string): boolean {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Match keys <-> CE (matchType, matchNumber)
+// Match keys <-> app (matchType, matchNumber)
 // ---------------------------------------------------------------------------------------------------------------------
 
 const MATCH_TYPE_ORDER: Record<MatchType, number> = { Practice: 0, Qualification: 1, Playoff: 2 };
 
-/** The CE match a `matchAssignments` row is for (matchKey, then matchLabel), or null for a row that is not a match (`"team"`). */
+/** The app match a `matchAssignments` row is for (matchKey, then matchLabel), or null for a row that is not a match (`"team"`). */
 export function csAssignmentMatchRef(data: CsRecord): { matchType: MatchType; matchNumber: number } | null {
   if (isTeamMirrorRow(data)) return null;
   const ref = csDocMatchRef({ matchKey: data.matchKey, matchLabel: data.matchLabel });
@@ -95,7 +95,7 @@ export function csAssignmentMatchRef(data: CsRecord): { matchType: MatchType; ma
 }
 
 /**
- * The `matchKey` CS's assignments page writes for a CE match: a TBA key for the event schedule (`2026arli_qm12`, bracket slot
+ * The `matchKey` CS's assignments page writes for an app match: a TBA key for the event schedule (`2026arli_qm12`, bracket slot
  * `2026arli_sf3m1`, finals game `2026arli_f1m2`) and `pN` for a practice match. All of them parse back through
  * `normalizeCsMatchId` to the short id CS's scout form compares against.
  */
@@ -119,7 +119,7 @@ export function appMatchToCsLabel(matchType: MatchType, matchNumber: number): st
   return `Semifinal ${n}-1`;
 }
 
-/** Stable key of a match across both representations (short CS id of a stored row, or the id built from CE's number). */
+/** Stable key of a match across both representations (short CS id of a stored row, or the id built from the app's number). */
 function matchIdentity(matchType: MatchType, matchNumber: number): string {
   return `${matchType}:${matchNumber}`;
 }
@@ -191,7 +191,7 @@ function compareSlots(a: ScheduleSlot, b: ScheduleSlot): number {
 }
 
 /**
- * `matchAssignments` (and `practiceAssignments`) rows -> CE slots. Team-strategy mirrors and rows whose match cannot be parsed are
+ * `matchAssignments` (and `practiceAssignments`) rows -> app slots. Team-strategy mirrors and rows whose match cannot be parsed are
  * skipped. When two rows are for the same match and team (`matchAssignments` row wins over a `practiceAssignments` one) the
  * earlier row in `rows` is kept, so pass the primary collection first.
  */
@@ -271,7 +271,7 @@ export function csRowsToVersion(rows: readonly CsAssignmentRow[], lookup?: Sched
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Write: CE slots -> flat docs
+// Write: app slots -> flat docs
 // ---------------------------------------------------------------------------------------------------------------------
 
 export type AssignmentWriteContext = {
@@ -388,13 +388,13 @@ export function applyAssignmentPlan(existing: readonly CsAssignmentRow[], plan: 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Pit scouting / team strategy (CE `TeamAssignmentsDoc`)
+// Pit scouting / team strategy (app `TeamAssignmentsDoc`)
 // ---------------------------------------------------------------------------------------------------------------------
 
 /**
- * Rows of one kind -> CE docs, one per event. `pit` rows come from `pitAssignments`; `teamStrategy` rows from
+ * Rows of one kind -> app docs, one per event. `pit` rows come from `pitAssignments`; `teamStrategy` rows from
  * `teamAssignments` plus the `matchAssignments` mirror (`assignmentType: "team"`), merged by event + team + scout. CS has one
- * scout per row, so a CE team with two scouts is two rows. `locked` (a CE-only flag) is not stored and reads false.
+ * scout per row, so an app team with two scouts is two rows. `locked` (an app-only flag) is not stored and reads false.
  */
 export function csTeamRowsToDocs(kind: TeamAssignKind, rows: readonly CsAssignmentRow[], teamId: string): TeamAssignmentsDoc[] {
   const byEvent = new Map<string, Map<number, Set<string>>>();
@@ -522,11 +522,11 @@ export function manualTeamList(lists: unknown, eventCode: string): number[] {
   return [];
 }
 
-/** One recorded event of `teams.eventAttendees`, in CE's `EventAttendance` shape (`id` is `{teamId}_{eventKey}`). */
+/** One recorded event of `teams.eventAttendees`, in the app's `EventAttendance` shape (`id` is `{teamId}_{eventKey}`). */
 export type AttendanceRecord = { id: string; teamId: string; eventCode: string; uids: string[]; updatedAt: null };
 
 /**
- * Every event with at least one stored attendee, as CE attendance records (alias keys folded into the canonical key). CS keeps no
+ * Every event with at least one stored attendee, as app attendance records (alias keys folded into the canonical key). CS keeps no
  * per-event timestamp, so `updatedAt` is null. Entries that are a uid or a member's display name resolve to uids.
  */
 export function attendanceRecordsFromTeam(teamId: string, attendees: unknown, members: readonly AttendeeMember[]): AttendanceRecord[] {

@@ -1,3 +1,5 @@
+import { storageKey } from "@/config/brand";
+
 // The "layered glass" level (FIX3): one number that scales how much shading a glass
 // box gets, which matters most when glass boxes sit on top of other glass boxes.
 // It is applied app-wide as the `--glass-shade` CSS multiplier (see app/globals.css),
@@ -8,8 +10,8 @@ export const GLASS_LAYER_MIN = 0.3;
 export const GLASS_LAYER_MAX = 2;
 export const GLASS_LAYER_STEP = 0.05;
 
-/** The localStorage key — unchanged from before FIX3, so a level someone already chose carries over, and the inline init script in app/layout.tsx still reads it. */
-export const GLASS_LAYER_STORAGE_KEY = "compepicurus.glass-shade";
+/** The localStorage key. The pre-paint theme script (lib/theme-css.ts) reads it too, so the saved level applies before first paint. */
+export const GLASS_LAYER_STORAGE_KEY = storageKey("glass-shade");
 
 export const isGlassLayerLevel = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= GLASS_LAYER_MIN && value <= GLASS_LAYER_MAX;
 

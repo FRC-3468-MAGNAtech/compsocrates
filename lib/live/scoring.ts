@@ -35,7 +35,7 @@ export type LiveScoringPatch = {
  * every other real-event entry, so Match Analytics treats these
  * identically — `sameTeamEntries` is deliberately left empty rather than
  * querying the rest of this team's event history, a scope simplification
- * for live mode (see docs/ASSUMPTIONS.md, P7).
+ * for live mode.
  */
 export function resolveLiveAllianceScoring(match: EventMatch, alliance: AllianceColor, entries: readonly ScoutEntry[]): LiveScoringPatch | null {
   const allianceTeams = alliance === "red" ? match.redTeams : match.blueTeams;

@@ -32,7 +32,7 @@ function latestIso(values: (string | null)[]): string | null {
   return latest;
 }
 
-/** A real-event scout entry — today that's only `source: "event"`; `"live"` is included too since it means the same thing (Real Event) and simply has no scout-facing way to be created yet (see docs/ARCHITECTURE.md). */
+/** A real-event scout entry — today that's only `source: "event"`; `"live"` is included too since it means the same thing (Real Event) and simply has no scout-facing way to be created yet). */
 function isRealEventEntry(entry: ScoutEntry): boolean {
   return entry.source === "event" || entry.source === "live";
 }
@@ -43,8 +43,7 @@ function isRealEventEntry(entry: ScoutEntry): boolean {
  * exact same `accuracy.value` are alliance partners *by construction*
  * (`lib/analytics/recompute.ts` computes and stores one alliance-level
  * value per match, written onto every entry for that match), so no live
- * FIRST API roster lookup is needed to resolve partners — see
- * docs/ASSUMPTIONS.md (P5).
+ * FIRST API roster lookup is needed to resolve partners.
  */
 export function buildRealEventObservations(entries: ScoutEntry[], eventCode: string | null): RealEventObservation[] {
   const scoped = entries.filter(
@@ -187,8 +186,8 @@ export type ScoutStatsInput = {
 /**
  * The one place Scout Accuracy and My Scouting both compute their numbers
  * from — pure given already-fetched Firestore data, so it's fully
- * unit-testable without an emulator. See docs/ARCHITECTURE.md (P5) for how
- * each category's numbers are derived.
+ * unit-testable without an emulator. P5: each category's numbers are derived
+ * per category below.
  */
 export function computeScoutStats(input: ScoutStatsInput): ScoutStatsResult {
   const { category, members, sessions, entries, libraryMatchesById, attendance, roleFilter, eventFilter, rankingBasis, realEventScope } =

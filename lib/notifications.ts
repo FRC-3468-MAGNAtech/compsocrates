@@ -20,8 +20,7 @@ export function isLikelyUnsupportedIOSBrowser(): boolean {
  * scout may have more than one device). `NEXT_PUBLIC_FIREBASE_VAPID_KEY`
  * must be set (Firebase Console > Project Settings > Cloud Messaging >
  * Web Push certificates) — see docs/DEPLOYMENT.md. Unverified in this
- * sandbox (no real device/browser push delivery to test against — see
- * docs/ASSUMPTIONS.md, P7); the plumbing follows Firebase's documented web
+ * sandbox (no real device/browser push delivery to test against); the plumbing follows Firebase's documented web
  * setup exactly.
  */
 export async function requestAndRegisterPush(uid: string): Promise<PushRegistrationResult> {

@@ -396,14 +396,14 @@ describe("flags and exclusion", () => {
     expect(formEntryToFlagStatePatch({ ...e, flags: [] }, undefined)).toBeNull();
   });
 
-  it("a new CE flag maps to a CS reason code, or other plus the additive CE fields, keeping dismissed", () => {
+  it("a new app flag maps to a CS reason code, or other plus the additive app fields, keeping dismissed", () => {
     const e = csDocToFormEntry("pit-scout", "p1", pit, { teamId: "TEAM1", dismissed: true });
     const known = formEntryToFlagStatePatch({ ...e, flags: [{ id: "f", reason: "No teleop score", addedAt: new Date(7000).toISOString() }] }, { teamId: "TEAM1", dismissed: true }, { now: 99, actorUid: "adm" })?.data;
     expect(known).toMatchObject({ manualFlagged: true, manualReason: "no-teleop-score", manualFlaggedAt: 7000, manualFlaggedBy: "adm", dismissed: true });
-    expect(known).not.toHaveProperty("ceManualReason");
+    expect(known).not.toHaveProperty("manualReasonText");
     const ce = formEntryToFlagStatePatch({ ...e, flags: [{ id: "f", reason: "Wrong team scouted", note: "was 254", addedAt: "bad" }] }, undefined, { now: 99, actorUid: "adm" })?.data;
-    expect(ce).toMatchObject({ manualReason: "other", ceManualReason: "Wrong team scouted", ceManualNote: "was 254", manualFlaggedAt: 99, dismissed: false });
-    // and it reads back as the same CE flag
+    expect(ce).toMatchObject({ manualReason: "other", manualReasonText: "Wrong team scouted", manualNoteText: "was 254", manualFlaggedAt: 99, dismissed: false });
+    // and it reads back as the same app flag
     expect(csDocToFormEntry("pit-scout", "p1", pit, { ...ce, entityType: "pitScouting" }).flags[0]).toMatchObject({ reason: "Wrong team scouted", note: "was 254" });
   });
 

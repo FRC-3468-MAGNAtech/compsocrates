@@ -1,6 +1,6 @@
 /**
  * Realistic CS `scouting` documents for the adapter tests (shapes taken from CS's own submit code:
- * app/scout-form/page.tsx, app/practice-scouting/page.tsx, docs/AUDIT.md 3.2). Test support only.
+ * app/scout-form/page.tsx, app/practice-scouting/page.tsx, docs/CS-REFERENCE.md section 2.2). Test support only.
  */
 import type { CsRecord } from "@/data/cs/types";
 

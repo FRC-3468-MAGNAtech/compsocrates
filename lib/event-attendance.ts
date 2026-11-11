@@ -13,7 +13,7 @@ import { useTeamMembers } from "@/lib/team-members";
 /**
  * Who's attending which event. D1: stored where CS keeps it, `teams/{teamId}.eventAttendees = { [eventKey]: (uid | name)[] }`
  * (CS wrote display names on old docs and uids on new ones; both read, uids are written). There is no per-event document and
- * no timestamp, so `updatedAt` is always null. The CE collection `eventAttendance/{teamId}_{eventCode}` is no longer used.
+ * no timestamp, so `updatedAt` is always null. The app collection `eventAttendance/{teamId}_{eventCode}` is no longer used.
  */
 export type EventAttendance = {
   /** `${teamId}_${eventCode}`. */

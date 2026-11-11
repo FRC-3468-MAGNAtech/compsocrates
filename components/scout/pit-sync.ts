@@ -3,7 +3,7 @@
  *
  * After a team is picked the form reads that team's pit scouting entry for the event (values are strings like "10-13", "8", "x"), prefills the five
  * scale sliders with the scale INDEX the pit number falls in (`convertPitScale`), and warns, with a confirm on submit, when the scouted scales no longer
- * contain the pit number. Scoring is untouched: the plugin scores from the scale indices only (docs/AUDIT.md: CS's live estimate also used the raw
+ * contain the pit number. Scoring is untouched: the plugin scores from the scale indices only (docs/CS-REFERENCE.md: CS's live estimate also used the raw
  * pit numbers when they fit; the plugin deliberately does not).
  */
 import { REBUILT_CONFIG as C } from "@/config/games/rebuilt";

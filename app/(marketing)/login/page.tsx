@@ -10,7 +10,8 @@ import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/auth/google-button";
 import { useAuth } from "@/lib/auth";
-import { cardEntranceVariants } from "@/lib/motion";
+import { cardEntranceVariants } from "@/lib/motion";
+import { BRAND } from "@/config/brand";
 
 function authErrorMessage(err: unknown): string {
   const code = (err as { code?: string })?.code;
@@ -155,7 +156,7 @@ export default function LoginPage() {
           <div className="text-center">
             <h1 className="text-2xl font-semibold">Welcome back</h1>
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-              Log in to your CompEpicurus account.
+              Log in to your {BRAND.name} account.
             </p>
           </div>
 
@@ -181,7 +182,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@compepicurus.org"
+                placeholder="you@example.com"
                 required
               />
             </div>

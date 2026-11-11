@@ -1,20 +1,20 @@
 /**
- * Adapter for CS's six form collections <-> CE's `FormEntry` (docs/ROUTES.md D1, D10). Pure: no React, no Firestore client.
+ * Adapter for CS's six form collections <-> the app's `FormEntry` (docs/ROUTES.md D1, D10). Pure: no React, no Firestore client.
  *
- * CE keeps every non-match form in one `formEntries` collection; CS keeps them in six collections with six shapes
+ * The app keeps every non-match form in one `formEntries` collection; CS keeps them in six collections with six shapes
  * (`pitScouting`, `leadScouting`, `strategyScouting`, `matchStrategyPlans`, `driveScouting`, `helperReports`). The table
  * `CS_FORM_SPECS` below says how each maps, and `data/cs/form-field-keys.ts` says which value keys each form carries.
  *
- * WHAT MAPS WHERE (confirmed against the CS pages, which differ from docs/AUDIT.md in places, see the report):
+ * WHAT MAPS WHERE (confirmed against the CS pages, which differ from docs/CS-REFERENCE.md in places):
  *   identity   teamId, uid (`scoutId` / pit `submittedBy` / helper `helperId`), scoutName (helper `helperName`)
  *   event      `eventKey` (alias-resolved into `eventCode`; the raw string stays in `legacy.eventKey`). Helper docs have NONE.
  *   time       `createdAt` -> createdAtMs, `submittedAt` -> updatedAtMs (CS resets both on edit; there is no `updatedAt`)
  *   match      lead: `matchId` / `matchKey` (short id) + `matchType` + `matchNumber` + `matchLabel`;
  *              match strategy and drive reflection: `matchKey` (a TBA key such as `2026arli_qm12`, or a short id) + `matchLabel`.
- *              All become CE `matchKey` (`Q12`, `P3`, `F7`, `F15`, D11 numbering) via `data/cs/match-id.ts`; the CS strings are
- *              kept in `legacy` and written back untouched while the CE match key still means the same match.
+ *              All become app `matchKey` (`Q12`, `P3`, `F7`, `F15`, D11 numbering) via `data/cs/match-id.ts`; the CS strings are
+ *              kept in `legacy` and written back untouched while the app match key still means the same match.
  *   alliance   lead: `alliance`. Strategy / drive: none in CS (an additive `alliance` is written only when the entry has one).
- *   team       pit and team strategy: `teamNumber`; helper: `assistedTeamNumber`. Strings in CS, numbers in CE.
+ *   team       pit and team strategy: `teamNumber`; helper: `assistedTeamNumber`. Strings in CS, numbers in app.
  *   values     see form-field-keys.ts (flat keys, `robots[i].x` -> `robot{i+1}_x`, `overallAlliance.x` -> `overallAlliance_x`).
  *   flags      `scoutingFlagStates/<entityType>:<id>`: `manualFlagged` + `manualReason` -> `flags[0]`; the doc's own
  *              `excludeFromStats` (the CS analytics Config modal writes it) or the state's `excludeFromAccuracy` -> `excluded`.
@@ -56,7 +56,7 @@ export type CsFormSpec = {
   formType: CsFormType;
   collection: CsFormCollection;
   flagEntityType: CsFlagEntityType;
-  /** The CE built-in form an entry read from CS is attributed to (CS docs carry no form id). Change when the REBUILT forms get new ids. */
+  /** The app built-in form an entry read from CS is attributed to (CS docs carry no form id). Change when the REBUILT forms get new ids. */
   formId: string;
   formVersion: number;
   /** Field the uid is written to, and the fields it is read from (first non-empty wins). */
@@ -86,7 +86,7 @@ export const CS_FORM_SPECS: Readonly<Record<CsFormType, CsFormSpec>> = {
 
 export const isCsFormType = (t: string): t is CsFormType => (CS_FORM_TYPES as readonly string[]).includes(t);
 
-/** Is this CE form type persisted in a CS collection? (`custom` is not: CS has no equivalent, it stays in CE's `formEntries`.) */
+/** Is this app form type persisted in a CS collection? (`custom` is not: CS has no equivalent, it stays in the app's `formEntries`.) */
 export const isCsBackedFormType = (t: FormEntryType): t is CsFormType => isCsFormType(t);
 
 export const csCollectionFor = (formType: CsFormType): CsFormCollection => CS_FORM_SPECS[formType].collection;
@@ -96,7 +96,7 @@ export function csFormTypeForCollection(collection: CsFormCollection | typeof CS
   return CS_FORM_TYPES.find((t) => CS_FORM_SPECS[t].collection === collection) as CsFormType;
 }
 
-/** The CE form type of a built-in CS form id (`pit-scout-v1`), or null for any other form id. */
+/** The app form type of a built-in CS form id (`pit-scout-v1`), or null for any other form id. */
 export function formTypeForFormId(formId: string): CsFormType | null {
   return CS_FORM_TYPES.find((t) => CS_FORM_SPECS[t].formId === formId) ?? null;
 }
@@ -124,7 +124,7 @@ export function csTimeMs(v: unknown): number {
 
 const defined = (n: number): number | undefined => (typeof n === "number" && n > 0 ? n : undefined);
 
-/** A team number string as the number CE uses (non-digits stripped, as CS's own inputs do); null when there are no digits. */
+/** A team number string as the number the app uses (non-digits stripped, as CS's own inputs do); null when there are no digits. */
 export function parseTeamNumber(raw: unknown): number | null {
   const digits = str(raw).replace(/[^\d]/g, "");
   return digits ? Number(digits) : null;
@@ -177,7 +177,7 @@ export function isLeadFallbackDoc(doc: CsRecord): boolean {
 const SHORT_ID = /^(p|q|qf|sf|f)\d+$/;
 
 /**
- * The CE match key (`Q12`, `P3`, `F7`, `F15`) a CS form doc is for, or null when none of `matchId`, `matchKey`, `matchLabel` (nor `matchType` +
+ * The app match key (`Q12`, `P3`, `F7`, `F15`) a CS form doc is for, or null when none of `matchId`, `matchKey`, `matchLabel` (nor `matchType` +
  * `matchNumber`) identify a match. Playoff numbering is D11 (bracket slots 1..13, finals 14..16), via `data/cs/match-id.ts`.
  */
 export function csDocMatchKey(doc: CsRecord): string | null {
@@ -191,7 +191,7 @@ export function csDocMatchKey(doc: CsRecord): string | null {
 
 const MATCH_FIELD_NAMES = ["matchKey", "matchId", "matchLabel", "matchType", "matchNumber"] as const;
 
-/** The CS match fields for a CE match key, in the style of each form (a fresh write; an unchanged match writes its legacy strings instead). */
+/** The CS match fields for an app match key, in the style of each form (a fresh write; an unchanged match writes its legacy strings instead). */
 export function freshCsMatchFields(style: Exclude<MatchStyle, "none">, matchKey: string, eventCode: string): CsRecord {
   const ref = parseFormMatchKey(matchKey);
   if (!ref) return {};
@@ -235,15 +235,15 @@ export function csFlagEntityTypeFor(formType: CsFormType, collection: CsFormColl
 function flagsFromState(state: CsFlagState | undefined): FormEntryFlag[] {
   if (!state?.manualFlagged) return [];
   const code = str(state.manualReason).trim();
-  const reason = str(state.ceManualReason).trim() || MANUAL_REASON_LABELS[code] || code || "Other";
+  const reason = str(state.manualReasonText).trim() || MANUAL_REASON_LABELS[code] || code || "Other";
   const at = csTimeMs(state.manualFlaggedAt);
-  return [{ id: FLAG_ID, reason, ...(str(state.ceManualNote) ? { note: str(state.ceManualNote) } : {}), addedAt: new Date(at).toISOString() }];
+  return [{ id: FLAG_ID, reason, ...(str(state.manualNoteText) ? { note: str(state.manualNoteText) } : {}), addedAt: new Date(at).toISOString() }];
 }
 
 /**
  * The write that makes `scoutingFlagStates` agree with `entry.flags` / `entry.excluded` (merge it with `setDoc(..., { merge: true })`), or null when
  * the stored state already agrees. Mirrors the CS Config modal's payloads: `manualFlagged` + `manualReason` + `manualFlaggedAt/By`, cleared with
- * `""` / `null` when removed. A CE reason with no CS equivalent is written as `other` plus the additive `ceManualReason` / `ceManualNote`.
+ * `""` / `null` when removed. An app reason with no CS equivalent is written as `other` plus the additive `manualReasonText` / `manualNoteText`.
  */
 export function formEntryToFlagStatePatch(entry: Pick<FormEntry, "id" | "teamId" | "formType" | "flags" | "excluded" | "legacy">, existing?: CsFlagState, opts: { now?: number; actorUid?: string } = {}): { id: string; data: CsFlagState } | null {
   if (!isCsFormType(entry.formType)) return null;
@@ -259,23 +259,23 @@ export function formEntryToFlagStatePatch(entry: Pick<FormEntry, "id" | "teamId"
     const unchanged = current !== undefined && current.reason === flag.reason && (current.note ?? "") === (flag.note ?? "");
     if (!unchanged) {
       const mapped = MANUAL_REASON_CODES[flag.reason] ?? (MANUAL_REASON_LABELS[flag.reason] ? flag.reason : undefined);
-      const ceReason = mapped ? "" : flag.reason;
-      const ceNote = flag.note ?? "";
+      const textReason = mapped ? "" : flag.reason;
+      const textNote = flag.note ?? "";
       const at = Date.parse(flag.addedAt);
       data.manualFlagged = true;
       data.manualReason = mapped ?? "other";
       data.manualFlaggedAt = at > 0 ? at : now;
       data.manualFlaggedBy = existing?.manualFlaggedBy || opts.actorUid || "";
-      if (ceReason || existing?.ceManualReason) data.ceManualReason = ceReason;
-      if (ceNote || existing?.ceManualNote) data.ceManualNote = ceNote;
+      if (textReason || existing?.manualReasonText) data.manualReasonText = textReason;
+      if (textNote || existing?.manualNoteText) data.manualNoteText = textNote;
     }
   } else if (wasFlagged) {
     data.manualFlagged = false;
     data.manualReason = "";
     data.manualFlaggedAt = null;
     data.manualFlaggedBy = "";
-    if (existing?.ceManualReason) data.ceManualReason = "";
-    if (existing?.ceManualNote) data.ceManualNote = "";
+    if (existing?.manualReasonText) data.manualReasonText = "";
+    if (existing?.manualNoteText) data.manualNoteText = "";
   }
 
   // An entry the user re-includes must also stop being excluded by the accuracy exclusion, or it would read as excluded again.
@@ -311,7 +311,7 @@ export type CsReadOptions = {
   inferEventCode?: (timestampMs: number) => string;
 };
 
-/** A CS doc as a CE `FormEntry`. `flagState` is the doc's `scoutingFlagStates` row when there is one. */
+/** A CS doc as an app `FormEntry`. `flagState` is the doc's `scoutingFlagStates` row when there is one. */
 export function csDocToFormEntry(formType: CsFormType, id: string, doc: CsRecord, flagState?: CsFlagState, options: CsReadOptions = {}): FormEntry {
   const spec = CS_FORM_SPECS[formType];
   const fields = CS_FORM_FIELD_SPECS[formType];
@@ -554,7 +554,7 @@ export function formEntryToCsPatch(entry: FormEntry, existing?: CsRecord): CsRec
     out.isLeadScouting = true;
   }
 
-  // additive CE parts, only when the entry has them
+  // additive app parts, only when the entry has them
   if (entry.stickyNotes.length > 0) out.stickyNotes = entry.stickyNotes;
   else if (existing && "stickyNotes" in existing) out.stickyNotes = [];
   if (entry.linkedEntryId) out.linkedEntryId = entry.linkedEntryId;
@@ -583,7 +583,7 @@ export const CS_COMPLETION_COLLECTIONS = ["scouting", "leadScouting", "matchStra
 export type CsCompletionCollection = (typeof CS_COMPLETION_COLLECTIONS)[number];
 
 export type CompletedMatches = {
-  /** CE match keys (`Q12`, `P3`, `F7`, `F15`) done in any of the collections. */
+  /** App match keys (`Q12`, `P3`, `F7`, `F15`) done in any of the collections. */
   keys: Set<string>;
   /** The same, per collection (the lead form cares about `leadScouting`, the plan form about `matchStrategyPlans`, ...). */
   byCollection: Record<CsCompletionCollection, Set<string>>;

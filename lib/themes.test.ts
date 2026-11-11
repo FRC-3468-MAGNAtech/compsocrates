@@ -3,6 +3,8 @@ import { auditAllThemes, auditTheme, failures, formatFailures, TEXT_MIN, UI_MIN 
 import { themeCss, themeInitScript, tokensToCss } from "./theme-css";
 import { defaultThemeId, getTheme, hasModes, isFlagTheme, isThemeId, themeGroups, themes, tokensFor } from "./themes";
 import { parseHex } from "./theme-color";
+import { COLOR_MODE_STORAGE_KEY, THEME_STORAGE_KEY } from "./theme-prefs";
+import { GLASS_LAYER_STORAGE_KEY } from "./glass-layer-level";
 
 // The contrast guard (P18). This is the test CI runs, and `npm run check:themes` (run by `npm run build`) runs the same audit:
 // a theme x mode that can't be read fails the build.
@@ -274,7 +276,7 @@ describe("pre-paint script", () => {
   }
 
   it("applies the saved theme and mode before paint", () => {
-    const { attrs } = run({ stored: { "compepicurus.theme": "ocean", "compepicurus.colorMode": "light" } });
+    const { attrs } = run({ stored: { [THEME_STORAGE_KEY]: "ocean", [COLOR_MODE_STORAGE_KEY]: "light" } });
     expect(attrs).toMatchObject({ "data-theme": "ocean", "data-mode": "light" });
   });
 
@@ -284,12 +286,12 @@ describe("pre-paint script", () => {
   });
 
   it("a flag theme is applied dark whatever the saved mode (the choice itself stays in storage)", () => {
-    const { attrs } = run({ stored: { "compepicurus.theme": "pride-bisexual", "compepicurus.colorMode": "light" }, light: true });
+    const { attrs } = run({ stored: { [THEME_STORAGE_KEY]: "pride-bisexual", [COLOR_MODE_STORAGE_KEY]: "light" }, light: true });
     expect(attrs).toMatchObject({ "data-theme": "pride-bisexual", "data-mode": "dark" });
   });
 
   it("falls back to the default for an unknown theme or a bad mode", () => {
-    const { attrs } = run({ stored: { "compepicurus.theme": "gone", "compepicurus.colorMode": "weird" }, light: true });
+    const { attrs } = run({ stored: { [THEME_STORAGE_KEY]: "gone", [COLOR_MODE_STORAGE_KEY]: "weird" }, light: true });
     expect(attrs).toMatchObject({ "data-theme": "team", "data-mode": "light" });
   });
 
@@ -298,7 +300,7 @@ describe("pre-paint script", () => {
   });
 
   it("restores the glass level too", () => {
-    expect(run({ stored: { "compepicurus.glass-shade": "1.4" } }).props["--glass-shade"]).toBe("1.4");
-    expect(run({ stored: { "compepicurus.glass-shade": "9" } }).props["--glass-shade"]).toBeUndefined();
+    expect(run({ stored: { [GLASS_LAYER_STORAGE_KEY]: "1.4" } }).props["--glass-shade"]).toBe("1.4");
+    expect(run({ stored: { [GLASS_LAYER_STORAGE_KEY]: "9" } }).props["--glass-shade"]).toBeUndefined();
   });
 });

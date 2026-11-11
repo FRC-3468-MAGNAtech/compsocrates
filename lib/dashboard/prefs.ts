@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { storageKey } from "@/config/brand";
 
 // The role a user last viewed on their dashboard (P13), remembered per user in
 // this browser's localStorage under their uid — same trade-off as the Pick
-// List's EPA setting (docs/ASSUMPTIONS.md, P12-5): two people on one browser
+// List's EPA setting: two people on one browser
 // keep separate choices, but it doesn't follow someone to another device.
 
-const KEY_PREFIX = "compepicurus.dashboard.role.";
+const KEY_PREFIX = storageKey("dashboard.role.");
 const listeners = new Set<() => void>();
 
 function read(uid: string): string | null {

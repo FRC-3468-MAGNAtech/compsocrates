@@ -17,15 +17,14 @@ export type LobbyPairScoringPatch = {
  * Computes what both of a pair's two sessions get written with, once both
  * of their entries exist — pure, so it's identical whether called from the
  * client (right after the second of a pair submits) or from
- * `resolveLobbyResults` (Admin SDK, the actual writer — see
- * docs/ASSUMPTIONS.md, P8, for why a pair's own two sessions can't just
+ * `resolveLobbyResults` (Admin SDK, the actual writer: a pair's own two sessions can't just
  * write this onto each other directly under firestore.rules). Unlike live
  * mode's `resolveLiveAllianceScoring`, a library match's official score is
  * always already known, so this never returns null.
  *
  * Reuses `evaluatePracticeSessionFlags` exactly like solo mode (Zero
  * Entries / Unrealistic Entry / Repeat Attempt); `videoProgressAtFinish` is
- * always `null` — see docs/ASSUMPTIONS.md (P8) for why "Finished Early"
+ * always `null`: "Finished Early"
  * doesn't carry over to lobby mode's per-player video model.
  */
 export function resolveLobbyPairScoring(

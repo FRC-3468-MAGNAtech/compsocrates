@@ -13,7 +13,7 @@ export * from "@/config/games/shared";
 export const GAME_ID_LIST = ["REBUILT", "REEFSCAPE", "CHARGED_UP"] as const satisfies readonly GameId[];
 export type ConfigGameId = (typeof GAME_ID_LIST)[number];
 
-/** The game a CS doc belongs to when it has no `game` field (CS quirk, docs/AUDIT.md section 3.4): the one whose definition says `docsWithoutGame`. */
+/** The game a CS doc belongs to when it has no `game` field (CS quirk, docs/CS-REFERENCE.md section 4): the one whose definition says `docsWithoutGame`. */
 export const DEFAULT_GAME_ID: ConfigGameId = "REEFSCAPE";
 
 /** The game new entries are scouted for unless the scout picks another (the scout form and practice scouting offer every game). */

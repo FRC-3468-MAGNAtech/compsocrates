@@ -253,7 +253,7 @@ type AllianceDoc = { teams: number[]; score: number; penaltyPoints: number; diff
  * recomputed on every edit (the doc is always rebuilt through this).
  */
 export function buildManualMatchFields(m: ValidMatch, event: EventRef) {
-  const alliance = (a: ManualAlliance): AllianceDoc => ({ teams: [...a.teams], score: a.score, penaltyPoints: a.penaltyPoints, difficulty: getDifficulty(a.score) });
+  const alliance = (a: ManualAlliance): AllianceDoc => ({ teams: [...a.teams], score: a.score, penaltyPoints: a.penaltyPoints, difficulty: getDifficulty(a.score, event.seasonId) });
   return {
     seasonId: event.seasonId,
     eventCode: event.eventCode,

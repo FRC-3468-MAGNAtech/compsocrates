@@ -24,8 +24,7 @@ describe("generateSchedule — fairness", () => {
   // match in an interval at once — the prompt's own text acknowledges this
   // ("works best in multiples of 4; otherwise build balanced batches as
   // best as possible") and provides the warn-when-impossible escape hatch,
-  // so its achievable bound is the interval size, not 1 — see
-  // docs/ASSUMPTIONS.md (P6).
+  // so its achievable bound is the interval size, not 1.
   for (const pattern of ["rotate-each-match", "constant-same-order"] as RotationPattern[]) {
     for (let n = 1; n <= 14; n++) {
       it(`keeps assignment counts within 1 of each other for ${n} scout(s), pattern "${pattern}"`, () => {

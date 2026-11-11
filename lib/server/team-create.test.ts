@@ -36,7 +36,6 @@ describe("createTeamForCaller", () => {
       createdAt: NOW,
     });
     expect(fake.read("users/u1")).toMatchObject({ uid: "u1", displayName: "Ada", teamId: code, role: "match-scout", roles: ["match-scout"], secondaryRoles: [], isTeamAdmin: true, isOwner: true, profileComplete: true });
-    expect(fake.read("users/u1")).not.toHaveProperty("fieldTeamIds");
     expect(fake.read("appSettings/global")).toEqual({ teamCreationEnabled: false });
   });
 

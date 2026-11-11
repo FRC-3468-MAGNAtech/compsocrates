@@ -36,10 +36,10 @@ export type CsFlagState = {
   excludeReason?: string;
   excludedAt?: number | null;
   excludedBy?: string;
-  /** Additive CE field: the CE manual-flag reason label, so a CE reason without a CS equivalent survives a round trip. */
-  ceManualReason?: string;
-  /** Additive CE field: the CE manual-flag note. */
-  ceManualNote?: string;
+  /** Additive app field: the app manual-flag reason label, so an app reason without a CS equivalent survives a round trip. */
+  manualReasonText?: string;
+  /** Additive app field: the app manual-flag note. */
+  manualNoteText?: string;
   [key: string]: unknown;
 };
 
@@ -55,7 +55,7 @@ export type CsSubmissionControls = {
 /** The lockout CS's `assertSubmissionsOpen` enforces on every new submission (edit mode bypasses it). */
 export type SubmissionLockout = { locked: boolean; reason: string };
 
-/** `users/{uid}` as CS stores it (app/AuthContext.tsx `UserData`, docs/AUDIT.md 3.2). Everything optional: old docs lack most of it. */
+/** `users/{uid}` as CS stores it (app/AuthContext.tsx `UserData`, docs/CS-REFERENCE.md section 2.2). Everything optional: old docs lack most of it. */
 export type CsUserDoc = {
   uid?: string;
   email?: string;
@@ -84,7 +84,7 @@ export type CsUserDoc = {
   [key: string]: unknown;
 };
 
-/** `teams/{TEAMCODE}` as CS stores it (docs/AUDIT.md 3.2). */
+/** `teams/{TEAMCODE}` as CS stores it (docs/CS-REFERENCE.md section 2.2). */
 export type CsTeamDoc = {
   teamName?: string;
   teamNumber?: string | number;

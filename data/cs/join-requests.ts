@@ -1,7 +1,7 @@
 /**
  * CS's team join model as pure logic: `teamJoinRequests/{id}` documents, the request state machine, the permission check
  * for processing one, team join-code generation, and the CS-shaped documents the server flows write
- * (docs/ROUTES.md D1, D6, D10; docs/AUDIT.md 3.2). No React, no Firebase: the server routes (lib/server/join-requests.ts,
+ * (docs/ROUTES.md D1, D6, D10; docs/CS-REFERENCE.md section 2.2). No React, no Firebase: the server routes (lib/server/join-requests.ts,
  * app/api/team/**) and the UI both import it.
  *
  * Additive to the data/cs adapter: nothing in users.ts / teams.ts is changed. Every writer here returns ONLY the fields
@@ -15,7 +15,7 @@ import { DEFAULT_ROLE_ID, isRoleId, normalizeLegacyRole, type RoleId } from "@/l
 
 // --- team codes ----------------------------------------------------------------------------------------------------
 
-/** Characters of a generated join code: uppercase, no ambiguous 0/O/1/I (CE's alphabet; CS codes are uppercase and compared uppercase). */
+/** Characters of a generated join code: uppercase, no ambiguous 0/O/1/I (the app's alphabet; CS codes are uppercase and compared uppercase). */
 export const TEAM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export const TEAM_CODE_LENGTH = 6;
 
@@ -75,7 +75,7 @@ export function isFallbackCodeLabel(label: string, teamCode: string): boolean {
 export type JoinRequestStatus = "pending" | "approved" | "denied" | "canceled";
 export type JoinRequestAction = "approve" | "deny" | "cancel";
 
-/** `teamJoinRequests/{id}` as written by CS (docs/AUDIT.md 3.2). Everything optional: old rows were written by a six-step fallback ladder. */
+/** `teamJoinRequests/{id}` as written by CS (docs/CS-REFERENCE.md section 2.2). Everything optional: old rows were written by a six-step fallback ladder. */
 export type CsJoinRequestDoc = {
   userId?: string;
   userEmail?: string;
@@ -316,7 +316,7 @@ export type NewTeamInput = {
 };
 
 /**
- * `teams/{CODE}` as CS stores it (+ CE additive fields). `teamNumber` is a STRING, `verifiedOwnerId` is the owner, and
+ * `teams/{CODE}` as CS stores it (+ app additive fields). `teamNumber` is a STRING, `verifiedOwnerId` is the owner, and
  * `selectedEvents` starts empty. The doc id is the uppercase code, which the caller chooses (`pickFreeTeamCode`).
  */
 export function buildNewTeamDoc(input: NewTeamInput, nowMs: number): CsRecord {
@@ -332,7 +332,7 @@ export function buildNewTeamDoc(input: NewTeamInput, nowMs: number): CsRecord {
 
 /**
  * The user-doc patch for the creator of a team: a team admin on the new team (CS signup passed `isTeamAdmin: true` with the
- * team code as `teamId`). `isOwner` is the additive CE mirror of `verifiedOwnerId`, written only by server routes.
+ * team code as `teamId`). `isOwner` is the additive app mirror of `verifiedOwnerId`, written only by server routes.
  */
 export function buildCreatorUserPatch(input: { teamId: string; role?: unknown }): CsRecord {
   const role = isRoleId(input.role) ? input.role : DEFAULT_ROLE_ID;
@@ -346,7 +346,7 @@ export function buildCreatorUserPatch(input: { teamId: string; role?: unknown })
   };
 }
 
-/** The owner uid of a raw team doc: CS's `verifiedOwnerId`, else CE's additive `ownerUid`. "" when there is none. */
+/** The owner uid of a raw team doc: CS's `verifiedOwnerId`, else the app's additive `ownerUid`. "" when there is none. */
 export function ownerUidOfTeam(team: CsRecord | null | undefined): string {
   if (!team) return "";
   return str(team.verifiedOwnerId).trim() || str(team.ownerUid).trim();

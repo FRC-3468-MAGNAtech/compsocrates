@@ -13,6 +13,7 @@ import { APPLICATION_LIMITS } from "@/lib/applications";
 import { getTeamByNumber } from "@/lib/events/actions";
 import { parseTeamNumber } from "@/lib/team-number";
 import { ROLES, getRole, type RoleId } from "@/lib/roles";
+import { BRAND } from "@/config/brand";
 
 type Lookup = { status: "idle" } | { status: "loading" } | { status: "found"; name: string } | { status: "missing" } | { status: "error" };
 
@@ -113,7 +114,7 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
       <div>
         <h1 className="text-2xl font-semibold">Apply to create a team</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Each team gets one CompEpicurus account, and the platform owner approves each one by hand. Tell us about your team so we can check it.
+          Each team gets one {BRAND.name} account, and the platform owner approves each one by hand. Tell us about your team so we can check it.
         </p>
       </div>
 

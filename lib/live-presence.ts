@@ -17,8 +17,7 @@ import type { AllianceColor } from "@/lib/practice-sessions";
 // the match-key level (same reasoning as libraryMatches — a real match is
 // the same match regardless of which team is watching), but every scout
 // presence doc carries its own teamId so one team's "who's covering this
-// alliance" bookkeeping never sees another team's scouts — see
-// docs/ASSUMPTIONS.md (P7).
+// alliance" bookkeeping never sees another team's scouts.
 export type LiveMatchScoutPresence = {
   uid: string;
   teamId: string;

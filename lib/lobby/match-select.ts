@@ -7,8 +7,7 @@ import type { LibraryMatch } from "@/lib/match-library";
  * then one alliance matching (ties broken by what the *other* alliance is,
  * per the spec's own order), then — not specified by the prompt, since its
  * three tiers only ever name combinations that include the target — any
- * match where *neither* alliance matches the target sorts last of all (see
- * docs/ASSUMPTIONS.md, P8).
+ * match where *neither* alliance matches the target sorts last of all.
  */
 const OTHER_ALLIANCE_ORDER: Record<Difficulty, [Difficulty, Difficulty]> = {
   easy: ["medium", "hard"],

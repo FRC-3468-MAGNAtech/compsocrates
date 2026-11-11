@@ -7,10 +7,11 @@ import { csPickListMeta, csPickListToPicked, pickedToCsPickList } from "@/data/c
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { applyPickOp, samePicks, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
+import { storageKey } from "@/config/brand";
 
 // Persistence for the shared Pick List board (P12). D1: CS keeps one list per team at `teams/{teamId}.pickList`
 // (`{ picks: [{ teamNumber, pickOrder }], updatedAt, updatedBy }`, data/cs/pick-list.ts), so the board reads and writes that field
-// whichever event it shows. CS stores the editor's uid only, so `updatedByName` is null on read. The CE `pickLists` collection is no longer used.
+// whichever event it shows. CS stores the editor's uid only, so `updatedByName` is null on read. The app `pickLists` collection is no longer used.
 
 export type PickListDoc = {
   teamId: string;
@@ -127,7 +128,7 @@ export function usePickList(teamId: string | null, eventCode: string | null, act
 
 export type EpaMode = "calculated" | "off";
 
-const EPA_KEY_PREFIX = "compepicurus.pickList.epa.";
+const EPA_KEY_PREFIX = storageKey("pickList.epa.");
 const listeners = new Set<() => void>();
 
 function readEpa(uid: string): EpaMode {
@@ -141,8 +142,7 @@ function readEpa(uid: string): EpaMode {
 /**
  * "EPA: Calculated / Off", remembered per user: stored in this browser's
  * localStorage under the signed-in user's id, so two people sharing a browser
- * keep separate settings, but it does not follow a person to another device
- * (see docs/ASSUMPTIONS.md, P12). Defaults to Calculated; SSR renders the
+ * keep separate settings, but it does not follow a person to another device. Defaults to Calculated; SSR renders the
  * default so hydration matches.
  */
 export function useEpaMode(uid: string | null): [EpaMode, (mode: EpaMode) => void] {

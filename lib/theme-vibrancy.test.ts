@@ -3,10 +3,11 @@ import { hexToOklab, oklabDistance, oklabLightness } from "./oklab";
 import { themeCss, themeInitScript, tokensToCss } from "./theme-css";
 import { DEFAULT_GRADIENT_INTENSITY, INTENSITY_STRENGTH } from "./theme-gradient";
 import { GRADIENT_INTENSITY_STORAGE_KEY, gradientStrength, parseGradientIntensity, resolveGradientIntensity } from "./theme-prefs";
+import { GLASS_LAYER_STORAGE_KEY } from "./glass-layer-level";
 import { getTheme, hasModes, pageBackground, themeGroups, tokensFor } from "./themes";
 
 // P32 tuning targets. Gradient and pride themes must read as colorful and bright, not near-black, and the shift must be easy to see.
-// If screenshots show better numbers, change them here deliberately (docs/ASSUMPTIONS.md, P32-1): the point is that they are enforced.
+// If screenshots show better numbers, change them here deliberately: the point is that they are enforced.
 
 const gradients = themeGroups.find((g) => g.kind === "gradient")!.themes;
 const flags = themeGroups.find((g) => g.kind === "flag")!.themes;
@@ -132,6 +133,6 @@ describe("Gradient intensity preference", () => {
     expect(run({ [GRADIENT_INTENSITY_STORAGE_KEY]: "normal" })["--gradient-strength"]).toBe(String(INTENSITY_STRENGTH.normal));
     expect(run({ [GRADIENT_INTENSITY_STORAGE_KEY]: "toString" })["--gradient-strength"]).toBeUndefined();
     expect(run({})["--gradient-strength"]).toBeUndefined();
-    expect(run({ "compepicurus.glass-shade": "1.4" })["--glass-shade"]).toBe("1.4"); // the existing shade keeps working beside it
+    expect(run({ [GLASS_LAYER_STORAGE_KEY]: "1.4" })["--glass-shade"]).toBe("1.4"); // the existing shade keeps working beside it
   });
 });

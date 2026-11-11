@@ -3,6 +3,7 @@ import { ArrowRight, BarChart3, ClipboardList, Sparkles, Target, Trophy, Users }
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
+import { BRAND } from "@/config/brand";
 
 const features = [
   {
@@ -33,7 +34,7 @@ export default function LandingPage() {
       <section className="relative flex flex-col items-center gap-8 pt-16 text-center sm:pt-24">
         <Badge variant="glass" className="gap-2 px-4 py-1.5">
           <Sparkles className="h-3.5 w-3.5" style={{ color: "var(--color-secondary)" }} />
-          Built for FRC scouting teams
+          {BRAND.tagline}
         </Badge>
         <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
           Scout smarter.
@@ -41,8 +42,7 @@ export default function LandingPage() {
           <span className="text-gradient">Pick winners.</span>
         </h1>
         <p className="max-w-xl text-balance text-base text-[var(--muted-foreground)] sm:text-lg">
-          CompEpicurus is a scouting platform for FRC teams — match data entry, live analytics,
-          and alliance selection tools, wrapped in one glassy, bouncy interface.
+          {BRAND.description}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link href="/signup">
@@ -62,7 +62,7 @@ export default function LandingPage() {
             <span className="h-3 w-3 rounded-full bg-red-400/70" />
             <span className="h-3 w-3 rounded-full bg-amber-400/70" />
             <span className="h-3 w-3 rounded-full bg-emerald-400/70" />
-            <span className="ml-3 text-xs text-[var(--muted-foreground)]">dashboard &mdash; compepicurus.app</span>
+            <span className="ml-3 text-xs text-[var(--muted-foreground)]">dashboard &mdash; {BRAND.domain}</span>
           </div>
           <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4">
             {["Matches Scouted", "Teams Tracked", "Active Scouts", "Avg. Accuracy"].map((label, i) => (

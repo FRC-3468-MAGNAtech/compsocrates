@@ -27,7 +27,7 @@ export async function claimFreeTeamCode(db: Firestore, txn: Transaction, random:
  * Creates a team as CS stores it, makes the caller its owner and admin, and switches public creation off, in ONE transaction
  * (two simultaneous creators cannot both win). Writes:
  *   teams/{CODE}: teamName, teamNumber (string), verifiedOwnerId, selectedEvents [], createdAt (ms)
- *   users/{uid} (merge): teamId, role/roles/secondaryRoles, isTeamAdmin true, isOwner true (CE mirror)
+ *   users/{uid} (merge): teamId, role/roles/secondaryRoles, isTeamAdmin true, isOwner true (app mirror)
  * `{CODE}` is a random uppercase code, checked for collisions against existing team docs inside the transaction.
  */
 export async function createTeamForCaller(

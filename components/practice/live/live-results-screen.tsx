@@ -22,7 +22,7 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
 
   const resolved = session.accuracy !== null;
 
-  // Client-side fallback poll (see docs/ARCHITECTURE.md, P7) — only runs
+  // Client-side fallback poll (P7) — only runs
   // while waiting, stops the instant this session resolves (the realtime
   // session listener upstream re-renders this component with a non-null
   // accuracy, which this effect's own dependency picks up to clear itself).

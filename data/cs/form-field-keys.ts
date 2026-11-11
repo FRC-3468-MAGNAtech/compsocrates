@@ -11,7 +11,7 @@
  *   - Element `i` (0-based) of the `robots` array becomes `robot{i+1}`: `robots[0].teamNumber` -> `robot1_teamNumber`,
  *     `robots[2].endgameClimb` -> `robot3_endgameClimb`. The array length follows the alliance size (3 for FRC).
  *
- * NOT VALUES. These live on the CE entry itself (the form's system pickers), never in `values`:
+ * NOT VALUES. These live on the app entry itself (the form's system pickers), never in `values`:
  *   event (`eventCode` <-> `eventKey`), team (`teamNumber` <-> `teamNumber`, helper: `assistedTeamNumber`), scout
  *   (`scoutName` <-> `scoutName`, helper: `helperName`), match (`matchKey` <-> `matchKey` / `matchId` / `matchLabel`),
  *   alliance (`alliance`). Which pickers each form type carries is `systemPickers` below; it matches `REQUIRED_SYSTEM_FIELDS`
@@ -22,7 +22,7 @@
  *   - `boolean` -> toggle / checkbox.
  *   - `number`  -> slider / number (lead `skillLevel`, the match-strategy prediction fields).
  *
- * ADDITIVE FIELDS CE MAY WRITE (absent from CS-origin docs, ignored by CS, written only when the entry has them):
+ * ADDITIVE FIELDS THE APP MAY WRITE (absent from CS-origin docs, ignored by CS, written only when the entry has them):
  *   `stickyNotes`, `linkedEntryId`, `planDifferences`, `alliance` (match strategy / drive reflection only: CS has no alliance
  *   column there), helper `eventKey` (CS's own CSV import writes it too, but its form does not).
  */
@@ -45,7 +45,7 @@ export type CsFieldUi = "text" | "textarea" | "toggle" | "number" | "select" | "
 export type CsFieldOption = { value: string; label: string };
 
 export type CsFieldKey = {
-  /** The CE value key (before any `robot{n}_` prefix). */
+  /** The app value key (before any `robot{n}_` prefix). */
   key: string;
   /** The CS document path of the field, relative to the document (top-level), to a robot object, or to `overallAlliance`. */
   path: string;
@@ -221,13 +221,13 @@ export const CS_FORM_FIELD_SPECS: Readonly<Record<CsFormType, CsFormFieldSpec>> 
     collection: "helperReports",
     systemPickers: ["teamPicker", "scoutName"],
     fields: HELPER_FIELDS,
-    note: "CS's helper form has no event picker, so CS docs carry no `eventKey`; CE writes one when the form has an event.",
+    note: "CS's helper form has no event picker, so CS docs carry no `eventKey`; the app writes one when the form has an event.",
   },
 };
 
 /** One concrete value key a rebuilt form must define. */
 export type CsExpandedKey = Omit<CsFieldKey, "key" | "path" | "aliases"> & {
-  /** The CE value key (what the form field's `key` must be). */
+  /** The app value key (what the form field's `key` must be). */
   key: string;
   /** The CS document path, with the real array index (`robots[0].teamNumber`). */
   path: string;

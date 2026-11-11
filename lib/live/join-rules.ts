@@ -16,8 +16,7 @@ export type JoinOption =
  * covered can further joiners pick freely from the other alliance. If both
  * alliances are already partially covered (1 each) — a case the prompt
  * doesn't address — this forces onto the first one found, favoring
- * completing an alliance over starting a third; see docs/ASSUMPTIONS.md
- * (P7).
+ * completing an alliance over starting a third.
  */
 export function determineJoinOption(covered: CoveredRobot[], redTeams: readonly number[], blueTeams: readonly number[]): JoinOption {
   const byAlliance: Record<AllianceColor, number[]> = {

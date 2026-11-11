@@ -6,7 +6,7 @@ import type { CsDoc, FullGamePlugin, GameId } from "@/lib/games/types";
 import type { ScoutEntry } from "@/lib/scout-entries";
 
 // The CS-only analytics pages (prediction, verification, comparison, radar) run on the game plugins, which speak CS documents
-// (`CsDoc`). A `ScoutEntry` is CE's in-app model, so these helpers turn an entry back into the CS document the plugin expects
+// (`CsDoc`). A `ScoutEntry` is the app's model, so these helpers turn an entry back into the CS document the plugin expects
 // (through the adapter in data/cs/scouting.ts) and read the identity fields the pages join on. Pure.
 
 /**

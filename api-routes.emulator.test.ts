@@ -7,7 +7,7 @@ import { connectFirestoreEmulator, getFirestore as getClientFirestore } from "fi
 // Unverified in this environment — no Java / firebase-tools available here
 // to run the Firebase Emulator Suite (Auth + Firestore both needed). Run
 // with `npm run test:api` (added alongside test:rules) once both are
-// installed locally. See docs/ASSUMPTIONS.md, P1b.
+// installed locally.
 //
 // Covers the prompt's explicit API-test asks: team creation succeeds once
 // and is then rejected (including a simulated race), unverified emails
@@ -18,9 +18,9 @@ import { connectFirestoreEmulator, getFirestore as getClientFirestore } from "fi
 // exports it as GCLOUD_PROJECT; the emulator mints ID tokens with *that* audience no matter
 // what projectId the client app claims, and the Admin SDK rejects a token whose audience
 // differs from its own project. So the whole test must use the emulator's project id (the
-// original hardcoded "compepicurus-api-test" made every verifyIdToken call fail with
+// original hardcoded "compsocrates-api-test" made every verifyIdToken call fail with
 // `incorrect "aud"` — FIX2).
-const PROJECT_ID = process.env.GCLOUD_PROJECT || "compepicurus-api-test";
+const PROJECT_ID = process.env.GCLOUD_PROJECT || "compsocrates-api-test";
 
 // The Admin SDK only needs credentials that *parse* to construct a client when
 // FIRESTORE_EMULATOR_HOST / FIREBASE_AUTH_EMULATOR_HOST redirect every call
@@ -388,43 +388,40 @@ describe("POST /api/auth/sync-roles", () => {
   });
 });
 
-// Team creation and joining write CS-shaped documents only: no multi-team extras, and a document that already carries them is left alone.
+// Team creation and joining write CS-shaped documents only: no extra fields, and a document that already carries unknown ones is left alone.
 describe("one team per team document", () => {
   async function uidOf(email: string) {
     return (await getAdminAuth()!.getUserByEmail(email)).uid;
   }
 
-  it("a created team is CS-shaped (teamNumber is a string) and the creator is its admin, with no field-team extras", async () => {
+  it("a created team is CS-shaped (teamNumber is a string) and the creator is its admin, with no extra fields", async () => {
     const token = await createTestUser("maker@example.com");
     const { teamId } = await (await createTeam(postJson({ teamNumber: 35792, teamName: "Alpha" }, token))).json();
     const db = getAdminFirestore()!;
     const team = (await db.collection("teams").doc(teamId).get()).data()!;
     expect(team).toMatchObject({ teamNumber: "35792", teamName: "Alpha", selectedEvents: [] }); // CS stores the team number as a string (docs/ROUTES.md D1)
-    for (const key of ["fieldTeams", "fieldTeamIdList", "fieldTeamNumbers"]) expect(team).not.toHaveProperty(key);
     const user = (await db.collection("users").doc(await uidOf("maker@example.com")).get()).data()!;
     expect(user).toMatchObject({ teamId, isTeamAdmin: true, isOwner: true });
-    expect(user).not.toHaveProperty("fieldTeamIds");
   });
 
-  it("a new member joins without any team assignment, and a team doc with old multi-team fields is not touched", async () => {
-    const creator = await createTestUser("creator-ft@example.com");
+  it("a new member joins without any team assignment, and a team doc with extra unknown fields is not touched", async () => {
+    const creator = await createTestUser("creator-extra@example.com");
     const { teamId, joinCode } = await (await createTeam(postJson({ teamNumber: 35792, teamName: "Alpha" }, creator))).json();
     const db = getAdminFirestore()!;
     const old = {
-      fieldTeams: [
-        { id: "ft-35792", number: 35792, name: "Alpha" },
-        { id: "fteam_b", number: 35794, name: "Beta" },
+      legacySubTeams: [
+        { id: "st-35792", number: 35792, name: "Alpha" },
+        { id: "st-b", number: 35794, name: "Beta" },
       ],
-      fieldTeamIdList: ["ft-35792", "fteam_b"],
-      fieldTeamNumbers: [35792, 35794],
+      legacySubTeamIds: ["st-35792", "st-b"],
+      legacySubTeamNumbers: [35792, 35794],
     };
     await db.collection("teams").doc(teamId).update(old);
-    const joiner = await createTestUser("joiner-ft@example.com");
+    const joiner = await createTestUser("joiner-extra@example.com");
     await joinTeam(postJson({ joinCode, name: "Joiner" }, joiner));
     // a sign-in sync is the other code path that touches the team and its members
     await syncRoles(postJson({}, joiner));
     await syncRoles(postJson({}, creator));
-    expect((await db.collection("users").doc(await uidOf("joiner-ft@example.com")).get()).data()).not.toHaveProperty("fieldTeamIds");
     expect((await db.collection("teams").doc(teamId).get()).data()).toMatchObject(old); // never deleted, never rewritten
   });
 });
@@ -796,7 +793,6 @@ describe("P20", () => {
 
       const team = (await docData(`teams/${teamId}`))!;
       expect(team).toMatchObject({ teamNumber: "9002", teamName: "Team 9002", selectedEvents: [], verifiedOwnerId: a.uid, applicationId: a.applicationId });
-      expect(team).not.toHaveProperty("fieldTeams");
       expect(teamId).toMatch(/^[A-Z2-9]{6}$/); // the join code is the doc id, uppercase
       expect(await docData(`users/${a.uid}`)).toMatchObject({ teamId, isTeamAdmin: true, isOwner: true, role: "lead-strategist", roles: ["lead-strategist"], displayName: "Ada Lovelace" });
       expect(await docData(`teamApplications/${a.applicationId}`)).toMatchObject({ status: "approved", teamId, decidedBy: platformUid });

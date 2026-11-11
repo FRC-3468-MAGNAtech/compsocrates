@@ -419,7 +419,7 @@ describe("2. scouting writes", () => {
     expect(data).toEqual(expected);
     expect(data.submittedAt).toBe(data.timestamp);
     expect(data.submittedAt as number).toBeGreaterThanOrEqual(before);
-    // the CE-only fields never reach the CS document
+    // the app-only fields never reach the CS document
     for (const key of ["values", "formId", "formVersion", "source", "score", "excluded", "autoFlags", "manualFlags", "legacy", "uid"]) expect(data).not.toHaveProperty(key);
     expect(typeof data.matchNumber).toBe("string");
     expect(typeof data.teamNumber).toBe("string");
@@ -550,8 +550,8 @@ describe("2. scouting writes", () => {
       entityId: "e1",
       manualFlagged: true,
       manualReason: "no-teleop-score",
-      ceManualReason: "No teleop score",
-      ceManualNote: "",
+      manualReasonText: "No teleop score",
+      manualNoteText: "",
       manualFlaggedAt: expect.any(Number),
       manualFlaggedBy: lead,
     });
@@ -1411,7 +1411,7 @@ describe("7. other teams and the open CS collections", () => {
 // ---------------------------------------------------------------------------------------------------------------------
 
 describe("8. practice sessions", () => {
-  it("claimSessionId reserves a CS-readable session doc; updatePracticeSession writes CE fields with their CS counterparts; getPracticeSession reads CE and CS docs; delete works", async () => {
+  it("claimSessionId reserves a CS-readable session doc; updatePracticeSession writes app fields with their CS counterparts; getPracticeSession reads app and CS docs; delete works", async () => {
     const team = newTeamCode();
     const ada = await seedUser(team, "ada");
     await as(ada);

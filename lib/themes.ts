@@ -44,7 +44,7 @@ const solid: ThemeDefinition[] = [
     light: { textOnAccent: "#fff7ed" },
   }),
   // Recreation of CompSocrates's own palette (CS `light-compsocrates` / `dark-compsocrates`: primary #c42221, accent #8b1818,
-  // dark page #0f1117 on surface #171a22). Added next to the CE themes, not instead of them (docs/ROUTES.md D9).
+  // dark page #0f1117 on surface #171a22). Added next to the app themes, not instead of them (docs/ROUTES.md D9).
   // The accent #8b1818 is too dark to read on the dark page, so dark mode lifts accent and secondary to lighter reds.
   solidTheme({
     id: "compsocrates",
@@ -141,7 +141,7 @@ const flags: ThemeDefinition[] = [
   flag("gay-mlm", "Gay (MLM)", ["#078d70", "#26ceaa", "#98e8c1", "#ffffff", "#7badE2", "#5049cc", "#3d1a78"]),
   flag("lesbian", "Lesbian", ["#d52d00", "#ef7627", "#ff9a56", "#ffffff", "#d162a4", "#b55690", "#a30262"]),
   flag("bisexual", "Bisexual", ["#d60270", "#9b4f96", "#0038a8"]),
-  // Pan and Intersex were rendered three ways (smooth OKLCH, soft bands, radial) and judged on screenshots: docs/ASSUMPTIONS.md, P32-3.
+  // Pan and Intersex were rendered three ways (smooth OKLCH, soft bands, radial) and judged on screenshots.
   flag("pansexual", "Pansexual", ["#ff218c", "#ffd800", "#21b1ff"], { style: "banded" }),
   // Seven stripes with a white one in the middle. The fixed glass and text treatment keeps the contrast guard happy across all of it.
   flag("berri-laurian", "Berri / Laurian", ["#335add", "#358df7", "#83e2ff", "#ffffff", "#cd91f3", "#9d54e3", "#563399"], { style: "banded" }),

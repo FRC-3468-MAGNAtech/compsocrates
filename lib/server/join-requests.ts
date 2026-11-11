@@ -67,7 +67,7 @@ async function requestsOfUser(db: Firestore, uid: string) {
 
 /**
  * "I want to join team CODE as ROLE": makes sure the caller has a CS-shaped user doc (`teamId: ""`, like CS's signup), then files
- * ONE pending `teamJoinRequests` row. Replaces CE's instant join-code join and CS's client-side `addDoc` with its permission-
+ * ONE pending `teamJoinRequests` row. Replaces the app's instant join-code join and CS's client-side `addDoc` with its permission-
  * error fallback ladder. A repeat request for the same team is answered with the existing one (200, `alreadyPending`).
  */
 export async function requestToJoinTeam(db: Firestore, caller: Caller, input: { teamCode: unknown; role?: unknown; name?: unknown }, nowMs: number = Date.now()): Promise<RouteResult> {

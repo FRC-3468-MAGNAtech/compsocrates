@@ -9,7 +9,7 @@ import { db, isFirebaseConfigured } from "@/lib/firebase/client";
  * Include) writes one of these; P9 adds the Admin Panel's own session/entry
  * edit, rescore, and backup actions. `firestore.rules` never restricts this
  * field's value (only `uid`/`teamId` on create), so adding a new action here
- * needs no rules change — see docs/ASSUMPTIONS.md (P9).
+ * needs no rules change.
  */
 export type AuditAction =
   | "hard-reset-scout-data"

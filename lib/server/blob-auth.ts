@@ -22,7 +22,7 @@ const FORM_PAGES: Record<NonMatchFormType, string> = {
 export const CUSTOM_FORM_PAGE_ID = "match-scout-form";
 
 export function pageIdForForm(formId: string): string {
-  // both seasons' ids ("pit-scout-v1" and "biobuzz-pit-scout-v1") map to the same page: a photo is allowed by the page, whichever season's form it came from
+  // every season's pit-scout form id (e.g. "pit-scout-v1") maps to the same page: a photo is allowed by the page, whichever season's form it came from
   const type = nonMatchTypeOfFormId(formId);
   return type ? FORM_PAGES[type] : CUSTOM_FORM_PAGE_ID;
 }

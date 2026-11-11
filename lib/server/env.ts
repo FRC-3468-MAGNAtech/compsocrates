@@ -45,8 +45,8 @@ export const ENV_VARS: readonly EnvVarInfo[] = [
   { name: "CRON_SECRET", group: "optional", purpose: "Protects the scheduled live-score poller", whenMissing: "The poller route refuses to run." },
   { name: "RESEND_API_KEY", group: "optional", purpose: "Sends email through Resend", whenMissing: "No notification emails (the app still works)." },
   { name: "EMAIL_FROM", group: "optional", purpose: "Sender for outgoing email", whenMissing: "No notification emails." },
-  { name: "NEXT_PUBLIC_TURNSTILE_SITE_KEY", group: "optional", purpose: "Cloudflare Turnstile site key", whenMissing: "The sign-up bot check is skipped." },
-  { name: "TURNSTILE_SECRET_KEY", group: "optional", purpose: "Cloudflare Turnstile secret", whenMissing: "The sign-up bot check is skipped." },
+  { name: "NEXT_PUBLIC_TURNSTILE_SITE_KEY", group: "optional", purpose: "Cloudflare Turnstile site key", whenMissing: "The bot check on the team application form is skipped." },
+  { name: "TURNSTILE_SECRET_KEY", group: "optional", purpose: "Cloudflare Turnstile secret", whenMissing: "The bot check on the team application form is skipped." },
   { name: "BLOB_READ_WRITE_TOKEN", group: "optional", purpose: "Vercel Blob storage for photos", whenMissing: "Photo uploads." },
   { name: "NEXT_PUBLIC_FIREBASE_VAPID_KEY", group: "optional", purpose: "Web push key", whenMissing: "Push notifications." },
   { name: "APPLICATION_SECRET", group: "optional", purpose: "Signs team-application tokens", whenMissing: "Falls back to a key derived from the Admin credentials." },
@@ -108,6 +108,11 @@ export const emailFrom = (): string | null => read("EMAIL_FROM") || null;
 export const turnstileSecret = (): string | null => read("TURNSTILE_SECRET_KEY") || null;
 export const blobToken = (): string | null => read("BLOB_READ_WRITE_TOKEN") || null;
 export const applicationSecret = (): string | null => read("APPLICATION_SECRET") || null;
+export const turnstileSiteKey = (): string | null => read("NEXT_PUBLIC_TURNSTILE_SITE_KEY") || null;
+/** Vercel's production URL (no scheme), else the deployment's own URL; null off Vercel. */
+export const vercelHost = (): string | null => read("VERCEL_PROJECT_PRODUCTION_URL") || read("VERCEL_URL") || null;
+/** The Admin private key exactly as set (not trimmed: it is hashed to derive the server secret when APPLICATION_SECRET is unset). */
+export const firebaseAdminPrivateKeyRaw = (): string | null => process.env.FIREBASE_ADMIN_PRIVATE_KEY || null;
 
 export type MissingEnvVar = EnvVarInfo;
 

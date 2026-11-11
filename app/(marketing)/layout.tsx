@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ColorModeToggle } from "@/components/theme/color-mode-toggle";
 import { GlassLayerButton } from "@/components/theme/glass-layer-slider";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { BRAND } from "@/config/brand";
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -18,7 +19,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           >
             <Trophy className="h-[18px] w-[18px] text-[var(--color-primary-foreground)]" />
           </span>
-          <span className="text-sm font-semibold sm:text-base">CompEpicurus</span>
+          <span className="text-sm font-semibold sm:text-base">{BRAND.name}</span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="hidden sm:block">

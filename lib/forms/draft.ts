@@ -1,5 +1,6 @@
 import type { Form, FormValues } from "@/lib/forms/types";
 import { defaultValues } from "@/lib/forms/values";
+import { storageKey } from "@/config/brand";
 
 // Draft protection for the scout form: the in-progress values are autosaved to localStorage so a dead battery, a dropped tab or a reload at a venue
 // with bad Wi-Fi doesn't lose a match. One draft per user + form + match + team (plus a pointer to the latest one, so a reload that forgot which match
@@ -31,7 +32,7 @@ export function matchKeyOf(match: { type: string; match: { matchNumber: number }
   return match ? `${match.type}-${match.match.matchNumber}` : null;
 }
 
-const PREFIX = `scout-draft:v${DRAFT_VERSION}`;
+const PREFIX = `${storageKey("scout-draft")}:v${DRAFT_VERSION}`;
 
 /** The storage key of one draft: user, form, match and team (`-` while not picked yet). */
 export const draftKey = (id: DraftIdentity): string => `${PREFIX}:${id.uid}:${id.formId}:${id.matchKey ?? "-"}:${id.teamNumber ?? "-"}`;

@@ -1,3 +1,5 @@
+import { BRAND } from "@/config/brand";
+
 /**
  * P7: serves the Firebase Cloud Messaging service worker at the fixed
  * `/firebase-messaging-sw.js` path FCM's web SDK expects by default — as a
@@ -29,7 +31,7 @@ const messaging = firebase.messaging();
 // in-app "Scores are available" popup (lib/notifications.ts's onMessage
 // handler) covers the foreground case.
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title ?? "CompEpicurus";
+  const title = payload.notification?.title ?? ${JSON.stringify(BRAND.name)};
   const body = payload.notification?.body ?? "Scores are available.";
   const url = payload.data?.url ?? "/";
   self.registration.showNotification(title, { body, data: { url }, icon: "/icon.png" });

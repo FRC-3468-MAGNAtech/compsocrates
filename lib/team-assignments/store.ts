@@ -14,7 +14,7 @@ import { assignedTeamCounts, type TeamAssignKind, type TeamAssignmentsDoc, type 
 //   pit            -> pitAssignments   (one doc per team x scout)
 //   teamStrategy   -> teamAssignments  (same shape) AND a mirror in matchAssignments (assignmentType "team", matchKey "team"),
 //                     which is what CS's scouts read; CS itself falls back to the mirror alone when the primary write is denied.
-// CS has no version history, so CE's one level of undo lives in memory for the tab that published (`previousRows`).
+// CS has no version history, so the app's one level of undo lives in memory for the tab that published (`previousRows`).
 
 export const teamAssignmentDocId = (teamId: string, eventCode: string, kind: TeamAssignKind): string => `${teamId}_${eventCode}_${kind}`;
 
@@ -32,7 +32,7 @@ type Held = { teamId: string; pit: CsAssignmentRow[]; team: CsAssignmentRow[]; m
 
 /**
  * Every Pit Scouting / Team Strategy assignment doc of the team, live: all events and both kinds (the notification, dashboard, form
- * and Scout Status all want several). Three team-scoped queries (pit, team, and the team-strategy mirror) merged into CE's docs.
+ * and Scout Status all want several). Three team-scoped queries (pit, team, and the team-strategy mirror) merged into the app's docs.
  */
 export function useTeamAssignmentDocs(teamId: string | null): { docs: TeamAssignmentsDoc[]; loaded: boolean } {
   const [held, setHeld] = useState<Held | null>(null);

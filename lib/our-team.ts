@@ -4,9 +4,8 @@
 // card, match-list highlights, scouting stats, header strip, ...), so none of them knows how it is derived.
 //
 // CompSocrates keeps ONE team per team document (`teams/{CODE}`: `teamName`, `teamNumber` as a string). A multi-team switcher
-// (sister teams on one account, as CompEpicurus has) would plug in HERE and nowhere else: `useOurTeam()` would return the
-// team being "viewed as", `useIsOurTeam()` would test against every team on the account, and `OurTeamProvider` would hold the
-// switch. The git tag `pre-ce-removal` keeps the old implementation (lib/field-teams*.ts) for that later merge.
+// (sister teams on one account) would plug in HERE and nowhere else: `useOurTeam()` would return the team being "viewed as",
+// `useIsOurTeam()` would test against every team on the account, and `OurTeamProvider` would hold the switch.
 //
 // `OurTeamProvider` is mounted once in app/(app)/layout.tsx so the whole app shares one subscription to the team doc. The
 // hooks never throw outside it (they return "no team, loaded"), so isolated component tests keep working.

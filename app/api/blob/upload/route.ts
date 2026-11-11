@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { blobToken } from "@/lib/server/env";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { parsePageAccess } from "@/lib/page-access/access";
@@ -20,7 +21,7 @@ const json = (body: Record<string, unknown>, status: number) => NextResponse.jso
  * the signature) and carries no Firebase token, so it is let through to handleUpload without our auth (and does nothing).
  */
 export async function POST(request: Request) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return json({ code: "not-configured", error: "Photo uploads aren't set up on this server." }, 503);
+  if (!blobToken()) return json({ code: "not-configured", error: "Photo uploads aren't set up on this server." }, 503);
 
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return json({ code: "too-large", error: "That's too large." }, 413);
   const raw = await request.text().catch(() => "");

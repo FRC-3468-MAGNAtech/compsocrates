@@ -23,8 +23,7 @@ export type { LibraryOrigin };
 /**
  * Deliberately NOT teamId-scoped — this is public, real FRC competition
  * data (the same for every team), not this team's own scouting data, and
- * the prompt's own field list for libraryMatches omits teamId. See
- * docs/ASSUMPTIONS.md (P3) for the write-access trade-off this implies.
+ * the prompt's own field list for libraryMatches omits teamId, so writes to it are open to the whole app.
  */
 
 export type LibraryAlliance = {
@@ -69,7 +68,7 @@ export type LibraryMatch = {
   /**
    * D1: set on a match read from CS's `practiceMatches` (written only by the owner's import scripts, so read-only here and never in
    * `libraryMatches`). `docIds` are CS's per-alliance doc ids (a practice session written for the match stores the one for its alliance as
-   * `matchId`), `matchKey` is CS's own key. Absent on every CE-curated match.
+   * `matchId`), `matchKey` is CS's own key. Absent on every app-curated match.
    */
   cs?: { matchKey: string; docIds: Partial<Record<"red" | "blue", string>> };
 };
@@ -167,13 +166,13 @@ export async function importLibraryEvent(seasonId: string, eventCode: string): P
               teams: match.redTeams,
               score: match.redScore,
               penaltyPoints: match.redPenaltyPoints ?? 0,
-              difficulty: getDifficulty(match.redScore),
+              difficulty: getDifficulty(match.redScore, seasonId),
             },
             blue: {
               teams: match.blueTeams,
               score: match.blueScore,
               penaltyPoints: match.bluePenaltyPoints ?? 0,
-              difficulty: getDifficulty(match.blueScore),
+              difficulty: getDifficulty(match.blueScore, seasonId),
             },
           },
           scoresUpdatedAt: now,
@@ -283,7 +282,7 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
  * the Admin Panel's per-event table) since the query key differs.
  */
 export function useLibraryMatchesBySeason(seasonId: string | null, options: { includeImported?: boolean } = {}) {
-  // Lobbies resolve their match server-side from `libraryMatches`, so they ask for CE's own matches only (`includeImported: false`).
+  // Lobbies resolve their match server-side from `libraryMatches`, so they ask for the app's own matches only (`includeImported: false`).
   const includeImported = options.includeImported ?? true;
   const [matches, setMatches] = useState<LibraryMatch[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());

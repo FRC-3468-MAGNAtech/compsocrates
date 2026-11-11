@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { embedUrlFor, parseStreamUrl } from "./stream";
+import { BRAND } from "@/config/brand";
 
 describe("parseStreamUrl", () => {
   it("parses a standard YouTube watch URL", () => {
@@ -42,8 +43,8 @@ describe("embedUrlFor", () => {
   });
 
   it("builds a Twitch embed URL with the given parent domain", () => {
-    const url = embedUrlFor({ platform: "twitch", id: "firstinspires", url: "" }, "compepicurus.app");
+    const url = embedUrlFor({ platform: "twitch", id: "firstinspires", url: "" }, BRAND.domain);
     expect(url).toContain("channel=firstinspires");
-    expect(url).toContain("parent=compepicurus.app");
+    expect(url).toContain(`parent=${BRAND.domain}`);
   });
 });

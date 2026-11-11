@@ -1,9 +1,9 @@
 /**
- * CS match ids <-> CE (matchType, matchNumber), docs/ROUTES.md D11.
+ * CS match ids <-> app (matchType, matchNumber), docs/ROUTES.md D11.
  *
  * CS identifies a scouted match with a short id: `p3` (practice), `q12` (qualification), `qf2` / `sf5` (a double-elimination
  * bracket slot) and `f1` (finals game), plus a `matchType` of `practice | qualification | finals` and a `matchNumber` string.
- * CE has `MatchType` = Practice | Qualification | Playoff with a single numeric `matchNumber`, so playoffs use the D11
+ * The app has `MatchType` = Practice | Qualification | Playoff with a single numeric `matchNumber`, so playoffs use the D11
  * numbering: bracket slots 1..13, finals games 14..16 (overtime continues 17, 18).
  *
  * The id parser is a port of CS's `normalizeScoutedMatchId` (app/scout-form/page.tsx). Reverse mapping is lossy for playoffs
@@ -101,7 +101,7 @@ function digits(value: unknown): number {
 }
 
 /**
- * The CE match a CS `scouting` doc is for. Reads `matchId`, then `matchKey`, then `matchLabel` (CS's own precedence), and
+ * The app match a CS `scouting` doc is for. Reads `matchId`, then `matchKey`, then `matchLabel` (CS's own precedence), and
  * falls back to `matchType` + `matchNumber` when none of them parse.
  */
 export function csDocMatchRef(doc: Record<string, unknown>): CsMatchRef {
@@ -122,7 +122,7 @@ export function csDocMatchRef(doc: Record<string, unknown>): CsMatchRef {
 export type CsMatchFields = { matchId: string; matchType: CsMatchType; matchNumber: string };
 
 /**
- * The CS identity fields for a CE match. Playoff slots 1..13 are written as `sf{slot}` (what CS stores for the 2026 feed,
+ * The CS identity fields for an app match. Playoff slots 1..13 are written as `sf{slot}` (what CS stores for the 2026 feed,
  * where TBA encodes the bracket slot as SF{slot}M{n}); finals games 14..16 as `f1..f3`, whose CS `matchNumber` is the series
  * number 1..3, not 14..16.
  */

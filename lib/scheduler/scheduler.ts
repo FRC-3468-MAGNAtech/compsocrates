@@ -66,7 +66,7 @@ function recentlyUsedSet(history: string[][]): Set<string> {
  * "undersized" group), and its overlap between consecutive picks is what
  * gives it provably even fairness: over one full cycle
  * (`order.length / gcd(size, order.length)` picks), every scout is picked
- * the exact same number of times. See docs/ASSUMPTIONS.md (P6) for why a
+ * the exact same number of times. A
  * naive fixed-disjoint-group partition (uneven group sizes needing
  * per-match floater top-ups) was replaced with this.
  */
@@ -109,8 +109,8 @@ function assignMatch(
 
 /**
  * The one scheduling entry point — pure, deterministic given `settings.seed`.
- * See docs/ARCHITECTURE.md (P6) for the rotation-pattern semantics and
- * docs/ASSUMPTIONS.md (P6) for the judgment calls baked in here
+ * P6: the rotation-pattern semantics and
+ * the judgment calls baked in here
  * (prioritized teams excluding, not just preferring, other slots; the
  * "recently used" soft constraint meaning the last 2 matches specifically).
  */

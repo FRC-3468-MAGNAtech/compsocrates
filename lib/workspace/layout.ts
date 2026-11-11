@@ -1,6 +1,8 @@
 // P24: the pure math and rules behind the ScoutingWorkspace (components/practice/scouting-workspace.tsx): how big the 16:9 video can be in its pane, how wide
 // the form may be and how that is remembered, the phone's video/form split, the keyboard shortcuts, and what is stored. No React and no DOM, so all of it is tested.
 
+import { storageKey } from "@/config/brand";
+
 export const VIDEO_ASPECT = 16 / 9;
 
 /** The largest `aspect` box that fits (contain) in a w x h pane, in whole pixels. Zero while the pane has no size yet. */
@@ -136,7 +138,7 @@ export function shortcutFor(e: ShortcutEvent, commentsOpen: boolean): WorkspaceS
 
 // --- remembering the layout ---------------------------------------------------------------------------------------------------------
 
-export const WORKSPACE_STORAGE_KEYS = { formFraction: "workspace-form-fraction", phoneSplit: "workspace-phone-split" } as const;
+export const WORKSPACE_STORAGE_KEYS = { formFraction: storageKey("workspace-form-fraction"), phoneSplit: storageKey("workspace-phone-split") } as const;
 
 export type LayoutStorage = Pick<Storage, "getItem" | "setItem">;
 

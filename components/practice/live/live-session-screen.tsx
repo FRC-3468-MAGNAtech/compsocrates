@@ -27,7 +27,7 @@ import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-e
  * as `null`, same as the schema already allows for "not captured"). Doing
  * that reliably needs the platform's own JS player SDK wired up with
  * postMessage round-trips, which couldn't be verified end-to-end without a
- * real live stream to test against; see docs/ASSUMPTIONS.md (P7). A clear
+ * real live stream to test against. A clear
  * "Open stream in a new tab" card still always works regardless.
  */
 export function LiveSessionScreen({

@@ -1,8 +1,8 @@
 /**
- * Adapter between CS's `teams/{TEAMCODE}` document and CE's `TeamDoc` (lib/team.ts). docs/ROUTES.md D1, D10, D12.
+ * Adapter between CS's `teams/{TEAMCODE}` document and the app's `TeamDoc` (lib/team.ts). docs/ROUTES.md D1, D10, D12.
  * No React, no Firebase.
  *
- * `selectedEvents: string[]` (TBA keys) is the SINGLE source of truth for a team's active events. CE's `activeEvents` /
+ * `selectedEvents: string[]` (TBA keys) is the SINGLE source of truth for a team's active events. The app's `activeEvents` /
  * `activeEventCode` / `activeEvent` / `activeEventCodes` are DERIVED from it on read (a placeholder `EventInfo` per key, which
  * `useActiveEvents` enriches with the event's real name and dates), and `selectedEventsPatch` writes only `selectedEvents`.
  * ADDITIVE field `selectedEventNames: { [eventKey]: name }` (new in the rebuild; CS never reads or writes it, and a CS-written doc
@@ -53,7 +53,7 @@ export function readSelectedEventNames(value: unknown): Record<string, string> {
   return isRecord(value) ? collectStoredEventNames(value as Record<string, string>) : {};
 }
 
-/** CS lockout (`submissionControls.globalLockout`) as CE's gate state; `assertSubmissionsOpen` semantics. */
+/** CS lockout (`submissionControls.globalLockout`) as the app's gate state; `assertSubmissionsOpen` semantics. */
 export function readSubmissionLockout(controls: CsSubmissionControls | null | undefined): SubmissionLockout {
   return { locked: Boolean(controls?.globalLockout), reason: str(controls?.lockoutReason).trim() || DEFAULT_LOCKOUT_REASON };
 }
@@ -63,7 +63,7 @@ export function getSubmissionLockout(team: Pick<TeamDoc, "submissionControls"> |
   return readSubmissionLockout(team?.submissionControls);
 }
 
-/** CE-written team fields (additive) that pass through the normalizer unchanged when present on the doc. */
+/** App-written team fields (additive) that pass through the normalizer unchanged when present on the doc. */
 const CE_PASSTHROUGH = [
   "activeForms",
   "accountName",
@@ -73,7 +73,7 @@ const CE_PASSTHROUGH = [
   "libraryBackfilled",
 ] as const;
 
-/** Reads `teams/{id}` as CE's `TeamDoc`. `id` is the uppercase join code (it doubles as `joinCode`). */
+/** Reads `teams/{id}` as the app's `TeamDoc`. `id` is the uppercase join code (it doubles as `joinCode`). */
 export function csTeamToTeamDoc(id: string, doc: CsTeamDoc): TeamDoc {
   const selectedEvents = readSelectedEvents(doc.selectedEvents);
   const selectedEventNames = readSelectedEventNames(doc.selectedEventNames);

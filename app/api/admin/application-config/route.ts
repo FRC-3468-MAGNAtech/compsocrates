@@ -3,6 +3,7 @@ import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
 import { isTurnstileConfigured } from "@/lib/server/turnstile";
 import { isEmailConfigured } from "@/lib/server/email";
+import { turnstileSiteKey } from "@/lib/server/env";
 
 /**
  * P20: tells the platform owner which anti-abuse and notification pieces are actually configured, so Admin Panel >
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ok: true,
     turnstileSecretConfigured: isTurnstileConfigured(),
-    turnstileSiteKeyConfigured: Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()),
+    turnstileSiteKeyConfigured: Boolean(turnstileSiteKey()),
     emailConfigured: isEmailConfigured(),
   });
 }

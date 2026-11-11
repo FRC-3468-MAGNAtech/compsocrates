@@ -8,6 +8,7 @@ import { ColorModeToggle } from "@/components/theme/color-mode-toggle";
 import { ConnectionChip } from "@/components/layout/connection-chip";
 import { GlassLayerButton } from "@/components/theme/glass-layer-slider";
 import type { ConnectionNotice } from "@/lib/connection-notice";
+import { BRAND } from "@/config/brand";
 
 export function Topbar({ onMenuClick, connection = null }: { onMenuClick: () => void; connection?: ConnectionNotice | null }) {
   return (
@@ -19,7 +20,7 @@ export function Topbar({ onMenuClick, connection = null }: { onMenuClick: () => 
         >
           <Trophy className="h-4 w-4 text-[var(--color-primary-foreground)]" />
         </span>
-        <span className="hidden text-sm font-semibold min-[420px]:inline">CompEpicurus</span>
+        <span className="hidden text-sm font-semibold min-[420px]:inline">{BRAND.name}</span>
       </Link>
       <div className="flex items-center gap-2">
         {/* P18: the connection chip is always here (fixed width, solid backing); the sun/moon is the light/dark mode only. */}

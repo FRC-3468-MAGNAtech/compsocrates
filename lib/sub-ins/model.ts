@@ -30,7 +30,7 @@ export type SubInRequest = {
   teamId: string;
   /** The event as a TBA key / event code (alias-resolved, `2026arli`). */
   eventKey: string;
-  /** CE match key: P3, Q12, F7 (`formMatchKey`). */
+  /** App match key: P3, Q12, F7 (`formMatchKey`). */
   matchKey: string;
   /** "Qualification 12": what the dashboards show. */
   matchLabel: string;
@@ -201,7 +201,7 @@ export function marksForMatch(requests: readonly SubInRequest[], eventKey: strin
 
 export type SubInAssignment = { matchType: MatchType; matchNumber: number; teamNumber: number; requestId: string };
 
-/** The matches this scout took over (claimed by them) at the event: CS `userClaims`, used as extra assignments by the scout form. Parsed from the CE match key. */
+/** The matches this scout took over (claimed by them) at the event: CS `userClaims`, used as extra assignments by the scout form. Parsed from the app match key. */
 export function claimedAssignments(requests: readonly SubInRequest[], eventKey: string, uid: string): SubInAssignment[] {
   const out: SubInAssignment[] = [];
   for (const r of requests) {

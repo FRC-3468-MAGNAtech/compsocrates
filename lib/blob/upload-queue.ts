@@ -6,6 +6,7 @@
 // saving the URL into the form, so a reload between "uploaded" and "form saved" can't lose the link.
 
 import type { UploadResult } from "@/lib/blob/client";
+import { BRAND } from "@/config/brand";
 
 export type QueueItemStatus = "pending" | "uploading" | "failed" | "done";
 
@@ -178,7 +179,7 @@ export async function createUploadQueue(store: QueueStore, options: QueueOptions
 
 // --- IndexedDB store -------------------------------------------------------------------------------------------------------
 
-const DB_NAME = "compepicurus-photo-uploads";
+const DB_NAME = `${BRAND.storagePrefix}-photo-uploads`;
 const STORE_NAME = "uploads";
 
 const request = <T>(req: IDBRequest<T>): Promise<T> =>

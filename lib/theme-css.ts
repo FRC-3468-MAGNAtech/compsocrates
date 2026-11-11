@@ -7,6 +7,7 @@
 
 import { defaultThemeId, themes } from "@/lib/themes";
 import { hasModes, pageBackground, type ThemeDefinition, type ThemeTokens } from "@/lib/theme-tokens";
+import { GLASS_LAYER_STORAGE_KEY } from "@/lib/glass-layer-level";
 import { COLOR_MODE_STORAGE_KEY, GRADIENT_INTENSITY_STORAGE_KEY, THEME_STORAGE_KEY } from "@/lib/theme-prefs";
 import { INTENSITY_STRENGTH } from "@/lib/theme-gradient";
 
@@ -90,7 +91,7 @@ if(p!=="light"&&p!=="dark"&&p!=="system")p="system";
 var m=p==="system"?(window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;
 if(flags.indexOf(t)>=0)m="dark";
 de.setAttribute("data-theme",t);de.setAttribute("data-mode",m);
-var s=parseFloat(g("compepicurus.glass-shade"));
+var s=parseFloat(g(${JSON.stringify(GLASS_LAYER_STORAGE_KEY)}));
 if(s>=0.3&&s<=2)de.style.setProperty("--glass-shade",String(s));
 var gm=${JSON.stringify(INTENSITY_STRENGTH)},gk=g(${JSON.stringify(GRADIENT_INTENSITY_STORAGE_KEY)});
 if(gk&&Object.prototype.hasOwnProperty.call(gm,gk))de.style.setProperty("--gradient-strength",String(gm[gk]));

@@ -12,7 +12,7 @@ import { resolvePendingLiveMatches } from "@/lib/live/resolve-pending";
  * runs once a day at an inexact time, nowhere close to fast enough; see
  * docs/ENVIRONMENT.md and `vercel.json` for the daily
  * fallback entry. Unverified in this sandbox — no real live event or
- * scheduler to run it against (see docs/ASSUMPTIONS.md, P7); the logic
+ * scheduler to run it against; the logic
  * itself (`lib/live/resolve-pending.ts`) is unit-tested indirectly through
  * its pure building blocks (`resolveLiveAllianceScoring`,
  * `isAllianceReadyToNotify`).

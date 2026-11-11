@@ -1,5 +1,5 @@
 /**
- * Adapter between CS's `scouting` collection (+ `scoutingFlagStates`) and CE's in-app `ScoutEntry` (docs/ROUTES.md D1, D10).
+ * Adapter between CS's `scouting` collection (+ `scoutingFlagStates`) and the app's `ScoutEntry` (docs/ROUTES.md D1, D10).
  *
  * Pure converters, no Firebase and no React:
  *  - `classifyCsRow(doc)`            what kind of row a `scouting` doc is (official / practice / sub-in / lead / other)
@@ -9,7 +9,7 @@
  *  - `entryFlagStatePatch`           the `scoutingFlagStates` write for a changed flag/dismissal/exclusion
  *
  * Rules the converters keep (D10): a field this adapter does not understand is never dropped or rewritten; identity strings
- * that parse to the same CE value (`matchId` "qf2", `teamNumber` " 254") are left exactly as stored; CS stores no score, so
+ * that parse to the same app value (`matchId` "qf2", `teamNumber` " 254") are left exactly as stored; CS stores no score, so
  * `score` is computed at read time with the game plugin (`plugin.scoreDoc`) and never written.
  */
 import { normalizeEventKey } from "@/config/event";
@@ -126,17 +126,17 @@ const CE_REASON_TO_CS: Partial<Record<ManualFlagReason, string>> = {
   "Unrealistic scoring": "excessive-auto-score",
 };
 
-function isCeReason(value: unknown): value is ManualFlagReason {
+function isFlagReason(value: unknown): value is ManualFlagReason {
   return typeof value === "string" && (CE_REASONS as readonly string[]).includes(value);
 }
 
-/** CE manual flags for a CS flag state (CS keeps one boolean + reason; it reads as one flag with the stable id `cs-manual`). */
+/** App manual flags for a CS flag state (CS keeps one boolean + reason; it reads as one flag with the stable id `cs-manual`). */
 export function manualFlagsFromState(state: CsFlagState, fallbackAtMs: number): ManualFlag[] {
   if (!state.manualFlagged) return [];
   const raw = str(state.manualReason).trim();
   const mapped = CS_REASON_LABELS[raw];
-  const reason: ManualFlagReason = isCeReason(state.ceManualReason) ? state.ceManualReason : (mapped?.reason ?? "Other");
-  const note = typeof state.ceManualNote === "string" ? state.ceManualNote : (mapped ? mapped.note : raw) || undefined;
+  const reason: ManualFlagReason = isFlagReason(state.manualReasonText) ? state.manualReasonText : (mapped?.reason ?? "Other");
+  const note = typeof state.manualNoteText === "string" ? state.manualNoteText : (mapped ? mapped.note : raw) || undefined;
   return [
     {
       id: "cs-manual",
@@ -148,7 +148,7 @@ export function manualFlagsFromState(state: CsFlagState, fallbackAtMs: number): 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Accuracy (CS: `accuracy` percent, `accuracyDetails`, `accuracyScriptStatus`; CE: AccuracyResult with a 0..1 value)
+// Accuracy (CS: `accuracy` percent, `accuracyDetails`, `accuracyScriptStatus`; app: AccuracyResult with a 0..1 value)
 // ---------------------------------------------------------------------------------------------------------------------
 
 function finiteNumber(value: unknown): number | null {
@@ -162,7 +162,7 @@ function accuracyFromTotals(scouted: number, official: number): number | null {
 }
 
 /**
- * CS accuracy -> CE `AccuracyResult`. `accuracyDetails` (`scoutedPoints`, `actualPoints`, `penaltyPoints`, `allRobotsScouted`)
+ * CS accuracy -> app `AccuracyResult`. `accuracyDetails` (`scoutedPoints`, `actualPoints`, `penaltyPoints`, `allRobotsScouted`)
  * maps to `scoutedTotal`, `officialScore`, `penaltyPoints` and the status; the value is CS's own `resolveMatchAccuracy`
  * (totals first, else the stored percent / 100). Null when the doc carries no accuracy at all.
  */
@@ -196,7 +196,7 @@ export function csAccuracyToEntry(doc: CsRecord): AccuracyResult | null {
 }
 
 /**
- * CE accuracy -> the CS fields to merge-write (`accuracy` rounded percent, `accuracyDetails`, `accuracyScriptStatus`,
+ * App accuracy -> the CS fields to merge-write (`accuracy` rounded percent, `accuracyDetails`, `accuracyScriptStatus`,
  * `accuracyUpdatedAt`), as CS's own analytics snapshot writes them. A null or not-applicable accuracy writes nothing (CS data is
  * never deleted). Unknown sub-fields of an existing `accuracyDetails` are kept.
  */
@@ -278,7 +278,7 @@ function legacyOf(doc: CsRecord, kind: "official" | "practice"): ScoutEntryLegac
 }
 
 /**
- * One CS `scouting` doc -> a CE `ScoutEntry`. Returns null for rows that are not entries (sub-in, lead, unknown game; see
+ * One CS `scouting` doc -> an app `ScoutEntry`. Returns null for rows that are not entries (sub-in, lead, unknown game; see
  * `classifyCsRow`). `flagState` is the entry's `scoutingFlagStates` doc (`scoutingEntry:<id>`), when it has one.
  *
  * The entry's `score` is computed here with the game plugin, never read (CS stores none).
@@ -510,10 +510,10 @@ export function scoutEntryToCsPatch(entry: ScoutEntry, existingDoc: CsRecord, op
  * The `scoutingFlagStates/scoutingEntry:<id>` merge-write for the entry's current flags, or null when nothing differs from
  * `current` (the state CS would use today, see `effectiveFlagState`).
  *
- *  - dismissed: CS keeps one boolean for all of an entry's auto flags. It is true when every CE auto flag is dismissed; an
+ *  - dismissed: CS keeps one boolean for all of an entry's auto flags. It is true when every app auto flag is dismissed; an
  *    entry with no auto flags leaves it untouched.
  *  - manual flag: CS keeps one flag (boolean + reason). The LAST of the entry's manual flags is written (a second one
- *    overwrites the first: a CS limitation); an empty list clears it. The CE reason travels in `ceManualReason` / `ceManualNote`.
+ *    overwrites the first: a CS limitation); an empty list clears it. The app reason travels in `manualReasonText` / `manualNoteText`.
  *  - excludeFromAccuracy: written as is.
  */
 export function entryFlagStatePatch(
@@ -540,15 +540,15 @@ export function entryFlagStatePatch(
     if (wanted) {
       patch.manualFlagged = true;
       patch.manualReason = CE_REASON_TO_CS[wanted.reason] ?? "other";
-      patch.ceManualReason = wanted.reason;
-      patch.ceManualNote = wanted.note ?? "";
+      patch.manualReasonText = wanted.reason;
+      patch.manualNoteText = wanted.note ?? "";
       patch.manualFlaggedAt = now;
       patch.manualFlaggedBy = options.actorUid ?? "";
     } else {
       patch.manualFlagged = false;
       patch.manualReason = "";
-      patch.ceManualReason = "";
-      patch.ceManualNote = "";
+      patch.manualReasonText = "";
+      patch.manualNoteText = "";
       patch.manualFlaggedAt = null;
       patch.manualFlaggedBy = "";
     }

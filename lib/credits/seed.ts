@@ -7,7 +7,7 @@ import type { CreditSection } from "@/lib/credits/ops";
 // replayed on the stored copy.
 //
 // The built-with list reflects what the project really uses: the app is Next.js
-// (App Router) on React, not Vite — see docs/ASSUMPTIONS.md (P14).
+// (App Router) on React, not Vite.
 
 export const DEFAULT_CREDITS: CreditSection[] = [
   {

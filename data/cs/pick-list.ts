@@ -1,9 +1,9 @@
 /**
- * Adapter between CS's `teams/{TEAMCODE}.pickList` and CE's ordered list of team numbers (lib/pick-list). D1, D10. No React, no Firebase.
+ * Adapter between CS's `teams/{TEAMCODE}.pickList` and the app's ordered list of team numbers (lib/pick-list). D1, D10. No React, no Firebase.
  *
  * CS (app/analytics/pick-list/page.tsx) keeps ONE pick list per team, not per event:
  *   `pickList: { picks: [{ teamNumber: "254", pickOrder: 1 }, ...], updatedAt: <epoch ms>, updatedBy: <uid> }`
- * written with `setDoc(teams/{id}, { pickList }, { merge: true })`. CE's board is per event (`pickLists/{teamId}_{eventCode}`); the
+ * written with `setDoc(teams/{id}, { pickList }, { merge: true })`. The app's board is per event (`pickLists/{teamId}_{eventCode}`); the
  * rebuild persists the team's single list for whichever event the board shows, as CS does.
  */
 import type { CsRecord } from "@/data/cs/types";

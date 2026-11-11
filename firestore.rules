@@ -11,20 +11,20 @@ rules_version = '2';
 //      is more open than is ideal, a "CS-OPEN" comment records it (so the owner can decide later); the behavior is unchanged.
 //   2. ADDITIONS for collections the rebuild's client uses that CS's rules lack (they fell through to the catch-all deny):
 //      scoutingFlagStates, teamAnnouncements, subInRequests, judgeBookCards (legacy), versionReleases (legacy), plus every
-//      CompEpicurus-only collection the kept CE features need. Their logic is CE's, rewritten on top of CS user fields.
+//      app-only collection the kept features need. Their logic is the app's own, written on top of CS user fields.
 //   3. The catch-all deny, as in CS.
 //
-// CE HELPERS ON CS FIELDS
+// APP HELPERS ON CS FIELDS
 //   isAdmin()   = the CS owner uid, or users/{uid}.isTeamAdmin == true, or users/{uid}.role == "coach"  (D6: CS's admin test)
 //   myTeamId()  = users/{uid}.teamId (CS's own function)
 //   roles       = users/{uid}.role, .roles[], .secondaryRoles[] (canonical ids like "lead-scout" AND the legacy CS values
 //                 "scout", "coach", "lead_scout", "lead_strategist", "pit_scout", "judge_awards")
-//   isAdmin() is team-agnostic on purpose (as in CE); every team-scoped rule below ALSO checks sameTeam(<doc's teamId>).
+//   isAdmin() is team-agnostic on purpose (as in app); every team-scoped rule below ALSO checks sameTeam(<doc's teamId>).
 //
-// Additive CE fields the client writes onto CS user/team docs (glassLayerLevel, lastSeenChangelogAt, fcmTokens, workspace
+// Additive app fields the client writes onto CS user/team docs (glassLayerLevel, lastSeenChangelogAt, fcmTokens, workspace
 // prefs, avatar, themeId, colorMode, activeForms, usePlaceholderVideo, libraryBackfilled, changelogSeeded,
 // judgeBookCards ...) need no special rule: CS's users rule lets the owner of the doc (self) write any field and
-// its teams rule lets a team admin write any field, so they pass. (CE's per-field shape checks were deliberately NOT
+// its teams rule lets a team admin write any field, so they pass. (The app's per-field shape checks were deliberately NOT
 // carried over: they would tighten CS's behavior.)
 // =====================================================================================================================
 service cloud.firestore {
@@ -100,7 +100,7 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------------------------------------------------
-    // CE-style helpers, rebuilt on CS user fields (used by the ADDITIONS section only)
+    // App-style helpers, rebuilt on CS user fields (used by the ADDITIONS section only)
     // ---------------------------------------------------------------------------------------------------------------
 
     // The signed-in user belongs to this (non-empty) team. Unlike CS's raw myTeamId() comparison, an empty or missing
@@ -251,7 +251,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Team docs are `teams/{TEAMCODE}`. A team admin writes any field (selectedEvents, teamName, ... and the additive CE
+    // Team docs are `teams/{TEAMCODE}`. A team admin writes any field (selectedEvents, teamName, ... and the additive app
     // ones: activeForms, usePlaceholderVideo, libraryBackfilled, changelogSeeded, judgeBookCards ...).
     // CS-OPEN: `create` is open to any signed-in user (any id), and a team admin can also write `verifiedOwnerId`.
     match /teams/{teamId} {
@@ -259,7 +259,7 @@ service cloud.firestore {
       allow create: if signedIn();
       allow update, delete: if isOwner() || (signedIn() && isTeamAdmin(teamId));
 
-      // Settings docs of the account (CE page access). Only `pageAccess` exists: every teammate reads it (the navigation
+      // Settings docs of the account (app page access). Only `pageAccess` exists: every teammate reads it (the navigation
       // and route guard need it), only admins write it, never deleted. Nested under teams/{teamId}, which CS's rule does
       // not cascade to.
       match /settings/{docId} {
@@ -329,7 +329,7 @@ service cloud.firestore {
     // match entries, lead, practice, pit, strategy, drive and helper data, and the assignment docs). There is no team
     // scoping, so any account can read or overwrite another team's scouting data. Production CS behavior, kept as is; the
     // owner can tighten it later (the client always writes `teamId`, so a `teamId == myTeamId()` rule would work).
-    // `practiceSessions` is also the CE live-lobby store's sibling and is used by the rebuilt practice flow.
+    // `practiceSessions` is also a sibling of the live-lobby store and is used by the rebuilt practice flow.
     match /scouting/{docId} {
       allow read, create, update, delete: if signedIn();
     }
@@ -471,7 +471,7 @@ service cloud.firestore {
       allow create, update, delete: if isOwner();
     }
 
-    // ---- CompEpicurus-only collections -------------------------------------------------------------------------------
+    // ---- App-only collections -------------------------------------------------------------------------------
 
     // A member's public/private profile (display name, bio, pronouns, avatar, visibility); the avatar is mirrored on the
     // user doc. Readable by the member and by teammates (see below). A teammate who may not read it gets "permission denied"
@@ -929,7 +929,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // assignments/{teamId}_{eventCode}: CE's published scouting schedule (`current` + one level of `previous`). Every
+    // assignments/{teamId}_{eventCode}: the app's published scouting schedule (`current` + one level of `previous`). Every
     // teammate reads; whoever has the Assignments page access writes. Pit and Team Strategy schedules live here too
     // ({teamId}_{eventCode}_{pit|teamStrategy}, with a `kind`): a doc that names a kind must be one of the two and have the
     // matching id. (CS's own matchAssignments / pitAssignments / practiceAssignments / teamAssignments are separate

@@ -12,7 +12,7 @@ export const TRANSFER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const REAUTH_MAX_AGE_SECONDS = 5 * 60;
 
 /**
- * Who owns the account: CS's `verifiedOwnerId` (or CE's additive `ownerUid`) once it is set; until then (an account the
+ * Who owns the account: CS's `verifiedOwnerId` (or the app's additive `ownerUid`) once it is set; until then (an account the
  * bootstrap hasn't reached) the legacy per-user flag.
  */
 export function isTeamOwner(team: { verifiedOwnerId?: unknown; ownerUid?: unknown } | null | undefined, uid: string, legacyOwnerFlag: boolean): boolean {

@@ -28,7 +28,7 @@ import { DEFAULT_GRADIENT_INTENSITY, type GradientIntensity } from "@/lib/theme-
 // (lib/theme-css.ts). The brief color fade is a temporary class that transitions color properties on elements, never
 // opacity / filter / transform on an ancestor of glass: those turn a parent into a backdrop root and switch the blur
 // of every glass layer inside it off. (That, via document.startViewTransition on the root, was the "all blurs vanish
-// after picking a theme" bug. See docs/ASSUMPTIONS.md, P18.)
+// after picking a theme" bug.)
 
 type ThemeContextValue = {
   theme: ThemeDefinition;

@@ -130,7 +130,7 @@ describe("profilePatchToCsUser", () => {
     expect(profilePatchToCsUser({ primaryRole: "media" }, csUser({ role: "coach", roles: ["coach"] }))).toMatchObject({ role: "media", isTeamAdmin: true });
   });
 
-  it("theme writes the CE fields plus the CS id where CS has the theme", () => {
+  it("theme writes the app fields plus the CS id where CS has the theme", () => {
     expect(profilePatchToCsUser({ themeId: "compsocrates", colorMode: "dark" })).toEqual({ themeId: "compsocrates", colorMode: "dark", accountThemeId: "dark-compsocrates" });
     expect(profilePatchToCsUser({ themeId: "ocean" })).toEqual({ themeId: "ocean" });
     expect(profilePatchToCsUser({ colorMode: "light" }, csUser({ themeId: "compsocrates" }))).toMatchObject({ colorMode: "light", accountThemeId: "light-compsocrates" });

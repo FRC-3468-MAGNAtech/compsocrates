@@ -17,7 +17,7 @@ export type TeamMember = {
   primaryRole: RoleId;
   secondaryRoles: RoleId[];
   isAdmin: boolean;
-  /** Set only by app/api/auth/sync-roles — see docs/ASSUMPTIONS.md (P1b). Owner rows can't be edited by anyone through the UI (also enforced in firestore.rules). */
+  /** Set only by app/api/auth/sync-roles. Owner rows can't be edited by anyone through the UI (also enforced in firestore.rules). */
   isOwner: boolean;
   /** P25: the member's avatar choice (mirrored on the user doc); initials when absent. */
   avatar?: AvatarChoice;

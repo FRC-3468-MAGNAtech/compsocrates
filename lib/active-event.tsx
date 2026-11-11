@@ -3,7 +3,7 @@
 // Thin shims over lib/team.ts + lib/active-events.ts. The team's active
 // events live on the team doc (realtime, team-wide), not localStorage.
 // Resolves `teamId` from the signed-in user's own profile (lib/team.ts no
-// longer assumes a single fixed team doc — see docs/ASSUMPTIONS.md, P1b) so
+// longer assumes a single fixed team doc) so
 // no call site needs to pass one in.
 //
 // D1: the team doc is CS's, where the only event field is `selectedEvents` (TBA keys). `useTeamDoc` derives placeholder

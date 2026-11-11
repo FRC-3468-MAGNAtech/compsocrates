@@ -78,7 +78,7 @@ export type PracticeSession = {
   streamEndSec: number | null;
 };
 
-// D1: sessions live in CS's `practiceSessions` (data/cs/practice.ts). A CE-written session carries CE's fields (uid, kind, status, ...)
+// D1: sessions live in CS's `practiceSessions` (data/cs/practice.ts). An app-written session carries the app's fields (uid, kind, status, ...)
 // AND the CS ones (scoutId, eventKey, matchId/Key/Number/Type, scores, epoch-ms timestamps), so CS reads it too; a CS-written snapshot
 // reads here as a completed solo session. CS's live-lobby docs share the collection and are not sessions: they are skipped on read.
 const COLLECTION = "practiceSessions";
@@ -371,7 +371,7 @@ export async function hasCompletedAttemptBefore(
  * paused — backs "Change Match," "Cancel"/"End Session" (discard without
  * saving), and the Resume banner's "Discard" button. Never allowed once
  * completed (see firestore.rules) — P4 extends P3's `allow delete: if
- * false` for exactly this, see docs/ASSUMPTIONS.md.
+ * false` for exactly this.
  */
 export async function deletePracticeSession(sessionId: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTION, sessionId));

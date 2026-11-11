@@ -226,7 +226,7 @@ describe("match strategy", () => {
     expect(planRebuiltRows([plan("q12", red, {}, 0), plan("q12", red, {}, 9)], { latestOnly: false })).toHaveLength(2);
   });
 
-  it("orders by event, then match number, then alliance (CE's additive alliance included)", () => {
+  it("orders by event, then match number, then alliance (the app's additive alliance included)", () => {
     const rows = planRebuiltRows([plan("q10", red), plan("q2", red), plan("q2", blue, { alliance: "blue" }), plan("q2", red, { alliance: "red" })]);
     expect(rows.map((r) => [r.matchKey, r.alliance])).toEqual([["Q2", null], ["Q2", "blue"], ["Q2", "red"], ["Q10", null]]);
   });

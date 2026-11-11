@@ -48,7 +48,7 @@ export async function setSessionExcluded(
  * Permanently deletes every completed `solo` session (and its scout
  * entries) for one scout in one practice category — "Hard Reset Scout
  * Data," practice-only (Real Event's own data belongs to the team's match
- * records and is never bulk-deletable — see docs/ASSUMPTIONS.md, P5).
+ * records and is never bulk-deletable).
  */
 export async function hardResetScoutData(
   teamId: string,

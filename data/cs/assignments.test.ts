@@ -280,7 +280,7 @@ describe("planAssignmentWrite", () => {
 describe("team (pit / team strategy) assignments", () => {
   const pit = (id: string, team: number, scout: string, at = 1, event = EVENT) => row(id, { teamId: "MAG2403", eventKey: event, teamNumber: team, scoutId: scout, scoutName: scout, assignedBy: "lead", assignedAt: at });
 
-  it("groups rows per event into CE docs, one scout list per team", () => {
+  it("groups rows per event into app docs, one scout list per team", () => {
     const docs = csTeamRowsToDocs("pit", [pit("a", 254, "u1"), pit("b", 254, "u2", 2), pit("c", 971, "u1", 3), pit("d", 5, "u1", 4, "2026lake")], "MAG2403");
     expect(docs.map((d) => d.eventCode)).toEqual([EVENT, "2026lake"]);
     const arli = docs[0];
@@ -367,7 +367,7 @@ describe("event attendance (teams.eventAttendees)", () => {
     expect(staleAttendeeKeys(null, "2026lake")).toEqual([]);
   });
 
-  it("lists recorded events as CE attendance records", () => {
+  it("lists recorded events as app attendance records", () => {
     const records = attendanceRecordsFromTeam("MAG2403", { [EVENT]: ["Ada Lovelace"], "2026lake": [], "2025lake": ["uid-grace"] }, members);
     expect(records).toEqual([
       { id: `MAG2403_${EVENT}`, teamId: "MAG2403", eventCode: EVENT, uids: ["uid-ada"], updatedAt: null },

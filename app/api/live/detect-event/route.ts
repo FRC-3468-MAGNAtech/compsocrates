@@ -14,8 +14,7 @@ import { parseStreamUrl } from "@/lib/live/stream";
  * YouTube: a real oEmbed title lookup (no API key needed). Twitch: no
  * reliable, keyless oEmbed exists anymore, so only the channel name itself
  * is used as a (weak) match signal — in practice this means Twitch links
- * fall back to the manual event picker far more often than YouTube ones;
- * see docs/ASSUMPTIONS.md (P7).
+ * fall back to the manual event picker far more often than YouTube ones.
  */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);

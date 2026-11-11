@@ -15,8 +15,7 @@ function latestEntryForTeam(entries: readonly ScoutEntry[], teamNumber: number):
  * states on top — concepts the generic engine doesn't have, since it just
  * takes raw scores and has no notion of "is a robot's entry missing yet."
  * The underlying math (and this function's own signature/0-1 `value`
- * scale) is unchanged from before the refactor — see docs/ASSUMPTIONS.md
- * (P3) for why the engine itself returns a 0-100 scale instead.
+ * scale) is unchanged from before the refactor; the engine itself returns a 0-100 scale instead.
  *
  * Needs every alliance robot scouted (all of `allianceTeams`: 3 for FRC) and an
  * official score before a number can be produced at all.

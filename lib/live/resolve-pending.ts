@@ -69,7 +69,7 @@ export async function resolvePendingLiveMatches(db: Firestore, messaging: Messag
     const entryIds = docs.map((d) => d.data().entryIds?.[0] as string | undefined);
     if (entryIds.some((id) => !id)) continue;
 
-    // D1: a session's entries are CS `scouting` docs; the adapter turns them into CE entries (score computed, never stored).
+    // D1: a session's entries are CS `scouting` docs; the adapter turns them into app entries (score computed, never stored).
     const entrySnaps = await Promise.all(entryIds.map((id) => db.collection(SCOUTING).doc(id!).get()));
     if (entrySnaps.some((s) => !s.exists)) continue;
     const rawById = new Map(entrySnaps.map((s) => [s.id, s.data() as CsRecord]));

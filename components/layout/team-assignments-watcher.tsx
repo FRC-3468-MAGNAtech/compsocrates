@@ -9,13 +9,14 @@ import { useAuth } from "@/lib/auth";
 import { springSnappy } from "@/lib/motion";
 import { isNewPublish, TEAM_ASSIGN_KIND_INFO, type TeamAssignmentsDoc } from "@/lib/team-assignments/model";
 import { useTeamAssignmentDocs } from "@/lib/team-assignments/store";
+import { storageKey } from "@/config/brand";
 
 // P31: the in-app notification when a Pit Scouting or Team Strategy assignment is published (or republished) with teams for the person: a popup at the top of the screen,
 // once per published version per browser. Nothing is announced that was published more than a day ago (a new device doesn't replay the whole history), and a version
 // the person has no teams in is never announced. The "seen" marker is per browser (localStorage) and the screen works without it.
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const seenKey = (uid: string, docId: string) => `assignments-seen:${uid}:${docId}`;
+const seenKey = (uid: string, docId: string) => `${storageKey("assignments-seen")}:${uid}:${docId}`;
 
 function readSeen(uid: string, docId: string): string | null {
   try {

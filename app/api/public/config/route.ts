@@ -6,7 +6,7 @@ import { getTeamCreationEnabled } from "@/lib/server/team-settings";
  * The one piece of server state the logged-out Signup page needs (whether
  * to show "Create a team") — deliberately not a Firestore read from the
  * client: `teams` and `appSettings` are both fully locked down to clients
- * in firestore.rules (see docs/ASSUMPTIONS.md, P1b), so this is the only
+ * in firestore.rules, so this is the only
  * way an unauthenticated visitor learns the flag.
  */
 export async function GET() {

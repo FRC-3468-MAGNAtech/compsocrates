@@ -6,7 +6,7 @@ import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { isDeletedRescout, toRescout, type Rescout, type RescoutAlliance, type RescoutPatch } from "@/lib/analytics/rescouts";
 
-// `accuracyRescouts` (CS): re-scout requests for high-accuracy matches. CE has no hook for this collection, so it lives here, next to the
+// `accuracyRescouts` (CS): re-scout requests for high-accuracy matches. The app has no hook for this collection, so it lives here, next to the
 // model in rescouts.ts. Reads are the team's own rows (the rule needs `teamId` in the query); soft-deleted rows are left out.
 
 const COLLECTION = "accuracyRescouts";

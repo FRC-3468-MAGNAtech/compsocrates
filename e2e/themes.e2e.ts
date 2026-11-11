@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { hasModes, themes } from "../lib/themes";
+import { COLOR_MODE_STORAGE_KEY, THEME_STORAGE_KEY } from "../lib/theme-prefs";
 import { appliedMode, inspectGlass, openFixture, pickMode, pickTheme, settled } from "./helpers";
 
 // P18, section 7: "all blurs disappear after selecting a theme". For every theme x mode (flags once), switch to it through
@@ -120,11 +121,11 @@ test.describe("theme and mode are separate settings", () => {
   });
 
   test("the saved theme and mode are on <html> and in the CSS on the very first frame (no flash)", async ({ page }) => {
-    await page.addInitScript(() => {
+    await page.addInitScript(([themeKey, modeKey]) => {
       try {
-        if (!localStorage.getItem("compepicurus.theme")) {
-          localStorage.setItem("compepicurus.theme", "evergreen");
-          localStorage.setItem("compepicurus.colorMode", "light");
+        if (!localStorage.getItem(themeKey)) {
+          localStorage.setItem(themeKey, "evergreen");
+          localStorage.setItem(modeKey, "light");
         }
       } catch {}
       requestAnimationFrame(() => {
@@ -136,7 +137,7 @@ test.describe("theme and mode are separate settings", () => {
           scheme: getComputedStyle(de).colorScheme,
         };
       });
-    });
+    }, [THEME_STORAGE_KEY, COLOR_MODE_STORAGE_KEY]);
     await page.goto("/e2e/theme-check");
     await expect(page.getByTestId("appearance-panel")).toBeVisible();
     const first = (await page.evaluate(() => (window as unknown as Record<string, unknown>).__firstFrame)) as { theme: string; mode: string; background: string; scheme: string };

@@ -3,7 +3,7 @@ export const LOBBY_CONFIG = {
   HEARTBEAT_INTERVAL_MS: 20_000,
   /** A player with no heartbeat for this long shows as "disconnected" (can still rejoin). */
   PLAYER_STALE_MS: 90_000,
-  /** The host with no heartbeat for this long shows the lobby as abandoned — client-derived only, never an actual status write (see docs/ASSUMPTIONS.md, P8). */
+  /** The host with no heartbeat for this long shows the lobby as abandoned — client-derived only, never an actual status write. */
   HOST_STALE_MS: 5 * 60_000,
   /** A lobby in "waiting"/"scouting" with no activity this long is treated as expired by readers. */
   LOBBY_EXPIRE_MS: 6 * 60 * 60_000,

@@ -8,7 +8,7 @@ import { stripUndefined } from "@/data/cs/util";
 import { db } from "@/lib/firebase/client";
 
 // Firestore plumbing shared by the assignment stores (lib/assignments.ts, lib/team-assignments/store.ts, lib/event-attendance.ts).
-// The pure side (row <-> CE model, write plans) lives in data/cs/assignments.ts.
+// The pure side (row <-> app model, write plans) lives in data/cs/assignments.ts.
 
 /** One team's rows in one CS assignment collection for an event (all legacy event-key spellings). */
 export function eventRowsQuery(collectionName: string, teamId: string, eventCode: string): Query {

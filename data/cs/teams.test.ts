@@ -24,7 +24,7 @@ describe("csTeamToTeamDoc", () => {
     expect(t).toMatchObject({ number: 2403, name: "MAGnatech", joinCode: "MAG2403", ownerUid: "uid-owner" });
   });
 
-  it("derives CE active events from selectedEvents (primary first)", () => {
+  it("derives app active events from selectedEvents (primary first)", () => {
     const t = csTeamToTeamDoc("MAG2403", csTeam());
     expect(t.selectedEvents).toEqual(["2026arli", "2026lake"]);
     expect(t.activeEventCode).toBe("2026arli");

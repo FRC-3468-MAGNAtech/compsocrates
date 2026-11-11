@@ -13,7 +13,7 @@ import { ownerUidOfTeam } from "@/data/cs/join-requests";
 import type { CsRecord } from "@/data/cs/types";
 import { TRANSFER_TTL_MS, canCancelTransfer, checkTransferRequest, checkTransferResponse, confirmationMatches, isRecentSignIn, isTeamOwner, readPendingTransfer } from "@/lib/team-owner";
 
-/** A user's display name (CS `displayName`, with CE's `name` as a fallback). */
+/** A user's display name (CS `displayName`, with the app's `name` as a fallback). */
 const nameOf = (u: DocumentData | undefined) => String(u?.displayName ?? u?.name ?? "");
 
 class RouteError extends Error {
@@ -178,7 +178,7 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
       throw new RouteError(409, "stale", "This request is no longer valid because the account's owner changed.");
     }
 
-    // CS: the owner is `verifiedOwnerId`; `isOwner` is only the additive CE mirror, and ownership implies `isTeamAdmin`.
+    // CS: the owner is `verifiedOwnerId`; `isOwner` is only the additive app mirror, and ownership implies `isTeamAdmin`.
     txn.update(teamRef, { verifiedOwnerId: decoded.uid, pendingTransfer: FieldValue.delete() });
     txn.update(db.collection("users").doc(decoded.uid), { isOwner: true, isTeamAdmin: true });
     if (oldOwnerSnap.exists && currentOwner !== decoded.uid) txn.update(oldOwnerRef, { isOwner: false }); // stays an admin

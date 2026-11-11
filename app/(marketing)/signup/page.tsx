@@ -214,7 +214,7 @@ export default function SignupPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@compepicurus.org"
+                placeholder="you@example.com"
                 required
               />
             </div>

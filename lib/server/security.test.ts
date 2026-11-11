@@ -5,6 +5,7 @@ import { verifyTurnstile } from "./turnstile";
 import { appBaseUrl, isEmailConfigured, platformOwnerEmails, sendEmail } from "./email";
 import { emailTemplates, escapeHtml } from "./email-templates";
 import { APPLICATION_LIMITS } from "@/lib/applications";
+import { BRAND } from "@/config/brand";
 
 const SECRET = "test-secret-value";
 const NOW = 1_800_000_000_000;
@@ -99,13 +100,13 @@ describe("sendEmail", () => {
   });
   it("posts to Resend with the key and the configured sender", async () => {
     process.env.RESEND_API_KEY = "re_key";
-    process.env.EMAIL_FROM = "CompEpicurus <notify@example.org>";
+    process.env.EMAIL_FROM = `${BRAND.emailSenderName} <notify@example.org>`;
     const fetchImpl = vi.fn(async () => ({ ok: true }) as Response);
     expect(await sendEmail({ ...msg, html: "<p>x</p>" }, fetchImpl as unknown as typeof fetch)).toEqual({ sent: true });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, { headers: Record<string, string>; body: string }];
     expect(url).toBe("https://api.resend.com/emails");
     expect(init.headers.Authorization).toBe("Bearer re_key");
-    expect(JSON.parse(init.body)).toMatchObject({ from: "CompEpicurus <notify@example.org>", to: ["a@example.com"], subject: "Hi", text: "Hello", html: "<p>x</p>" });
+    expect(JSON.parse(init.body)).toMatchObject({ from: `${BRAND.emailSenderName} <notify@example.org>`, to: ["a@example.com"], subject: "Hi", text: "Hello", html: "<p>x</p>" });
   });
   it("drops invalid addresses, never throws, and reports failures", async () => {
     process.env.RESEND_API_KEY = "k";

@@ -260,7 +260,7 @@ test.describe("comments drawer", () => {
   test("a closed drawer never takes focus from a counter, and scouting carries on while it is closed", async ({ page, isMobile }) => {
     test.skip(!!isMobile, "keyboard");
     await open(page);
-    const plus = page.getByRole("button", { name: "Increase Tip Hive" }).first();
+    const plus = page.getByRole("button", { name: "Increase Score A" }).first();
     await plus.focus();
     await page.keyboard.press("Enter");
     await page.keyboard.press("Enter");

@@ -3,8 +3,7 @@ import type { ChangeItem } from "@/lib/changelog";
 // Starter changelog drafts (P14). They are created as **drafts** the first time
 // an admin opens the Changelog, so an admin can review, reword, and publish
 // them — nothing is published on anyone's behalf. Every line describes
-// something that exists in the app today (checked against docs/ARCHITECTURE.md
-// and the code); dates are the real dates the work landed in git history, and the
+// something that exists in the app today (checked against the code); dates are the real dates the work landed in git history, and the
 // version labels are just a suggested numbering an admin can change.
 
 export type StarterEntry = {

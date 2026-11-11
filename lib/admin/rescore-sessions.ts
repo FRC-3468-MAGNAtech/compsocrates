@@ -64,14 +64,14 @@ function matchLabelFor(session: PracticeSession): string {
  *
  * Reuses `lib/lobby/scoring.ts`'s `resolveLobbyPairScoring` for BOTH solo and
  * lobby sessions — despite the name, it's generic over any two same-alliance
- * entries scored against a `LibraryMatch`; see docs/ASSUMPTIONS.md (P9).
+ * entries scored against a `LibraryMatch`.
  * Live sessions reuse `resolveLiveAllianceScoring` against freshly-passed-in
  * `EventMatch` data instead (the caller fetches that via the `getMatchesForEvent`
  * Server Action, same as `recomputeForEvent` does for real-event entries).
  *
  * `priorCompletedAttempt` is always passed as `false` — reconstructing
  * whether a *historical* session was a repeat attempt as of when it was
- * originally scored isn't attempted; see docs/ASSUMPTIONS.md (P9).
+ * originally scored isn't attempted.
  */
 export function buildSessionRescorePlan(
   sessions: PracticeSession[],

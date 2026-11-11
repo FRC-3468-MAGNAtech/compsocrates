@@ -34,8 +34,7 @@ export type ScheduleSettings = {
    * When set (non-empty), ONLY these teams' slots are ever assigned — every
    * other slot in every match is left `scoutUid: null` outright, not
    * "filled if there's capacity." This is what frees up enough slack for
-   * breaks when there are only ~4-6 scouts total — see
-   * docs/ASSUMPTIONS.md (P6).
+   * breaks when there are only ~4-6 scouts total.
    */
   prioritizedTeams?: number[];
   seed: number;

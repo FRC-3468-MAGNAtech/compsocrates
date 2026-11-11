@@ -16,7 +16,7 @@ export type SessionAccuracy = Pick<PracticeSession, "accuracy" | "excluded" | "s
  * Accuracy is never recomputed here: real-event entries carry the value the
  * shared engine already stored on them (`lib/analytics/recompute.ts`), and
  * practice/live entries take their session's accuracy (practice scoring is per
- * session, both robots — see docs/ASSUMPTIONS.md, P9). For practice entries
+ * session, both robots). For practice entries
  * `accuracy` is also replaced by the session's, exactly as Match Scout
  * Analytics has always displayed it.
  */

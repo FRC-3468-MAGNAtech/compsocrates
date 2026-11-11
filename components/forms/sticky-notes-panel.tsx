@@ -8,12 +8,13 @@ import { readFraction, writeFraction } from "@/lib/workspace/layout";
 import type { StickyNote } from "@/lib/forms/types";
 import { MAX_NOTES, MAX_NOTE_LENGTH, NOTE_COLORS, PANEL_DEFAULT_PX, PANEL_MAX_PX, PANEL_MIN_PX, addNote, clampPanelWidth, deleteNote, editNote, formatNoteTime, newNote, noteColorClass, noteCount, setNoteColor, sortNotes, togglePin } from "@/lib/sticky-notes";
 import { cn } from "@/lib/utils";
+import { storageKey } from "@/config/brand";
 
 // P28: the sticky notes panel. A side panel that stays beside the form on desktop (sticky, collapsible, resizable; the width is remembered in this browser),
 // and on a phone an edge tab that opens an expandable / collapsible bottom sheet. It never blocks the form (non-modal: no overlay, no focus trap). Notes are
 // plain cards: add, type (saved into the form's state with every keystroke), pick a colour, pin to the top, delete. The parent owns the notes array.
 
-const WIDTH_KEY = "sticky-notes-width";
+const WIDTH_KEY = storageKey("sticky-notes-width");
 const storage = (): Storage | null => {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;

@@ -8,8 +8,8 @@ import type { Form, FormField, FormGroup, FormSection } from "@/lib/forms/types"
 // `robot1_*` .. `robot3_*` fields (not a repeating group: the adapter does not read `tN_` keys). Form ids and versions are the ones the adapter
 // attributes entries to (`CS_FORM_SPECS[type].formId`), so a CS document read through it resolves to one of these forms.
 //
-// Differences from CS on purpose (each is the CE engine's way of doing the same job): CS's side "Notes" panel is a `notes` textarea in its own section
-// (and CE's sticky notes panel stays on, which is additive); a CS checkbox is a CE `checkbox`; the three pit scales stay free text ("10-13", "x") because
+// Differences from CS on purpose (each is the app engine's way of doing the same job): CS's side "Notes" panel is a `notes` textarea in its own section
+// (and the app's sticky notes panel stays on, which is additive); a CS checkbox is an app `checkbox`; the three pit scales stay free text ("10-13", "x") because
 // CS stores them as strings.
 
 const base = { tags: [] as string[], version: 1, status: "published" as const, scoringEnabled: false, origin: "built-in" as const, createdBy: "system" };

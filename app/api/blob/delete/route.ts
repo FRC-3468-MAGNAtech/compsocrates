@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { blobToken } from "@/lib/server/env";
 import { del } from "@vercel/blob";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
@@ -14,7 +15,7 @@ const json = (body: Record<string, unknown>, status: number) => NextResponse.jso
  * Blob URLs are public, so the URL alone proves nothing: the check is on the Firebase token and the path's team and uid tag.
  */
 export async function POST(request: Request) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return json({ code: "not-configured", error: "Photo uploads aren't set up on this server." }, 503);
+  if (!blobToken()) return json({ code: "not-configured", error: "Photo uploads aren't set up on this server." }, 503);
 
   const decoded = await verifyBearerToken(request);
   if (!decoded) return json({ code: "not-signed-in", error: "Not signed in." }, 401);

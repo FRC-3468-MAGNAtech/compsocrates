@@ -22,6 +22,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth";
 import { getRole } from "@/lib/roles";
 import { useChangelogUnread } from "@/lib/changelog/store";
+import { BRAND } from "@/config/brand";
 
 function NavLink({
   item,
@@ -233,7 +234,7 @@ function SidebarInner({
           </span>
           {!collapsed && (
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">CompEpicurus</div>
+              <div className="truncate text-sm font-semibold">{BRAND.name}</div>
               {ourNumber !== null && (
                 <div className="truncate text-[11px] text-[var(--muted-foreground)]" data-testid="our-team-line">
                   {teamLabel(ourNumber, ourName)}

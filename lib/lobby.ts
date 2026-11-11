@@ -38,8 +38,7 @@ export type LobbyDoc = {
   /**
    * Set once, at Start — the full pairing for this round. Lives on the
    * lobby doc (not on each player's own subdoc) because only the host may
-   * write it and a player can only write their own player doc; see
-   * docs/ASSUMPTIONS.md (P8) for why that rules out storing it per-player.
+   * write it and a player can only write their own player doc, so it cannot be stored per-player.
    */
   pairing: PairAssignment[] | null;
   /** ISO — when the countdown ends and video/forms go live for everyone (best-effort synchronized start). */
@@ -65,7 +64,7 @@ function toLobby(id: string, data: Record<string, unknown>): LobbyDoc {
   return { id, ...data } as LobbyDoc;
 }
 
-/** Generates and reserves a lobby id (also the shareable join code — see docs/ASSUMPTIONS.md, P8) the same way practiceSessions reserves a Session ID. */
+/** Generates and reserves a lobby id (also the shareable join code) the same way practiceSessions reserves a Session ID. */
 export async function claimLobbyId(
   teamId: string,
   hostUid: string,
@@ -159,7 +158,7 @@ export function isPlayerActive(lastSeen: unknown): boolean {
   return Date.now() - (lastSeen as { toMillis: () => number }).toMillis() < LOBBY_CONFIG.PLAYER_STALE_MS;
 }
 
-/** Client-derived only — see docs/ASSUMPTIONS.md (P8) for why a stale host never actually flips `status`. */
+/** Client-derived only: a stale host never actually flips `status`. */
 export function isHostActive(hostLastSeen: unknown): boolean {
   if (!hostLastSeen || typeof hostLastSeen !== "object" || !("toMillis" in hostLastSeen)) return false;
   return Date.now() - (hostLastSeen as { toMillis: () => number }).toMillis() < LOBBY_CONFIG.HOST_STALE_MS;
@@ -234,8 +233,7 @@ export function useLobbySessions(teamId: string | null, lobbyId: string | null) 
  * Realtime, the most recent lobby this uid still has a player doc in (any
  * status — the caller re-checks `useLobby()`'s own `status` to decide
  * whether to actually show a "rejoin" banner, since a collection-group
- * query here has no cheap way to pre-filter out closed lobbies — see
- * docs/ASSUMPTIONS.md, P8). Needs the `players` collection-group index in
+ * query here has no cheap way to pre-filter out closed lobbies). Needs the `players` collection-group index in
  * firestore.indexes.json.
  */
 export function useMyActiveLobbyId(uid: string | null) {

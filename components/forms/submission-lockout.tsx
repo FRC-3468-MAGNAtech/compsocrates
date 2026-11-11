@@ -17,7 +17,7 @@ export function useSubmissionLockout(teamId: string | null): SubmissionLockout {
   return team ? getSubmissionLockout(team) : OPEN;
 }
 
-/** CS `SubmissionLockoutBanner`, CE style. Edit mode still works while locked (the copy says so). */
+/** CS `SubmissionLockoutBanner`, app style. Edit mode still works while locked (the copy says so). */
 export function SubmissionLockoutBanner({ lockout, editAllowed = true }: { lockout: SubmissionLockout; editAllowed?: boolean }) {
   if (!lockout.locked) return null;
   return (

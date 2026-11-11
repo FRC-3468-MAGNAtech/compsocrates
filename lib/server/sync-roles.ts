@@ -25,8 +25,8 @@ export type SyncRolesInput = {
 export type SyncRolesResult = { changed: boolean; ownerPendingVerification?: boolean; attached?: boolean };
 
 /**
- * The team-owner bootstrap (P20), on CS fields: an account whose team has no `verifiedOwnerId` (or CE's `ownerUid`) yet gets one:
- * a member already carrying the CE `isOwner` mirror (the earliest created), else a signing-in platform owner who is a member.
+ * The team-owner bootstrap (P20), on CS fields: an account whose team has no `verifiedOwnerId` (or the app's `ownerUid`) yet gets one:
+ * a member already carrying the app `isOwner` mirror (the earliest created), else a signing-in platform owner who is a member.
  * Runs only while the owner is absent, inside a transaction that re-checks, so it can never take ownership back after a transfer.
  */
 async function bootstrapTeamOwner(db: Firestore, teamId: string, caller: { uid: string; isPlatformOwner: boolean }): Promise<boolean> {

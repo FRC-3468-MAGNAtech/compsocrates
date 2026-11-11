@@ -69,10 +69,23 @@ describe("csPracticeMatchesToLibrary", () => {
 
   it("reads the score from officialData when the flat field is missing, and derives difficulty when it is not stored", () => {
     const [match] = csPracticeMatchesToLibrary([{ id: "x", data: csMatchDoc({ actualScore: undefined, officialScore: undefined, penaltyPoints: undefined, difficulty: undefined, officialData: { score: 95, penaltyPoints: 4 } }) }]);
-    expect(match.alliances.red).toMatchObject({ score: 95, penaltyPoints: 4, difficulty: "hard" });
+    expect(match.alliances.red).toMatchObject({ score: 95, penaltyPoints: 4, difficulty: "easy" }); // no game on the doc: CS's default scale (200 / 400)
   });
 
-  it("maps practice, playoff and finals keys to CE match types and numbers", () => {
+  it("derives difficulty from the doc's game: CHARGED UP is 80 / 120, the others 200 / 400 (CS's scoreToDifficulty)", () => {
+    const derived = (game: string | undefined, score: number) => {
+      const [match] = csPracticeMatchesToLibrary([{ id: "x", data: csMatchDoc({ game, officialData: { score }, difficulty: undefined }) }]);
+      return match.alliances.red.difficulty;
+    };
+    expect([derived("CHARGED_UP", 80), derived("CHARGED_UP", 81), derived("CHARGED_UP", 120), derived("CHARGED_UP", 121)]).toEqual(["easy", "medium", "medium", "hard"]);
+    expect([derived("REBUILT", 200), derived("REBUILT", 201), derived("REEFSCAPE", 400), derived("REEFSCAPE", 401)]).toEqual(["easy", "medium", "medium", "hard"]);
+    expect(derived(undefined, 121)).toBe("easy");
+    // a stored difficulty always wins over the score
+    const [kept] = csPracticeMatchesToLibrary([{ id: "x", data: csMatchDoc({ game: "CHARGED_UP", officialData: { score: 500 }, difficulty: "easy" }) }]);
+    expect(kept.alliances.red.difficulty).toBe("easy");
+  });
+
+  it("maps practice, playoff and finals keys to app match types and numbers", () => {
     const rows = [
       { id: "p", data: csMatchDoc({ matchKey: "2026arli_pr3", matchType: "practice", matchNumber: 3 }) },
       { id: "s", data: csMatchDoc({ matchKey: "2026arli_sf5m1", matchType: "playoff", matchNumber: 1 }) },
@@ -118,7 +131,7 @@ describe("mergeLibraryMatches", () => {
   });
   const imported = csPracticeMatchesToLibrary([{ id: "a", data: csMatchDoc() }, { id: "b", data: csMatchDoc({ matchKey: "2026arli_qm13", matchNumber: 13 }) }]);
 
-  it("CE's own copy of a match wins; the rest of the imported set is appended", () => {
+  it("the app's own copy of a match wins; the rest of the imported set is appended", () => {
     const merged = mergeLibraryMatches([own()], imported);
     expect(merged.map((m) => m.id)).toEqual(["2026arli_Q12", "cs:2026arli_Q13"]);
   });
@@ -220,7 +233,7 @@ describe("csSessionToPractice", () => {
     expect(csSessionToPractice("n", csSessionDoc({ teamId: "" }))).toBeNull();
   });
 
-  it("a CE-written doc passes through, with ms times as ISO and uid from scoutId", () => {
+  it("an app-written doc passes through, with ms times as ISO and uid from scoutId", () => {
     const ce = { teamId: "T", scoutId: "u1", kind: "live", status: "paused", startedAt: 1_700_000_000_000, finishedAt: null, robots: [1], completedRobots: [], libraryMatchId: "L" };
     const s = csSessionToPractice("PS-ABC123", ce)!;
     expect(s).toMatchObject({ id: "PS-ABC123", kind: "live", status: "paused", uid: "u1", libraryMatchId: "L", robots: [1] });
@@ -264,7 +277,7 @@ describe("practicePatchToCsFields", () => {
     });
   });
 
-  it("a CE library match (no CS doc ids) keeps its own id as matchId and builds the TBA-style matchKey", () => {
+  it("an app library match (no CS doc ids) keeps its own id as matchId and builds the TBA-style matchKey", () => {
     const fields = practicePatchToCsFields({ libraryMatchId: "ARLI_Q4", eventCode: "2026ARLI", alliance: "blue", matchType: "Qualification", matchNumber: 4 });
     expect(fields).toMatchObject({ matchId: "ARLI_Q4", matchKey: "2026arli_qm4", matchType: "qualification", matchNumber: 4, eventKey: "2026arli" });
   });
@@ -292,7 +305,7 @@ describe("practicePatchToCsFields", () => {
     expect(csSessionMatchType("Playoff")).toBe("playoff");
   });
 
-  it("round trip: a CE session write reads back as the same session in CS's reader", () => {
+  it("round trip: an app session write reads back as the same session in CS's reader", () => {
     const fields = practicePatchToCsFields(
       { scoutName: "Ada", seasonId: "rebuilt", mode: "competitive", difficulty: "hard", libraryMatchId: match.id, eventCode: "2026arli", alliance: "red", robots: [254, 971, 1678], status: "completed", accuracy: 77, scoutedTotal: 70, officialScore: 90, penaltyPoints: 2, finishedAt: new Date(NOW).toISOString() },
       { match, now: NOW }

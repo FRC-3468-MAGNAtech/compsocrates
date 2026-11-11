@@ -199,7 +199,7 @@ describe("flags", () => {
     expect(e.manualFlags).toEqual([{ id: "cs-manual", reason: "No teleop score", addedAt: new Date(4242).toISOString() }]);
   });
 
-  it("a flag-state doc wins over legacy fields; CS reasons map to CE reasons", () => {
+  it("a flag-state doc wins over legacy fields; CS reasons map to app reasons", () => {
     const e = entryOf({ ...zeroDoc, flagDismissed: true }, { manualFlagged: true, manualReason: "excessive-human-player-score", manualFlaggedAt: 100 });
     expect(e.autoFlags.every((f) => !f.dismissed)).toBe(true);
     expect(e.manualFlags[0]).toMatchObject({ reason: "Unrealistic scoring", note: "Excessive human player score" });
@@ -240,12 +240,12 @@ describe("flags", () => {
       expect(patch).toEqual({ teamId: "MAG2403", entityType: "scoutingEntry", entityId: "d", dismissed: true, dismissedAt: NOW, dismissedBy: "u1" });
     });
 
-    it("adding a CE manual flag writes the CS reason and keeps the CE reason; removing clears it", () => {
+    it("adding an app manual flag writes the CS reason and keeps the app reason; removing clears it", () => {
       const e = entryOf(base, null, "d");
       const flagged = { ...e, manualFlags: [{ id: "mf-1", reason: "Wrong team scouted" as const, note: "was 254", addedAt: "2026-01-01T00:00:00.000Z" }] };
       const patch = entryFlagStatePatch(flagged, base, null, { now: NOW, actorUid: "u1" });
-      expect(patch).toMatchObject({ manualFlagged: true, manualReason: "other", ceManualReason: "Wrong team scouted", ceManualNote: "was 254", manualFlaggedAt: NOW });
-      // read back through the converter: the CE reason survives
+      expect(patch).toMatchObject({ manualFlagged: true, manualReason: "other", manualReasonText: "Wrong team scouted", manualNoteText: "was 254", manualFlaggedAt: NOW });
+      // read back through the converter: the app reason survives
       const readBack = entryOf(base, patch as CsFlagState, "d");
       expect(readBack.manualFlags[0]).toMatchObject({ reason: "Wrong team scouted", note: "was 254" });
       // and writing it again is a no-op
@@ -254,7 +254,7 @@ describe("flags", () => {
       expect(cleared).toMatchObject({ manualFlagged: false, manualReason: "", manualFlaggedAt: null });
     });
 
-    it("a CE reason with a CS equivalent writes the CS code", () => {
+    it("an app reason with a CS equivalent writes the CS code", () => {
       const e = entryOf(base, null, "d");
       const p = entryFlagStatePatch({ ...e, manualFlags: [{ id: "x", reason: "No teleop score", addedAt: "" }] }, base, null, { now: NOW });
       expect(p).toMatchObject({ manualReason: "no-teleop-score" });

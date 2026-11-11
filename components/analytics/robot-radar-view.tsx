@@ -18,8 +18,9 @@ import { RADAR_MAX_TEAMS, buildRadarStats, leadSkillByTeam, normalizeSelectedTea
 import { useAuth } from "@/lib/auth";
 import { useFormEntries } from "@/lib/form-entries";
 import { cn } from "@/lib/utils";
+import { storageKey } from "@/config/brand";
 
-const STORAGE_KEY = "robot-radar-teams";
+const STORAGE_KEY = storageKey("robot-radar-teams");
 
 function readStoredTeams(): number[] {
   try {

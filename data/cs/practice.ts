@@ -1,15 +1,15 @@
 /**
- * Adapter between CS's practice collections and CE's practice types. docs/ROUTES.md D1, D10. No React, no Firebase.
+ * Adapter between CS's practice collections and the app's practice types. docs/ROUTES.md D1, D10. No React, no Firebase.
  *
  *  `practiceMatches` (CS, one doc per ALLIANCE per match with a YouTube video, written only by the owner's import scripts, so
- *    clients read it and never write it)  ->  CE `LibraryMatch` (one match with both alliances): `csPracticeMatchesToLibrary`,
- *    merged into the scout-facing library lists by `mergeLibraryMatches` (CE's own `libraryMatches` win a collision).
+ *    clients read it and never write it)  ->  app `LibraryMatch` (one match with both alliances): `csPracticeMatchesToLibrary`,
+ *    merged into the scout-facing library lists by `mergeLibraryMatches` (the app's own `libraryMatches` win a collision).
  *  `practiceSessions` (CS: a snapshot written when a session finishes; the same collection also holds CS's live-lobby docs)
- *    <->  CE `PracticeSession` (a document that lives through in-progress / paused / completed):
- *      READ   `csSessionToPractice`   a CE-written doc passes through; a CS-written one is mapped; a CS lobby doc is not a session.
- *      WRITE  `practicePatchToCsFields`   the CS-named fields to add to every CE session write, so a doc CE wrote reads in CS.
+ *    <->  app `PracticeSession` (a document that lives through in-progress / paused / completed):
+ *      READ   `csSessionToPractice`   an app-written doc passes through; a CS-written one is mapped; a CS lobby doc is not a session.
+ *      WRITE  `practicePatchToCsFields`   the CS-named fields to add to every app session write, so a doc the app wrote reads in CS.
  *
- * What CE does not write into a session (documented gaps): CS's embedded `scoutedData` / `allScoutedData` (CE keeps the scouted
+ * What the app does not write into a session (documented gaps): CS's embedded `scoutedData` / `allScoutedData` (the app keeps the scouted
  * values in `scouting` rows, linked by `entryIds`; those rows carry the practice markers CS reads) and `scoringWeights`.
  */
 import { normalizeEventKey } from "@/config/event";
@@ -46,9 +46,9 @@ export function gameForSeasonId(seasonId: string): string {
   return seasonId.toUpperCase();
 }
 
-function readDifficulty(value: unknown, score: number): Difficulty {
+function readDifficulty(value: unknown, score: number, game: unknown): Difficulty {
   const v = str(value).trim().toLowerCase();
-  return v === "easy" || v === "medium" || v === "hard" ? v : getDifficulty(score);
+  return v === "easy" || v === "medium" || v === "hard" ? v : getDifficulty(score, str(game));
 }
 
 function teamNumbers(value: unknown): number[] {
@@ -69,7 +69,7 @@ function allianceSideOf(data: CsRecord): "red" | "blue" | null {
   return v === "red" || v === "blue" ? v : null;
 }
 
-/** The `LibraryMatch.id` of a CS-imported match: `cs:{eventKey}_{P|Q|F}{number}` (never a CE `libraryMatches` doc id). */
+/** The `LibraryMatch.id` of a CS-imported match: `cs:{eventKey}_{P|Q|F}{number}` (never an app `libraryMatches` doc id). */
 export function importedMatchId(eventKey: string, matchType: MatchType, matchNumber: number): string {
   return `cs:${normalizeEventKey(eventKey)}_${MATCH_PREFIX[matchType]}${matchNumber}`;
 }
@@ -77,10 +77,10 @@ export function importedMatchId(eventKey: string, matchType: MatchType, matchNum
 const EMPTY_ALLIANCE: LibraryAlliance = { teams: [], score: 0, penaltyPoints: 0, difficulty: "medium" };
 
 /**
- * CS `practiceMatches` docs -> CE library matches. Docs of the same match (same event, match type and number) merge into one
+ * CS `practiceMatches` docs -> app library matches. Docs of the same match (same event, match type and number) merge into one
  * match; an alliance CS has no doc for (CS only imports alliances whose video exists) is empty (`teams: []`), which every list
  * builder skips. Docs with no parsable match, no event or no alliance are dropped. `id` is `cs:{eventKey}_{P|Q|F}{number}`,
- * `published` is true, `origin` is `api` (CE's `libraryMatches` never holds these), and `cs` records where the match came from:
+ * `published` is true, `origin` is `api` (the app's `libraryMatches` never holds these), and `cs` records where the match came from:
  * the alliance doc ids (a session written for it stores the matching `matchId`) and the original `matchKey`.
  */
 export function csPracticeMatchesToLibrary(rows: readonly CsPracticeRow[]): LibraryMatch[] {
@@ -96,7 +96,7 @@ export function csPracticeMatchesToLibrary(rows: readonly CsPracticeRow[]): Libr
     const { score, penaltyPoints } = officialOf(data);
     const teams = teamNumbers(data.allianceTeams);
     const existing = byMatch.get(id);
-    const alliance: LibraryAlliance = { teams, score, penaltyPoints, difficulty: readDifficulty(data.difficulty, score) };
+    const alliance: LibraryAlliance = { teams, score, penaltyPoints, difficulty: readDifficulty(data.difficulty, score, data.game) };
     const video = str(data.videoUrl).trim();
     const createdMs = toEpochMs(data.createdAt);
     if (!existing) {
@@ -129,13 +129,13 @@ function compareMatches(a: LibraryMatch, b: LibraryMatch): number {
   return a.eventCode.localeCompare(b.eventCode) || (a.matchType === b.matchType ? a.matchNumber - b.matchNumber : a.matchType.localeCompare(b.matchType));
 }
 
-/** Is this library match one CS imported (read-only, not in CE's `libraryMatches`)? */
+/** Is this library match one CS imported (read-only, not in the app's `libraryMatches`)? */
 export function isCsImportedMatch(match: Pick<LibraryMatch, "cs">): boolean {
   return Boolean(match.cs);
 }
 
 /**
- * CE's own matches plus the CS-imported ones, without duplicates: an imported match with the same event, type and number as a CE
+ * The app's own matches plus the CS-imported ones, without duplicates: an imported match with the same event, type and number as an app
  * one is dropped (the admin-curated copy wins, it may have a trimmed video window). Imported matches keep `cs`, so the UI can
  * flag them. `filter` narrows the imported set (a season, an event).
  */
@@ -157,7 +157,7 @@ export function isCsLobbyDoc(data: CsRecord): boolean {
 const KINDS = ["solo", "live", "lobby"] as const;
 const STATUSES = ["in-progress", "paused", "completed"] as const;
 
-/** Wire milliseconds -> the ISO string CE's session fields hold; an ISO string stays. */
+/** Wire milliseconds -> the ISO string the app's session fields hold; an ISO string stays. */
 function msToIso(value: unknown): string | null {
   if (typeof value === "string" && value && Number.isNaN(Number(value))) return value;
   const ms = toEpochMs(value);
@@ -222,7 +222,7 @@ function mapCsSession(id: string, data: CsRecord): PracticeSession {
 }
 
 /**
- * A `practiceSessions` doc as a `PracticeSession`, or null when it is not a session (a CS live-lobby doc, or no team). A doc CE
+ * A `practiceSessions` doc as a `PracticeSession`, or null when it is not a session (a CS live-lobby doc, or no team). A doc app
  * wrote (`kind` + `status`) keeps its fields with the CS-style millisecond times turned back into ISO strings and `uid` filled
  * from `scoutId` when missing. A doc CS wrote (a finished snapshot) is mapped field by field as a completed `solo` session; its
  * `libraryMatchId` is the id the imported library gives that match (`importedMatchId`), so status, labels and stats find it.
@@ -250,17 +250,17 @@ export type SessionWriteContext = {
 
 const CS_SESSION_MATCH_TYPE: Record<MatchType, "practice" | "qualification" | "playoff"> = { Practice: "practice", Qualification: "qualification", Playoff: "playoff" };
 
-/** The CS practice-session `matchType` of a CE match type. */
+/** The CS practice-session `matchType` of an app match type. */
 export function csSessionMatchType(matchType: MatchType): "practice" | "qualification" | "playoff" {
   return CS_SESSION_MATCH_TYPE[matchType];
 }
 
 /**
- * The CS field names for the values of a CE session patch, to be merged into the same write. Only values the patch carries are
+ * The CS field names for the values of an app session patch, to be merged into the same write. Only values the patch carries are
  * mapped (a partial patch stays partial). CS reads `scoutId` (the uid), `eventKey`, `matchId/Key/Number/Type`, `mode`,
  * `difficulty`, `alliance`, `isLivePracticeScouting`, `liveVideoUrl`, scores (`officialScore` + `actualScore`, `scoutedScore`,
  * `penaltyPoints`, `accuracy`), `game`, `deviceType` and the epoch-ms `timestamp` / `startedAt` / `completedAt`. `startedAt` and
- * `finishedAt` are CE's ISO strings; CS's `startedAt` is a number, so the converted value replaces the patch's one (`wireTimes`).
+ * `finishedAt` are the app's ISO strings; CS's `startedAt` is a number, so the converted value replaces the patch's one (`wireTimes`).
  */
 export function practicePatchToCsFields(patch: Partial<PracticeSession>, ctx: SessionWriteContext = {}): CsRecord {
   const out: CsRecord = {};

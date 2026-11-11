@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-/** A "Submit anyway?" confirmation in CE's Dialog (a bottom sheet on phones), in place of CS's `window.confirm`. Cancel is the safe default and comes first. */
+/** A "Submit anyway?" confirmation in the app's Dialog (a bottom sheet on phones), in place of CS's `window.confirm`. Cancel is the safe default and comes first. */
 export function ConfirmDialog({
   open,
   onOpenChange,

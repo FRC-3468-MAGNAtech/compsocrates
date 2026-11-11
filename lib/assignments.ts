@@ -61,10 +61,10 @@ export type AssignmentsDoc = {
   previous: AssignmentVersion | null;
 };
 
-// D1: persistence is CS's flat collections, not CE's `assignments/{teamId}_{eventCode}` doc (see data/cs/assignments.ts).
+// D1: persistence is CS's flat collections, not the app's `assignments/{teamId}_{eventCode}` doc (see data/cs/assignments.ts).
 //   matchAssignments      the event schedule (qualification, playoffs, and `assignmentType: "event-practice"` practice matches)
 //   practiceAssignments   practice-library matches (published with the "Practice library" source)
-// CS has no version history, so the one level of undo CE offered lives in memory for the tab that published (see `previousRows`).
+// CS has no version history, so the one level of undo the app offered lives in memory for the tab that published (see `previousRows`).
 
 function docId(teamId: string, eventCode: string): string {
   return `${teamId}_${eventCode}`;
@@ -76,8 +76,8 @@ function normalizeVersion(raw: unknown): AssignmentVersion | null {
 }
 
 /**
- * A CE-shaped `assignments/{teamId}_{eventCode}` doc (the 2-robot app's versioned `current.slots[]`) as `AssignmentsDoc`. Production no
- * longer reads or writes that collection; this stays for CE exports and backups, which still carry the shape.
+ * An app-shaped `assignments/{teamId}_{eventCode}` doc (the 2-robot app's versioned `current.slots[]`) as `AssignmentsDoc`. Production no
+ * longer reads or writes that collection; this stays for app exports and backups, which still carry the shape.
  */
 export function parseAssignmentsDoc(id: string, data: Record<string, unknown>): AssignmentsDoc {
   return {
@@ -90,7 +90,7 @@ export function parseAssignmentsDoc(id: string, data: Record<string, unknown>): 
 }
 
 type PreviousRows = { match: CsAssignmentRow[]; practice: CsAssignmentRow[] };
-/** The rows as they were before this tab's last publish, by doc id: CE's single level of undo. Gone on reload (CS keeps no history). */
+/** The rows as they were before this tab's last publish, by doc id: the app's single level of undo. Gone on reload (CS keeps no history). */
 const previousRows = new Map<string, PreviousRows>();
 
 /** The event's schedule as a slot lookup, fetched through the event facade (cached by `useEventQuery`, shared with the Assignments page). */

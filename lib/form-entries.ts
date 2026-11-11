@@ -37,7 +37,7 @@ import type { CsFlagState, CsRecord } from "@/data/cs/types";
 // Form entries (docs/ROUTES.md D1). Lead Scout, Pit Scout, Team Strategy, Match Strategy, Drive Reflection and Helper entries live in CS's six collections
 // (`pitScouting`, `leadScouting`, `strategyScouting`, `matchStrategyPlans`, `driveScouting`, `helperReports`) in CS's shapes; `data/cs/forms.ts` converts both
 // ways. A lead entry CS wrote into `scouting` (its permission fallback, `entryType: "lead"`) is read too. Custom forms have no CS collection and stay in
-// CE's `formEntries`. Manual flags live in `scoutingFlagStates` (read here, written by `adminUpdateFormEntry`). Writes are merge writes of the known fields
+// the app's `formEntries`. Manual flags live in `scoutingFlagStates` (read here, written by `adminUpdateFormEntry`). Writes are merge writes of the known fields
 // only, so a field this app does not know is never dropped (D10).
 
 const CUSTOM_COLLECTION = "formEntries";
@@ -311,7 +311,7 @@ export function useFormEntries(teamId: string | null, filter: FormEntriesFilter 
 /**
  * Which matches of an event are already scouted by the team: the client-side equivalent of CS's `POST /api/scout/completions` (no API route). It reads the same
  * four collections (`scouting` match rows, `leadScouting`, `matchStrategyPlans`, `driveScouting`) filtered by `teamId`, then keeps the event (aliases resolved) and
- * returns CE match keys (`Q12`, `P3`, `F7`, `F15`). Unlike CS it does not also read every other team's rows for the event: that was a cross-team read.
+ * returns app match keys (`Q12`, `P3`, `F7`, `F15`). Unlike CS it does not also read every other team's rows for the event: that was a cross-team read.
  * Per-form results are in `byCollection` (the lead form should grey out only lead-scouted matches, the plan form only planned ones).
  */
 export async function fetchCompletedMatchKeys(teamId: string, eventCode: string): Promise<CompletedMatches> {

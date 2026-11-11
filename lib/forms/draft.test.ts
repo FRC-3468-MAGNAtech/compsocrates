@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { storageKey } from "@/config/brand";
 import { REBUILT_FORM } from "@/lib/forms/builtin-rebuilt";
 import { clearDraft, DRAFT_TTL_MS, draftAge, draftKey, hasProgress, lastDraftKey, loadDraft, loadLastDraft, matchKeyOf, parseDraft, saveDraft, type DraftStorage } from "@/lib/forms/draft";
 import { defaultValues } from "@/lib/forms/values";
@@ -26,11 +27,11 @@ describe("hasProgress", () => {
 
 describe("keys", () => {
   it("is per user, form, match and team, with `-` for what isn't picked yet", () => {
-    expect(draftKey({ ...who, matchKey: "Qualification-12", teamNumber: 254 })).toBe("scout-draft:v1:u1:rebuilt:Qualification-12:254");
-    expect(draftKey(who)).toBe("scout-draft:v1:u1:rebuilt:-:-");
+    expect(draftKey({ ...who, matchKey: "Qualification-12", teamNumber: 254 })).toBe(`${storageKey("scout-draft")}:v1:u1:rebuilt:Qualification-12:254`);
+    expect(draftKey(who)).toBe(`${storageKey("scout-draft")}:v1:u1:rebuilt:-:-`);
     expect(draftKey({ ...who, matchKey: "Qualification-12", teamNumber: 254 })).not.toBe(draftKey({ ...who, matchKey: "Qualification-12", teamNumber: 255 }));
     expect(draftKey({ ...who, uid: "u2" })).not.toBe(draftKey(who));
-    expect(lastDraftKey("u1", "rebuilt")).toBe("scout-draft:v1:u1:rebuilt:last");
+    expect(lastDraftKey("u1", "rebuilt")).toBe(`${storageKey("scout-draft")}:v1:u1:rebuilt:last`);
     expect(matchKeyOf(match)).toBe("Qualification-12");
     expect(matchKeyOf(null)).toBeNull();
   });

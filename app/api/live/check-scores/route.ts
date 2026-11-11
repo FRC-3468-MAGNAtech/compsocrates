@@ -17,8 +17,7 @@ import { LIVE_CONFIG } from "@/lib/live/config";
  * stray fast poller can't hammer the event-data APIs — best-effort, in-memory
  * per-uid timestamps. Vercel serverless instances are ephemeral and can
  * run several in parallel, so this isn't a hard guarantee across
- * instances, only a cheap backstop on top of the client's own pacing; see
- * docs/ASSUMPTIONS.md (P7).
+ * instances, only a cheap backstop on top of the client's own pacing.
  */
 const lastCallByUid = new Map<string, number>();
 const MIN_INTERVAL_MS = LIVE_CONFIG.CLIENT_SCORE_POLL_INTERVAL_MS / 2;

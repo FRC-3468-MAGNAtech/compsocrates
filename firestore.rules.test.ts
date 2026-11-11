@@ -23,7 +23,7 @@ import {
 // users have `role` / `roles` / `secondaryRoles` / `isTeamAdmin` / `teamId`, teams are `teams/{TEAMCODE}`.
 //
 // Layout: 1. CS production behavior (must not change without the owner's approval), 2. additions for collections CS's
-// rules lack, 3. CompEpicurus-only collections on CS user fields, 4. server-only collections and the catch-all.
+// rules lack, 3. app-only collections on CS user fields, 4. server-only collections and the catch-all.
 
 let testEnv: RulesTestEnvironment;
 
@@ -148,7 +148,7 @@ describe("CS: users/{uid}", () => {
     await assertFails(deleteDoc(doc(as(CS_OWNER), "users", SCOUT)));
   });
 
-  it("accepts the additive CE fields the client writes on the user's own doc", async () => {
+  it("accepts the additive app fields the client writes on the user's own doc", async () => {
     const own = doc(as(SCOUT), "users", SCOUT);
     await assertSucceeds(updateDoc(own, { glassLayerLevel: 3 }));
     await assertSucceeds(updateDoc(own, { lastSeenChangelogAt: serverTimestamp() }));
@@ -191,7 +191,7 @@ describe("CS: teams/{teamId}", () => {
     await assertSucceeds(deleteDoc(doc(as(CS_OWNER), "teams", TEAM2)));
   });
 
-  it("lets a team admin write the additive CE fields (activeForms, flags, judge book cards) and rename the team", async () => {
+  it("lets a team admin write the additive app fields (activeForms, flags, judge book cards) and rename the team", async () => {
     const ref = doc(as(ADMIN), "teams", TEAM1);
     await assertSucceeds(updateDoc(ref, { "activeForms.rebuilt": "my-form" }));
     await assertSucceeds(updateDoc(ref, { usePlaceholderVideo: true, libraryBackfilled: true, changelogSeeded: true }));
@@ -383,7 +383,7 @@ describe("CS: the catch-all deny", () => {
     }
   });
 
-  it("refuses the legacy CE collection scoutEntries and the server-only ones to clients", async () => {
+  it("refuses the legacy app collection scoutEntries and the server-only ones to clients", async () => {
     await assertFails(getDoc(doc(as(ADMIN), "scoutEntries", "x")));
     await assertFails(addDoc(collection(as(ADMIN), "scoutEntries"), { teamId: TEAM1, uid: ADMIN }));
     await assertFails(getDoc(doc(as(CS_OWNER), "imports", "x")));
@@ -582,7 +582,7 @@ describe("judgeBookCards/{id} (legacy) and versionReleases/{id} (legacy)", () =>
 });
 
 // =====================================================================================================================
-// 3. COMPEPICURUS-ONLY COLLECTIONS, ON CS USER FIELDS
+// 3. APP-ONLY COLLECTIONS, ON CS USER FIELDS
 // =====================================================================================================================
 
 describe("page access: settings/pageAccess, requests, and roles read from CS fields", () => {
@@ -1073,7 +1073,7 @@ describe("eventAttendance/{teamId}_{eventCode}", () => {
   });
 });
 
-describe("assignments/{teamId}_{eventCode}[_pit|_teamStrategy] (CE schedule doc)", () => {
+describe("assignments/{teamId}_{eventCode}[_pit|_teamStrategy] (app schedule doc)", () => {
   const sched = (over: Record<string, unknown> = {}) => ({ teamId: TEAM1, eventCode: "2026arli", current: { slots: [] }, previous: null, ...over });
 
   it("is read by the team and written by Assignments-access holders only", async () => {

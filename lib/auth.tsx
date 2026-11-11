@@ -69,7 +69,7 @@ export type UserDoc = {
   primaryRole: RoleId;
   secondaryRoles: RoleId[];
   isAdmin: boolean;
-  /** Set only by app/api/auth/sync-roles (Admin SDK) — see docs/ASSUMPTIONS.md (P1b). Clients can never write this (firestore.rules). */
+  /** Set only by app/api/auth/sync-roles (Admin SDK). Clients can never write this (firestore.rules). */
   /** P20: the TEAM owner (a mirror of teams/{teamId}.ownerUid, written only by the server routes in the same transaction). Authoritative is `ownerUid`; see lib/team-owner.ts. */
   isOwner: boolean;
   /** P20: a PLATFORM owner (a uid in RELEASE_OWNER_UIDS or a verified email in RELEASE_OWNER_EMAILS, set by app/api/auth/sync-roles). Approves applications, switches team creation, force-transfers for recovery. Clients can never write it. */

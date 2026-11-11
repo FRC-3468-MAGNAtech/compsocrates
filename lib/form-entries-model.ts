@@ -14,8 +14,8 @@ export type FormEntryType = Exclude<FormType, "match-scout">;
 export type FormEntryFlag = { id: string; reason: string; note?: string; addedAt: string };
 
 /**
- * Where an entry that came from CompSocrates's collections sits, and the original CS strings that CE's own columns cannot hold, so rewriting an unchanged
- * entry never changes them (docs/ROUTES.md D1, D10; the converters are in data/cs/forms.ts). Absent on entries that CE created itself (custom forms, new entries).
+ * Where an entry that came from CompSocrates's collections sits, and the original CS strings that the app's own columns cannot hold, so rewriting an unchanged
+ * entry never changes them (docs/ROUTES.md D1, D10; the converters are in data/cs/forms.ts). Absent on entries that the app created itself (custom forms, new entries).
  */
 export type FormEntryLegacy = {
   /** The Firestore collection the doc lives in (`scouting` for a lead row written through CS's permission fallback). */

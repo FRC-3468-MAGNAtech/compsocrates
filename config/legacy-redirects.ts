@@ -107,7 +107,7 @@ export const UNREACHABLE_ROUTES: { path: string; reason: string }[] = [
 
 /**
  * Every `page.tsx` route in the CS app (CompSocrates (reference)/app), written as URL paths.
- * `/analytics` itself is redirected by the page `app/(app)/analytics/page.tsx` (CE already does this),
+ * `/analytics` itself is redirected by the page `app/(app)/analytics/page.tsx` (the app already does this),
  * so it is listed in KEPT_ROUTES-equivalent form below via PAGE_REDIRECTS.
  */
 export const CS_ROUTE_INVENTORY: string[] = [

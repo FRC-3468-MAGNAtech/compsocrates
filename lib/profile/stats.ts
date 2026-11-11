@@ -117,8 +117,7 @@ export type EventTargetProgress = {
 /**
  * Target completion at one event (P16 Scout Status): the member's manual targets from that event's setup (the sum
  * over categories) when an admin set any, else the number of distinct matches Assignments gives them. The Scout Status
- * page's match ranges and category filters aren't re-applied here (a profile doesn't have those controls) — see
- * docs/ASSUMPTIONS.md (P25-8).
+ * page's match ranges and category filters aren't re-applied here (a profile doesn't have those controls).
  */
 export function eventTargetProgress(input: { uid: string; eventCode: string; entries: ScoutEntry[]; setup: EventSetup | null; slots: ScheduleSlot[] | null | undefined }): EventTargetProgress {
   const { uid, eventCode, setup } = input;

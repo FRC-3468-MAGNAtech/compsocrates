@@ -114,7 +114,7 @@ export type JudgeBookEditor = { uid?: string | null; isAdmin?: boolean; primaryR
 
 /**
  * CS `canEditJudgeBook`: a team admin, a Team Coach or Judge Awards (primary or secondary), or a member the team granted
- * `judge-book-edit`. Everyone else reads. (D6: CS's `isTeamAdmin` is CE's `isAdmin`.)
+ * `judge-book-edit`. Everyone else reads. (D6: CS's `isTeamAdmin` is the app's `isAdmin`.)
  */
 export function canEditJudgeBook(user: JudgeBookEditor | null | undefined, grants: readonly string[] = []): boolean {
   if (!user) return false;

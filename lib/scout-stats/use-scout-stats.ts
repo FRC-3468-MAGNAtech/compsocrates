@@ -28,7 +28,7 @@ export function useScoutStatsSources(teamId: string | null) {
 }
 
 /**
- * Distinct real-event event codes the team has data for, most-recently-scouted first — what the Real Event Calculation dropdown's per-event options come from (see docs/ASSUMPTIONS.md, P5, for why this reads `scoutEntries` rather than the P6 Assignments page).
+ * Distinct real-event event codes the team has data for, most-recently-scouted first — what the Real Event Calculation dropdown's per-event options come from (it reads `scoutEntries` rather than the Assignments page).
  *
  * FIX1: pass the team's active events (primary first) and they lead the list —
  * named, and present even before anything has been scouted for them — ahead

@@ -406,7 +406,7 @@ export const DEFAULT_GAME_ID = DEFAULT_FORM_ID;
  * the real-event schema is never mutated, so the normal (unchecked) view's
  * columns are untouched. `getValue`/`getBadgeClassName` read `source`/`mode`
  * straight off the entry — practice-mode's display entries carry a
- * session-derived `accuracy` by then (see docs/ASSUMPTIONS.md, P9), so the
+ * session-derived `accuracy` by then, so the
  * existing "accuracy"/"scriptStatus" columns need no changes at all.
  */
 export function withPracticeColumns(schema: GameSchema): GameSchema {

@@ -9,7 +9,7 @@ export type ScoutCategory = "trial" | "competitive" | "real-event";
  * member regardless of any active filter, so a visible scout keeps their
  * true team-wide rank even when the table is narrowed down; the other
  * three re-rank within just the role filter's matches, just the event
- * filter's matches, or their intersection. See docs/ASSUMPTIONS.md (P5).
+ * filter's matches, or their intersection.
  */
 export type RankingBasisId = "preserve" | "role" | "event" | "both";
 

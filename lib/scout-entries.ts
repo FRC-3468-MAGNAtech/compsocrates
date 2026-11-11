@@ -171,7 +171,7 @@ export type SaveEntryInput = Pick<ScoutEntry, "scoutName" | "eventCode" | "match
 
 /**
  * D1: entries are stored in CS's `scouting` collection (and their manual flags in `scoutingFlagStates`), through the pure
- * converters in data/cs/scouting.ts. Everything below keeps the exported names CE's pages call.
+ * converters in data/cs/scouting.ts. Everything below keeps the exported names the app's pages call.
  *
  *  - READ  `scouting where teamId == team`, plus one `scoutingFlagStates where teamId == team` listener shared per team. Rows that
  *          are not entries (sub-in, lead, unknown game) are dropped client-side (`classifyCsRow`). Older rows without a `teamId`
@@ -523,7 +523,7 @@ export type UpdateEntryOptions = {
 };
 
 /**
- * Applies a CE-shaped patch to a stored entry. The stored doc is read, converted, patched, converted back, and only the
+ * Applies an app-shaped patch to a stored entry. The stored doc is read, converted, patched, converted back, and only the
  * top-level fields that changed are merge-written (unknown CS fields are untouched). Flag, dismissal and exclude-from-accuracy
  * changes are written to `scoutingFlagStates/scoutingEntry:<id>`; `excluded` is CS's `excludeFromStats` on the doc itself.
  */

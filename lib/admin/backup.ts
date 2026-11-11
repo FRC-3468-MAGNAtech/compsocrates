@@ -12,13 +12,14 @@ import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
 import { DEFAULT_FORM_ID, getBuiltinForm } from "@/lib/forms/builtin";
 import type { Form } from "@/lib/forms/types";
 import { getEntries } from "@/lib/scout-entries";
+import { BRAND } from "@/config/brand";
 
 /**
  * The collections the team's data lives in, each scoped to this team. D1: these are CS's collections (`scouting`, the four
- * assignment collections), not CE's `scoutEntries` / `assignments` / `eventAttendance`: event attendance and the pick list are
+ * assignment collections), not the app's `scoutEntries` / `assignments` / `eventAttendance`: event attendance and the pick list are
  * fields of the `teams` doc, which is exported with it below. `teams` (just this team's own doc) and `libraryMatches` (shared,
  * not teamId-scoped) are handled separately. Collections added later (liveMatches, notifications, lobbies) are deliberately
- * left out — see docs/ASSUMPTIONS.md (P9).
+ * left out.
  */
 const TEAM_SCOPED_COLLECTIONS = ["users", "scouting", "practiceSessions", "matchAssignments", "pitAssignments", "teamAssignments", "practiceAssignments", "auditLog"] as const;
 
@@ -60,7 +61,7 @@ export async function exportAllDataJson(teamId: string, actorUid: string, actorN
   }
 
   const payload = { exportedAt: new Date().toISOString(), teamId, eventNames, collections };
-  downloadTextFile(`compepicurus-backup-${teamId}-${Date.now()}.json`, JSON.stringify(payload, null, 2), "application/json");
+  downloadTextFile(`${BRAND.filePrefix}-backup-${teamId}-${Date.now()}.json`, JSON.stringify(payload, null, 2), "application/json");
   await logAuditEvent(teamId, actorUid, actorName, "export-backup", { format: "json", summary }, null, null);
   return summary;
 }
@@ -77,7 +78,7 @@ export async function exportEntriesCsv(teamId: string, actorUid: string, actorNa
     if (f) used.set(f.id, f);
   }
   const csv = entriesToCsv(buildGameSchema(unionForms(used.size > 0 ? [...used.values()] : [getBuiltinForm(DEFAULT_FORM_ID)!])), entries, (name) => name, { eventName: currentEventName, includeEvent: true });
-  downloadTextFile(`compepicurus-entries-${teamId}-${Date.now()}.csv`, csv, "text/csv;charset=utf-8");
+  downloadTextFile(`${BRAND.filePrefix}-entries-${teamId}-${Date.now()}.csv`, csv, "text/csv;charset=utf-8");
   await logAuditEvent(teamId, actorUid, actorName, "export-backup", { format: "csv", count: entries.length }, null, null);
   return entries.length;
 }

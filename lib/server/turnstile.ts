@@ -1,9 +1,10 @@
 import "server-only";
+import { turnstileSecret } from "@/lib/server/env";
 
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 export function isTurnstileConfigured(): boolean {
-  return Boolean(process.env.TURNSTILE_SECRET_KEY?.trim());
+  return Boolean(turnstileSecret());
 }
 
 export type TurnstileResult = { configured: false } | { configured: true; ok: boolean; reason?: string };
@@ -15,7 +16,7 @@ export type TurnstileResult = { configured: false } | { configured: true; ok: bo
  * failure reaching Cloudflare fails *closed* (not ok): a visitor can simply retry.
  */
 export async function verifyTurnstile(token: unknown, remoteIp: string | null, fetchImpl: typeof fetch = fetch): Promise<TurnstileResult> {
-  const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
+  const secret = turnstileSecret();
   if (!secret) return { configured: false };
   if (typeof token !== "string" || !token || token.length > 4096) return { configured: true, ok: false, reason: "missing-token" };
   try {

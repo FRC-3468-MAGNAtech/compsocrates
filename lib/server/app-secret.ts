@@ -1,5 +1,7 @@
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { BRAND } from "@/config/brand";
+import { applicationSecret, firebaseAdminPrivateKeyRaw } from "@/lib/server/env";
 
 /**
  * P20: the server-only key that signs the form's start token and keys the IP/email hashes. Use
@@ -8,10 +10,10 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
  * rotate the Admin key also rotate this (open forms just get a fresh token; stored hashes simply stop matching).
  */
 export function getServerSecret(): string {
-  const explicit = process.env.APPLICATION_SECRET?.trim();
+  const explicit = applicationSecret();
   if (explicit) return explicit;
-  const adminKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
-  if (adminKey) return createHash("sha256").update(`compepicurus:application:${adminKey}`).digest("hex");
+  const adminKey = firebaseAdminPrivateKeyRaw();
+  if (adminKey) return createHash("sha256").update(`${BRAND.storagePrefix}:application:${adminKey}`).digest("hex");
   throw new Error("No server secret: set APPLICATION_SECRET or FIREBASE_ADMIN_PRIVATE_KEY.");
 }
 

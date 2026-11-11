@@ -1,6 +1,6 @@
 /**
- * Adapter between CS's `users/{uid}` documents and CE's profile (`UserDoc`, lib/auth.tsx) and roster row (`TeamMember`).
- * docs/ROUTES.md D1 (adapter), D6 (CE permission model), D10 (unknown fields pass through). No React, no Firebase.
+ * Adapter between CS's `users/{uid}` documents and the app's profile (`UserDoc`, lib/auth.tsx) and roster row (`TeamMember`).
+ * docs/ROUTES.md D1 (adapter), D6 (app permission model), D10 (unknown fields pass through). No React, no Firebase.
  *
  * Reading: `csUserToProfile`.   Writing: `profilePatchToCsUser`, which returns ONLY the fields to merge-write, with CS's
  * own field names, and keeps the CS-readable ones (`role`, `roles`, `secondaryRoles`, `isTeamAdmin`) consistent.
@@ -23,7 +23,7 @@ const CS_THEME_TO_CE: Record<string, { themeId: string; colorMode: "light" | "da
   "dark-compsocrates": { themeId: "compsocrates", colorMode: "dark" },
 };
 
-/** CS pride theme ids whose CE id is spelled differently (both lists are in lib/themes.ts and CS app/utils/themes.ts). */
+/** CS pride theme ids whose app id is spelled differently (both lists are in lib/themes.ts and CS app/utils/themes.ts). */
 const CS_PRIDE_TO_CE: Record<string, string> = {
   "pride-gay": "pride-gay-mlm",
   "pride-bi": "pride-bisexual",
@@ -33,7 +33,7 @@ const CS_PRIDE_TO_CE: Record<string, string> = {
 };
 const CE_PRIDE_TO_CS: Record<string, string> = Object.fromEntries(Object.entries(CS_PRIDE_TO_CE).map(([cs, ce]) => [ce, cs]));
 
-/** The CS `accountThemeId` for a CE theme (+ mode), or null when CS has no such theme (its picker would not know the id). */
+/** The CS `accountThemeId` for an app theme (+ mode), or null when CS has no such theme (its picker would not know the id). */
 export function csThemeIdFor(themeId: string, colorMode?: ColorMode): string | null {
   if (themeId === "compsocrates") return colorMode === "dark" ? "dark-compsocrates" : "light-compsocrates";
   if (themeId.startsWith("pride-")) return CE_PRIDE_TO_CS[themeId] ?? themeId;
@@ -44,7 +44,7 @@ function isColorMode(value: unknown): value is ColorMode {
   return value === "light" || value === "dark" || value === "system";
 }
 
-/** Theme for a user doc: the CE `themeId` field when it is a known theme, else CS's `accountThemeId` when it maps, else the default. */
+/** Theme for a user doc: the app `themeId` field when it is a known theme, else CS's `accountThemeId` when it maps, else the default. */
 export function resolveTheme(doc: CsRecord): { themeId: string; colorMode?: ColorMode } {
   const ownColorMode = isColorMode(doc.colorMode) ? doc.colorMode : undefined;
   if (isThemeId(doc.themeId)) return { themeId: doc.themeId, ...(ownColorMode ? { colorMode: ownColorMode } : {}) };
@@ -79,7 +79,7 @@ export type CsUserReadOptions = {
   ownerUids?: readonly string[];
 };
 
-/** Reads `users/{uid}` as CE's profile. Never throws on missing fields (old docs lack most of them). */
+/** Reads `users/{uid}` as the app's profile. Never throws on missing fields (old docs lack most of them). */
 export function csUserToProfile(uid: string, doc: CsUserDoc, options: CsUserReadOptions = {}): UserDoc {
   const ownerUids = options.ownerUids ?? CS_OWNER_UIDS;
   const { primaryRole, secondaryRoles } = rolesFromCsUser(doc);
@@ -94,8 +94,8 @@ export function csUserToProfile(uid: string, doc: CsUserDoc, options: CsUserRead
     primaryRole,
     secondaryRoles,
     isAdmin: isAdminFromCsUser(doc) || owner,
-    // `isOwner` is the TEAM owner mirror in CE; CS has no such field, so only the allowlisted platform owner (or an explicit
-    // CE-written mirror, additive) is one. The team's `verifiedOwnerId` is exposed on the team doc (`ownerUid`).
+    // `isOwner` is the TEAM owner mirror in app; CS has no such field, so only the allowlisted platform owner (or an explicit
+    // app-written mirror, additive) is one. The team's `verifiedOwnerId` is exposed on the team doc (`ownerUid`).
     isOwner: owner || record.isOwner === true,
     isPlatformOwner: owner || record.isPlatformOwner === true,
     themeId: theme.themeId,
@@ -139,19 +139,19 @@ export function csUserToMember(uid: string, doc: CsUserDoc, options: CsUserReadO
   };
 }
 
-/** What CE may write to the user doc (`updateUserProfile`, member editing, the CE-only preference writers). */
+/** What the app may write to the user doc (`updateUserProfile`, member editing, the app-only preference writers). */
 export type ProfilePatch = Partial<
   Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar" | "primaryRole" | "secondaryRoles" | "isAdmin" | "bio" | "photoURL" | "profileVisibility" | "profileComplete" | "experiencedScout">
 >;
 
 /**
- * CE profile patch -> the CS fields to merge-write. Only what the patch touches is returned.
+ * App profile patch -> the CS fields to merge-write. Only what the patch touches is returned.
  *  - name -> `displayName`
  *  - primaryRole / secondaryRoles -> `role`, `roles` (primary first, then the secondaries) and `secondaryRoles`, always written together
  *    so CS's `getUserRoles` and the production rules agree. `current` supplies the half the patch leaves out.
  *  - isAdmin -> `isTeamAdmin`. A legacy `role: "coach"` is an admin to the rules, so demoting it rewrites `role` too; changing the role
  *    of a legacy coach keeps them an admin by setting `isTeamAdmin`.
- *  - themeId / colorMode -> the CE fields as written, plus `accountThemeId` when CS has the matching theme (so CS's own picker follows).
+ *  - themeId / colorMode -> the app fields as written, plus `accountThemeId` when CS has the matching theme (so CS's own picker follows).
  *  - everything else (avatar, gradientIntensity, bio, ...) keeps its name: additive fields CS ignores.
  * Never returns `encryptedUserData`, `teamId`, `email`, `isOwner` or `isPlatformOwner`.
  */
