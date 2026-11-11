@@ -11,6 +11,8 @@ import { fetchTeamCreationEnabled, setTeamCreationEnabled } from "@/lib/team-enr
 import { MatchLibraryPanel } from "@/components/admin/match-library-panel";
 import { SessionsPanel } from "@/components/admin/sessions-panel";
 import { RescorePanel } from "@/components/admin/rescore-panel";
+import { MatchScoutIdsPanel } from "@/components/admin/match-scout-ids-panel";
+import { PracticeSessionIdsPanel } from "@/components/admin/practice-session-ids-panel";
 import { AuditLogPanel } from "@/components/admin/audit-log-panel";
 import { BackupsPanel } from "@/components/admin/backups-panel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,7 +23,7 @@ import { PageAccessPanel } from "@/components/page-access/page-access-panel";
 import { ReviewPanelHost } from "@/components/templates/review-panel";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 
-type AdminTab = "match-library" | "forms" | "page-access" | "sessions" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery";
+type AdminTab = "match-library" | "forms" | "page-access" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery";
 
 const TAB_LABELS: Record<AdminTab, string> = {
   "match-library": "Match Library",
@@ -30,6 +32,9 @@ const TAB_LABELS: Record<AdminTab, string> = {
   // P26: who can open which page (admins only: this whole panel is admin-only)
   "page-access": "Page Access",
   sessions: "Sessions",
+  // CS's two admin ID utilities (/admin/match-scout-ids, /admin/practice-session-ids), now tabs here
+  "match-scout-ids": "Match Scout IDs",
+  "practice-session-ids": "Practice Session IDs",
   rescore: "Rescore",
   "audit-log": "Audit Log",
   backups: "Backups",
@@ -135,6 +140,8 @@ export default function AdminPanelPage() {
       {tab === "forms" && can("manageForms") && <FormsPanel onOpenRescore={() => setTab("rescore")} />}
       {tab === "page-access" && <PageAccessPanel />}
       {tab === "sessions" && <SessionsPanel />}
+      {tab === "match-scout-ids" && <MatchScoutIdsPanel />}
+      {tab === "practice-session-ids" && <PracticeSessionIdsPanel />}
       {tab === "rescore" && <RescorePanel />}
       {tab === "audit-log" && <AuditLogPanel />}
       {tab === "backups" && <BackupsPanel />}

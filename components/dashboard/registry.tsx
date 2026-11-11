@@ -11,6 +11,7 @@ import { NextMatchWidget, OurResultsWidget, UpcomingMatchesWidget } from "@/comp
 import { AttendanceWidget, EventOverviewWidget, InterventionWidget, ScoutingHealthWidget } from "@/components/dashboard/widgets/team-coach";
 import { StrengthBulletsWidget, TeamSummaryWidget } from "@/components/dashboard/widgets/judge";
 import { SubInRequestsWidget } from "@/components/dashboard/widgets/sub-ins";
+import { AnnouncementsWidget } from "@/components/dashboard/widgets/announcements";
 import type { DashboardWidget } from "@/lib/dashboard/types";
 import type { RoleId } from "@/lib/roles";
 
@@ -86,6 +87,8 @@ export const dashboardRegistry: Record<RoleId, DashboardWidget[]> = {
     { id: "intervention", title: "Mentor Intervention", size: "medium", render: () => <InterventionWidget /> },
     { id: "attendance", title: "Attendance", size: "small", render: () => <AttendanceWidget /> },
     { id: "sub-ins", title: "Sub-in requests", size: "medium", render: () => <SubInRequestsWidget /> },
+    // CS's Team Communication hub (TeamAnnouncements: it sat on the coach/team-admin Team Management page).
+    { id: "announcements", title: "Team communication", size: "wide", render: () => <AnnouncementsWidget /> },
   ],
 
   media: [

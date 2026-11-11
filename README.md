@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CompSocrates (rebuild)
 
-## Getting Started
+Scouting for FIRST Robotics Competition teams: match, pit, lead, strategy and drive-reflection forms, assignments, practice scouting, and analytics. This is CompSocrates rebuilt on CompEpicurus's stack and design, so the two can later be merged into one site. It reads and writes the existing CompSocrates Firestore data.
 
-First, run the development server:
+- `docs/AUDIT.md`: what was found in both apps before any code was written.
+- `docs/ROUTES.md`: the route map (old CS URL to new URL) and the decision log.
+- `docs/REMAINING.md`: what is not done, and known gaps.
+- `config/README.md`: where event, game and API settings live.
+- `CLAUDE.md`: conventions and rules for working in this repo.
 
+## Run it
 ```bash
+npm install
+cp .env.example .env.local   # fill in Firebase, TBA and FIRST credentials
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+Never point a development environment at the production Firebase project. Use the emulators (below) or a copy.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Check it
+```bash
+npm run lint
+npm test                 # unit tests (Vitest)
+npm run build            # runs the theme contrast guard, then the production build
+npm run test:rules       # Firestore rules, API routes and adapter against the local emulators
+npm run test:e2e         # Playwright (needs `npx playwright install chromium webkit` once)
+```
+`test:rules` needs Java and the Firebase CLI. It uses the demo project id in `.firebaserc`, which cannot reach a real project.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Stack
+Next.js 16 (App Router), React 19, TypeScript (strict), Tailwind 4 with generated theme tokens, Radix primitives, Firebase (Auth, Firestore, Admin SDK), Vitest and Playwright.

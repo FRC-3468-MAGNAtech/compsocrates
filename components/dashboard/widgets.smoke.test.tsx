@@ -16,6 +16,7 @@ import { computeScoutStats } from "@/lib/scout-stats/engine";
 import type { ScoutCategory } from "@/lib/scout-stats/types";
 import type { TeamMember } from "@/lib/team-members";
 import { buildSubInRequest, claimPatch, type SubInRequest } from "@/lib/sub-ins/model";
+import type { TeamAnnouncement } from "@/lib/announcements/model";
 import { dashboardRegistry } from "./registry";
 import { HeaderStrip } from "./header-strip";
 
@@ -27,6 +28,19 @@ vi.mock("@/lib/sub-ins/store", () => ({
   claimSubIn: async () => ({ ok: true }),
   cancelSubIn: async () => ({ ok: true }),
   clearAllSubIns: async () => ({ ok: true }),
+}));
+
+// Likewise the announcements card: its own listener, replaced by a fixed state ("loaded" with no posts unless a test sets some).
+const announcementFixture: { posts: TeamAnnouncement[]; error: boolean } = { posts: [], error: false };
+vi.mock("@/lib/announcements/store", () => ({
+  useTeamAnnouncements: () => ({
+    posts: announcementFixture.posts,
+    loaded: true,
+    error: announcementFixture.error ? { context: "Couldn't load announcements", code: "permission-denied", message: "nope", path: null, at: "" } : null,
+    retry: () => {},
+  }),
+  postAnnouncement: async () => ({ ok: true }),
+  deleteAnnouncement: async () => ({ ok: true }),
 }));
 
 // A smoke harness for the dashboard (P13): every widget of every role is
@@ -290,7 +304,8 @@ describe("dashboard widgets render against every data shape", () => {
       const data = makeData(role, "loading");
       for (const w of dashboardRegistry[role]) {
         // sub-ins: its data comes from its own listener (mocked above, always loaded), so it cannot show the provider's loading state
-        if (w.id.endsWith("-soon") || w.id === "team-lookup" || w.id === "sub-ins") continue;
+        // announcements: same (its own mocked listener)
+        if (w.id.endsWith("-soon") || w.id === "team-lookup" || w.id === "sub-ins" || w.id === "announcements") continue;
         const html = render(data, w.render());
         // A few widgets are interactive shells that stay usable while loading (e.g. the lookup box) — everything else must skeleton.
         expect(html.includes('aria-busy="true"'), `${role}/${w.id} should show a skeleton while loading`).toBe(true);
@@ -344,6 +359,69 @@ describe("what the widgets show", () => {
   it("Sub-ins: says so when nobody has asked", () => {
     const html = render(makeData("match-scout", "empty"), dashboardRegistry["match-scout"].find((w) => w.id === "sub-ins")!.render());
     expect(html).toContain("No open sub-in requests");
+  });
+
+  describe("Team communication (announcements)", () => {
+    const widget = () => dashboardRegistry["team-coach"].find((w) => w.id === "announcements")!;
+    const mk = (id: string, createdAt: number, over: Partial<TeamAnnouncement> = {}): TeamAnnouncement => ({
+      id,
+      teamId: "team",
+      authorId: "u2",
+      authorName: "Bo Scout",
+      body: `post ${id}`,
+      type: "announcement",
+      createdAt,
+      ...over,
+    });
+
+    it("is on the team-coach dashboard", () => {
+      expect(widget()).toBeTruthy();
+    });
+
+    it("an empty board still offers the compose form, the type picker and an empty message", () => {
+      const html = render(makeData("team-coach", "rich"), widget().render());
+      expect(html).toContain("Message");
+      expect(html).toContain('role="radiogroup"');
+      for (const label of ["Announcement", "Strategy Note", "Match Alert"]) expect(html).toContain(label);
+      expect(html).toContain("No posts yet");
+      expect(html).toContain("Post");
+    });
+
+    it("lists posts as given (newest first from the store), with type pills, authors and messages", () => {
+      announcementFixture.posts = [mk("b", 2000, { type: "match-alert", body: "Bus leaves at 7" }), mk("a", 1000, { type: "strategy-note", body: "Defend the hive" })];
+      try {
+        const html = render(makeData("team-coach", "rich"), widget().render());
+        expect(html).toContain("Bus leaves at 7");
+        expect(html).toContain("Defend the hive");
+        expect(html).toContain("Match Alert");
+        expect(html).toContain("Bo Scout");
+        expect(html.indexOf("Bus leaves at 7")).toBeLessThan(html.indexOf("Defend the hive"));
+      } finally {
+        announcementFixture.posts = [];
+      }
+    });
+
+    it("only a team admin gets Delete", () => {
+      announcementFixture.posts = [mk("a", 1000)];
+      try {
+        expect(render({ ...makeData("team-coach", "rich"), isAdmin: false }, widget().render())).not.toContain("Delete");
+        expect(render({ ...makeData("team-coach", "rich"), isAdmin: true }, widget().render())).toContain("Delete announcement from Bo Scout");
+      } finally {
+        announcementFixture.posts = [];
+      }
+    });
+
+    it("a failed load is the card's error state, not an empty board", () => {
+      announcementFixture.error = true;
+      try {
+        const html = render(makeData("team-coach", "rich"), widget().render());
+        expect(html).toContain("Couldn't load announcements.");
+        expect(html).toContain("Try again");
+        expect(html).not.toContain("No posts yet");
+      } finally {
+        announcementFixture.error = false;
+      }
+    });
   });
 
   it("Match Scout: shows a paused session to resume and a pending live robot", () => {
