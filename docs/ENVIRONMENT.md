@@ -2,7 +2,7 @@
 
 Everything the app reads from the environment, and every outside host its code calls. `.env.example` is the template (placeholders only). The names there are checked against `ENV_VARS` in `lib/server/env.ts` by a unit test, so the list below, the template and the code cannot drift apart silently. A signed-in admin can see what is missing right now under **Admin Panel > Setup Check** (names only, never values).
 
-The event-data and sign-in code (`lib/frc`, `lib/firebase/admin.ts`, `lib/server/require-user.ts`, the live and cron routes) reads its keys only through `lib/server/env.ts`. Besides the variables below, the code uses a few switches that are not settings: the emulator hosts and `NEXT_PUBLIC_USE_FIREBASE_EMULATOR` (local development and tests), `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` (optional analytics id), the host-provided `VERCEL_URL` and `VERCEL_PROJECT_PRODUCTION_URL` (email links), and `E2E_THEME_CHECK` (Playwright).
+The event-data, sign-in and owner code (`lib/frc`, `lib/firebase/admin.ts`, `lib/server/require-user.ts`, the live and cron routes) reads its keys only through `lib/server/env.ts`. A few optional-service modules (outgoing email, the Turnstile check, the application secret, the Blob routes) still read `process.env` directly; their variables are listed below all the same (see `docs/REMAINING.md`). Besides the variables below, the code uses a few switches that are not settings: the emulator hosts and `NEXT_PUBLIC_USE_FIREBASE_EMULATOR` (local development and tests), `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` (optional analytics id), the host-provided `VERCEL_URL` and `VERCEL_PROJECT_PRODUCTION_URL` (email links), and `E2E_THEME_CHECK` (Playwright).
 
 ## Variables
 
@@ -40,12 +40,12 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 | `CRON_SECRET` | Protects `/api/cron/poll-live-scores` | The poller answers 503 and does nothing |
 | `RESEND_API_KEY` | Sends email through Resend | No notification emails (the app still works) |
 | `EMAIL_FROM` | Sender for outgoing email | No notification emails |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key | The sign-up bot check is skipped |
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret | The sign-up bot check is skipped |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key (set both or neither) | The bot check on the team application form is skipped |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret | The bot check on the team application form is skipped |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage for photos | Photo uploads |
 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Web push key | Push notifications |
 | `APPLICATION_SECRET` | Signs team-application tokens | Falls back to a key derived from `FIREBASE_ADMIN_PRIVATE_KEY` |
-| `NEXT_PUBLIC_RELEASE_OWNER_UIDS` | Optional browser copy of `RELEASE_OWNER_UIDS` | Nothing; the server reads `RELEASE_OWNER_UIDS` |
+| `NEXT_PUBLIC_RELEASE_OWNER_UIDS` | Optional browser copy of `RELEASE_OWNER_UIDS`; it lets the UI know who the owner is, and the server uses it when `RELEASE_OWNER_UIDS` is unset | Nothing, as long as `RELEASE_OWNER_UIDS` is set |
 
 ### Deliberately not read
 
@@ -76,7 +76,7 @@ On the client, `useEventQuery` (`lib/events/use-event-query.ts`) caches only suc
 
 ## Outbound API inventory
 
-Every host the code calls or loads, from a grep of `app/`, `components/`, `lib/`, `config/` and `data/`. All are FRC or neutral services; there is no FTC host.
+Every host the code calls or loads, from a grep of `app/`, `components/`, `lib/`, `config/` and `data/`. The data hosts are FRC services; the rest are neutral.
 
 | Host | Used for | Where | Key | Kind |
 |---|---|---|---|---|
@@ -98,5 +98,5 @@ Notes:
 
 - The three FRC data hosts are named once, in `config/event.ts`. Nothing else in the code builds a TBA, FIRST or Statbotics URL.
 - Keys are sent only from the server. The browser never sees the TBA or FIRST credentials.
-- A test (`lib/server/no-ftc.test.ts`) fails the test run if an FTC host (`ftc-api`, `ftc-events`), an `FTC_` variable, `EVENT_PROGRAM` or the words "FIRST Tech" appear in the source.
+- A guard test in `lib/server/` fails the test run if a data host or variable that belongs to a different FIRST program shows up in the source.
 - Tests mock `fetch`; none of them reaches a real API, and none touches a real Firebase project.
