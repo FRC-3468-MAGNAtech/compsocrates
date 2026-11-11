@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import manifest from "@/app/manifest";
+import { BRAND } from "@/config/brand";
 
 // P17 regression guards. There is no browser in CI, so these check the things that can be
 // checked statically: the install manifest and icons are valid, and the CSS / viewport /
@@ -29,12 +31,10 @@ describe("the web app manifest", () => {
     expect(m.background_color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
-  it("lists 192 and 512 icons plus a maskable one, and every listed icon is a real PNG of the stated size", () => {
+  it("lists exactly the icons set in the brand config, and every listed icon is a real PNG of the stated size", () => {
     const icons = m.icons ?? [];
-    const sizes = icons.map((i) => i.sizes);
-    expect(sizes).toContain("192x192");
-    expect(sizes.filter((s) => s === "512x512").length).toBeGreaterThanOrEqual(2);
-    expect(icons.some((i) => i.purpose === "maskable")).toBe(true);
+    const configured = [BRAND.logo.pwa192, BRAND.logo.pwa512, BRAND.logo.pwaMaskable512].filter(Boolean);
+    expect(icons.map((i) => i.src)).toEqual(configured);
     for (const icon of icons) {
       const path = `public${icon.src}`;
       expect(existsSync(path), icon.src).toBe(true);
@@ -44,13 +44,41 @@ describe("the web app manifest", () => {
     }
   });
 
-  it("has the 180x180 Apple touch icon iOS Home Screen installs use", () => {
-    expect(pngSize("public/icons/apple-touch-icon.png")).toEqual({ width: 180, height: 180 });
+  it("makes installability depend on artwork: with both a 192px and a 512px icon the manifest has them, with none it has none", () => {
+    // Chrome offers "install" only with 192px and 512px PNGs. The product has no official logo yet (config/brand.ts), so
+    // the manifest carries no icons; this documents that on purpose, and fails if a slot is set to a file that is missing.
+    const hasBoth = Boolean(BRAND.logo.pwa192 && BRAND.logo.pwa512);
+    expect(hasBoth ? (m.icons ?? []).length >= 2 : (m.icons ?? []).length === 0 || !hasBoth).toBe(true);
+  });
+
+  it("uses the brand's names and colors", () => {
+    expect(m.name).toBe(BRAND.title);
+    expect(m.short_name).toBe(BRAND.name);
+    expect(m.theme_color).toBe(BRAND.themeColor);
   });
 
   it("registers no service worker of its own, so it coexists with the Firebase Messaging worker", () => {
     expect(JSON.stringify(m)).not.toMatch(/serviceworker|service_worker/i);
     expect(existsSync("app/firebase-messaging-sw.js/route.ts")).toBe(true);
+  });
+});
+
+describe("the logo", () => {
+  // The CompSocrates favicon (the one logo artwork the product has), byte for byte. The owner wants it in the browser tab
+  // and nowhere else on the site until an official logo exists.
+  const CS_FAVICON_SHA256 = "1cbe21db3d40825ce80484906e07783cde0761a3decd4d1563b06b9eb9e48bd8";
+
+  it("serves the CompSocrates favicon, unaltered, as the browser-tab icon", () => {
+    expect(createHash("sha256").update(readFileSync("app/favicon.ico")).digest("hex")).toBe(CS_FAVICON_SHA256);
+    expect(BRAND.logo.favicon).toBe("/favicon.ico");
+  });
+
+  it("shows the logo nowhere else: every other slot is empty and no icon files ship", () => {
+    const { favicon, ...others } = BRAND.logo;
+    void favicon;
+    expect(Object.values(others).every((v) => v === null)).toBe(true);
+    expect(existsSync("public/icons")).toBe(false);
+    expect(existsSync("scripts/generate-icons.mjs")).toBe(false);
   });
 });
 
@@ -64,7 +92,7 @@ describe("the root layout's mobile settings", () => {
   });
 
   it("makes the app installable on iPhone and respects reduced motion", () => {
-    expect(layout).toContain("apple-touch-icon.png");
+    expect(layout).toContain("BRAND.logo.apple");
     expect(layout).toContain("appleWebApp");
     expect(layout).toContain("MotionProvider");
     expect(read("components/layout/motion-provider.tsx")).toContain('reducedMotion="user"');

@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth";
 import { GlassLayerProvider } from "@/lib/glass-layer";
 import { BackgroundBlobs } from "@/components/layout/background-blobs";
 import { MotionProvider } from "@/components/layout/motion-provider";
+import { BRAND } from "@/config/brand";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,11 +20,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CompEpicurus — FTC Scouting",
-  description: "A scouting app for FTC teams.",
-  // The manifest itself is app/manifest.ts. These make an iPhone "Add to Home Screen" install look right (P17).
-  icons: { icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }], apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] },
-  appleWebApp: { capable: true, title: "CompEpicurus", statusBarStyle: "black-translucent" },
+  title: BRAND.title,
+  description: BRAND.metaDescription,
+  // The manifest itself is app/manifest.ts. The only logo artwork is the browser-tab icon (app/favicon.ico); the home-screen
+  // and social-image slots stay empty until an official logo is added to config/brand.ts (see the `logo` block there).
+  icons: {
+    icon: BRAND.logo.favicon ?? undefined,
+    apple: BRAND.logo.apple ? [{ url: BRAND.logo.apple, sizes: "180x180", type: "image/png" }] : undefined,
+  },
+  openGraph: BRAND.logo.og ? { title: BRAND.title, description: BRAND.metaDescription, images: [BRAND.logo.og] } : undefined,
+  // Lets an iPhone "Add to Home Screen" install run standalone (P17).
+  appleWebApp: { capable: true, title: BRAND.name, statusBarStyle: "black-translucent" },
 };
 
 // Mobile (P17): draw under the notch / home indicator (the bars use env(safe-area-inset-*)), and let the
@@ -33,7 +40,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#17070c",
+  themeColor: BRAND.themeColor,
 };
 
 // Every theme's variables, generated from the registry (lib/themes.ts) and the pre-paint script that picks the saved
