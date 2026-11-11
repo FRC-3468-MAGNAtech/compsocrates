@@ -1,5 +1,6 @@
 import type { TeamAssignRow } from "@/lib/team-assignments/distribute";
 import type { DistributeMode } from "@/lib/team-assignments/distribute";
+import { seasonFormId } from "@/lib/forms/builtin";
 
 // P31: the stored shape of a Pit Scouting / Team Strategy assignment, and the pure helpers that read it. No Firebase here.
 
@@ -12,6 +13,7 @@ export type TeamAssignKindInfo = {
   tab: string;
   /** What the scouts call it ("pit scouting"). */
   noun: string;
+  /** The running season's id for the form (REBUILT: "pit-scout-v1"; FTC mode: "biobuzz-pit-scout-v1"). */
   formId: string;
   /** The P26 page id whose access makes someone an eligible scout. */
   pageId: string;
@@ -19,8 +21,8 @@ export type TeamAssignKindInfo = {
 };
 
 export const TEAM_ASSIGN_KIND_INFO: Record<TeamAssignKind, TeamAssignKindInfo> = {
-  pit: { kind: "pit", tab: "Pit Scouting", noun: "pit scouting", formId: "pit-scout-v1", pageId: "pit-scout-form", href: "/pit-scout-form" },
-  teamStrategy: { kind: "teamStrategy", tab: "Team Strategy", noun: "team strategy", formId: "team-strategy-v1", pageId: "team-strategy-form", href: "/team-strategy-form" },
+  pit: { kind: "pit", tab: "Pit Scouting", noun: "pit scouting", formId: seasonFormId("pit-scout"), pageId: "pit-scout-form", href: "/pit-scout-form" },
+  teamStrategy: { kind: "teamStrategy", tab: "Team Strategy", noun: "team strategy", formId: seasonFormId("team-strategy"), pageId: "team-strategy-form", href: "/team-strategy-form" },
 };
 
 export type TeamAssignSettings = {

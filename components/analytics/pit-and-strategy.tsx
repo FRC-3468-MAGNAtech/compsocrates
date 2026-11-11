@@ -9,16 +9,25 @@ import { useAnalyticsData } from "@/lib/analytics/data-context";
 import { useAnalyticsFilters, useAnalyticsHref } from "@/lib/analytics/filter-context";
 import { eventCodesForScope } from "@/lib/analytics/form-analytics";
 import { teamPitStrategy, type TeamPitStrategy } from "@/lib/analytics/form-summaries";
+import { RebuiltPitAndStrategySection } from "@/components/analytics/pit-and-strategy-rebuilt";
+import { summaryFlavorForSeason } from "@/lib/analytics/summary-flavor";
 import { useAuth } from "@/lib/auth";
 import { useFormEntries } from "@/lib/form-entries";
-import { getBuiltinForm } from "@/lib/forms/builtin";
+import { getBuiltinForm, seasonFormId } from "@/lib/forms/builtin";
 import { useForms } from "@/lib/forms/forms-context";
 import type { Form } from "@/lib/forms/types";
 
 const TYPES = new Set(["pit-scout", "team-strategy", "lead-scout"]);
 
-/** The Team Profile's "Pit and Strategy" section: what the pit, strategy and lead-scout forms say about the team. Left out entirely when none has anything. */
+/**
+ * The Team Profile's "Pit and Strategy" section: what the pit, strategy and lead-scout forms say about the team. Left out entirely when none has anything. The REBUILT forms
+ * and the BIOBUZZ forms store different keys, so each has its own section; this picks one from the running season (lib/analytics/summary-flavor.ts).
+ */
 export function PitAndStrategySection({ teamNumber }: { teamNumber: number }) {
+  return summaryFlavorForSeason() === "rebuilt" ? <RebuiltPitAndStrategySection teamNumber={teamNumber} /> : <BiobuzzPitAndStrategySection teamNumber={teamNumber} />;
+}
+
+function BiobuzzPitAndStrategySection({ teamNumber }: { teamNumber: number }) {
   const { profile } = useAuth();
   const { filters } = useAnalyticsFilters();
   const data = useAnalyticsData();
@@ -27,8 +36,8 @@ export function PitAndStrategySection({ teamNumber }: { teamNumber: number }) {
   const codes = useMemo(() => eventCodesForScope(filters.events, data.activeEventCodes), [filters.events, data.activeEventCodes]);
   const inScope = useMemo(() => entries.filter((e) => TYPES.has(e.formType) && !e.excluded && (codes === null || codes.includes(e.eventCode))), [entries, codes]);
   const info = useMemo(() => teamPitStrategy(teamNumber, inScope), [teamNumber, inScope]);
-  const pitForm = forms.latest("pit-scout-v1") ?? getBuiltinForm("pit-scout-v1")!;
-  const strategyForm = forms.latest("team-strategy-v1") ?? getBuiltinForm("team-strategy-v1")!;
+  const pitForm = forms.latest(seasonFormId("pit-scout")) ?? getBuiltinForm(seasonFormId("pit-scout"))!;
+  const strategyForm = forms.latest(seasonFormId("team-strategy")) ?? getBuiltinForm(seasonFormId("team-strategy"))!;
   if (!loaded || !info.any) return null;
   return <PitAndStrategyView teamNumber={teamNumber} info={info} pitForm={pitForm} strategyForm={strategyForm} />;
 }

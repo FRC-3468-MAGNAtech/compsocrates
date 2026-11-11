@@ -1,23 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { AlertTriangle, Check, ChevronRight, X } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
-import { OurTeamTag } from "@/components/analytics/team-bits";
+import { Empty, Fact, LatestToggle, Lightbox, Skill, TeamChip } from "@/components/analytics/summary-parts";
+import { RebuiltFormSummaryView } from "@/components/analytics/form-summaries-rebuilt-view";
 import { latestPerUnit, type FormAnalyticsPage } from "@/lib/analytics/form-analytics";
 import { STRATEGY_ABILITIES, helperAnalytics, leadScoutSummary, pitSummary, planRows, reflectionRows, teamStrategySummary, wentToPlan, type PitRow } from "@/lib/analytics/form-summaries";
-import { useAnalyticsHref } from "@/lib/analytics/filter-context";
+import { summaryFlavorForFormId } from "@/lib/analytics/summary-flavor";
 import type { FormEntry } from "@/lib/form-entries-model";
-import { useIsOurTeam } from "@/lib/field-teams-context";
 import { summarizeSequence } from "@/lib/forms/sequence";
-import type { Form, FormField, ImageValue } from "@/lib/forms/types";
+import type { Form, FormField } from "@/lib/forms/types";
 import { cn } from "@/lib/utils";
 
 // P30: the summary view of each of the new forms' Analytics pages. The raw table lives next to it; this boils it down per team or per match. The latest entry per team
-// (or match and alliance) shows by default, with "see all" for the earlier ones. Everything is read from the entries' stored values (lib/analytics/form-summaries.ts).
+// (or match and alliance) shows by default, with "see all" for the earlier ones. Everything is read from the entries' stored values (lib/analytics/form-summaries.ts; the REBUILT view is form-summaries-rebuilt-view.tsx).
 
 type Props = { page: FormAnalyticsPage; form: Form; entries: FormEntry[]; allEntries: FormEntry[]; teamNames: ReadonlyMap<number, string>; hideNames: boolean };
 
@@ -25,34 +22,12 @@ const fieldOf = (form: Form, key: string): FormField | undefined => form.section
 const optionLabel = (form: Form, key: string, value: string): string => fieldOf(form, key)?.options?.find((o) => o.value === value)?.label ?? (value || "—");
 const allianceText = (a: "red" | "blue" | null) => (a === "red" ? "Red" : a === "blue" ? "Blue" : "");
 
-function TeamChip({ team, names }: { team: number; names: ReadonlyMap<number, string> }) {
-  const ours = useIsOurTeam()(team);
-  const href = useAnalyticsHref();
-  return (
-    <Link href={href(`/analytics/teams/${team}`)} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--glass-border)] px-2.5 py-1 text-xs font-semibold tabular-nums hover:bg-white/10" title={names.get(team)}>
-      {team}
-      {ours && <OurTeamTag />}
-    </Link>
-  );
-}
+// `Fact` and `Lightbox` stay importable from here (the Team Profile section and the e2e fixtures import them).
+export { Fact, Lightbox };
 
-function Empty({ children }: { children: React.ReactNode }) {
-  return <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">{children}</GlassPanel>;
-}
-
-/** "Showing the latest entry per team. See all" toggle line. */
-function LatestToggle({ showAll, onChange, what }: { showAll: boolean; onChange: (v: boolean) => void; what: string }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted-foreground)]">
-      <span>{showAll ? `Showing every entry for each ${what}.` : `Showing the latest entry for each ${what}.`}</span>
-      <Button type="button" variant="glass" size="sm" onClick={() => onChange(!showAll)} data-testid="see-all-toggle">
-        {showAll ? "Latest only" : "See all entries"}
-      </Button>
-    </div>
-  );
-}
-
+/** The summary view of one form Analytics page. The REBUILT forms (the adapter's ids) and the BIOBUZZ forms (`biobuzz-*`) read different value keys, so each has its own view: this is the one place that picks. */
 export function FormSummaryView(props: Props) {
+  if (summaryFlavorForFormId(props.page.formId) === "rebuilt") return <RebuiltFormSummaryView {...props} />;
   switch (props.page.slug) {
     case "lead-scout":
       return <LeadScoutSummary {...props} />;
@@ -70,18 +45,6 @@ export function FormSummaryView(props: Props) {
 }
 
 // --- Lead Scout -----------------------------------------------------------------------------------------------
-
-function Skill({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-[var(--muted-foreground)]">—</span>;
-  return (
-    <span className="inline-flex items-center gap-2 tabular-nums">
-      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10" aria-hidden>
-        <span className="block h-full rounded-full" style={{ width: `${(value / 5) * 100}%`, background: "var(--theme-gradient)" }} />
-      </span>
-      {value.toFixed(1)}
-    </span>
-  );
-}
 
 function LeadScoutSummary({ entries, teamNames, hideNames }: Props) {
   const s = useMemo(() => leadScoutSummary(entries), [entries]);
@@ -155,37 +118,6 @@ function LeadScoutSummary({ entries, teamNames, hideNames }: Props) {
 }
 
 // --- Pit Scout ------------------------------------------------------------------------------------------------
-
-export function Lightbox({ photos, start, onClose, title }: { photos: ImageValue[]; start: number; onClose: () => void; title: string }) {
-  const [i, setI] = useState(start);
-  const photo = photos[i];
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[min(94vw,900px)]" data-testid="lightbox">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>
-          Photo {i + 1} of {photos.length}
-        </DialogDescription>
-        {photo && (
-          <div className="mt-2 flex max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a Vercel Blob URL on a host we don't configure for next/image */}
-            <img src={photo.url} alt={`${title}: photo ${i + 1}`} className="max-h-[70vh] w-auto max-w-full object-contain" />
-          </div>
-        )}
-        {photos.length > 1 && (
-          <div className="mt-3 flex justify-between gap-2">
-            <Button variant="glass" size="sm" onClick={() => setI((i + photos.length - 1) % photos.length)}>
-              Previous
-            </Button>
-            <Button variant="glass" size="sm" onClick={() => setI((i + 1) % photos.length)}>
-              Next
-            </Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 /** The capabilities grid: rows and columns from the form field, a check where the team can do it. */
 export function CapabilityGrid({ field, value }: { field: FormField | undefined; value: Record<string, boolean> }) {
@@ -284,15 +216,6 @@ function PitCard({ row, form, names, older }: { row: PitRow; form: Form; names: 
       )}
       {lightbox !== null && <Lightbox photos={row.photos} start={lightbox} onClose={() => setLightbox(null)} title={`Team ${row.teamNumber}`} />}
     </GlassPanel>
-  );
-}
-
-export function Fact({ label, value }: { label: string; value: string | number | null }) {
-  return (
-    <div>
-      <div className="text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">{label}</div>
-      <div className="tabular-nums">{value === null || value === "" ? "—" : value}</div>
-    </div>
   );
 }
 
