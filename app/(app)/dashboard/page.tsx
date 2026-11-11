@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarX2 } from "lucide-react";
 import { AdminStrip } from "@/components/dashboard/admin-strip";
 import { HeaderStrip } from "@/components/dashboard/header-strip";
@@ -14,12 +15,23 @@ import { Shimmer } from "@/components/ui/shimmer";
 import { useAuth } from "@/lib/auth";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard/data";
 import { useSavedDashboardRole } from "@/lib/dashboard/prefs";
-import { resolveViewRole, userRoles } from "@/lib/dashboard/roles";
+import { resolveViewRole, roleFromLink, userRoles } from "@/lib/dashboard/roles";
 import { getRole, type RoleId } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
+// useSearchParams needs a Suspense boundary so the page can still be prerendered.
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardPageInner />
+    </Suspense>
+  );
+}
+
+function DashboardPageInner() {
   const { user, profile } = useAuth();
+  const router = useRouter();
+  const params = useSearchParams();
   const [saved, saveRole] = useSavedDashboardRole(user?.uid ?? null);
   // An admin's "View as role" preview — never saved, and gone on reload.
   const [viewAs, setViewAs] = useState<RoleId | null>(null);
@@ -28,7 +40,9 @@ export default function DashboardPage() {
 
   const isAdmin = profile.isAdmin;
   const roles = userRoles(profile.primaryRole, profile.secondaryRoles);
-  const role = resolveViewRole({ primaryRole: profile.primaryRole, secondaryRoles: profile.secondaryRoles, saved, viewAs: isAdmin ? viewAs : null });
+  // `?role=` comes from the old CS role-dashboard URLs (config/legacy-redirects.ts): your own role selects it, any other is an admin preview.
+  const link = roleFromLink(params.get("role"), { primaryRole: profile.primaryRole, secondaryRoles: profile.secondaryRoles, isAdmin });
+  const role = resolveViewRole({ primaryRole: profile.primaryRole, secondaryRoles: profile.secondaryRoles, saved: link.own ?? saved, viewAs: isAdmin ? (viewAs ?? link.preview) : null });
 
   return (
     // The provider is keyed by role so switching roles starts from that role's own subscriptions.
@@ -51,8 +65,12 @@ export default function DashboardPage() {
           onChange={(r) => {
             setViewAs(null);
             saveRole(r);
+            if (params.has("role")) router.replace("/dashboard");
           }}
-          onViewAs={setViewAs}
+          onViewAs={(r) => {
+            setViewAs(r);
+            if (params.has("role")) router.replace("/dashboard");
+          }}
         />
 
         {isAdmin && <AdminStrip />}

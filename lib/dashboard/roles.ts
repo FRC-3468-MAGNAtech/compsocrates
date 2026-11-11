@@ -55,6 +55,20 @@ export function userRoles(primaryRole: RoleId, secondaryRoles: RoleId[]): RoleId
 }
 
 /**
+ * A `?role=` link (the old CompSocrates role-dashboard URLs redirect to `/dashboard?role=<id>`, config/legacy-redirects.ts).
+ * A role the user holds simply selects it; any other valid role is an admin-only preview (the "View as role" path), and
+ * for a non-admin it is ignored. Garbage and missing values are ignored.
+ */
+export function roleFromLink(
+  param: string | null | undefined,
+  input: { primaryRole: RoleId; secondaryRoles: RoleId[]; isAdmin: boolean }
+): { own: RoleId | null; preview: RoleId | null } {
+  if (!isRoleId(param)) return { own: null, preview: null };
+  if (userRoles(input.primaryRole, input.secondaryRoles).includes(param)) return { own: param, preview: null };
+  return { own: null, preview: input.isAdmin ? param : null };
+}
+
+/**
  * The role whose widgets to show: an admin's "View as role" preview if one is
  * set; otherwise the user's last choice among *their own* roles; otherwise
  * their primary role. A remembered role they no longer hold is ignored.

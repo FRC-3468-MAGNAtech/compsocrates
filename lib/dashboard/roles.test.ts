@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ROLES, type RoleId } from "@/lib/roles";
-import { ROLE_SOURCES, isRoleId, resolveViewRole, sourcesFor, userRoles } from "./roles";
+import { ROLE_SOURCES, isRoleId, resolveViewRole, roleFromLink, sourcesFor, userRoles } from "./roles";
 
 describe("ROLE_SOURCES", () => {
   it("has an entry for every role in the roles config", () => {
@@ -53,6 +53,31 @@ describe("userRoles / isRoleId", () => {
     expect(isRoleId("drive-team")).toBe(true);
     expect(isRoleId("nope")).toBe(false);
     expect(isRoleId(null)).toBe(false);
+  });
+});
+
+describe("roleFromLink", () => {
+  const mine = { primaryRole: "match-scout" as RoleId, secondaryRoles: ["drive-team"] as RoleId[], isAdmin: false };
+
+  it("selects a role the user holds", () => {
+    expect(roleFromLink("drive-team", mine)).toEqual({ own: "drive-team", preview: null });
+    expect(roleFromLink("match-scout", mine)).toEqual({ own: "match-scout", preview: null });
+  });
+
+  it("makes a role the user does not hold an admin-only preview", () => {
+    expect(roleFromLink("team-coach", mine)).toEqual({ own: null, preview: null });
+    expect(roleFromLink("team-coach", { ...mine, isAdmin: true })).toEqual({ own: null, preview: "team-coach" });
+  });
+
+  it("ignores missing and invalid values", () => {
+    expect(roleFromLink(null, mine)).toEqual({ own: null, preview: null });
+    expect(roleFromLink("coach-dashboard", { ...mine, isAdmin: true })).toEqual({ own: null, preview: null });
+  });
+
+  it("accepts every old CS dashboard redirect target", () => {
+    for (const id of ["match-scout", "pit-scout", "pit-team", "drive-team", "lead-scout", "lead-strategist", "team-coach", "media", "judge-awards"]) {
+      expect(isRoleId(id)).toBe(true);
+    }
   });
 });
 
