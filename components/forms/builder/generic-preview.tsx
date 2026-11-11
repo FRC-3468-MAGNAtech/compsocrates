@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { maxRepeatSlots } from "@/lib/forms/repeat";
 import { defaultValues, validateValues } from "@/lib/forms/values";
 import type { Form, FormValues } from "@/lib/forms/types";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 // P27: the Form Builder's preview for the team's non-match forms: the real <FormRenderer /> on sample data (two events, a few teams, an alliance of 2 or 3
 // teams), a test fill that is never saved. The match picker is a stand-in: the live form uses the real one.
 
-const EVENTS: FtcEvent[] = [
+const EVENTS: EventInfo[] = [
   { code: "SAMPLE1", season: 2025, name: "Sample Qualifier", dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "in-progress" },
   { code: "SAMPLE2", season: 2025, name: "Sample League Meet", dateStart: "2025-12-06", dateEnd: "2025-12-06", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "upcoming" },
 ];

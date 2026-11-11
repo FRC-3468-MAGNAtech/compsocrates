@@ -15,7 +15,7 @@
  * A claimed request does not expire (a CS claim row never did): the assignment lasts until the match is scouted.
  */
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 
 export const SUB_IN_COLLECTION = "subInRequests";

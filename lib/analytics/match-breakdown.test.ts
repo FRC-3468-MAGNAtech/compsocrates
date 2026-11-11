@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { initialScoutEntryFields, type ScoutEntryFields } from "@/lib/scout-entries";
 import { BIOBUZZ_FORM_SCHEMA } from "@/lib/scout-form/schema";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { AnalyticsEntry } from "./entries";
 import {
@@ -267,7 +267,7 @@ describe("ordering and search", () => {
 
 describe("converters", () => {
   it("converts a FIRST API match", () => {
-    const ftc: FtcMatch = {
+    const ftc: EventMatch = {
       id: "x",
       matchNumber: 7,
       type: "Playoff",

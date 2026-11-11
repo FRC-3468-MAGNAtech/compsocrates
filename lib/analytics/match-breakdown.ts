@@ -2,7 +2,7 @@ import { computeAllianceAccuracy } from "@/lib/analytics/accuracy";
 import type { AnalyticsEntry } from "@/lib/analytics/entries";
 import { formatMatch, matchSortValue } from "@/lib/analytics/game-schema";
 import { schemaFieldMeta } from "@/lib/analytics/team-stats";
-import type { FtcMatch, MatchType } from "@/lib/ftc/types";
+import type { EventMatch, MatchType } from "@/lib/events/types";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { Form } from "@/lib/forms/types";
 import { elementOf } from "@/lib/forms/meta";
@@ -38,7 +38,7 @@ export type OfficialMatch = {
   blue: OfficialAlliance;
 };
 
-export function ftcMatchToOfficial(eventCode: string, m: FtcMatch): OfficialMatch {
+export function ftcMatchToOfficial(eventCode: string, m: EventMatch): OfficialMatch {
   return {
     eventCode,
     matchType: m.type,

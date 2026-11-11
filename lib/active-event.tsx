@@ -16,16 +16,16 @@ import { getEvent } from "@/lib/events/actions";
 import { setActiveEvent as setTeamActiveEvent, useTeamDoc } from "@/lib/team";
 import { readActiveEvents } from "@/lib/active-events";
 import { getEventStatus } from "@/lib/ftc/event-status";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 /** Session cache of enriched events by code, shared by every component calling the hooks below. */
-const enriched = new Map<string, FtcEvent>();
+const enriched = new Map<string, EventInfo>();
 const inFlight = new Set<string>();
 
 /** True for the placeholder `data/cs/teams.ts` builds from a bare key (no dates yet). */
-const isPlaceholder = (event: FtcEvent) => event.dateStart === "" && event.dateEnd === "";
+const isPlaceholder = (event: EventInfo) => event.dateStart === "" && event.dateEnd === "";
 
-function useEnrichedEvents(events: FtcEvent[]): FtcEvent[] {
+function useEnrichedEvents(events: EventInfo[]): EventInfo[] {
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -76,7 +76,7 @@ export function useActiveEvent() {
   const teamId = profile?.teamId ?? null;
   const { primary, isActive } = useActiveEvents();
 
-  const setActiveEvent = (event: FtcEvent | null) => {
+  const setActiveEvent = (event: EventInfo | null) => {
     if (!teamId) return Promise.resolve();
     return setTeamActiveEvent(teamId, event);
   };

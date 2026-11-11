@@ -1,4 +1,4 @@
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import type { AccuracyResult, ScoutEntry } from "@/lib/scout-entries";
 import { computeAllianceAccuracy as computeAccuracy } from "@/lib/accuracy/engine";
 
@@ -46,7 +46,7 @@ export function computeAllianceAccuracy(
 }
 
 /** Which alliance (and its official score/penalty) a team belongs to on a given match. */
-export function allianceForTeam(match: FtcMatch, teamNumber: number): "red" | "blue" | null {
+export function allianceForTeam(match: EventMatch, teamNumber: number): "red" | "blue" | null {
   if (match.redTeams.includes(teamNumber)) return "red";
   if (match.blueTeams.includes(teamNumber)) return "blue";
   return null;

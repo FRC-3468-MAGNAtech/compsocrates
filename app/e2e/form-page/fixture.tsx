@@ -7,7 +7,7 @@ import type { NewFormEntry } from "@/lib/form-entries-model";
 import { DRIVE_REFLECTION_FORM, LEAD_SCOUT_FORM, MATCH_STRATEGY_FORM } from "@/lib/forms/builtin-team-forms";
 import type { PlanCandidate } from "@/lib/forms/compare";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 declare global {
   interface Window {
@@ -18,7 +18,7 @@ declare global {
 const FORMS = { lead: LEAD_SCOUT_FORM, strategy: MATCH_STRATEGY_FORM, reflection: DRIVE_REFLECTION_FORM } as const;
 const TITLES = { lead: "Lead Scout Form", strategy: "Match Strategy Form", reflection: "Drive Reflection Form" } as const;
 
-const EVENTS: FtcEvent[] = [
+const EVENTS: EventInfo[] = [
   { code: "EVT1", season: 2025, name: "Bonney Lake Qualifier", dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "in-progress" },
 ];
 const match = (matchType: OfficialMatch["matchType"], matchNumber: number, red: number[], blue: number[]): OfficialMatch => ({ eventCode: "EVT1", matchType, matchNumber, played: false, red: { teams: red, score: null, penaltyPoints: null }, blue: { teams: blue, score: null, penaltyPoints: null } });

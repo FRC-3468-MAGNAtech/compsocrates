@@ -3,7 +3,7 @@ import { EVENT_CONFIG } from "@/config/event";
 import { fetchFirstSchedule } from "./first";
 import { FrcApiError } from "./http";
 import { fetchTbaMatches, type TbaOptions } from "./tba";
-import type { FtcMatch, MatchType } from "@/lib/ftc/types";
+import type { EventMatch, MatchType } from "@/lib/events/types";
 
 /**
  * FRC counterpart of lib/ftc/matches-internal.ts: the fetch and merge logic with no auth gate, for
@@ -26,7 +26,7 @@ export async function fetchMatchesForEventInternal(
   matchType: MatchType,
   season?: number,
   options?: TbaOptions
-): Promise<FtcMatch[]> {
+): Promise<EventMatch[]> {
   const resolvedSeason = season ?? EVENT_CONFIG.season;
   if (matchType === "Practice") return fetchFirstSchedule(eventCode, "Practice", resolvedSeason);
 

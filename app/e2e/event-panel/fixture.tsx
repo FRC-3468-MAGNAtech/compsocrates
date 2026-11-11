@@ -4,9 +4,9 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { SelectedEventsPanel } from "@/components/event/selected-events-panel";
 import { moveActiveEvent, toggleActiveEvent, type ActiveEventsState } from "@/lib/active-events";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
-const ev = (code: string, name: string): FtcEvent => ({ code, season: 2025, name, dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "upcoming" });
+const ev = (code: string, name: string): EventInfo => ({ code, season: 2025, name, dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "upcoming" });
 const EVENTS = [ev("USWABON1", "Bonney Lake Qualifier"), ev("USWASEQ", "Sequim League Meet"), ev("USWATAC", "Tacoma Championship")];
 
 function Fixture() {

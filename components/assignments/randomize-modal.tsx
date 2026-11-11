@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MemberMultiSelect } from "@/components/assignments/member-multiselect";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { TeamMember } from "@/lib/team-members";
 import { filterMatchesByCategories, filterMatchesByRanges, parseMatchRanges } from "@/lib/scheduler/ranges";
 import { generateSchedule } from "@/lib/scheduler/scheduler";

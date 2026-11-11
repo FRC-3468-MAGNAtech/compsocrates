@@ -13,7 +13,7 @@ import { moveActiveEvent } from "@/lib/active-events";
 import { getEventStatus } from "@/lib/ftc/event-status";
 import { spring, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { EventLifecycleStatus, FtcEvent } from "@/lib/ftc/types";
+import type { EventLifecycleStatus, EventInfo } from "@/lib/events/types";
 
 export const STATUS_BADGE: Record<EventLifecycleStatus, { label: string; variant: "success" | "glass" | "outline" }> = {
   "in-progress": { label: "In Progress", variant: "success" },
@@ -39,11 +39,11 @@ const BAR_TOP_PX_DESKTOP = 12;
 const CONDENSED_CHIP_LIMIT = 3;
 
 type PanelProps = {
-  events: FtcEvent[];
+  events: EventInfo[];
   primaryCode: string | null;
   /** Admins can reorder (which also sets the primary), star a primary and remove events; everyone else sees the panel read-only. */
   canEdit: boolean;
-  onRemove: (event: FtcEvent) => void;
+  onRemove: (event: EventInfo) => void;
   /** FIX4: move an event to a new place in the order. The first place is the primary event, so the star is "move to 0". */
   onMove: (code: string, toIndex: number) => void;
 };
@@ -305,14 +305,14 @@ function SortableEventCard({
   onRemove,
   onMove,
 }: {
-  event: FtcEvent;
+  event: EventInfo;
   index: number;
   count: number;
   isPrimary: boolean;
   canEdit: boolean;
   canReorder: boolean;
   now: number;
-  onRemove: (event: FtcEvent) => void;
+  onRemove: (event: EventInfo) => void;
   onMove: (code: string, toIndex: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: event.code, disabled: !canReorder });
@@ -355,11 +355,11 @@ function EventRow({
   onMakePrimary,
   reorder,
 }: {
-  event: FtcEvent;
+  event: EventInfo;
   isPrimary: boolean;
   canEdit: boolean;
   now: number;
-  onRemove: (event: FtcEvent) => void;
+  onRemove: (event: EventInfo) => void;
   onMakePrimary: (code: string) => void;
   /** The drag grip and up/down arrows, only in the big panel and only when there is something to reorder. */
   reorder?: { index: number; count: number; onMove: (toIndex: number) => void; grip: React.ReactNode };

@@ -9,12 +9,12 @@ import { requireUser } from "@/lib/server/require-user";
 import type {
   ActionResult,
   BracketStructure,
-  FtcEvent,
-  FtcMatch,
-  FtcRanking,
-  FtcTeam,
+  EventInfo,
+  EventMatch,
+  EventRanking,
+  EventTeam,
   MatchType,
-} from "./types";
+} from "@/lib/events/types";
 
 const UNAUTHORIZED_RESULT = {
   ok: false as const,
@@ -58,7 +58,7 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
   }
 }
 
-function toFtcEvent(raw: RawEvent, season: number): FtcEvent {
+function toFtcEvent(raw: RawEvent, season: number): EventInfo {
   return {
     code: raw.code,
     season,
@@ -86,7 +86,7 @@ type RawRanking = {
   qualAverage?: number;
 };
 
-function toFtcRanking(raw: RawRanking): FtcRanking | null {
+function toFtcRanking(raw: RawRanking): EventRanking | null {
   if (typeof raw.teamNumber !== "number" || typeof raw.rank !== "number") return null;
   return {
     teamNumber: raw.teamNumber,
@@ -100,7 +100,7 @@ function toFtcRanking(raw: RawRanking): FtcRanking | null {
   };
 }
 
-function toFtcTeam(raw: RawTeam): FtcTeam {
+function toFtcTeam(raw: RawTeam): EventTeam {
   return {
     teamNumber: raw.teamNumber,
     nameShort: raw.nameShort ?? `Team ${raw.teamNumber}`,
@@ -114,7 +114,7 @@ function toFtcTeam(raw: RawTeam): FtcTeam {
 
 // --- Public API --------------------------------------------------------
 
-export async function getEvents(params?: { season?: number; search?: string }): Promise<ActionResult<FtcEvent[]>> {
+export async function getEvents(params?: { season?: number; search?: string }): Promise<ActionResult<EventInfo[]>> {
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   const season = params?.season ?? getDefaultSeason();
   return run(async () => {
@@ -130,7 +130,7 @@ export async function getEvents(params?: { season?: number; search?: string }): 
   });
 }
 
-export async function getEvent(eventCode: string, season?: number): Promise<ActionResult<FtcEvent | null>> {
+export async function getEvent(eventCode: string, season?: number): Promise<ActionResult<EventInfo | null>> {
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   const resolvedSeason = season ?? getDefaultSeason();
   return run(async () => {
@@ -140,7 +140,7 @@ export async function getEvent(eventCode: string, season?: number): Promise<Acti
   });
 }
 
-export async function getTeamsForEvent(eventCode: string, season?: number): Promise<ActionResult<FtcTeam[]>> {
+export async function getTeamsForEvent(eventCode: string, season?: number): Promise<ActionResult<EventTeam[]>> {
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   const resolvedSeason = season ?? getDefaultSeason();
   return run(async () => {
@@ -154,7 +154,7 @@ export async function getTeamsForEvent(eventCode: string, season?: number): Prom
  * name). `data` is `null` when FIRST has no such team that season; a failed request comes back as an
  * ordinary error result, which Team Settings treats as "couldn't check — type the name yourself".
  */
-export async function getTeamByNumber(teamNumber: number, season?: number): Promise<ActionResult<FtcTeam | null>> {
+export async function getTeamByNumber(teamNumber: number, season?: number): Promise<ActionResult<EventTeam | null>> {
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   if (!Number.isInteger(teamNumber) || teamNumber <= 0 || teamNumber > 99999) {
     return { ok: false, error: { code: "upstream_error", message: "Enter a team number with 1 to 5 digits." } };
@@ -179,12 +179,12 @@ export async function getTeamByNumber(teamNumber: number, season?: number): Prom
  * empty list as "no official rank available" rather than a failure (Team
  * Profile just omits the rank chip).
  */
-export async function getRankingsForEvent(eventCode: string, season?: number): Promise<ActionResult<FtcRanking[]>> {
+export async function getRankingsForEvent(eventCode: string, season?: number): Promise<ActionResult<EventRanking[]>> {
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   const resolvedSeason = season ?? getDefaultSeason();
   return run(async () => {
     const res = await ftcFetch<{ rankings?: RawRanking[]; Rankings?: RawRanking[] }>(`/${resolvedSeason}/rankings/${eventCode}`);
-    return (res.rankings ?? res.Rankings ?? []).map(toFtcRanking).filter((r): r is FtcRanking => r !== null);
+    return (res.rankings ?? res.Rankings ?? []).map(toFtcRanking).filter((r): r is EventRanking => r !== null);
   });
 }
 
@@ -196,7 +196,7 @@ export async function getRankingsForEvent(eventCode: string, season?: number): P
  * context with no user session to gate on, so only the auth gate stays
  * here.
  */
-export async function getMatchesForEvent(eventCode: string, matchType: MatchType, season?: number): Promise<ActionResult<FtcMatch[]>> {
+export async function getMatchesForEvent(eventCode: string, matchType: MatchType, season?: number): Promise<ActionResult<EventMatch[]>> {
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   return run(() => fetchMatchesForEventInternal(eventCode, matchType, season));
 }

@@ -14,7 +14,7 @@ import { buildOurMatches, nextOurMatch, ourRecord, type OurMatch, type Record3 }
 import { sourcesFor, type DashboardSource } from "@/lib/dashboard/roles";
 import { useTeamEventAttendance, type EventAttendance } from "@/lib/event-attendance";
 import { getEventStatus } from "@/lib/ftc/event-status";
-import type { EventLifecycleStatus, FtcEvent, FtcRanking, FtcTeam } from "@/lib/ftc/types";
+import type { EventLifecycleStatus, EventInfo, EventRanking, EventTeam } from "@/lib/events/types";
 import { useAllLibraryMatches, type LibraryMatch } from "@/lib/match-library";
 import { useFormEntries } from "@/lib/form-entries";
 import type { FormEntry } from "@/lib/form-entries-model";
@@ -51,10 +51,10 @@ export type DashboardData = {
   needs: ReadonlySet<DashboardSource>;
 
   // event context
-  events: FtcEvent[];
+  events: EventInfo[];
   /** False until the team doc (which lists the active events) has loaded — so "no active event" never flashes. */
   eventsLoaded: boolean;
-  event: FtcEvent | null;
+  event: EventInfo | null;
   eventStatus: EventLifecycleStatus | null;
   setEventCode: (code: string) => void;
   timeZone: string | null;
@@ -62,13 +62,13 @@ export type DashboardData = {
   // FIRST API (official data) — one fetch per event
   first: { loading: boolean; error: boolean };
   officialMatches: OfficialMatch[];
-  rankings: FtcRanking[];
-  teams: FtcTeam[];
+  rankings: EventRanking[];
+  teams: EventTeam[];
   teamNames: ReadonlyMap<number, string>;
   /** Our slice of the schedule: every match we're in, in play order. */
   ourMatches: OurMatch[];
   nextMatch: OurMatch | null;
-  ourRanking: FtcRanking | null;
+  ourRanking: EventRanking | null;
   record: Record3 | null;
   /** Teams at the event (for rank-relative figures). */
   fieldSize: number;

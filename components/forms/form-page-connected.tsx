@@ -19,12 +19,12 @@ import { rookieSuggestion } from "@/lib/forms/pit-suggest";
 import type { PlanCandidate } from "@/lib/forms/compare";
 import { useForms } from "@/lib/forms/forms-context";
 import { getBuiltinForm, seasonFormId } from "@/lib/forms/builtin";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { myAssignedTeams, type TeamAssignKind } from "@/lib/team-assignments/model";
 import { useTeamAssignmentDocs } from "@/lib/team-assignments/store";
 
 /** The match field of these forms: a button that opens the same match picker the Match Scout Form uses (Practice, Qualification, Finals with the bracket). */
-function MatchPickerSlot({ label, event, matchKey, disabled, onPick }: { label: string; event: FtcEvent | null; matchKey: string | null; disabled?: boolean; onPick: (m: PickedMatch) => void }) {
+function MatchPickerSlot({ label, event, matchKey, disabled, onPick }: { label: string; event: EventInfo | null; matchKey: string | null; disabled?: boolean; onPick: (m: PickedMatch) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <div>

@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { useActiveEvents } from "@/lib/active-event";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import { useAssignments } from "@/lib/assignments";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { matchSortValue } from "@/lib/analytics/game-schema";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import { computeScoutStats } from "@/lib/scout-stats/engine";
@@ -24,7 +24,7 @@ import type { RoleId } from "@/lib/roles";
 const CATEGORIES: ScoutCategory[] = ["trial", "competitive", "real-event"];
 
 /** One active event's "my upcoming assignments" — its own component because the assignments subscription is a hook, and a team can now have several active events. */
-function UpcomingAssignmentsPanel({ teamId, uid, event }: { teamId: string | null; uid: string; event: FtcEvent }) {
+function UpcomingAssignmentsPanel({ teamId, uid, event }: { teamId: string | null; uid: string; event: EventInfo }) {
   const { assignments } = useAssignments(teamId, event.code);
   const mine = !assignments?.current
     ? []

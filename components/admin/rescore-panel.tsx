@@ -24,7 +24,7 @@ import {
   type SessionRescoreFilter,
   type SessionRescorePatch,
 } from "@/lib/admin/rescore-sessions";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 
 type Category = "event" | "sessions";
 
@@ -219,10 +219,10 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
       const liveCandidates = sessions.filter(
         (s) => s.status === "completed" && s.kind === "live" && s.eventCode && s.matchType && s.matchNumber !== null
       );
-      const uniqueEventTypes = new Map<string, { eventCode: string; matchType: FtcMatch["type"] }>();
+      const uniqueEventTypes = new Map<string, { eventCode: string; matchType: EventMatch["type"] }>();
       for (const s of liveCandidates) uniqueEventTypes.set(`${s.eventCode}|${s.matchType}`, { eventCode: s.eventCode!, matchType: s.matchType! });
 
-      const liveMatchesByKey = new Map<string, FtcMatch>();
+      const liveMatchesByKey = new Map<string, EventMatch>();
       for (const { eventCode: code, matchType } of uniqueEventTypes.values()) {
         const season = seasonId === "all" ? getSeason() : getSeason(seasonId);
         const res = await getMatchesForEvent(code, matchType, season.apiSeason);

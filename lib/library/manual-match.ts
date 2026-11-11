@@ -1,7 +1,7 @@
 import { ALLIANCE_SIZE } from "@/config/alliance";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { getDifficulty, type Difficulty } from "@/lib/difficulty";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import { libraryMatchId, parseMatchType } from "@/lib/library/ids";
 import { LONG_CLIP_SECONDS, formatTime, parseTimeInput, validateVideoWindow } from "@/lib/library/time";
 import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/library/youtube-url";

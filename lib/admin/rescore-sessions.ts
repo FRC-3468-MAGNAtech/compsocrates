@@ -6,7 +6,7 @@ import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
 import { updateEntry, type ScoutEntry } from "@/lib/scout-entries";
 import { updatePracticeSession, type PracticeSession } from "@/lib/practice-sessions";
 import type { LibraryMatch } from "@/lib/match-library";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 
 export type SessionRescoreFilter = {
   seasonId?: string | null;
@@ -66,7 +66,7 @@ function matchLabelFor(session: PracticeSession): string {
  * lobby sessions — despite the name, it's generic over any two same-alliance
  * entries scored against a `LibraryMatch`; see docs/ASSUMPTIONS.md (P9).
  * Live sessions reuse `resolveLiveAllianceScoring` against freshly-passed-in
- * `FtcMatch` data instead (the caller fetches that via the `getMatchesForEvent`
+ * `EventMatch` data instead (the caller fetches that via the `getMatchesForEvent`
  * Server Action, same as `recomputeForEvent` does for real-event entries).
  *
  * `priorCompletedAttempt` is always passed as `false` — reconstructing
@@ -77,7 +77,7 @@ export function buildSessionRescorePlan(
   sessions: PracticeSession[],
   entries: ScoutEntry[],
   libraryMatchesById: Map<string, LibraryMatch>,
-  liveMatchesByKey: Map<string, FtcMatch>,
+  liveMatchesByKey: Map<string, EventMatch>,
   filter: SessionRescoreFilter,
   resolveForm: FormResolver = builtinFormResolver
 ): SessionRescorePatch[] {

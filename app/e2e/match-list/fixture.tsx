@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { MatchListScreen } from "@/components/match-list/match-list-screen";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 declare global {
   interface Window {
@@ -12,7 +12,7 @@ declare global {
   }
 }
 
-const ev = (code: string, name: string): FtcEvent => ({ code, season: 2025, name, dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: "America/Los_Angeles", status: "in-progress" });
+const ev = (code: string, name: string): EventInfo => ({ code, season: 2025, name, dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: "America/Los_Angeles", status: "in-progress" });
 const EVENTS = [ev("USWABON1", "Bonney Lake Qualifier"), ev("USWASEQ", "Sequim League Meet")];
 const OURS = new Set([3468, 35792]);
 

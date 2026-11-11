@@ -21,7 +21,7 @@ import { getDefaultSeason } from "@/lib/events/config";
 import { useFtcQuery } from "@/lib/events/use-event-query";
 import { auth, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Difficulty } from "@/lib/difficulty";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import { ftcMatchesToInputs } from "@/lib/scheduler/sources";
 import { parseScheduleSlots } from "@/lib/scheduler/parse";
 import type { RotationPattern, ScheduleSlot } from "@/lib/scheduler/types";

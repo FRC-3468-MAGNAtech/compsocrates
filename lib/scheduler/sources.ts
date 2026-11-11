@@ -1,11 +1,11 @@
 import { isValidAllianceTeams } from "@/config/alliance";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchInput } from "./types";
 
 /** An "Event schedule"/"Live" match source — skips matches whose alliances don't have a plausible team count (2 up to the configured alliance size), same convention as `lib/match-library.ts`'s import. */
-export function ftcMatchesToInputs(matches: FtcMatch[]): MatchInput[] {
+export function ftcMatchesToInputs(matches: EventMatch[]): MatchInput[] {
   return matches
     .filter((m) => isValidAllianceTeams(m.redTeams) && isValidAllianceTeams(m.blueTeams))
     .map((m) => ({

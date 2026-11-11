@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LibraryMatch } from "@/lib/match-library";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import type { ScoutEntry } from "@/lib/scout-entries";
 import { buildSessionRescorePlan, sessionRescorePatchChanges } from "./rescore-sessions";
@@ -168,7 +168,7 @@ describe("buildSessionRescorePlan — lobby", () => {
 });
 
 describe("buildSessionRescorePlan — live", () => {
-  function ftcMatch(overrides: Partial<FtcMatch> = {}): FtcMatch {
+  function ftcMatch(overrides: Partial<EventMatch> = {}): EventMatch {
     return {
       id: "m1",
       matchNumber: 1,
@@ -187,7 +187,7 @@ describe("buildSessionRescorePlan — live", () => {
     };
   }
 
-  it("resolves a live alliance pair against a fresh FtcMatch", () => {
+  it("resolves a live alliance pair against a fresh EventMatch", () => {
     const sessions = [
       session({ id: "s1", kind: "live", libraryMatchId: null, matchType: "Qualification", matchNumber: 1, lobbyId: null, pairId: null }),
       session({ id: "s2", kind: "live", libraryMatchId: null, matchType: "Qualification", matchNumber: 1, lobbyId: null, pairId: null }),

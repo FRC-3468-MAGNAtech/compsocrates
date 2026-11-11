@@ -8,7 +8,7 @@ import { getMatchesForEvent } from "@/lib/events/actions";
 import { matchLabel, matchWinner, sortSchedule } from "@/lib/events/details-model";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { cn } from "@/lib/utils";
-import type { FtcMatch, MatchType } from "@/lib/ftc/types";
+import type { EventMatch, MatchType } from "@/lib/events/types";
 
 function TeamList({ teams, side }: { teams: number[]; side: "red" | "blue" }) {
   return (
@@ -26,14 +26,14 @@ function TeamList({ teams, side }: { teams: number[]; side: "red" | "blue" }) {
   );
 }
 
-function Score({ match, side }: { match: FtcMatch; side: "red" | "blue" }) {
+function Score({ match, side }: { match: EventMatch; side: "red" | "blue" }) {
   const score = side === "red" ? match.redScore : match.blueScore;
   if (!match.played || score === null) return <span className="text-[var(--muted-foreground)]">–</span>;
   const winner = matchWinner(match);
   return <span className={cn("tabular-nums", winner === side && "font-semibold")}>{score}</span>;
 }
 
-function MatchTable({ matches, caption }: { matches: FtcMatch[]; caption: string }) {
+function MatchTable({ matches, caption }: { matches: EventMatch[]; caption: string }) {
   return (
     <Table aria-label={caption}>
       <THead>

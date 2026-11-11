@@ -6,7 +6,7 @@ import { csDocToScoutEntry, entryAccuracyToCsPatch } from "@/data/cs/scouting";
 import type { CsRecord } from "@/data/cs/types";
 import { str } from "@/data/cs/util";
 import { fetchMatchesForEventInternal } from "@/lib/events/matches-internal";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import { LIVE_CONFIG } from "@/lib/live/config";
 import { isAllianceReadyToNotify } from "@/lib/live/notify";
 import { resolveLiveAllianceScoring } from "@/lib/live/scoring";
@@ -43,7 +43,7 @@ export async function resolvePendingLiveMatches(db: Firestore, messaging: Messag
     groups.set(key, list);
   }
 
-  const matchCache = new Map<string, FtcMatch[]>();
+  const matchCache = new Map<string, EventMatch[]>();
   let resolved = 0;
 
   for (const docs of groups.values()) {

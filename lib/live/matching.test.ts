@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { matchEventFromText } from "./matching";
 
-function event(overrides: Partial<FtcEvent> & { code: string; name: string }): FtcEvent {
+function event(overrides: Partial<EventInfo> & { code: string; name: string }): EventInfo {
   return {
     season: 2026,
     dateStart: "2026-01-01",

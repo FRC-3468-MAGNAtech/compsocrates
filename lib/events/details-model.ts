@@ -1,5 +1,5 @@
 import { getEventStatus } from "@/lib/ftc/event-status";
-import type { FtcEvent, FtcMatch, FtcRanking, FtcTeam } from "@/lib/ftc/types";
+import type { EventInfo, EventMatch, EventRanking, EventTeam } from "@/lib/events/types";
 
 // Pure helpers for the Event Details page (/events/[eventKey]). No React, no network.
 
@@ -41,7 +41,7 @@ export function daysUntilStart(dateStart: string, now: number): number {
 export type EventBadge = { label: string; tone: "live" | "upcoming" | "done" };
 
 /** The status chip in the page header: Live now, N days away, or Completed (CS's three states). */
-export function eventBadge(event: Pick<FtcEvent, "dateStart" | "dateEnd" | "timezone">, now: number): EventBadge {
+export function eventBadge(event: Pick<EventInfo, "dateStart" | "dateEnd" | "timezone">, now: number): EventBadge {
   const status = getEventStatus(event, now);
   if (status === "in-progress") return { label: "Live now", tone: "live" };
   if (status === "upcoming") {
@@ -52,41 +52,41 @@ export function eventBadge(event: Pick<FtcEvent, "dateStart" | "dateEnd" | "time
 }
 
 /** "Qualification 12", or the provider's own description (for playoffs, "Match 3 (R2)"). */
-export function matchLabel(match: Pick<FtcMatch, "type" | "matchNumber" | "description">): string {
+export function matchLabel(match: Pick<EventMatch, "type" | "matchNumber" | "description">): string {
   return match.description?.trim() || `${match.type} ${match.matchNumber}`;
 }
 
 /** Schedule order: by match number, then series. Never mutates its input. */
-export function sortSchedule(matches: readonly FtcMatch[]): FtcMatch[] {
+export function sortSchedule(matches: readonly EventMatch[]): EventMatch[] {
   return [...matches].sort((a, b) => a.matchNumber - b.matchNumber || (a.series ?? 0) - (b.series ?? 0));
 }
 
-export function matchWinner(match: Pick<FtcMatch, "played" | "redScore" | "blueScore">): "red" | "blue" | "tie" | null {
+export function matchWinner(match: Pick<EventMatch, "played" | "redScore" | "blueScore">): "red" | "blue" | "tie" | null {
   if (!match.played || match.redScore === null || match.blueScore === null) return null;
   if (match.redScore === match.blueScore) return "tie";
   return match.redScore > match.blueScore ? "red" : "blue";
 }
 
 /** Teams by number. */
-export function sortTeams(teams: readonly FtcTeam[]): FtcTeam[] {
+export function sortTeams(teams: readonly EventTeam[]): EventTeam[] {
   return [...teams].sort((a, b) => a.teamNumber - b.teamNumber);
 }
 
 /** Rankings by rank (ties by team number). */
-export function sortRankings(rankings: readonly FtcRanking[]): FtcRanking[] {
+export function sortRankings(rankings: readonly EventRanking[]): EventRanking[] {
   return [...rankings].sort((a, b) => a.rank - b.rank || a.teamNumber - b.teamNumber);
 }
 
 /** "5-2-0" */
-export const recordLabel = (r: Pick<FtcRanking, "wins" | "losses" | "ties">) => `${r.wins}-${r.losses}-${r.ties}`;
+export const recordLabel = (r: Pick<EventRanking, "wins" | "losses" | "ties">) => `${r.wins}-${r.losses}-${r.ties}`;
 
 /** Team number to display name, for joining the rankings and schedule to the team list. */
-export function teamNameMap(teams: readonly FtcTeam[]): Map<number, string> {
+export function teamNameMap(teams: readonly EventTeam[]): Map<number, string> {
   return new Map(teams.map((t) => [t.teamNumber, t.nameShort || t.nameFull || `Team ${t.teamNumber}`]));
 }
 
 /** "City, ST, Country" without the blanks, or null if the event has none. */
-export function locationLabel(event: Pick<FtcEvent, "city" | "stateProv" | "country">): string | null {
+export function locationLabel(event: Pick<EventInfo, "city" | "stateProv" | "country">): string | null {
   const parts = [event.city, event.stateProv, event.country].filter((p): p is string => Boolean(p && p.trim()));
   return parts.length > 0 ? parts.join(", ") : null;
 }

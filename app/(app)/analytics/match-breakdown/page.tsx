@@ -13,7 +13,7 @@ import { resolveEventCodes } from "@/lib/analytics/filters";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { buildMatchBreakdowns, libraryMatchToOfficial, matchHasTeam, matchKey, type OfficialMatch } from "@/lib/analytics/match-breakdown";
 import { useEventMatches } from "@/lib/analytics/use-event-data";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 type TypeFilter = "all" | MatchType;
 

@@ -3,7 +3,7 @@
 // P21: a FROZEN copy of the pre-schema-v2 BIOBUZZ Match Analytics table (lib/analytics/game-schema.ts as of P20), reading legacy `fields`. It is the oracle the
 // regression tests compare the schema-derived table and CSV against. Nothing in the app imports it. Do not edit it.
 import type { ScoutEntry } from "@/lib/scout-entries";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 export type ColumnType =
   | "match"

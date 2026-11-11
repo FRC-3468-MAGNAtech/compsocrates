@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allianceForTeam, computeAllianceAccuracy } from "@/lib/analytics/accuracy";
 import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 
 function makeEntry(overrides: Partial<ScoutEntry> & Pick<ScoutEntry, "teamNumber">): ScoutEntry {
   return {
@@ -30,7 +30,7 @@ function makeEntry(overrides: Partial<ScoutEntry> & Pick<ScoutEntry, "teamNumber
   };
 }
 
-const match: FtcMatch = {
+const match: EventMatch = {
   id: "EVENT1-Qualification-1",
   type: "Qualification",
   matchNumber: 1,

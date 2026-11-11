@@ -1,7 +1,7 @@
 import type { AllianceColor, OfficialMatch } from "@/lib/analytics/match-breakdown";
 import { formatMatch, matchSortValue } from "@/lib/analytics/game-schema";
 import { parseEventTime } from "@/lib/dashboard/time";
-import type { FtcRanking } from "@/lib/ftc/types";
+import type { EventRanking } from "@/lib/events/types";
 
 // Our team's slice of an event's official schedule (P13): next match, results,
 // record, and the shareable result line. Pure; the dashboard's shared
@@ -79,7 +79,7 @@ export function recentOurResults(ours: OurMatch[], limit: number): OurMatch[] {
 export type Record3 = { wins: number; losses: number; ties: number };
 
 /** Official qualification record when rankings exist; otherwise counted from our played Qualification matches. */
-export function ourRecord(ranking: FtcRanking | null, ours: OurMatch[]): Record3 | null {
+export function ourRecord(ranking: EventRanking | null, ours: OurMatch[]): Record3 | null {
   if (ranking) return { wins: ranking.wins, losses: ranking.losses, ties: ranking.ties };
   const played = ours.filter((m) => m.match.matchType === "Qualification" && m.result !== null);
   if (played.length === 0) return null;

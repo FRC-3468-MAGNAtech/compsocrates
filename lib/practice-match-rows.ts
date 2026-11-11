@@ -1,7 +1,7 @@
 import type { Difficulty } from "@/lib/difficulty";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { AllianceColor, PracticeSession } from "@/lib/practice-sessions";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 export type MatchRowStatus = "fresh" | "opened" | "scouted";
 

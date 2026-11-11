@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { evaluateAutoFlagRuleIds, FLAG_THRESHOLDS, type FlagContext } from "@/lib/analytics/flags";
 import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 
-const stubMatch: FtcMatch = {
+const stubMatch: EventMatch = {
   id: "EVENT1-Qualification-1",
   type: "Qualification",
   matchNumber: 1,

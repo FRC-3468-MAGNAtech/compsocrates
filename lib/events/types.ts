@@ -1,6 +1,6 @@
 export type EventLifecycleStatus = "upcoming" | "in-progress" | "completed";
 
-export type FtcEvent = {
+export type EventInfo = {
   code: string;
   season: number;
   name: string;
@@ -15,7 +15,7 @@ export type FtcEvent = {
   status: EventLifecycleStatus;
 };
 
-export type FtcTeam = {
+export type EventTeam = {
   teamNumber: number;
   nameShort: string;
   nameFull: string;
@@ -26,7 +26,7 @@ export type FtcTeam = {
 };
 
 /** One row of an event's official qualification rankings (FIRST API `/rankings/{eventCode}`). */
-export type FtcRanking = {
+export type EventRanking = {
   teamNumber: number;
   rank: number;
   wins: number;
@@ -39,7 +39,7 @@ export type FtcRanking = {
 
 export type MatchType = "Practice" | "Qualification" | "Playoff";
 
-export type FtcMatch = {
+export type EventMatch = {
   id: string;
   matchNumber: number;
   type: MatchType;
@@ -65,7 +65,7 @@ export type BracketAlliance = {
 
 export type BracketMatch = {
   label: string;
-  match: FtcMatch | null;
+  match: EventMatch | null;
   red: BracketAlliance | null;
   blue: BracketAlliance | null;
   winner: "red" | "blue" | null;
@@ -86,7 +86,7 @@ export type BracketStructure =
     }
   | {
       format: "unknown";
-      matches: FtcMatch[];
+      matches: EventMatch[];
     };
 
 export type EventSummaryCounts = {

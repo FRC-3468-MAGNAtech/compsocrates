@@ -1,6 +1,6 @@
 import { EVENT_CONFIG } from "@/config/event";
 import { getEventStatus } from "@/lib/ftc/event-status";
-import type { FtcEvent, FtcMatch, FtcRanking, FtcTeam, MatchType } from "@/lib/ftc/types";
+import type { EventInfo, EventMatch, EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 /**
  * Pure mappers from TBA v3 payloads to the app's neutral event types. No network, no env: the
@@ -64,7 +64,7 @@ export type TbaRankingsPayload = { rankings?: TbaRankingRaw[] | null } | null;
 
 // --- Events, teams, rankings ------------------------------------------------
 
-export function toFtcEvent(raw: TbaEventRaw, season?: number): FtcEvent {
+export function toEventInfo(raw: TbaEventRaw, season?: number): EventInfo {
   const timezone = raw.timezone ?? null;
   return {
     code: raw.key,
@@ -82,7 +82,7 @@ export function toFtcEvent(raw: TbaEventRaw, season?: number): FtcEvent {
   };
 }
 
-export function toFtcTeam(raw: TbaTeamRaw): FtcTeam {
+export function toEventTeam(raw: TbaTeamRaw): EventTeam {
   const short = raw.nickname?.trim() || `Team ${raw.team_number}`;
   return {
     teamNumber: raw.team_number,
@@ -105,7 +105,7 @@ export function teamNumbersFromKeys(keys: string[] | undefined): number[] {
   return (keys ?? []).map(teamNumberFromKey).filter((n): n is number => n !== null);
 }
 
-export function toFtcRanking(raw: TbaRankingRaw): FtcRanking | null {
+export function toEventRanking(raw: TbaRankingRaw): EventRanking | null {
   const teamNumber = teamNumberFromKey(raw.team_key ?? "");
   if (teamNumber === null || typeof raw.rank !== "number") return null;
   const wins = raw.record?.wins ?? 0;
@@ -243,8 +243,8 @@ function isoFromSeconds(seconds: number): string | null {
   return seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
 }
 
-/** One TBA match -> FtcMatch, or null when it has no app match number (skipped). */
-export function toFtcMatch(match: TbaMatchRaw): FtcMatch | null {
+/** One TBA match -> EventMatch, or null when it has no app match number (skipped). */
+export function toEventMatch(match: TbaMatchRaw): EventMatch | null {
   const type = matchTypeForCompLevel(match.comp_level);
   const matchNumber = type ? appMatchNumber(match) : null;
   if (!type || matchNumber === null) return null;
@@ -274,11 +274,11 @@ export function toFtcMatch(match: TbaMatchRaw): FtcMatch | null {
  * matches can claim one number (a replayed bracket match is `sf3m1` then `sf3m2`); the latest
  * replay wins, since the earlier result was voided.
  */
-export function toFtcMatches(raw: TbaMatchRaw[], wanted: Exclude<MatchType, "Practice">): FtcMatch[] {
-  const best = new Map<number, { source: TbaMatchRaw; mapped: FtcMatch }>();
+export function toEventMatches(raw: TbaMatchRaw[], wanted: Exclude<MatchType, "Practice">): EventMatch[] {
+  const best = new Map<number, { source: TbaMatchRaw; mapped: EventMatch }>();
   for (const source of raw) {
     if (matchTypeForCompLevel(source.comp_level) !== wanted) continue;
-    const mapped = toFtcMatch(source);
+    const mapped = toEventMatch(source);
     if (!mapped) continue;
     const existing = best.get(mapped.matchNumber);
     if (!existing || replayOrder(source) >= replayOrder(existing.source)) best.set(mapped.matchNumber, { source, mapped });

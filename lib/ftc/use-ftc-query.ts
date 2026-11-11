@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ActionResult } from "./types";
+import type { ActionResult } from "@/lib/events/types";
 
 type Status = "loading" | "success" | "empty" | "error";
 

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { AlertTriangle, Trophy } from "lucide-react";
 import { useFtcQuery } from "@/lib/events/use-event-query";
 import { getPlayoffBracket } from "@/lib/events/actions";
-import type { BracketMatch, BracketStructure, FtcMatch } from "@/lib/ftc/types";
+import type { BracketMatch, BracketStructure, EventMatch } from "@/lib/events/types";
 import { cn } from "@/lib/utils";
 
 // Fixed 8-alliance double-elimination bracket shape (FIRST's standard format,
@@ -126,7 +126,7 @@ export function BracketPicker({
 }: {
   eventCode: string;
   season: number;
-  onSelect: (match: FtcMatch) => void;
+  onSelect: (match: EventMatch) => void;
 }) {
   const bracketQuery = useFtcQuery(`bracket:${eventCode}:${season}`, () => getPlayoffBracket(eventCode, season));
 
@@ -249,7 +249,7 @@ function BracketBox({
 }: {
   slot: Slot;
   bracketMatch: BracketMatch | undefined;
-  onSelect: (match: FtcMatch) => void;
+  onSelect: (match: EventMatch) => void;
 }) {
   const { x, y } = slotPixel(slot);
   const hasRealData = !!bracketMatch?.match;

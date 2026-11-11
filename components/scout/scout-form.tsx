@@ -42,7 +42,7 @@ import { fieldWithRole } from "@/lib/forms/meta";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
 import { isSystemField, phaseLabel, type FormValue, type Form, type FormField, type FormSection, type FormValues, type ImageValue } from "@/lib/forms/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 export type ScoutFormMode = "event" | "practice" | "live" | "lobby";
 export type ScoutFormLayout = "page" | "side-panel";
@@ -73,11 +73,11 @@ export type ScoutFormProps = {
   schema?: Form;
   mode: ScoutFormMode;
   /** Active event context — only used to look up matches/teams; omit for modes with no live event (e.g. a standalone practice session). */
-  activeEvent?: FtcEvent | null;
+  activeEvent?: EventInfo | null;
   /** FIX1: every active event. With more than one, the Assigned Match section shows an Event pick; with zero or one, behavior is unchanged. */
-  eventChoices?: FtcEvent[];
+  eventChoices?: EventInfo[];
   /** Called when the scout picks a different event — the parent swaps `activeEvent` in response. The form clears its match/team itself, since they belonged to the previous event. */
-  onEventChange?: (event: FtcEvent) => void;
+  onEventChange?: (event: EventInfo) => void;
   prefill?: ScoutFormPrefill;
   /** Keys shown but not editable: "match", "teamNumber", or any schema field key. Scout Name is always read-only regardless of this list. */
   lockedFields?: string[];

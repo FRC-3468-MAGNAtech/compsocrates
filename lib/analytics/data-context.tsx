@@ -11,7 +11,7 @@ import { buildAllTeamStats, type TeamStats } from "@/lib/analytics/team-stats";
 import { useTeamNames } from "@/lib/analytics/use-event-data";
 import { getEvents } from "@/lib/events/actions";
 import { useFtcQuery } from "@/lib/events/use-event-query";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { useAllLibraryMatches, type LibraryMatch } from "@/lib/match-library";
 import { useAllTeamPracticeSessions, type PracticeSession } from "@/lib/practice-sessions";
 import { getSeason } from "@/lib/seasons";
@@ -30,7 +30,7 @@ export type EventOption = {
   code: string;
   name: string;
   /** The FIRST API event, when we know it (an active event, or one in the season's event list) — drives the status chip. */
-  event: FtcEvent | null;
+  event: EventInfo | null;
   active: boolean;
   /** Entries for this event under the current Game and Practice settings. */
   count: number;
@@ -47,9 +47,9 @@ type AnalyticsDataValue = {
   season: number;
   activeEventCodes: string[];
   /** Active events, primary first. */
-  activeEvents: FtcEvent[];
+  activeEvents: EventInfo[];
   primaryCode: string | null;
-  eventDirectory: ReadonlyMap<string, FtcEvent>;
+  eventDirectory: ReadonlyMap<string, EventInfo>;
   /** Every imported library match — Practice mode's official matches (Match Breakdown). */
   libraryMatches: LibraryMatch[];
   eventOptions: EventOption[];
@@ -81,7 +81,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   // game's season list (shared, cached, with Event Selection's own query).
   const seasonEvents = useFtcQuery(`events:${game.apiSeason}`, () => getEvents({ season: game.apiSeason }));
   const eventDirectory = useMemo(() => {
-    const map = new Map<string, FtcEvent>();
+    const map = new Map<string, EventInfo>();
     for (const e of seasonEvents.data ?? []) map.set(e.code, e);
     for (const e of activeEvents) map.set(e.code, e);
     return map;
@@ -218,7 +218,7 @@ export function useAnalyticsEntries(filtersOverride?: AnalyticsFilters, options?
  * the first event with data. `event` is the FIRST API event when known (its
  * season is needed for FIRST API calls like recompute).
  */
-export function useSingleEvent(): { code: string | null; event: FtcEvent | null } {
+export function useSingleEvent(): { code: string | null; event: EventInfo | null } {
   const data = useAnalyticsData();
   const { filters } = useAnalyticsFilters();
   const [now] = useState(() => Date.now());

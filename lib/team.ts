@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
 import { csTeamToTeamDoc, selectedEventsPatch } from "@/data/cs/teams";
@@ -34,7 +34,7 @@ export type TeamDoc = {
   // reading "what's the active event" doesn't need a second FIRST API round
   // trip just to show its name/dates — refreshed whenever an admin sets a
   // new one (see setActiveEvent below).
-  activeEvent: FtcEvent | null;
+  activeEvent: EventInfo | null;
   /**
    * FIX1: the team can have several active events at once. `activeEventCode`/
    * `activeSeasonId`/`activeEvent` above stay as the **primary** event so
@@ -44,7 +44,7 @@ export type TeamDoc = {
    */
   activeEventCodes?: string[];
   /** Denormalized copies of every active event, same reason as `activeEvent`. */
-  activeEvents?: FtcEvent[];
+  activeEvents?: EventInfo[];
   /** D1: CS's `selectedEvents` (TBA keys): the SINGLE source of truth for the active events. `activeEvents` and friends above are derived from it on read. */
   selectedEvents?: string[];
   /** D1: CS `submissionControls` as stored. Use `submissionLockout` to gate a new submission. */
@@ -119,7 +119,7 @@ export async function setActiveEvents(teamId: string, state: ActiveEventsState) 
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */
-export async function setActiveEvent(teamId: string, event: FtcEvent | null) {
+export async function setActiveEvent(teamId: string, event: EventInfo | null) {
   await setActiveEvents(teamId, event ? { events: [event], primaryCode: event.code } : { events: [], primaryCode: null });
 }
 

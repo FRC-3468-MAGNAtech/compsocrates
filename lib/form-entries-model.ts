@@ -1,6 +1,6 @@
 import { serverTimestamp } from "firebase/firestore";
 import type { FormType, FormValues, StickyNote } from "@/lib/forms/types";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { ScoutEntry } from "@/lib/scout-entries";
 import { derivedComments } from "@/lib/scout-entries";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";

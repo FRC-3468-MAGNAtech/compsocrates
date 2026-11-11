@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Shimmer } from "@/components/ui/shimmer";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { MATCH_LIST_TABS, buildMatchRows, defaultTab, filterRows, formatStart, rowsInTab, tabCounts, winnerOf, type MatchListRow, type MatchListStatus, type MatchListTab } from "@/lib/match-list/model";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ const ALL = "all";
 
 export type MatchListScreenProps = {
   /** The active events, in the account's order (the primary first). */
-  events: FtcEvent[];
+  events: EventInfo[];
   eventsLoaded: boolean;
   matches: OfficialMatch[];
   /** Waiting for the first schedule. */

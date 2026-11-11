@@ -1,7 +1,7 @@
 import "server-only";
 import { getDefaultSeason } from "./config";
 import { ftcFetch } from "./http";
-import type { FtcMatch, MatchType } from "./types";
+import type { EventMatch, MatchType } from "@/lib/events/types";
 
 // Extracted from lib/ftc/actions.ts's getMatchesForEvent (P7) — that
 // function's own requireUser() gate only makes sense for a user-facing
@@ -54,13 +54,13 @@ function sequenceNumber(type: MatchType, raw: { matchNumber: number; series?: nu
 }
 
 /**
- * Builds one FtcMatch from the two sources that can describe it: the
+ * Builds one EventMatch from the two sources that can describe it: the
  * pre-match `schedule` entry (team pairings, published once the draw/alliance
  * selection happens — absent for matches not yet scheduled) and the `match`
  * result (present only once the match has actually been played). At least
  * one of the two is always provided by the caller.
  */
-function toFtcMatch(type: MatchType, schedule: RawScheduleItem | null, match: RawMatch | null): FtcMatch {
+function toFtcMatch(type: MatchType, schedule: RawScheduleItem | null, match: RawMatch | null): EventMatch {
   const source = schedule ?? match!;
   const teamsSource = schedule?.teams ?? match?.teams ?? [];
   const redTeams = teamsSource.filter((t) => t.station.startsWith("Red")).map((t) => t.teamNumber);
@@ -84,7 +84,7 @@ function toFtcMatch(type: MatchType, schedule: RawScheduleItem | null, match: Ra
 }
 
 /** Throws `FtcApiError` on failure — callers decide how to translate that (an `ActionResult` for the user-facing action, a plain catch for the server routes). */
-export async function fetchMatchesForEventInternal(eventCode: string, matchType: MatchType, season?: number): Promise<FtcMatch[]> {
+export async function fetchMatchesForEventInternal(eventCode: string, matchType: MatchType, season?: number): Promise<EventMatch[]> {
   // FIRST's API only publishes official Qualification/Playoff results —
   // practice matches are informal and never tracked.
   if (matchType === "Practice") return [];

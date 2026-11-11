@@ -1,5 +1,5 @@
 import { isSlotId } from "@/config/alliance";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { ScheduleSlot, SlotId } from "./types";
 
 const MATCH_TYPES: readonly string[] = ["Practice", "Qualification", "Playoff"];

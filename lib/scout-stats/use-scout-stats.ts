@@ -8,7 +8,7 @@ import type { RoleId } from "@/lib/roles";
 import { useTeamScoutEntries, type ScoutEntry } from "@/lib/scout-entries";
 import { useTeamMembers } from "@/lib/team-members";
 import { useFieldTeams } from "@/lib/field-teams-context";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { computeScoutStats } from "./engine";
 import type { RankingBasisId, RealEventCalculationScope, ScoutCategory, ScoutStatsResult } from "./types";
 
@@ -33,7 +33,7 @@ export function useScoutStatsSources(teamId: string | null) {
  * named, and present even before anything has been scouted for them — ahead
  * of the data-only events. With no active events this is unchanged.
  */
-export function useRealEventOptions(entries: ScoutEntry[], activeEvents: FtcEvent[] = []): { eventCode: string; eventName: string }[] {
+export function useRealEventOptions(entries: ScoutEntry[], activeEvents: EventInfo[] = []): { eventCode: string; eventName: string }[] {
   return useMemo(() => {
     const latestByCode = new Map<string, string>();
     for (const e of entries) {

@@ -7,7 +7,7 @@ import { buildAllTeamStats, rankTeams } from "@/lib/analytics/team-stats";
 import { DashboardContext, type DashboardData } from "@/lib/dashboard/data";
 import { buildOurMatches, nextOurMatch, ourRecord } from "@/lib/dashboard/schedule";
 import { sourcesFor } from "@/lib/dashboard/roles";
-import type { FtcEvent, FtcRanking, FtcTeam } from "@/lib/ftc/types";
+import type { EventInfo, EventRanking, EventTeam } from "@/lib/events/types";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import { ROLES, type RoleId } from "@/lib/roles";
 import { initialScoutEntryFields, type ScoutEntry, type ScoutEntryFields } from "@/lib/scout-entries";
@@ -49,7 +49,7 @@ vi.mock("@/lib/announcements/store", () => ({
 // the loading state really is a skeleton, and that key numbers appear.
 
 const US = 3468;
-const EVENT: FtcEvent = {
+const EVENT: EventInfo = {
   code: "TEST1",
   season: 2026,
   name: "Test Invitational",
@@ -152,8 +152,8 @@ function makeData(role: RoleId, mode: "rich" | "loading" | "empty"): DashboardDa
   const rich = mode === "rich";
   const loading = mode === "loading";
 
-  const teams: FtcTeam[] = rich ? [US, 111, 222, 333, 444, 555].map((t) => ({ teamNumber: t, nameShort: `Team ${t}`, nameFull: `Team ${t}`, city: null, stateProv: null, country: null, rookieYear: null })) : [];
-  const rankings: FtcRanking[] = rich ? [111, 222, 333, US, 444, 555].map((t, i) => ({ teamNumber: t, rank: i + 1, wins: 5 - i, losses: i, ties: 0, matchesPlayed: 6, rankingPoints: 2 })) : [];
+  const teams: EventTeam[] = rich ? [US, 111, 222, 333, 444, 555].map((t) => ({ teamNumber: t, nameShort: `Team ${t}`, nameFull: `Team ${t}`, city: null, stateProv: null, country: null, rookieYear: null })) : [];
+  const rankings: EventRanking[] = rich ? [111, 222, 333, US, 444, 555].map((t, i) => ({ teamNumber: t, rank: i + 1, wins: 5 - i, losses: i, ties: 0, matchesPlayed: 6, rankingPoints: 2 })) : [];
   const officialMatches: OfficialMatch[] = rich
     ? [
         match(1, side([US, 111], 85, 10), side([222, 333], 70), true),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OfficialAlliance, OfficialMatch } from "@/lib/analytics/match-breakdown";
-import type { FtcRanking } from "@/lib/ftc/types";
+import type { EventRanking } from "@/lib/events/types";
 import {
   buildOurMatches,
   formatRecord,
@@ -180,7 +180,7 @@ describe("next / upcoming / recent / record", () => {
   });
 
   it("prefers the official record, else counts our played qualification matches", () => {
-    const ranking: FtcRanking = { teamNumber: US, rank: 4, wins: 5, losses: 2, ties: 1, matchesPlayed: 8, rankingPoints: 1.2 };
+    const ranking: EventRanking = { teamNumber: US, rank: 4, wins: 5, losses: 2, ties: 1, matchesPlayed: 8, rankingPoints: 1.2 };
     expect(ourRecord(ranking, ours)).toEqual({ wins: 5, losses: 2, ties: 1 });
     expect(ourRecord(null, ours)).toEqual({ wins: 1, losses: 1, ties: 0 });
     expect(ourRecord(null, [])).toBeNull();

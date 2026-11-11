@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { countEventsByStatus, getEventStatus, sortEvents } from "./event-status";
-import type { FtcEvent } from "./types";
+import type { EventInfo } from "@/lib/events/types";
 
-function ev(code: string, dateStart: string, dateEnd: string, extra: Partial<FtcEvent> = {}): FtcEvent {
+function ev(code: string, dateStart: string, dateEnd: string, extra: Partial<EventInfo> = {}): EventInfo {
   return {
     code,
     season: 2025,

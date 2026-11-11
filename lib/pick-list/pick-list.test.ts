@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FtcRanking } from "@/lib/ftc/types";
+import type { EventRanking } from "@/lib/events/types";
 import type { TeamStats } from "@/lib/analytics/team-stats";
 import { MAX_PICKS, applyPickOp, placeOpFromList, samePicks, sanitizePicks, type PickOp } from "./ops";
 import { PICK_LIST_EDITOR_ROLES, canEditPickList } from "./permissions";
@@ -131,7 +131,7 @@ describe("canEditPickList", () => {
 
 // --- the board ---------------------------------------------------------------------
 
-const ranking = (teamNumber: number, rank: number, extra: Partial<FtcRanking> = {}): FtcRanking => ({
+const ranking = (teamNumber: number, rank: number, extra: Partial<EventRanking> = {}): EventRanking => ({
   teamNumber,
   rank,
   wins: 3,

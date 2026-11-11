@@ -1,5 +1,5 @@
 import { EVENT_CONFIG } from "@/config/event";
-import type { BracketMatch, BracketRound, BracketStructure, FtcMatch } from "@/lib/ftc/types";
+import type { BracketMatch, BracketRound, BracketStructure, EventMatch } from "@/lib/events/types";
 
 /**
  * The FRC 8-alliance double-elimination bracket (2023 onward, still used in 2026), keyed by the
@@ -33,7 +33,7 @@ const LOWER_ROUNDS: SlotRound[] = [
   { label: "Lower Round 5", round: 5, slots: [13] },
 ];
 
-function toBracketMatch(label: string, match: FtcMatch | undefined): BracketMatch {
+function toBracketMatch(label: string, match: EventMatch | undefined): BracketMatch {
   if (!match) return { label, match: null, red: null, blue: null, winner: null };
   const winner =
     match.played && match.redScore !== null && match.blueScore !== null
@@ -52,7 +52,7 @@ function toBracketMatch(label: string, match: FtcMatch | undefined): BracketMatc
   };
 }
 
-function buildRounds(rounds: SlotRound[], bySlot: Map<number, FtcMatch>): BracketRound[] {
+function buildRounds(rounds: SlotRound[], bySlot: Map<number, EventMatch>): BracketRound[] {
   return rounds.map(({ label, round, slots }) => ({
     label,
     round,
@@ -60,7 +60,7 @@ function buildRounds(rounds: SlotRound[], bySlot: Map<number, FtcMatch>): Bracke
   }));
 }
 
-export function buildFrcPlayoffBracket(matches: FtcMatch[]): BracketStructure {
+export function buildFrcPlayoffBracket(matches: EventMatch[]): BracketStructure {
   const { bracketSlots, finalsOffset } = EVENT_CONFIG.playoff;
   const playoff = matches.filter((m) => m.type === "Playoff");
   const bySlot = new Map(playoff.filter((m) => m.matchNumber >= 1 && m.matchNumber <= bracketSlots).map((m) => [m.matchNumber, m]));

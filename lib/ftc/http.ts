@@ -1,6 +1,6 @@
 import "server-only";
 import { FTC_API_BASE_URL, getFtcCredentials } from "./config";
-import type { ActionError } from "./types";
+import type { ActionError } from "@/lib/events/types";
 
 export class FtcApiError extends Error {
   code: ActionError["code"];

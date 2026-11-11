@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import { buildFrcPlayoffBracket } from "./bracket";
-import { firstRankingsToFtcRankings, firstScheduleToFtcMatches, firstTeamsToFtcTeams, normalizeSchedule, parseStartTime, splitFirstAllianceTeams } from "./first-map";
+import { firstRankingsToEventRankings, firstScheduleToEventMatches, firstTeamsToEventTeams, normalizeSchedule, parseStartTime, splitFirstAllianceTeams } from "./first-map";
 
 describe("FIRST schedule mapping", () => {
   const payload = {
@@ -37,8 +37,8 @@ describe("FIRST schedule mapping", () => {
     expect(rows[0].teams[0].station).toBe("Red1");
   });
 
-  it("maps Practice rows to FtcMatch", () => {
-    const matches = firstScheduleToFtcMatches(payload, "Practice");
+  it("maps Practice rows to EventMatch", () => {
+    const matches = firstScheduleToEventMatches(payload, "Practice");
     expect(matches[1]).toMatchObject({
       id: "Practice-2",
       matchNumber: 2,
@@ -66,16 +66,16 @@ describe("FIRST schedule mapping", () => {
   });
 
   it("maps fallback teams and rankings", () => {
-    expect(firstTeamsToFtcTeams({ teams: [{ teamNumber: 971, nameShort: "Spartan Robotics", city: "Mountain View" }, { teamNumber: 0 }] })).toEqual([
+    expect(firstTeamsToEventTeams({ teams: [{ teamNumber: 971, nameShort: "Spartan Robotics", city: "Mountain View" }, { teamNumber: 0 }] })).toEqual([
       { teamNumber: 971, nameShort: "Spartan Robotics", nameFull: "Spartan Robotics", city: "Mountain View", stateProv: null, country: null, rookieYear: null },
     ]);
-    expect(firstRankingsToFtcRankings({ Rankings: [{ rank: 2, teamNumber: 118, wins: 5, losses: 1, ties: 0, sortOrder1: 2.5 }] })).toEqual([
+    expect(firstRankingsToEventRankings({ Rankings: [{ rank: 2, teamNumber: 118, wins: 5, losses: 1, ties: 0, sortOrder1: 2.5 }] })).toEqual([
       { teamNumber: 118, rank: 2, wins: 5, losses: 1, ties: 0, matchesPlayed: 6, rankingPoints: 2.5 },
     ]);
   });
 });
 
-function playoff(matchNumber: number, red?: number, blue?: number): FtcMatch {
+function playoff(matchNumber: number, red?: number, blue?: number): EventMatch {
   return {
     id: `Playoff-${matchNumber}`,
     matchNumber,

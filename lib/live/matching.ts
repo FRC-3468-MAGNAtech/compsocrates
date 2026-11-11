@@ -1,6 +1,6 @@
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
-export type EventMatch = { event: FtcEvent; confident: boolean };
+export type EventMatch = { event: EventInfo; confident: boolean };
 
 const STOP_WORDS = new Set(["the", "and", "for", "ftc", "first", "tech", "challenge", "live", "stream", "official"]);
 
@@ -20,7 +20,7 @@ function normalize(text: string): string[] {
  * without ever calling the FIRST API or YouTube's oEmbed endpoint — see
  * app/api/live/detect-event/route.ts for the network side.
  */
-export function matchEventFromText(text: string, events: FtcEvent[]): EventMatch | null {
+export function matchEventFromText(text: string, events: EventInfo[]): EventMatch | null {
   const upperText = text.toUpperCase();
   const exactCode = events.find((e) => upperText.includes(e.code.toUpperCase()));
   if (exactCode) return { event: exactCode, confident: true };
@@ -28,7 +28,7 @@ export function matchEventFromText(text: string, events: FtcEvent[]): EventMatch
   const words = new Set(normalize(text));
   if (words.size === 0 || events.length === 0) return null;
 
-  let best: { event: FtcEvent; score: number } | null = null;
+  let best: { event: EventInfo; score: number } | null = null;
   for (const event of events) {
     const nameWords = normalize(event.name);
     if (nameWords.length === 0) continue;

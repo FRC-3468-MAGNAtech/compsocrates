@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useFtcQuery } from "@/lib/events/use-event-query";
 import { getTeamsForEvent } from "@/lib/events/actions";
 import { TEAM_MARK_LABEL, type TeamMark } from "@/components/scout/team-status";
-import type { FtcTeam } from "@/lib/ftc/types";
+import type { EventTeam } from "@/lib/events/types";
 import { cn } from "@/lib/utils";
 
 export function TeamPickerDialog({
@@ -178,7 +178,7 @@ export function TeamPickerDialog({
 
 const MARK_VARIANT: Record<TeamMark, "success" | "warning" | "glass" | "outline"> = { scouted: "success", subAssigned: "warning", subRequested: "warning", assigned: "glass" };
 
-function TeamRow({ team, prioritized, mark, highlighted, onClick }: { team: FtcTeam; prioritized: boolean; mark: TeamMark | null; highlighted: boolean; onClick: () => void }) {
+function TeamRow({ team, prioritized, mark, highlighted, onClick }: { team: EventTeam; prioritized: boolean; mark: TeamMark | null; highlighted: boolean; onClick: () => void }) {
   const done = mark === "scouted";
   return (
     <button

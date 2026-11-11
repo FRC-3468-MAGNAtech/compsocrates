@@ -1,7 +1,7 @@
 import { computeAllianceAccuracy } from "@/lib/analytics/accuracy";
 import { evaluateAutoFlagRuleIds, type FlagContext } from "@/lib/analytics/flags";
 import { evaluatePracticeSessionFlags } from "@/lib/practice-flags";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import type { AllianceColor, SessionFlag } from "@/lib/practice-sessions";
 import { notApplicableAccuracy, type AccuracyResult, type AutoFlag, type ScoutEntry } from "@/lib/scout-entries";
 
@@ -37,7 +37,7 @@ export type LiveScoringPatch = {
  * querying the rest of this team's event history, a scope simplification
  * for live mode (see docs/ASSUMPTIONS.md, P7).
  */
-export function resolveLiveAllianceScoring(match: FtcMatch, alliance: AllianceColor, entries: readonly ScoutEntry[]): LiveScoringPatch | null {
+export function resolveLiveAllianceScoring(match: EventMatch, alliance: AllianceColor, entries: readonly ScoutEntry[]): LiveScoringPatch | null {
   const allianceTeams = alliance === "red" ? match.redTeams : match.blueTeams;
   const officialScore = alliance === "red" ? match.redScore : match.blueScore;
   const penaltyPoints = (alliance === "red" ? match.redPenaltyPoints : match.bluePenaltyPoints) ?? 0;

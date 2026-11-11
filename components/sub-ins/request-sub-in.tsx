@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import { requestSubIn } from "@/lib/sub-ins/store";
 import { activeRequestFor, parseRange, slotsInRange, subInMatchKey, subInMatchLabel, type SubInActor, type SubInRequest, type SubInTarget } from "@/lib/sub-ins/model";
 import type { ScheduleSlot } from "@/lib/scheduler/types";

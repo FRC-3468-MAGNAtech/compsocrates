@@ -11,7 +11,7 @@ import { useDashboard, useOurTeamEvent } from "@/lib/dashboard/data";
 import { averageAccuracy } from "@/lib/dashboard/insights";
 import { formatRecord } from "@/lib/dashboard/schedule";
 import { formatScheduled } from "@/lib/dashboard/time";
-import type { EventLifecycleStatus } from "@/lib/ftc/types";
+import type { EventLifecycleStatus } from "@/lib/events/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<EventLifecycleStatus, { label: string; variant: "success" | "glass" | "outline" }> = {

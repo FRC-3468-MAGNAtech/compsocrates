@@ -1,4 +1,4 @@
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import type { AccuracyResult, ScoutEntry } from "@/lib/scout-entries";
 import { BIOBUZZ_UNREALISTIC, getBuiltinForm } from "@/lib/forms/builtin";
 import { entryValues } from "@/lib/forms/legacy";
@@ -28,7 +28,7 @@ export const FLAG_THRESHOLDS = {
 
 export type FlagContext = {
   /** Official match data, or null if it couldn't be loaded/found. */
-  match: FtcMatch | null;
+  match: EventMatch | null;
   /** This entry's alliance roster on that match ([] if the team isn't on it). */
   allianceTeams: number[];
   officialAllianceScore: number | null;

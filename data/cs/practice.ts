@@ -18,7 +18,7 @@ import { csDocMatchRef } from "@/data/cs/match-id";
 import type { CsRecord } from "@/data/cs/types";
 import { asRecord, digitsToNumber, isoFromMs, isRecord, str, toEpochMs } from "@/data/cs/util";
 import { getDifficulty, type Difficulty } from "@/lib/difficulty";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { LibraryAlliance, LibraryMatch } from "@/lib/match-library";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import { DEFAULT_SEASON_ID, SEASONS } from "@/lib/seasons";

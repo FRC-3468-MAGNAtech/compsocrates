@@ -1,5 +1,5 @@
 import { getMatchesForEvent } from "@/lib/events/actions";
-import type { FtcMatch, MatchType } from "@/lib/ftc/types";
+import type { EventMatch, MatchType } from "@/lib/events/types";
 import { formatMatch } from "@/lib/analytics/game-schema";
 import { getEventEntries, notApplicableAccuracy, updateEntry, type AccuracyResult, type AutoFlag } from "@/lib/scout-entries";
 import { allianceForTeam, computeAllianceAccuracy } from "@/lib/analytics/accuracy";
@@ -10,8 +10,8 @@ function matchKey(type: MatchType, number: number) {
   return `${type}-${number}`;
 }
 
-async function buildMatchLookup(eventCode: string, season: number): Promise<Map<string, FtcMatch>> {
-  const lookup = new Map<string, FtcMatch>();
+async function buildMatchLookup(eventCode: string, season: number): Promise<Map<string, EventMatch>> {
+  const lookup = new Map<string, EventMatch>();
   const [qual, playoff] = await Promise.all([
     getMatchesForEvent(eventCode, "Qualification", season),
     getMatchesForEvent(eventCode, "Playoff", season),

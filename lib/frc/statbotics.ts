@@ -1,7 +1,7 @@
 import "server-only";
 import { normalizeEventKey } from "@/config/event";
 import { FrcApiError, frcFetch } from "./http";
-import type { ActionResult } from "@/lib/ftc/types";
+import type { ActionResult } from "@/lib/events/types";
 
 /**
  * Statbotics v3 (server-only, no credentials). Ported from CS app/api/statbotics/team. The shapes

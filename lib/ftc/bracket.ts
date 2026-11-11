@@ -1,4 +1,4 @@
-import type { BracketMatch, BracketRound, BracketStructure, FtcMatch } from "./types";
+import type { BracketMatch, BracketRound, BracketStructure, EventMatch } from "@/lib/events/types";
 
 // FIRST's 8-alliance double-elimination playoff format uses a fixed set of
 // labelled rounds. The matches API returns a human-readable `description`
@@ -24,13 +24,13 @@ const LOWER_ROUND_PATTERNS = [
 
 const FINALS_PATTERN = /finals?/i;
 
-function matchAllianceFromMatch(match: FtcMatch, side: "red" | "blue") {
+function matchAllianceFromMatch(match: EventMatch, side: "red" | "blue") {
   const teams = side === "red" ? match.redTeams : match.blueTeams;
   if (teams.length === 0) return null;
   return { seed: null, teams };
 }
 
-function toBracketMatch(label: string, match: FtcMatch | undefined): BracketMatch {
+function toBracketMatch(label: string, match: EventMatch | undefined): BracketMatch {
   if (!match) {
     return { label, match: null, red: null, blue: null, winner: null };
   }
@@ -52,7 +52,7 @@ function toBracketMatch(label: string, match: FtcMatch | undefined): BracketMatc
 }
 
 function buildRounds(
-  matches: FtcMatch[],
+  matches: EventMatch[],
   patterns: { round: number; pattern: RegExp }[],
   bracketName: string
 ): BracketRound[] {
@@ -75,7 +75,7 @@ function buildRounds(
     .filter((round) => round.matches.length > 0);
 }
 
-export function buildPlayoffBracket(matches: FtcMatch[]): BracketStructure {
+export function buildPlayoffBracket(matches: EventMatch[]): BracketStructure {
   if (matches.length === 0) {
     return { format: "unknown", matches };
   }

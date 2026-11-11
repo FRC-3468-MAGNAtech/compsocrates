@@ -15,7 +15,7 @@ import {
   sortTeams,
   teamNameMap,
 } from "@/lib/events/details-model";
-import type { FtcMatch, FtcRanking, FtcTeam } from "@/lib/ftc/types";
+import type { EventMatch, EventRanking, EventTeam } from "@/lib/events/types";
 
 const at = (iso: string) => new Date(iso).getTime();
 
@@ -66,7 +66,7 @@ describe("eventBadge", () => {
   });
 });
 
-const match = (over: Partial<FtcMatch>): FtcMatch => ({
+const match = (over: Partial<EventMatch>): EventMatch => ({
   id: "m",
   matchNumber: 1,
   type: "Qualification",
@@ -105,7 +105,7 @@ describe("schedule", () => {
 });
 
 describe("teams and rankings", () => {
-  const team = (teamNumber: number, nameShort: string, nameFull = ""): FtcTeam => ({ teamNumber, nameShort, nameFull, city: null, stateProv: null, country: null, rookieYear: null });
+  const team = (teamNumber: number, nameShort: string, nameFull = ""): EventTeam => ({ teamNumber, nameShort, nameFull, city: null, stateProv: null, country: null, rookieYear: null });
   it("sorts teams by number", () => {
     expect(sortTeams([team(30, "c"), team(4, "a")]).map((t) => t.teamNumber)).toEqual([4, 30]);
   });
@@ -116,7 +116,7 @@ describe("teams and rankings", () => {
     expect(names.get(3)).toBe("Team 3");
   });
   it("sorts rankings by rank, ties by team number", () => {
-    const r = (teamNumber: number, rank: number): FtcRanking => ({ teamNumber, rank, wins: 1, losses: 2, ties: 3, matchesPlayed: 6, rankingPoints: null });
+    const r = (teamNumber: number, rank: number): EventRanking => ({ teamNumber, rank, wins: 1, losses: 2, ties: 3, matchesPlayed: 6, rankingPoints: null });
     expect(sortRankings([r(9, 2), r(5, 2), r(1, 1)]).map((x) => x.teamNumber)).toEqual([1, 5, 9]);
     expect(recordLabel(r(1, 1))).toBe("1-2-3");
   });

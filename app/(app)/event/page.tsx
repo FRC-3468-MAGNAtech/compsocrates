@@ -31,7 +31,7 @@ import { getEvents, getMatchesForEvent, getTeamsForEvent } from "@/lib/events/ac
 import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
 import { cardEntranceVariants, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { EventLifecycleStatus, FtcEvent, FtcMatch } from "@/lib/ftc/types";
+import type { EventLifecycleStatus, EventInfo, EventMatch } from "@/lib/events/types";
 
 const FILTERS: { value: EventStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -57,7 +57,7 @@ export default function EventSelectionPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<EventStatusFilter>("all");
   const [sort, setSort] = useState<EventSort>("status");
-  const [pendingRemoval, setPendingRemoval] = useState<FtcEvent | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<EventInfo | null>(null);
   const [limitNotice, setLimitNotice] = useState(false);
   // Fixed per visit so every status badge, count, and group agrees with each other.
   const [now] = useState(() => Date.now());
@@ -100,7 +100,7 @@ export default function EventSelectionPage() {
 
   const scoutedCount = (code: string) => scoutEntries.filter((e) => e.source === "event" && e.eventCode === code).length;
 
-  const removeEvent = (event: FtcEvent) => {
+  const removeEvent = (event: EventInfo) => {
     if (!isAdmin) return;
     // Taking an event off the active list hides it from every scouting picker, so ask first
     // when the team has already scouted matches for it.
@@ -111,7 +111,7 @@ export default function EventSelectionPage() {
     commit(toggleActiveEvent(state, event));
   };
 
-  const toggleEvent = (event: FtcEvent) => {
+  const toggleEvent = (event: EventInfo) => {
     if (!isAdmin) return;
     if (activeCodes.has(event.code)) {
       removeEvent(event);
@@ -296,7 +296,7 @@ function EventCard({
   canEdit,
   onToggle,
 }: {
-  event: FtcEvent;
+  event: EventInfo;
   status: EventLifecycleStatus;
   selected: boolean;
   isPrimary: boolean;
@@ -362,7 +362,7 @@ function EventCard({
   );
 }
 
-function MatchTypeBadge({ label, query }: { label: "Qualification" | "Playoff"; query: ReturnType<typeof useFtcQuery<FtcMatch[]>> }) {
+function MatchTypeBadge({ label, query }: { label: "Qualification" | "Playoff"; query: ReturnType<typeof useFtcQuery<EventMatch[]>> }) {
   if (query.status === "loading") return <Badge variant="glass">{label}: loading…</Badge>;
   if (query.status === "error") return <Badge variant="danger">{label}: unavailable</Badge>;
 
@@ -385,7 +385,7 @@ function MatchTypeBadge({ label, query }: { label: "Qualification" | "Playoff"; 
   );
 }
 
-function ActiveEventSummary({ event, now }: { event: FtcEvent; now: number }) {
+function ActiveEventSummary({ event, now }: { event: EventInfo; now: number }) {
   const teamsQuery = useFtcQuery(`teams:${event.code}:${event.season}`, () =>
     getTeamsForEvent(event.code, event.season)
   );

@@ -1,6 +1,6 @@
 import { ALLIANCE_SIZE } from "@/config/alliance";
 import { parseCsv, serializeCsv } from "@/lib/analytics/csv";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import { originOf, type LibraryOrigin } from "@/lib/library/ids";
 import { emptyRawMatch, manualMatchId, matchLabel, teamFieldsFor, validateRawMatch, type EventRef, type RawField, type RawMatch, type TeamField, type ValidMatch } from "@/lib/library/manual-match";
 

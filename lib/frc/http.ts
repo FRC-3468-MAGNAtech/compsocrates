@@ -1,6 +1,6 @@
 import "server-only";
 import { EVENT_CONFIG } from "@/config/event";
-import type { ActionError } from "@/lib/ftc/types";
+import type { ActionError } from "@/lib/events/types";
 
 /**
  * Shared HTTP helper for the three FRC data APIs. Mirrors lib/ftc/http.ts: same error codes

@@ -1,9 +1,9 @@
 import "server-only";
 import { EVENT_CONFIG, getFirstEventCodeFromTbaKey, getSeasonFromEventKey } from "@/config/event";
 import { FrcApiError, frcFetch } from "./http";
-import { firstRankingsToFtcRankings, firstScheduleToFtcMatches, firstTeamsToFtcTeams } from "./first-map";
+import { firstRankingsToEventRankings, firstScheduleToEventMatches, firstTeamsToEventTeams } from "./first-map";
 import { tbaKeyFor } from "./tba";
-import type { FtcMatch, FtcRanking, FtcTeam, MatchType } from "@/lib/ftc/types";
+import type { EventMatch, EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 /**
  * FIRST FRC API v3.0 client (server-only). Primary source for the PRACTICE schedule (TBA does not
@@ -24,14 +24,14 @@ const TOURNAMENT_LEVEL: Record<MatchType, string> = {
   Playoff: "Playoff",
 };
 
-export async function fetchFirstSchedule(eventCode: string, matchType: MatchType, season?: number): Promise<FtcMatch[]> {
+export async function fetchFirstSchedule(eventCode: string, matchType: MatchType, season?: number): Promise<EventMatch[]> {
   const target = firstTarget(eventCode, season);
   if (!target) return [];
   try {
     const payload = await frcFetch<unknown>("first", `/${target.year}/schedule/${encodeURIComponent(target.code)}`, {
       query: { tournamentLevel: TOURNAMENT_LEVEL[matchType] },
     });
-    return firstScheduleToFtcMatches(payload, matchType);
+    return firstScheduleToEventMatches(payload, matchType);
   } catch (error) {
     // FIRST answers an event whose schedule is not published yet with a 404: empty, not a failure.
     if (error instanceof FrcApiError && error.code === "not_found") return [];
@@ -39,19 +39,19 @@ export async function fetchFirstSchedule(eventCode: string, matchType: MatchType
   }
 }
 
-export async function fetchFirstTeams(eventCode: string, season?: number): Promise<FtcTeam[]> {
+export async function fetchFirstTeams(eventCode: string, season?: number): Promise<EventTeam[]> {
   const target = firstTarget(eventCode, season);
   if (!target) return [];
   const payload = await frcFetch<unknown>("first", `/${target.year}/teams`, { query: { eventCode: target.code } });
-  return firstTeamsToFtcTeams(payload);
+  return firstTeamsToEventTeams(payload);
 }
 
-export async function fetchFirstRankings(eventCode: string, season?: number): Promise<FtcRanking[]> {
+export async function fetchFirstRankings(eventCode: string, season?: number): Promise<EventRanking[]> {
   const target = firstTarget(eventCode, season);
   if (!target) return [];
   try {
     const payload = await frcFetch<unknown>("first", `/${target.year}/rankings/${encodeURIComponent(target.code)}`);
-    return firstRankingsToFtcRankings(payload);
+    return firstRankingsToEventRankings(payload);
   } catch (error) {
     if (error instanceof FrcApiError && error.code === "not_found") return [];
     throw error;

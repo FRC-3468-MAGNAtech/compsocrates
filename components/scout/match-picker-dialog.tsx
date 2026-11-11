@@ -13,10 +13,10 @@ import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
 import { BracketPicker } from "@/components/scout/bracket-picker";
 import { useFtcQuery } from "@/lib/events/use-event-query";
 import { getMatchesForEvent } from "@/lib/events/actions";
-import type { FtcEvent, FtcMatch, MatchType } from "@/lib/ftc/types";
+import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 
-export type AssignedMatch = { type: MatchType; match: FtcMatch };
+export type AssignedMatch = { type: MatchType; match: EventMatch };
 
 /** CS match picker marks: a match already scouted, or one assigned to the scout. */
 export type MatchMark = "scouted" | "assigned";
@@ -36,7 +36,7 @@ export function MatchPickerDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  activeEvent: FtcEvent | null;
+  activeEvent: EventInfo | null;
   onSelect: (assigned: AssignedMatch) => void;
   /** Optional marks for the practice and qualification lists (Scouted / Assigned to you). */
   marks?: (type: MatchType, matchNumber: number) => MatchMark | null;
@@ -66,7 +66,7 @@ export function MatchPickerDialog({
     // coming from the FIRST API at all. Downstream code already treats an
     // unmatched (eventCode, type, number) as "no official data" gracefully
     // (accuracy shows "-", no false "team not in match" flag).
-    const match: FtcMatch = {
+    const match: EventMatch = {
       id: `${manualType}-manual-${n}`,
       matchNumber: n,
       type: manualType,
@@ -230,7 +230,7 @@ function MatchList({
   eventCode: string;
   season: number;
   type: MatchType;
-  onSelect: (match: FtcMatch) => void;
+  onSelect: (match: EventMatch) => void;
   marks?: (type: MatchType, matchNumber: number) => MatchMark | null;
 }) {
   const query = useFtcQuery(`matches:${eventCode}:${season}:${type}`, () => getMatchesForEvent(eventCode, type, season));

@@ -1,16 +1,16 @@
-import type { FtcTeam } from "@/lib/ftc/types";
+import type { EventTeam } from "@/lib/events/types";
 import type { FormValues } from "@/lib/forms/types";
 
 // P29: what the FIRST team data suggests for the Pit Scout Form. Only a suggestion: the scout can change it.
 
 /** A team is a rookie in the season of its rookie year. `season` is the event's season (the year the season started). Null when FIRST gives no rookie year. */
-export function isRookieIn(team: Pick<FtcTeam, "rookieYear"> | null | undefined, season: number): boolean | null {
+export function isRookieIn(team: Pick<EventTeam, "rookieYear"> | null | undefined, season: number): boolean | null {
   if (!team || team.rookieYear === null || team.rookieYear === undefined) return null;
   return team.rookieYear === season;
 }
 
 /** The values and the hint line to show when a team is chosen on a form that has a `rookie` field; null when there is nothing to suggest. */
-export function rookieSuggestion(team: Pick<FtcTeam, "rookieYear"> | null | undefined, season: number): { values: FormValues; hints: Record<string, string> } | null {
+export function rookieSuggestion(team: Pick<EventTeam, "rookieYear"> | null | undefined, season: number): { values: FormValues; hints: Record<string, string> } | null {
   const rookie = isRookieIn(team, season);
   if (rookie === null) return null;
   return {

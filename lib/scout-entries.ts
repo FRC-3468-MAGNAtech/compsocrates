@@ -22,7 +22,7 @@ import { csDocsToScoutEntries, csDocToScoutEntry, entryFlagStatePatch, flagState
 import type { CsFlagState, CsRecord } from "@/data/cs/types";
 import { str, stripUndefined } from "@/data/cs/util";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { hasLegacyShape, legacyFieldsFromValues } from "@/lib/forms/legacy";
 import { storableScore, type ScoreResult } from "@/lib/forms/scoring";

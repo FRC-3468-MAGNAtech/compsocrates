@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Shimmer } from "@/components/ui/shimmer";
 import { useDashboard, useOurTeamEvent } from "@/lib/dashboard/data";
 import { formatRecord } from "@/lib/dashboard/schedule";
-import type { EventLifecycleStatus } from "@/lib/ftc/types";
+import type { EventLifecycleStatus } from "@/lib/events/types";
 
 const STATUS: Record<EventLifecycleStatus, { label: string; variant: "success" | "glass" | "outline" }> = {
   "in-progress": { label: "In Progress", variant: "success" },

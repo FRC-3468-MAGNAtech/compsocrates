@@ -9,7 +9,7 @@ import { addField, addGroup, defaultField, defaultTeamPicker, setFormCompareWith
 import { createBlankForm } from "@/lib/forms/new-form";
 import { defaultValues, validateValues } from "@/lib/forms/values";
 import type { Form, FormValues, SequenceStep } from "@/lib/forms/types";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 declare global {
   interface Window {
@@ -49,7 +49,7 @@ function buildForm(): Form {
   return setFormCompareWith(f, { formId: "match-strategy-v1", matchOn: ["eventCode", "matchKey", "alliance"], fieldMap: { role: "role", auto: "auto" } });
 }
 
-const EVENTS: FtcEvent[] = [{ code: "EVT1", season: 2025, name: "Bonney Lake Qualifier", dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "in-progress" }];
+const EVENTS: EventInfo[] = [{ code: "EVT1", season: 2025, name: "Bonney Lake Qualifier", dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "in-progress" }];
 const TEAMS = [3468, 111, 222, 333, 444].map((n) => ({ teamNumber: n, name: `Team ${n}` }));
 
 function Fixture() {

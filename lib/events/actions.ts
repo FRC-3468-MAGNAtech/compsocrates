@@ -5,7 +5,7 @@ import * as frc from "@/lib/frc/provider";
 import { getStatboticsTeam as frcGetStatboticsTeam, type StatboticsTeam } from "@/lib/frc/statbotics";
 import * as ftc from "@/lib/ftc/actions";
 import { requireUser } from "@/lib/server/require-user";
-import type { ActionResult, BracketStructure, FtcEvent, FtcMatch, FtcRanking, FtcTeam, MatchType } from "@/lib/ftc/types";
+import type { ActionResult, BracketStructure, EventInfo, EventMatch, EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 /**
  * The event-provider facade: the same function names and signatures as lib/ftc/actions.ts, routed
@@ -30,37 +30,37 @@ const UNAUTHORIZED_RESULT = {
 
 const isFtc = () => EVENT_CONFIG.program === "ftc";
 
-export async function getEvents(params?: { season?: number; search?: string }): Promise<ActionResult<FtcEvent[]>> {
+export async function getEvents(params?: { season?: number; search?: string }): Promise<ActionResult<EventInfo[]>> {
   if (isFtc()) return ftc.getEvents(params);
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   return frc.getEvents(params);
 }
 
-export async function getEvent(eventCode: string, season?: number): Promise<ActionResult<FtcEvent | null>> {
+export async function getEvent(eventCode: string, season?: number): Promise<ActionResult<EventInfo | null>> {
   if (isFtc()) return ftc.getEvent(eventCode, season);
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   return frc.getEvent(eventCode, season);
 }
 
-export async function getTeamsForEvent(eventCode: string, season?: number): Promise<ActionResult<FtcTeam[]>> {
+export async function getTeamsForEvent(eventCode: string, season?: number): Promise<ActionResult<EventTeam[]>> {
   if (isFtc()) return ftc.getTeamsForEvent(eventCode, season);
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   return frc.getTeamsForEvent(eventCode, season);
 }
 
-export async function getTeamByNumber(teamNumber: number, season?: number): Promise<ActionResult<FtcTeam | null>> {
+export async function getTeamByNumber(teamNumber: number, season?: number): Promise<ActionResult<EventTeam | null>> {
   if (isFtc()) return ftc.getTeamByNumber(teamNumber, season);
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   return frc.getTeamByNumber(teamNumber, season);
 }
 
-export async function getRankingsForEvent(eventCode: string, season?: number): Promise<ActionResult<FtcRanking[]>> {
+export async function getRankingsForEvent(eventCode: string, season?: number): Promise<ActionResult<EventRanking[]>> {
   if (isFtc()) return ftc.getRankingsForEvent(eventCode, season);
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   return frc.getRankingsForEvent(eventCode, season);
 }
 
-export async function getMatchesForEvent(eventCode: string, matchType: MatchType, season?: number): Promise<ActionResult<FtcMatch[]>> {
+export async function getMatchesForEvent(eventCode: string, matchType: MatchType, season?: number): Promise<ActionResult<EventMatch[]>> {
   if (isFtc()) return ftc.getMatchesForEvent(eventCode, matchType, season);
   if (!(await requireUser())) return UNAUTHORIZED_RESULT;
   return frc.getMatchesForEvent(eventCode, matchType, season);

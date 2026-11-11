@@ -3,7 +3,7 @@
  * No React, no Firebase.
  *
  * `selectedEvents: string[]` (TBA keys) is the SINGLE source of truth for a team's active events. CE's `activeEvents` /
- * `activeEventCode` / `activeEvent` / `activeEventCodes` are DERIVED from it on read (a placeholder `FtcEvent` per key, which
+ * `activeEventCode` / `activeEvent` / `activeEventCodes` are DERIVED from it on read (a placeholder `EventInfo` per key, which
  * `useActiveEvents` enriches with the event's real name and dates), and `selectedEventsPatch` writes only `selectedEvents`.
  * Every other CS team field (`eventAttendees`, `manualTeamListsByEvent`, `formAccessOverrides`, `submissionControls`,
  * `tbaApiKey*`, `judgeBookCards`, ...) is never written by this adapter, so a merge write leaves it untouched.
@@ -12,14 +12,14 @@ import { dedupeEventKeys, EVENT_CONFIG, getSeasonFromEventKey, normalizeEventKey
 import type { CsRecord, CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
 import { isRecord, str } from "@/data/cs/util";
 import { MAX_ACTIVE_EVENTS, type ActiveEventsState } from "@/lib/active-events";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import type { TeamDoc } from "@/lib/team";
 
 /** Shown by CS when a lockout has no reason (app/utils/submissionControls.ts). */
 export const DEFAULT_LOCKOUT_REASON = "Submissions are temporarily disabled by your team admins.";
 
-/** A placeholder `FtcEvent` for a TBA key: code = key, season from the key, name = key, no dates until enriched. */
-export function placeholderEventForKey(key: string): FtcEvent {
+/** A placeholder `EventInfo` for a TBA key: code = key, season from the key, name = key, no dates until enriched. */
+export function placeholderEventForKey(key: string): EventInfo {
   return {
     code: key,
     season: getSeasonFromEventKey(key) ?? EVENT_CONFIG.season,

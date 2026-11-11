@@ -28,10 +28,10 @@ import type { ScoreResult } from "@/lib/forms/scoring";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { recomputeForEvent } from "@/lib/analytics/recompute";
 import { nextAssignment as findNextAssignment } from "@/lib/dashboard/insights";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 
-/** A synthetic FtcMatch for an assigned slot — same convention as match-picker-dialog's manual-entry mode: no roster/score data exists for it yet, and downstream code already treats an unmatched (eventCode, type, number) as "no official data" gracefully. */
-function syntheticAssignedMatch(matchType: FtcMatch["type"], matchNumber: number): AssignedMatch {
+/** A synthetic EventMatch for an assigned slot — same convention as match-picker-dialog's manual-entry mode: no roster/score data exists for it yet, and downstream code already treats an unmatched (eventCode, type, number) as "no official data" gracefully. */
+function syntheticAssignedMatch(matchType: EventMatch["type"], matchNumber: number): AssignedMatch {
   return {
     type: matchType,
     match: {

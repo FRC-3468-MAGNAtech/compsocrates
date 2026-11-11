@@ -1,4 +1,4 @@
-import type { FtcMatch, FtcRanking, FtcTeam, MatchType } from "@/lib/ftc/types";
+import type { EventMatch, EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 /**
  * Pure mappers for the FIRST FRC API v3.0 (practice schedule, plus fallback teams, rankings and
@@ -132,8 +132,8 @@ export function splitFirstAllianceTeams(match: Pick<FirstScheduleMatch, "teams">
   return { red, blue };
 }
 
-/** A FIRST schedule row -> FtcMatch of the given app type. Penalties are not in the schedule payload. */
-export function firstScheduleToFtcMatch(row: FirstScheduleMatch, type: MatchType): FtcMatch {
+/** A FIRST schedule row -> EventMatch of the given app type. Penalties are not in the schedule payload. */
+export function firstScheduleToEventMatch(row: FirstScheduleMatch, type: MatchType): EventMatch {
   const { red, blue } = splitFirstAllianceTeams(row);
   const played = row.redScore !== null && row.blueScore !== null;
   const label = type === "Practice" ? "Practice" : type === "Qualification" ? "Qualification" : "Match";
@@ -154,14 +154,14 @@ export function firstScheduleToFtcMatch(row: FirstScheduleMatch, type: MatchType
   };
 }
 
-export function firstScheduleToFtcMatches(payload: unknown, type: MatchType): FtcMatch[] {
-  return normalizeSchedule(payload).map((row) => firstScheduleToFtcMatch(row, type));
+export function firstScheduleToEventMatches(payload: unknown, type: MatchType): EventMatch[] {
+  return normalizeSchedule(payload).map((row) => firstScheduleToEventMatch(row, type));
 }
 
-/** `/teams?eventCode=` rows -> FtcTeam (fallback when TBA is unavailable). */
-export function firstTeamsToFtcTeams(payload: unknown): FtcTeam[] {
+/** `/teams?eventCode=` rows -> EventTeam (fallback when TBA is unavailable). */
+export function firstTeamsToEventTeams(payload: unknown): EventTeam[] {
   return pickRows(payload, ["teams", "Teams"])
-    .map((row): FtcTeam | null => {
+    .map((row): EventTeam | null => {
       const teamNumber = Number(row.teamNumber ?? 0);
       if (!Number.isFinite(teamNumber) || teamNumber <= 0) return null;
       const short = String(row.nameShort || row.name || `Team ${teamNumber}`);
@@ -175,14 +175,14 @@ export function firstTeamsToFtcTeams(payload: unknown): FtcTeam[] {
         rookieYear: typeof row.rookieYear === "number" ? row.rookieYear : null,
       };
     })
-    .filter((t): t is FtcTeam => t !== null)
+    .filter((t): t is EventTeam => t !== null)
     .sort((a, b) => a.teamNumber - b.teamNumber);
 }
 
-/** `/rankings/{code}` rows (`Rankings` or `rankings`) -> FtcRanking (fallback when TBA is unavailable). */
-export function firstRankingsToFtcRankings(payload: unknown): FtcRanking[] {
+/** `/rankings/{code}` rows (`Rankings` or `rankings`) -> EventRanking (fallback when TBA is unavailable). */
+export function firstRankingsToEventRankings(payload: unknown): EventRanking[] {
   return pickRows(payload, ["Rankings", "rankings"])
-    .map((row): FtcRanking | null => {
+    .map((row): EventRanking | null => {
       const teamNumber = Number(row.teamNumber ?? 0);
       const rank = Number(row.rank ?? 0);
       if (!Number.isFinite(teamNumber) || teamNumber <= 0 || !Number.isFinite(rank) || rank <= 0) return null;
@@ -193,5 +193,5 @@ export function firstRankingsToFtcRankings(payload: unknown): FtcRanking[] {
       const rp = parseScoreValue(row.sortOrder1 ?? row.rankingScore);
       return { teamNumber, rank, wins, losses, ties, matchesPlayed: played, rankingPoints: rp };
     })
-    .filter((r): r is FtcRanking => r !== null);
+    .filter((r): r is EventRanking => r !== null);
 }

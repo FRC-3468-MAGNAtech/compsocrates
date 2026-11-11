@@ -1,5 +1,5 @@
 import type { ScoutEntry } from "@/lib/scout-entries";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import { BIOBUZZ_FORM, DEFAULT_FORM_ID } from "@/lib/forms/builtin";
 import { REBUILT_FORM } from "@/lib/forms/builtin-rebuilt";
 import { CHARGED_UP_FORM, REEFSCAPE_FORM } from "@/lib/forms/builtin-legacy-games";

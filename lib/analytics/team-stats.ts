@@ -1,7 +1,7 @@
 import { rankWithTies } from "@/lib/accuracy/engine";
 import { formatMatch, matchSortValue } from "@/lib/analytics/game-schema";
 import type { AnalyticsEntry } from "@/lib/analytics/entries";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { Form } from "@/lib/forms/types";
 import { elementOf, formFieldMeta, hasRole, type FieldMeta } from "@/lib/forms/meta";
 import { entryValues } from "@/lib/forms/legacy";

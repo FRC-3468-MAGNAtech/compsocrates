@@ -1,5 +1,5 @@
 import type { AllianceColor, PracticeSession } from "@/lib/practice-sessions";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 export type PendingLiveRobot = {
   /** The scout's own completed session for the sibling robot — not the pending one itself (there's no session for that yet). */

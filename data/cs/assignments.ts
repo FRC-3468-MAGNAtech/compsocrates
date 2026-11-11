@@ -25,7 +25,7 @@ import { csDocMatchRef, normalizeCsMatchId } from "@/data/cs/match-id";
 import type { CsRecord } from "@/data/cs/types";
 import { asRecord, cloneValue, digitsToNumber, isoFromMs, isRecord, str, toEpochMs } from "@/data/cs/util";
 import type { AssignmentSettings, AssignmentVersion } from "@/lib/assignments";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { MatchInput, ScheduleSlot, SlotId } from "@/lib/scheduler/types";
 import type { TeamAssignKind, TeamAssignmentsDoc, TeamAssignVersion } from "@/lib/team-assignments/model";
 import type { TeamAssignRow } from "@/lib/team-assignments/distribute";

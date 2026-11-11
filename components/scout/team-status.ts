@@ -3,7 +3,7 @@
  * priority. Pure; the page feeds it the team's entries, the published assignments and the sub-in requests.
  */
 import { eventCodesMatch } from "@/data/cs/forms";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 
 export type TeamMark = "scouted" | "subAssigned" | "subRequested" | "assigned";

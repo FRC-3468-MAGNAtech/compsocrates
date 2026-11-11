@@ -8,7 +8,7 @@ import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
 import { HELPER_FORM, PIT_SCOUT_FORM, TEAM_STRATEGY_FORM } from "@/lib/forms/builtin-pit-forms";
 import { rookieSuggestion } from "@/lib/forms/pit-suggest";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 declare global {
   interface Window {
@@ -19,7 +19,7 @@ declare global {
 
 const FORMS = { pit: PIT_SCOUT_FORM, strategy: TEAM_STRATEGY_FORM, helper: HELPER_FORM } as const;
 const TITLES = { pit: "Pit Scout Form", strategy: "Team Strategy Form", helper: "Helper Form" } as const;
-const ev = (code: string, name: string): FtcEvent => ({ code, season: 2025, name, dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "in-progress" });
+const ev = (code: string, name: string): EventInfo => ({ code, season: 2025, name, dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "in-progress" });
 const TEAMS = [
   { teamNumber: 111, name: "Rookies", rookieYear: 2025 },
   { teamNumber: 222, name: "Veterans", rookieYear: 2015 },

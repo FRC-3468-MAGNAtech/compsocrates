@@ -1,5 +1,5 @@
 import { allianceSlots, type AllianceColor } from "@/config/alliance";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 /** "red1" ... "blue4". Legacy FTC docs only ever hold index 1 and 2; FRC adds 3. */
 export type SlotId = `${AllianceColor}${1 | 2 | 3 | 4}`;

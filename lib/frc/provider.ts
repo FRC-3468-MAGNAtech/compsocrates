@@ -5,7 +5,7 @@ import { fetchFirstRankings, fetchFirstTeams } from "./first";
 import { FrcApiError } from "./http";
 import { fetchMatchesForEventInternal } from "./matches-internal";
 import { fetchTbaEvent, fetchTbaEvents, fetchTbaRankings, fetchTbaTeam, fetchTbaTeams, type TbaOptions } from "./tba";
-import type { ActionResult, BracketStructure, FtcEvent, FtcMatch, FtcRanking, FtcTeam, MatchType } from "@/lib/ftc/types";
+import type { ActionResult, BracketStructure, EventInfo, EventMatch, EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 /**
  * The FRC provider: the same function names and signatures as lib/ftc/actions.ts, minus the
@@ -40,7 +40,7 @@ async function withFirstFallback<T>(primary: () => Promise<T>, fallback: () => P
   }
 }
 
-export function getEvents(params?: { season?: number; search?: string }, options?: TbaOptions): Promise<ActionResult<FtcEvent[]>> {
+export function getEvents(params?: { season?: number; search?: string }, options?: TbaOptions): Promise<ActionResult<EventInfo[]>> {
   const season = params?.season ?? EVENT_CONFIG.season;
   return run(async () => {
     let events = await fetchTbaEvents(season, options);
@@ -50,18 +50,18 @@ export function getEvents(params?: { season?: number; search?: string }, options
   });
 }
 
-export function getEvent(eventCode: string, _season?: number, options?: TbaOptions): Promise<ActionResult<FtcEvent | null>> {
+export function getEvent(eventCode: string, _season?: number, options?: TbaOptions): Promise<ActionResult<EventInfo | null>> {
   // The season is part of a TBA key, so the argument only exists to match the FTC signature.
   void _season;
   return run(() => fetchTbaEvent(normalizeEventKey(eventCode), options));
 }
 
-export function getTeamsForEvent(eventCode: string, season?: number, options?: TbaOptions): Promise<ActionResult<FtcTeam[]>> {
+export function getTeamsForEvent(eventCode: string, season?: number, options?: TbaOptions): Promise<ActionResult<EventTeam[]>> {
   return run(() => withFirstFallback(() => fetchTbaTeams(eventCode, options), () => fetchFirstTeams(eventCode, season)));
 }
 
 /** One team by number; `data` is null when TBA has no such team. Same validation message as the FTC provider. */
-export function getTeamByNumber(teamNumber: number, _season?: number, options?: TbaOptions): Promise<ActionResult<FtcTeam | null>> {
+export function getTeamByNumber(teamNumber: number, _season?: number, options?: TbaOptions): Promise<ActionResult<EventTeam | null>> {
   void _season;
   if (!Number.isInteger(teamNumber) || teamNumber <= 0 || teamNumber > 99999) {
     return Promise.resolve({ ok: false, error: { code: "upstream_error", message: "Enter a team number with 1 to 5 digits." } });
@@ -69,7 +69,7 @@ export function getTeamByNumber(teamNumber: number, _season?: number, options?: 
   return run(() => fetchTbaTeam(teamNumber, options));
 }
 
-export function getRankingsForEvent(eventCode: string, season?: number, options?: TbaOptions): Promise<ActionResult<FtcRanking[]>> {
+export function getRankingsForEvent(eventCode: string, season?: number, options?: TbaOptions): Promise<ActionResult<EventRanking[]>> {
   return run(() => withFirstFallback(() => fetchTbaRankings(eventCode, options), () => fetchFirstRankings(eventCode, season)));
 }
 
@@ -78,7 +78,7 @@ export function getMatchesForEvent(
   matchType: MatchType,
   season?: number,
   options?: TbaOptions
-): Promise<ActionResult<FtcMatch[]>> {
+): Promise<ActionResult<EventMatch[]>> {
   return run(() => fetchMatchesForEventInternal(eventCode, matchType, season, options));
 }
 

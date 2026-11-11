@@ -10,7 +10,7 @@
  * (`qf2` and `sf2` are both slot 2), which is why the adapter keeps the original CS strings in `ScoutEntry.legacy`.
  */
 import { EVENT_CONFIG } from "@/config/event";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 export type CsMatchType = "practice" | "qualification" | "finals";
 

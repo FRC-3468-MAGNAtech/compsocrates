@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { formatDateRange } from "@/components/event/selected-events-panel";
 import { locationLabel, safeWebsite } from "@/lib/events/details-model";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -13,7 +13,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 /** Event Information and About This Event (CS's Overview tab). */
-export function EventOverview({ event }: { event: FtcEvent }) {
+export function EventOverview({ event }: { event: EventInfo }) {
   const location = locationLabel(event);
   const website = safeWebsite(event.website);
   return (

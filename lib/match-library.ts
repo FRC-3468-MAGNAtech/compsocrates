@@ -13,7 +13,7 @@ import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } f
 import { libraryAllQuery, libraryEventQuery, librarySeasonQuery } from "@/lib/practice-queries";
 import { decideMatchWrite, libraryMatchId, originOf, type LibraryOrigin } from "@/lib/library/ids";
 import { getSeason } from "@/lib/seasons";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 // The id format lives in lib/library/ids.ts (pure, so tests and the manual-entry
 // code can use it without Firebase); re-exported here so existing imports keep working.

@@ -1,5 +1,5 @@
 import { getEventStatus } from "@/lib/ftc/event-status";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 
 // Pure helpers behind the team's *several* active events (FIX1-2b). Kept free
 // of React/Firebase imports so they're unit-testable; the realtime hook is
@@ -13,13 +13,13 @@ export const MAX_ACTIVE_EVENTS = 10;
 export type TeamActiveEventFields = {
   activeEventCode?: string | null;
   activeSeasonId?: number | null;
-  activeEvent?: FtcEvent | null;
+  activeEvent?: EventInfo | null;
   activeEventCodes?: string[];
-  activeEvents?: FtcEvent[];
+  activeEvents?: EventInfo[];
 };
 
 export type ActiveEventsState = {
-  events: FtcEvent[];
+  events: EventInfo[];
   /**
    * FIX4: always the FIRST event's code (the order is the single source of truth: the star means "move to first"),
    * or null only when `events` is empty. Every function below returns a state that holds this.
@@ -28,7 +28,7 @@ export type ActiveEventsState = {
 };
 
 /** The one place the invariant is made: the primary is whatever is first. */
-function ordered(events: FtcEvent[]): ActiveEventsState {
+function ordered(events: EventInfo[]): ActiveEventsState {
   return { events, primaryCode: events[0]?.code ?? null };
 }
 
@@ -61,7 +61,7 @@ export function needsActiveEventsMigration(team: TeamActiveEventFields | null | 
 }
 
 /** Selects the event (added last) if it isn't selected, removes it if it is. The first selected event is the primary; removing the primary promotes the next one. A selection past `MAX_ACTIVE_EVENTS` is ignored. */
-export function toggleActiveEvent(state: ActiveEventsState, event: FtcEvent): ActiveEventsState {
+export function toggleActiveEvent(state: ActiveEventsState, event: EventInfo): ActiveEventsState {
   if (state.events.some((e) => e.code === event.code)) return ordered(state.events.filter((e) => e.code !== event.code));
   if (state.events.length >= MAX_ACTIVE_EVENTS) return state;
   return ordered([...state.events, event]);
@@ -92,7 +92,7 @@ export function setPrimaryActiveEvent(state: ActiveEventsState, code: string): A
 export function reorderActiveEvents(state: ActiveEventsState, codes: string[]): ActiveEventsState {
   const byCode = new Map(state.events.map((e) => [e.code, e]));
   const seen = new Set<string>();
-  const head: FtcEvent[] = [];
+  const head: EventInfo[] = [];
   for (const c of codes) {
     const e = byCode.get(c);
     if (e && !seen.has(c)) {
@@ -120,13 +120,13 @@ export function buildActiveEventsFields(state: ActiveEventsState): Required<Pick
 }
 
 /** The primary event first, the rest in selection order — what pickers and filters list first. */
-export function orderPrimaryFirst(state: ActiveEventsState): FtcEvent[] {
+export function orderPrimaryFirst(state: ActiveEventsState): EventInfo[] {
   const primary = state.events.find((e) => e.code === state.primaryCode);
   return primary ? [primary, ...state.events.filter((e) => e.code !== primary.code)] : state.events;
 }
 
 /** Default for pickers: an In Progress active event (the primary if it's one), otherwise the primary. Null when nothing is active. */
-export function pickDefaultActiveEvent(state: ActiveEventsState, now: Date | number = new Date()): FtcEvent | null {
+export function pickDefaultActiveEvent(state: ActiveEventsState, now: Date | number = new Date()): EventInfo | null {
   const ordered = orderPrimaryFirst(state);
   return ordered.find((e) => getEventStatus(e, now) === "in-progress") ?? ordered[0] ?? null;
 }

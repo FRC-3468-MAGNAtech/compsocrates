@@ -2,7 +2,7 @@ import { csvHeaderFor, type AnalyticsColumn, type GameSchema } from "@/lib/analy
 import type { ScoutEntry } from "@/lib/scout-entries";
 import { coerceFieldValue } from "@/lib/forms/values";
 import type { FormValues } from "@/lib/forms/types";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 // --- Low-level RFC4180 CSV -------------------------------------------------
 

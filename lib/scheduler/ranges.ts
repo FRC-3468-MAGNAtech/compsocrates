@@ -1,4 +1,4 @@
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import type { MatchInput } from "./types";
 

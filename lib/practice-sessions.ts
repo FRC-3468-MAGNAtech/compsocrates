@@ -16,7 +16,7 @@ import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } f
 import { completedAttemptQuery, ownPausedSessionQuery, scoutSessionsQuery, teamLiveSessionsQuery, teamSessionsQuery } from "@/lib/practice-queries";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Difficulty } from "@/lib/difficulty";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 export type SessionKind = "solo" | "live" | "lobby";
 export type SessionStatus = "in-progress" | "paused" | "completed";

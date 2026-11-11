@@ -17,7 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
 import { useActiveEvents } from "@/lib/active-event";
 import { orderPrimaryFirst } from "@/lib/active-events";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { useTeamMembers } from "@/lib/team-members";
 import { useEventAttendance, setEventAttendance } from "@/lib/event-attendance";
 import { publishAssignments, swapAssignmentSlot, undoAssignments, useAssignments, type AssignmentMatchSource, type AssignmentSettings, type AssignmentVersion } from "@/lib/assignments";
@@ -56,7 +56,7 @@ export default function AssignmentsPage() {
   const season = activeSelected?.season ?? getDefaultSeason();
 
   const eventsQuery = useFtcQuery(`assignments-events:${season}`, () => getEvents({ season }));
-  const otherEvents: FtcEvent[] = useMemo(
+  const otherEvents: EventInfo[] = useMemo(
     () => (eventsQuery.data ?? []).filter((e) => !activeOptions.some((a) => a.code === e.code)),
     [eventsQuery.data, activeOptions]
   );

@@ -1,6 +1,6 @@
 import type { AnalyticsEntry } from "@/lib/analytics/entries";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 import { CATEGORY_IDS, classifyMatch, finalsMatchNumbers, statusMatchLabel, type StatusCategory } from "@/lib/scout-status/categories";
 import { SCOUT_STATUS_CONFIG } from "@/lib/scout-status/config";

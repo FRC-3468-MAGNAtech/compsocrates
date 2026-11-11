@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { FtcMatch } from "@/lib/ftc/types";
+import type { EventMatch } from "@/lib/events/types";
 import type { ScoutEntry } from "@/lib/scout-entries";
 import { resolveLiveAllianceScoring } from "./scoring";
 
-function match(overrides: Partial<FtcMatch> = {}): FtcMatch {
+function match(overrides: Partial<EventMatch> = {}): EventMatch {
   return {
     id: "m1",
     matchNumber: 1,

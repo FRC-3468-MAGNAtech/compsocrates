@@ -5,11 +5,11 @@ import {
   mapPlayoffToBracketSlot,
   playoffMatchNumber,
   teamNumberFromKey,
-  toFtcEvent,
-  toFtcMatch,
-  toFtcMatches,
-  toFtcRanking,
-  toFtcTeam,
+  toEventInfo,
+  toEventMatch,
+  toEventMatches,
+  toEventRanking,
+  toEventTeam,
   type TbaMatchRaw,
 } from "./tba-map";
 
@@ -26,8 +26,8 @@ function tbaMatch(partial: Partial<TbaMatchRaw> & Pick<TbaMatchRaw, "comp_level"
 }
 
 describe("events, teams, rankings", () => {
-  it("maps a TBA event to FtcEvent with the TBA key as code", () => {
-    const event = toFtcEvent({
+  it("maps a TBA event to EventInfo with the TBA key as code", () => {
+    const event = toEventInfo({
       key: "2026arli",
       name: "Arkansas Regional",
       year: 2026,
@@ -54,13 +54,13 @@ describe("events, teams, rankings", () => {
   });
 
   it("maps a team, falling back to a generic name", () => {
-    expect(toFtcTeam({ team_number: 254, nickname: "The Cheesy Poofs", name: "Full Sponsor Name", rookie_year: 1999 })).toMatchObject({
+    expect(toEventTeam({ team_number: 254, nickname: "The Cheesy Poofs", name: "Full Sponsor Name", rookie_year: 1999 })).toMatchObject({
       teamNumber: 254,
       nameShort: "The Cheesy Poofs",
       nameFull: "Full Sponsor Name",
       rookieYear: 1999,
     });
-    expect(toFtcTeam({ team_number: 9999 })).toMatchObject({ nameShort: "Team 9999", nameFull: "Team 9999", city: null });
+    expect(toEventTeam({ team_number: 9999 })).toMatchObject({ nameShort: "Team 9999", nameFull: "Team 9999", city: null });
   });
 
   it("strips the frc prefix", () => {
@@ -70,16 +70,16 @@ describe("events, teams, rankings", () => {
 
   it("maps a ranking with the first sort order as ranking points", () => {
     expect(
-      toFtcRanking({ rank: 3, team_key: "frc118", matches_played: 8, record: { wins: 6, losses: 2, ties: 0 }, sort_orders: [3.25, 120] })
+      toEventRanking({ rank: 3, team_key: "frc118", matches_played: 8, record: { wins: 6, losses: 2, ties: 0 }, sort_orders: [3.25, 120] })
     ).toEqual({ teamNumber: 118, rank: 3, wins: 6, losses: 2, ties: 0, matchesPlayed: 8, rankingPoints: 3.25 });
-    expect(toFtcRanking({ team_key: "frc118" })).toBeNull();
-    expect(toFtcRanking({ rank: 1, team_key: "frc118" })?.rankingPoints).toBeNull();
+    expect(toEventRanking({ team_key: "frc118" })).toBeNull();
+    expect(toEventRanking({ rank: 1, team_key: "frc118" })?.rankingPoints).toBeNull();
   });
 });
 
 describe("match type and basic mapping", () => {
   it("maps qm to Qualification with three-team alliances and no frc prefix", () => {
-    const mapped = toFtcMatch(
+    const mapped = toEventMatch(
       tbaMatch({
         comp_level: "qm",
         set_number: 1,
@@ -108,7 +108,7 @@ describe("match type and basic mapping", () => {
   });
 
   it("treats -1 scores as unplayed with no scores or penalties", () => {
-    const mapped = toFtcMatch(tbaMatch({ comp_level: "qm", set_number: 1, match_number: 3, predicted_time: 1_774_000_000 }));
+    const mapped = toEventMatch(tbaMatch({ comp_level: "qm", set_number: 1, match_number: 3, predicted_time: 1_774_000_000 }));
     expect(mapped).toMatchObject({ played: false, redScore: null, blueScore: null, redPenaltyPoints: null, bluePenaltyPoints: null });
     expect(mapped?.startTime).not.toBeNull();
   });
@@ -119,7 +119,7 @@ describe("match type and basic mapping", () => {
   });
 
   it("skips matches with no app number (eighths)", () => {
-    expect(toFtcMatch(tbaMatch({ comp_level: "ef", set_number: 1, match_number: 1 }))).toBeNull();
+    expect(toEventMatch(tbaMatch({ comp_level: "ef", set_number: 1, match_number: 1 }))).toBeNull();
   });
 
   it("splits matches by app type", () => {
@@ -129,8 +129,8 @@ describe("match type and basic mapping", () => {
       tbaMatch({ comp_level: "sf", set_number: 1, match_number: 1 }),
       tbaMatch({ comp_level: "f", set_number: 1, match_number: 1 }),
     ];
-    expect(toFtcMatches(list, "Qualification").map((m) => m.matchNumber)).toEqual([1, 2]);
-    expect(toFtcMatches(list, "Playoff").map((m) => m.matchNumber)).toEqual([1, 14]);
+    expect(toEventMatches(list, "Qualification").map((m) => m.matchNumber)).toEqual([1, 2]);
+    expect(toEventMatches(list, "Playoff").map((m) => m.matchNumber)).toEqual([1, 14]);
   });
 });
 
@@ -162,16 +162,16 @@ describe("playoff numbering (D11)", () => {
   });
 
   it("emits Playoff matches with the D11 numbers and descriptions", () => {
-    const slot = toFtcMatch(tbaMatch({ comp_level: "sf", set_number: 9, match_number: 1 }));
+    const slot = toEventMatch(tbaMatch({ comp_level: "sf", set_number: 9, match_number: 1 }));
     expect(slot).toMatchObject({ id: "Playoff-9", matchNumber: 9, type: "Playoff", description: "Match 9", series: 9 });
-    const final = toFtcMatch(tbaMatch({ comp_level: "f", set_number: 1, match_number: 2 }));
+    const final = toEventMatch(tbaMatch({ comp_level: "f", set_number: 1, match_number: 2 }));
     expect(final).toMatchObject({ id: "Playoff-15", matchNumber: 15, description: "Finals 2" });
   });
 
   it("keeps the latest replay when two TBA matches share a slot", () => {
     const first = tbaMatch({ comp_level: "sf", set_number: 4, match_number: 1, alliances: { red: { team_keys: ["frc1"], score: 10 }, blue: { team_keys: ["frc2"], score: 12 } } });
     const replay = tbaMatch({ comp_level: "sf", set_number: 4, match_number: 2, alliances: { red: { team_keys: ["frc1"], score: 30 }, blue: { team_keys: ["frc2"], score: 12 } } });
-    const out = toFtcMatches([first, replay], "Playoff");
+    const out = toEventMatches([first, replay], "Playoff");
     expect(out).toHaveLength(1);
     expect(out[0].redScore).toBe(30);
   });

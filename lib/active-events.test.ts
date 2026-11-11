@@ -12,9 +12,9 @@ import {
   setPrimaryActiveEvent,
   toggleActiveEvent,
 } from "./active-events";
-import type { FtcEvent } from "./ftc/types";
+import type { EventInfo } from "./events/types";
 
-function ev(code: string, dateStart = "2025-11-08", dateEnd = "2025-11-08"): FtcEvent {
+function ev(code: string, dateStart = "2025-11-08", dateEnd = "2025-11-08"): EventInfo {
   return { code, season: 2025, name: code, dateStart, dateEnd, city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "upcoming" };
 }
 

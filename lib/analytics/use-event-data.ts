@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getMatchesForEvent, getRankingsForEvent, getTeamsForEvent } from "@/lib/events/actions";
 import { ftcMatchToOfficial, type OfficialMatch } from "@/lib/analytics/match-breakdown";
-import type { FtcRanking, FtcTeam, MatchType } from "@/lib/ftc/types";
+import type { EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 // FIRST API data Analytics pages join onto scouted teams (P10): team names
 // and official qualification rankings. Both go through the existing server
@@ -19,8 +19,8 @@ const requestKey = (r: EventRequest) => `${r.code}:${r.season}`;
 const RANKING_TTL_MS = 3 * 60 * 1000;
 const MATCHES_TTL_MS = 3 * 60 * 1000;
 
-const teamsCache = new Map<string, FtcTeam[]>();
-const rankingsCache = new Map<string, { data: FtcRanking[]; expires: number; failed: boolean }>();
+const teamsCache = new Map<string, EventTeam[]>();
+const rankingsCache = new Map<string, { data: EventRanking[]; expires: number; failed: boolean }>();
 const matchesCache = new Map<string, { data: OfficialMatch[]; expires: number; failed: boolean; fetchedAt: number }>();
 /** Event keys whose team-list fetch failed — kept beside the cache because a failure is stored as an empty list. */
 const failedTeams = new Set<string>();
@@ -39,7 +39,7 @@ function parseKey(key: string): EventRequest[] {
 }
 
 /** Loads (once, cached) each requested event's team list; `loading` until every event has answered. Shared by useTeamNames and useEventTeams. */
-function useTeamLists(requests: EventRequest[]): { byEvent: Map<string, FtcTeam[]>; loading: boolean; error: boolean } {
+function useTeamLists(requests: EventRequest[]): { byEvent: Map<string, EventTeam[]>; loading: boolean; error: boolean } {
   const key = keyOf(requests);
   const [version, setVersion] = useState(0);
 
@@ -65,7 +65,7 @@ function useTeamLists(requests: EventRequest[]): { byEvent: Map<string, FtcTeam[
   }, [key]);
 
   return useMemo(() => {
-    const byEvent = new Map<string, FtcTeam[]>();
+    const byEvent = new Map<string, EventTeam[]>();
     let loading = false;
     let error = false;
     for (const r of parseKey(key)) {
@@ -91,10 +91,10 @@ export function useTeamNames(requests: EventRequest[]): ReadonlyMap<number, stri
 }
 
 /** Every team registered at the requested events (P12: the Pick List's field). `loading` until each event has answered; a failure reads as an empty list. */
-export function useEventTeams(requests: EventRequest[]): { teams: FtcTeam[]; loading: boolean; error: boolean } {
+export function useEventTeams(requests: EventRequest[]): { teams: EventTeam[]; loading: boolean; error: boolean } {
   const { byEvent, loading, error } = useTeamLists(requests);
   return useMemo(() => {
-    const byNumber = new Map<number, FtcTeam>();
+    const byNumber = new Map<number, EventTeam>();
     for (const teams of byEvent.values()) for (const t of teams) byNumber.set(t.teamNumber, t);
     return { teams: [...byNumber.values()].sort((a, b) => a.teamNumber - b.teamNumber), loading, error };
   }, [byEvent, loading, error]);
@@ -177,12 +177,12 @@ export function useEventMatches(requests: EventRequest[]): { matches: OfficialMa
 }
 
 /** Official rankings per event code. An event with no rankings yet (or a failed fetch) is simply absent/empty. */
-export function useEventRankings(requests: EventRequest[]): ReadonlyMap<string, FtcRanking[]> {
+export function useEventRankings(requests: EventRequest[]): ReadonlyMap<string, EventRanking[]> {
   return useEventRankingsStatus(requests).rankings;
 }
 
 /** `useEventRankings` plus `loading` (true until each event has answered once) — for pages that must not reorder when the ranks arrive. */
-export function useEventRankingsStatus(requests: EventRequest[]): { rankings: ReadonlyMap<string, FtcRanking[]>; loading: boolean; error: boolean } {
+export function useEventRankingsStatus(requests: EventRequest[]): { rankings: ReadonlyMap<string, EventRanking[]>; loading: boolean; error: boolean } {
   const key = keyOf(requests);
   const [version, setVersion] = useState(0);
 
@@ -203,7 +203,7 @@ export function useEventRankingsStatus(requests: EventRequest[]): { rankings: Re
   }, [key]);
 
   return useMemo(() => {
-    const byEvent = new Map<string, FtcRanking[]>();
+    const byEvent = new Map<string, EventRanking[]>();
     let loading = false;
     let error = false;
     for (const r of parseKey(key)) {
@@ -212,7 +212,7 @@ export function useEventRankingsStatus(requests: EventRequest[]): { rankings: Re
       if (!cached) loading = true;
       else if (cached.failed) error = true;
     }
-    return { rankings: byEvent as ReadonlyMap<string, FtcRanking[]>, loading, error };
+    return { rankings: byEvent as ReadonlyMap<string, EventRanking[]>, loading, error };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, version]);
 }

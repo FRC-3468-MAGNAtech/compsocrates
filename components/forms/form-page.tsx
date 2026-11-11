@@ -19,20 +19,20 @@ import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
 import { defaultValues, normalizeValues } from "@/lib/forms/values";
 import { notesForSave } from "@/lib/sticky-notes";
 import type { Form, FormField, FormValues, StickyNote } from "@/lib/forms/types";
-import type { FtcEvent, FtcMatch, MatchType } from "@/lib/ftc/types";
+import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
 import { springSnappy } from "@/lib/motion";
 
 // P28: the page shell shared by Lead Scout, Match Strategy and Drive Reflection (and any other form of the team's built from the schema). Everything the page
 // needs from the world is a prop (events, the schedule, teams, the plan entries, how to pick a match, how to save), so the same component runs on the real
 // page and on the browser-test fixture. What is drawn comes from the form schema (FormRenderer); what is saved is built by lib/forms/form-page-logic.ts.
 
-export type PickedMatch = { matchKey: string; matchType: MatchType; match: FtcMatch | null };
+export type PickedMatch = { matchKey: string; matchType: MatchType; match: EventMatch | null };
 
 export type FormPageViewProps = {
   form: Form;
   title: string;
   subtitle: string;
-  events: FtcEvent[];
+  events: EventInfo[];
   eventsLoaded: boolean;
   /** The event to start on (the primary, or the one in progress). */
   defaultEventCode: string | null;
@@ -43,7 +43,7 @@ export type FormPageViewProps = {
   /** Entries of the form this one compares with (a Drive Reflection's Match Strategy entries) for the chosen event. */
   planEntries: PlanCandidate[];
   /** How a match is chosen: the page renders the real picker (practice, qualification, finals with the bracket) and calls `onPick`. */
-  renderMatchPicker: (ctx: { field: FormField; eventCode: string; event: FtcEvent | null; matchKey: string | null; onPick: (m: PickedMatch) => void; disabled?: boolean }) => ReactNode;
+  renderMatchPicker: (ctx: { field: FormField; eventCode: string; event: EventInfo | null; matchKey: string | null; onPick: (m: PickedMatch) => void; disabled?: boolean }) => ReactNode;
   /** Saves the entry; resolves with its id. Rejecting leaves the form as it is and shows the error. */
   onSave: (entry: NewFormEntry) => Promise<string>;
   onEventChange?: (eventCode: string) => void;

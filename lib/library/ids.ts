@@ -1,5 +1,5 @@
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 // Ids, event codes, and the API/manual origin rule for the match library
 // (P3, extended by P15). Pure.

@@ -13,7 +13,7 @@ import { layoutOf } from "@/lib/forms/edit";
 import { repeatGroupOf, slotCountFor, slotKey } from "@/lib/forms/repeat";
 import { isSystemField, type Form, type FormField, type FormSection, type FormValue, type FormValues } from "@/lib/forms/types";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
-import type { FtcEvent } from "@/lib/ftc/types";
+import type { EventInfo } from "@/lib/events/types";
 import { cn } from "@/lib/utils";
 
 // P27: the generic, schema-driven renderer for the team's non-match forms (Lead Scout, Pit Scout, strategy, reflection, helper, custom). It draws the form's
@@ -31,7 +31,7 @@ export type FormRendererProps = {
   entry: FormEntryState;
   onEntryChange: (patch: Partial<FormEntryState>) => void;
   /** The account's active events (the event picker's choices). */
-  events: FtcEvent[];
+  events: EventInfo[];
   /** The teams at the chosen event (the team pickers' choices). */
   teams: TeamOption[];
   /** The team numbers of the chosen alliance in the chosen match, from the schedule (2 in a qualification, up to 3 in the playoffs). Empty until chosen. */

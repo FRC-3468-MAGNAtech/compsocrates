@@ -1,4 +1,4 @@
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 
 // Match categories for the Scout Status page (P16). The playoff bracket is split into
 // Semi-Finals and Finals **for this page only**; everywhere else in the app the `F`

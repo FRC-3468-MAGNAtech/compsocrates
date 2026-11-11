@@ -7,7 +7,7 @@ import { reportFirestoreError } from "@/lib/firestore-errors";
 import { liveMatchScoutsQuery, teamLiveScoutsQuery } from "@/lib/practice-queries";
 import { libraryMatchId } from "@/lib/match-library";
 import { LIVE_CONFIG } from "@/lib/live/config";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import type { AllianceColor } from "@/lib/practice-sessions";
 
 // P7: who's currently watching/scouting a live match — stored as

@@ -1,6 +1,6 @@
 import { rankWithTies } from "@/lib/accuracy/engine";
 import { pickLikelihood } from "@/lib/pickLikelihood";
-import type { FtcRanking } from "@/lib/ftc/types";
+import type { EventRanking } from "@/lib/events/types";
 import type { TeamStats } from "@/lib/analytics/team-stats";
 
 // Pure row model for the Pick List board (P12): one row per team in the event,
@@ -39,7 +39,7 @@ export function buildPickBoard(input: {
   /** Every team in the event (team list ∪ rankings ∪ scouted teams). */
   teamNumbers: number[];
   teamNames: ReadonlyMap<number, string>;
-  rankings: FtcRanking[];
+  rankings: EventRanking[];
   /** Per-team scouted stats from the filtered entries (accuracy filter applied). */
   teamStats: TeamStats[];
   /** Team → EPA, or null when the EPA column is off. */

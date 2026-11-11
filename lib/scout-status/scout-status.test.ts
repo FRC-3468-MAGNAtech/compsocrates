@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { selectAnalyticsEntries, type AnalyticsEntry } from "@/lib/analytics/entries";
 import { DEFAULT_FILTERS } from "@/lib/analytics/filters";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
-import type { MatchType } from "@/lib/ftc/types";
+import type { MatchType } from "@/lib/events/types";
 import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 import { canEditScoutTargets } from "./permissions";

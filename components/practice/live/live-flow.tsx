@@ -22,7 +22,7 @@ import { liveMatchKey, useLiveMatchScouts } from "@/lib/live-presence";
 import { useTeamLiveSessions, claimSessionId, updatePracticeSession, usePracticeSession, type AllianceColor } from "@/lib/practice-sessions";
 import { getSeason } from "@/lib/seasons";
 import { useLibraryMatches } from "@/lib/match-library";
-import type { FtcEvent, FtcMatch, MatchType } from "@/lib/ftc/types";
+import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
 import { LoadError } from "@/components/practice/load-error";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
@@ -65,7 +65,7 @@ export function LiveFlow({
   const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState<string | null>(null);
   const [detectedConfident, setDetectedConfident] = useState(false);
-  const [event, setEvent] = useState<FtcEvent | null>(null);
+  const [event, setEvent] = useState<EventInfo | null>(null);
   const [matchType, setMatchType] = useState<MatchType>(resumePendingRobot?.matchType ?? "Qualification");
   const [matchNumber, setMatchNumber] = useState<number | null>(resumePendingRobot?.matchNumber ?? null);
   const [manualRoster, setManualRoster] = useState<Roster | null>(null);
@@ -86,7 +86,7 @@ export function LiveFlow({
   const { scouts: presence } = useLiveMatchScouts(matchKey, teamId);
   const { sessions: teamLiveSessions } = useTeamLiveSessions(teamId);
 
-  const matches: FtcMatch[] = matchType === "Qualification" ? (qualQuery.data ?? []) : (playoffQuery.data ?? []);
+  const matches: EventMatch[] = matchType === "Qualification" ? (qualQuery.data ?? []) : (playoffQuery.data ?? []);
   const officialMatch = matches.find((m) => m.matchNumber === matchNumber) ?? null;
   const roster: Roster | null =
     officialMatch && isValidAllianceTeams(officialMatch.redTeams) && isValidAllianceTeams(officialMatch.blueTeams)
