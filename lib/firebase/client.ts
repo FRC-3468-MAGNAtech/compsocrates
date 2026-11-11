@@ -2,12 +2,14 @@
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import {
+  connectFirestoreEmulator,
   initializeFirestore,
+  memoryLocalCache,
   persistentLocalCache,
   persistentMultipleTabManager,
   type Firestore,
 } from "firebase/firestore";
-import { getAuth, type Auth } from "firebase/auth";
+import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -34,15 +36,27 @@ let app: FirebaseApp | null = null;
 let authInstance: Auth | null = null;
 let dbInstance: Firestore | null = null;
 
+// TEST SEAM (data/cs/adapter.emulator.test.ts): with NEXT_PUBLIC_USE_FIREBASE_EMULATOR=1 the singletons point at the local Auth and
+// Firestore emulators (hosts from FIREBASE_AUTH_EMULATOR_HOST / FIRESTORE_EMULATOR_HOST, as `firebase emulators:exec` exports them)
+// and use the in-memory cache, because IndexedDB persistence does not exist under Node. Never set in production, `next dev` or `next build`.
+const useEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "1";
+
 if (hasConfig) {
   app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   authInstance = getAuth(app);
-  // persistentLocalCache (IndexedDB-backed) is what lets the Scout Form keep
-  // working — queuing writes locally — when venue Wi-Fi drops; multi-tab so
-  // a scout with two tabs open doesn't fight over the cache.
-  dbInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  });
+  if (useEmulator) {
+    connectAuthEmulator(authInstance, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST ?? "127.0.0.1:9099"}`, { disableWarnings: true });
+    dbInstance = initializeFirestore(app, { localCache: memoryLocalCache() });
+    const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080").split(":");
+    connectFirestoreEmulator(dbInstance, host, Number(port));
+  } else {
+    // persistentLocalCache (IndexedDB-backed) is what lets the Scout Form keep
+    // working — queuing writes locally — when venue Wi-Fi drops; multi-tab so
+    // a scout with two tabs open doesn't fight over the cache.
+    dbInstance = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  }
 }
 
 export const auth = authInstance as Auth;

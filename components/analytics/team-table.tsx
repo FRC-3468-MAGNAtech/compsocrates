@@ -78,6 +78,8 @@ export function TeamTable<T>({
     return { leftOffsets: offsets, totalWidth: columns.reduce((s, c) => s + c.width, 0) };
   }, [columns]);
 
+  // TanStack Virtual returns functions the React Compiler cannot memoize; the compiler skips this component, which is fine here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: sorted.length,
     getScrollElement: () => scrollRef.current,

@@ -63,8 +63,13 @@ async function resolveRef(handle: FormEntryHandle): Promise<{ id: string; ref: E
   if (hit) return { id: handle, ref: hit };
   // Not read in this session (a deep link, a stale tab): find the doc.
   for (const place of PROBE_ORDER) {
-    const snap = await getDoc(doc(db, place, handle));
-    if (!snap.exists()) continue;
+    // A doc that does not exist can answer "permission denied" instead of "missing" (the `formEntries` rule reads `resource.data.teamId`, which is
+    // null for a missing doc), so a stale id would surface as a rules error. A probe that cannot read the doc just means "not there".
+    const snap = await getDoc(doc(db, place, handle)).catch((error: { code?: string }) => {
+      if (error?.code === "permission-denied") return null;
+      throw error;
+    });
+    if (!snap || !snap.exists()) continue;
     const data = snap.data() as CsRecord;
     if (place === CS_LEAD_FALLBACK_COLLECTION && !isLeadFallbackDoc(data)) continue;
     const formType: FormEntryType = place === CUSTOM_COLLECTION ? ((data.formType as FormEntryType | undefined) ?? "custom") : csFormTypeForCollection(place);

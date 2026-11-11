@@ -82,6 +82,8 @@ export function AnalyticsDataTable({
     return { left, width, sticky };
   };
 
+  // TanStack Virtual returns functions the React Compiler cannot memoize; the compiler skips this component, which is fine here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollRef.current,
