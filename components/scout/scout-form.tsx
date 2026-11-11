@@ -31,7 +31,7 @@ import { SubmissionLockoutBanner } from "@/components/forms/submission-lockout";
 import type { SubmissionLockout } from "@/data/cs/types";
 import { springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { REBUILT_FORM } from "@/lib/forms/builtin";
 import { ConnectionChip } from "@/components/layout/connection-chip";
 import { connectionNotice } from "@/lib/connection-notice";
 import { calculateScore, type ScoreResult } from "@/lib/forms/scoring";
@@ -69,7 +69,7 @@ export type ScoutFormHandle = {
 };
 
 export type ScoutFormProps = {
-  /** The form to fill in (schema v2). Defaults to the BIOBUZZ built-in; the pages pass the season's active form. Remount (a `key`) when it changes. */
+  /** The form to fill in (schema v2). Defaults to the current game's built-in (REBUILT); the pages pass the chosen game's active form. Remount (a `key`) when it changes. */
   schema?: Form;
   mode: ScoutFormMode;
   /** Active event context — only used to look up matches/teams; omit for modes with no live event (e.g. a standalone practice session). */
@@ -344,7 +344,7 @@ function matchLabel(assigned: AssignedMatch) {
 
 export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function ScoutForm(
   {
-    schema = BIOBUZZ_FORM,
+    schema = REBUILT_FORM,
     mode,
     activeEvent = null,
     eventChoices = [],

@@ -24,48 +24,11 @@ import { str, stripUndefined } from "@/data/cs/util";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { MatchType } from "@/lib/events/types";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
-import { hasLegacyShape, legacyFieldsFromValues } from "@/lib/forms/legacy";
 import { storableScore, type ScoreResult } from "@/lib/forms/scoring";
 import { commentsFrom, joinNotes } from "@/lib/forms/values";
 import type { GameId } from "@/lib/games/types";
 
-export type ScoutEntryFields = {
-  autoLeave: boolean;
-  autoPark: boolean;
-  autoTipHive: number;
-  teleTipHive: number;
-  flowerBottomNectar: boolean;
-  flowerPollenNectar: number;
-  gardenPollenNectar: number;
-  endgamePark: boolean;
-  diedDuringMatch: boolean;
-  neverStartedMatch: boolean;
-  disabledByFtc: boolean;
-  recoveredFromFreeze: boolean;
-  tippedOver: boolean;
-  yellowCard: boolean;
-  redCard: boolean;
-};
-
-export const initialScoutEntryFields: ScoutEntryFields = {
-  autoLeave: false,
-  autoPark: false,
-  autoTipHive: 0,
-  teleTipHive: 0,
-  flowerBottomNectar: false,
-  flowerPollenNectar: 0,
-  gardenPollenNectar: 0,
-  endgamePark: false,
-  diedDuringMatch: false,
-  neverStartedMatch: false,
-  disabledByFtc: false,
-  recoveredFromFreeze: false,
-  tippedOver: false,
-  yellowCard: false,
-  redCard: false,
-};
-
-/** The three standard phase subtotals and the total; `byPhase` is only present when some other (custom) phase also scored (P21), so BIOBUZZ entries are unchanged. */
+/** The three standard phase subtotals and the total; `byPhase` is only present when some other (custom) phase also scored (P21), so ordinary entries are unchanged. */
 export type ScoreBreakdown = { auto: number; teleop: number; endgame: number; total: number; byPhase?: Record<string, number> };
 
 export type AccuracyStatus = "complete" | "needs-robots" | "awaiting-results" | "not-applicable";
@@ -119,12 +82,10 @@ export type ScoutEntry = {
   matchNumber: number;
   teamNumber: number;
   /**
-   * P21: the entry's values keyed by the form's field `key`: what every reader should use, through `entryValues()` (lib/forms/legacy.ts), which also
-   * reads pre-v2 entries. Absent on entries stored before schema v2.
+   * P21: the entry's values keyed by the form's field `key`: what every reader should use, through `entryValues()` (lib/forms/entry-values.ts), which
+   * applies the form's key aliases.
    */
   values?: FormValues;
-  /** Legacy: BIOBUZZ's typed fields object. Present on pre-v2 entries, and still written next to `values` for BIOBUZZ-lineage forms so a rollback or an old tab keeps working. Read through `entryValues()`, not directly. */
-  fields?: ScoutEntryFields;
   score: ScoreBreakdown;
   /** P21: present (as `false`) only on entries from a form with scoring off: they have no score, so accuracy and everything that depends on it is "n/a" for them. */
   scored?: false;
@@ -166,14 +127,13 @@ export type ScoutEntryLegacy = {
 };
 
 /**
- * P21: everything about an entry that comes from its form: which form and version, the keyed values, the (legacy-shaped) fields for BIOBUZZ
- * lineage forms, the score as it is stored, and the summary comment. Build it with `entryPayloadFor` so every writer stores the same shape.
+ * P21: everything about an entry that comes from its form: which form and version, the keyed values, the score as it is stored, and the summary
+ * comment. Build it with `entryPayloadFor` so every writer stores the same shape.
  */
 export type EntryPayload = {
   formId: string;
   formVersion: number;
   values: FormValues;
-  fields?: ScoutEntryFields;
   score: ScoreBreakdown;
   scored?: false;
   comments: string;
@@ -195,7 +155,6 @@ export function entryPayloadFor(form: Pick<Form, "id" | "version" | "sections" |
     formId: form.id,
     formVersion: form.version,
     values,
-    ...(hasLegacyShape(form) ? { fields: legacyFieldsFromValues(values) as ScoutEntryFields } : {}),
     score: storableScore(score),
     ...(form.scoringEnabled ? {} : { scored: false as const }),
     comments: derivedComments(form, values, extras.stickyNotes),
@@ -366,7 +325,11 @@ function mergeRows(primary: readonly RawRow[], extra: readonly RawRow[]): RawRow
 // Writes
 // ---------------------------------------------------------------------------------------------------------------------
 
-export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput): Promise<void> {
+/**
+ * The CS `scouting` document `saveEntry` writes for a new entry: pure (no Firestore), so each game's submission can be checked against the raw shape
+ * CS reads. Throws for a form CS cannot store (a game that is not submittable, or a form no game plugin owns): nothing should be written then.
+ */
+export function entryDocForSave(teamId: string, uid: string, input: SaveEntryInput, options: { now?: number } = {}): CsRecord {
   const { source = "event", mode = null, sessionId = null, libraryMatchId = null } = input;
   const draft: ScoutEntry = {
     id: "",
@@ -386,7 +349,7 @@ export async function saveEntry(teamId: string, uid: string, input: SaveEntryInp
     comments: input.comments,
     ...(input.stickyNotes && input.stickyNotes.length > 0 ? { stickyNotes: input.stickyNotes } : {}),
     alliance: null,
-    submittedAt: new Date().toISOString(),
+    submittedAt: new Date(options.now ?? Date.now()).toISOString(),
     excluded: false,
     autoFlags: [],
     manualFlags: [],
@@ -394,9 +357,12 @@ export async function saveEntry(teamId: string, uid: string, input: SaveEntryInp
     sessionId,
     libraryMatchId,
   };
-  // Throws for a form CS cannot store (a read-only game or a form no game plugin owns): nothing is written.
-  const data = scoutEntryToCsDoc(draft, undefined, { actorUid: uid });
-  await addDoc(collection(db, COLLECTION), stripUndefined(data));
+  return stripUndefined(scoutEntryToCsDoc(draft, undefined, { actorUid: uid, now: options.now }));
+}
+
+export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput): Promise<void> {
+  // Throws for a form CS cannot store: nothing is written.
+  await addDoc(collection(db, COLLECTION), entryDocForSave(teamId, uid, input));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

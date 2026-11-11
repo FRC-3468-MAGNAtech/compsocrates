@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
 import { createBlankForm } from "@/lib/forms/new-form";
 import { checkForm, parseForm, blockingIssues, FORM_LIMITS } from "@/lib/forms/validate";
 import { calculateScore, fieldPoints, maxScore, storableScore } from "@/lib/forms/scoring";
@@ -19,8 +19,8 @@ function formWith(fields: FormField[], over: Partial<Form> = {}): Form {
 const codes = (f: Form) => checkForm(f).map((i) => i.code);
 
 describe("schema v2: parseForm (structure)", () => {
-  it("accepts the BIOBUZZ built-in and a blank new form", () => {
-    expect(parseForm(BIOBUZZ_FORM).ok).toBe(true);
+  it("accepts the sample form and a blank new form", () => {
+    expect(parseForm(SAMPLE_FORM).ok).toBe(true);
     expect(parseForm(createBlankForm({ id: "x", name: "X", createdBy: "u" })).ok).toBe(true);
   });
 
@@ -28,10 +28,10 @@ describe("schema v2: parseForm (structure)", () => {
     const bad = formWith([field({ key: "a", type: "toggle" })]);
     (bad.sections[2].fields[0] as unknown as { type: string }).type = "hologram";
     expect(parseForm(bad).ok).toBe(false);
-    const extra = clone(BIOBUZZ_FORM) as unknown as Record<string, unknown>;
+    const extra = clone(SAMPLE_FORM) as unknown as Record<string, unknown>;
     extra.surprise = true;
     expect(parseForm(extra).ok).toBe(false);
-    const nested = clone(BIOBUZZ_FORM);
+    const nested = clone(SAMPLE_FORM);
     (nested.sections[0].fields[0] as unknown as Record<string, unknown>).evil = 1;
     expect(parseForm(nested).ok).toBe(false);
   });
@@ -55,13 +55,13 @@ describe("schema v2: parseForm (structure)", () => {
     const tooMany = formWith(Array.from({ length: FORM_LIMITS.fieldsPerSection + 1 }, (_, i) => field({ key: `k${i}`, type: "toggle" })));
     expect(parseForm(tooMany).ok).toBe(false);
     const sections = Array.from({ length: FORM_LIMITS.sections + 1 }, (_, i) => ({ id: `s${i}`, title: "S", phase: "misc", visible: true, fields: [] }));
-    expect(parseForm({ ...clone(BIOBUZZ_FORM), sections }).ok).toBe(false);
+    expect(parseForm({ ...clone(SAMPLE_FORM), sections }).ok).toBe(false);
     const options = Array.from({ length: FORM_LIMITS.options + 1 }, (_, i) => ({ value: `o${i}`, label: `O${i}` }));
     expect(parseForm(formWith([field({ key: "s", type: "select", options })])).ok).toBe(false);
   });
 
   it("reports readable paths for what is wrong", () => {
-    const r = parseForm({ ...clone(BIOBUZZ_FORM), name: "" });
+    const r = parseForm({ ...clone(SAMPLE_FORM), name: "" });
     expect(!r.ok && r.issues[0].path).toBe("name");
   });
 });
@@ -82,8 +82,8 @@ describe("schema v2: new forms", () => {
     expect(blockingIssues(checkForm({ ...blank, scoringEnabled: false }))).toEqual([]);
   });
 
-  it("BIOBUZZ has no errors and no warnings", () => {
-    expect(checkForm(BIOBUZZ_FORM)).toEqual([]);
+  it("The sample form has no errors and no warnings", () => {
+    expect(checkForm(SAMPLE_FORM)).toEqual([]);
   });
 });
 

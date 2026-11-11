@@ -23,8 +23,8 @@ declare global {
   }
 }
 
-// Twelve entries on BIOBUZZ, so changes that affect scores or data show the "affects N existing entries" confirmation.
-const USAGE: ReadonlyMap<string, FormUsage> = new Map([["biobuzz", { total: 12, byVersion: new Map([[1, 12]]), unversioned: 0 }]]);
+// Twelve entries on REBUILT (the default game), so changes that affect scores or data show the "affects N existing entries" confirmation.
+const USAGE: ReadonlyMap<string, FormUsage> = new Map([["rebuilt", { total: 12, byVersion: new Map([[1, 12]]), unversioned: 0 }]]);
 
 /** A small valid form for a seeded template: the five categories plus the fields given. */
 function seedForm(name: string, fields: string[]) {

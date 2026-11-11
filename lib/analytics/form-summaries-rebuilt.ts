@@ -3,8 +3,7 @@ import type { FormValue } from "@/lib/forms/types";
 
 // REBUILT summaries of the six non-match forms: what CS's analytics pages show for the same data (app/analytics/pit, lead, team-strategy, match-strategy,
 // drive-reflection, helper and the Capability Comparison of team-breakdown/[teamNumber]), read from the `values` keys of data/cs/form-field-keys.ts
-// (`robotWeight`, `fuelPreloadCapacity`, `robot1_teamNumber`, `robot2_endgameClimb`, `wasSuccessful`, ...). The BIOBUZZ module (form-summaries.ts) reads other
-// keys; which module a view uses is decided once, in lib/analytics/summary-flavor.ts. Pure: no React, no Firebase.
+// (`robotWeight`, `fuelPreloadCapacity`, `robot1_teamNumber`, `robot2_endgameClimb`, `wasSuccessful`, ...). Pure: no React, no Firebase.
 //
 // CS-shaped values worth knowing: team numbers and the three fuel scales are STRINGS ("254", "10-13", "x"); `skillLevel` is a number where 0 means "unset";
 // a disposition is a boolean (an old CSV import stored a string); a robot's `endgameClimb` is "" or "level-1" .. "level-3".

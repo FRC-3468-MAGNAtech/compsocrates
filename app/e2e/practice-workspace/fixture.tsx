@@ -9,7 +9,7 @@ import { ScoutForm, type ScoutFormHandle } from "@/components/scout/scout-form";
 import { ScoutingWorkspace } from "@/components/practice/scouting-workspace";
 import { VideoPlayer } from "@/components/video/video-player";
 import type { VideoPlayerHandle } from "@/components/video/types";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
 import type { StickyNote } from "@/lib/forms/types";
 import { joinNotes } from "@/lib/forms/values";
 import { calculateScore } from "@/lib/forms/scoring";
@@ -41,7 +41,7 @@ function Fixture() {
     const handle = form.current;
     if (!handle || !handle.validate()) return;
     const v = handle.getValues();
-    void calculateScore(BIOBUZZ_FORM, v.values);
+    void calculateScore(SAMPLE_FORM, v.values);
     saved.push({ team: ROBOTS[robot], comments: String(v.values.comments ?? ""), autoLeave: v.values.autoLeave === true });
     if (robot === ROBOTS.length - 1) return setDone(true);
     setRobot((r) => r + 1);
@@ -65,6 +65,7 @@ function Fixture() {
           <ScoutForm
             key={robot}
             ref={form}
+            schema={SAMPLE_FORM}
             mode="practice"
             layout="side-panel"
             hideMatchPicker

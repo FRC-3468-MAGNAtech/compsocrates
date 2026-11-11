@@ -1,53 +1,40 @@
-import { EVENT_CONFIG, type EventProgram } from "@/config/event";
+import { CURRENT_GAME_ID, GAME_DEFINITIONS, GAME_ID_LIST, seasonIdOfGame, type GameId } from "@/config/games";
 
 /**
- * One registry every season-select screen reads from — adding a season
- * later is adding one entry here, nothing else.
+ * One registry every season-select screen reads from, GENERATED from the game definitions (`config/games/*`): a game is a season. Adding a game
+ * is adding its config entry, nothing here. There is no "read-only" season: all three games (REBUILT, REEFSCAPE, CHARGED UP) are scouted, practiced
+ * and edited like each other.
  */
 export type Season = {
+  /** The id stored on library data and practice sessions: the game id lower-cased (`rebuilt`, `charged_up`). */
   id: string;
   name: string;
-  /** The FIRST API's own season year (e.g. 2026 for the 2026-27 season) — see docs/ASSUMPTIONS.md (P3) for how BIOBUZZ's was determined. */
+  /** The FIRST API's own season year (e.g. 2026 for the 2026-27 season). */
   apiSeason: number;
-  /** Matches a lib/scout-form/schema.ts registry key (P2). */
+  /** The id of the game's built-in match scouting form. */
   formId: string;
+  /** Whether new entries can be scouted for the season (the game definition's `submittable`). */
   enabled: boolean;
-  /** Which event program plays this game (config/event.ts). */
-  program: EventProgram;
-  /**
-   * A retired game kept so its old entries stay readable (docs/ROUTES.md D3: REEFSCAPE and CHARGED UP, as CS disabled their submit paths). Its form can
-   * be resolved by id for analytics and history but is never offered for a new entry: pickers read `getEnabledSeasons()`, which leaves it out. Only the
-   * analytics Game filter reads `getAnalyticsSeasons()`.
-   */
-  readOnly?: boolean;
+  /** The game this season plays. */
+  gameId: GameId;
 };
 
-export const SEASONS: Season[] = [
-  { id: "rebuilt", name: "REBUILT", apiSeason: 2026, formId: "rebuilt", enabled: true, program: "frc" },
-  { id: "reefscape", name: "REEFSCAPE", apiSeason: 2025, formId: "reefscape", enabled: true, program: "frc", readOnly: true },
-  { id: "charged_up", name: "CHARGED UP", apiSeason: 2023, formId: "charged_up", enabled: true, program: "frc", readOnly: true },
-  { id: "biobuzz", name: "BIOBUZZ", apiSeason: 2026, formId: "biobuzz", enabled: true, program: "ftc" },
-];
+export const SEASONS: Season[] = GAME_ID_LIST.map((gameId) => {
+  const def = GAME_DEFINITIONS[gameId];
+  return { id: seasonIdOfGame(gameId), name: def.label, apiSeason: def.year, formId: def.formId, enabled: def.submittable, gameId };
+});
 
-/** The season of the running program: REBUILT for FRC (the default), BIOBUZZ when `EVENT_PROGRAM=ftc`. */
-export function seasonIdForProgram(program: EventProgram): string {
-  return program === "ftc" ? "biobuzz" : "rebuilt";
-}
-
-export const DEFAULT_SEASON_ID = seasonIdForProgram(EVENT_CONFIG.program);
+/** The season new entries default to (REBUILT). */
+export const DEFAULT_SEASON_ID = seasonIdOfGame(CURRENT_GAME_ID);
 
 export function getSeason(id: string = DEFAULT_SEASON_ID): Season {
   return SEASONS.find((s) => s.id === id) ?? SEASONS.find((s) => s.id === DEFAULT_SEASON_ID) ?? SEASONS[0];
 }
 
-/** Seasons a new entry can be scouted for (practice, the match library, assignments). Read-only legacy games are not among them. */
+/** Seasons a new entry can be scouted for (the scout form, practice, the match library, assignments) and the analytics Game filter lists: the three games. */
 export function getEnabledSeasons(): Season[] {
-  return SEASONS.filter((s) => s.enabled && !s.readOnly);
-}
-
-/** Seasons whose entries can be viewed: every enabled one, legacy included. The analytics Game filter reads this. */
-export function getAnalyticsSeasons(): Season[] {
   return SEASONS.filter((s) => s.enabled);
 }
 
-export const isReadOnlySeason = (id: string): boolean => SEASONS.some((s) => s.id === id && s.readOnly === true);
+/** The season of a game. */
+export const seasonOfGame = (gameId: GameId): Season => getSeason(seasonIdOfGame(gameId));

@@ -10,7 +10,7 @@ import { springSnappy } from "@/lib/motion";
 import type { FieldOption } from "@/lib/forms/types";
 import { cn } from "@/lib/utils";
 
-// P21: the input controls for the field types BIOBUZZ doesn't use (number, select, radio, rating), in the same glass/bouncy style as the
+// P21: the input controls for the field types the plain toggle and counter tiles don't cover (number, select, radio, rating), in the same glass/bouncy style as the
 // toggle, counter and checkbox tiles.
 
 export function FieldLabel({ htmlFor, label, required, helpText, icon, tip, extra }: { htmlFor?: string; label: string; required?: boolean; helpText?: string; icon?: ReactNode; tip?: string; /** P27: beside the label (the plan-difference icon) */ extra?: ReactNode }) {

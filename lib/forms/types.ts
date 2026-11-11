@@ -1,6 +1,6 @@
 // P21: Form schema v2 — the complete, versioned, serializable definition of a scouting form. It drives everything:
 // the scout form UI, scoring, validation, Match Analytics columns, team stats, CSV export/import, practice scouting
-// and rescoring. Nothing outside the BIOBUZZ built-in (lib/forms/builtin.ts) names a game element.
+// and rescoring. Nothing outside the game definitions (config/games/*) names a game element.
 //
 // Types only; the zod validator is lib/forms/validate.ts, and `Form` here is exactly what that validator produces.
 
@@ -146,7 +146,7 @@ export type FieldAnalytics = {
  *  - reliability: a robot-failure incident (Team Breakdown's reliability pill is built from these).
  *  - neverStarted / died / disabled / recoveredFromFreeze: incidents the auto-flag rules reason about.
  *  - comments: the text field whose value is mirrored to the entry's summary comment (what Match Analytics and Team Profile show).
- * A field can carry several roles (BIOBUZZ's "Died During Match" is both a reliability incident and `died`).
+ * A field can carry several roles ("Died During Match" is both a reliability incident and `died`).
  */
 export const STAT_ROLES = ["primaryScoring", "reliability", "neverStarted", "died", "disabled", "recoveredFromFreeze", "comments"] as const;
 export type StatRole = (typeof STAT_ROLES)[number];
@@ -261,7 +261,7 @@ export type Form = {
   name: string;
   description: string;
   formType: FormType;
-  /** Season / game tags, free-form ("biobuzz", "2026"). */
+  /** Season / game tags, free-form ("rebuilt", "2026"). */
   tags: string[];
   version: number;
   status: FormStatus;

@@ -6,8 +6,8 @@ import { FormAnalyticsView } from "@/components/analytics/form-analytics-page";
 import { FORM_ANALYTICS_PAGES, formAnalyticsPage, selectFormEntries, type FormAnalyticsSlug } from "@/lib/analytics/form-analytics";
 import { AnalyticsFilterProvider } from "@/lib/analytics/filter-context";
 import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
-import { PitAndStrategyView } from "@/components/analytics/pit-and-strategy";
-import { teamPitStrategy } from "@/lib/analytics/form-summaries";
+import { RebuiltPitAndStrategyView } from "@/components/analytics/pit-and-strategy-rebuilt";
+import { teamRebuiltProfile } from "@/lib/analytics/form-summaries-rebuilt";
 import { BUILTIN_FORMS } from "@/lib/forms/builtin";
 
 declare global {
@@ -16,9 +16,6 @@ declare global {
     __saved?: NewFormEntry[];
   }
 }
-
-const svg = (color: string) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='160' height='120'><rect width='160' height='120' fill='${color}'/></svg>`)}`;
-const photo = (color: string) => ({ url: svg(color), pathname: `p/${color}.svg`, size: 1, contentType: "image/svg+xml" });
 
 let n = 0;
 const base = (formId: string, formType: FormEntry["formType"], over: Partial<FormEntry>): FormEntry => ({
@@ -40,32 +37,44 @@ const base = (formId: string, formType: FormEntry["formType"], over: Partial<For
   ...over,
 });
 
-const slotValues = (rows: [number, string, boolean][]) => Object.fromEntries(rows.flatMap(([team, role, auto], i) => [[`t${i + 1}_team`, team], [`t${i + 1}_role`, role], [`t${i + 1}_auto`, auto]]));
+/** An alliance form's per-robot values (`robot1_teamNumber` ...): the keys of data/cs/form-field-keys.ts. */
+type Robot = { team: number; start?: string; role?: string; auto?: boolean; climb?: string };
+const robotValues = (rows: Robot[]) =>
+  Object.fromEntries(
+    rows.flatMap((r, i) => [
+      [`robot${i + 1}_teamNumber`, String(r.team)],
+      [`robot${i + 1}_startingPosition`, r.start ?? "middle"],
+      [`robot${i + 1}_role`, r.role ?? "Offense"],
+      [`robot${i + 1}_autoClimb`, r.auto ?? false],
+      [`robot${i + 1}_endgameClimb`, r.climb ?? ""],
+    ])
+  );
+const leadRobots = (rows: [number, number, string?][]) => Object.fromEntries(rows.flatMap(([team, skill, notes], i) => [[`robot${i + 1}_teamNumber`, String(team)], [`robot${i + 1}_skillLevel`, skill], [`robot${i + 1}_notes`, notes ?? ""]]));
 
 function seed(): FormEntry[] {
   n = 0;
   return [
-    // Pit Scout: team 111 (two photos, a full grid, an auto cycle), team 222 twice (the later one wins), team 333 on a second event
-    base("pit-scout-v1", "pit-scout", { teamNumber: 111, createdAtMs: 5000, values: { weight: 24.5, weightUnit: "lb", rookie: true, photos: [photo("tomato"), photo("steelblue")], friendlyPit: true, capabilities: { leave_auto: true, hive_auto: true, hive_teleop: true, park_teleop: true }, capacity: 6, preloaded: 2, cycleTime: 12.5, autoCycle: ["leave", "hive", "garden", "hive", "park"] }, stickyNotes: [{ id: "a", text: "tall robot", color: "yellow", createdAt: 1 }] }),
-    base("pit-scout-v1", "pit-scout", { teamNumber: 222, scoutName: "Ben Franklin", createdAtMs: 1000, values: { weight: 20, weightUnit: "lb", cycleTime: 30 } }),
-    base("pit-scout-v1", "pit-scout", { teamNumber: 222, scoutName: "Ben Franklin", createdAtMs: 2000, values: { weight: 10, weightUnit: "kg", cycleTime: 18, autoCycle: ["leave", "park"] } }),
-    base("pit-scout-v1", "pit-scout", { teamNumber: 333, eventCode: "EVT2", createdAtMs: 3000, values: { weight: 15, weightUnit: "lb" } }),
+    // Pit Scout: team 111 (a picture, climbs, an auto cycle), team 222 twice (the later one wins), team 333 on a second event
+    base("pit-scout-v1", "pit-scout", { teamNumber: 111, createdAtMs: 5000, values: { robotWeight: "118 lbs", rookieTeam: true, robotPictureUrl: "https://example.com/robot-111.jpg", pitDisposition: true, driveDisposition: false, fuelPreloadCapacity: "8", fuelBallsPerSecond: "10-13", fuelCarryingCapacity: "x", climbLevel1: true, climbLevel2: true, climbLevel3: false, typicalFuelCycleTime: "12.5", typicalClimbTime: "4", autoCycleDescription: "Depot then shoot" }, stickyNotes: [{ id: "a", text: "tall robot", color: "yellow", createdAt: 1 }] }),
+    base("pit-scout-v1", "pit-scout", { teamNumber: 222, scoutName: "Ben Franklin", createdAtMs: 1000, values: { robotWeight: "60 lbs", typicalFuelCycleTime: "30" } }),
+    base("pit-scout-v1", "pit-scout", { teamNumber: 222, scoutName: "Ben Franklin", createdAtMs: 2000, values: { robotWeight: "55 lbs", typicalFuelCycleTime: "18", climbLevel3: true } }),
+    base("pit-scout-v1", "pit-scout", { teamNumber: 333, eventCode: "EVT2", createdAtMs: 3000, values: { robotWeight: "70 lbs" } }),
     // Lead Scout
-    base("lead-scout-v1", "lead-scout", { matchKey: "Q1", alliance: "red", values: { allianceNotes: "solid alliance", allianceSkill: 4, t1_team: 111, t1_skill: 5, t1_notes: "fast cycles", t2_team: 222, t2_skill: 3 } }),
-    base("lead-scout-v1", "lead-scout", { matchKey: "Q2", alliance: "blue", scoutName: "Ben Franklin", values: { allianceSkill: 2, t1_team: 111, t1_skill: 3, t2_team: 444, t2_skill: 1 } }),
+    base("lead-scout-v1", "lead-scout", { matchKey: "Q1", alliance: "red", values: { overallAlliance_notes: "solid alliance", overallAlliance_skillLevel: 4, ...leadRobots([[111, 5, "fast cycles"], [222, 3]]) } }),
+    base("lead-scout-v1", "lead-scout", { matchKey: "Q2", alliance: "blue", scoutName: "Ben Franklin", values: { overallAlliance_skillLevel: 2, ...leadRobots([[111, 3], [444, 1]]) } }),
     // Team Strategy
-    base("team-strategy-v1", "team-strategy", { teamNumber: 111, values: { bestAt: "hive", canScoreHive: true } }),
-    base("team-strategy-v1", "team-strategy", { teamNumber: 222, values: { bestAt: "defense", shootWhileMoving: true } }),
-    base("team-strategy-v1", "team-strategy", { teamNumber: 444, values: { bestAt: "defense" } }),
-    // Match Strategy and Drive Reflection
-    base("match-strategy-v1", "match-strategy", { matchKey: "Q1", alliance: "red", values: slotValues([[111, "hive", true], [222, "defense", false]]) }),
-    base("match-strategy-v1", "match-strategy", { matchKey: "Q2", alliance: "blue", values: slotValues([[111, "garden", false], [444, "flower", false]]) }),
-    base("drive-reflection-v1", "drive-reflection", { matchKey: "Q1", alliance: "red", planDifferences: 1, values: slotValues([[111, "hive", true], [222, "garden", false]]) }),
-    base("drive-reflection-v1", "drive-reflection", { matchKey: "Q2", alliance: "blue", planDifferences: 0, values: slotValues([[111, "garden", false], [444, "flower", false]]) }),
+    base("team-strategy-v1", "team-strategy", { teamNumber: 111, values: { preferredStartingPosition: "outpost-trench", bestAt: "shooting", clearsBump: true, canMoveAndShootSimultaneously: true } }),
+    base("team-strategy-v1", "team-strategy", { teamNumber: 222, values: { preferredStartingPosition: "middle", bestAt: "cycling", canShootWhileIntaking: true } }),
+    base("team-strategy-v1", "team-strategy", { teamNumber: 444, values: { preferredStartingPosition: "middle", bestAt: "cycling" } }),
+    // Match Strategy and Drive Reflection (Q1 red: team 222's endgame climb differed from the plan; Q2 blue went to plan)
+    base("match-strategy-v1", "match-strategy", { matchKey: "Q1", alliance: "red", values: robotValues([{ team: 111, auto: true, climb: "level-3" }, { team: 222, role: "Defense", climb: "level-3" }]) }),
+    base("match-strategy-v1", "match-strategy", { matchKey: "Q2", alliance: "blue", values: robotValues([{ team: 111 }, { team: 444, role: "Feeder" }]) }),
+    base("drive-reflection-v1", "drive-reflection", { matchKey: "Q1", alliance: "red", planDifferences: 1, values: robotValues([{ team: 111, auto: true, climb: "level-3" }, { team: 222, role: "cycler", climb: "level-2" }]) }),
+    base("drive-reflection-v1", "drive-reflection", { matchKey: "Q2", alliance: "blue", planDifferences: 0, values: robotValues([{ team: 111 }, { team: 444, role: "cycler" }]) }),
     // Helper
-    base("helper-v1", "helper", { teamNumber: 111, values: { successful: "yes", issues: "Loose intake belt" } }),
-    base("helper-v1", "helper", { teamNumber: 222, values: { successful: "no", issues: "Bad servo" } }),
-    base("helper-v1", "helper", { teamNumber: 333, scoutName: "Ben Franklin", values: { successful: "yes", issues: "Battery connector" } }),
+    base("helper-v1", "helper", { teamNumber: 111, values: { wasSuccessful: true, issueSolved: "Loose intake belt" } }),
+    base("helper-v1", "helper", { teamNumber: 222, values: { wasSuccessful: false, issueSolved: "Bad servo" } }),
+    base("helper-v1", "helper", { teamNumber: 333, scoutName: "Ben Franklin", values: { wasSuccessful: true, issueSolved: "Battery connector" } }),
   ];
 }
 
@@ -92,11 +101,11 @@ function Fixture() {
   const scope = useMemo(() => selectFormEntries(entries, page.formType, events, { includeExcluded: true }), [entries, page.formType, events]);
 
   if (profileTeam !== null) {
-    const info = teamPitStrategy(profileTeam, entries.filter((e) => !e.excluded));
+    const info = teamRebuiltProfile(profileTeam, entries.filter((e) => !e.excluded));
     return (
       <div className="mx-auto w-full min-w-0 max-w-[1100px] p-3">
         <AnalyticsFilterProvider>
-          {info.any ? <PitAndStrategyView teamNumber={profileTeam} info={info} pitForm={BUILTIN_FORMS["pit-scout-v1"]} strategyForm={BUILTIN_FORMS["team-strategy-v1"]} /> : <p data-testid="profile-hidden">hidden</p>}
+          {info.any ? <RebuiltPitAndStrategyView teamNumber={profileTeam} info={info} /> : <p data-testid="profile-hidden">hidden</p>}
         </AnalyticsFilterProvider>
       </div>
     );

@@ -3,7 +3,7 @@
 //   gradient  a Discord-style two/three-color gradient on the page, buttons, tabs and progress bars; light and dark
 //   flag      a pride flag's color sequence; ONE fixed token set, the light/dark choice does not apply
 //
-// Ids are stored in users/{uid}.themeId and localStorage, so existing ids ("team", "biobuzz") never change.
+// Ids are stored in users/{uid}.themeId and localStorage, so existing ids ("team", "compsocrates", ...) never change. A stored id that is no longer in the registry (a removed theme) falls back to the default theme: see `isThemeId` / `getTheme`.
 // To add a theme: add an entry here. The contrast guard (lib/theme-contrast.ts, run by the unit tests and by
 // `npm run build`) fails if any mode of it is illegible, and the picker, CSS and e2e test pick it up automatically.
 
@@ -18,7 +18,7 @@ export { hasModes, pageBackground, tokensFor } from "./theme-tokens";
 // Solid
 
 const solid: ThemeDefinition[] = [
-  // The two original themes keep their original dark surfaces exactly (the `surfaces` overrides below are the old CSS values).
+  // The original theme keeps its original dark surfaces exactly (the `surfaces` overrides below are the old CSS values).
   solidTheme({
     id: "team",
     name: "Team Colors",
@@ -42,31 +42,6 @@ const solid: ThemeDefinition[] = [
       },
     },
     light: { textOnAccent: "#fff7ed" },
-  }),
-  solidTheme({
-    id: "biobuzz",
-    name: "BIOBUZZ",
-    tagline: "Beehive amber & honeycomb",
-    primary: "#f5a300",
-    accent: "#ffd23f",
-    secondary: "#d97706",
-    glow: "#f5a300",
-    dark: {
-      textOnAccent: "#241902",
-      surfaces: {
-        background: "#16110a",
-        foreground: "#fbf1d9",
-        mutedForeground: "#cabb98",
-        blobs: ["#241902", "#140f08", "#2e2308"],
-        glassBg: "rgba(255, 226, 150, 0.06)",
-        glassBgStrong: "rgba(255, 226, 150, 0.1)",
-        glassBorder: "rgba(255, 214, 120, 0.16)",
-        overlayColor: "#16110a",
-        overlayBorder: "rgba(255, 214, 120, 0.22)",
-      },
-    },
-    // Amber is too light to carry white text, so the light mode deepens it to a honey brown that can.
-    light: { primary: "#b45309", accent: "#d97706", secondary: "#92400e", glow: "#d97706" },
   }),
   // Recreation of CompSocrates's own palette (CS `light-compsocrates` / `dark-compsocrates`: primary #c42221, accent #8b1818,
   // dark page #0f1117 on surface #171a22). Added next to the CE themes, not instead of them (docs/ROUTES.md D9).

@@ -321,8 +321,9 @@ export function convertPitScale(value: number, kind: ScaleKind): number {
 export const rebuiltPlugin: FullGamePlugin = {
   id: "REBUILT",
   label: C.label,
-  season: C.season,
+  season: C.year,
   formId: C.formId,
+  submittable: C.submittable,
   matches: (doc) => normalizeGameName(doc.game) === C.id,
   docToValues,
   valuesToDoc: buildDoc,

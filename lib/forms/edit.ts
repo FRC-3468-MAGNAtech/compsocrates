@@ -457,7 +457,7 @@ export function moveGroupBy(form: Form, sectionId: string, groupId: string, delt
   });
 }
 
-// --- cloning (Insert from BIOBUZZ, duplicate section) ------------------------------------------------------------
+// --- cloning (Insert from the current game, duplicate section) ------------------------------------------------------------
 
 /**
  * Copies fields with fresh ids and keys that are unique in `form` (and among themselves). A condition that points at another copied
@@ -500,7 +500,7 @@ export function cloneFields(
 export type SourceRef = { kind: "section"; sectionId: string } | { kind: "group"; sectionId: string; groupId: string } | { kind: "field"; fieldId: string };
 
 /**
- * "Insert from BIOBUZZ" (or any other form): clones a category, a group, or one field, with its point values, into `form`.
+ * "Insert from <game>" (or any other form): clones a category, a group, or one field, with its point values, into `form`.
  * A category becomes a new category at the end; a group becomes a new group in `targetSectionId`; a field is added to `targetSectionId`.
  */
 export function insertFromForm(form: Form, source: Form, ref: SourceRef, targetSectionId?: string, rand?: () => number): { form: Form; id: string | null } {

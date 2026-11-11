@@ -32,7 +32,7 @@ test.describe("Pit Scout Form", () => {
     await expect(grid.locator("td[data-cell='leave_teleop']")).toHaveAttribute("data-disabled", "true");
     await expect(grid.getByRole("checkbox", { name: "Leave, Autonomous" })).toBeVisible();
     await expect(grid.getByRole("checkbox", { name: "Leave, Teleop/Endgame" })).toHaveCount(0);
-    for (const row of ["Park", "Score into Hive", "Score into Garden", "Score into Flower"]) {
+    for (const row of ["Park", "Score A Piece", "Collect From The Station", "Assist A Partner"]) {
       await expect(grid.getByRole("checkbox", { name: `${row}, Autonomous` })).toBeVisible();
       await expect(grid.getByRole("checkbox", { name: `${row}, Teleop/Endgame` })).toBeVisible();
     }
@@ -56,21 +56,21 @@ test.describe("Pit Scout Form", () => {
   test("the auto cycle outliner: Leave first, Park last, the rest repeat and move; saved with a text summary", async ({ page }) => {
     await open(page, "form=pit");
     const seq = page.getByTestId("sequence-field");
-    await seq.getByTestId("seq-add-hive").click();
+    await seq.getByTestId("seq-add-score").click();
     await seq.getByTestId("seq-add-park").click();
     await seq.getByTestId("seq-add-leave").click(); // added last, goes first
-    await seq.getByTestId("seq-add-garden").click();
-    await seq.getByTestId("seq-add-hive").click(); // hive can repeat
-    await expect(seq.getByTestId("seq-summary")).toHaveText("Leave → Hive → Garden → Hive → Park");
+    await seq.getByTestId("seq-add-collect").click();
+    await seq.getByTestId("seq-add-score").click(); // scoring can repeat
+    await expect(seq.getByTestId("seq-summary")).toHaveText("Leave → Score → Collect → Score → Park");
     await expect(seq.getByTestId("seq-add-leave")).toBeDisabled();
     await expect(seq.getByTestId("seq-add-park")).toBeDisabled();
     await seq.getByRole("button", { name: /Move Grab Pollen\/Nectar From Garden \(step 3\) earlier/ }).click();
-    await expect(seq.getByTestId("seq-summary")).toHaveText("Leave → Garden → Hive → Hive → Park");
+    await expect(seq.getByTestId("seq-summary")).toHaveText("Leave → Collect → Score → Score → Park");
     await expect(seq.getByTestId("seq-chip-0").getByRole("button", { name: /later/ })).toHaveCount(0); // Leave is pinned
     await pickTeam(page, 222);
     await page.getByTestId("submit-form").click();
     const [entry] = await saved(page);
-    expect(entry.values.autoCycle).toEqual(["leave", "garden", "hive", "hive", "park"]);
+    expect(entry.values.autoCycle).toEqual(["leave", "collect", "score", "score", "park"]);
   });
 
   test("weight and unit are stored together: lb by default, kg when toggled", async ({ page }) => {
@@ -129,10 +129,10 @@ test.describe("Team Strategy Form", () => {
     await open(page, "form=strategy");
     await pickTeam(page, 222);
     await page.getByRole("combobox", { name: /Best at/ }).click();
-    await expect(page.getByRole("option", { name: "Gathering" })).toBeVisible();
-    expect(await page.getByRole("listbox").getByRole("option").allTextContents()).toEqual(["Hive", "Flower", "Garden", "Gathering", "Defense"]);
+    await expect(page.getByRole("option", { name: "Collecting" })).toBeVisible();
+    expect(await page.getByRole("listbox").getByRole("option").allTextContents()).toEqual(["Scoring", "Collecting", "Assisting", "Defense"]);
     await page.getByRole("option", { name: "Defense" }).click();
-    for (const label of ["Can score in Hive", "Can score in Flower", "Shoot while intaking", "Shoot while moving"]) await expect(page.getByRole("checkbox", { name: label })).toBeVisible();
+    for (const label of ["Can score", "Can collect", "Shoot while intaking", "Shoot while moving"]) await expect(page.getByRole("checkbox", { name: label })).toBeVisible();
     await page.getByRole("checkbox", { name: "Shoot while moving" }).click();
     await page.getByTestId("notes-tab").click();
     await page.getByTestId("note-add").click();
@@ -141,7 +141,7 @@ test.describe("Team Strategy Form", () => {
     await page.getByTestId("submit-form").click();
     const [entry] = await saved(page);
     expect(entry).toMatchObject({ formType: "team-strategy", teamNumber: 222 });
-    expect(entry.values).toMatchObject({ bestAt: "defense", shootWhileMoving: true, canScoreHive: false });
+    expect(entry.values).toMatchObject({ bestAt: "defense", shootWhileMoving: true, canScore: false });
     expect(entry.stickyNotes.map((n) => n.text)).toEqual(["great driver"]);
   });
 
@@ -200,18 +200,18 @@ test.describe("one entry per team: edit previous or submit another", () => {
     await pickTeam(page, 222);
     await page.getByTestId("edit-previous").click();
     await expect(page.getByTestId("editing-banner")).toContainText("Editing your earlier entry for team 222");
-    await expect(page.getByRole("combobox", { name: /Best at/ })).toContainText("Hive");
+    await expect(page.getByRole("combobox", { name: /Best at/ })).toContainText("Scoring");
     await page.getByTestId("notes-tab").click();
     await expect(page.getByRole("textbox", { name: "Note" }).first()).toHaveValue("earlier note");
     if (isMobile) await page.getByTestId("notes-close").click();
-    await page.getByRole("checkbox", { name: "Can score in Hive" }).click();
+    await page.getByRole("checkbox", { name: "Can score", exact: true }).click();
     await expect(page.getByTestId("submit-form")).toHaveText(/Save changes/);
     await page.getByTestId("submit-form").click();
     await expect(page.getByTestId("submit-success")).toBeVisible();
     expect(await saved(page)).toEqual([]);
     const [edit] = await updated(page);
     expect(edit.id).toBe("mine-1");
-    expect(edit.values).toMatchObject({ bestAt: "hive", canScoreHive: true });
+    expect(edit.values).toMatchObject({ bestAt: "scoring", canScore: true });
     expect(edit.stickyNotes.map((n) => n.text)).toEqual(["earlier note"]);
     await expect(page.getByTestId("editing-banner")).toHaveCount(0); // back to a clean form
   });

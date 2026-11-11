@@ -26,10 +26,11 @@ import {
 import { BEST_AT_OPTIONS, STARTING_POSITIONS } from "@/data/cs/form-field-keys";
 import type { FormEntry } from "@/lib/form-entries-model";
 import type { Form } from "@/lib/forms/types";
+import { EventName } from "@/components/events/event-name";
 import { cn } from "@/lib/utils";
 
 // The REBUILT summary view of the six form Analytics pages: what CS's pages show for the same data, boiled down per team or per match. Reads the entries' stored values
-// through lib/analytics/form-summaries-rebuilt.ts. The BIOBUZZ view is form-summaries-view.tsx; FormSummaryView picks between them from the page's form id.
+// through lib/analytics/form-summaries-rebuilt.ts.
 
 type Props = { page: FormAnalyticsPage; form: Form; entries: FormEntry[]; allEntries: FormEntry[]; teamNames: ReadonlyMap<number, string>; hideNames: boolean };
 
@@ -154,7 +155,7 @@ function PitCard({ row, names, older }: { row: PitRebuiltRow; names: ReadonlyMap
         <span className="text-sm text-[var(--muted-foreground)]">{names.get(row.teamNumber) ?? ""}</span>
         {row.rookie === true && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-300">Rookie</span>}
         <span className="ml-auto text-[11px] text-[var(--muted-foreground)]">
-          {row.eventCode}
+          <EventName eventKey={row.eventCode} />
           {row.entryCount > 1 ? ` · ${row.entryCount} entries` : ""}
         </span>
       </div>
@@ -431,7 +432,7 @@ function HelperSummary({ entries, teamNames, hideNames }: Props) {
               {typeof e.teamNumber === "number" ? <TeamChip team={e.teamNumber} names={teamNames} /> : <span>—</span>}
               <span className="min-w-0 flex-1 text-xs">{helperIssue(e)}</span>
               <span className={helperWasSuccessful(e) ? "text-xs text-emerald-300" : "text-xs text-amber-300"}>{helperWasSuccessful(e) ? "Solved" : "Not solved"}</span>
-              <span className="text-[11px] text-[var(--muted-foreground)]">{e.eventCode}</span>
+              <span className="text-[11px] text-[var(--muted-foreground)]"><EventName eventKey={e.eventCode} /></span>
             </li>
           ))}
         </ul>

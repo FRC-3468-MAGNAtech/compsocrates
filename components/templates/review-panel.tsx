@@ -15,7 +15,7 @@ import type { FormTemplate, TemplateContent } from "@/lib/templates/build";
 
 // P23: Admin Panel > Template Review (platform owners only). The moderation queue: templates waiting for a first review, updates to public templates
 // waiting for review (the approved version stays live until then), reported templates, and every public template (take down, mark official), plus
-// "Seed official templates" (publishes the BIOBUZZ and Blank templates, or adds a version when they changed). Every decision is made by the server (the
+// "Seed official templates" (publishes the official game and Blank templates, or adds a version when they changed). Every decision is made by the server (the
 // rules refuse them from a browser) and logged in the platform log and the author's audit log; the author is emailed.
 
 type Act = { kind: "preview" | "reject" | "takedown" | "review-update"; t: FormTemplate } | null;

@@ -62,7 +62,7 @@ export function FormPage({
   const teamId = profile?.teamId ?? null;
   const forms = useForms();
   const lockout = useSubmissionLockout(teamId);
-  // CS rebuild: the page names the REBUILT form; the running program's season decides which set is used (REBUILT, or BIOBUZZ under EVENT_PROGRAM=ftc)
+  // CS rebuild: the page names the REBUILT form; the non-match forms exist for REBUILT only, so the page resolves to that set
   const formId = seasonFormId(pageFormId);
   const form = forms.latest(formId) ?? getBuiltinForm(formId);
   const { events, primaryCode, loaded } = useActiveEvents();

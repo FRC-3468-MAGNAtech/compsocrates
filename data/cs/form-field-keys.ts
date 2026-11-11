@@ -1,8 +1,7 @@
 /**
  * The value keys each CS form needs (docs/ROUTES.md D1). Pure typed data: no imports, no React, no Firebase.
  *
- * WHY THIS FILE EXISTS. CE's built-in pit / team / lead / helper forms describe BIOBUZZ. A later task authors REBUILT versions
- * of them in `lib/forms/`. For those forms to persist into CS's six collections through `data/cs/forms.ts`, their field `key`s
+ * WHY THIS FILE EXISTS. The built-in pit / team / lead / helper forms (`lib/forms/builtin-rebuilt-forms.ts`) are REBUILT's. For those forms to persist into CS's six collections through `data/cs/forms.ts`, their field `key`s
  * must be exactly the keys listed here. This table is also what the converters in `data/cs/forms.ts` run on, so a key listed
  * here is stored, and a key that is not listed is NOT stored (the converter drops it and the form silently loses the answer).
  *

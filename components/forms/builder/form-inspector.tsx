@@ -39,7 +39,7 @@ export function FormInspector() {
             setDraft({ forTags: list.join(","), value: v });
             update((f) => ({ ...f, tags: list }), "form:tags");
           }}
-          hint={`Comma-separated, up to ${FORM_LIMITS.tags}. Tag a form with a season id (e.g. biobuzz) and its entries count in that season's analytics.`}
+          hint={`Comma-separated, up to ${FORM_LIMITS.tags}. Tag a form with a season id (e.g. rebuilt) and its entries count in that season's analytics.`}
         />
       </Group>
 

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { BRAND } from "../config/brand";
 
 // P23: form templates in a real browser, on the fixture page (/e2e/form-builder): the real Forms tab, template library and Template Review panel on
 // in-memory stores, no Firebase login. The viewer is the owner of account "t1" ("Ada's team"); with ?role=platform they are also the platform owner.
@@ -21,23 +22,23 @@ async function openLibrary(page: Page, tab: "public" | "mine" = "public") {
 }
 
 const ids = (page: Page) => library(page).locator("[data-template-card]").evaluateAll((els) => els.map((e) => e.getAttribute("data-template-card")));
-// P28 added three official templates (Lead Scout, Match Strategy, Drive Reflection); the older orderings are checked without them
-const NEW_OFFICIAL = ["official-lead-scout", "official-match-strategy", "official-drive-reflection", "official-pit-scout", "official-team-strategy", "official-helper"];
+// The official templates besides REBUILT's match scout and the blank starter: the other two games' match scouts (REEFSCAPE, CHARGED UP) and the six non-match forms; the older orderings are checked without them
+const NEW_OFFICIAL = ["official-reefscape", "official-charged-up", "official-lead-scout", "official-match-strategy", "official-drive-reflection", "official-pit-scout", "official-team-strategy", "official-helper"];
 const olderIds = async (page: Page) => (await ids(page)).filter((id) => !NEW_OFFICIAL.includes(id ?? ""));
 
 test.describe("template library", () => {
   test("lists public templates with their facts and an Official badge, and never anyone's private ones", async ({ page }) => {
     await open(page);
     await openLibrary(page);
-    expect(new Set(await ids(page))).toEqual(new Set(["official-biobuzz", "official-blank", ...NEW_OFFICIAL, "pub-pit", "pub-drive", "pub-reported", "mine-public"]));
-    const official = card(page, "official-biobuzz");
-    await expect(official).toContainText("BIOBUZZ Match Scout");
+    expect(new Set(await ids(page))).toEqual(new Set(["official-rebuilt", "official-blank", ...NEW_OFFICIAL, "pub-pit", "pub-drive", "pub-reported", "mine-public"]));
+    const official = card(page, "official-rebuilt");
+    await expect(official).toContainText("REBUILT Match Scout");
     await expect(official).toContainText("Official");
-    await expect(official).toContainText("CompEpicurus");
+    await expect(official).toContainText(BRAND.name);
     await expect(official).toContainText("v1");
     await expect(official).toContainText("7 uses");
     await expect(official).toContainText(/\d+ categories, \d+ fields/);
-    await expect(official).toContainText("biobuzz");
+    await expect(official).toContainText("rebuilt");
     // not the ones that are private, rejected or waiting
     for (const id of ["mine-private", "mine-rejected", "wait-1"]) await expect(card(page, id)).toHaveCount(0);
     await expect(card(page, "official-blank")).toContainText("Blank (standard phases)");
@@ -47,10 +48,10 @@ test.describe("template library", () => {
     await open(page);
     await openLibrary(page);
     // newest first by default
-    expect(await olderIds(page)).toEqual(["pub-pit", "pub-drive", "official-biobuzz", "official-blank", "pub-reported", "mine-public"]);
+    expect(await olderIds(page)).toEqual(["pub-pit", "pub-drive", "official-rebuilt", "official-blank", "pub-reported", "mine-public"]);
     await page.getByLabel("Sort by").click();
     await page.getByRole("option", { name: "Most used" }).click();
-    expect(await olderIds(page)).toEqual(["pub-pit", "official-biobuzz", "official-blank", "pub-drive", "mine-public", "pub-reported"]);
+    expect(await olderIds(page)).toEqual(["pub-pit", "official-rebuilt", "official-blank", "pub-drive", "mine-public", "pub-reported"]);
     await page.getByLabel("Sort by").click();
     await page.getByRole("option", { name: "Newest" }).click();
     expect((await ids(page))[0]).toBe("pub-pit");
@@ -72,13 +73,13 @@ test.describe("template library", () => {
   test("previews the real form with a test fill that never saves", async ({ page }) => {
     await open(page);
     await openLibrary(page);
-    await page.getByRole("button", { name: "Preview BIOBUZZ Match Scout" }).click();
+    await page.getByRole("button", { name: "Preview REBUILT Match Scout" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("Nothing you enter is saved");
     const preview = dialog.getByTestId("live-preview");
-    await expect(preview.getByRole("switch", { name: /Leave/i }).first()).toBeVisible();
+    await expect(preview.getByRole("switch", { name: /Successful Climb/i }).first()).toBeVisible();
     await expect(page.getByTestId("preview-score")).toContainText("0");
-    await preview.getByRole("switch", { name: /Leave/i }).first().click();
+    await preview.getByRole("switch", { name: /Successful Climb/i }).first().click();
     await expect(page.getByTestId("preview-score")).not.toContainText(/Test score\s*0\b/);
     expect(await audit(page)).toEqual([]);
   });
@@ -114,7 +115,7 @@ test.describe("template library", () => {
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export Pit scouting as JSON" }).click()]);
     expect(download.suggestedFilename()).toBe("pit-scouting.form.json");
     const json = JSON.parse(readFileSync((await download.path())!, "utf8"));
-    expect(json).toMatchObject({ format: "compepicurus-form", formatVersion: 1 });
+    expect(json).toMatchObject({ format: BRAND.exportFormat, formatVersion: 1 });
     expect(json.checksum).toMatch(/^[0-9a-f]{16}$/);
     expect(json.form.name).toBe("Pit scouting");
   });
@@ -145,14 +146,14 @@ test.describe("my templates", () => {
 
   test("saves a form as a private template, edits its details, updates it from a form (a new version) and deletes it", async ({ page }) => {
     await open(page);
-    await page.getByRole("button", { name: "Save BIOBUZZ as a template" }).click();
+    await page.getByRole("button", { name: "Save REBUILT as a template" }).click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByLabel("Name")).toHaveValue("BIOBUZZ");
-    await dialog.getByLabel("Name").fill("Our BIOBUZZ");
-    await dialog.getByLabel("Tags").fill("biobuzz, <b>2026</b>");
+    await expect(dialog.getByLabel("Name")).toHaveValue("REBUILT");
+    await dialog.getByLabel("Name").fill("Our REBUILT");
+    await dialog.getByLabel("Tags").fill("rebuilt, <b>2026</b>");
     await dialog.getByRole("button", { name: "Save template" }).click();
     await expect(library(page)).toBeVisible(); // switched to My templates
-    const saved = library(page).locator("[data-template-card]", { hasText: "Our BIOBUZZ" });
+    const saved = library(page).locator("[data-template-card]", { hasText: "Our REBUILT" });
     await expect(saved).toContainText("Private");
     await expect(saved).toContainText("v1");
     await expect(saved).toContainText("2026"); // the <b> tags were stripped
@@ -170,7 +171,7 @@ test.describe("my templates", () => {
     // a different form makes version 2
     await saved.getByRole("button", { name: /Delete/ }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-    await expect(library(page).locator("[data-template-card]", { hasText: "Our BIOBUZZ" })).toHaveCount(0);
+    await expect(library(page).locator("[data-template-card]", { hasText: "Our REBUILT" })).toHaveCount(0);
     expect((await audit(page)).map((a) => a.action)).toContain("delete-form-template");
   });
 
@@ -180,7 +181,7 @@ test.describe("my templates", () => {
     await expect(card(page, "mine-private")).toContainText("v1");
     await card(page, "mine-private").getByRole("button", { name: /Update from a form/ }).click();
     await expect(page.getByRole("dialog")).toContainText("Creates a new version of this private template");
-    await page.getByRole("dialog").getByRole("button", { name: "Save as version 2" }).click(); // the first form listed is BIOBUZZ: different content
+    await page.getByRole("dialog").getByRole("button", { name: "Save as version 2" }).click(); // the first form listed is REBUILT: different content
     await expect(card(page, "mine-private")).toContainText("v2");
     await expect(card(page, "mine-private")).toContainText("Our pit form"); // the name is kept
     await card(page, "mine-private").getByRole("button", { name: /Update from a form/ }).click();
@@ -281,7 +282,7 @@ test.describe("template review (platform owner)", () => {
 
     // seeding the official templates when they exist and haven't changed
     await review.getByRole("button", { name: "Seed official templates" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "biobuzz unchanged" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "rebuilt unchanged" })).toBeVisible();
 
     const actions = (await audit(page)).map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["reject-template", "approve-template", "takedown-template", "seed-official-templates"]));
@@ -298,7 +299,7 @@ test.describe("template review (platform owner)", () => {
     await expect(page.locator('[data-form-card="our-public-form"]')).toContainText("From template");
     await expect(page.locator('[data-form-card="our-public-form"]')).not.toContainText("Update available");
 
-    // send a new version (from BIOBUZZ, so it differs): it waits, version 1 stays live
+    // send a new version (from REBUILT, so it differs): it waits, version 1 stays live
     await openLibrary(page, "mine");
     await card(page, "mine-public").getByRole("button", { name: "Send an update to Our public form" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Send for review" }).click();
@@ -331,8 +332,8 @@ test.describe("template review (platform owner)", () => {
 });
 
 test.describe("JSON import preview", () => {
-  async function exportBiobuzz(page: Page) {
-    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export BIOBUZZ as JSON" }).click()]);
+  async function exportRebuilt(page: Page) {
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export REBUILT as JSON" }).click()]);
     return JSON.parse(readFileSync((await download.path())!, "utf8"));
   }
   async function startImport(page: Page, json: unknown) {
@@ -345,22 +346,22 @@ test.describe("JSON import preview", () => {
 
   test("previews what will be created before anything is, then creates the draft", async ({ page }) => {
     await open(page);
-    const json = await exportBiobuzz(page);
+    const json = await exportRebuilt(page);
     const preview = await startImport(page, json);
     await expect(preview).toHaveAttribute("data-state", "ok");
     await expect(preview).toContainText("This will create one draft form");
-    await expect(preview).toContainText("BIOBUZZ");
+    await expect(preview).toContainText("REBUILT");
     await expect(preview.getByRole("list", { name: "Categories to create" })).toContainText("Autonomous");
     await expect(preview).toContainText("scoring field");
     expect(await audit(page)).toEqual([]); // nothing was created yet
     await page.getByRole("dialog").getByRole("button", { name: "Create form" }).click();
-    await expect(page.getByTestId("builder-title")).toHaveText("BIOBUZZ");
+    await expect(page.getByTestId("builder-title")).toHaveText("REBUILT");
     expect((await audit(page)).map((a) => a.action)).toContain("create-form");
   });
 
   test("strips HTML and warns about a checksum that doesn't match", async ({ page }) => {
     await open(page);
-    const json = await exportBiobuzz(page);
+    const json = await exportRebuilt(page);
     json.form.description = "The <b>2026</b> season form";
     const preview = await startImport(page, json);
     await expect(preview).toHaveAttribute("data-state", "ok");
@@ -370,7 +371,7 @@ test.describe("JSON import preview", () => {
 
   test("refuses unknown field types, links that aren't https and malformed files, with clear errors", async ({ page }) => {
     await open(page);
-    const json = await exportBiobuzz(page);
+    const json = await exportRebuilt(page);
     const userField = (j: typeof json) => j.form.sections.flatMap((s: { fields: { type: string; tip?: string }[] }) => s.fields).find((f: { type: string }) => !["matchPicker", "scoutName", "teamPicker"].includes(f.type));
     const bad = structuredClone(json);
     userField(bad).type = "hologram";
@@ -397,7 +398,7 @@ test.describe("JSON import preview", () => {
 
   test("duplicate keys are refused, and can be fixed automatically with a note of what changed", async ({ page }) => {
     await open(page);
-    const json = await exportBiobuzz(page);
+    const json = await exportRebuilt(page);
     const fields = json.form.sections.flatMap((s: { fields: { key: string }[] }) => s.fields);
     const [a, b] = fields.filter((f: { key: string }) => !["match", "scoutName", "teamNumber"].includes(f.key));
     b.key = a.key;
@@ -422,7 +423,7 @@ test.describe("phone", () => {
   test("the library fits the screen and a template can be used", async ({ page }) => {
     await open(page);
     await openLibrary(page);
-    await expect(card(page, "official-biobuzz")).toBeVisible();
+    await expect(card(page, "official-rebuilt")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     await page.getByRole("button", { name: "Use template Pit scouting" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Create draft form" }).click();

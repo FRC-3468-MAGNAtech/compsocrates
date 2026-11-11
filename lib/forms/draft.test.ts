@@ -60,7 +60,7 @@ describe("saving and loading", () => {
     saveDraft(s, who, { match: { type: "Qualification", match: { matchNumber: 13 } }, teamNumber: 1678, values: { ...progress(), notes: "second" } }, "Qualification-13", NOW + 5);
     expect(loadLastDraft(s, "u1", "rebuilt", NOW + 10)).toMatchObject({ teamNumber: 1678, values: { notes: "second" } });
     expect(loadLastDraft(s, "u2", "rebuilt", NOW)).toBeNull();
-    expect(loadLastDraft(s, "u1", "biobuzz", NOW)).toBeNull();
+    expect(loadLastDraft(s, "u1", "reefscape", NOW)).toBeNull();
   });
 
   it("ignores and removes an expired draft", () => {
@@ -76,7 +76,7 @@ describe("saving and loading", () => {
     expect(parseDraft("{not json", "rebuilt", NOW)).toBeNull();
     expect(parseDraft(null, "rebuilt", NOW)).toBeNull();
     expect(parseDraft(JSON.stringify({ v: 2, savedAt: NOW, formId: "rebuilt", values: {} }), "rebuilt", NOW)).toBeNull();
-    expect(parseDraft(JSON.stringify({ v: 1, savedAt: NOW, formId: "biobuzz", values: {} }), "rebuilt", NOW)).toBeNull();
+    expect(parseDraft(JSON.stringify({ v: 1, savedAt: NOW, formId: "reefscape", values: {} }), "rebuilt", NOW)).toBeNull();
     expect(parseDraft(JSON.stringify({ v: 1, savedAt: NOW, formId: "rebuilt", values: [] }), "rebuilt", NOW)).toBeNull();
     expect(parseDraft(JSON.stringify({ v: 1, savedAt: "x", formId: "rebuilt", values: {} }), "rebuilt", NOW)).toBeNull();
     expect(parseDraft(JSON.stringify({ v: 1, savedAt: NOW, formId: "rebuilt", values: {}, teamNumber: -4 }), "rebuilt", NOW)?.teamNumber).toBeNull();

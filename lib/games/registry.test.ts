@@ -3,7 +3,7 @@ import { GAME_IDS, gameForDoc, gameIdForDoc, getGamePlugin, isGameId, listGamePl
 import { calculateMatchAccuracyFromTotals, calculateScoutAccuracy, buildVerificationAccuracy, scoreStdDev } from "@/lib/games/accuracy";
 import { calculateScoutAccuracy as csCalc, calculateMatchAccuracyFromTotals as csMatch } from "@/lib/games/cs-oracle/scoutAccuracy";
 import { buildVerificationAccuracy as csBuild } from "@/lib/games/cs-oracle/scoutVerification";
-import { GAME_CONFIGS } from "@/config/games";
+import { DEFAULT_GAME_ID, GAME_CONFIGS, GAME_DEFINITIONS, GAME_ID_LIST } from "@/config/games";
 
 describe("registry", () => {
   it("lists the three games, each retrievable by id", () => {
@@ -17,13 +17,25 @@ describe("registry", () => {
     expect(isGameId("FOO")).toBe(false);
   });
 
-  it("only REBUILT is submittable (D3)", () => {
+  it("every game is submittable, with a form id and a writable valuesToDoc (D3, superseded)", () => {
     expect(getGamePlugin("REBUILT").formId).toBe("rebuilt");
-    expect(getGamePlugin("REEFSCAPE").formId).toBeNull();
-    expect(getGamePlugin("CHARGED_UP").formId).toBeNull();
-    expect(getGamePlugin("REBUILT").valuesToDoc({})).not.toBeNull();
-    expect(getGamePlugin("REEFSCAPE").valuesToDoc({})).toBeNull();
-    expect(getGamePlugin("CHARGED_UP").valuesToDoc({})).toBeNull();
+    expect(getGamePlugin("REEFSCAPE").formId).toBe("reefscape");
+    expect(getGamePlugin("CHARGED_UP").formId).toBe("charged_up");
+    for (const plugin of listGamePlugins()) {
+      expect(plugin.submittable).toBe(true);
+      expect(GAME_DEFINITIONS[plugin.id].submittable).toBe(true);
+      expect(plugin.valuesToDoc({})).not.toBeNull();
+      expect(plugin.valuesToDoc({})).toMatchObject({ game: plugin.id });
+    }
+  });
+
+  it("a game without formulas is generated from its point table; REBUILT keeps its custom plugin", () => {
+    expect(GAME_DEFINITIONS.REBUILT.formulas).toBe("rebuilt");
+    expect(GAME_DEFINITIONS.REEFSCAPE.formulas).toBeUndefined();
+    expect(GAME_DEFINITIONS.CHARGED_UP.formulas).toBeUndefined();
+    expect(Object.keys(GAME_DEFINITIONS).sort()).toEqual([...GAME_IDS].sort());
+    // the only definition whose docs may have no `game` field is the default game
+    expect(GAME_ID_LIST.filter((id) => GAME_DEFINITIONS[id].docsWithoutGame)).toEqual([DEFAULT_GAME_ID]);
   });
 
   it("gameForDoc: no game field is REEFSCAPE", () => {

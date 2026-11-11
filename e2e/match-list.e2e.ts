@@ -50,7 +50,7 @@ test.describe("one event", () => {
     await expect(page.getByTestId("match-Q1")).toContainText(/9:00\s?AM/);
   });
 
-  test("highlights our teams (any of the account's FTC teams) and nothing else", async ({ page }) => {
+  test("highlights our teams (any of the account's teams) and nothing else", async ({ page }) => {
     await open(page, "?events=1");
     for (const label of ["Q5", "Q13", "Q30"]) {
       await expect(page.getByTestId(`match-${label}`)).toHaveAttribute("data-ours", "true");

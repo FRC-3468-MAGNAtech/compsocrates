@@ -116,12 +116,12 @@ test.describe("Match Strategy", () => {
     expect(entry.stickyNotes[0].text).toBe("Opponent plays defense on teleop");
   });
 
-  test("the role choices are Hive, Flower, Garden, Gathering and Defense", async ({ page }) => {
+  test("the role choices are Scoring, Collecting, Assisting and Defense", async ({ page }) => {
     await open(page, "form=strategy");
     await choose(page, "Q5", "red");
     await page.getByTestId("team-box-1").getByRole("combobox").click();
     await expect(page.getByRole("option", { name: "Defense" })).toBeVisible();
-    expect(await page.getByRole("listbox").getByRole("option").allTextContents()).toEqual(["Hive", "Flower", "Garden", "Gathering", "Defense"]);
+    expect(await page.getByRole("listbox").getByRole("option").allTextContents()).toEqual(["Scoring", "Collecting", "Assisting", "Defense"]);
   });
 });
 
@@ -131,36 +131,36 @@ test.describe("Drive Reflection", () => {
     await expect(page.getByTestId("plan-summary")).toContainText("No plan was found"); // nothing chosen yet
     await choose(page, "Q5", "red");
     await expect(page.getByTestId("plan-summary")).toHaveText("Matches the plan");
-    await expect(page.getByTestId("team-box-1").getByRole("combobox")).toContainText("Hive");
+    await expect(page.getByTestId("team-box-1").getByRole("combobox")).toContainText("Scoring");
     await expect(page.getByTestId("team-box-1").getByRole("checkbox", { name: "Scored in auto" })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("plan-diff")).toHaveCount(0);
 
     // what actually happened differed twice
     await page.getByTestId("team-box-2").getByRole("combobox").click();
-    await page.getByRole("option", { name: "Hive" }).click();
+    await page.getByRole("option", { name: "Scoring" }).click();
     await page.getByTestId("team-box-1").getByRole("checkbox", { name: "Scored in auto" }).click();
     await expect(page.getByTestId("plan-summary")).toHaveText("2 differences from plan");
     await expect(page.getByTestId("plan-diff")).toHaveCount(2);
     await page.getByTestId("team-box-2").getByTestId("plan-diff").click();
-    await expect(page.getByText("Planned: Flower")).toBeVisible();
+    await expect(page.getByText("Planned: Collecting")).toBeVisible();
 
     // the plan is edited after the reflection was started: team 1's role (untouched) follows, the answers already changed stay
     await page.getByTestId("edit-plan").click();
-    await expect(page.getByTestId("team-box-1").getByRole("combobox")).toContainText("Flower");
-    await expect(page.getByTestId("team-box-2").getByRole("combobox")).toContainText("Hive");
+    await expect(page.getByTestId("team-box-1").getByRole("combobox")).toContainText("Collecting");
+    await expect(page.getByTestId("team-box-2").getByRole("combobox")).toContainText("Scoring");
 
     await page.getByTestId("submit-form").click();
     const [entry] = await saved(page);
     expect(entry).toMatchObject({ formType: "drive-reflection", linkedEntryId: "plan-1" });
     expect(entry.planDifferences).toBe(2);
-    expect(entry.values).toMatchObject({ t1_role: "flower", t1_auto: false, t2_role: "hive" });
+    expect(entry.values).toMatchObject({ t1_role: "collecting", t1_auto: false, t2_role: "scoring" });
   });
 
   test("with no plan for the match it says so and starts empty", async ({ page }) => {
     await open(page, "form=reflection&plan=0");
     await choose(page, "Q5", "red");
     await expect(page.getByTestId("plan-summary")).toContainText("No plan was found");
-    await expect(page.getByTestId("team-box-1").getByRole("combobox")).not.toContainText("Hive");
+    await expect(page.getByTestId("team-box-1").getByRole("combobox")).not.toContainText("Scoring");
     await page.getByTestId("submit-form").click();
     const [entry] = await saved(page);
     expect(entry.values.t1_role).toBe("");

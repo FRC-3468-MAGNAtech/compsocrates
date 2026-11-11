@@ -36,7 +36,7 @@ const ROLE_INFO: Record<StatRole, { label: string; hint: string; types: "any" | 
   reliability: { label: "Robot failure", hint: "Counts toward Team Breakdown's reliability pill.", types: "boolean" },
   neverStarted: { label: "Never started", hint: "A robot that never started isn't flagged for zero scoring.", types: "boolean" },
   died: { label: "Died during match", hint: "A robot that died isn't flagged for zero scoring.", types: "boolean" },
-  disabled: { label: "Disabled by FTC", hint: "Flags a full scoring run that was also disabled.", types: "boolean" },
+  disabled: { label: "Disabled by FRC", hint: "Flags a full scoring run that was also disabled.", types: "boolean" },
   recoveredFromFreeze: { label: "Recovered from freeze", hint: "Flags it together with never started.", types: "boolean" },
   comments: { label: "The comments field", hint: "Its text is the entry's summary comment in Match Analytics.", types: "text" },
 };

@@ -11,7 +11,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
 import { BracketPicker } from "@/components/scout/bracket-picker";
-import { useFtcQuery } from "@/lib/events/use-event-query";
+import { useEventQuery } from "@/lib/events/use-event-query";
 import { getMatchesForEvent } from "@/lib/events/actions";
 import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
@@ -233,7 +233,7 @@ function MatchList({
   onSelect: (match: EventMatch) => void;
   marks?: (type: MatchType, matchNumber: number) => MatchMark | null;
 }) {
-  const query = useFtcQuery(`matches:${eventCode}:${season}:${type}`, () => getMatchesForEvent(eventCode, type, season));
+  const query = useEventQuery(`matches:${eventCode}:${season}:${type}`, () => getMatchesForEvent(eventCode, type, season));
 
   if (query.status === "loading") {
     return (

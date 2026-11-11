@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reefscapePlugin as plugin } from "@/lib/games/reefscape";
+import { getGamePlugin } from "@/lib/games/registry";
 import type { CsDoc } from "@/lib/games/types";
 import { scoreEntryForGame, type ScoringEntry } from "@/lib/games/cs-oracle/analyticsScoring";
 import { evaluateScoutingFlags } from "@/lib/games/cs-oracle/scoutingFlags";
@@ -7,6 +7,7 @@ import { computeRescoutDiff } from "@/lib/games/cs-oracle/rescoutComparison";
 import { buildTacticalPrediction } from "@/lib/games/cs-oracle/predictionEngine";
 import { compareScoutToLead } from "@/lib/games/cs-oracle/scoutVerification";
 
+const plugin = getGamePlugin("REEFSCAPE");
 const csScore = (doc: CsDoc) => scoreEntryForGame(doc as ScoringEntry, "REEFSCAPE");
 
 const golden: CsDoc = {
@@ -58,11 +59,18 @@ describe("REEFSCAPE scoring (equals CS)", () => {
     }
   });
 
-  it("scoreValues on docToValues equals scoreDoc; valuesToDoc is null (read-only)", () => {
-    expect(plugin.formId).toBeNull();
-    expect(plugin.valuesToDoc(plugin.docToValues(golden))).toBeNull();
-    expect(plugin.scoreValues(plugin.docToValues(golden))).toEqual(plugin.scoreDoc(golden));
-    expect(plugin.docToValues(golden).autoCoralL3).toBe(1);
+  it("is submittable; scoreValues on docToValues equals scoreDoc and valuesToDoc round-trips the doc", () => {
+    expect(plugin.formId).toBe("reefscape");
+    expect(plugin.submittable).toBe(true);
+    const values = plugin.docToValues(golden);
+    expect(plugin.scoreValues(values)).toEqual(plugin.scoreDoc(golden));
+    expect(values.autoCoralL3).toBe(1);
+    // flat fields, `game` stamped, and the doc reads back as the same values and the same score
+    const written = plugin.valuesToDoc(values)!;
+    expect(written).toMatchObject({ game: "REEFSCAPE", autoCoralL3: 1, stageStatus: "deep", leftStartingZone: true, penaltyPoints: 5, incidents: [] });
+    expect(plugin.docToValues(written)).toEqual(values);
+    expect(plugin.scoreDoc(written)).toEqual(plugin.scoreDoc(golden));
+    expect(csScore(written)).toBe(csScore(golden));
   });
 });
 

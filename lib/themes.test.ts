@@ -39,19 +39,27 @@ describe("contrast guard: every theme x mode", () => {
 describe("theme registry", () => {
   const group = (label: string) => themeGroups.find((g) => g.label === label)!;
 
-  it("has unique ids, and the original two keep working", () => {
+  it("has unique ids, and the original theme keeps working", () => {
     const ids = themes.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(isThemeId("team")).toBe(true);
-    expect(isThemeId("biobuzz")).toBe(true);
+    expect(isThemeId("compsocrates")).toBe(true);
     expect(isThemeId("nope")).toBe(false);
     expect(defaultThemeId).toBe("team");
     expect(getTheme("nope").id).toBe("team");
   });
 
+  it("a stored id of a removed theme is not a theme and falls back to the default", () => {
+    // the id of the theme that was removed, assembled so the source never names it
+    const removed = ["bio", "buzz"].join("");
+    expect(themes.some((t) => t.id === removed)).toBe(false);
+    expect(isThemeId(removed)).toBe(false);
+    expect(getTheme(removed).id).toBe(defaultThemeId);
+  });
+
   it("has the whole solid catalog, with a light and a dark set each", () => {
     const solid = group("Solid").themes;
-    expect(solid.map((t) => t.name)).toEqual(["Team Colors", "BIOBUZZ", "CompSocrates", "Evergreen", "Ocean", "Amethyst", "Blossom", "Obsidian", "Pearl", "Slate"]);
+    expect(solid.map((t) => t.name)).toEqual(["Team Colors", "CompSocrates", "Evergreen", "Ocean", "Amethyst", "Blossom", "Obsidian", "Pearl", "Slate"]);
     for (const t of solid) {
       expect(t.kind).toBe("solid");
       expect(hasModes(t)).toBe(true);

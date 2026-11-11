@@ -1,3 +1,5 @@
+import type { GameIncident } from "@/config/games/definition";
+
 /**
  * Game-independent tuning constants that CS applies to every game (declarative config only).
  * Sources: app/utils/scoutVerification.ts, predictionEngine.ts, scoutAccuracy.ts, performanceReliability.ts,
@@ -92,3 +94,20 @@ export const rescoutNumber = spec("number");
 export const rescoutBoolean = spec("boolean");
 export const rescoutString = spec("string");
 export const rescoutArray = spec("array");
+
+/**
+ * CS's list of things that occurred in a match (`incidents: string[]`), identical in all three games' forms. The `statRoles` are how the
+ * analytics read them (a robot failure for the reliability pill, `died` ... for the auto-flag rules); the two cards carry none.
+ */
+export const STANDARD_INCIDENTS = [
+  { value: "died", label: "Died During Match", statRoles: ["reliability", "died"] },
+  { value: "never-started", label: "Never Started Match", statRoles: ["reliability", "neverStarted"] },
+  { value: "disabled", label: "Disabled by FRC", statRoles: ["reliability", "disabled"] },
+  { value: "recovered", label: "Recovered from Freeze", statRoles: ["reliability", "recoveredFromFreeze"] },
+  { value: "tipped", label: "Tipped Over", statRoles: ["reliability"] },
+  { value: "yellow-card", label: "Yellow Card" },
+  { value: "red-card", label: "Red Card" },
+] as const satisfies readonly GameIncident[];
+
+/** The practice flow's easy / medium / hard cut-offs for an alliance score (`practice-scouting scoreToDifficulty`): the same for REBUILT and REEFSCAPE. */
+export const DEFAULT_DIFFICULTY_THRESHOLDS = { easyMax: 200, mediumMax: 400 } as const;

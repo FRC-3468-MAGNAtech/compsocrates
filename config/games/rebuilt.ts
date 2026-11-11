@@ -1,7 +1,8 @@
-import { rescoutArray, rescoutBoolean, rescoutNumber, rescoutString, type RescoutFieldSpec } from "@/config/games/shared";
+import { DEFAULT_DIFFICULTY_THRESHOLDS, rescoutArray, rescoutBoolean, rescoutNumber, rescoutString, STANDARD_INCIDENTS, type RescoutFieldSpec } from "@/config/games/shared";
 
 /**
- * REBUILT (FRC 2026). Declarative values only; the formulas live in `lib/games/rebuilt.ts`.
+ * REBUILT (FRC 2026). Declarative values only; the formulas live in `lib/games/rebuilt.ts` (`formulas: "rebuilt"`: its fuel scoring has
+ * cross-field logic, so it is the one game that is not a pure point table) and its form is hand-built in `lib/forms/builtin-rebuilt.ts`.
  * Every number below equals what CS uses today (app/utils/analyticsScoring.ts, app/scout-form/page.tsx,
  * app/utils/scoutingFlags.ts, rescoutComparison.ts).
  */
@@ -11,8 +12,11 @@ const SHIFTS = ["shift1", "shift2", "shift3", "shift4"] as const;
 export const REBUILT_CONFIG = {
   id: "REBUILT",
   label: "REBUILT",
-  season: 2026,
-  /** `lib/forms` built-in form id. Match scouting is submittable for this game only (docs/ROUTES.md D3). */
+  year: 2026,
+  submittable: true,
+  /** `lib/games/rebuilt.ts`: the custom fuel-formula plugin this game keeps. */
+  formulas: "rebuilt" as const,
+  /** `lib/forms` built-in form id. */
   formId: "rebuilt",
 
   /**
@@ -82,16 +86,7 @@ export const REBUILT_CONFIG = {
     { value: "depot-trench", label: "Depot Trench" },
   ],
 
-  incidents: [
-    { value: "died", label: "Died During Match" },
-    { value: "never-started", label: "Never Started Match" },
-    { value: "disabled", label: "Disabled by FRC" },
-    { value: "recovered", label: "Recovered from Freeze" },
-    { value: "tipped", label: "Tipped Over" },
-    { value: "yellow-card", label: "Yellow Card" },
-    { value: "red-card", label: "Red Card" },
-  ],
-
+  incidents: STANDARD_INCIDENTS,
   /** Auto-flag thresholds (scoutingFlags.ts `evaluateRebuiltFlags`). Fuel figures are the doc's stored `estimatedFuel` values. */
   flags: {
     humanPlayerHeavy: {
@@ -103,6 +98,14 @@ export const REBUILT_CONFIG = {
     },
     autoOnlyNoTeleop: { label: "Auto Without Teleop Fuel", minAutoFuel: 20 },
     zeroMainScoring: { label: "Zero Main Scoring" },
+  },
+
+  thresholds: { difficulty: DEFAULT_DIFFICULTY_THRESHOLDS },
+  strings: {
+    formDescription: "The 2026 REBUILT season's match scouting form: cycle timers, shooter and carry scales, shift parity, human player fuel, climb and incident flags.",
+    startingPositionPlaceholder: "Select Position",
+    notesPlaceholder: "Anything notable: robot issues, standout driving, penalties...",
+    penaltyHelp: "",
   },
 
   /** Rescout (exemplar) comparison fields, in CS order. */

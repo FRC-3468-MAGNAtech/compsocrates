@@ -1,9 +1,7 @@
 import type { ScoutEntry } from "@/lib/scout-entries";
 import type { MatchType } from "@/lib/events/types";
-import { BIOBUZZ_FORM, DEFAULT_FORM_ID } from "@/lib/forms/builtin";
-import { REBUILT_FORM } from "@/lib/forms/builtin-rebuilt";
-import { CHARGED_UP_FORM, REEFSCAPE_FORM } from "@/lib/forms/builtin-legacy-games";
-import { entryValues } from "@/lib/forms/legacy";
+import { DEFAULT_FORM_ID, GAME_FORMS } from "@/lib/forms/builtin";
+import { entryValues } from "@/lib/forms/entry-values";
 import { coerceTimerList, matrixCells, resolveAlias, timerStats } from "@/lib/forms/values";
 import { repeatGroupOf, slotKey } from "@/lib/forms/repeat";
 import { countSteps, parseSequenceSummary, summarizeSequence } from "@/lib/forms/sequence";
@@ -260,8 +258,7 @@ function columnsForField(form: Form, section: FormSection, field: FormField, val
 /**
  * The Match Analytics table for a form, derived entirely from the schema: the sticky Match / Team / Scout columns, one column per
  * field with analytics `include` (three-tier header: section title > category > label), the per-phase score columns and Total (when
- * scoring is on), the comments, the accuracy columns (when scoring is on) and the row actions. For BIOBUZZ this reproduces the
- * previous hard-coded columns exactly (a regression test pins them).
+ * scoring is on), the comments, the accuracy columns (when scoring is on) and the row actions.
  */
 export function buildGameSchema(form: Form): GameSchema {
   const valuesOf = (e: ScoutEntry) => entryValues(e, { keyAliases: form.keyAliases });
@@ -398,16 +395,8 @@ export function unionForms(forms: readonly Form[]): Form {
   return { ...first, sections, scoringEnabled: forms.some((f) => f.scoringEnabled), keyAliases: Object.keys(aliases).length > 0 ? aliases : undefined };
 }
 
-/** The built-in forms' analytics tables, by form id. Account forms (custom or edited) are derived on demand with `buildGameSchema`. */
-export const GAMES: Record<string, GameSchema> = {
-  [BIOBUZZ_FORM.id]: buildGameSchema(BIOBUZZ_FORM),
-  [REBUILT_FORM.id]: buildGameSchema(REBUILT_FORM),
-  // the retired games (read-only forms, docs/ROUTES.md D3): their old CS entries get columns like any other form's
-  [REEFSCAPE_FORM.id]: buildGameSchema(REEFSCAPE_FORM),
-  [CHARGED_UP_FORM.id]: buildGameSchema(CHARGED_UP_FORM),
-};
-
-export const BIOBUZZ_SCHEMA: GameSchema = GAMES[BIOBUZZ_FORM.id];
+/** The three games' analytics tables, by form id (the game filter's ids). Account forms (custom or edited) are derived on demand with `buildGameSchema`. */
+export const GAMES: Record<string, GameSchema> = Object.fromEntries(Object.entries(GAME_FORMS).map(([id, form]) => [id, buildGameSchema(form)]));
 
 export const DEFAULT_GAME_ID = DEFAULT_FORM_ID;
 

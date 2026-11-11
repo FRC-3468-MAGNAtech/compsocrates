@@ -2,19 +2,18 @@ import { describe, expect, it } from "vitest";
 import { CS_FORM_FIELD_SPECS, CS_FORM_TYPES, csFormValueKeys, csFormValueKeyNames, type CsFormType } from "@/data/cs/form-field-keys";
 import { CS_FORM_SPECS } from "@/data/cs/forms";
 import { csDocToScoutEntry } from "@/data/cs/scouting";
-import { buildGameSchema, DEFAULT_GAME_ID, GAMES } from "@/lib/analytics/game-schema";
+import { buildGameSchema, GAMES } from "@/lib/analytics/game-schema";
 import { parseFilters } from "@/lib/analytics/filters";
-import { BUILTIN_FORMS, DEFAULT_FORM_ID, isReadOnlyForm, nonMatchTypeOfFormId, seasonFormId, SEASON_NON_MATCH_FORM_IDS } from "@/lib/forms/builtin";
-import { CHARGED_UP_FORM, REEFSCAPE_FORM } from "@/lib/forms/builtin-legacy-games";
+import { BUILTIN_FORMS, DEFAULT_FORM_ID, GAME_FORMS, nonMatchTypeOfFormId, NON_MATCH_FORM_IDS, seasonFormId } from "@/lib/forms/builtin";
+import { GAME_DEFINITIONS, GAME_ID_LIST } from "@/config/games";
+import { getGamePlugin } from "@/lib/games/registry";
 import { DRIVE_REFLECTION_REBUILT_FORM, HELPER_REBUILT_FORM, LEAD_SCOUT_REBUILT_FORM, MATCH_STRATEGY_REBUILT_FORM, PIT_SCOUT_REBUILT_FORM, REBUILT_NON_MATCH_FORMS, REFLECTION_ROLES, TEAM_STRATEGY_REBUILT_FORM } from "@/lib/forms/builtin-rebuilt-forms";
 import { canBeActive, emptyCatalog, listFormSummaries, resolveForm, resolveFormForEntry } from "@/lib/forms/resolve";
 import { calculateScore } from "@/lib/forms/scoring";
 import { REQUIRED_SYSTEM_FIELDS, isSystemField, type Form } from "@/lib/forms/types";
 import { blockingIssues, checkForm, parseForm } from "@/lib/forms/validate";
 import { valueFields } from "@/lib/forms/values";
-import { chargedUpPlugin } from "@/lib/games/charged-up";
-import { reefscapePlugin } from "@/lib/games/reefscape";
-import { getAnalyticsSeasons, getEnabledSeasons, getSeason, isReadOnlySeason, seasonIdForProgram, SEASONS } from "@/lib/seasons";
+import { DEFAULT_SEASON_ID, getEnabledSeasons, getSeason, SEASONS } from "@/lib/seasons";
 
 // The REBUILT versions of the pit / lead / team strategy / match strategy / drive reflection / helper forms must be exactly what the CS adapter
 // (data/cs/forms.ts) reads and writes, and the two retired games' read-only forms must score and read like their game plugins.
@@ -126,85 +125,85 @@ describe("the REBUILT non-match forms against the CS adapter", () => {
   });
 });
 
-describe("season resolution of the non-match forms", () => {
-  it("REBUILT is the default season; the program picks BIOBUZZ for FTC", () => {
-    expect(seasonIdForProgram("frc")).toBe("rebuilt");
-    expect(seasonIdForProgram("ftc")).toBe("biobuzz");
+describe("resolution of the non-match forms", () => {
+  it("REBUILT is the default game and form", () => {
     expect(DEFAULT_FORM_ID).toBe("rebuilt");
-    expect(DEFAULT_GAME_ID).toBe("rebuilt");
+    expect(DEFAULT_SEASON_ID).toBe("rebuilt");
   });
 
-  it("maps every non-match form to the season's own id, from either season's id or the type", () => {
+  it("maps every non-match form type to the adapter's id, from the id or the type", () => {
     for (const type of CS_FORM_TYPES) {
-      const rebuilt = SEASON_NON_MATCH_FORM_IDS.rebuilt[type];
-      const biobuzz = SEASON_NON_MATCH_FORM_IDS.biobuzz[type];
-      expect(rebuilt).toBe(CS_FORM_SPECS[type].formId);
-      expect(biobuzz).not.toBe(rebuilt);
-      expect(BUILTIN_FORMS[rebuilt]).toBe(FORM_BY_TYPE[type]);
-      expect(BUILTIN_FORMS[biobuzz]?.formType).toBe(type);
-      expect(BUILTIN_FORMS[biobuzz]?.id).toBe(biobuzz);
-      for (const given of [rebuilt, biobuzz, type]) {
-        expect(seasonFormId(given, "rebuilt")).toBe(rebuilt);
-        expect(seasonFormId(given, "biobuzz")).toBe(biobuzz);
-        expect(seasonFormId(given)).toBe(rebuilt); // the default season
-      }
-      expect(nonMatchTypeOfFormId(rebuilt)).toBe(type);
-      expect(nonMatchTypeOfFormId(biobuzz)).toBe(type);
+      const id = NON_MATCH_FORM_IDS[type];
+      expect(id).toBe(CS_FORM_SPECS[type].formId);
+      expect(BUILTIN_FORMS[id]).toBe(FORM_BY_TYPE[type]);
+      for (const given of [id, type]) expect(seasonFormId(given)).toBe(id);
+      expect(nonMatchTypeOfFormId(id)).toBe(type);
     }
   });
 
   it("leaves any other id (a custom form, a match form) alone", () => {
-    expect(seasonFormId("my-custom-form", "biobuzz")).toBe("my-custom-form");
-    expect(seasonFormId("rebuilt", "biobuzz")).toBe("rebuilt");
-    expect(seasonFormId("toString", "biobuzz")).toBe("toString");
+    expect(seasonFormId("my-custom-form")).toBe("my-custom-form");
+    expect(seasonFormId("rebuilt")).toBe("rebuilt");
+    expect(seasonFormId("toString")).toBe("toString");
+    expect(nonMatchTypeOfFormId("rebuilt")).toBeNull();
   });
 
-  it("keeps the BIOBUZZ set intact: Hive, Flower and Garden still describe it", () => {
-    const pit = BUILTIN_FORMS["biobuzz-pit-scout-v1"];
-    expect(pit.sections.flatMap((s) => s.fields).some((f) => f.key === "capabilities")).toBe(true);
-    for (const type of CS_FORM_TYPES) {
-      const form = BUILTIN_FORMS[SEASON_NON_MATCH_FORM_IDS.biobuzz[type]];
-      expect(blockingIssues(checkForm(form)), form.id).toEqual([]);
-    }
-    expect(BUILTIN_FORMS["biobuzz-drive-reflection-v1"].compareWith?.formId).toBe("biobuzz-match-strategy-v1");
-  });
-
-  it("resolves both sets by id from an empty catalog, and lists both", () => {
+  it("resolves every non-match form by id from an empty catalog, and lists it", () => {
     const catalog = emptyCatalog();
-    for (const ids of Object.values(SEASON_NON_MATCH_FORM_IDS)) for (const id of Object.values(ids)) expect(resolveForm(catalog, id)?.id).toBe(id);
     const listed = listFormSummaries(catalog).map((s) => s.id);
-    for (const ids of Object.values(SEASON_NON_MATCH_FORM_IDS)) for (const id of Object.values(ids)) expect(listed).toContain(id);
+    for (const id of Object.values(NON_MATCH_FORM_IDS)) {
+      expect(resolveForm(catalog, id)?.id).toBe(id);
+      expect(listed).toContain(id);
+    }
   });
 });
 
-describe("the retired games stay readable and never become a new entry", () => {
-  it("are resolvable by id (so old entries get their columns) but hidden from lists, pickers and the active-form choice", () => {
-    const catalog = emptyCatalog();
-    for (const form of [REEFSCAPE_FORM, CHARGED_UP_FORM]) {
-      expect(BUILTIN_FORMS[form.id]).toBe(form);
-      expect(isReadOnlyForm(form.id)).toBe(true);
-      expect(resolveForm(catalog, form.id)).toBe(form);
-      expect(resolveFormForEntry(catalog, form.id, 1)).toBe(form);
-      expect(listFormSummaries(catalog).some((s) => s.id === form.id)).toBe(false);
-      expect(canBeActive(catalog, form.id)).toBe(false);
+describe("the three games' built-in match forms", () => {
+  const games = GAME_ID_LIST.map((id) => ({ id, def: GAME_DEFINITIONS[id], form: GAME_FORMS[GAME_DEFINITIONS[id].formId] }));
+
+  it("exist, one per game, under the form id of the game's definition", () => {
+    expect(Object.keys(GAME_FORMS).sort()).toEqual(["charged_up", "rebuilt", "reefscape"]);
+    for (const { def, form } of games) {
+      expect(form, def.id).toBeTruthy();
+      expect(form.id).toBe(def.formId);
+      expect(BUILTIN_FORMS[def.formId]).toBe(form);
+      expect(form.origin).toBe("built-in");
     }
-    expect(isReadOnlyForm("rebuilt")).toBe(false);
-    expect(isReadOnlyForm("biobuzz")).toBe(false);
   });
 
-  it("are read-only seasons: in the analytics Game filter, not in any new-entry picker", () => {
-    expect(isReadOnlySeason("reefscape")).toBe(true);
-    expect(isReadOnlySeason("charged_up")).toBe(true);
-    expect(getEnabledSeasons().map((s) => s.id)).toEqual(["rebuilt", "biobuzz"]);
-    expect(getAnalyticsSeasons().map((s) => s.id)).toEqual(["rebuilt", "reefscape", "charged_up", "biobuzz"]);
-    expect(getAnalyticsSeasons()[0].id).toBe("rebuilt"); // REBUILT first, and the default
-    expect(getSeason("charged_up")).toMatchObject({ formId: "charged_up", apiSeason: 2023 });
-    expect(getSeason("reefscape")).toMatchObject({ formId: "reefscape", apiSeason: 2025 });
-    expect(SEASONS.every((s) => !s.readOnly || BUILTIN_FORMS[s.formId])).toBe(true);
+  it("are valid match-scout forms with custom game scoring, the required system fields and no blocking issue", () => {
+    for (const { id, form } of games) {
+      expect(parseForm(form).ok, id).toBe(true);
+      expect(blockingIssues(checkForm(form)), id).toEqual([]);
+      expect(form.formType).toBe("match-scout");
+      expect(form.scoringEnabled).toBe(true);
+      expect(form.scoring).toEqual({ mode: "custom", scorer: `game:${id}` });
+      const systemTypes = form.sections.flatMap((s) => s.fields).filter(isSystemField).map((f) => f.type).sort();
+      expect(systemTypes).toEqual([...REQUIRED_SYSTEM_FIELDS["match-scout"]].sort());
+    }
+  });
+
+  it("can be the active form, are listed, and resolve by id (all three games are scouted)", () => {
+    const catalog = emptyCatalog();
+    const listed = listFormSummaries(catalog).map((s) => s.id);
+    for (const { form } of games) {
+      expect(canBeActive(catalog, form.id)).toBe(true);
+      expect(listed).toContain(form.id);
+      expect(resolveForm(catalog, form.id)).toBe(form);
+      expect(resolveFormForEntry(catalog, form.id, 1)).toBe(form);
+    }
+  });
+
+  it("are the seasons: three, all enabled, REBUILT first and the default", () => {
+    expect(SEASONS.map((s) => s.id)).toEqual(["rebuilt", "reefscape", "charged_up"]);
+    expect(getEnabledSeasons().map((s) => s.id)).toEqual(["rebuilt", "reefscape", "charged_up"]);
+    expect(getSeason("charged_up")).toMatchObject({ formId: "charged_up", apiSeason: 2023, enabled: true });
+    expect(getSeason("reefscape")).toMatchObject({ formId: "reefscape", apiSeason: 2025, enabled: true });
+    for (const s of SEASONS) expect(BUILTIN_FORMS[s.formId]).toBeTruthy();
   });
 
   it("have analytics tables registered under the filter's game ids, which the URL filter accepts", () => {
-    for (const form of [REEFSCAPE_FORM, CHARGED_UP_FORM]) {
+    for (const { form } of games) {
       expect(GAMES[form.id].id).toBe(form.id);
       expect(GAMES[form.id].columns.map((c) => c.key)).toEqual(buildGameSchema(form).columns.map((c) => c.key));
       expect(parseFilters({ get: (n: string) => (n === "game" ? form.id : null) }).gameId).toBe(form.id);
@@ -213,6 +212,15 @@ describe("the retired games stay readable and never become a new entry", () => {
   });
 });
 
+// --- game form parity: the generated forms against the generated plugins
+
+const REEFSCAPE_FORM = GAME_FORMS.reefscape;
+const CHARGED_UP_FORM = GAME_FORMS.charged_up;
+const reefscapePlugin = getGamePlugin("REEFSCAPE");
+const chargedUpPlugin = getGamePlugin("CHARGED_UP");
+// the form asks each incident as its own checkbox (incidents_died ...), where the plugin keeps CS's one list
+const INCIDENT_KEYS = /^incidents(_|$)/;
+const withoutIncidents = (keys: Iterable<string>): string[] => [...keys].filter((k) => !INCIDENT_KEYS.test(k));
 // --- legacy form parity ------------------------------------------------------------------------------------------
 
 const REEF_DOC = {
@@ -271,13 +279,14 @@ const REEF_SPARSE = { teamNumber: "9", eventKey: "2025cave", matchId: "q2", stag
 
 describe("REEFSCAPE and CHARGED UP forms against their plugins", () => {
   it("define a value field for every key the plugin's docToValues emits, and nothing the plugin does not know", () => {
-    const reefKeys = new Set(Object.keys(reefscapePlugin.docToValues(REEF_DOC)));
-    const reefForm = new Set(formKeys(REEFSCAPE_FORM));
+    const reefKeys = new Set(withoutIncidents(Object.keys(reefscapePlugin.docToValues(REEF_DOC))));
+    const reefForm = new Set(withoutIncidents(formKeys(REEFSCAPE_FORM)));
     for (const k of reefKeys) expect(reefForm.has(k), k).toBe(true);
     for (const k of reefForm) expect(reefKeys.has(k), k).toBe(true);
 
-    const cuKeys = new Set([...Object.keys(chargedUpPlugin.docToValues(CU_DOC)), ...Object.keys(chargedUpPlugin.docToValues(NESTED_MOBILITY_DOC))]);
-    const cuForm = new Set(formKeys(CHARGED_UP_FORM));
+    // `mobility` is the one toggle, read from auto.mobility or the top-level field (CS scores `auto.mobility ?? mobility`) and written to both
+    const cuKeys = new Set(withoutIncidents([...Object.keys(chargedUpPlugin.docToValues(CU_DOC)), ...Object.keys(chargedUpPlugin.docToValues(NESTED_MOBILITY_DOC))]));
+    const cuForm = new Set(withoutIncidents(formKeys(CHARGED_UP_FORM)));
     for (const k of cuKeys) expect(cuForm.has(k), k).toBe(true);
     for (const k of cuForm) expect(cuKeys.has(k), k).toBe(true);
   });
@@ -328,14 +337,15 @@ describe("REEFSCAPE and CHARGED UP forms against their plugins", () => {
     }
   });
 
-  it("show an old entry's values in the analytics columns (counts, select labels, incident codes as text)", () => {
+  it("show an old entry's values in the analytics columns (counts, select labels, one column per incident)", () => {
     const entry = csDocToScoutEntry("e1", { ...REEF_DOC, teamId: "t1", scoutId: "u1", scoutName: "Ada", createdAt: 1, submittedAt: 2 })!;
     const col = (key: string) => GAMES.reefscape.columns.find((c) => c.key === key);
     expect(col("autoCoralL4")?.getValue(entry)).toBe(1);
     expect(col("teleopNetHumanScored")?.getValue(entry)).toBe(4);
     expect(col("leftStartingZone")?.getValue(entry)).toBe(true);
     expect(col("stageStatus")?.getValue(entry)).toBe("Deep Cage");
-    expect(String(col("incidents")?.getValue(entry))).toContain("tipped");
+    expect(col("incidents_tipped")?.getValue(entry)).toBe(true);
+    expect(col("incidents_died")?.getValue(entry)).toBe(false);
     expect(col("scoreTotal")?.getValue(entry)).toBe(entry.score.total);
 
     const cu = csDocToScoutEntry("e2", { ...CU_DOC, teamId: "t1", scoutId: "u1", scoutName: "Ada", createdAt: 1, submittedAt: 2 })!;
@@ -350,7 +360,7 @@ describe("REEFSCAPE and CHARGED UP forms against their plugins", () => {
     const stage = valueFields(REEFSCAPE_FORM).find((f) => f.key === "stageStatus")!;
     expect(stage.options?.map((o) => [o.value, o.points])).toEqual([["not-parked", 2], ["barge", 2], ["shallow", 6], ["deep", 12]]);
     const engaged = valueFields(CHARGED_UP_FORM).find((f) => f.key === "endgame_chargeStation")!;
-    expect(engaged.options?.map((o) => [o.value, o.points])).toEqual([["Parked", 2], ["Docked", 6], ["Engaged", 10]]);
+    expect(engaged.options?.map((o) => [o.value, o.points])).toEqual([["parked", 2], ["docked", 6], ["engaged", 10]]);
   });
 });
 

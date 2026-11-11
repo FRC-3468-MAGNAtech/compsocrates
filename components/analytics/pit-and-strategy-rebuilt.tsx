@@ -14,7 +14,7 @@ import { useAuth } from "@/lib/auth";
 import { useFormEntries } from "@/lib/form-entries";
 
 // The Team Profile's "Pit and strategy" section on REBUILT data: what CS's team breakdown shows (the pit scales, and how the team's match strategy plans and drive
-// reflections compare) plus the strategy form and the lead scouts' skill and notes. The BIOBUZZ section is pit-and-strategy.tsx; PitAndStrategySection picks between them.
+// reflections compare) plus the strategy form and the lead scouts' skill and notes.
 
 const TYPES = new Set(["pit-scout", "team-strategy", "lead-scout", "match-strategy", "drive-reflection"]);
 

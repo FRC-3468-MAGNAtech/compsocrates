@@ -5,7 +5,7 @@ import { SUBMITTED, leadDoc } from "@/data/cs/fixtures";
 import type { CsRecord } from "@/data/cs/types";
 import { RebuiltPitAndStrategyView } from "@/components/analytics/pit-and-strategy-rebuilt";
 import { RebuiltFormSummaryView } from "@/components/analytics/form-summaries-rebuilt-view";
-import { formAnalyticsPagesForSeason, type FormAnalyticsSlug } from "@/lib/analytics/form-analytics";
+import { FORM_ANALYTICS_PAGES, type FormAnalyticsSlug } from "@/lib/analytics/form-analytics";
 import { teamRebuiltProfile } from "@/lib/analytics/form-summaries-rebuilt";
 import type { FormEntry } from "@/lib/form-entries-model";
 import { getBuiltinForm } from "@/lib/forms/builtin";
@@ -21,7 +21,7 @@ let n = 0;
 const read = (type: CsFormType, doc: CsRecord): FormEntry => csDocToFormEntry(type, `${type}-${++n}`, { teamId: "MAG2403", eventKey: "2026arli", game: "REBUILT", scoutName: "Ada Lovelace", scoutId: "uid-ada", createdAt: SUBMITTED + n, submittedAt: SUBMITTED + n, ...doc });
 const robot = (team: string, over: CsRecord = {}) => ({ teamNumber: team, startingPosition: "middle", role: "Offense", autoClimb: false, endgameClimb: "", ...over });
 
-const pages = formAnalyticsPagesForSeason("rebuilt");
+const pages = FORM_ANALYTICS_PAGES;
 const render = (slug: FormAnalyticsSlug, entries: FormEntry[], allEntries: FormEntry[] = entries, hideNames = false) => {
   const page = pages.find((p) => p.slug === slug)!;
   return text(renderToString(<RebuiltFormSummaryView page={page} form={getBuiltinForm(page.formId)!} entries={entries} allEntries={allEntries} teamNames={new Map([[254, "The Cheesy Poofs"]])} hideNames={hideNames} />));

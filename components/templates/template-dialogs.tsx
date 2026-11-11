@@ -101,7 +101,7 @@ function DetailsBody({ initial, confirmLabel, onClose, onSave }: { initial: { na
     <div className="mt-4 flex flex-col gap-3">
       <TextRow label="Name" value={name} maxLength={TEMPLATE_LIMITS.name} onChange={setName} />
       <TextRow label="Description" multiline value={description} maxLength={TEMPLATE_LIMITS.description} onChange={setDescription} hint="What it's for. Plain text: HTML is removed, and links must be https." />
-      <TextRow label="Tags" value={tags} maxLength={200} onChange={setTags} hint="Comma-separated: a season or game (e.g. biobuzz), a purpose (pit, drive)…" />
+      <TextRow label="Tags" value={tags} maxLength={200} onChange={setTags} hint="Comma-separated: a season or game (e.g. rebuilt), a purpose (pit, drive)…" />
       <ErrorLine error={error} />
       <Footer onCancel={onClose} busy={busy}>
         <Button disabled={busy || !name.trim()} onClick={() => void run(() => onSave({ name, description, tags: cleanTags(tags.split(",")) }))}>

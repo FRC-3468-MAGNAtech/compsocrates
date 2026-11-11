@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { GAME_FORMS } from "@/lib/forms/builtin";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
 import { createBlankForm } from "@/lib/forms/new-form";
 import { checkForm, parseForm } from "@/lib/forms/validate";
 import {
@@ -120,9 +121,9 @@ describe("adding, removing and moving fields", () => {
     let f = withThree();
     f = addField(f, "teleop", defaultField(f, "counter", "Z"), { index: 0 });
     expect(labels(f, "teleop")).toEqual(["Z", "A", "B", "C"]);
-    const g = addGroup(f, "teleop", "Hive");
-    f = addField(g.form, "teleop", defaultField(g.form, "counter", "In hive"), { groupId: g.id! });
-    expect(layoutOf(section(f, "teleop")).groups[0].fields.map((x) => x.label)).toEqual(["In hive"]);
+    const g = addGroup(f, "teleop", "Group A");
+    f = addField(g.form, "teleop", defaultField(g.form, "counter", "In group"), { groupId: g.id! });
+    expect(layoutOf(section(f, "teleop")).groups[0].fields.map((x) => x.label)).toEqual(["In group"]);
     expect(addField(f, "nope", defaultField(f, "toggle"))).toBe(f);
     const sys = { ...defaultField(f, "toggle"), type: "scoutName" as const, key: "scoutName" }; // a system field is a picker of a system type with its fixed key (P27)
     expect(addField(f, "teleop", sys)).toBe(f);
@@ -293,7 +294,7 @@ describe("categories and groups", () => {
 
   it("duplicates a category with fresh ids and keys, groups remapped, system fields left behind", () => {
     let f = blank();
-    const g = addGroup(f, "teleop", "Hive", seq());
+    const g = addGroup(f, "teleop", "Group A", seq());
     f = addField(g.form, "teleop", defaultField(g.form, "counter", "Tips"), { groupId: g.id! });
     const { form: d, id } = duplicateSection(f, "teleop", seq());
     const copy = section(d, id!);
@@ -334,11 +335,11 @@ describe("categories and groups", () => {
   });
 });
 
-describe("Insert from BIOBUZZ (cloning)", () => {
+describe("Insert from another form (cloning)", () => {
   it("clones a whole category, with its points, fresh ids and the same keys when free", () => {
     const f = blank();
-    const sourceSection = BIOBUZZ_FORM.sections.find((s) => s.title === "Autonomous" || s.phase === "auto")!;
-    const { form, id } = insertFromForm(f, BIOBUZZ_FORM, { kind: "section", sectionId: sourceSection.id }, undefined, seq());
+    const sourceSection = SAMPLE_FORM.sections.find((s) => s.title === "Autonomous" || s.phase === "auto")!;
+    const { form, id } = insertFromForm(f, SAMPLE_FORM, { kind: "section", sectionId: sourceSection.id }, undefined, seq());
     const copy = section(form, id!);
     expect(copy.fields.length).toBe(sourceSection.fields.length);
     expect(copy.fields.map((x) => x.key)).toEqual(sourceSection.fields.map((x) => x.key));
@@ -350,29 +351,29 @@ describe("Insert from BIOBUZZ (cloning)", () => {
 
   it("inserting the same category twice never duplicates a key", () => {
     let f = blank();
-    const s = BIOBUZZ_FORM.sections.find((x) => x.phase === "teleop")!;
-    f = insertFromForm(f, BIOBUZZ_FORM, { kind: "section", sectionId: s.id }, undefined, seq()).form;
-    f = insertFromForm(f, BIOBUZZ_FORM, { kind: "section", sectionId: s.id }, undefined, seq()).form;
+    const s = SAMPLE_FORM.sections.find((x) => x.phase === "teleop")!;
+    f = insertFromForm(f, SAMPLE_FORM, { kind: "section", sectionId: s.id }, undefined, seq()).form;
+    f = insertFromForm(f, SAMPLE_FORM, { kind: "section", sectionId: s.id }, undefined, seq()).form;
     expect(new Set(keys(f)).size).toBe(keys(f).length);
     expect(noErrors(f)).toEqual([]);
   });
 
   it("clones one group into a category, and one field, with its points", () => {
-    const sourceSection = BIOBUZZ_FORM.sections.find((s) => s.groups?.length)!;
+    const sourceSection = SAMPLE_FORM.sections.find((s) => s.groups?.length)!;
     const group = sourceSection.groups![0];
     const f = blank();
-    const g = insertFromForm(f, BIOBUZZ_FORM, { kind: "group", sectionId: sourceSection.id, groupId: group.id }, "teleop", seq());
+    const g = insertFromForm(f, SAMPLE_FORM, { kind: "group", sectionId: sourceSection.id, groupId: group.id }, "teleop", seq());
     expect(section(g.form, "teleop").groups![0].title).toBe(group.title);
     const inGroup = section(g.form, "teleop").fields.filter((x) => x.groupId === g.id);
     expect(inGroup.length).toBe(sourceSection.fields.filter((x) => x.groupId === group.id).length);
     expect(inGroup.every((x) => x.scoring && x.scoring.mode !== "none")).toBe(true);
 
     const field = sourceSection.fields.find((x) => x.scoring && x.scoring.mode !== "none")!;
-    const one = insertFromForm(f, BIOBUZZ_FORM, { kind: "field", fieldId: field.id }, "endgame", seq());
+    const one = insertFromForm(f, SAMPLE_FORM, { kind: "field", fieldId: field.id }, "endgame", seq());
     expect(findField(one.form, one.id!)!.field.scoring).toEqual(field.scoring);
-    expect(insertFromForm(f, BIOBUZZ_FORM, { kind: "field", fieldId: "nope" }, "endgame").id).toBeNull();
-    expect(insertFromForm(f, BIOBUZZ_FORM, { kind: "field", fieldId: field.id }, "missing").id).toBeNull();
-    expect(insertFromForm(f, BIOBUZZ_FORM, { kind: "field", fieldId: BIOBUZZ_FORM.sections[0].fields[0].id }, "endgame").id).toBeNull(); // system field
+    expect(insertFromForm(f, SAMPLE_FORM, { kind: "field", fieldId: "nope" }, "endgame").id).toBeNull();
+    expect(insertFromForm(f, SAMPLE_FORM, { kind: "field", fieldId: field.id }, "missing").id).toBeNull();
+    expect(insertFromForm(f, SAMPLE_FORM, { kind: "field", fieldId: SAMPLE_FORM.sections[0].fields[0].id }, "endgame").id).toBeNull(); // system field
   });
 
   it("remaps conditions among cloned fields and drops ones that would dangle", () => {
@@ -388,7 +389,7 @@ describe("Insert from BIOBUZZ (cloning)", () => {
   });
 
   it("keeps a list of every key that ever existed", () => {
-    expect(keysOf([BIOBUZZ_FORM]).has("autoLeave")).toBe(true);
+    expect(keysOf([SAMPLE_FORM]).has("autoLeave")).toBe(true);
     expect(allIds(blank()).has("pre-match")).toBe(true);
   });
 });
@@ -509,14 +510,14 @@ describe("diff between two versions", () => {
   });
 
   it("ignores key order and undefined fields: a form that went through the validator or Firestore is the same form", () => {
-    const parsed = parseForm(BIOBUZZ_FORM);
+    const parsed = parseForm(SAMPLE_FORM);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(diffForms(BIOBUZZ_FORM, parsed.form).empty).toBe(true);
+    expect(diffForms(SAMPLE_FORM, parsed.form).empty).toBe(true);
     const roundTripped = JSON.parse(JSON.stringify(parsed.form)) as Form;
-    expect(diffForms(BIOBUZZ_FORM, roundTripped).empty).toBe(true);
-    const reordered: Form = { ...BIOBUZZ_FORM, sections: BIOBUZZ_FORM.sections.map((sec) => ({ ...sec, fields: sec.fields.map((x) => ({ ...x, analytics: x.analytics ? Object.fromEntries(Object.entries(x.analytics).reverse()) as typeof x.analytics : undefined })) })) };
-    expect(diffForms(BIOBUZZ_FORM, reordered).empty).toBe(true);
+    expect(diffForms(SAMPLE_FORM, roundTripped).empty).toBe(true);
+    const reordered: Form = { ...SAMPLE_FORM, sections: SAMPLE_FORM.sections.map((sec) => ({ ...sec, fields: sec.fields.map((x) => ({ ...x, analytics: x.analytics ? Object.fromEntries(Object.entries(x.analytics).reverse()) as typeof x.analytics : undefined })) })) };
+    expect(diffForms(SAMPLE_FORM, reordered).empty).toBe(true);
   });
 
   it("describes scoring rules in words", () => {
@@ -527,8 +528,8 @@ describe("diff between two versions", () => {
   });
 
   it("shows what an override changed from the built-in", () => {
-    const edited = updateField(BIOBUZZ_FORM, BIOBUZZ_FORM.sections.flatMap((s) => s.fields).find((x) => x.key === "autoLeave")!.id, { scoring: { mode: "whenOn", value: 9 } });
-    const d = diffForms(BIOBUZZ_FORM, edited);
+    const edited = updateField(SAMPLE_FORM, SAMPLE_FORM.sections.flatMap((s) => s.fields).find((x) => x.key === "autoLeave")!.id, { scoring: { mode: "whenOn", value: 9 } });
+    const d = diffForms(SAMPLE_FORM, edited);
     expect(d.fields.map((c) => c.key)).toEqual(["autoLeave"]);
     expect(d.impact.scores).toBe(true);
   });
@@ -558,17 +559,17 @@ describe("P22 helpers: permission, usage, creating forms, discarding drafts", ()
   it("starts forms three ways, each custom, unique and unpublished", async () => {
     const { newFormFromScratch, duplicateAsNewForm, formFromImport } = await import("@/lib/forms/create");
     const { exportFormJson } = await import("@/lib/forms/portable");
-    const taken = new Set(["biobuzz", "pit"]);
+    const taken = new Set(["sample", "pit"]);
     const scratch = newFormFromScratch({ name: "Pit", taken, createdBy: "u1", now: 5 });
     expect(scratch).toMatchObject({ id: "pit-2", origin: "custom", version: 0, status: "draft", createdBy: "u1" });
     expect(scratch.sections.map((s) => s.title)).toEqual(["Pre-Match", "Autonomous", "Teleoperated", "Endgame", "Misc"]);
-    const copy = duplicateAsNewForm(BIOBUZZ_FORM, { name: "BIOBUZZ", taken, createdBy: "u1" });
-    expect(copy).toMatchObject({ id: "biobuzz-2", origin: "custom", version: 0, status: "draft" });
+    const copy = duplicateAsNewForm(SAMPLE_FORM, { name: "Sample", taken, createdBy: "u1" });
+    expect(copy).toMatchObject({ id: "sample-2", origin: "custom", version: 0, status: "draft" });
     expect(copy.baseBuiltInId).toBeUndefined();
-    expect(copy.sections).toEqual(BIOBUZZ_FORM.sections);
-    expect(copy.sections).not.toBe(BIOBUZZ_FORM.sections);
-    const imported = formFromImport(exportFormJson(BIOBUZZ_FORM), { name: "", taken, createdBy: "u2" });
-    expect(imported.ok && imported.form).toMatchObject({ id: "biobuzz-2", name: "BIOBUZZ", createdBy: "u2", origin: "custom" });
+    expect(copy.sections).toEqual(SAMPLE_FORM.sections);
+    expect(copy.sections).not.toBe(SAMPLE_FORM.sections);
+    const imported = formFromImport(exportFormJson(SAMPLE_FORM), { name: "", taken, createdBy: "u2" });
+    expect(imported.ok && imported.form).toMatchObject({ id: "sample-2", name: "Sample", createdBy: "u2", origin: "custom" });
     expect(formFromImport("nope", { name: "x", taken, createdBy: "u" })).toMatchObject({ ok: false });
     expect(newFormFromScratch({ name: "  ", taken: new Set(), createdBy: "u" }).name).toBe("Untitled form");
   });
@@ -586,9 +587,9 @@ describe("P22 helpers: permission, usage, creating forms, discarding drafts", ()
     expect(await s.getDraft("x")).toBeNull();
     expect((await s.getForm("x"))?.name).toBe("X");
     // an override that was never published just goes back to the built-in
-    await s.saveDraft({ ...BIOBUZZ_FORM, name: "Mine" });
-    await s.discardDraft("biobuzz");
-    expect(await s.getForm("biobuzz")).toBe(BIOBUZZ_FORM);
+    await s.saveDraft({ ...GAME_FORMS.charged_up, name: "Mine" });
+    await s.discardDraft("charged_up");
+    expect(await s.getForm("charged_up")).toBe(GAME_FORMS.charged_up);
     expect((await s.listVersions("x")).map((v) => v.version)).toEqual([1]);
   });
 });

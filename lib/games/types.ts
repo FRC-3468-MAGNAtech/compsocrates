@@ -1,8 +1,8 @@
 /**
  * Game plugin contract (docs/ROUTES.md D3). One plugin per game; `lib/games/registry.ts` maps a
  * GameId to its plugin. Everything game-specific that is NOT declarative config (formulas, flag
- * rules, prediction) lives behind this interface so a new game is: a config file in `config/games/`,
- * optionally a form in `lib/forms/`, and a plugin only if its scoring has cross-field logic.
+ * rules, prediction) lives behind this interface so a new game is one config entry in `config/games/` (a `GameDefinition`): its plugin
+ * and its form are generated from it. A hand-written plugin is only needed when the scoring has cross-field logic (`formulas`).
  *
  * KEY CONVENTION for form values (shared by the adapter in `data/cs/` and the built-in forms):
  *   A CS document field at path `phase.field` becomes the form value key `phase_field`
@@ -12,7 +12,9 @@
  *   them onto ScoutEntry's own columns.
  */
 
-export type GameId = "REBUILT" | "REEFSCAPE" | "CHARGED_UP";
+import type { GameId } from "@/config/games/definition";
+
+export type { GameId };
 
 /** A raw Firestore document from CS's `scouting` collection (already `data()`, no converters applied). */
 export type CsDoc = Record<string, unknown>;
@@ -90,8 +92,10 @@ export interface GamePlugin {
   label: string;
   /** Calendar year of the game (2026 for REBUILT). */
   season: number;
-  /** `lib/forms` built-in form id when entries can be submitted; null when the game is read-only (docs/ROUTES.md D3). */
-  formId: string | null;
+  /** `lib/forms` built-in form id: the id an entry of this game is attributed to. */
+  formId: string;
+  /** Entries of this game can be written (scout form, practice scouting, admin editor). Mirrors `GameDefinition.submittable`; `valuesToDoc` returns null when false. */
+  submittable: boolean;
 
   /** True when a CS doc belongs to this game. A doc with no `game` field belongs to REEFSCAPE (CS quirk). */
   matches(doc: CsDoc): boolean;
@@ -100,8 +104,9 @@ export interface GamePlugin {
   docToValues(doc: CsDoc): GameValues;
 
   /**
-   * Flat form values -> the game-specific part of a CS doc (nested phases, the shape CS writes today).
-   * Returns null for read-only games. Unknown extra CS fields are the adapter's job to preserve (D10).
+   * Flat form values -> the game-specific part of a CS doc (the shape CS writes today: `game`, nested phases or flat fields).
+   * The exact inverse of `docToValues` for every key the form owns. Returns null only for a game that is not `submittable`.
+   * Unknown extra CS fields are the adapter's job to preserve (D10).
    */
   valuesToDoc(values: GameValues): CsDoc | null;
 
@@ -111,7 +116,7 @@ export interface GamePlugin {
   /** Score flat form values (used live by the form's score bar). Must equal `scoreDoc(valuesToDoc(v))`. */
   scoreValues(values: GameValues): PhaseScore;
 
-  /** Default flat values for an empty form (REBUILT only; read-only games return `{}`). */
+  /** Default flat values for an empty form. */
   defaultValues?(): GameValues;
 
   /** Auto-flags for a CS doc, as CS's `evaluateScoutingFlags` raises them. */

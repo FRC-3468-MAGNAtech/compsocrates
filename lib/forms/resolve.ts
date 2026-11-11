@@ -1,5 +1,5 @@
 import type { Form, FormOrigin } from "@/lib/forms/types";
-import { BUILTIN_FORMS, builtinHash, isReadOnlyForm } from "@/lib/forms/builtin";
+import { BUILTIN_FORMS, builtinHash } from "@/lib/forms/builtin";
 
 // P21: how a (formId, version) becomes a Form: the built-in forms in code, an account's copy-on-write override of one,
 // or an account's custom form. Pure (no Firebase), so the Firestore store, the in-memory store and the tests share it.
@@ -64,7 +64,7 @@ export function resolveForm(catalog: FormCatalog, formId: string, version?: numb
 
 /**
  * Like `resolveForm`, but never fails for a form that exists in code: an entry whose exact version can't be found falls back to
- * the built-in (so a BIOBUZZ entry always renders), and only an unknown custom form returns `null`.
+ * the built-in (so an entry always renders), and only an unknown custom form returns `null`.
  */
 export function resolveFormForEntry(catalog: FormCatalog, formId: string, version?: number): Form | null {
   return resolveForm(catalog, formId, version) ?? resolveForm(catalog, formId) ?? BUILTIN_FORMS[formId] ?? null;
@@ -106,7 +106,6 @@ export type FormSummary = {
 export function listFormSummaries(catalog: FormCatalog): FormSummary[] {
   const out: FormSummary[] = [];
   for (const builtin of Object.values(BUILTIN_FORMS)) {
-    if (isReadOnlyForm(builtin.id)) continue; // the retired games' forms resolve by id for analytics but are not managed or offered
     const doc = catalog.docs.get(builtin.id);
     const overridden = !!doc && doc.active && doc.publishedVersion !== null;
     out.push({
@@ -147,7 +146,6 @@ export function activeFormIdFor(season: { id: string; formId: string }, activeFo
 
 /** Can a form be the active form for a season? It must have a published version (or be a built-in with none overridden) and not be archived. */
 export function canBeActive(catalog: FormCatalog, formId: string): boolean {
-  if (isReadOnlyForm(formId)) return false; // a retired game's form is never offered for a new entry
   const doc = catalog.docs.get(formId);
   if (doc?.archived) return false;
   // P28: only a match-scout form can be a season's active form (the team's other forms have their own pages)

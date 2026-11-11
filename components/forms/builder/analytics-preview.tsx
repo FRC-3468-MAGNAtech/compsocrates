@@ -10,7 +10,7 @@ import { phaseLabel } from "@/lib/forms/types";
 import type { AggregateKind, Form, FormField } from "@/lib/forms/types";
 
 // P22: what this form will become in Match Analytics, team stats and the CSV: the exact three-tier header the table will show (the same
-// `buildGameSchema` the table itself is built from, so this can't drift), the CSV header row, and the per-field team stats. Nothing here is a
+// `buildGameSchema` the table itself is built from, so this can't drift), the CSV header row, and the team stats for each field. Nothing here is a
 // separate description of the form: if it's in the form, it's here.
 
 const AGG_LABEL: Record<AggregateKind, string> = { sum: "total", avg: "average per match", rate: "share of matches", last: "most recent", list: "list of values" };

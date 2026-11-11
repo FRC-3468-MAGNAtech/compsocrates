@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { arrayUnion, doc, updateDoc } from "firebase/firestore";
+import { storageKey } from "@/config/brand";
 import { useAuth } from "@/lib/auth";
 import { auth, db } from "@/lib/firebase/client";
 import { buildBlobPath, isAllowedImageType, MAX_IMAGE_BYTES } from "@/lib/blob/paths";
@@ -17,7 +18,7 @@ import { openUploadQueue, startQueueProcessing, type QueueItem, type UploadQueue
 export type PhotoTarget = { kind: string; formId: string; eventCode: string; teamNumber: string | number };
 
 type Attach = { path: string; fieldKey: string };
-const ATTACH_KEY = "compepicurus.photo-attach";
+const ATTACH_KEY = storageKey("photo-attach");
 
 function readAttach(): Record<string, Attach> {
   try {

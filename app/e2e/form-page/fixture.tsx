@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FormPageView, type PickedMatch } from "@/components/forms/form-page";
 import type { NewFormEntry } from "@/lib/form-entries-model";
-import { DRIVE_REFLECTION_FORM, LEAD_SCOUT_FORM, MATCH_STRATEGY_FORM } from "@/lib/forms/builtin-team-forms";
+import { SAMPLE_LEAD_FORM, SAMPLE_REFLECTION_FORM, SAMPLE_STRATEGY_FORM } from "@/app/e2e/sample-team-forms";
 import type { PlanCandidate } from "@/lib/forms/compare";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 import type { EventInfo } from "@/lib/events/types";
@@ -15,7 +15,7 @@ declare global {
   }
 }
 
-const FORMS = { lead: LEAD_SCOUT_FORM, strategy: MATCH_STRATEGY_FORM, reflection: DRIVE_REFLECTION_FORM } as const;
+const FORMS = { lead: SAMPLE_LEAD_FORM, strategy: SAMPLE_STRATEGY_FORM, reflection: SAMPLE_REFLECTION_FORM } as const;
 const TITLES = { lead: "Lead Scout Form", strategy: "Match Strategy Form", reflection: "Drive Reflection Form" } as const;
 
 const EVENTS: EventInfo[] = [
@@ -29,8 +29,8 @@ function Fixture() {
   const q = useSearchParams();
   const which = (q.get("form") ?? "lead") as keyof typeof FORMS;
   const form = FORMS[which];
-  const [planValues, setPlanValues] = useState<Record<string, string | boolean>>({ t1_role: "hive", t1_auto: true, t2_role: "flower", t2_auto: false });
-  const planEntries: PlanCandidate[] = q.get("plan") === "0" || which !== "reflection" ? [] : [{ id: "plan-1", formId: "match-strategy-v1", eventCode: "EVT1", matchKey: "Q5", alliance: "red", createdAtMs: 1, values: planValues }];
+  const [planValues, setPlanValues] = useState<Record<string, string | boolean>>({ t1_role: "scoring", t1_auto: true, t2_role: "collecting", t2_auto: false });
+  const planEntries: PlanCandidate[] = q.get("plan") === "0" || which !== "reflection" ? [] : [{ id: "plan-1", formId: SAMPLE_STRATEGY_FORM.id, eventCode: "EVT1", matchKey: "Q5", alliance: "red", createdAtMs: 1, values: planValues }];
   const failNext = q.get("fail") === "1";
 
   useEffect(() => {
@@ -69,7 +69,7 @@ function Fixture() {
           return `entry-${window.__saved.length}`;
         }}
       />
-      <button type="button" data-testid="edit-plan" className="mt-4 rounded-full border px-3 py-2 text-sm" onClick={() => setPlanValues((p) => ({ ...p, t1_role: "flower" }))}>
+      <button type="button" data-testid="edit-plan" className="mt-4 rounded-full border px-3 py-2 text-sm" onClick={() => setPlanValues((p) => ({ ...p, t1_role: "collecting" }))}>
         Edit the plan
       </button>
     </div>

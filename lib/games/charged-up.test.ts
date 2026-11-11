@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { chargedUpPlugin as plugin } from "@/lib/games/charged-up";
+import { getGamePlugin } from "@/lib/games/registry";
 import type { CsDoc } from "@/lib/games/types";
 import { scoreEntryForGame, type ScoringEntry } from "@/lib/games/cs-oracle/analyticsScoring";
 import { buildTacticalPrediction } from "@/lib/games/cs-oracle/predictionEngine";
 
+const plugin = getGamePlugin("CHARGED_UP");
 const csScore = (doc: CsDoc) => scoreEntryForGame(doc as ScoringEntry, "CHARGED_UP");
 
 const golden: CsDoc = {
@@ -56,17 +57,39 @@ describe("CHARGED_UP scoring (equals CS)", () => {
     }
   });
 
-  it("is read-only; docToValues uses phase_field keys and scoreValues equals scoreDoc", () => {
-    expect(plugin.formId).toBeNull();
-    expect(plugin.valuesToDoc({})).toBeNull();
+  it("is submittable; docToValues uses phase_field keys and scoreValues equals scoreDoc", () => {
+    expect(plugin.formId).toBe("charged_up");
+    expect(plugin.submittable).toBe(true);
     const values = plugin.docToValues(golden);
     expect(values.auto_gridBottom).toBe(2);
     expect(values.teleop_links).toBe(1);
     expect(values.endgame_chargeStation).toBe("Docked");
     expect(values.penaltyPoints).toBe(4);
+    expect(values.mobility).toBe(true); // `auto.mobility ?? mobility`
     expect(plugin.scoreValues(values)).toEqual(plugin.scoreDoc(golden));
     const legacy: CsDoc = { mobility: true, auto: { gridTop: 1 } };
     expect(plugin.scoreValues(plugin.docToValues(legacy))).toEqual(plugin.scoreDoc(legacy));
+  });
+
+  it("valuesToDoc writes nested phases and mobility at both places, and round-trips", () => {
+    const values = plugin.docToValues(golden);
+    const written = plugin.valuesToDoc(values)!;
+    expect(written).toMatchObject({
+      game: "CHARGED_UP",
+      startingPosition: "Middle",
+      mobility: true,
+      auto: { mobility: true, gridBottom: 2, gridMiddle: 1, gridTop: 1, missed: false, chargeStation: "Engaged" },
+      teleop: { gridBottom: 3, gridMiddle: 2, gridTop: 2, links: 1 },
+      endgame: { chargeStation: "Docked" },
+      penaltyPoints: 4,
+      incidents: ["tipped"],
+    });
+    expect(plugin.docToValues(written)).toEqual(values);
+    expect(plugin.scoreDoc(written)).toEqual(plugin.scoreDoc(golden));
+    expect(csScore(written)).toBe(csScore(golden));
+    // a doc that only has the legacy top-level mobility reads the same and scores the same once written back
+    const legacy: CsDoc = { game: "CHARGED_UP", mobility: true, auto: { gridTop: 1 } };
+    expect(plugin.scoreDoc(plugin.valuesToDoc(plugin.docToValues(legacy))!).total).toBe(csScore(legacy));
   });
 });
 

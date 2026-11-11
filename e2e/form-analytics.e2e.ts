@@ -78,25 +78,19 @@ test.describe("raw table", () => {
 });
 
 test.describe("summary views", () => {
-  test("Pit Scout: the latest entry per team, photos open in a lightbox, the capabilities grid and the auto cycle flow; See all shows the earlier ones", async ({ page }) => {
+  test("Pit Scout: the latest entry per team, the robot picture link, the scales and the auto cycle; See all shows the earlier ones", async ({ page }) => {
     await open(page, "page=pit-scout&view=summary");
     await expect(page.getByTestId("pit-card-111")).toBeVisible();
     await expect(page.locator("[data-testid^='pit-card-']")).toHaveCount(2); // 111 and the latest 222
     const card = page.getByTestId("pit-card-111");
-    await expect(card.getByTestId("pit-gallery").locator("img")).toHaveCount(2);
-    await card.getByRole("button", { name: "Open photo 2 of team 111" }).click();
-    await expect(page.getByTestId("lightbox")).toContainText("Photo 2 of 2");
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("lightbox")).toHaveCount(0);
-    const grid = card.getByTestId("capability-grid");
-    await expect(grid.locator("[data-cell='hive_auto']")).toHaveAttribute("data-on", "true");
-    await expect(grid.locator("[data-cell='garden_auto']")).toHaveAttribute("data-on", "false");
-    await expect(grid.locator("[data-cell='leave_teleop']")).toContainText("n/a");
-    await expect(card.getByTestId("auto-flow")).toContainText("Leave > Hive > Garden > Hive > Park");
-    await expect(card).toContainText("24.5 lb");
-    await expect(card).toContainText("12.5 s");
-    // team 222's latest entry (10 kg = 22 lb, 18 s), not the earlier one
-    await expect(page.getByTestId("pit-card-222")).toContainText("22 lb");
+    await expect(card.getByTestId("pit-picture")).toHaveAttribute("href", "https://example.com/robot-111.jpg");
+    await expect(card).toContainText("118 lbs");
+    await expect(card).toContainText("10-13"); // balls per second
+    await expect(card).toContainText("12.5 s"); // fuel cycle
+    await expect(card).toContainText("Depot then shoot"); // the auto cycle
+    await expect(card).toContainText("Rookie");
+    // team 222's latest entry (55 lbs, 18 s), not the earlier one
+    await expect(page.getByTestId("pit-card-222")).toContainText("55 lbs");
     await expect(page.getByTestId("pit-card-222")).not.toContainText("30 s");
     await page.getByTestId("see-all-toggle").click();
     await expect(page.locator("[data-testid^='pit-card-']")).toHaveCount(3);
@@ -113,32 +107,32 @@ test.describe("summary views", () => {
 
   test("Team Strategy: the teams per best-at and the ability table", async ({ page }) => {
     await open(page, "page=team-strategy&view=summary");
-    await expect(page.getByTestId("best-count-defense")).toContainText("2");
-    await expect(page.getByTestId("best-count-hive")).toContainText("1");
-    await expect(page.getByTestId("best-count-garden")).toContainText("0");
-    await expect(page.getByTestId("strategy-row-222")).toContainText("Defense");
-    await expect(page.getByTestId("strategy-row-111").getByLabel("Yes")).toHaveCount(1); // can score in Hive
+    await expect(page.getByTestId("best-count-cycling")).toContainText("2");
+    await expect(page.getByTestId("best-count-shooting")).toContainText("1");
+    await expect(page.getByTestId("best-count-passing")).toContainText("0");
+    await expect(page.getByTestId("strategy-row-222")).toContainText("Cycling");
+    await expect(page.getByTestId("strategy-row-111").getByLabel("Moves and shoots: yes")).toHaveCount(1);
   });
 
-  test("Match Strategy: the planned roles as chips per match and alliance", async ({ page }) => {
+  test("Match Strategy: the planned robots as chips per match and alliance", async ({ page }) => {
     await open(page, "page=match-strategy&view=summary");
-    const q1 = page.getByTestId("plan-Q1-red");
+    const q1 = page.locator("[data-testid^='plan-Q1-']");
     await expect(q1).toContainText("111");
-    await expect(q1).toContainText("Hive");
-    await expect(q1).toContainText("Auto"); // team 111 will score in auto
+    await expect(q1).toContainText("Auto climb"); // team 111 plans an auto climb
+    await expect(q1).toContainText("Level 3");
     await expect(q1).toContainText("Defense");
-    await expect(page.getByTestId("plan-Q2-blue")).toContainText("Garden");
+    await expect(page.locator("[data-testid^='plan-Q2-']")).toContainText("Feeder");
   });
 
   test("Drive Reflection: plan against actual, a caution on the one that differed, and the % that went to plan", async ({ page }) => {
     await open(page, "page=drive-reflection&view=summary");
     await expect(page.getByTestId("went-to-plan")).toHaveText("50%");
-    const q1 = page.getByTestId("reflection-Q1-red");
+    const q1 = page.locator("[data-testid^='reflection-Q1-']");
     await expect(q1.getByTestId("plan-caution")).toContainText("1 difference from the plan");
-    await expect(q1).toContainText("Defense"); // planned
-    await expect(q1).toContainText("Garden"); // actual
-    await expect(page.getByTestId("reflection-Q2-blue")).toContainText("As planned");
-    await expect(page.getByTestId("reflection-Q2-blue").getByTestId("plan-caution")).toHaveCount(0);
+    await expect(q1.getByTestId("plan-differences")).toContainText("222: endgame climb planned Level 3, actual Level 2");
+    const q2 = page.locator("[data-testid^='reflection-Q2-']");
+    await expect(q2).toContainText("As planned");
+    await expect(q2.getByTestId("plan-caution")).toHaveCount(0);
   });
 
   test("Helper: the success rate overall and per scout, and the log", async ({ page }) => {
@@ -192,7 +186,7 @@ test.describe("admin tools", () => {
     const file = await download.path();
     const csv = readFileSync(file!, "utf8");
     expect(csv.split("\r\n")).toHaveLength(4); // header + 3 entries
-    expect(csv).toContain("Leave → Hive → Garden → Hive → Park");
+    expect(csv).toContain("Depot then shoot");
 
     await rows(page).first().getByRole("button", { name: "Delete entry" }).click();
     await page.getByTestId("confirm-delete").click();
@@ -218,18 +212,16 @@ test.describe("admin tools", () => {
 });
 
 test.describe("Team Profile: Pit and strategy", () => {
-  test("shows the latest photos, cycle time, capacity, best at, lead scout skill and the links", async ({ page }) => {
+  test("shows the picture, cycle time, best at, lead scout skill and the links", async ({ page }) => {
     await open(page, "profile=111");
     const section = page.getByTestId("pit-and-strategy");
-    await expect(section.getByTestId("profile-photos").locator("img")).toHaveCount(2);
+    await expect(section.getByTestId("profile-photos")).toHaveAttribute("href", "https://example.com/robot-111.jpg");
     await expect(section).toContainText("12.5 s");
-    await expect(section).toContainText("Hive"); // best at
+    await expect(section).toContainText("Shooting"); // best at
     await expect(section).toContainText("4.0 / 5"); // (5 + 3) / 2 lead scout skill
-    await expect(section.getByTestId("profile-abilities")).toContainText("Can score in Hive");
-    await expect(section.getByTestId("auto-flow")).toContainText("Leave > Hive > Garden > Hive > Park");
+    await expect(section.getByTestId("profile-abilities")).toContainText("Clears bump");
+    await expect(section).toContainText("Depot then shoot"); // the auto cycle
     await expect(section.getByRole("link", { name: /Pit Scout Analytics/ })).toHaveAttribute("href", /\/analytics\/pit-scout/);
-    await section.getByRole("button", { name: "Open photo 1 of team 111" }).click();
-    await expect(page.getByTestId("lightbox")).toBeVisible();
   });
 
   test("is left out for a team with nothing", async ({ page }) => {

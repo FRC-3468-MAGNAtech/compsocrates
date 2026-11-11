@@ -17,8 +17,8 @@ import { calculateScore } from "@/lib/forms/scoring";
 
 const STEPS: SequenceStep[] = [
   { id: "start", label: "Start", maxCount: 1, pin: "first" },
-  { id: "hive", label: "Hive", maxCount: 0, pin: null },
-  { id: "flower", label: "Flower", maxCount: 0, pin: null },
+  { id: "alpha", label: "Alpha", maxCount: 0, pin: null },
+  { id: "beta", label: "Beta", maxCount: 0, pin: null },
   { id: "bonus", label: "Bonus", maxCount: 1, pin: null },
   { id: "park", label: "Park", maxCount: 1, pin: "last" },
 ];
@@ -98,43 +98,43 @@ describe("slider", () => {
 describe("sequence", () => {
   it("appends, forces pinned steps to the ends, and enforces once-only steps", () => {
     let seq: string[] = [];
-    seq = addStep(STEPS, seq, "hive");
+    seq = addStep(STEPS, seq, "alpha");
     seq = addStep(STEPS, seq, "start"); // pinned first goes to the front though added later
     seq = addStep(STEPS, seq, "park");
-    seq = addStep(STEPS, seq, "flower"); // a middle step goes before the pinned-last one
-    expect(seq).toEqual(["start", "hive", "flower", "park"]);
+    seq = addStep(STEPS, seq, "beta"); // a middle step goes before the pinned-last one
+    expect(seq).toEqual(["start", "alpha", "beta", "park"]);
     expect(addStep(STEPS, seq, "start")).toEqual(seq); // once only
-    expect(addStep(STEPS, seq, "hive")).toEqual(["start", "hive", "flower", "hive", "park"]); // unlimited
+    expect(addStep(STEPS, seq, "alpha")).toEqual(["start", "alpha", "beta", "alpha", "park"]); // unlimited
     expect(canAddStep(STEPS, seq, "park")).toBe(false);
     expect(canAddStep(STEPS, seq, "nope")).toBe(false);
     expect(canAddStep(STEPS, seq, "bonus")).toBe(true);
   });
 
   it("only the middle steps move, and only within the middle", () => {
-    const seq = ["start", "hive", "flower", "bonus", "park"];
+    const seq = ["start", "alpha", "beta", "bonus", "park"];
     expect(isMovable(STEPS, seq, 0)).toBe(false);
     expect(isMovable(STEPS, seq, 4)).toBe(false);
     expect(isMovable(STEPS, seq, 2)).toBe(true);
-    expect(moveStep(STEPS, seq, 3, 1)).toEqual(["start", "bonus", "hive", "flower", "park"]);
-    expect(moveStep(STEPS, seq, 1, 99)).toEqual(["start", "flower", "bonus", "hive", "park"]); // clamped inside the middle
-    expect(moveStep(STEPS, seq, 3, 0)).toEqual(["start", "bonus", "hive", "flower", "park"]); // can't go before the pinned start
+    expect(moveStep(STEPS, seq, 3, 1)).toEqual(["start", "bonus", "alpha", "beta", "park"]);
+    expect(moveStep(STEPS, seq, 1, 99)).toEqual(["start", "beta", "bonus", "alpha", "park"]); // clamped inside the middle
+    expect(moveStep(STEPS, seq, 3, 0)).toEqual(["start", "bonus", "alpha", "beta", "park"]); // can't go before the pinned start
     expect(moveStep(STEPS, seq, 0, 2)).toEqual(seq); // a pinned step doesn't move
     expect(moveStep(STEPS, seq, 4, 1)).toEqual(seq);
-    expect(removeStep(seq, 2)).toEqual(["start", "hive", "bonus", "park"]);
+    expect(removeStep(seq, 2)).toEqual(["start", "alpha", "bonus", "park"]);
   });
 
   it("normalizes whatever is stored: unknown ids dropped, duplicates of once-only steps collapsed, pins enforced", () => {
-    expect(normalizeSequence(STEPS, ["hive", "zzz", "park", "start", "bonus", "bonus", "start", 5, "park"])).toEqual(["start", "hive", "bonus", "park"]);
-    expect(coerceFieldValue({ ...defaultField(formWith("custom"), "sequence", "S"), steps: STEPS }, ["hive", "start"])).toEqual(["start", "hive"]);
+    expect(normalizeSequence(STEPS, ["alpha", "zzz", "park", "start", "bonus", "bonus", "start", 5, "park"])).toEqual(["start", "alpha", "bonus", "park"]);
+    expect(coerceFieldValue({ ...defaultField(formWith("custom"), "sequence", "S"), steps: STEPS }, ["alpha", "start"])).toEqual(["start", "alpha"]);
     expect(coerceFieldValue({ ...defaultField(formWith("custom"), "sequence", "S"), steps: STEPS }, "nope")).toEqual([]);
   });
 
   it("summarizes, counts every step, and reads a summary back", () => {
-    const seq = ["start", "hive", "hive", "park"];
-    expect(summarizeSequence(STEPS, seq)).toBe("Start → Hive → Hive → Park");
-    expect(countSteps(STEPS, seq)).toEqual({ start: 1, hive: 2, flower: 0, bonus: 0, park: 1 });
-    expect(parseSequenceSummary(STEPS, "Start → Hive → Hive → Park")).toEqual(seq);
-    expect(parseSequenceSummary(STEPS, "start → HIVE → Mystery → park")).toEqual(["start", "hive", "park"]);
+    const seq = ["start", "alpha", "alpha", "park"];
+    expect(summarizeSequence(STEPS, seq)).toBe("Start → Alpha → Alpha → Park");
+    expect(countSteps(STEPS, seq)).toEqual({ start: 1, alpha: 2, beta: 0, bonus: 0, park: 1 });
+    expect(parseSequenceSummary(STEPS, "Start → Alpha → Alpha → Park")).toEqual(seq);
+    expect(parseSequenceSummary(STEPS, "start → ALPHA → Mystery → park")).toEqual(["start", "alpha", "park"]);
   });
 
   it("checkForm needs two steps, unique ids, at most one pin each way, pinned steps used once", () => {
@@ -261,13 +261,13 @@ describe("per-team repeating groups", () => {
 });
 
 describe("plan versus actual (compareWith)", () => {
-  const plan = (over: Partial<PlanCandidate> = {}): PlanCandidate => ({ id: "p1", formId: "match-strategy-v1", eventCode: "EVT", matchKey: "Q5", alliance: "red", createdAtMs: 100, values: { t1_role: "hive", t1_auto: true, t2_role: "flower", t2_auto: false }, ...over });
+  const plan = (over: Partial<PlanCandidate> = {}): PlanCandidate => ({ id: "p1", formId: "match-strategy-v1", eventCode: "EVT", matchKey: "Q5", alliance: "red", createdAtMs: 100, values: { t1_role: "alpha", t1_auto: true, t2_role: "beta", t2_auto: false }, ...over });
   const compare = { formId: "match-strategy-v1", matchOn: ["eventCode", "matchKey", "alliance"] as ("eventCode" | "matchKey" | "alliance")[], fieldMap: { role: "role", auto: "auto" } };
   const reflection = () =>
     formWith("drive-reflection", (x) => {
       const g = addGroup(x, "misc", "Teams");
       let y = setGroupRepeat(g.form, "misc", g.id!, { source: "allianceTeams", maxSlots: 3 });
-      y = addField(y, "misc", { ...defaultField(y, "select", "Role"), key: "role", options: [{ value: "hive", label: "Hive" }, { value: "flower", label: "Flower" }] }, { groupId: g.id! });
+      y = addField(y, "misc", { ...defaultField(y, "select", "Role"), key: "role", options: [{ value: "alpha", label: "Alpha" }, { value: "beta", label: "Beta" }] }, { groupId: g.id! });
       y = addField(y, "misc", { ...defaultField(y, "checkbox", "Auto"), key: "auto" }, { groupId: g.id! });
       return setFormCompareWith(y, compare);
     });
@@ -298,23 +298,23 @@ describe("plan versus actual (compareWith)", () => {
     const pairs = expandFieldMap(reflection(), compare.fieldMap, 2);
     let values: FormValues = { t1_role: "", t1_auto: false, t2_role: "", t2_auto: false };
     values = prefillFromPlan(pairs, values, plan().values, new Set());
-    expect(values).toMatchObject({ t1_role: "hive", t1_auto: true, t2_role: "flower", t2_auto: false });
+    expect(values).toMatchObject({ t1_role: "alpha", t1_auto: true, t2_role: "beta", t2_auto: false });
     // the person changes slot 1's role; the plan then changes: only untouched answers follow
-    const edited: FormValues = { ...values, t1_role: "flower" };
+    const edited: FormValues = { ...values, t1_role: "beta" };
     const touched = new Set(["t1_role"]);
-    const changed = prefillFromPlan(pairs, edited, { ...plan().values, t1_role: "hive", t2_role: "hive" }, touched);
-    expect(changed).toMatchObject({ t1_role: "flower", t2_role: "hive" });
-    expect(prefillFromPlan(pairs, changed, { ...plan().values, t1_role: "hive", t2_role: "hive" }, touched)).toBe(changed); // nothing to change: same object
+    const changed = prefillFromPlan(pairs, edited, { ...plan().values, t1_role: "alpha", t2_role: "alpha" }, touched);
+    expect(changed).toMatchObject({ t1_role: "beta", t2_role: "alpha" });
+    expect(prefillFromPlan(pairs, changed, { ...plan().values, t1_role: "alpha", t2_role: "alpha" }, touched)).toBe(changed); // nothing to change: same object
   });
 
-  it("marks every answer that differs, with 'Planned: Hive' and a count", () => {
+  it("marks every answer that differs, with 'Planned: Alpha' and a count", () => {
     const f = reflection();
     const pairs = expandFieldMap(f, compare.fieldMap, 2);
-    const values = { t1_role: "hive", t1_auto: false, t2_role: "hive", t2_auto: false } as never;
+    const values = { t1_role: "alpha", t1_auto: false, t2_role: "alpha", t2_auto: false } as never;
     const diffs = diffAgainstPlan(pairs, values, plan().values);
     expect(diffs.map((d) => d.key)).toEqual(["t2_role", "t1_auto"]);
     const role = f.sections.flatMap((s) => s.fields).find((x) => x.key === "role");
-    expect(plannedText(role, diffs[0].planned)).toBe("Planned: Flower");
+    expect(plannedText(role, diffs[0].planned)).toBe("Planned: Beta");
     expect(plannedText(undefined, true)).toBe("Planned: Yes");
     expect(plannedText(undefined, false)).toBe("Planned: No");
     expect(plannedText(undefined, "")).toBe("Planned: nothing");
@@ -384,7 +384,7 @@ describe("analytics columns and CSV for the new fields", () => {
       y = addField(y, "misc", { ...defaultField(y, "textarea", "Remarks"), key: "remarks" }, { groupId: g.id! });
       y = setFormStickyNotes(y, { enabled: true, defaultOpen: false });
       // scoring on a counter so the form is valid
-      y = add(y, "counter", "Hive", { key: "hive", scoring: { mode: "perTally", value: 2 } });
+      y = add(y, "counter", "Alpha", { key: "alpha", scoring: { mode: "perTally", value: 2 } });
       return y;
     });
   const photo = { url: "https://s.public.blob.vercel-storage.com/pit/t/e/1/a.jpg", pathname: "pit/t/e/1/a.jpg", size: 10, contentType: "image/jpeg" };
@@ -398,7 +398,7 @@ describe("analytics columns and CSV for the new fields", () => {
     expect(errors(form)).toEqual([]);
     const cols = buildGameSchema(form).columns;
     const labels = cols.map((c) => c.label);
-    expect(labels).toEqual(expect.arrayContaining(["Skill", "Cycle", "Photos", "Photos (photos)", "Cycle: Hive (count)", "Cycle: Bonus (count)", "Remarks (team 1)", "Remarks (team 2)", "Notes"]));
+    expect(labels).toEqual(expect.arrayContaining(["Skill", "Cycle", "Photos", "Photos (photos)", "Cycle: Alpha (count)", "Cycle: Bonus (count)", "Remarks (team 1)", "Remarks (team 2)", "Notes"]));
     // one boolean column per enabled matrix cell (the disabled one is absent)
     expect(cols.filter((c) => c.key.startsWith("moves__")).map((c) => c.label)).toEqual(["Moves: Leave / Auto", "Moves: Park / Auto", "Moves: Park / End"]);
     expect(cols.find((c) => c.label === "Notes")?.type).toBe("notes");
@@ -409,12 +409,12 @@ describe("analytics columns and CSV for the new fields", () => {
   it("cells read the stored values", () => {
     const form = build();
     const cols = buildGameSchema(form).columns;
-    const e = entry(form, { skill: 4, cycle: ["start", "hive", "hive", "park"], moves: { leave_auto: true, park_end: true }, photos: [photo], t1_remarks: "quick", t2_remarks: "slow" }, { stickyNotes: [{ id: "1", text: "n1", color: "y", createdAt: 1 }, { id: "2", text: "n2", color: "y", createdAt: 2 }] });
+    const e = entry(form, { skill: 4, cycle: ["start", "alpha", "alpha", "park"], moves: { leave_auto: true, park_end: true }, photos: [photo], t1_remarks: "quick", t2_remarks: "slow" }, { stickyNotes: [{ id: "1", text: "n1", color: "y", createdAt: 1 }, { id: "2", text: "n2", color: "y", createdAt: 2 }] });
     const cell = (label: string) => cols.find((c) => c.label === label)!.getValue(e);
     expect(cell("Skill")).toBe(4);
-    expect(cell("Cycle")).toBe("Start → Hive → Hive → Park");
-    expect(cell("Cycle: Hive (count)")).toBe(2);
-    expect(cell("Cycle: Flower (count)")).toBe(0);
+    expect(cell("Cycle")).toBe("Start → Alpha → Alpha → Park");
+    expect(cell("Cycle: Alpha (count)")).toBe(2);
+    expect(cell("Cycle: Beta (count)")).toBe(0);
     expect(cell("Moves: Leave / Auto")).toBe(true);
     expect(cell("Moves: Park / Auto")).toBe(false);
     expect(cell("Moves: Park / End")).toBe(true);
@@ -428,11 +428,11 @@ describe("analytics columns and CSV for the new fields", () => {
   it("CSV exports a column per cell/slot/step, and importing it gives the same values (derived columns are never imported)", () => {
     const form = build();
     const schema = buildGameSchema(form);
-    const e = entry(form, { skill: 4, cycle: ["start", "hive", "hive", "park"], moves: { leave_auto: true, park_end: true }, photos: [photo], t1_remarks: "quick", t2_remarks: "", hive: 3 }, { stickyNotes: [{ id: "1", text: "n1", color: "y", createdAt: 1 }] });
+    const e = entry(form, { skill: 4, cycle: ["start", "alpha", "alpha", "park"], moves: { leave_auto: true, park_end: true }, photos: [photo], t1_remarks: "quick", t2_remarks: "", alpha: 3 }, { stickyNotes: [{ id: "1", text: "n1", color: "y", createdAt: 1 }] });
     const csv = entriesToCsv(schema, [e], (n) => n);
     const header = csv.split("\r\n")[0];
     expect(header).toContain("Misc - Misc - Moves: Park / End");
-    expect(header).toContain("Cycle: Hive (count)");
+    expect(header).toContain("Cycle: Alpha (count)");
     expect(header).toContain("Notes");
     const result = parseImportCsv(schema, csv);
     expect(result.errors).toEqual([]);
@@ -440,11 +440,11 @@ describe("analytics columns and CSV for the new fields", () => {
     const imported = normalizeValues(form, result.rows[0].values);
     expect(imported).toEqual(normalizeValues(form, e.values as Record<string, unknown>) && imported); // shape check below
     expect(imported.skill).toBe(4);
-    expect(imported.cycle).toEqual(["start", "hive", "hive", "park"]);
+    expect(imported.cycle).toEqual(["start", "alpha", "alpha", "park"]);
     expect(imported.moves).toEqual({ leave_auto: true, park_auto: false, park_end: true });
     expect((imported.photos as { url: string }[])[0].url).toBe(photo.url);
     expect(imported.t1_remarks).toBe("quick");
-    expect(imported.hive).toBe(3);
+    expect(imported.alpha).toBe(3);
     // the full round trip is exact for everything except photo metadata, which a CSV can't carry
     const exact = { ...(e.values as Record<string, unknown>) };
     delete exact.photos;
@@ -459,7 +459,7 @@ describe("portable forms carry the new settings", () => {
     let f = formWith("drive-reflection", (x) => {
       const g = addGroup(x, "misc", "Teams");
       let y = setGroupRepeat(g.form, "misc", g.id!, { source: "allianceTeams", maxSlots: 3 });
-      y = addField(y, "misc", { ...defaultField(y, "select", "Role"), key: "role", options: [{ value: "hive", label: "Hive" }, { value: "flower", label: "Flower" }] }, { groupId: g.id! });
+      y = addField(y, "misc", { ...defaultField(y, "select", "Role"), key: "role", options: [{ value: "alpha", label: "Alpha" }, { value: "beta", label: "Beta" }] }, { groupId: g.id! });
       y = add(y, "sequence", "Cycle", { key: "cycle", steps: STEPS });
       y = add(y, "matrix", "Moves", { key: "moves" });
       y = add(y, "image", "Photos", { key: "photos", maxCount: 2 });

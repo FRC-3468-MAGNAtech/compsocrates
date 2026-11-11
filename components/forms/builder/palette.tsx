@@ -6,14 +6,14 @@ import { ChevronDown, GripVertical, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useBuilder } from "@/components/forms/builder/context";
 import type { DragData } from "@/components/forms/builder/dnd";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { DEFAULT_FORM_ID, GAME_FORMS } from "@/lib/forms/builtin";
 import { addField, addSystemField, defaultField, defaultTeamPicker, FIELD_TYPE_LABEL, missingSystemFields, findField, insertFromForm, isSystemField, type SourceRef } from "@/lib/forms/edit";
 import { describeScoring } from "@/lib/forms/diff";
 import { USER_FIELD_TYPES, type FormSection, type UserFieldType } from "@/lib/forms/types";
 import { cn } from "@/lib/utils";
 
-// P22: the palette: the nine component types (click to add to the selected category, or drag onto the canvas), and "Insert from BIOBUZZ": clone any
-// BIOBUZZ category, group or field, with its point values, into this form.
+// P22: the palette: the nine component types (click to add to the selected category, or drag onto the canvas), and "Insert from <current game>": clone any
+// category, group or field of the current game's form, with its point values, into this form.
 
 const TYPE_HINT: Record<UserFieldType, string> = {
   toggle: "On / off tile",
@@ -77,17 +77,20 @@ function PaletteItem({ type }: { type: UserFieldType }) {
   );
 }
 
+/** The current game's built-in form: the source of the "Insert from" panel. */
+const SOURCE_FORM = GAME_FORMS[DEFAULT_FORM_ID];
+
 export function Palette() {
   const { update, select, form } = useBuilder();
   const target = useTargetSectionId();
   const [open, setOpen] = useState<string | null>(null);
-  const sections = BIOBUZZ_FORM.sections.filter((s) => s.phase !== "prematch" && s.fields.some((f) => !isSystemField(f)));
+  const sections = SOURCE_FORM.sections.filter((s) => s.phase !== "prematch" && s.fields.some((f) => !isSystemField(f)));
   const targetTitle = form.sections.find((s) => s.id === target)?.title;
 
   const insert = (ref: SourceRef) => {
     let id: string | null = null;
     update((f) => {
-      const r = insertFromForm(f, BIOBUZZ_FORM, ref, target ?? undefined);
+      const r = insertFromForm(f, SOURCE_FORM, ref, target ?? undefined);
       id = r.id;
       return r.form;
     });
@@ -109,10 +112,10 @@ export function Palette() {
       <PickerSection target={target} />
 
       <section className="flex flex-col gap-1.5">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Insert from BIOBUZZ</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Insert from {SOURCE_FORM.name}</h3>
         <p className="text-[11px] text-[var(--muted-foreground)]">Copies a category, group or field with its point values. Groups and fields go into the selected category.</p>
         {sections.map((s) => (
-          <BiobuzzSection key={s.id} section={s} open={open === s.id} onToggle={() => setOpen(open === s.id ? null : s.id)} insert={insert} canTarget={!!target} />
+          <SourceSection key={s.id} section={s} open={open === s.id} onToggle={() => setOpen(open === s.id ? null : s.id)} insert={insert} canTarget={!!target} />
         ))}
       </section>
     </div>
@@ -166,7 +169,7 @@ function PickerSection({ target }: { target: string | null }) {
   );
 }
 
-function BiobuzzSection({ section, open, onToggle, insert, canTarget }: { section: FormSection; open: boolean; onToggle: () => void; insert: (r: SourceRef) => void; canTarget: boolean }) {
+function SourceSection({ section, open, onToggle, insert, canTarget }: { section: FormSection; open: boolean; onToggle: () => void; insert: (r: SourceRef) => void; canTarget: boolean }) {
   const groups = section.groups ?? [];
   const ungrouped = section.fields.filter((f) => !f.groupId);
   return (
@@ -192,12 +195,12 @@ function BiobuzzSection({ section, open, onToggle, insert, canTarget }: { sectio
                 </Button>
               </div>
               {section.fields.filter((f) => f.groupId === g.id).map((f) => (
-                <BiobuzzField key={f.id} field={f} canTarget={canTarget} onAdd={() => insert({ kind: "field", fieldId: f.id })} />
+                <SourceField key={f.id} field={f} canTarget={canTarget} onAdd={() => insert({ kind: "field", fieldId: f.id })} />
               ))}
             </div>
           ))}
           {ungrouped.map((f) => (
-            <BiobuzzField key={f.id} field={f} canTarget={canTarget} onAdd={() => insert({ kind: "field", fieldId: f.id })} />
+            <SourceField key={f.id} field={f} canTarget={canTarget} onAdd={() => insert({ kind: "field", fieldId: f.id })} />
           ))}
         </div>
       )}
@@ -205,7 +208,7 @@ function BiobuzzSection({ section, open, onToggle, insert, canTarget }: { sectio
   );
 }
 
-function BiobuzzField({ field, onAdd, canTarget }: { field: FormSection["fields"][number]; onAdd: () => void; canTarget: boolean }) {
+function SourceField({ field, onAdd, canTarget }: { field: FormSection["fields"][number]; onAdd: () => void; canTarget: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1">
       <div className="min-w-0">

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Copy, FilePlus2, FileUp, LayoutTemplate, type LucideIcon } from "lucide-react";
+import { BRAND } from "@/config/brand";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/input";
@@ -166,7 +167,7 @@ export function NewFormDialog({
                 </Button>
                 <span className="text-xs text-[var(--muted-foreground)]">or paste it below</span>
               </div>
-              <Textarea aria-label="Form JSON" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder='{ "format": "compepicurus-form", … }' className="font-mono text-xs" />
+              <Textarea aria-label="Form JSON" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder={`{ "format": "${BRAND.exportFormat}", … }`} className="font-mono text-xs" />
             </div>
           )}
           <TextRow label={mode === "import" ? "Name (optional: the file's name is used if empty)" : "Name"} value={name} maxLength={FORM_LIMITS.name} onChange={setName} placeholder={mode === "duplicate" ? "Copy of the form" : "e.g. Pit scouting"} />

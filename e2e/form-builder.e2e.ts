@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // P22: the Form Builder in a real browser. The fixture page (/e2e/form-builder) is the real Admin Panel > Forms tab on an in-memory form store with no
-// Firebase login, and 12 existing BIOBUZZ entries (so a change that affects data shows the "affects N entries" confirmation).
+// Firebase login, and 12 existing REBUILT entries (so a change that affects data shows the "affects N entries" confirmation).
 
 async function openForms(page: Page) {
   await page.goto("/e2e/form-builder");
@@ -14,8 +14,8 @@ const audit = (page: Page) => page.evaluate(() => window.__audit ?? []);
 const rows = (page: Page) => page.locator("[data-field-row]");
 const saveState = (page: Page) => page.getByTestId("save-state");
 
-async function editBiobuzz(page: Page) {
-  await page.getByRole("button", { name: "Edit BIOBUZZ" }).click();
+async function editRebuilt(page: Page) {
+  await page.getByRole("button", { name: "Edit REBUILT" }).click();
   await expect(page.getByTestId("form-builder")).toBeVisible();
 }
 
@@ -29,18 +29,18 @@ async function newFromScratch(page: Page, name: string) {
 }
 
 test.describe("Forms list", () => {
-  test("lists the built-in BIOBUZZ with its actions, and is the active form for the season", async ({ page }) => {
+  test("lists the built-in REBUILT with its actions, and is the active form for the season", async ({ page }) => {
     await openForms(page);
-    const card = page.locator('[data-form-card="biobuzz"]');
-    await expect(card).toContainText("BIOBUZZ");
+    const card = page.locator('[data-form-card="rebuilt"]');
+    await expect(card).toContainText("REBUILT");
     await expect(card).toContainText("Built-in");
     await expect(card).toContainText("12"); // entries
     await expect(card).toContainText("Active for");
-    for (const name of ["Edit BIOBUZZ", "Duplicate BIOBUZZ", "Export BIOBUZZ as JSON", "Set BIOBUZZ as active"]) await expect(card.getByRole("button", { name })).toBeVisible();
+    for (const name of ["Edit REBUILT", "Duplicate REBUILT", "Export REBUILT as JSON", "Set REBUILT as active"]) await expect(card.getByRole("button", { name })).toBeVisible();
     // nothing to reset or compare until it has been edited
-    await expect(card.getByRole("button", { name: /Reset BIOBUZZ/ })).toHaveCount(0);
-    // it is active for BIOBUZZ's season, so it can't be archived
-    await expect(card.getByRole("button", { name: "Archive BIOBUZZ" })).toBeDisabled();
+    await expect(card.getByRole("button", { name: /Reset REBUILT/ })).toHaveCount(0);
+    // it is active for REBUILT's season, so it can't be archived
+    await expect(card.getByRole("button", { name: "Archive REBUILT" })).toBeDisabled();
   });
 
   test("the New form dialog offers the four starts, the template library among them", async ({ page }) => {
@@ -52,12 +52,12 @@ test.describe("Forms list", () => {
 
   test("duplicates a form into a new custom draft and opens it", async ({ page }) => {
     await openForms(page);
-    await page.getByRole("button", { name: "Duplicate BIOBUZZ" }).click();
-    await expect(page.getByTestId("builder-title")).toHaveText("BIOBUZZ (copy)");
+    await page.getByRole("button", { name: "Duplicate REBUILT" }).click();
+    await expect(page.getByTestId("builder-title")).toHaveText("REBUILT (copy)");
     await expect(page.getByText("Never published")).toBeVisible();
     await page.getByRole("button", { name: "Back to forms" }).click();
-    await expect(page.locator('[data-form-card="biobuzz-copy"]')).toContainText("Custom");
-    await expect(page.locator('[data-form-card="biobuzz-copy"]')).toContainText("Draft");
+    await expect(page.locator('[data-form-card="rebuilt-copy"]')).toContainText("Custom");
+    await expect(page.locator('[data-form-card="rebuilt-copy"]')).toContainText("Draft");
     expect((await audit(page)).map((a) => a.action)).toContain("create-form");
   });
 
@@ -71,7 +71,7 @@ test.describe("Forms list", () => {
     await page.getByRole("button", { name: "Choose another file" }).click();
     await page.getByLabel("Form JSON").fill(JSON.stringify({ format: "other" }));
     await page.getByRole("button", { name: "Check file" }).click();
-    await expect(page.getByTestId("import-preview")).toContainText("isn't a CompEpicurus form export");
+    await expect(page.getByTestId("import-preview")).toContainText("isn't a CompSocrates form export");
   });
 });
 
@@ -80,9 +80,9 @@ test.describe("builder (desktop)", () => {
     test.skip(!!isMobile, "the full builder is desktop-first; phones are covered below");
   });
 
-  test("editing BIOBUZZ shows the copy-on-write notice, then add / rename / autosave / undo / redo", async ({ page }) => {
+  test("editing REBUILT shows the copy-on-write notice, then add / rename / autosave / undo / redo", async ({ page }) => {
     await openForms(page);
-    await editBiobuzz(page);
+    await editRebuilt(page);
     await expect(page.getByTestId("copy-on-write-notice")).toContainText("your team's own copy");
     await expect(saveState(page)).toHaveAttribute("data-state", "saved");
     const before = await rows(page).count();
@@ -167,13 +167,13 @@ test.describe("builder (desktop)", () => {
 
   test("the live preview is the real scout form: a test fill that scores and never saves", async ({ page }) => {
     await openForms(page);
-    await editBiobuzz(page);
+    await editRebuilt(page);
     await page.getByRole("tab", { name: "Preview" }).click();
     const preview = page.getByTestId("live-preview");
     await expect(preview).toContainText("Nothing you enter here is saved");
-    await expect(preview.getByRole("switch", { name: /Leave/i }).first()).toBeVisible();
+    await expect(preview.getByRole("switch", { name: /Successful Climb/i }).first()).toBeVisible();
     await expect(page.getByTestId("preview-score")).toContainText("0");
-    await preview.getByRole("switch", { name: /Leave/i }).first().click();
+    await preview.getByRole("switch", { name: /Successful Climb/i }).first().click();
     await expect(page.getByTestId("preview-score")).not.toContainText(/Test score\s*0\b/);
     await preview.getByRole("button", { name: "Check required fields" }).click();
     await expect(preview.getByRole("status")).toBeVisible();
@@ -186,7 +186,7 @@ test.describe("builder (desktop)", () => {
 
   test("publish shows what changes, asks for confirmation when entries are affected, then versions, history, restore and audit all work", async ({ page }) => {
     await openForms(page);
-    await editBiobuzz(page);
+    await editRebuilt(page);
     await page.getByRole("button", { name: "Add Counter" }).click();
     await page.getByLabel("Label", { exact: true }).fill("Samples collected");
     await page.getByTestId("publish-button").click();
@@ -207,7 +207,7 @@ test.describe("builder (desktop)", () => {
 
     let entries = await audit(page);
     const published = entries.find((a) => a.action === "publish-form")!;
-    expect(published.target).toMatchObject({ formId: "biobuzz", note: "Count samples" });
+    expect(published.target).toMatchObject({ formId: "rebuilt", note: "Count samples" });
     expect(published.after).toMatchObject({ version: 2, affectsData: true, affectedEntries: 12 });
 
     // history: both versions, the built-in original at the bottom; restoring puts the old one in the draft
@@ -228,18 +228,18 @@ test.describe("builder (desktop)", () => {
 
     // back at the list: it is an edited built-in at v2 with unpublished changes, which can be compared, reset or exported
     await page.getByRole("button", { name: "Back to forms" }).click();
-    const card = page.locator('[data-form-card="biobuzz"]');
+    const card = page.locator('[data-form-card="rebuilt"]');
     await expect(card).toContainText("Built-in (edited)");
     await expect(card).toContainText("Published v2");
     await expect(card).toContainText("Unpublished changes");
-    await card.getByRole("button", { name: /View changes in BIOBUZZ from the built-in/ }).click();
+    await card.getByRole("button", { name: /View changes in REBUILT from the built-in/ }).click();
     await expect(page.getByRole("dialog")).toContainText("identical to the built-in", { ignoreCase: true });
     await page.keyboard.press("Escape");
-    await card.getByRole("button", { name: "Reset BIOBUZZ to the built-in" }).click();
+    await card.getByRole("button", { name: "Reset REBUILT to the built-in" }).click();
     await page.getByRole("button", { name: "Reset to built-in" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Reset to the built-in" })).toBeVisible();
     await expect(card).toContainText("Built-in");
-    await expect(card.getByRole("button", { name: /Reset BIOBUZZ/ })).toHaveCount(0);
+    await expect(card.getByRole("button", { name: /Reset REBUILT/ })).toHaveCount(0);
     expect((await audit(page)).map((a) => a.action)).toContain("reset-form-to-builtin");
   });
 
@@ -269,22 +269,22 @@ test.describe("builder (desktop)", () => {
     const card = page.locator('[data-form-card="pit-scouting"]');
     await expect(card).toContainText("Published v1");
     await card.getByRole("button", { name: "Set Pit scouting as active" }).click();
-    await page.getByRole("button", { name: /Use for BIOBUZZ/ }).click();
+    await page.getByRole("button", { name: /Use for REBUILT/ }).click();
     await expect(card).toContainText("Active for");
-    await expect(card).toContainText("BIOBUZZ");
-    // BIOBUZZ is no longer active for the season, so it can be archived now
-    await expect(page.locator('[data-form-card="biobuzz"]').getByRole("button", { name: "Archive BIOBUZZ" })).toBeEnabled();
+    await expect(card).toContainText("REBUILT");
+    // REBUILT is no longer active for the season, so it can be archived now
+    await expect(page.locator('[data-form-card="rebuilt"]').getByRole("button", { name: "Archive REBUILT" })).toBeEnabled();
     const actions = (await audit(page)).map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["create-form", "publish-form", "set-active-form"]));
   });
 
-  test("Insert from BIOBUZZ clones a category with its points", async ({ page }) => {
+  test("Insert from the game form clones a category with its points", async ({ page }) => {
     await openForms(page);
     await newFromScratch(page, "Mini game");
     await page.getByRole("button", { name: /^Autonomous\d* fields?|^Autonomous/ }).first().click();
     await page.getByRole("button", { name: "Insert category Autonomous" }).click();
     const copy = page.getByRole("region", { name: /Category Autonomous/ }).last();
-    await expect(copy.locator('[data-field-row="autoLeave"]')).toContainText("pts");
+    await expect(copy.locator('[data-field-row="auto_successfulClimb"]')).toContainText("pts");
   });
 
   test("fields move with buttons and keyboard shortcuts, not only by dragging", async ({ page }) => {
@@ -316,8 +316,8 @@ test.describe("builder (phone)", () => {
 
   test("shows the forms list, the read-only structure, simple field edits and the preview, with a note about a larger screen", async ({ page }) => {
     await openForms(page);
-    await expect(page.locator('[data-form-card="biobuzz"]')).toBeVisible();
-    await editBiobuzz(page);
+    await expect(page.locator('[data-form-card="rebuilt"]')).toBeVisible();
+    await editRebuilt(page);
     await expect(page.getByTestId("compact-note")).toContainText("works best on a larger screen");
     // no palette, no structural controls
     await expect(page.getByRole("complementary", { name: "Palette" })).toHaveCount(0);

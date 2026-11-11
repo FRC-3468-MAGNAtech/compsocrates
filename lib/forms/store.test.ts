@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { BIOBUZZ_FORM, builtinHash } from "@/lib/forms/builtin";
+import { BRAND } from "@/config/brand";
+import { GAME_FORMS, builtinHash } from "@/lib/forms/builtin";
 import { createBlankForm } from "@/lib/forms/new-form";
 import { createMemoryFormStore } from "@/lib/forms/store";
 import { FormStoreError } from "@/lib/forms/transitions";
 import { activeFormIdFor, builtinChangedSince, canBeActive, listFormSummaries, resolveForm, resolveFormForEntry, nextVersion, formDocId } from "@/lib/forms/resolve";
 import { exportForm, exportFormJson, importForm } from "@/lib/forms/portable";
 import { calculateScore } from "@/lib/forms/scoring";
-import { entryValues } from "@/lib/forms/legacy";
+import { entryValues } from "@/lib/forms/entry-values";
 import { normalizeValues } from "@/lib/forms/values";
 import { buildGameSchema, unionForms } from "@/lib/analytics/game-schema";
 import { entriesToCsv, parseImportCsv } from "@/lib/analytics/csv";
@@ -17,6 +18,8 @@ import { notApplicableAccuracy } from "@/lib/scout-entries";
 import { resolveLiveAllianceScoring } from "@/lib/live/scoring";
 import type { Form, FormField } from "@/lib/forms/types";
 
+/** A game's code-defined built-in, the form the override tests start from. */
+const BUILT = GAME_FORMS.charged_up;
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const field = (over: Partial<FormField> & Pick<FormField, "key" | "type">): FormField => ({ id: `f-${over.key}`, label: over.key, ...over });
 
@@ -119,52 +122,54 @@ describe("form store: custom forms", () => {
 });
 
 describe("form store: editing a built-in (copy-on-write)", () => {
-  const editedBiobuzz = (): Form => {
-    const f = clone(BIOBUZZ_FORM);
-    f.name = "BIOBUZZ (our scoring)";
-    f.sections.flatMap((s) => s.fields).find((x) => x.key === "autoLeave")!.scoring = { mode: "whenOn", value: 10 };
+  // a game's built-in (scored by its plugin) edited into a form that scores by its own field rules
+  const editedBuiltin = (): Form => {
+    const f = clone(BUILT);
+    f.name = "CHARGED UP (our scoring)";
+    delete f.scoring;
+    f.sections.flatMap((s) => s.fields).find((x) => x.key === "mobility")!.scoring = { mode: "whenOn", value: 10 };
     return f;
   };
 
   it("leaves scouts on the built-in until the override is published, and numbers it one past the built-in's version", async () => {
     const s = store();
-    await s.saveDraft(editedBiobuzz());
-    expect((await s.getForm("biobuzz"))?.version).toBe(1); // still the code-defined one
-    expect((await s.getForm("biobuzz"))?.name).toBe("BIOBUZZ");
-    expect((await s.listForms()).find((f) => f.id === "biobuzz")).toMatchObject({ origin: "built-in-override", hasDraft: true, overridden: false });
+    await s.saveDraft(editedBuiltin());
+    expect((await s.getForm("charged_up"))?.version).toBe(1); // still the code-defined one
+    expect((await s.getForm("charged_up"))?.name).toBe("CHARGED UP");
+    expect((await s.listForms()).find((f) => f.id === "charged_up")).toMatchObject({ origin: "built-in-override", hasDraft: true, overridden: false });
 
-    expect((await s.publish("biobuzz")).version).toBe(BIOBUZZ_FORM.version + 1);
-    expect((await s.getForm("biobuzz"))?.name).toBe("BIOBUZZ (our scoring)");
-    expect((await s.listForms()).find((f) => f.id === "biobuzz")).toMatchObject({ overridden: true, version: 2 });
+    expect((await s.publish("charged_up")).version).toBe(BUILT.version + 1);
+    expect((await s.getForm("charged_up"))?.name).toBe("CHARGED UP (our scoring)");
+    expect((await s.listForms()).find((f) => f.id === "charged_up")).toMatchObject({ overridden: true, version: 2 });
   });
 
   it("keeps old entries on the original: version 1 always resolves to the code-defined form", async () => {
     const s = store();
-    await s.saveDraft(editedBiobuzz());
-    await s.publish("biobuzz");
-    const original = await s.getForm("biobuzz", 1);
-    expect(original).toBe(BIOBUZZ_FORM);
-    const values = normalizeValues(BIOBUZZ_FORM, { autoLeave: true });
-    expect(calculateScore(original!, values).total).toBe(calculateScore(BIOBUZZ_FORM, values).total);
-    expect(calculateScore((await s.getForm("biobuzz"))!, values).total).toBe(calculateScore(BIOBUZZ_FORM, values).total + 10 - 3 /* the old autoLeave points */);
+    await s.saveDraft(editedBuiltin());
+    await s.publish("charged_up");
+    const original = await s.getForm("charged_up", 1);
+    expect(original).toBe(BUILT);
+    const values = normalizeValues(BUILT, { mobility: true });
+    expect(calculateScore(original!, values).total).toBe(3); // the plugin's mobility points
+    expect(calculateScore((await s.getForm("charged_up"))!, values).total).toBe(10); // the override's own field rule
   });
 
   it("reset to built-in switches the override off, and its versions stay readable", async () => {
     const s = store();
-    await s.saveDraft(editedBiobuzz());
-    await s.publish("biobuzz");
-    await s.resetToBuiltin("biobuzz");
-    expect(await s.getForm("biobuzz")).toBe(BIOBUZZ_FORM);
-    expect((await s.getForm("biobuzz", 2))?.name).toBe("BIOBUZZ (our scoring)"); // entries scouted with it still resolve
-    expect((await s.listForms()).find((f) => f.id === "biobuzz")?.overridden).toBe(false);
+    await s.saveDraft(editedBuiltin());
+    await s.publish("charged_up");
+    await s.resetToBuiltin("charged_up");
+    expect(await s.getForm("charged_up")).toBe(BUILT);
+    expect((await s.getForm("charged_up", 2))?.name).toBe("CHARGED UP (our scoring)"); // entries scouted with it still resolve
+    expect((await s.listForms()).find((f) => f.id === "charged_up")?.overridden).toBe(false);
     await expect(s.resetToBuiltin("pit-v1")).rejects.toMatchObject({ code: "unknown-built-in" });
   });
 
   it("notices when the code-defined original changes after an override was made", async () => {
     const s = store();
-    await s.saveDraft(editedBiobuzz());
-    const doc = s.catalog().docs.get("biobuzz")!;
-    expect(doc.baseBuiltInHash).toBe(builtinHash("biobuzz"));
+    await s.saveDraft(editedBuiltin());
+    const doc = s.catalog().docs.get("charged_up")!;
+    expect(doc.baseBuiltInHash).toBe(builtinHash("charged_up"));
     expect(builtinChangedSince(doc)).toBe(false);
     expect(builtinChangedSince({ ...doc, baseBuiltInHash: "stale" })).toBe(true);
     expect(builtinChangedSince({ baseBuiltInId: undefined, baseBuiltInHash: undefined })).toBe(false);
@@ -173,15 +178,15 @@ describe("form store: editing a built-in (copy-on-write)", () => {
 
 describe("resolution and the active form per season", () => {
   it("falls back to the season default, and honours the account's choice", () => {
-    const season = { id: "biobuzz", formId: "biobuzz" };
-    expect(activeFormIdFor(season, undefined)).toBe("biobuzz");
-    expect(activeFormIdFor(season, {})).toBe("biobuzz");
-    expect(activeFormIdFor(season, { biobuzz: "pit-v1" })).toBe("pit-v1");
+    const season = { id: "charged_up", formId: "charged_up" };
+    expect(activeFormIdFor(season, undefined)).toBe("charged_up");
+    expect(activeFormIdFor(season, {})).toBe("charged_up");
+    expect(activeFormIdFor(season, { charged_up: "pit-v1" })).toBe("pit-v1");
   });
 
   it("only lets a published, unarchived form (or a built-in) be active", async () => {
     const s = store();
-    expect(canBeActive(s.catalog(), "biobuzz")).toBe(true);
+    expect(canBeActive(s.catalog(), "charged_up")).toBe(true);
     expect(canBeActive(s.catalog(), "pit-v1")).toBe(false); // doesn't exist
     await s.saveDraft(pitForm());
     expect(canBeActive(s.catalog(), "pit-v1")).toBe(false); // never published
@@ -192,16 +197,16 @@ describe("resolution and the active form per season", () => {
   it("resolves an entry's own version, and never fails for a form that exists in code", async () => {
     const s = store();
     const c = s.catalog();
-    expect(resolveFormForEntry(c, "biobuzz", 1)).toBe(BIOBUZZ_FORM);
-    expect(resolveFormForEntry(c, "biobuzz", 9)).toBe(BIOBUZZ_FORM); // unknown version: the built-in
-    expect(resolveFormForEntry(c, "biobuzz")).toBe(BIOBUZZ_FORM); // legacy entry: no version at all
+    expect(resolveFormForEntry(c, "charged_up", 1)).toBe(BUILT);
+    expect(resolveFormForEntry(c, "charged_up", 9)).toBe(BUILT); // unknown version: the built-in
+    expect(resolveFormForEntry(c, "charged_up")).toBe(BUILT); // legacy entry: no version at all
     expect(resolveFormForEntry(c, "gone", 1)).toBeNull();
     expect(resolveForm(c, "gone")).toBeNull();
   });
 
   it("numbers versions and builds document ids as documented", () => {
     expect(nextVersion(null)).toBe(1);
-    expect(nextVersion({ publishedVersion: null, baseBuiltInId: "biobuzz" })).toBe(2);
+    expect(nextVersion({ publishedVersion: null, baseBuiltInId: "charged_up" })).toBe(2);
     expect(nextVersion({ publishedVersion: 4, baseBuiltInId: undefined })).toBe(5);
     expect(formDocId("t", "f")).toBe("t_f");
   });
@@ -210,15 +215,9 @@ describe("resolution and the active form per season", () => {
     const s = store();
     await s.saveDraft(pitForm());
     const list = listFormSummaries(s.catalog());
-    // the built-ins (REBUILT, BIOBUZZ and, since P28, Lead Scout, Match Strategy and Drive Reflection) and the custom form
+    // the built-ins (the three games' match forms and the six non-match forms) and the custom form
     expect(list.map((f) => f.id).sort()).toEqual([
-      "biobuzz",
-      "biobuzz-drive-reflection-v1",
-      "biobuzz-helper-v1",
-      "biobuzz-lead-scout-v1",
-      "biobuzz-match-strategy-v1",
-      "biobuzz-pit-scout-v1",
-      "biobuzz-team-strategy-v1",
+      "charged_up",
       "drive-reflection-v1",
       "helper-v1",
       "lead-scout-v1",
@@ -226,8 +225,9 @@ describe("resolution and the active form per season", () => {
       "pit-scout-v1",
       "pit-v1",
       "rebuilt",
+      "reefscape",
       "team-strategy-v1",
-    ]); // the retired games (reefscape, charged_up) resolve by id but are not listed
+    ]);
   });
 });
 
@@ -245,8 +245,8 @@ describe("export / import", () => {
     expect(result.form.origin).toBe("custom");
   });
 
-  it("exports BIOBUZZ as a portable custom copy (no link to the built-in) that imports cleanly", () => {
-    const result = importForm(exportFormJson(BIOBUZZ_FORM));
+  it("exports a game's built-in as a portable custom copy (no link to the built-in) that imports cleanly", () => {
+    const result = importForm(exportFormJson(GAME_FORMS.reefscape));
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.form.baseBuiltInId).toBeUndefined();
   });
@@ -255,7 +255,7 @@ describe("export / import", () => {
     expect(importForm("{not json")).toMatchObject({ ok: false, errors: ["That isn't valid JSON."] });
     expect(importForm("[]")).toMatchObject({ ok: false });
     expect(importForm({ format: "something-else" })).toMatchObject({ ok: false });
-    expect(importForm({ format: "compepicurus-form", formatVersion: 99, form: {} })).toMatchObject({ ok: false });
+    expect(importForm({ format: BRAND.exportFormat, formatVersion: 99, form: {} })).toMatchObject({ ok: false });
     const bad = exportForm(pitForm());
     (bad.form.sections[2].fields[0] as { type: string }).type = "hologram";
     const r = importForm(JSON.stringify(bad));
@@ -308,7 +308,7 @@ describe("a custom form end to end: scoring, entries, table, CSV, flags, stats",
     const e = entry(1, { samples: 4, park: "full", driver: 4, comments: "quick" });
     expect(e.score.total).toBe(4 * 3 + 5);
     expect(e.values).toMatchObject({ samples: 4, park: "full", driver: 4 });
-    expect(e.fields).toBeUndefined();
+    expect(e).not.toHaveProperty("fields");
     expect(e.formId).toBe("pit-v1");
     expect(e.formVersion).toBe(1);
     expect(e.comments).toBe("quick");
@@ -329,7 +329,7 @@ describe("a custom form end to end: scoring, entries, table, CSV, flags, stats",
     expect(rows.map((r) => normalizeValues(form, r.values))).toEqual(entries.map((e) => normalizeValues(form, entryValues(e, form))));
   });
 
-  it("evaluates flags from the form's roles and limits, not BIOBUZZ's keys", () => {
+  it("evaluates flags from the form's roles and limits, not a game's keys", () => {
     const base = { match: null, allianceTeams: [], officialAllianceScore: null, allianceAccuracy: null, sameMatchEntries: [], sameTeamEntries: [], form };
     expect(evaluateAutoFlagRuleIds(entry(1, { samples: 40, park: "full" }), base)).toContain("unrealistic-teleop-scoring");
     expect(evaluateAutoFlagRuleIds(entry(2, { samples: 1 }), base)).not.toContain("unrealistic-teleop-scoring");

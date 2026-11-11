@@ -7,7 +7,7 @@ import { authedApi } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { useTeamDoc } from "@/lib/team";
 import { logAuditEvent } from "@/lib/audit-log";
-import { readFieldTeams } from "@/lib/field-teams";
+import { readTeamIdentity, teamLabel } from "@/lib/team-number";
 import { buildTemplateContent, TEMPLATE_LIMITS, type FormTemplate } from "@/lib/templates/build";
 import { TemplatesContext, type TemplateInput, type TemplateService } from "@/lib/templates/service";
 
@@ -52,8 +52,8 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
   const authorName = useMemo(() => {
     const account = typeof team?.accountName === "string" ? team.accountName.trim() : "";
     if (account) return account.slice(0, TEMPLATE_LIMITS.authorName);
-    const first = readFieldTeams(team)[0];
-    return first ? `FTC ${first.number}${first.name ? ` ${first.name}` : ""}`.slice(0, TEMPLATE_LIMITS.authorName) : "A team";
+    const { number, name: teamName } = readTeamIdentity(team);
+    return number !== null ? teamLabel(number, teamName).slice(0, TEMPLATE_LIMITS.authorName) : "A team";
   }, [team]);
 
   const service = useMemo<TemplateService>(() => {

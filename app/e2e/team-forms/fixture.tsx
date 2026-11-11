@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { FormPageView } from "@/components/forms/form-page";
 import { PhotoUploadProvider } from "@/components/forms/photo-upload";
 import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
-import { HELPER_FORM, PIT_SCOUT_FORM, TEAM_STRATEGY_FORM } from "@/lib/forms/builtin-pit-forms";
+import { SAMPLE_HELPER_FORM, SAMPLE_PIT_FORM, SAMPLE_TEAM_STRATEGY_FORM } from "@/app/e2e/sample-team-forms";
 import { rookieSuggestion } from "@/lib/forms/pit-suggest";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
 import type { EventInfo } from "@/lib/events/types";
@@ -17,7 +17,7 @@ declare global {
   }
 }
 
-const FORMS = { pit: PIT_SCOUT_FORM, strategy: TEAM_STRATEGY_FORM, helper: HELPER_FORM } as const;
+const FORMS = { pit: SAMPLE_PIT_FORM, strategy: SAMPLE_TEAM_STRATEGY_FORM, helper: SAMPLE_HELPER_FORM } as const;
 const TITLES = { pit: "Pit Scout Form", strategy: "Team Strategy Form", helper: "Helper Form" } as const;
 const ev = (code: string, name: string): EventInfo => ({ code, season: 2025, name, dateStart: "2025-11-08", dateEnd: "2025-11-08", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "in-progress" });
 const TEAMS = [
@@ -35,7 +35,7 @@ function Fixture() {
   const seeded: FormEntry[] =
     q.get("mine") === "1"
       ? [
-          { id: "mine-1", teamId: "t", uid: "me", scoutName: "Ada Lovelace", formId: form.id, formVersion: 1, formType: form.formType as FormEntry["formType"], eventCode: "EVT1", teamNumber: 222, values: { weight: 20, weightUnit: "lb", bestAt: "hive" }, stickyNotes: [{ id: "n1", text: "earlier note", color: "yellow", createdAt: 1 }], flags: [], excluded: false, createdAtMs: 100, updatedAtMs: 100 },
+          { id: "mine-1", teamId: "t", uid: "me", scoutName: "Ada Lovelace", formId: form.id, formVersion: 1, formType: form.formType as FormEntry["formType"], eventCode: "EVT1", teamNumber: 222, values: { weight: 20, weightUnit: "lb", bestAt: "scoring" }, stickyNotes: [{ id: "n1", text: "earlier note", color: "yellow", createdAt: 1 }], flags: [], excluded: false, createdAtMs: 100, updatedAtMs: 100 },
           { id: "other-1", teamId: "t", uid: "someone", scoutName: "Ben", formId: form.id, formVersion: 1, formType: form.formType as FormEntry["formType"], eventCode: "EVT1", teamNumber: 222, values: {}, stickyNotes: [], flags: [], excluded: false, createdAtMs: 50, updatedAtMs: 50 },
         ]
       : [];

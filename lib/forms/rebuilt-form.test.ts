@@ -58,16 +58,17 @@ describe("REBUILT built-in form", () => {
     expect(REBUILT_FORM.sections.map((s) => s.phase)).toEqual(["prematch", "prematch", "auto", "teleop", "endgame", "misc"]);
   });
 
-  it("is registered, the default form, and the default season, with BIOBUZZ still registered", () => {
+  it("is registered, the default form, and the default season, next to the other two games", () => {
     expect(DEFAULT_FORM_ID).toBe("rebuilt");
     expect(getBuiltinForm("rebuilt")).toBe(REBUILT_FORM);
-    expect(getBuiltinForm("biobuzz")?.id).toBe("biobuzz");
+    expect(getBuiltinForm("reefscape")?.id).toBe("reefscape");
+    expect(getBuiltinForm("charged_up")?.id).toBe("charged_up");
     expect(builtinHash("rebuilt")).toMatch(/./);
-    expect(Object.keys(BUILTIN_FORMS)).toEqual(expect.arrayContaining(["rebuilt", "biobuzz", "lead-scout-v1", "pit-scout-v1"]));
+    expect(Object.keys(BUILTIN_FORMS)).toEqual(expect.arrayContaining(["rebuilt", "reefscape", "charged_up", "lead-scout-v1", "pit-scout-v1"]));
     expect(DEFAULT_SEASON_ID).toBe("rebuilt");
-    expect(SEASONS.map((s) => s.id)).toEqual(["rebuilt", "reefscape", "charged_up", "biobuzz"]); // the two retired games are read-only seasons
+    expect(SEASONS.map((s) => s.id)).toEqual(["rebuilt", "reefscape", "charged_up"]); // all three games are scouted seasons
     expect(getSeason()).toMatchObject({ id: "rebuilt", name: "REBUILT", apiSeason: 2026, formId: "rebuilt" });
-    expect(getSeason("biobuzz").formId).toBe("biobuzz");
+    expect(getSeason("charged_up").formId).toBe("charged_up");
     expect(GAMES.rebuilt.id).toBe("rebuilt");
   });
 

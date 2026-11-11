@@ -1,17 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { OurTeamTag } from "@/components/analytics/team-bits";
 import { useAnalyticsHref } from "@/lib/analytics/filter-context";
-import { useIsOurTeam } from "@/lib/field-teams-context";
-import type { ImageValue } from "@/lib/forms/types";
+import { useIsOurTeam } from "@/lib/our-team";
 
-// Small pieces both summary views share (the BIOBUZZ one in form-summaries-view.tsx, the REBUILT one in form-summaries-rebuilt-view.tsx), kept apart so neither view
-// imports the other.
+// Small pieces the summary views share (the form pages in form-summaries-rebuilt-view.tsx, the Team Profile section in pit-and-strategy-rebuilt.tsx).
 
 /** A team number as a chip that links to the Team Profile (with the "us" tag for our own teams). */
 export function TeamChip({ team, names }: { team: number; names: ReadonlyMap<number, string> }) {
@@ -60,36 +56,5 @@ export function Fact({ label, value }: { label: string; value: string | number |
       <div className="text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">{label}</div>
       <div className="tabular-nums">{value === null || value === "" ? "—" : value}</div>
     </div>
-  );
-}
-
-export function Lightbox({ photos, start, onClose, title }: { photos: ImageValue[]; start: number; onClose: () => void; title: string }) {
-  const [i, setI] = useState(start);
-  const photo = photos[i];
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[min(94vw,900px)]" data-testid="lightbox">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>
-          Photo {i + 1} of {photos.length}
-        </DialogDescription>
-        {photo && (
-          <div className="mt-2 flex max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a Vercel Blob URL on a host we don't configure for next/image */}
-            <img src={photo.url} alt={`${title}: photo ${i + 1}`} className="max-h-[70vh] w-auto max-w-full object-contain" />
-          </div>
-        )}
-        {photos.length > 1 && (
-          <div className="mt-3 flex justify-between gap-2">
-            <Button variant="glass" size="sm" onClick={() => setI((i + photos.length - 1) % photos.length)}>
-              Previous
-            </Button>
-            <Button variant="glass" size="sm" onClick={() => setI((i + 1) % photos.length)}>
-              Next
-            </Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }

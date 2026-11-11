@@ -1,3 +1,4 @@
+import { BRAND } from "@/config/brand";
 import type { Form } from "@/lib/forms/types";
 import { FORM_LIMITS, checkForm, parseForm, type FormIssue, type ParseIssue } from "@/lib/forms/validate";
 import { contentHash } from "@/lib/forms/hash";
@@ -9,7 +10,7 @@ import { sanitizeFormText } from "@/lib/forms/sanitize";
 // (unknown keys, unknown field types and over-long or control-character text are all rejected), sanitized, checked for
 // semantic problems, and never allowed to claim to be a built-in or to carry someone else's provenance.
 
-export const FORM_EXPORT_FORMAT = "compepicurus-form";
+export const FORM_EXPORT_FORMAT: string = BRAND.exportFormat;
 export const FORM_EXPORT_VERSION = 1;
 
 /** `checksum` is a content hash of `form` (P23): it notices a damaged or hand-edited file (a warning, not a refusal). It is not a signature: anyone can recompute it. */
@@ -86,7 +87,7 @@ export function importForm(input: unknown, options: ImportOptions = {}): ImportR
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) return { ok: false, errors: ["That isn't a form export."], issues: [] };
   const envelope = data as Record<string, unknown>;
-  if (envelope.format !== FORM_EXPORT_FORMAT) return { ok: false, errors: ["That file isn't a CompEpicurus form export."], issues: [] };
+  if (envelope.format !== FORM_EXPORT_FORMAT) return { ok: false, errors: [`That file isn't a ${BRAND.name} form export.`], issues: [] };
   if (envelope.formatVersion !== FORM_EXPORT_VERSION) {
     return { ok: false, errors: [`This export uses format version ${String(envelope.formatVersion)}, which this app can't read (it reads version ${FORM_EXPORT_VERSION}).`], issues: [] };
   }

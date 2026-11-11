@@ -9,7 +9,7 @@ import type { FormStore } from "@/lib/forms/store";
 
 // P21: the Firestore FormStore. Layout: `forms/{teamId}_{formId}` holds the working draft, the latest published version number and whether an
 // override is active (FormDoc); `forms/{teamId}_{formId}/versions/{n}` holds each published version, write-once (rules refuse any update or
-// delete). The id carries the team so two accounts' "biobuzz" overrides can't collide. Every write is one transaction around the pure
+// delete). The id carries the team so two accounts' "rebuilt" overrides can't collide. Every write is one transaction around the pure
 // transitions in lib/forms/transitions.ts, which also run in the in-memory store and the tests.
 
 const FORMS = "forms";

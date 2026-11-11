@@ -1,5 +1,6 @@
 import { REBUILT_CONFIG as C } from "@/config/games/rebuilt";
-import type { Form, FormField, FormGroup, FormSection, StatRole, VisibleWhen } from "@/lib/forms/types";
+import { incidentField, incidentSpecs, incidentsFromValues as incidentsFromValuesOf, incidentValuesFromList as incidentValuesFromListOf } from "@/lib/forms/incidents";
+import type { Form, FormField, FormGroup, FormSection, VisibleWhen } from "@/lib/forms/types";
 
 // CS rebuild: the REBUILT (FRC 2026) match scout form, as a built-in `Form`. Every field of CS's `/scout-form` (app/scout-form/page.tsx, REBUILT branch),
 // in CS's order, with CS's labels, units and helper text. Keys follow the KEY CONVENTION in lib/games/types.ts: a CS document field `phase.field`
@@ -139,39 +140,14 @@ function shiftFields(): FormField[] {
   return out;
 }
 
-const incidentKey = (value: string): string => `incidents_${value.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}`;
-
 /** CS's seven incidents with the form key each one is stored under (`never-started` -> `incidents_neverStarted`). */
-export const REBUILT_INCIDENTS = C.incidents.map((i) => ({ value: i.value, key: incidentKey(i.value), label: i.label }));
+export const REBUILT_INCIDENTS = incidentSpecs(C.incidents);
 
-const INCIDENT_ROLES: Record<string, StatRole[]> = {
-  died: ["reliability", "died"],
-  "never-started": ["reliability", "neverStarted"],
-  disabled: ["reliability", "disabled"],
-  recovered: ["reliability", "recoveredFromFreeze"],
-  tipped: ["reliability"],
-};
-
-/** CS's `incidents: string[]` from the form's seven incident fields (what the game plugin's `valuesToDoc` reads). */
-export function incidentsFromValues(values: Record<string, unknown>): string[] {
-  return REBUILT_INCIDENTS.filter((i) => values[i.key] === true).map((i) => i.value);
-}
+/** CS's `incidents: string[]` from the form's seven incident fields (what a game plugin's `valuesToDoc` reads). */
+export const incidentsFromValues = (values: Record<string, unknown>): string[] => incidentsFromValuesOf(values, C.incidents);
 
 /** The seven incident fields from CS's `incidents: string[]` (unknown entries are ignored). */
-export function incidentValuesFromList(list: unknown): Record<string, boolean> {
-  const set = new Set(Array.isArray(list) ? list.map((v) => String(v)) : []);
-  return Object.fromEntries(REBUILT_INCIDENTS.map((i) => [i.key, set.has(i.value)]));
-}
-
-const incident = (i: (typeof REBUILT_INCIDENTS)[number]): FormField => ({
-  id: `f-${i.key}`,
-  key: i.key,
-  type: "checkbox",
-  label: i.label,
-  scoring: noScore,
-  analytics: { include: true, category: "Incidents", aggregate: "rate" },
-  ...(INCIDENT_ROLES[i.value] ? { statRoles: INCIDENT_ROLES[i.value] } : {}),
-});
+export const incidentValuesFromList = (list: unknown): Record<string, boolean> => incidentValuesFromListOf(list, C.incidents);
 
 const sections: FormSection[] = [
   {
@@ -265,7 +241,7 @@ const sections: FormSection[] = [
     phase: "misc",
     visible: true,
     fields: [
-      ...REBUILT_INCIDENTS.map(incident),
+      ...REBUILT_INCIDENTS.map(incidentField),
       {
         id: "f-notes",
         key: "notes",

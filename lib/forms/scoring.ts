@@ -67,7 +67,7 @@ function customScore(scorerKey: string, values: FormValues): ScoreResult {
   return { auto: s.auto, teleop: s.teleop, endgame: s.endgame, total: s.total, byPhase };
 }
 
-/** The shape stored on an entry: the three standard subtotals and the total, plus `byPhase` only when some other phase scored (so BIOBUZZ entries stay byte-identical to before). */
+/** The shape stored on an entry: the three standard subtotals and the total, plus `byPhase` only when some other phase scored (so ordinary entries stay byte-identical to before). */
 export function storableScore(result: ScoreResult): { auto: number; teleop: number; endgame: number; total: number; byPhase?: Record<string, number> } {
   const extra = Object.entries(result.byPhase).some(([phase, pts]) => phase !== "auto" && phase !== "teleop" && phase !== "endgame" && pts !== 0);
   const base = { auto: result.auto, teleop: result.teleop, endgame: result.endgame, total: result.total };

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { BRAND } from "@/config/brand";
+import { GAME_ID_LIST } from "@/config/games";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
 import { createBlankForm } from "@/lib/forms/new-form";
 import { addField, defaultField, repairDuplicates, updateField } from "@/lib/forms/edit";
 import { exportForm, exportFormJson, formChecksum, importForm } from "@/lib/forms/portable";
 import { nonHttpsLinks, sanitizeFormText, stripHtml, textSlots } from "@/lib/forms/sanitize";
 import { checkForm, parseForm } from "@/lib/forms/validate";
 import { buildTemplateContent, checksumMatches, cleanTags, filterTemplates, formFromTemplate, templateTags, updateAvailable, TEMPLATE_LIMITS, type FormTemplate } from "@/lib/templates/build";
-import { officialTemplates } from "@/lib/templates/official";
+import { OFFICIAL_AUTHOR, officialTemplates } from "@/lib/templates/official";
 import type { Form } from "@/lib/forms/types";
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -29,7 +31,7 @@ describe("sanitizing shared text", () => {
     expect(nonHttpsLinks("see https://example.com/a and http://evil.example")).toEqual(["http://evil.example"]);
     expect(nonHttpsLinks("javascript:alert(1)")).toHaveLength(1);
     expect(nonHttpsLinks("data:text/html,x mailto:a@b.c ftp://x")).toHaveLength(3);
-    expect(nonHttpsLinks("Hive: 3 pts, Auto: yes, ratio 1:2")).toEqual([]);
+    expect(nonHttpsLinks("Score: 3 pts, Auto: yes, ratio 1:2")).toEqual([]);
     expect(nonHttpsLinks("HTTPS://Example.com")).toEqual([]);
   });
 
@@ -46,11 +48,11 @@ describe("sanitizing shared text", () => {
 
 describe("building a template from a form", () => {
   it("makes the portable snapshot with counts and a checksum, and tags tidied", () => {
-    const r = buildTemplateContent({ form: BIOBUZZ_FORM, name: "  BIOBUZZ  ", description: "d", tags: ["BIOBUZZ", "biobuzz", " 2026 ", "<b>x</b>"] });
+    const r = buildTemplateContent({ form: SAMPLE_FORM, name: "  Sample  ", description: "d", tags: ["SAMPLE", "sample", " 2026 ", "<b>x</b>"] });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.content.name).toBe("BIOBUZZ");
-    expect(r.content.tags).toEqual(["biobuzz", "2026", "x"]);
+    expect(r.content.name).toBe("Sample");
+    expect(r.content.tags).toEqual(["sample", "2026", "x"]);
     expect(r.content.fieldCount).toBeGreaterThan(10);
     expect(r.content.form).toMatchObject({ origin: "custom", version: 0, status: "draft", createdBy: "" });
     expect(r.content.form.baseBuiltInId).toBeUndefined();
@@ -86,14 +88,23 @@ describe("building a template from a form", () => {
   });
 
   it("the official templates are valid, public-ready content", () => {
-    const [biobuzz, starter] = officialTemplates();
-    expect(biobuzz.id).toBe("official-biobuzz");
-    expect(biobuzz.content.form.sections.some((s) => s.fields.some((f) => f.key === "autoLeave"))).toBe(true);
-    expect(biobuzz.content.tags).toContain("biobuzz");
+    const all = officialTemplates();
+    // one match scout template per game, from the game registry, then the blank starter, then the six non-match forms
+    const gameIds = GAME_ID_LIST.map((id) => `official-${id.toLowerCase().replace(/_/g, "-")}`);
+    expect(all.map((t) => t.id)).toEqual([...gameIds, "official-blank", "official-lead-scout", "official-match-strategy", "official-drive-reflection", "official-pit-scout", "official-team-strategy", "official-helper"]);
+    expect(gameIds).toEqual(["official-rebuilt", "official-reefscape", "official-charged-up"]);
+    const [rebuilt, reefscape, chargedUp] = all;
+    expect(rebuilt.content.name).toBe("REBUILT Match Scout");
+    expect(reefscape.content.name).toBe("REEFSCAPE Match Scout");
+    expect(chargedUp.content.name).toBe("CHARGED UP Match Scout");
+    expect(chargedUp.content.tags).toEqual(["charged-up", "2023", "match scout", "official"]);
+    expect(reefscape.content.form.sections.some((s) => s.fields.some((f) => f.key === "leftStartingZone"))).toBe(true);
+    expect(OFFICIAL_AUTHOR).toBe(BRAND.name);
+    const starter = all[3];
     expect(starter.id).toBe("official-blank");
     expect(starter.content.form.sections.map((s) => s.title)).toEqual(["Pre-Match", "Autonomous", "Teleoperated", "Endgame", "Misc"]);
     expect(starter.content.form.sections[0].fields.map((f) => f.type)).toEqual(["matchPicker", "scoutName", "teamPicker"]);
-    for (const t of [biobuzz, starter]) {
+    for (const t of all) {
       expect(parseForm(t.content.form).ok).toBe(true);
       expect(checkForm(t.content.form).filter((i) => i.severity === "error")).toEqual([]);
     }
@@ -122,7 +133,7 @@ describe("using a template", () => {
 
 describe("library search, tags and sorting", () => {
   const list = [
-    template({ id: "a", name: "BIOBUZZ Match Scout", tags: ["biobuzz", "2026"], importCount: 50, publishedAt: 100, official: true, authorName: "CompEpicurus" }),
+    template({ id: "a", name: "REBUILT Match Scout", tags: ["rebuilt", "2026"], importCount: 50, publishedAt: 100, official: true, authorName: BRAND.name }),
     template({ id: "b", name: "Pit scouting", description: "Robot inspection", tags: ["pit"], importCount: 5, publishedAt: 300 }),
     template({ id: "c", name: "Driver feedback", tags: ["pit", "drive"], importCount: 20, publishedAt: 200, authorName: "Team Nine" }),
   ];
@@ -134,7 +145,7 @@ describe("library search, tags and sorting", () => {
     expect(filterTemplates(list, { q: "inspection" }).map((t) => t.id)).toEqual(["b"]);
     expect(filterTemplates(list, { q: "team nine" }).map((t) => t.id)).toEqual(["c"]);
     expect(filterTemplates(list, { q: "pit nothing" })).toEqual([]);
-    expect(filterTemplates(list, { q: "BIOBUZZ" }).map((t) => t.id)).toEqual(["a"]);
+    expect(filterTemplates(list, { q: "REBUILT" }).map((t) => t.id)).toEqual(["a"]);
   });
   it("filters by tag and official, and lists tags by use", () => {
     expect(filterTemplates(list, { tag: "pit" }).map((t) => t.id).sort()).toEqual(["b", "c"]);
@@ -150,7 +161,7 @@ describe("library search, tags and sorting", () => {
 describe("JSON import and export", () => {
   it("exports the schema version and a checksum, and a clean import has no warnings", () => {
     const e = exportForm(blank());
-    expect(e).toMatchObject({ format: "compepicurus-form", formatVersion: 1 });
+    expect(e).toMatchObject({ format: BRAND.exportFormat, formatVersion: 1 });
     expect(e.checksum).toBe(formChecksum(blank()));
     const r = importForm(exportFormJson(blank()));
     expect(r.ok && r.warnings).toEqual([]);
@@ -185,7 +196,7 @@ describe("JSON import and export", () => {
     raw.form.sections[2].fields.push({ id: "x", key: "x", type: "hologram", label: "X" });
     expect(importForm(JSON.stringify(raw))).toMatchObject({ ok: false });
     expect(importForm("[]")).toMatchObject({ ok: false });
-    expect(importForm({ format: "compepicurus-form", formatVersion: 2, form: {} })).toMatchObject({ ok: false });
+    expect(importForm({ format: BRAND.exportFormat, formatVersion: 2, form: {} })).toMatchObject({ ok: false });
     expect(importForm("x".repeat(600_000))).toMatchObject({ ok: false });
   });
 
