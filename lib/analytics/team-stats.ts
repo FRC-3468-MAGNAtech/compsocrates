@@ -4,11 +4,11 @@ import type { AnalyticsEntry } from "@/lib/analytics/entries";
 import type { MatchType } from "@/lib/events/types";
 import type { Form } from "@/lib/forms/types";
 import { elementOf, formFieldMeta, hasRole, type FieldMeta } from "@/lib/forms/meta";
-import { entryValues } from "@/lib/forms/legacy";
+import { entryValues } from "@/lib/forms/entry-values";
 import { fieldPoints } from "@/lib/forms/scoring";
 
 // Pure team statistics for Team Profile, Team Averages and Rankings (P10).
-// Everything is driven by the form schema (P2, schema v2 in P21), never by BIOBUZZ's field
+// Everything is driven by the form schema (P2, schema v2 in P21), never by a game's field
 // names, so a new season's schema needs no changes here.
 
 /** Entries a team is trending on: this many of the most recent are compared against the overall average. */

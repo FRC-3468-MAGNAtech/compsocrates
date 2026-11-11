@@ -70,6 +70,8 @@ A bad setup is reported, never hidden, and an error is never cached.
 
 Teams, rankings and qualification matches fall back to the FIRST API when TBA fails; if the fallback fails too, the TBA error (the one naming `NEXT_PUBLIC_TBA_API_KEY`) is the one reported. Playoff matches have no fallback. The live-score routes also return a `warnings` list when the TBA key is unset, because the poller skips matches it cannot fetch.
 
+Event names are resolved by the chain API name, then a name stored in the team's data, then `config/event-names.ts`, then the raw key (`lib/events/names.ts`). One season-wide request (`getEvents({ season })`) names every event of a year, cached for 30 minutes, retried with a short backoff for transient errors and never cached on failure. When it fails, the name falls back quietly (the reason is in the tooltip) and, on the Event Select page, an admin sees "Event names could not be loaded: <message>" for the errors only they can fix (`missing_credentials`, `server_not_configured`, a rejected key).
+
 On the client, `useEventQuery` (`lib/events/use-event-query.ts`) caches only successful results, so an error is retried on the next render or refetch. The server-side request cache (`lib/frc/http.ts`) drops every rejected request as well.
 
 ## Outbound API inventory

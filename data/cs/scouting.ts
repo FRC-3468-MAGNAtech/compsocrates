@@ -16,8 +16,9 @@ import { normalizeEventKey } from "@/config/event";
 import { appMatchToCs, csDocMatchRef } from "@/data/cs/match-id";
 import type { CsFlagState, CsRecord, CsRowKind } from "@/data/cs/types";
 import { asRecord, changedTopLevel, cloneValue, deepEqual, deepMerge, digitsToNumber, isoFromMs, isRecord, str, toEpochMs } from "@/data/cs/util";
-import { incidentsFromValues, incidentValuesFromList } from "@/lib/forms/builtin-rebuilt";
+import { incidentsFromValues, incidentValuesFromList } from "@/lib/forms/incidents";
 import type { FormValues } from "@/lib/forms/types";
+import { GAME_DEFINITIONS } from "@/config/games";
 import { gameForDoc, listGamePlugins } from "@/lib/games/registry";
 import type { FullGamePlugin, GameId, GameValues } from "@/lib/games/types";
 import type { AccuracyResult, AutoFlag, ManualFlag, ManualFlagReason, ScoutEntry, ScoutEntryLegacy } from "@/lib/scout-entries";
@@ -231,25 +232,23 @@ export type CsReadContext = {
 };
 
 /**
- * CS doc -> form values for the entry. REBUILT's form keeps incidents as seven boolean fields, the plugin as CS's
+ * CS doc -> form values for the entry. Every game's form keeps incidents as one boolean field each, the plugin as CS's
  * `incidents: string[]`: the list is converted here (the plugin's `incidents` key is dropped).
  */
 export function docToFormValues(plugin: FullGamePlugin, doc: CsRecord): GameValues {
   const values = plugin.docToValues(doc);
-  if (plugin.id !== "REBUILT") return values;
   const rest: GameValues = { ...values };
   delete rest.incidents;
-  return { ...rest, ...incidentValuesFromList(doc.incidents) };
+  return { ...rest, ...incidentValuesFromList(doc.incidents, GAME_DEFINITIONS[plugin.id].incidents) };
 }
 
-/** Form values -> the game part of a CS doc (REBUILT: the seven incident booleans become `incidents: string[]` first). Null for read-only games. */
+/** Form values -> the game part of a CS doc (the incident booleans become `incidents: string[]` first). Null only for a game that is not submittable. */
 export function formValuesToCsDoc(plugin: FullGamePlugin, values: GameValues): CsRecord | null {
-  if (plugin.id !== "REBUILT") return plugin.valuesToDoc(values);
-  return plugin.valuesToDoc({ ...values, incidents: incidentsFromValues(values) });
+  return plugin.valuesToDoc({ ...values, incidents: incidentsFromValues(values, GAME_DEFINITIONS[plugin.id].incidents) });
 }
 
 function pluginFormId(plugin: FullGamePlugin): string {
-  return plugin.formId ?? plugin.id.toLowerCase();
+  return plugin.formId;
 }
 
 function allianceOf(doc: CsRecord): "red" | "blue" | null {
@@ -347,10 +346,10 @@ export function pluginForEntry(entry: Pick<ScoutEntry, "formId" | "game">, exist
   return plugins.find((p) => p.formId !== null && p.formId === entry.formId) ?? plugins.find((p) => pluginFormId(p) === entry.formId) ?? plugins.find((p) => p.id === entry.game) ?? null;
 }
 
-/** Whether `entry`'s form can be stored in the CS schema (a game with a writable form). */
+/** Whether `entry`'s form can be stored in the CS schema (a submittable game's form: all three games). */
 export function canWriteToCs(entry: Pick<ScoutEntry, "formId" | "game">): boolean {
   const plugin = pluginForEntry(entry);
-  return plugin !== null && formValuesToCsDoc(plugin, {}) !== null;
+  return plugin !== null && plugin.submittable;
 }
 
 function legacyAsDoc(legacy: ScoutEntryLegacy | undefined): CsRecord {
@@ -387,7 +386,7 @@ export type CsWriteOptions = {
  * `teamId`, `scoringWeights`, `submittedAt` / `timestamp`. Without it, a complete new doc in the shape CS writes today
  * (`legacy`, when the entry carries it, supplies the original identity strings).
  *
- * Throws for an entry whose form cannot be stored in CS (a read-only game, or a form no plugin owns).
+ * Throws for an entry whose form cannot be stored in CS (a game that is not submittable, or a form no plugin owns).
  */
 export function scoutEntryToCsDoc(entry: ScoutEntry, existingDoc?: CsRecord, options: CsWriteOptions = {}): CsRecord {
   const now = options.now ?? Date.now();
@@ -403,8 +402,8 @@ export function scoutEntryToCsDoc(entry: ScoutEntry, existingDoc?: CsRecord, opt
   if (valuesChanged) {
     const gameDoc = formValuesToCsDoc(plugin, (entry.values ?? {}) as GameValues);
     if (gameDoc === null) {
-      if (!existing) throw new Error(`${plugin.label} entries are read-only: the game has no writable form.`);
-      // A read-only game's values cannot be written back; the doc keeps its stored phases.
+      if (!existing) throw new Error(`${plugin.label} entries cannot be written: the game is not submittable.`);
+      // A game that is not submittable cannot be written back; the doc keeps its stored phases.
     } else {
       if (existing && isRecord(existing.scoringWeights)) delete gameDoc.scoringWeights;
       Object.assign(next, deepMerge(next, gameDoc));

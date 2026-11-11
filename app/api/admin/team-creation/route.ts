@@ -6,8 +6,8 @@ import { APP_SETTINGS_PATH } from "@/lib/server/team-settings";
 
 /**
  * Platform-owner-only switch backing Admin Panel's "Allow team creation" toggle (P20: a *team* owner can't turn
- * public creation on; only the platform owner, from OWNER_EMAILS, can). Gated on the verified token's
- * `platformOwner` claim plus the live OWNER_EMAILS list; no client can ever write appSettings directly (denied
+ * public creation on; only the platform owner, by RELEASE_OWNER_UIDS or RELEASE_OWNER_EMAILS, can). Gated on the verified token's
+ * `platformOwner` claim plus the live RELEASE_OWNER_EMAILS list; no client can ever write appSettings directly (denied
  * in firestore.rules).
  */
 export async function POST(request: Request) {

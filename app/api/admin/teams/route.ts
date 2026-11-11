@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
-import { readFieldTeams } from "@/lib/field-teams";
+import { readTeamIdentity } from "@/lib/team-number";
 import { normalizeTeamCode, ownerUidOfTeam } from "@/data/cs/join-requests";
 import type { CsRecord } from "@/data/cs/types";
 
 /**
- * P20: the list behind Admin Panel > Recovery (platform owner only): every team account's FTC teams, who owns it, and
+ * P20: the list behind Admin Panel > Recovery (platform owner only): every team account's number and name, who owns it, and
  * its **admins** (the only people ownership can be moved to), so a platform owner can force-transfer an account whose
  * owner is gone. Deliberately minimal: no scouting data, no non-admin members, no join codes.
  */
@@ -44,12 +44,13 @@ export async function GET(request: Request) {
     return {
       teamId: d.id,
       accountName: typeof data.accountName === "string" ? data.accountName : null,
-      fieldTeams: readFieldTeams(data).map((t) => ({ number: t.number, name: t.name })),
+      teamNumber: readTeamIdentity(data).number,
+      teamName: readTeamIdentity(data).name,
       ownerUid,
       ownerName: admins.find((a) => a.uid === ownerUid)?.name ?? null,
       admins,
     };
   });
-  teams.sort((a, b) => (a.fieldTeams[0]?.number ?? 0) - (b.fieldTeams[0]?.number ?? 0));
+  teams.sort((a, b) => (a.teamNumber ?? 0) - (b.teamNumber ?? 0));
   return NextResponse.json({ ok: true, teams });
 }

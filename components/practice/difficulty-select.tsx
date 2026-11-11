@@ -37,7 +37,7 @@ export function DifficultySelect({
         <GlassPanel interactive onClick={onSelectLive} className="flex flex-col items-center gap-2 py-8 text-center">
           <Radio className="h-6 w-6 text-[var(--color-primary)]" />
           <div className="text-base font-semibold">Live</div>
-          <p className="text-xs text-[var(--muted-foreground)]">Scout a real, livestreamed FTC match.</p>
+          <p className="text-xs text-[var(--muted-foreground)]">Scout a real, livestreamed FRC match.</p>
         </GlassPanel>
         <GlassPanel interactive onClick={onSelectLobby} className="flex flex-col items-center gap-2 py-8 text-center">
           <Users className="h-6 w-6 text-[var(--color-primary)]" />

@@ -4,7 +4,7 @@ import type { AllianceColor } from "@/lib/practice-sessions";
 
 /**
  * One alliance's worth of players: `playerUids` has one player per robot on `alliance`
- * (2 for FTC, 3 for FRC). The name `pair` is kept for stored lobby docs and security rules.
+ * (3 for FRC). The name `pair` is kept for stored lobby docs and security rules.
  */
 export type PairAssignment = {
   pairId: string;
@@ -16,12 +16,12 @@ export type PairAssignment = {
 
 /**
  * Random grouping per the P8 spec: shuffle players, chunk into groups of one
- * alliance's robot count (a pair for FTC, a trio for FRC), alliances alternate
+ * alliance's robot count (a trio for FRC), alliances alternate
  * red/blue/red/blue... across groups in shuffled order (so with more than 2
  * groups, several end up on the same alliance — each still gets its own
  * independent result), and within a group the alliance's team numbers are
  * randomly split between its players. A group is as big as that alliance's own
- * team list (the data's length, not the config), so a 2-team FTC match works
+ * team list (the data's length, not the config), so a stored 2-team match works
  * under a 3-robot configuration. Requires `playerUids.length` to be a multiple
  * of the group size, at least twice it — the caller (the Start button) already
  * guarantees this; leftover players are silently left unpaired rather than

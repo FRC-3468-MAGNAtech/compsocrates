@@ -18,7 +18,7 @@ function latestEntryForTeam(entries: readonly ScoutEntry[], teamNumber: number):
  * scale) is unchanged from before the refactor — see docs/ASSUMPTIONS.md
  * (P3) for why the engine itself returns a 0-100 scale instead.
  *
- * Needs every alliance robot scouted (all of `allianceTeams`: 2 for FTC, 3 for FRC) and an
+ * Needs every alliance robot scouted (all of `allianceTeams`: 3 for FRC) and an
  * official score before a number can be produced at all.
  */
 export function computeAllianceAccuracy(

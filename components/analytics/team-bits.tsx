@@ -2,25 +2,24 @@
 
 import { AlertTriangle, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { useIsOurTeam } from "@/lib/our-team";
 import { cn } from "@/lib/utils";
 
 /**
- * P19: one shared way to mark "this is one of our FTC teams" (any team on the account, not just the one
- * being viewed as): a small filled "Us" tag and a tinted row/card. The tag uses the theme's accent fill
+ * One shared way to mark "this is our team" (see lib/our-team.ts): a small filled "Us" tag and a tinted row/card. The tag uses the theme's accent fill
  * and its guarded on-accent text colour, so it stays legible in every theme.
  */
 export const OUR_TEAM_ROW_CLASS = "bg-[rgba(var(--glow),0.14)] shadow-[inset_3px_0_0_0_var(--color-primary)]";
 
 export function OurTeamTag({ className }: { className?: string }) {
   return (
-    <Badge variant="accent" className={cn("gap-1 px-2 py-0.5 text-[10px] font-semibold", className)} title="One of our FTC teams">
-      <Star className="h-2.5 w-2.5" aria-hidden /> Us<span className="sr-only"> (one of our FTC teams)</span>
+    <Badge variant="accent" className={cn("gap-1 px-2 py-0.5 text-[10px] font-semibold", className)} title="Our team">
+      <Star className="h-2.5 w-2.5" aria-hidden /> Us<span className="sr-only"> (our team)</span>
     </Badge>
   );
 }
 
-/** Team number over its (FIRST API) name — the sticky first column of the team tables. */
+/** Team number over its (official) name — the sticky first column of the team tables. */
 export function TeamCell({ teamNumber, teamName, className }: { teamNumber: number; teamName: string | null; className?: string }) {
   const isOurs = useIsOurTeam()(teamNumber);
   return (

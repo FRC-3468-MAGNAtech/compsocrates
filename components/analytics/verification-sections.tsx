@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { SECTION_PREVIEW, type AllianceGroup, type HighAccuracyMatch } from "@/lib/analytics/accuracy-verification";
 import type { Rescout, RescoutAlliance } from "@/lib/analytics/rescouts";
+import { EventName } from "@/components/events/event-name";
 import { cn } from "@/lib/utils";
 
 /** A titled list that shows the first few rows and a View all / View less toggle (CS `SectionCard`). */
@@ -51,7 +52,7 @@ export function RescoutRow({ row, showScout, complete, onDelete }: { row: Rescou
         {row.matchLabel || "Match"} - Team {row.teamNumber || "-"}
       </p>
       <p className="text-xs text-[var(--muted-foreground)]">
-        {row.eventName || row.eventKey || "Event"} - {showScout ? `${row.scoutName || "Scout"} - ` : ""}
+        {row.eventKey ? <EventName eventKey={row.eventKey} name={row.eventName} /> : row.eventName || "Event"} - {showScout ? `${row.scoutName || "Scout"} - ` : ""}
         {row.status || "pending"}
       </p>
       <p className="text-xs text-[var(--muted-foreground)]">Rescout Accuracy: {row.accuracy !== null ? `${row.accuracy}%` : "-"}</p>

@@ -11,14 +11,14 @@ import { ApiError } from "@/lib/api-client";
 import { fetchStartToken, submitApplication } from "@/lib/applications-client";
 import { APPLICATION_LIMITS } from "@/lib/applications";
 import { getTeamByNumber } from "@/lib/events/actions";
-import { parseFieldTeamNumber } from "@/lib/field-teams";
+import { parseTeamNumber } from "@/lib/team-number";
 import { ROLES, getRole, type RoleId } from "@/lib/roles";
 
 type Lookup = { status: "idle" } | { status: "loading" } | { status: "found"; name: string } | { status: "missing" } | { status: "error" };
 
 /**
  * P20: the "Apply to create a team" form. The caller must already be signed in with a verified email (the page
- * checks; the server checks again). The FTC team number is looked up on FIRST (current season) to confirm it exists
+ * checks; the server checks again). The team number is looked up on The Blue Alliance / FIRST (current season) to confirm it exists
  * and fill in the name; the lookup is a convenience, never a gate (a rookie team may not be listed yet, and the
  * platform owner sees what FIRST said). A hidden honeypot field and a signed "form opened at" token (fetched here)
  * feed the server's bot checks; Cloudflare Turnstile is shown when a site key is configured.
@@ -54,7 +54,7 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
 
   // Look the team up once the number is a valid 1-5 digit number (debounced), and fill the name if the applicant hasn't typed one.
   useEffect(() => {
-    const number = parseFieldTeamNumber(teamNumber);
+    const number = parseTeamNumber(teamNumber);
     if (number === null || lookedUp.current === number) return;
     const timer = setTimeout(async () => {
       lookedUp.current = number;
@@ -113,7 +113,7 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
       <div>
         <h1 className="text-2xl font-semibold">Apply to create a team</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Each FTC team gets one CompEpicurus account, and the platform owner approves each one by hand. Tell us about your team so we can check it.
+          Each team gets one CompEpicurus account, and the platform owner approves each one by hand. Tell us about your team so we can check it.
         </p>
       </div>
 
@@ -134,7 +134,7 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-[10rem_1fr]">
           <div>
-            <Label htmlFor="apply-team-number">FTC team number</Label>
+            <Label htmlFor="apply-team-number">Team number</Label>
             <Input
               id="apply-team-number"
               inputMode="numeric"

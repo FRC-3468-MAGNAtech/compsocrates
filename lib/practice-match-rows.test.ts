@@ -5,7 +5,7 @@ import type { PracticeSession } from "@/lib/practice-sessions";
 
 function makeMatch(overrides: Partial<LibraryMatch> & Pick<LibraryMatch, "id" | "matchNumber">): LibraryMatch {
   return {
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     eventCode: "USWABON1",
     eventName: "Rookie Rumble",
     matchType: "Qualification",
@@ -27,7 +27,7 @@ function makeSession(overrides: Partial<PracticeSession>): PracticeSession {
     uid: "uid-1",
     scoutName: "Test Scout",
     kind: "solo",
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     mode: "trial",
     difficulty: "easy",
     libraryMatchId: "USWABON1_Q1",

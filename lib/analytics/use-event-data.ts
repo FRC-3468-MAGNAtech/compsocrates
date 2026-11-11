@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getMatchesForEvent, getRankingsForEvent, getTeamsForEvent } from "@/lib/events/actions";
-import { ftcMatchToOfficial, type OfficialMatch } from "@/lib/analytics/match-breakdown";
+import { matchToOfficial, type OfficialMatch } from "@/lib/analytics/match-breakdown";
 import type { EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 // FIRST API data Analytics pages join onto scouted teams (P10): team names
@@ -124,7 +124,7 @@ export function useEventMatches(requests: EventRequest[]): { matches: OfficialMa
       inflight.add(`matches:${k}`);
       Promise.all(MATCH_TYPES.map((type) => getMatchesForEvent(r.code, type, r.season)))
         .then((results) => {
-          const data = results.flatMap((res) => (res.ok ? res.data.map((m) => ftcMatchToOfficial(r.code, m)) : []));
+          const data = results.flatMap((res) => (res.ok ? res.data.map((m) => matchToOfficial(r.code, m)) : []));
           const failed = results.some((res) => !res.ok);
           // A failed refresh keeps the last good list (marked failed) instead of replacing it with nothing.
           const previous = matchesCache.get(k);

@@ -42,7 +42,7 @@ export type MatchListRow = {
   blueScore: number | null;
   played: boolean;
   status: MatchListStatus;
-  /** One of the account's FTC teams plays in it. */
+  /** Our team plays in it. */
   ours: boolean;
   /** The next upcoming match of its event and tab (at most one per event and tab). */
   isNext: boolean;

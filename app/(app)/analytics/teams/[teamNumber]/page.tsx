@@ -17,6 +17,7 @@ import { useAnalyticsHref, useAnalyticsFilters } from "@/lib/analytics/filter-co
 import { useEventRankings } from "@/lib/analytics/use-event-data";
 import { DEFAULT_MIN_ENTRIES, lowSample, schemaFieldMeta, type FieldStat, type TeamStats, type Trend } from "@/lib/analytics/team-stats";
 import { getPercentColor } from "@/lib/accuracy/engine";
+import { EventName } from "@/components/events/event-name";
 import { cardEntranceVariants } from "@/lib/motion";
 import type { Form } from "@/lib/forms/types";
 import { cn } from "@/lib/utils";
@@ -168,7 +169,7 @@ function ProfileHeader({ stats }: { stats: TeamStats }) {
           <Badge key={code} variant="success" className="gap-1.5" title="Official FIRST qualification ranking">
             <Trophy className="h-3 w-3" />
             Rank {row.rank} · {row.wins}-{row.losses}-{row.ties}
-            <span className="font-normal opacity-80">· {data.eventDirectory.get(code)?.name ?? code}</span>
+            <span className="font-normal opacity-80">· {data.eventNameOf(code)}</span>
           </Badge>
         ))}
       </div>
@@ -229,7 +230,7 @@ function MatchList({ stats }: { stats: TeamStats }) {
               {m.label}
             </AnalyticsLink>
             <span className="min-w-0 flex-1 truncate text-xs text-[var(--muted-foreground)]">
-              {m.eventCode} · {m.auto}/{m.teleop}/{m.endgame}
+              <EventName eventKey={m.eventCode} /> · {m.auto}/{m.teleop}/{m.endgame}
               {m.accuracy !== null && <> · {Math.round(m.accuracy)}%</>}
             </span>
             <span className="font-semibold tabular-nums">{m.total}</span>

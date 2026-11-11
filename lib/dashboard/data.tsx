@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { buildOurMatches, nextOurMatch, ourRecord, type OurMatch, type Record3 } from "@/lib/dashboard/schedule";
 import { sourcesFor, type DashboardSource } from "@/lib/dashboard/roles";
 import { useTeamEventAttendance, type EventAttendance } from "@/lib/event-attendance";
-import { getEventStatus } from "@/lib/ftc/event-status";
+import { getEventStatus } from "@/lib/events/event-status";
 import type { EventLifecycleStatus, EventInfo, EventRanking, EventTeam } from "@/lib/events/types";
 import { useAllLibraryMatches, type LibraryMatch } from "@/lib/match-library";
 import { useFormEntries } from "@/lib/form-entries";
@@ -28,7 +28,7 @@ import type { Form } from "@/lib/forms/types";
 import { useGameFormIds, useSchemaForEntries } from "@/lib/forms/forms-context";
 import { computeScoutStats } from "@/lib/scout-stats/engine";
 import type { ScoutCategory, ScoutStatsResult } from "@/lib/scout-stats/types";
-import { useActiveFieldTeam } from "@/lib/field-teams-context";
+import { useOurTeam } from "@/lib/our-team";
 import { useTeamMembers, type TeamMember } from "@/lib/team-members";
 
 // The one data layer every dashboard widget reads (P13). The provider owns
@@ -123,9 +123,8 @@ export function DashboardProvider({ role, children }: { role: RoleId; children: 
   const isAdmin = profile?.isAdmin ?? false;
   const needs = useMemo(() => sourcesFor(role, isAdmin), [role, isAdmin]);
 
-  // P19: "our team" is the FTC team this user is viewing as (header strip, next match, rank, record all follow it).
-  const { activeFieldTeam } = useActiveFieldTeam();
-  const ourNumber = activeFieldTeam?.number ?? null;
+  // "Our team" (lib/our-team.ts): the header strip, next match, rank and record all follow it.
+  const { number: ourNumber } = useOurTeam();
 
   // --- event context -----------------------------------------------------------------
   const { events, primaryCode, loaded: eventsLoaded } = useActiveEvents();

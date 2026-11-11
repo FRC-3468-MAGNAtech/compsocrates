@@ -116,7 +116,7 @@ export function allianceScoutRows(input: { scouts: readonly ScoutDescriptor[]; e
 
 export type TeamCoverageRow = { teamNumber: number; name: string | null; entries: FormEntry[]; scouts: string[]; done: boolean; photoUrl: string | null };
 
-/** The checkable teams: the event's teams, without our own FTC teams unless `includeOurs`. */
+/** The checkable teams: the event's teams, without our own team unless `includeOurs`. */
 export function checkableTeams(teams: readonly number[], isOurs: (team: number) => boolean, includeOurs: boolean): number[] {
   return [...new Set(teams)].filter((t) => includeOurs || !isOurs(t)).sort((a, b) => a - b);
 }

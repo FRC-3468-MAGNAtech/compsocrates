@@ -49,8 +49,8 @@ describe("compareEntries", () => {
     expect(off?.fields.find((f) => f.key === "auto.counterOverride")?.diff).toBe(1);
   });
 
-  it("returns null when an entry's game cannot be rebuilt", () => {
-    const other = { ...original("a", "254"), formId: "reefscape", game: "REEFSCAPE" as const };
+  it("returns null when an entry's form no game owns", () => {
+    const other = { ...original("a", "254"), formId: "sample", game: undefined };
     expect(compareEntries(other, exemplar("b", "254"))).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialScoutEntryFields, type AccuracyResult, type ScoutEntry } from "@/lib/scout-entries";
+import { type AccuracyResult, type ScoutEntry } from "@/lib/scout-entries";
 import { DEFAULT_FILTERS, type AnalyticsFilters } from "./filters";
 import { passesAccuracy, selectAnalyticsEntries, toAnalyticsEntry, type SessionAccuracy } from "./entries";
 
@@ -10,14 +10,14 @@ function entry(id: string, overrides: Partial<ScoutEntry> = {}): ScoutEntry {
     uid: "u",
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: "Scout",
     eventCode: "EVT1",
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber: 100,
-    fields: initialScoutEntryFields,
+    values: {},
     score: { auto: 10, teleop: 20, endgame: 5, total: 35 },
     comments: "",
     submittedAt: "2026-01-01T00:00:00.000Z",
@@ -34,7 +34,7 @@ function entry(id: string, overrides: Partial<ScoutEntry> = {}): ScoutEntry {
 const complete = (pct: number): AccuracyResult => ({ status: "complete", value: pct / 100, scoutedTotal: 1, penaltyPoints: 0, officialScore: 1 });
 const session = (accuracy: number | null, excluded = false): SessionAccuracy => ({ accuracy, excluded, scoutedTotal: 1, penaltyPoints: 0, officialScore: 1 });
 
-const filters = (over: Partial<AnalyticsFilters> = {}): AnalyticsFilters => ({ ...DEFAULT_FILTERS, gameId: "biobuzz", ...over }) // these fixtures are BIOBUZZ entries, and the default game is now REBUILT;
+const filters = (over: Partial<AnalyticsFilters> = {}): AnalyticsFilters => ({ ...DEFAULT_FILTERS, gameId: "sample", ...over }) // these fixtures are sample-form entries, and the default game is REBUILT
 
 describe("toAnalyticsEntry", () => {
   it("takes a real-event entry's stored alliance accuracy as a 0-100 percent", () => {

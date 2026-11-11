@@ -3,8 +3,6 @@ import type { EventScope } from "@/lib/analytics/filters";
 import type { FormEntry, FormEntryType } from "@/lib/form-entries-model";
 import { seasonFormId } from "@/lib/forms/builtin";
 import type { Form } from "@/lib/forms/types";
-import { summaryFlavorForSeason, type SummaryFlavor } from "@/lib/analytics/summary-flavor";
-import { DEFAULT_SEASON_ID } from "@/lib/seasons";
 
 // P30: the six Analytics pages for the new forms (Lead Scout, Pit Scout, Team Strategy, Match Strategy, Drive Reflection, Helper). One registry, so the nav, the
 // route pages, Scout Status and the Team Profile all agree. The raw table is the same schema-driven table Match Scout Analytics uses; these helpers shape it. Pure.
@@ -28,22 +26,19 @@ export type FormAnalyticsPage = {
   hasAlliance: boolean;
 };
 
-type PageSeed = Omit<FormAnalyticsPage, "formId" | "description"> & { descriptions: Record<SummaryFlavor, string> };
+type PageSeed = Omit<FormAnalyticsPage, "formId">;
 
 const PAGE_SEEDS: readonly PageSeed[] = [
-  { slug: "lead-scout", href: "/analytics/lead-scout", title: "Lead Scout Analytics", navLabel: "Lead Scout", formType: "lead-scout", descriptions: { rebuilt: "A lead scout's read of each alliance: notes and a 1-5 skill for the alliance and each of its robots.", biobuzz: "A lead scout's read of each alliance: notes and a 1-5 skill for the alliance and its teams." }, unit: "match-alliance", hasMatch: true, hasAlliance: true },
-  { slug: "pit-scout", href: "/analytics/pit-scout", title: "Pit Scout Analytics", navLabel: "Pit Scout", formType: "pit-scout", descriptions: { rebuilt: "Each team's robot as seen in the pit: weight, fuel preload, balls per second and carry, climb levels, cycle times and disposition.", biobuzz: "Each team's robot as seen in the pit: photos, capabilities, capacity and the auto cycle." }, unit: "team", hasMatch: false, hasAlliance: false },
-  { slug: "team-strategy", href: "/analytics/team-strategy", title: "Team Strategy Analytics", navLabel: "Team Strategy", formType: "team-strategy", descriptions: { rebuilt: "Each team's preferred starting position, what it is best at, and whether it clears the bump and trench or shoots on the move.", biobuzz: "What each team is best at and what it can do." }, unit: "team", hasMatch: false, hasAlliance: false },
-  { slug: "match-strategy", href: "/analytics/match-strategy", title: "Match Strategy Analytics", navLabel: "Match Strategy", formType: "match-strategy", descriptions: { rebuilt: "The plan for each match: every robot's starting position, role and planned climbs.", biobuzz: "The plan for each match: every team's role and whether it scores in auto." }, unit: "match-alliance", hasMatch: true, hasAlliance: true },
-  { slug: "drive-reflection", href: "/analytics/drive-reflection", title: "Drive Reflection Analytics", navLabel: "Drive Reflection", formType: "drive-reflection", descriptions: { rebuilt: "What actually happened in each match (starting position, role, climbs), against the plan.", biobuzz: "What actually happened in each match, against the plan." }, unit: "match-alliance", hasMatch: true, hasAlliance: true },
-  { slug: "helper", href: "/analytics/helper", title: "Helper Analytics", navLabel: "Helper", formType: "helper", descriptions: { rebuilt: "The log of helping other teams in the pit.", biobuzz: "The log of helping other teams in the pit." }, unit: "team", hasMatch: false, hasAlliance: false },
+  { slug: "lead-scout", href: "/analytics/lead-scout", title: "Lead Scout Analytics", navLabel: "Lead Scout", formType: "lead-scout", description: "A lead scout's read of each alliance: notes and a 1-5 skill for the alliance and each of its robots.", unit: "match-alliance", hasMatch: true, hasAlliance: true },
+  { slug: "pit-scout", href: "/analytics/pit-scout", title: "Pit Scout Analytics", navLabel: "Pit Scout", formType: "pit-scout", description: "Each team's robot as seen in the pit: weight, fuel preload, balls per second and carry, climb levels, cycle times and disposition.", unit: "team", hasMatch: false, hasAlliance: false },
+  { slug: "team-strategy", href: "/analytics/team-strategy", title: "Team Strategy Analytics", navLabel: "Team Strategy", formType: "team-strategy", description: "Each team's preferred starting position, what it is best at, and whether it clears the bump and trench or shoots on the move.", unit: "team", hasMatch: false, hasAlliance: false },
+  { slug: "match-strategy", href: "/analytics/match-strategy", title: "Match Strategy Analytics", navLabel: "Match Strategy", formType: "match-strategy", description: "The plan for each match: every robot's starting position, role and planned climbs.", unit: "match-alliance", hasMatch: true, hasAlliance: true },
+  { slug: "drive-reflection", href: "/analytics/drive-reflection", title: "Drive Reflection Analytics", navLabel: "Drive Reflection", formType: "drive-reflection", description: "What actually happened in each match (starting position, role, climbs), against the plan.", unit: "match-alliance", hasMatch: true, hasAlliance: true },
+  { slug: "helper", href: "/analytics/helper", title: "Helper Analytics", navLabel: "Helper", formType: "helper", description: "The log of helping other teams in the pit.", unit: "team", hasMatch: false, hasAlliance: false },
 ];
 
-/** The six pages for a season: each page's built-in form is that season's id for the form (`seasonFormId`), so FTC mode still reads the `biobuzz-*` forms. */
-export const formAnalyticsPagesForSeason = (seasonId: string = DEFAULT_SEASON_ID): FormAnalyticsPage[] =>
-  PAGE_SEEDS.map(({ descriptions, ...seed }) => ({ ...seed, formId: seasonFormId(seed.formType, seasonId), description: descriptions[summaryFlavorForSeason(seasonId)] }));
-
-export const FORM_ANALYTICS_PAGES: readonly FormAnalyticsPage[] = formAnalyticsPagesForSeason();
+/** The six pages: each page's built-in form is the REBUILT non-match form of its type (`seasonFormId`). */
+export const FORM_ANALYTICS_PAGES: readonly FormAnalyticsPage[] = PAGE_SEEDS.map((seed) => ({ ...seed, formId: seasonFormId(seed.formType) }));
 
 export const formAnalyticsPage = (slug: string): FormAnalyticsPage | null => FORM_ANALYTICS_PAGES.find((p) => p.slug === slug) ?? null;
 

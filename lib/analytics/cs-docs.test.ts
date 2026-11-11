@@ -13,8 +13,8 @@ describe("entryToDoc", () => {
     expect(entry.score.total).toBe(10 + 20 + 5 + 20);
   });
 
-  it("returns null (not a throw) for an entry whose game cannot be rebuilt", () => {
-    const entry = { ...rebuiltEntry("a"), formId: "reefscape", game: "REEFSCAPE" as const };
+  it("returns null (not a throw) for an entry whose form no game owns", () => {
+    const entry = { ...rebuiltEntry("a"), formId: "sample", game: undefined };
     expect(entryToDoc(entry)).toBeNull();
   });
 });

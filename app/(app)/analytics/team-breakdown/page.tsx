@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AnalyticsLink } from "@/components/analytics/analytics-link";
 import { PhaseMiniBars, type PhaseValues } from "@/components/analytics/phase-bars";
 import { LowSampleBadge, OurTeamTag } from "@/components/analytics/team-bits";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { useIsOurTeam } from "@/lib/our-team";
 import { cn } from "@/lib/utils";
 import { ReliabilityPill } from "@/components/analytics/reliability-pill";
 import { useTeamStats } from "@/lib/analytics/data-context";

@@ -7,6 +7,8 @@ import { BackLink, ProfileScreen } from "@/components/profile/profile-screen";
 import { ProfileActivitySkeleton, ProfileHeaderSkeleton } from "@/components/profile/profile-sections";
 import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
+import { eventLabel } from "@/lib/events/names";
+import { useEventNames } from "@/lib/events/use-event-names";
 import type { ProfileDoc } from "@/lib/profile/model";
 import { clearProfileText, useProfile } from "@/lib/profile/service";
 import { computeProfileStats, eventTargetProgress } from "@/lib/profile/stats";
@@ -92,7 +94,10 @@ function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member:
     [sources.loaded, sources.members, sources.sessions, sources.entries, sources.libraryMatchesById, sources.attendance, member.uid, nowMs]
   );
 
-  const eventName = (code: string) => activeEvents.find((e) => e.code === code)?.name ?? code;
+  // Events outside the active list (older data) are named through the shared chain too, never shown as a bare key.
+  const statEventCodes = useMemo(() => stats?.events.map((e) => e.eventCode) ?? [], [stats]);
+  const statEventNames = useEventNames(statEventCodes);
+  const eventName = (code: string) => activeEvents.find((e) => e.code === code)?.name ?? statEventNames[code]?.name ?? eventLabel({ key: code });
   const ready = stats !== null && targets.loaded && slotsLoaded;
 
   // The event whose target to show: the primary active one, when this member is part of it (attending, has entries or a target).

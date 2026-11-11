@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_CS_OWNER_UIDS = "owner-uid";
+  process.env.RELEASE_OWNER_UIDS = "owner-uid";
 });
 
 import { FakeFirestore } from "@/lib/server/test-support/fake-firestore";
@@ -34,11 +34,9 @@ describe("createTeamForCaller", () => {
       verifiedOwnerId: "u1",
       selectedEvents: [],
       createdAt: NOW,
-      fieldTeams: [{ id: "ft-3468", number: 3468, name: "MAGNAtech" }],
-      fieldTeamIdList: ["ft-3468"],
-      fieldTeamNumbers: [3468],
     });
-    expect(fake.read("users/u1")).toMatchObject({ uid: "u1", displayName: "Ada", teamId: code, role: "match-scout", roles: ["match-scout"], secondaryRoles: [], isTeamAdmin: true, isOwner: true, fieldTeamIds: ["ft-3468"], profileComplete: true });
+    expect(fake.read("users/u1")).toMatchObject({ uid: "u1", displayName: "Ada", teamId: code, role: "match-scout", roles: ["match-scout"], secondaryRoles: [], isTeamAdmin: true, isOwner: true, profileComplete: true });
+    expect(fake.read("users/u1")).not.toHaveProperty("fieldTeamIds");
     expect(fake.read("appSettings/global")).toEqual({ teamCreationEnabled: false });
   });
 
@@ -86,7 +84,6 @@ describe("syncRolesForCaller", () => {
     emailVerified: true,
     name: "U One",
     isOwnerEmail: false,
-    isAdminEmail: false,
     claims: {},
     setClaims: async (c) => void claims.push(c),
     ownerUids: ["owner-uid"],
@@ -103,16 +100,16 @@ describe("syncRolesForCaller", () => {
     expect(fake.read("users/u1")).toEqual({ uid: "u1", displayName: "U One", teamId: "ABC123", role: "pit-scout", roles: ["pit-scout"], encryptedUserData: "blob" });
   });
 
-  it("ADMIN_EMAILS grants isTeamAdmin (never isAdmin) and keeps the other fields", async () => {
-    const res = await syncRolesForCaller(db(), base({ isAdminEmail: true }));
+  it("a verified RELEASE_OWNER_EMAILS owner gets isPlatformOwner and isTeamAdmin (never isAdmin) and keeps the other fields", async () => {
+    const res = await syncRolesForCaller(db(), base({ isOwnerEmail: true }));
     expect(res.changed).toBe(true);
-    expect(fake.read("users/u1")).toMatchObject({ isTeamAdmin: true, encryptedUserData: "blob", role: "pit-scout" });
+    expect(fake.read("users/u1")).toMatchObject({ isPlatformOwner: true, isTeamAdmin: true, encryptedUserData: "blob", role: "pit-scout" });
     expect(fake.read("users/u1")).not.toHaveProperty("isAdmin");
-    expect(claims).toEqual([{ platformOwner: false, admin: true }]);
+    expect(claims).toEqual([{ platformOwner: true, admin: true }]);
   });
 
   it("an unverified email gets nothing, and an unverified owner email is told to verify", async () => {
-    const res = await syncRolesForCaller(db(), base({ emailVerified: false, isOwnerEmail: true, isAdminEmail: true }));
+    const res = await syncRolesForCaller(db(), base({ emailVerified: false, isOwnerEmail: true }));
     expect(res).toEqual({ changed: false, ownerPendingVerification: true });
     expect(fake.read("users/u1")).not.toHaveProperty("isTeamAdmin");
   });
@@ -158,7 +155,7 @@ describe("syncRolesForCaller", () => {
 
 describe("syncRolesForCaller owner mirror", () => {
   const noop: SyncRolesInput["setClaims"] = async () => {};
-  const input = (uid: string): SyncRolesInput => ({ uid, email: `${uid}@x.org`, emailVerified: true, name: uid, isOwnerEmail: false, isAdminEmail: false, claims: { admin: true }, setClaims: noop, ownerUids: [] });
+  const input = (uid: string): SyncRolesInput => ({ uid, email: `${uid}@x.org`, emailVerified: true, name: uid, isOwnerEmail: false, claims: { admin: true }, setClaims: noop, ownerUids: [] });
 
   it("sets the owner mirror for the team's verifiedOwnerId and clears a stale one", async () => {
     fake.seed("teams/ABC123", { teamName: "T", verifiedOwnerId: "boss" });

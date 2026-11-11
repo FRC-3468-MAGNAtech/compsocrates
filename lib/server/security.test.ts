@@ -122,7 +122,7 @@ describe("sendEmail", () => {
     ).toEqual({ sent: false, reason: "error" });
   });
   it("reads the platform owners' addresses and the app URL from the environment", () => {
-    process.env.OWNER_EMAILS = " a@x.org , b@x.org,, ";
+    process.env.RELEASE_OWNER_EMAILS = " A@x.org , b@x.org,, ";
     expect(platformOwnerEmails()).toEqual(["a@x.org", "b@x.org"]);
     process.env.APP_URL = "https://app.example.org///";
     expect(appBaseUrl()).toBe("https://app.example.org");
@@ -146,9 +146,9 @@ describe("email templates", () => {
     expect(m.html).not.toContain("<script>");
     expect(m.html).toContain("&lt;script&gt;");
     expect(m.html).toContain("Alpha &amp; Co");
-    expect(m.text).toContain("FTC 35792");
+    expect(m.text).toContain("team 35792");
     expect(m.text).toContain("https://app.example.org/admin");
-    expect(m.subject).toBe("New team application: FTC 35792");
+    expect(m.subject).toBe("New team application: team 35792");
   });
   it("escapes the characters that matter", () => {
     expect(escapeHtml(`<a href="x">'&'</a>`)).toBe("&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;");
@@ -157,9 +157,9 @@ describe("email templates", () => {
     expect(emailTemplates.applicationReceived({ to: "a@x.org", name: "Ada", teamNumber: 1, statusUrl: "https://x/apply" }).text).toContain("30 days");
     expect(emailTemplates.applicationApproved({ to: "a@x.org", name: "Ada", teamNumber: 1, appUrl: "https://x" }).text).toContain("owner and an admin");
     expect(emailTemplates.applicationRejected({ to: "a@x.org", name: "Ada", teamNumber: 1, reason: "Link your page.", statusUrl: "https://x/apply" }).text).toContain("Reason: Link your page.");
-    expect(emailTemplates.ownershipTransferRequested({ to: "a@x.org", toName: "Ada", fromName: "Bo", teamLabel: "FTC 1", expiresInDays: 7, appUrl: "https://x" }).text).toContain("expires in 7 days");
-    const forced = emailTemplates.ownershipTransferred({ to: "a@x.org", name: "Ada", teamLabel: "FTC 1", newOwnerName: "Bo", forced: true, appUrl: "https://x" });
+    expect(emailTemplates.ownershipTransferRequested({ to: "a@x.org", toName: "Ada", fromName: "Bo", teamLabel: "Team 1", expiresInDays: 7, appUrl: "https://x" }).text).toContain("expires in 7 days");
+    const forced = emailTemplates.ownershipTransferred({ to: "a@x.org", name: "Ada", teamLabel: "Team 1", newOwnerName: "Bo", forced: true, appUrl: "https://x" });
     expect(forced.text).toContain("recovery transfer");
-    expect(emailTemplates.ownershipTransferred({ to: "a@x.org", name: "Ada", teamLabel: "FTC 1", newOwnerName: "Bo", forced: false, appUrl: "https://x" }).text).not.toContain("recovery");
+    expect(emailTemplates.ownershipTransferred({ to: "a@x.org", name: "Ada", teamLabel: "Team 1", newOwnerName: "Bo", forced: false, appUrl: "https://x" }).text).not.toContain("recovery");
   });
 });

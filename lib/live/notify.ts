@@ -5,8 +5,8 @@ export type SubmittedEntry = { uid: string; submittedAt: string };
 /**
  * Whether a fully-scouted alliance (exactly one submitted entry per robot)
  * is eligible to notify once scores post — per the prompt: either different
- * scouts each covered one robot, or a scout who covered several (both robots
- * of an FTC alliance, two or three of an FRC one) submitted them all within
+ * scouts each covered one robot, or a scout who covered several (two or
+ * three robots of an alliance) submitted them all within
  * `windowMinutes` of each other (in practice, before scores post).
  * Anything else (fewer entries than `allianceSize`, or one scout's entries too
  * far apart) means accuracy can't be meaningfully attributed, so no notify.

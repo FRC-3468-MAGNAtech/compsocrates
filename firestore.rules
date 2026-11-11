@@ -22,8 +22,8 @@ rules_version = '2';
 //   isAdmin() is team-agnostic on purpose (as in CE); every team-scoped rule below ALSO checks sameTeam(<doc's teamId>).
 //
 // Additive CE fields the client writes onto CS user/team docs (glassLayerLevel, lastSeenChangelogAt, fcmTokens, workspace
-// prefs, fieldTeamIds, avatar, themeId, colorMode, activeForms, usePlaceholderVideo, libraryBackfilled, changelogSeeded,
-// judgeBookCards, fieldTeams ...) need no special rule: CS's users rule lets the owner of the doc (self) write any field and
+// prefs, avatar, themeId, colorMode, activeForms, usePlaceholderVideo, libraryBackfilled, changelogSeeded,
+// judgeBookCards ...) need no special rule: CS's users rule lets the owner of the doc (self) write any field and
 // its teams rule lets a team admin write any field, so they pass. (CE's per-field shape checks were deliberately NOT
 // carried over: they would tighten CS's behavior.)
 // =====================================================================================================================
@@ -252,7 +252,7 @@ service cloud.firestore {
     }
 
     // Team docs are `teams/{TEAMCODE}`. A team admin writes any field (selectedEvents, teamName, ... and the additive CE
-    // ones: activeForms, fieldTeams, usePlaceholderVideo, libraryBackfilled, changelogSeeded, judgeBookCards ...).
+    // ones: activeForms, usePlaceholderVideo, libraryBackfilled, changelogSeeded, judgeBookCards ...).
     // CS-OPEN: `create` is open to any signed-in user (any id), and a team admin can also write `verifiedOwnerId`.
     match /teams/{teamId} {
       allow read: if signedIn() && myUserDocExists() && myTeamId() == teamId;

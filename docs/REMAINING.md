@@ -15,7 +15,7 @@ Changing them could break live CS if both run on the same project, so they need 
 - A user can write any field of their own user document, including `teamId`, `role` and `isTeamAdmin`, so they can skip join approval or promote themselves.
 - Any signed-in user can create a team, and a team admin can write `verifiedOwnerId`.
 - `accuracyRescouts` cannot be truly deleted (a rule quirk); the client soft-deletes instead. A member can take over another team's rescout doc by writing their own `teamId`.
-- The CS owner uid is hardcoded in the rules (and configured through `NEXT_PUBLIC_CS_OWNER_UIDS` for the app). If that env var is unset, nobody is treated as owner.
+- The CS owner uid is hardcoded in the rules (and configured through `RELEASE_OWNER_UIDS` / `NEXT_PUBLIC_RELEASE_OWNER_UIDS` for the app). If that env var is unset, nobody is treated as owner.
 
 ## Findings from the emulator tests that need an owner decision
 - **Pick-list editors other than team admins cannot save.** CS's production rules let only team admins write `teams/{id}`, but the app (and CS's own permission list) also names lead-strategist, lead-scout, team-coach and drive-team as pick-list editors. `editPickList` by one of them is denied by the rules; a test asserts the denial. Fixing it means a field-scoped rule for `teams.pickList`, which changes CS's rules, so it was not done.
@@ -62,9 +62,10 @@ Changing them could break live CS if both run on the same project, so they need 
 - CS keeps one manual flag per entry and one `dismissed` boolean; CE can hold several. The last manual flag is written to CS and the rest travel in additive `ceManualReason`/`ceManualNote` fields.
 - A manually flagged CS entry is treated as excluded from stats by CS, but the rebuild's `excluded` means `excludeFromStats` only, so some stats can differ.
 - The pick list is one list per team (as in CS), not per event.
-- Additive fields the rebuild writes onto CS documents (harmless to CS): `isOwner`, `isPlatformOwner`, `fieldTeamIds`, theme fields, `ceManualReason`, `stickyNotes`, `alliance` on plan and reflection docs, `eventKey` on helper docs, a `subInRequests` collection. Drop them if the schema freeze must be absolute.
+- Additive fields the rebuild writes onto CS documents (harmless to CS): `isOwner`, `isPlatformOwner`, theme fields, `ceManualReason`, `stickyNotes`, `alliance` on plan and reflection docs, `eventKey` on helper docs, a `subInRequests` collection, and `selectedEventNames` on the team doc (`{ [eventKey]: name }`, written by Event Select beside `selectedEvents` with a merge write so event names survive a data-API outage; read in `data/cs/teams.ts`, the "stored" step of the name chain in `lib/events/names.ts`). Drop them if the schema freeze must be absolute.
 
 ## Cleanup left
+- Multi-team accounts (CE's "field teams" and the team switcher) are removed: one team per team document, read through `lib/our-team.ts`. User and team docs that already carry `fieldTeams`, `fieldTeamIdList`, `fieldTeamNumbers`, `fieldTeamIds` or `activeFieldTeamId` are left untouched (never read, never deleted). The git tag `pre-ce-removal` keeps the old code for a later merge with sister teams, which would plug in at `lib/our-team.ts`.
 - `lib/templates/official.ts` still builds its official form templates from BIOBUZZ constants (changing it renames seeded ids that several tests and the templates e2e assert).
 - FTC mode: the BIOBUZZ pit and team forms and summaries are kept and selected by season, but FTC analytics for non-match forms and the templates have not been re-verified end to end.
 - Mixed LF and CRLF line endings across files (git warns on commit). Normalise with a `.gitattributes` when convenient.

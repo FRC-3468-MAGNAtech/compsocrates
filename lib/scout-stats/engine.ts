@@ -7,7 +7,6 @@ import type { PracticeSession } from "@/lib/practice-sessions";
 import type { RoleId } from "@/lib/roles";
 import type { ScoutEntry } from "@/lib/scout-entries";
 import type { TeamMember } from "@/lib/team-members";
-import { matchesTeamFilter, type FieldTeam } from "@/lib/field-teams";
 import { computeRealEventEstimates, computeTeamAveragePrior, type RealEventObservation } from "./real-event-accuracy";
 import type {
   PracticeSessionSummary,
@@ -180,13 +179,6 @@ export type ScoutStatsInput = {
   roleFilter: RoleId[];
   /** Empty = no filter. Event *codes*. */
   eventFilter: string[];
-  /**
-   * P19: empty/absent = no filter. FTC team ids (with `fieldTeams` to resolve them). Like the other
-   * filters it decides who is *shown*; unlike Role/Event it does not create its own ranking pool, so
-   * ranks stay the ones among everyone (a scout's rank shouldn't change because you looked at one team).
-   */
-  teamFilter?: string[];
-  fieldTeams?: FieldTeam[];
   rankingBasis: RankingBasisId;
   /** Only read when `category === "real-event"`. */
   realEventScope: RealEventCalculationScope;
@@ -251,8 +243,7 @@ export function computeScoutStats(input: ScoutStatsInput): ScoutStatsResult {
   const visibleMembers = members.filter(
     (m) =>
       memberMatchesRoles(m, roleFilter) &&
-      memberMatchesEvents(m, eventFilter, attendance) &&
-      matchesTeamFilter(m.fieldTeamIds, input.teamFilter ?? [], input.fieldTeams ?? [])
+      memberMatchesEvents(m, eventFilter, attendance)
   );
 
   const rows: ScoutLeaderboardRow[] = visibleMembers.map((member) => {
@@ -262,7 +253,6 @@ export function computeScoutStats(input: ScoutStatsInput): ScoutStatsResult {
       name: member.name,
       primaryRole: member.primaryRole,
       secondaryRoles: member.secondaryRoles,
-      fieldTeamIds: member.fieldTeamIds,
       accuracy: detail.averageAccuracy,
       status: detail.status,
       sessionsOrForms: detail.sessionsOrForms,

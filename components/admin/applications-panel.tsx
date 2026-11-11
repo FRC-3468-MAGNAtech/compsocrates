@@ -165,7 +165,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
   return (
     <li className="glass-card overflow-hidden" data-testid="application-row" data-status={status}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 p-4 text-left outline-none hover:bg-white/5 focus-visible:bg-white/5">
-        <span className="text-lg font-semibold tabular-nums">FTC {app.teamNumber}</span>
+        <span className="text-lg font-semibold tabular-nums">Team {app.teamNumber}</span>
         <span className="min-w-0 flex-1 truncate text-sm text-[var(--muted-foreground)]">
           {app.teamName || "No name"} · {app.applicantName} · {getRole(app.role).label}
         </span>
@@ -180,7 +180,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
             <Field label="Applicant">{app.applicantName}</Field>
             <Field label="Email">{app.applicantEmail}</Field>
             <Field label="Team">
-              FTC {app.teamNumber}
+              Team {app.teamNumber}
               {app.teamName ? ` · ${app.teamName}` : ""}
               {app.officialTeamName && app.officialTeamName !== app.teamName ? <span className="text-[var(--muted-foreground)]"> (FIRST: {app.officialTeamName})</span> : null}
             </Field>
@@ -266,7 +266,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
         <DialogContent className="glass-overlay w-[min(94vw,480px)]">
           {dialog === "approve" && (
             <>
-              <DialogTitle>Approve FTC {app.teamNumber}?</DialogTitle>
+              <DialogTitle>Approve team {app.teamNumber}?</DialogTitle>
               <DialogDescription>
                 This creates the team&apos;s account now and makes {app.applicantName} its owner and an admin. It can&apos;t be undone from here (an owner can transfer ownership later).
               </DialogDescription>
@@ -296,7 +296,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
                 <label className="glass-card flex min-h-11 cursor-pointer items-center gap-3 px-3.5 py-2">
                   <Checkbox checked={blockTeam} onCheckedChange={(v) => setBlockTeam(v === true)} aria-label="Block this team number" />
                   <span className="text-sm">
-                    The team number <strong>FTC {app.teamNumber}</strong>
+                    The team number <strong>Team {app.teamNumber}</strong>
                   </span>
                 </label>
                 <div>
@@ -356,7 +356,7 @@ function BlockList() {
       {blocks.map((b) => (
         <li key={b.id} className="glass-card flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
           <Badge variant="outline">{b.type === "email" ? "Email" : "Team number"}</Badge>
-          <span className="min-w-0 flex-1 truncate font-medium">{b.type === "team" ? `FTC ${b.value}` : b.value}</span>
+          <span className="min-w-0 flex-1 truncate font-medium">{b.type === "team" ? `Team ${b.value}` : b.value}</span>
           {b.reason && <span className="truncate text-xs text-[var(--muted-foreground)]">{b.reason}</span>}
           <Button
             size="sm"

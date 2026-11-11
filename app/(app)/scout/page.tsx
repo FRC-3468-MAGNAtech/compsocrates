@@ -7,6 +7,8 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScoutForm, type ScoutFormValues } from "@/components/scout/scout-form";
+import { GameSelect } from "@/components/scout/game-select";
+import { DEFAULT_SEASON_ID } from "@/lib/seasons";
 import { StickyNotesLayout } from "@/components/forms/sticky-notes-panel";
 import { notesForSave } from "@/lib/sticky-notes";
 import type { StickyNote } from "@/lib/forms/types";
@@ -78,8 +80,9 @@ function MatchScoutFormContent() {
   const activeEvent = events.find((e) => e.code === pickedEventCode) ?? pickDefaultActiveEvent({ events, primaryCode }, now);
   const name = profile?.name ?? "";
   const teamId = profile?.teamId ?? null;
-  // P21: scouts fill in the season's active form (the built-in unless an admin chose another or edited it).
-  const { form, loaded: formsLoaded } = useActiveForm();
+  // The scout picks the game (REBUILT by default); P21: they fill in that game's active form (the built-in unless an admin chose another or edited it).
+  const [gameId, setGameId] = useState(DEFAULT_SEASON_ID);
+  const { form, loaded: formsLoaded } = useActiveForm(gameId);
   const forms = useForms();
 
   const { assignments } = useAssignments(teamId, activeEvent?.code ?? null);
@@ -187,11 +190,14 @@ function MatchScoutFormContent() {
           <h1 className="text-2xl font-semibold tracking-tight">Match Scout Form</h1>
           <p className="text-sm text-[var(--muted-foreground)]">Log what you see, live, match by match.</p>
         </div>
-        {formsLoaded && form.id !== "biobuzz" && (
-          <span className="glass-pill px-3 py-1.5 text-xs font-medium" data-testid="active-form-name">
-            {form.name}
-          </span>
-        )}
+        <div className="flex flex-wrap items-end gap-3">
+          <GameSelect value={gameId} onChange={setGameId} />
+          {formsLoaded && (
+            <span className="glass-pill px-3 py-1.5 text-xs font-medium" data-testid="active-form-name">
+              {form.name}
+            </span>
+          )}
+        </div>
       </div>
 
       {nextAssignment && !effectiveLoaded && (

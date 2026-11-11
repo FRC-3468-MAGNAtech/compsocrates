@@ -26,6 +26,7 @@ import { markPlayerSubmitted, useLobbySessions, type LobbyDoc, type LobbyPlayer 
 import { LOBBY_CONFIG } from "@/lib/lobby/config";
 import { LoadError } from "@/components/practice/load-error";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
+import { eventLabel } from "@/lib/events/names";
 
 async function triggerResolve(lobbyId: string): Promise<void> {
   try {
@@ -211,7 +212,7 @@ export function LobbySessionScreen({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <ChipSummary seasonName={chosenMatch?.eventName} mode={lobby.mode} />
+        <ChipSummary seasonName={chosenMatch ? eventLabel({ key: chosenMatch.eventCode, stored: chosenMatch.eventName }) : null} mode={lobby.mode} />
         {chosenMatch && (
           <Badge variant="glass" className="font-mono">
             {chosenMatch.matchType} {chosenMatch.matchNumber}

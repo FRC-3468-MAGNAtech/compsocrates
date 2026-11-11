@@ -3,6 +3,7 @@ import type { ScoutEntry } from "@/lib/scout-entries";
 import { coerceFieldValue } from "@/lib/forms/values";
 import type { FormValues } from "@/lib/forms/types";
 import type { MatchType } from "@/lib/events/types";
+import { eventLabel } from "@/lib/events/names";
 
 // --- Low-level RFC4180 CSV -------------------------------------------------
 
@@ -87,14 +88,36 @@ function formatCellForCsv(col: AnalyticsColumn, entry: ScoutEntry, displayScoutN
   return String(raw);
 }
 
+export type EntriesCsvOptions = {
+  /** The display name of an event key. Default: the static chain (config/event-names.ts, else the key); client callers pass the live resolver (`currentEventName`). */
+  eventName?: (eventCode: string) => string;
+  /** Add Event (code) and Event Name columns at the end when the schema has no event column of its own. */
+  includeEvent?: boolean;
+};
+
+/**
+ * One row per entry. An exported event is identified by its name as well as its key: when the schema has an event column, an
+ * "Event Name" column follows it; `includeEvent` adds both at the end for schemas without one (an event name is never left
+ * to be guessed from a key). Import ignores the extra column (it reads columns by header).
+ */
 export function entriesToCsv(
   schema: GameSchema,
   entries: ScoutEntry[],
-  resolveDisplayName: (scoutName: string) => string
+  resolveDisplayName: (scoutName: string) => string,
+  options: EntriesCsvOptions = {}
 ): string {
   const cols = exportableColumns(schema);
   const header = cols.map(csvHeaderFor);
   const rows = entries.map((e) => cols.map((c) => formatCellForCsv(c, e, resolveDisplayName(e.scoutName))));
+  const nameOf = (e: ScoutEntry) => (e.eventCode ? (options.eventName ?? ((code: string) => eventLabel({ key: code })))(e.eventCode) : "");
+  const eventAt = cols.findIndex((c) => c.key === "event");
+  if (eventAt >= 0) {
+    header.splice(eventAt + 1, 0, `${header[eventAt]} Name`);
+    rows.forEach((row, i) => row.splice(eventAt + 1, 0, nameOf(entries[i])));
+  } else if (options.includeEvent) {
+    header.push("Event", "Event Name");
+    rows.forEach((row, i) => row.push(entries[i].eventCode ?? "", nameOf(entries[i])));
+  }
   return serializeCsv([header, ...rows]);
 }
 

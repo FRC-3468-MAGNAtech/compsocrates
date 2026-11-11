@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluatePracticeSessionFlags, PRACTICE_FLAG_THRESHOLDS } from "@/lib/practice-flags";
-import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
+import type { ScoutEntry } from "@/lib/scout-entries";
 
 function makeEntry(overrides: Partial<ScoutEntry> = {}): ScoutEntry {
   return {
@@ -9,14 +9,14 @@ function makeEntry(overrides: Partial<ScoutEntry> = {}): ScoutEntry {
     uid: "uid-1",
     source: "practice",
     mode: "trial",
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: "Test Scout",
     eventCode: "USWABON1",
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber: 100,
-    fields: initialScoutEntryFields,
+    values: {},
     score: { auto: 0, teleop: 0, endgame: 0, total: 0 },
     comments: "",
     submittedAt: new Date().toISOString(),
@@ -53,9 +53,9 @@ describe("evaluatePracticeSessionFlags", () => {
   });
 
   it("flags Unrealistic Entry when either entry trips Match Analytics' unrealistic-scoring rules", () => {
+    // a total above the plausible single-robot maximum trips the teleop rule (the sample form is not a built-in, so no counter limit applies)
     const unrealistic = makeEntry({
-      fields: { ...initialScoutEntryFields, autoTipHive: 10 },
-      score: { auto: 200, teleop: 0, endgame: 0, total: 200 },
+      score: { auto: 0, teleop: 250, endgame: 0, total: 250 },
     });
     const normal = makeEntry({ score: { auto: 20, teleop: 40, endgame: 5, total: 65 } });
 
@@ -141,7 +141,7 @@ describe("evaluatePracticeSessionFlags — 3-robot alliances", () => {
   });
 
   it("flags Unrealistic Entry when the third entry trips the rule", () => {
-    const unrealistic = makeEntry({ fields: { ...initialScoutEntryFields, autoTipHive: 10 }, score: { auto: 200, teleop: 0, endgame: 0, total: 200 } });
+    const unrealistic = makeEntry({ score: { auto: 0, teleop: 250, endgame: 0, total: 250 } });
     expect(evaluatePracticeSessionFlags({ ...base, entries: [nonZero, nonZero, unrealistic] }).map((f) => f.type)).toContain("unrealistic-entry");
   });
 

@@ -211,7 +211,7 @@ describe("generateSchedule — 3-robot alliances (FRC)", () => {
     expect(assigned.every((s) => s.teamNumber === 3 && s.slot === "red3")).toBe(true);
   });
 
-  it("still handles a 2-team (FTC) match with the same code: two slots per alliance, batches of 4", () => {
+  it("still handles a 2-team match with the same code: two slots per alliance, batches of 4", () => {
     const result = generateSchedule(makeMatches(5), { scoutUids: scoutIds(8), pattern: "rotate-each-match", seed: 1 });
     expect(result.slots.filter((s) => s.matchNumber === 1).map((s) => s.slot)).toEqual(["red1", "red2", "blue1", "blue2"]);
     expect(result.slots.some((s) => s.slot === "red3")).toBe(false);

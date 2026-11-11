@@ -1,13 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
-import { FieldTeamChips } from "@/components/team/field-team-chips";
-import { ALL_TEAMS, TeamFilterSelect, selectedTeamIds } from "@/components/team/team-filter-select";
-import { matchesTeamFilter } from "@/lib/field-teams";
-import { useFieldTeams } from "@/lib/field-teams-context";
 import { ROLES, getRole, type RoleId } from "@/lib/roles";
 import type { TeamMember } from "@/lib/team-members";
 
@@ -21,7 +16,7 @@ function toggle<T>(list: T[], value: T): T[] {
  * picker (attending members only, defaulting to Match Scout role).
  */
 export function MemberMultiSelect({
-  members: allMembers,
+  members,
   selected,
   onChange,
 }: {
@@ -29,14 +24,6 @@ export function MemberMultiSelect({
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
-  // P19: optional filter by FTC team (hidden for a single-team account). The quick selects below act on
-  // the members shown; anyone already selected but filtered out stays selected.
-  const { fieldTeams } = useFieldTeams();
-  const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
-  const members = useMemo(
-    () => allMembers.filter((m) => matchesTeamFilter(m.fieldTeamIds, selectedTeamIds(teamFilter, fieldTeams), fieldTeams)),
-    [allMembers, teamFilter, fieldTeams]
-  );
   const shownUids = members.map((m) => m.uid);
   const rolesPresent = ROLES.filter((r) => members.some((m) => m.primaryRole === r.id || m.secondaryRoles.includes(r.id)));
 
@@ -61,11 +48,6 @@ export function MemberMultiSelect({
             {r.label}
           </Button>
         ))}
-        {fieldTeams.length > 1 && (
-          <div className="ml-auto">
-            <TeamFilterSelect value={teamFilter} onChange={setTeamFilter} className="h-10" />
-          </div>
-        )}
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -79,9 +61,6 @@ export function MemberMultiSelect({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{m.name}</div>
                 <div className="truncate text-[10px] text-[var(--muted-foreground)]">{role.label}</div>
-                <div className="mt-0.5 flex flex-wrap gap-1 empty:hidden">
-                  <FieldTeamChips ids={m.fieldTeamIds} />
-                </div>
               </div>
             </label>
           );

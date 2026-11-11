@@ -54,7 +54,7 @@ export function AccuracyVerificationView() {
   const verificationRows = useMemo(() => leadVerificationRows(juniors, logs.filter((l) => eventCodes.includes(l.eventKey))), [juniors, logs, eventCodes]);
 
   // --- high-accuracy matches and re-scouts ------------------------------------------------------------------------------
-  const matches = useMemo(() => highAccuracyMatches(realEntries, schedule, (code) => data.eventDirectory.get(code)?.name ?? code), [realEntries, schedule, data.eventDirectory]);
+  const matches = useMemo(() => highAccuracyMatches(realEntries, schedule, data.eventNameOf), [realEntries, schedule, data.eventNameOf]);
   const groups = useMemo(() => groupRescouts(rescouts), [rescouts]);
   const doneTeams = useMemo(() => rescoutedTeamKeys(rescouts, groups.values()), [rescouts, groups]);
   const originals = useMemo(() => originalEntriesByKey(data.allEntries), [data.allEntries]);

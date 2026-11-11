@@ -70,7 +70,7 @@ export function LobbyWaitingRoom({
   }, [user, myPlayer?.submitted, lobby.id]);
 
   const scoutingPlayers = players.filter((p) => p.uid !== lobby.hostUid || lobby.settings.hostScouts);
-  // One player per robot, so a group is one alliance's robot count (a pair for FTC, three for FRC).
+  // One player per robot, so a group is one alliance's robot count (three for FRC).
   const groupSize = lobbyGroupSize(chosenMatch ? { red: chosenMatch.alliances.red.teams, blue: chosenMatch.alliances.blue.teams } : null);
   const canStart = canStartLobby(scoutingPlayers.length, groupSize);
   const startDisabledReason = !chosenMatch ? "Waiting on a match to be chosen." : lobbyStartBlocker(scoutingPlayers.length, groupSize);

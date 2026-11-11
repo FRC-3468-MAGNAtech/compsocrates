@@ -6,7 +6,7 @@ import type { EventMatch, MatchType } from "@/lib/events/types";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { Form } from "@/lib/forms/types";
 import { elementOf } from "@/lib/forms/meta";
-import { entryValues } from "@/lib/forms/legacy";
+import { entryValues } from "@/lib/forms/entry-values";
 
 // Pure model behind Match Breakdown (P11): official matches joined to the
 // scouted entries for them, per alliance. The UI only renders what this
@@ -38,7 +38,7 @@ export type OfficialMatch = {
   blue: OfficialAlliance;
 };
 
-export function ftcMatchToOfficial(eventCode: string, m: EventMatch): OfficialMatch {
+export function matchToOfficial(eventCode: string, m: EventMatch): OfficialMatch {
   return {
     eventCode,
     matchType: m.type,
@@ -266,7 +266,7 @@ export function matchHasTeam(breakdown: Pick<MatchBreakdown, "match">, query: st
 // --- what to show for one scouted robot --------------------------------------
 
 export type EntrySummary = {
-  /** Counter fields summed by game element: "Hive ×3". Only elements the robot actually scored on. */
+  /** Counter fields summed by game element: "Target A ×3". Only elements the robot actually scored on. */
   counts: { label: string; count: number }[];
   /** Toggles that were on ("Leave", "Park (endgame)") — the phase is added only when a label repeats. */
   toggles: string[];

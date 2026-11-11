@@ -7,7 +7,7 @@ export const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 // Compression always outputs JPEG, but when it fails (e.g. a browser that cannot decode HEIC) the original is uploaded as is.
 export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"] as const;
 
-// Per-segment limits. Generous for real ids (Firestore ids are 20 chars, FTC event codes under ~12) and small enough to keep paths short.
+// Per-segment limits. Generous for real ids (Firestore ids are 20 chars, event codes under ~12) and small enough to keep paths short.
 const MAX_LEN = { kind: 24, teamId: 64, eventCode: 32, teamNumber: 16 } as const;
 const UID_TAG_LENGTH = 10;
 const MIN_RANDOM = 16;

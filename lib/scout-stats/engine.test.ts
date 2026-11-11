@@ -21,7 +21,7 @@ function session(overrides: Partial<PracticeSession> & { id: string; uid: string
     teamId: "team1",
     scoutName: overrides.uid,
     kind: "solo",
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     mode: "trial",
     difficulty: "medium",
     libraryMatchId: null,
@@ -57,14 +57,14 @@ function entry(overrides: Partial<ScoutEntry> & { id: string; uid: string }): Sc
     teamId: "team1",
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: overrides.uid,
     eventCode: "USWABON1",
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber: 1,
-    fields: {} as ScoutEntry["fields"],
+    values: {},
     score: { auto: 0, teleop: 0, endgame: 0, total: 0 },
     comments: "",
     submittedAt: "2026-01-01T00:00:00.000Z",
@@ -159,30 +159,6 @@ describe("computeScoutStats — practice categories", () => {
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].uid).toBe("a");
     expect(result.rows[0].rank).toBe(2); // b (90) outranks a (70) team-wide, even though b isn't shown
-  });
-
-  it("P19: team filter shows only scouts on the chosen FTC team, keeps team-wide ranks, and counts an unassigned scout on every team", () => {
-    const teams = [
-      { id: "ft-1", number: 1, name: "" },
-      { id: "ft-2", number: 2, name: "" },
-    ];
-    const result = computeScoutStats(
-      baseInput({
-        members: [member({ uid: "a", fieldTeamIds: ["ft-1"] }), member({ uid: "b", fieldTeamIds: ["ft-2"] }), member({ uid: "c" })],
-        sessions: [
-          session({ id: "s1", uid: "a", mode: "trial", accuracy: 70 }),
-          session({ id: "s2", uid: "b", mode: "trial", accuracy: 90 }),
-          session({ id: "s3", uid: "c", mode: "trial", accuracy: 80 }),
-        ],
-        teamFilter: ["ft-1"],
-        fieldTeams: teams,
-      })
-    );
-    expect(result.rows.map((r) => r.uid).sort()).toEqual(["a", "c"]); // b is on FTC 2 only
-    expect(result.rows.find((r) => r.uid === "a")?.rank).toBe(3); // still behind b (90) and c (80) team-wide
-    expect(result.rows.find((r) => r.uid === "a")?.fieldTeamIds).toEqual(["ft-1"]);
-    // no filter = everyone
-    expect(computeScoutStats(baseInput({ members: [member({ uid: "a", fieldTeamIds: ["ft-1"] }), member({ uid: "b", fieldTeamIds: ["ft-2"] })], fieldTeams: teams })).rows).toHaveLength(2);
   });
 
   it("re-ranks within the role filter when ranking basis is 'role'", () => {

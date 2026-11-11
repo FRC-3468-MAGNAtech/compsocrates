@@ -11,12 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Shimmer } from "@/components/ui/shimmer";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
+import { EventName } from "@/components/events/event-name";
 import type { EventInfo } from "@/lib/events/types";
 import { MATCH_LIST_TABS, buildMatchRows, defaultTab, filterRows, formatStart, rowsInTab, tabCounts, winnerOf, type MatchListRow, type MatchListStatus, type MatchListTab } from "@/lib/match-list/model";
 import { cn } from "@/lib/utils";
 
 // FIX4: the Match List page. Everything is plain props (the connected page feeds it the active events, the FIRST API
-// schedule and the account's FTC teams; the browser-test fixture feeds it fixed data), so what is shown is decided
+// schedule and our team's number; the browser-test fixture feeds it fixed data), so what is shown is decided
 // in lib/match-list/model.ts and only drawn here.
 
 const STATUS: Record<MatchListStatus, { label: string; variant: "glass" | "success" | "outline" }> = {
@@ -290,7 +291,11 @@ function MatchCard({ row, timeZone, showEvent, isOurTeam }: { row: MatchListRow;
       <div className="flex items-baseline justify-between gap-2 sm:block">
         <div className="text-xl font-semibold tracking-tight">{row.label}</div>
         <div className="text-xs text-[var(--muted-foreground)]">{formatStart(row.startMs, timeZone)}</div>
-        {showEvent && <div className="text-[11px] uppercase text-[var(--muted-foreground)]">{row.eventCode}</div>}
+        {showEvent && (
+          <div className="text-[11px] text-[var(--muted-foreground)]" title={row.eventCode}>
+            <EventName eventKey={row.eventCode} />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">

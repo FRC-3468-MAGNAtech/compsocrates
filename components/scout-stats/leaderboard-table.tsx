@@ -5,7 +5,6 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FieldTeamChips } from "@/components/team/field-team-chips";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { getRole } from "@/lib/roles";
 import { getPercentColor } from "@/lib/accuracy/engine";
@@ -48,13 +47,10 @@ export function LeaderboardTable({
   category,
   rows,
   onViewDetails,
-  showTeams = false,
 }: {
   category: ScoutCategory;
   rows: ScoutLeaderboardRow[];
   onViewDetails: (uid: string) => void;
-  /** P19: show each scout's FTC team chips (Scout Accuracy; the chips hide themselves for a single-team account). */
-  showTeams?: boolean;
 }) {
   const [sort, setSort] = useState<SortState>({ column: "rank", direction: "asc" });
 
@@ -126,7 +122,6 @@ export function LeaderboardTable({
                 <div className="flex flex-wrap items-center gap-2.5">
                   <Avatar name={row.name} size="sm" />
                   <span className="font-medium">{row.name}</span>
-                  {showTeams && <FieldTeamChips ids={row.fieldTeamIds} />}
                 </div>
               </TD>
               <TD>

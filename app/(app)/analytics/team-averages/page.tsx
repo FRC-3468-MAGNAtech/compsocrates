@@ -6,7 +6,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
 import { TeamTable, type TeamTableColumn, type TeamTableSort } from "@/components/analytics/team-table";
 import { InlineBar, OUR_TEAM_ROW_CLASS, TeamCell } from "@/components/analytics/team-bits";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { useIsOurTeam } from "@/lib/our-team";
 import { useTeamStats } from "@/lib/analytics/data-context";
 import type { TeamStats } from "@/lib/analytics/team-stats";
 

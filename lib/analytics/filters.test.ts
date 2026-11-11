@@ -60,6 +60,9 @@ describe("parseFilters", () => {
 
   it("ignores invalid values instead of producing an impossible state", () => {
     expect(parse("game=nonsense").gameId).toBe(DEFAULT_FILTERS.gameId);
+    expect(parse("game=retired-game").gameId).toBe(DEFAULT_FILTERS.gameId); // a game that is not one of the three
+    expect(parse("game=reefscape").gameId).toBe("reefscape");
+    expect(parse("game=charged_up").gameId).toBe("charged_up");
     expect(parse("mode=banana&practice=1").practiceMode).toBe("all");
     expect(parse("source=banana&practice=1").practiceSource).toBe("all");
     expect(parse("acc=abc").accuracy).toBeNull();
@@ -81,7 +84,7 @@ describe("serializeFilters", () => {
 
   it("round-trips a fully customized state", () => {
     const filters: AnalyticsFilters = {
-      gameId: "biobuzz",
+      gameId: "reefscape",
       events: { kind: "custom", codes: ["USWABON1"] },
       practice: true,
       practiceMode: "competitive",

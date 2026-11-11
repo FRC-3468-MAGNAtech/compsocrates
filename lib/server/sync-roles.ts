@@ -4,8 +4,7 @@ import type { CsRecord, CsUserDoc } from "@/data/cs/types";
 import { buildBaseUserDoc, ownerUidOfTeam } from "@/data/cs/join-requests";
 import { toEpochMs } from "@/data/cs/util";
 import { isAdminFromCsUser } from "@/data/cs/users";
-import { isCsOwnerUid } from "@/config/cs";
-import { defaultMemberFieldTeamIds } from "@/lib/field-teams";
+import { isOwnerUid } from "@/lib/server/owner-admin";
 import { chooseBootstrapOwner } from "@/lib/team-owner";
 import { applyPendingApprovalForUser } from "@/lib/server/join-requests";
 
@@ -14,13 +13,12 @@ export type SyncRolesInput = {
   email: string | null;
   emailVerified: boolean;
   name: string | null;
-  /** Whether the email is in OWNER_EMAILS / ADMIN_EMAILS (server env). */
+  /** Whether the email is in RELEASE_OWNER_EMAILS (server env). */
   isOwnerEmail: boolean;
-  isAdminEmail: boolean;
   /** The caller's current custom claims (`platformOwner`, `admin`, and the pre-P20 `owner`). */
   claims: { platformOwner?: unknown; admin?: unknown; owner?: unknown };
   setClaims: (claims: { platformOwner: boolean; admin: boolean }) => Promise<void>;
-  /** Platform owner uids (defaults to `CS_OWNER_UIDS`). */
+  /** Platform owner uids; defaults to RELEASE_OWNER_UIDS (server env). */
   ownerUids?: readonly string[];
 };
 
@@ -57,7 +55,7 @@ async function bootstrapTeamOwner(db: Firestore, teamId: string, caller: { uid: 
  * Called after every sign-in (lib/auth.tsx). CS-shaped (users have `isTeamAdmin`, `teamId`; teams have `verifiedOwnerId`):
  *  - applies an approved join request whose profile write never landed (`profileSyncPending`), CS's `syncApprovedJoinRequest`;
  *  - grants the platform-owner mirror (`isPlatformOwner`, additive) and the `platformOwner`/`admin` claims: a platform owner is
- *    a uid in `CS_OWNER_UIDS`, or a VERIFIED email in OWNER_EMAILS. Admin (`isTeamAdmin`), once granted, is never auto-revoked;
+ *    a uid in RELEASE_OWNER_UIDS, or a VERIFIED email in RELEASE_OWNER_EMAILS. Admin (`isTeamAdmin`), once granted, is never auto-revoked;
  *  - attaches a platform owner who has no profile to the only team that exists;
  *  - bootstraps `verifiedOwnerId` for an ownerless team.
  * It never writes `role`, `roles`, `teamId` (except the owner attach) or any field it does not own, so `encryptedUserData` and
@@ -65,10 +63,11 @@ async function bootstrapTeamOwner(db: Firestore, teamId: string, caller: { uid: 
  */
 export async function syncRolesForCaller(db: Firestore, input: SyncRolesInput): Promise<SyncRolesResult> {
   const { uid } = input;
-  const csOwner = input.ownerUids ? isCsOwnerUid(uid, input.ownerUids) : isCsOwnerUid(uid);
+  const csOwner = input.ownerUids ? input.ownerUids.includes(uid) : isOwnerUid(uid);
   // A uid cannot be spoofed; an email can, until it is verified.
   const platformOwner = csOwner || (input.emailVerified && input.isOwnerEmail);
-  const wantsAdmin = platformOwner || (input.emailVerified && input.isAdminEmail);
+  // Only a platform owner is granted admin automatically (CS has no "preset admin emails"): every other admin is made by an admin.
+  const wantsAdmin = platformOwner;
 
   const approvalApplied = await applyPendingApprovalForUser(db, uid);
 
@@ -92,7 +91,6 @@ export async function syncRolesForCaller(db: Firestore, input: SyncRolesInput): 
       teamId: team.id,
       isTeamAdmin: true,
       isPlatformOwner: true,
-      fieldTeamIds: defaultMemberFieldTeamIds(team.data() as CsRecord),
     });
     await input.setClaims({ platformOwner: true, admin: true });
     await bootstrapTeamOwner(db, team.id, { uid, isPlatformOwner: true });

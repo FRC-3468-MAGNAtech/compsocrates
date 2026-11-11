@@ -22,8 +22,6 @@ export type AuditAction =
   | "refresh-official-scores"
   | "export-backup"
   | "edit-member-roles"
-  | "edit-member-teams"
-  | "edit-field-teams"
   | "approve-team-application"
   | "request-ownership-transfer"
   | "transfer-ownership"

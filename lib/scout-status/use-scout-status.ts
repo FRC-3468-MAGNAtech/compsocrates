@@ -83,7 +83,7 @@ export function useScoutStatus(enabled: ReadonlySet<StatusCategory>) {
     return map;
   }, [eventCodes, practice, data.libraryMatches, apiMatches, filters.gameId]);
 
-  const eventName = (code: string) => data.eventDirectory.get(code)?.name ?? data.libraryMatches.find((m) => m.eventCode === code)?.eventName ?? code;
+  const eventName = data.eventNameOf;
 
   // Per event: classified matches, maxes, and the counts — before any scout-specific targets.
   const baseViews = useMemo(
@@ -114,9 +114,7 @@ export function useScoutStatus(enabled: ReadonlySet<StatusCategory>) {
         for (const s of scouts) targets.set(s.uid, individualTargets(s.uid, v.setup, v.assigned, v.maxes, enabled));
         return { eventCode: v.eventCode, eventName: eventName(v.eventCode), setup: v.setup, ctx: v.ctx, maxes: v.maxes, targets, availableCounts: v.availableCounts, hasAssignments: v.assigned.hasSchedule };
       }),
-    // eventName only reads the event directory and library list, which the memo inputs already track.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [baseViews, scouts, enabled, data.eventDirectory, data.libraryMatches]
+    [baseViews, scouts, enabled, eventName]
   );
 
   const result = useMemo(() => {

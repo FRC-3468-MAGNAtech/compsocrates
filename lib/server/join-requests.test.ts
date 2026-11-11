@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// config/cs.ts reads the owner uids at import time.
+// The owner uids are read from the environment (RELEASE_OWNER_UIDS) when needed.
 vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_CS_OWNER_UIDS = "owner-uid";
+  process.env.RELEASE_OWNER_UIDS = "owner-uid";
 });
 
 import { FakeFirestore } from "@/lib/server/test-support/fake-firestore";
@@ -104,7 +104,6 @@ describe("processJoinRequest", () => {
       specialRole: null,
       specialRoles: [],
       isTeamAdmin: false,
-      fieldTeamIds: ["ft-3468"], // P19: a new member starts on the account's FTC teams (CS teamNumber "3468")
       encryptedUserData: "blob",
       bio: "hi",
     });

@@ -9,7 +9,7 @@ export type FirestoreFailure = {
   code: string;
   /** The error's own message, verbatim (e.g. "Missing or insufficient permissions."). */
   message: string;
-  /** The collection path and query constraints that failed, when known — e.g. `libraryMatches where seasonId == "biobuzz", published == true`. */
+  /** The collection path and query constraints that failed, when known — e.g. `libraryMatches where seasonId == "rebuilt", published == true`. */
   path: string | null;
   /** When it happened (ISO). */
   at: string;

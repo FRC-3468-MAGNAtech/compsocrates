@@ -31,7 +31,7 @@ describe("matchEventFromText", () => {
   });
 
   it("is confident on a strong name-word overlap", () => {
-    const result = matchEventFromText("FTC Rookie Rumble LIVE STREAM", EVENTS);
+    const result = matchEventFromText("FRC Rookie Rumble LIVE STREAM", EVENTS);
     expect(result?.event.code).toBe("USWABON1");
     expect(result?.confident).toBe(true);
   });

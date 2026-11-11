@@ -5,6 +5,7 @@ import { HeartPulse, LifeBuoy, ShieldCheck, Users } from "lucide-react";
 import { useCoverage } from "@/components/dashboard/widgets/lead-scout";
 import { Widget } from "@/components/dashboard/widget";
 import { KeyNumber } from "@/components/dashboard/shared";
+import { EventName } from "@/components/events/event-name";
 import { Badge } from "@/components/ui/badge";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import { useDashboard, useOurTeamEvent } from "@/lib/dashboard/data";
@@ -12,6 +13,7 @@ import { averageAccuracy } from "@/lib/dashboard/insights";
 import { formatRecord } from "@/lib/dashboard/schedule";
 import { formatScheduled } from "@/lib/dashboard/time";
 import type { EventLifecycleStatus } from "@/lib/events/types";
+import { useEventName } from "@/lib/events/use-event-names";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<EventLifecycleStatus, { label: string; variant: "success" | "glass" | "outline" }> = {
@@ -36,7 +38,7 @@ export function EventOverviewWidget() {
       linkLabel="Active Events"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="min-w-0 truncate text-base font-semibold">{t.event?.name}</span>
+        <span className="min-w-0 truncate text-base font-semibold">{t.event ? <EventName eventKey={t.event.code} name={t.event.name} /> : null}</span>
         {status && <Badge variant={status.variant}>{status.label}</Badge>}
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -99,9 +101,10 @@ export function InterventionWidget() {
 /** How many team members are marked as attending the selected event. */
 export function AttendanceWidget() {
   const d = useDashboard();
+  const eventName = useEventName(d.event?.code ?? "", { name: d.event?.name });
   return (
     <Widget title="Attendance" icon={Users} size="small" status={!d.attendanceLoaded ? "loading" : "ready"} href="/assignments" linkLabel="Assignments">
-      <KeyNumber label="Attending" value={d.attendingUids.length} hint={d.attendingUids.length === 0 ? "No attendance recorded for this event yet" : `at ${d.event?.name ?? "this event"}`} />
+      <KeyNumber label="Attending" value={d.attendingUids.length} hint={d.attendingUids.length === 0 ? "No attendance recorded for this event yet" : `at ${d.event ? eventName.name : "this event"}`} />
     </Widget>
   );
 }

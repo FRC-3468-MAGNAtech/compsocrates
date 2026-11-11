@@ -72,7 +72,7 @@ export async function resolveLobbyResults(db: Firestore, lobbyId: string): Promi
   let resolved = 0;
   for (const pair of lobby.pairing) {
     const docs = sessionsByPairId.get(pair.pairId);
-    // The group is complete when every one of its players (2 for FTC, 3 for FRC) has a completed session.
+    // The group is complete when every one of its players (3 for FRC) has a completed session.
     if (!docs || docs.length !== pair.playerUids.length) continue; // incomplete group — "did not finish"
 
     const entryIds = docs.map((d) => d.data().entryIds?.[0] as string | undefined);

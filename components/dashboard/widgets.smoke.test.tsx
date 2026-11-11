@@ -10,8 +10,9 @@ import { sourcesFor } from "@/lib/dashboard/roles";
 import type { EventInfo, EventRanking, EventTeam } from "@/lib/events/types";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import { ROLES, type RoleId } from "@/lib/roles";
-import { initialScoutEntryFields, type ScoutEntry, type ScoutEntryFields } from "@/lib/scout-entries";
-import { BIOBUZZ_FORM_SCHEMA, calculateScore } from "@/lib/scout-form/schema";
+import type { ScoutEntry } from "@/lib/scout-entries";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
+import { calculateScore } from "@/lib/scout-form/schema";
 import { computeScoutStats } from "@/lib/scout-stats/engine";
 import type { ScoutCategory } from "@/lib/scout-stats/types";
 import type { TeamMember } from "@/lib/team-members";
@@ -76,24 +77,24 @@ const match = (matchNumber: number, red: ReturnType<typeof side>, blue: ReturnTy
 });
 
 let n = 0;
-function entry(teamNumber: number, matchNumber: number, fieldValues: Partial<ScoutEntryFields> = {}, over: Partial<ScoutEntry> = {}): ScoutEntry {
+function entry(teamNumber: number, matchNumber: number, fieldValues: Record<string, boolean | number> = {}, over: Partial<ScoutEntry> = {}): ScoutEntry {
   n += 1;
-  const fields = { ...initialScoutEntryFields, ...fieldValues };
+  const values = { ...fieldValues };
   return {
     id: `e${n}`,
     teamId: "team",
     uid: "u1",
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: "Ann Scout",
     eventCode: EVENT.code,
     matchType: "Qualification",
     matchNumber,
     teamNumber,
-    fields,
-    score: calculateScore(BIOBUZZ_FORM_SCHEMA, fields as unknown as Record<string, boolean | number>),
+    values,
+    score: calculateScore(SAMPLE_FORM, values),
     comments: teamNumber === US ? "Great driving, one brownout late" : "",
     submittedAt: `2026-11-05T10:${String(n % 60).padStart(2, "0")}:00.000Z`,
     excluded: false,
@@ -118,7 +119,7 @@ const session = (id: string, over: Partial<PracticeSession>): PracticeSession =>
     uid: "u1",
     scoutName: "Ann Scout",
     kind: "solo",
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     mode: "trial",
     difficulty: "easy",
     libraryMatchId: null,
@@ -166,22 +167,22 @@ function makeData(role: RoleId, mode: "rich" | "loading" | "empty"): DashboardDa
 
   const allEntries: ScoutEntry[] = rich
     ? [
-        entry(US, 1, { autoLeave: true, autoPark: true, teleTipHive: 1 }),
+        entry(US, 1, { autoLeave: true, autoPark: true, teleScoreA: 1 }),
         entry(US, 2, { autoLeave: true, diedDuringMatch: true }),
-        entry(US, 3, { autoLeave: true, autoPark: true, endgamePark: true, teleTipHive: 2 }),
-        entry(US, 4, { autoLeave: true, teleTipHive: 2, flowerPollenNectar: 3 }),
-        entry(111, 1, { autoLeave: true, teleTipHive: 1 }),
-        entry(111, 5, { teleTipHive: 2 }),
+        entry(US, 3, { autoLeave: true, autoPark: true, endgamePark: true, teleScoreA: 2 }),
+        entry(US, 4, { autoLeave: true, teleScoreA: 2, teleScoreB: 3 }),
+        entry(111, 1, { autoLeave: true, teleScoreA: 1 }),
+        entry(111, 5, { teleScoreA: 2 }),
         entry(222, 1, { autoLeave: true }),
-        entry(222, 5, { autoLeave: true, teleTipHive: 1 }),
+        entry(222, 5, { autoLeave: true, teleScoreA: 1 }),
         entry(333, 1, {}),
       ]
     : [];
 
   const eventEntries = allEntries.filter((e) => e.source === "event" && e.eventCode === EVENT.code);
-  const usedEntries = selectAnalyticsEntries({ entries: allEntries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, gameId: "biobuzz", events: { kind: "custom", codes: [EVENT.code] } }, activeEventCodes: [] }).used;
+  const usedEntries = selectAnalyticsEntries({ entries: allEntries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, gameId: "sample", events: { kind: "custom", codes: [EVENT.code] } }, activeEventCodes: [] }).used;
   const teamNames = new Map(teams.map((t) => [t.teamNumber, t.nameShort]));
-  const teamStats = buildAllTeamStats(usedEntries, BIOBUZZ_FORM_SCHEMA, teamNames);
+  const teamStats = buildAllTeamStats(usedEntries, SAMPLE_FORM, teamNames);
   const ranked = rankTeams(teamStats, "avgTotal");
 
   const ourMatches = buildOurMatches(officialMatches, US, EVENT.timezone);
@@ -246,7 +247,7 @@ function makeData(role: RoleId, mode: "rich" | "loading" | "empty"): DashboardDa
     allEntries,
     eventEntries,
     usedEntries,
-    schema: BIOBUZZ_FORM_SCHEMA,
+    schema: SAMPLE_FORM,
     teamStats,
     ranked,
     ourStats: teamStats.find((t) => t.teamNumber === US) ?? null,
@@ -388,14 +389,14 @@ describe("what the widgets show", () => {
     });
 
     it("lists posts as given (newest first from the store), with type pills, authors and messages", () => {
-      announcementFixture.posts = [mk("b", 2000, { type: "match-alert", body: "Bus leaves at 7" }), mk("a", 1000, { type: "strategy-note", body: "Defend the hive" })];
+      announcementFixture.posts = [mk("b", 2000, { type: "match-alert", body: "Bus leaves at 7" }), mk("a", 1000, { type: "strategy-note", body: "Defend the tower" })];
       try {
         const html = render(makeData("team-coach", "rich"), widget().render());
         expect(html).toContain("Bus leaves at 7");
-        expect(html).toContain("Defend the hive");
+        expect(html).toContain("Defend the tower");
         expect(html).toContain("Match Alert");
         expect(html).toContain("Bo Scout");
-        expect(html.indexOf("Bus leaves at 7")).toBeLessThan(html.indexOf("Defend the hive"));
+        expect(html.indexOf("Bus leaves at 7")).toBeLessThan(html.indexOf("Defend the tower"));
       } finally {
         announcementFixture.posts = [];
       }

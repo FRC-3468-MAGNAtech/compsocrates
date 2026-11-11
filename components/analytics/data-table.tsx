@@ -10,7 +10,7 @@ import { CommentCell } from "@/components/analytics/comment-cell";
 import { AccuracyCell } from "@/components/analytics/accuracy-cell";
 import { Badge } from "@/components/ui/badge";
 import { OUR_TEAM_ROW_CLASS, OurTeamTag } from "@/components/analytics/team-bits";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { useIsOurTeam } from "@/lib/our-team";
 
 export type SortState = { key: string; direction: "asc" | "desc" };
 
@@ -326,7 +326,7 @@ function Cell({
     case "scriptStatus":
       return <span className="text-[var(--muted-foreground)]">{SCRIPT_STATUS_LABEL[entry.accuracy?.status ?? "not-applicable"]}</span>;
     case "team":
-      // P19: any of the account's FTC teams gets the shared "Us" tag.
+      // Our team gets the shared "Us" tag.
       return (
         <span className="flex items-center gap-2">
           {String(col.getValue(entry) ?? "")}

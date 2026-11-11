@@ -31,7 +31,7 @@ export function PresencePanel({ teamId, onJoin }: { teamId: string | null; onJoi
     byMatch.set(s.matchKey, list);
   }
   // A match "needs a partner" while its scouts are all on one alliance and don't yet cover every robot on it
-  // (one scout of two for FTC; one or two of three for FRC).
+  // (one or two scouts of three).
   const soloMatches = [...byMatch.entries()].filter(([, list]) => {
     const size = sessions.find((s) => s.id === list[0].sessionId)?.allianceTeams?.length ?? ALLIANCE_SIZE;
     return list.length < size && new Set(list.map((s) => s.alliance)).size === 1;

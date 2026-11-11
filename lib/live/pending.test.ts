@@ -7,7 +7,7 @@ function liveSession(overrides: Partial<PracticeSession> & { id: string; uid: st
     teamId: "team1",
     scoutName: overrides.uid,
     kind: "live",
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     mode: null,
     difficulty: null,
     libraryMatchId: null,

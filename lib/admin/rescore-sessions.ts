@@ -1,7 +1,7 @@
 import { resolveLobbyPairScoring } from "@/lib/lobby/scoring";
 import { resolveLiveAllianceScoring } from "@/lib/live/scoring";
 import { calculateScore, storableScore } from "@/lib/forms/scoring";
-import { entryValues } from "@/lib/forms/legacy";
+import { entryValues } from "@/lib/forms/entry-values";
 import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
 import { updateEntry, type ScoutEntry } from "@/lib/scout-entries";
 import { updatePracticeSession, type PracticeSession } from "@/lib/practice-sessions";
@@ -92,7 +92,7 @@ export function buildSessionRescorePlan(
   const completed = sessions.filter((s) => s.status === "completed" && matchesFilter(s, filter));
   const patches: SessionRescorePatch[] = [];
 
-  // Solo: one session owns every robot's entries (2 for FTC, 3 for FRC).
+  // Solo: one session owns every robot's entries (3 for FRC).
   for (const session of completed.filter((s) => s.kind === "solo")) {
     if (!session.libraryMatchId || !session.alliance) continue;
     const match = libraryMatchesById.get(session.libraryMatchId);
@@ -122,7 +122,7 @@ export function buildSessionRescorePlan(
     });
   }
 
-  // Lobby: the group's sessions (one per player: 2 for FTC, 3 for FRC) share a pairId.
+  // Lobby: the group's sessions (one per player: 3 for FRC) share a pairId.
   const lobbyGroups = new Map<string, PracticeSession[]>();
   for (const session of completed.filter((s) => s.kind === "lobby")) {
     if (!session.lobbyId || !session.pairId) continue;
@@ -158,7 +158,7 @@ export function buildSessionRescorePlan(
     });
   }
 
-  // Live: the alliance's sessions (one per robot: 2 for FTC, 3 for FRC) share eventCode+matchType+matchNumber+alliance.
+  // Live: the alliance's sessions (one per robot: 3 for FRC) share eventCode+matchType+matchNumber+alliance.
   const liveGroups = new Map<string, PracticeSession[]>();
   for (const session of completed.filter((s) => s.kind === "live")) {
     if (!session.eventCode || !session.matchType || session.matchNumber === null || !session.alliance) continue;

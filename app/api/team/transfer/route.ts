@@ -7,7 +7,7 @@ import { teamAuditDoc, platformAuditDoc } from "@/lib/server/audit";
 import { appBaseUrl, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
 import { sanitizeLine, sanitizeText } from "@/lib/applications";
-import { fieldTeamLabel, readFieldTeams } from "@/lib/field-teams";
+import { readTeamIdentity, teamLabel } from "@/lib/team-number";
 import { isAdminFromCsUser } from "@/data/cs/users";
 import { ownerUidOfTeam } from "@/data/cs/join-requests";
 import type { CsRecord } from "@/data/cs/types";
@@ -27,8 +27,13 @@ class RouteError extends Error {
 }
 
 const teamLabelOf = (team: DocumentData) => {
-  const teams = readFieldTeams(team);
-  return teams.length > 0 ? teams.map(fieldTeamLabel).join(" / ") : "your team";
+  const { number } = readTeamIdentity(team);
+  return number !== null ? teamLabel(number) : "your team";
+};
+/** The team's number as the list `confirmationMatches` / `checkTransferRequest` take (one entry: this team). */
+const teamNumbersOf = (team: DocumentData): number[] => {
+  const { number } = readTeamIdentity(team);
+  return number !== null ? [number] : [];
 };
 
 /**
@@ -36,7 +41,7 @@ const teamLabelOf = (team: DocumentData) => {
  * firestore.rules refuses both from any client), in transactions that re-check the state they depend on.
  *
  *  - request: the team owner picks an existing **admin with a verified email**, re-authenticates (a sign-in no
- *    older than 5 minutes, read from the token's `auth_time`) and types an FTC team number. That creates one
+ *    older than 5 minutes, read from the token's `auth_time`) and types the team number. That creates one
  *    pending transfer that expires after 7 days.
  *  - accept: the recipient takes ownership. `verifiedOwnerId` changes in one transaction (plus the additive `isOwner` mirror and `isTeamAdmin` on the users); the previous owner stays an
  *    **admin** but loses the owner protections; the new owner gets them. Nothing re-asserts the old owner later
@@ -102,7 +107,7 @@ async function requestTransfer(db: Firestore, decoded: Decoded, user: DocumentDa
       actorUid: decoded.uid,
       actorIsOwner: isTeamOwner(team, decoded.uid, user.isOwner === true),
       pending: team.pendingTransfer,
-      teamNumbers: readFieldTeams(team).map((t) => t.number),
+      teamNumbers: teamNumbersOf(team),
       typedNumber: typeof body.confirm === "string" ? body.confirm : "",
       authTimeSeconds: decoded.auth_time,
       nowMs,
@@ -226,8 +231,8 @@ async function forceTransfer(db: Firestore, decoded: Decoded, body: Record<strin
     const teamSnap = await txn.get(teamRef);
     if (!teamSnap.exists) throw new RouteError(404, "no-team", "That account doesn't exist.");
     const team = teamSnap.data()!;
-    if (!confirmationMatches(typeof body.confirm === "string" ? body.confirm : "", readFieldTeams(team).map((t) => t.number))) {
-      throw new RouteError(400, "bad-confirmation", "Type one of this account's FTC team numbers exactly to confirm.");
+    if (!confirmationMatches(typeof body.confirm === "string" ? body.confirm : "", teamNumbersOf(team))) {
+      throw new RouteError(400, "bad-confirmation", "Type this team's number exactly to confirm.");
     }
     const targetRef = db.collection("users").doc(toUid);
     const oldOwnerUid = ownerUidOfTeam(team as CsRecord) || null;

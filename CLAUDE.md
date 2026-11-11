@@ -12,7 +12,7 @@ Parent folder `compsocrates-rebuild/` holds three sibling folders:
 
 **Never modify CE or CS.** Never connect to a real Firebase project; use the emulator (see Testing).
 
-Read `docs/AUDIT.md` for findings, `docs/ROUTES.md` for the route map and decision log (D1 to D12).
+Read `docs/AUDIT.md` for findings, `docs/ROUTES.md` for the route map and decision log (D1 to D13).
 
 ## Where things live (additions to CE's layout)
 - `config/` is the only place that names a game, event, API or alias. A future event is a config swap. See `config/README.md`.
@@ -43,7 +43,7 @@ See the decision table in `docs/ROUTES.md`. In short: adapter over CS's schema (
 - Do not round-trip source files through tools that re-encode text (a scripted edit once garbled em dashes). Use the Edit tool.
 
 ## Where decisions are recorded
-`docs/ROUTES.md` (D1 to D12), `docs/AUDIT.md` (findings), `docs/REMAINING.md` (gaps and cleanup). Add a row to the ROUTES decision table when you make a new decision, and a line to REMAINING when you leave something undone.
+`docs/ROUTES.md` (D1 to D13), `docs/AUDIT.md` (findings), `docs/REMAINING.md` (gaps and cleanup). Add a row to the ROUTES decision table when you make a new decision, and a line to REMAINING when you leave something undone.
 
 ## Rules for changes
 - Do not change CS's schema or scoring logic without approval. Scoring changes need a golden test against CS documents.

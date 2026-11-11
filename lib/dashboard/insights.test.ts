@@ -4,8 +4,9 @@ import type { OfficialAlliance, OfficialMatch } from "@/lib/analytics/match-brea
 import { buildTeamStats } from "@/lib/analytics/team-stats";
 import type { AssignmentsDoc } from "@/lib/assignments";
 import type { PracticeSession } from "@/lib/practice-sessions";
-import { initialScoutEntryFields, type ScoutEntry, type ScoutEntryFields } from "@/lib/scout-entries";
-import { BIOBUZZ_FORM_SCHEMA, calculateScore } from "@/lib/scout-form/schema";
+import type { ScoutEntry } from "@/lib/scout-entries";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
+import { calculateScore } from "@/lib/scout-form/schema";
 import {
   HIDDEN_GEM_MIN_GAP,
   assignmentStatus,
@@ -24,25 +25,25 @@ import {
 } from "./insights";
 
 let n = 0;
-function entry(teamNumber: number, over: Partial<ScoutEntry> & { fieldValues?: Partial<ScoutEntryFields> } = {}): ScoutEntry {
+function entry(teamNumber: number, over: Partial<ScoutEntry> & { fieldValues?: Record<string, boolean | number> } = {}): ScoutEntry {
   n += 1;
   const { fieldValues, ...rest } = over;
-  const fields = { ...initialScoutEntryFields, ...fieldValues };
+  const values = { ...fieldValues };
   return {
     id: `e${n}`,
     teamId: "t",
     uid: "u",
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: "S",
     eventCode: "EVT",
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber,
-    fields,
-    score: calculateScore(BIOBUZZ_FORM_SCHEMA, fields as unknown as Record<string, boolean | number>),
+    values,
+    score: calculateScore(SAMPLE_FORM, values),
     comments: "",
     submittedAt: `2026-01-01T00:00:${String(n % 60).padStart(2, "0")}.000Z`,
     excluded: false,
@@ -270,22 +271,22 @@ describe("findHiddenGems", () => {
 });
 
 describe("strengthBullets", () => {
-  const stat = (rows: Partial<ScoutEntryFields>[]) =>
+  const stat = (rows: Record<string, boolean | number>[]) =>
     buildTeamStats(
       rows.map((fieldValues, i) => analytic(entry(3468, { fieldValues, submittedAt: `2026-01-01T00:00:0${i}.000Z` }))),
-      BIOBUZZ_FORM_SCHEMA
+      SAMPLE_FORM
     );
   // 5 clean entries, always leaving and parking, and only the last four steadily climbing.
   const strong = stat([
-    { autoLeave: true, autoPark: true, endgamePark: true, teleTipHive: 1 },
-    { autoLeave: true, autoPark: true, endgamePark: true, teleTipHive: 1 },
-    { autoLeave: true, autoPark: true, endgamePark: true, teleTipHive: 1 },
-    { autoLeave: true, autoPark: true, endgamePark: true, teleTipHive: 2 },
-    { autoLeave: true, autoPark: true, endgamePark: true, teleTipHive: 2 },
+    { autoLeave: true, autoPark: true, endgamePark: true, teleScoreA: 1 },
+    { autoLeave: true, autoPark: true, endgamePark: true, teleScoreA: 1 },
+    { autoLeave: true, autoPark: true, endgamePark: true, teleScoreA: 1 },
+    { autoLeave: true, autoPark: true, endgamePark: true, teleScoreA: 2 },
+    { autoLeave: true, autoPark: true, endgamePark: true, teleScoreA: 2 },
   ]);
 
   it("writes a bullet for each thing that's true", () => {
-    const b = strengthBullets({ stats: strong, schema: BIOBUZZ_FORM_SCHEMA, scoutedRank: 2, fieldSize: 30, officialRank: 2, record: { wins: 4, losses: 1, ties: 0 } });
+    const b = strengthBullets({ stats: strong, schema: SAMPLE_FORM, scoutedRank: 2, fieldSize: 30, officialRank: 2, record: { wins: 4, losses: 1, ties: 0 } });
     expect(b).toContain("Ranked #2 in the official standings");
     expect(b).toContain("Winning record (4-1-0)");
     expect(b).toContain("Top 3 scouted average at this event");
@@ -297,31 +298,31 @@ describe("strengthBullets", () => {
   });
 
   it("hides every bullet that isn't true", () => {
-    const b = strengthBullets({ stats: strong, schema: BIOBUZZ_FORM_SCHEMA, scoutedRank: 20, fieldSize: 30, officialRank: 15, record: { wins: 1, losses: 4, ties: 0 } });
+    const b = strengthBullets({ stats: strong, schema: SAMPLE_FORM, scoutedRank: 20, fieldSize: 30, officialRank: 15, record: { wins: 1, losses: 4, ties: 0 } });
     expect(b.some((x) => x.startsWith("Ranked"))).toBe(false);
     expect(b.some((x) => x.startsWith("Winning"))).toBe(false);
     expect(b.some((x) => x.startsWith("Top"))).toBe(false);
   });
 
   it("uses 'Top 25%' for a good-but-not-top-3 rank on a big enough field", () => {
-    const b = strengthBullets({ stats: strong, schema: BIOBUZZ_FORM_SCHEMA, scoutedRank: 6, fieldSize: 30, officialRank: null, record: null });
+    const b = strengthBullets({ stats: strong, schema: SAMPLE_FORM, scoutedRank: 6, fieldSize: 30, officialRank: null, record: null });
     expect(b).toContain("Top 25% scouted average at this event");
-    expect(strengthBullets({ stats: strong, schema: BIOBUZZ_FORM_SCHEMA, scoutedRank: 2, fieldSize: 5, officialRank: null, record: null })).toContain("Top 3 scouted average at this event");
+    expect(strengthBullets({ stats: strong, schema: SAMPLE_FORM, scoutedRank: 2, fieldSize: 5, officialRank: null, record: null })).toContain("Top 3 scouted average at this event");
   });
 
   it("drops reliability when robot failures were scouted", () => {
     const flaky = stat([{ diedDuringMatch: true }, { diedDuringMatch: true }, {}, {}]);
-    expect(strengthBullets({ stats: flaky, schema: BIOBUZZ_FORM_SCHEMA, scoutedRank: null, fieldSize: 30, officialRank: null, record: null }).some((x) => x.startsWith("Reliable"))).toBe(false);
+    expect(strengthBullets({ stats: flaky, schema: SAMPLE_FORM, scoutedRank: null, fieldSize: 30, officialRank: null, record: null }).some((x) => x.startsWith("Reliable"))).toBe(false);
   });
 
   it("makes no stat-based claims from too small a sample, but still reports official results", () => {
     const tiny = stat([{ autoLeave: true }, { autoLeave: true }]);
-    const b = strengthBullets({ stats: tiny, schema: BIOBUZZ_FORM_SCHEMA, scoutedRank: 1, fieldSize: 30, officialRank: 1, record: { wins: 2, losses: 0, ties: 0 } });
+    const b = strengthBullets({ stats: tiny, schema: SAMPLE_FORM, scoutedRank: 1, fieldSize: 30, officialRank: 1, record: { wins: 2, losses: 0, ties: 0 } });
     expect(b).toEqual(["Ranked #1 in the official standings", "Winning record (2-0-0)"]);
   });
 
   it("is empty with nothing to say", () => {
-    expect(strengthBullets({ stats: null, schema: BIOBUZZ_FORM_SCHEMA, scoutedRank: null, fieldSize: 0, officialRank: null, record: null })).toEqual([]);
+    expect(strengthBullets({ stats: null, schema: SAMPLE_FORM, scoutedRank: null, fieldSize: 0, officialRank: null, record: null })).toEqual([]);
   });
 });
 

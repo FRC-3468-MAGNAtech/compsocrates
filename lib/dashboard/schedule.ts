@@ -14,7 +14,7 @@ export type OurMatch = {
   /** "Q12" — P / Q / F prefixed. */
   label: string;
   alliance: AllianceColor;
-  /** Our alliance partners: one for FTC, two for FRC (empty if the roster isn't published). */
+  /** Our alliance partners: two (empty if the roster isn't published). */
   partners: number[];
   opponents: number[];
   /** Scheduled start as an instant, or null when the API gave none. Always a *schedule*, never a promise. */

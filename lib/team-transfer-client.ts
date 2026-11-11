@@ -15,7 +15,8 @@ export const forceOwnershipTransfer = (teamId: string, toUid: string, confirm: s
 export type RecoveryTeam = {
   teamId: string;
   accountName: string | null;
-  fieldTeams: { number: number; name: string }[];
+  teamNumber: number | null;
+  teamName: string | null;
   ownerUid: string | null;
   ownerName: string | null;
   admins: { uid: string; name: string; email: string }[];

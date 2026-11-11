@@ -1,6 +1,6 @@
 // P20: the two kinds of owner, as pure logic (no React, no Firebase) shared by the server routes, the UI and the tests.
 //
-//   Platform owner: an email in the server-only OWNER_EMAILS (verified). Approves team applications, switches team
+//   Platform owner: a uid in RELEASE_OWNER_UIDS, or a verified email in RELEASE_OWNER_EMAILS (server-only). Approves team applications, switches team
 //                   creation on/off, and can force-transfer an account for recovery. Carried as the `platformOwner`
 //                   custom claim (+ the `users.isPlatformOwner` mirror for the UI). Always an admin of their own account.
 //   Team owner:     `teams/{teamId}.ownerUid`: the one owner *inside* a team account. This is what the FIX2 protections,
@@ -94,12 +94,12 @@ export const TRANSFER_FAILURE_MESSAGE: Record<TransferFailure, string> = {
   self: "You already own this team.",
   "not-admin": "Ownership can only go to an admin. Make them an admin in Team Management first.",
   "unverified-email": "That member hasn't verified their email yet, so they can't take ownership.",
-  "bad-confirmation": "Type one of this account's FTC team numbers exactly to confirm.",
+  "bad-confirmation": "Type this team's number exactly to confirm.",
   "reauth-required": "Confirm it's you: sign in again, then retry.",
   "pending-exists": "There's already a pending transfer. Cancel it first.",
 };
 
-/** Does what the owner typed match one of the account's FTC team numbers? */
+/** Does what the owner typed match the team's number? (A list, so a multi-team switcher could pass every team on the account.) */
 export function confirmationMatches(typed: string, teamNumbers: readonly number[]): boolean {
   const t = typed.trim();
   return /^\d{1,5}$/.test(t) && teamNumbers.includes(Number(t));

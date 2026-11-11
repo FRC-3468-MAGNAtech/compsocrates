@@ -8,7 +8,6 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Shimmer } from "@/components/ui/shimmer";
 import { MyScoutingCard } from "@/components/scout-stats/my-scouting-card";
 import { PlatformBadge } from "@/components/scout-stats/platform-badge";
-import { FieldTeamChips } from "@/components/team/field-team-chips";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import type { ProfileDoc } from "@/lib/profile/model";
 import { headerName } from "@/lib/profile/model";
@@ -88,7 +87,6 @@ export function ProfileHeader({
               </Badge>
             ) : null;
           })}
-          <FieldTeamChips ids={member.fieldTeamIds} />
           {member.isOwner && (
             <Badge variant="glass" className="gap-1 text-[10px]">
               <ShieldCheck className="h-3 w-3" /> Owner

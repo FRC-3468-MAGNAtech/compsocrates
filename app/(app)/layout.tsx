@@ -13,7 +13,7 @@ import { ScoresReadyWatcher } from "@/components/layout/scores-ready-watcher";
 import { TeamAssignmentsWatcher } from "@/components/layout/team-assignments-watcher";
 import { useAuth } from "@/lib/auth";
 import { useConnectionNotice } from "@/lib/use-connection-state";
-import { FieldTeamsProvider } from "@/lib/field-teams-context";
+import { OurTeamProvider } from "@/lib/our-team";
 import { PageGuard } from "@/components/page-access/page-guard";
 import { PageAccessProvider } from "@/lib/page-access/store";
 import { FormsProvider } from "@/lib/forms/forms-context";
@@ -47,8 +47,8 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
   }
 
   return (
-    // P19: one shared subscription to the account's FTC teams for the whole signed-in app.
-    <FieldTeamsProvider>
+    // One shared subscription to the team doc (our team's number and name) for the whole signed-in app.
+    <OurTeamProvider>
       {/* P26: one shared subscription to the account's page access, for the nav, the route guard and the permissions. */}
       <PageAccessProvider>
       <FormsProvider>
@@ -74,6 +74,6 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       </ImmersiveContext.Provider>
       </FormsProvider>
       </PageAccessProvider>
-    </FieldTeamsProvider>
+    </OurTeamProvider>
   );
 }

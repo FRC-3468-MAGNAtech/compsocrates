@@ -101,8 +101,6 @@ export function csUserToProfile(uid: string, doc: CsUserDoc, options: CsUserRead
     themeId: theme.themeId,
     ...(theme.colorMode ? { colorMode: theme.colorMode } : {}),
     ...(isCeGradient(record.gradientIntensity) ? { gradientIntensity: record.gradientIntensity } : {}),
-    ...(Array.isArray(record.fieldTeamIds) ? { fieldTeamIds: record.fieldTeamIds.filter((v): v is string => typeof v === "string") } : {}),
-    ...(record.activeFieldTeamId === null || typeof record.activeFieldTeamId === "string" ? { activeFieldTeamId: record.activeFieldTeamId as string | null } : {}),
     ...(record.lastSeenChangelogAt !== undefined ? { lastSeenChangelogAt: record.lastSeenChangelogAt } : {}),
     ...(typeof record.glassLayerLevel === "number" ? { glassLayerLevel: record.glassLayerLevel } : {}),
     ...(typeof record.workspaceFormWidth === "number" ? { workspaceFormWidth: record.workspaceFormWidth } : {}),
@@ -136,7 +134,6 @@ export function csUserToMember(uid: string, doc: CsUserDoc, options: CsUserReadO
     isAdmin: profile.isAdmin,
     isOwner: profile.isOwner,
     legacyRole: typeof doc.role === "string" ? doc.role : undefined,
-    fieldTeamIds: profile.fieldTeamIds,
     avatar: record.avatar ? parseAvatar(record.avatar) : undefined,
     joinedAtMs: createdMs || undefined,
   };
@@ -144,7 +141,7 @@ export function csUserToMember(uid: string, doc: CsUserDoc, options: CsUserReadO
 
 /** What CE may write to the user doc (`updateUserProfile`, member editing, the CE-only preference writers). */
 export type ProfilePatch = Partial<
-  Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "activeFieldTeamId" | "avatar" | "primaryRole" | "secondaryRoles" | "isAdmin" | "fieldTeamIds" | "bio" | "photoURL" | "profileVisibility" | "profileComplete" | "experiencedScout">
+  Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar" | "primaryRole" | "secondaryRoles" | "isAdmin" | "bio" | "photoURL" | "profileVisibility" | "profileComplete" | "experiencedScout">
 >;
 
 /**
@@ -184,7 +181,7 @@ export function profilePatchToCsUser(patch: ProfilePatch, current: CsUserDoc = {
     if (csTheme) out.accountThemeId = csTheme;
   }
 
-  for (const key of ["gradientIntensity", "activeFieldTeamId", "avatar", "fieldTeamIds", "bio", "photoURL", "profileVisibility", "profileComplete", "experiencedScout"] as const) {
+  for (const key of ["gradientIntensity", "avatar", "bio", "photoURL", "profileVisibility", "profileComplete", "experiencedScout"] as const) {
     if (patch[key] !== undefined) out[key] = patch[key];
   }
   return out;

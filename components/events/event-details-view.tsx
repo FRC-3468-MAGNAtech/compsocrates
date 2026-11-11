@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Clock, MapPin, RefreshCw, SearchX } from "lucide-react";
 import { formatDateRange } from "@/components/event/selected-events-panel";
 import { DataSourceCredits } from "@/components/events/data-source-credits";
+import { EventName } from "@/components/events/event-name";
 import { EventOverview } from "@/components/events/event-overview";
 import { RankingsTab } from "@/components/events/rankings-tab";
 import { ScheduleTab } from "@/components/events/schedule-tab";
@@ -16,8 +17,10 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Shimmer } from "@/components/ui/shimmer";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BRAND } from "@/config/brand";
 import { getEvent } from "@/lib/events/actions";
 import { EVENT_DETAILS_TABS, eventBadge, eventKeyYear, locationLabel, parseEventTab, parseHighlightedTeam, type EventDetailsTab } from "@/lib/events/details-model";
+import { useEventName } from "@/lib/events/use-event-names";
 import { useEventQuery } from "@/lib/events/use-event-query";
 
 const BADGE_VARIANT = { live: "success", upcoming: "glass", done: "outline" } as const;
@@ -57,6 +60,16 @@ export function EventDetailsView({ eventKey }: { eventKey: string }) {
   const query = useEventQuery(year ? `event:${eventKey}` : null, () => getEvent(eventKey, year ?? undefined));
   const event = query.data;
 
+  // The name for the tab title and the fallback heading: the API event's own name, else stored, else the static table, else the key.
+  const resolved = useEventName(eventKey, { name: event?.name });
+  useEffect(() => {
+    const previous = document.title;
+    document.title = `${resolved.name} | ${BRAND.title}`;
+    return () => {
+      document.title = previous;
+    };
+  }, [resolved.name]);
+
   let body: React.ReactNode;
   if (!year) {
     body = <NotFound eventKey={eventKey} reason="That isn't an event key from The Blue Alliance (it should start with the year, like 2026arli)." />;
@@ -72,7 +85,9 @@ export function EventDetailsView({ eventKey }: { eventKey: string }) {
       <GlassPanel role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
         <AlertTriangle className="h-8 w-8" style={{ color: "var(--color-primary)" }} aria-hidden />
         <div>
-          <div className="font-semibold">Couldn&apos;t load this event</div>
+          <div className="font-semibold">
+            Couldn&apos;t load <EventName eventKey={eventKey} />
+          </div>
           <p className="text-sm text-[var(--muted-foreground)]">{query.error?.message}</p>
         </div>
         <Button variant="glass" onClick={query.refetch} className="gap-2">
@@ -90,7 +105,9 @@ export function EventDetailsView({ eventKey }: { eventKey: string }) {
         <GlassPanel strong className="flex flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">{event.name}</h1>
+              <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">
+                <EventName eventKey={event.code} name={event.name} />
+              </h1>
               <div className="mt-2 flex flex-col gap-1 text-sm text-[var(--muted-foreground)]">
                 <span className="flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden /> {formatDateRange(event.dateStart, event.dateEnd)}

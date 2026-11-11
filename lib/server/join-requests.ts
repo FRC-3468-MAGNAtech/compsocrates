@@ -20,8 +20,8 @@ import {
   type JoinRequestFailure,
 } from "@/data/cs/join-requests";
 import { str } from "@/data/cs/util";
-import { defaultMemberFieldTeamIds } from "@/lib/field-teams";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
+import { releaseOwnerUids } from "@/lib/server/env";
 
 /**
  * The server side of CS's join-request flow (docs/ROUTES.md D1/D6/D10), over the Admin SDK. CS did this through the Firestore
@@ -134,7 +134,7 @@ export async function processJoinRequest(db: Firestore, caller: Caller, action: 
     if (!requestSnap.exists) return fail(404, "not-found", "Request not found.");
     const request = readJoinRequest(requestId, (requestSnap.data() ?? {}) as CsJoinRequestDoc);
     const actorUser = callerSnap.exists ? ((callerSnap.data() ?? {}) as CsUserDoc) : null;
-    const decision = decideJoinRequest(request, action, { uid: caller.uid, user: actorUser });
+    const decision = decideJoinRequest(request, action, { uid: caller.uid, user: actorUser, ownerUids: releaseOwnerUids() });
     if (!decision.ok) return fail(FAILURE_STATUS[decision.code], decision.code, decision.message);
 
     if (action !== "approve") {
@@ -153,9 +153,6 @@ export async function processJoinRequest(db: Firestore, caller: Caller, action: 
     const hydratedEmail = request.userEmail || str(target?.email).trim();
     const hydratedName = (!isPlaceholderName(request.userName) && request.userName) || str(target?.displayName).trim() || deriveJoinRequestName({ userName: request.userName, userEmail: hydratedEmail, userId: request.userId });
     const patch = buildApprovalUserPatch(request);
-    // P19: a new member starts on every FTC team of the account (an admin narrows it in Team Management); never overwrite a list they have.
-    const fieldTeamIds = defaultMemberFieldTeamIds((teamSnap.data() ?? {}) as CsRecord);
-    if (fieldTeamIds.length > 0 && !Array.isArray((target as CsRecord | null)?.fieldTeamIds)) patch.fieldTeamIds = fieldTeamIds;
     if (targetSnap.exists) {
       txn.set(targetRef, patch, { merge: true });
     } else {

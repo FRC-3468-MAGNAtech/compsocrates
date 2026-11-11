@@ -13,7 +13,7 @@ import { LiveResultsScreen } from "@/components/practice/live/live-results-scree
 import { useAuth } from "@/lib/auth";
 import { useActiveEvents } from "@/lib/active-event";
 import { pickDefaultActiveEvent } from "@/lib/active-events";
-import { useFtcQuery } from "@/lib/events/use-event-query";
+import { useEventQuery } from "@/lib/events/use-event-query";
 import { getEvents, getMatchesForEvent } from "@/lib/events/actions";
 import { getDefaultSeason } from "@/lib/events/config";
 import { parseStreamUrl } from "@/lib/live/stream";
@@ -27,7 +27,7 @@ import { LoadError } from "@/components/practice/load-error";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
 type LiveStep = "link" | "event" | "match" | "robot" | "session" | "results";
-/** Each alliance's team numbers: 2 for an FTC match, 3 for FRC (the match's own length when it is posted, ALLIANCE_SIZE when typed in by hand). */
+/** Each alliance's team numbers: 3 for FRC (the match's own length when it is posted, ALLIANCE_SIZE when typed in by hand). */
 type Roster = { red: number[]; blue: number[] };
 export type ResumePendingRobot = {
   eventCode: string;
@@ -76,9 +76,9 @@ export function LiveFlow({
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const [resumeHandled, setResumeHandled] = useState(false);
 
-  const eventsQuery = useFtcQuery(`live-events:${season}`, () => getEvents({ season }));
-  const qualQuery = useFtcQuery(event ? `live-matches:${event.code}:Q:${season}` : null, () => getMatchesForEvent(event!.code, "Qualification", season));
-  const playoffQuery = useFtcQuery(event ? `live-matches:${event.code}:F:${season}` : null, () => getMatchesForEvent(event!.code, "Playoff", season));
+  const eventsQuery = useEventQuery(`live-events:${season}`, () => getEvents({ season }));
+  const qualQuery = useEventQuery(event ? `live-matches:${event.code}:Q:${season}` : null, () => getMatchesForEvent(event!.code, "Qualification", season));
+  const playoffQuery = useEventQuery(event ? `live-matches:${event.code}:F:${season}` : null, () => getMatchesForEvent(event!.code, "Playoff", season));
   const { matches: libraryMatches } = useLibraryMatches(event?.code ?? null);
 
   const { session } = usePracticeSession(sessionId);

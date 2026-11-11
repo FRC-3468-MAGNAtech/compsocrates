@@ -1,35 +1,25 @@
 import "server-only";
-import { isCsOwnerUid } from "@/config/cs";
+import { releaseOwnerEmails, releaseOwnerUids } from "@/lib/server/env";
 
-function parseEmailList(raw: string | undefined): Set<string> {
-  if (!raw) return new Set();
-  return new Set(
-    raw
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean)
-  );
+/** Is this uid a platform owner? RELEASE_OWNER_UIDS (the CompSocrates app's variable), read live from the environment. Compared exactly (uids are case sensitive). */
+export function isOwnerUid(uid: string | null | undefined): boolean {
+  const safe = String(uid ?? "").trim();
+  return safe !== "" && releaseOwnerUids().includes(safe);
 }
 
-/** OWNER_EMAILS / ADMIN_EMAILS — server-only env vars, comma-separated, compared case-insensitively. See .env.example and docs/ASSUMPTIONS.md (P1b). */
+/** Is this email a platform owner's? RELEASE_OWNER_EMAILS, comma-separated, compared case-insensitively. */
 export function isOwnerEmail(email: string | null | undefined): boolean {
   if (!email) return false;
-  return parseEmailList(process.env.OWNER_EMAILS).has(email.toLowerCase());
+  return releaseOwnerEmails().includes(email.trim().toLowerCase());
 }
 
 /**
  * Is this verified ID token a **platform owner**? Two ways in, both checked live on every platform-only server route:
- *  1. CS's owner layer (D1/D6): the token's uid is in `CS_OWNER_UIDS` (config/cs.ts). A uid cannot be spoofed, so no claim or
- *     email check is needed.
- *  2. CE's: a verified email in the server-only OWNER_EMAILS list *and* the `platformOwner` claim (the claim alone could be
- *     stale after someone is removed from the env var), so revoking takes effect on the next request.
+ *  1. The token's uid is in RELEASE_OWNER_UIDS. A uid cannot be spoofed, so no claim or email check is needed.
+ *  2. A verified email in RELEASE_OWNER_EMAILS *and* the `platformOwner` claim (the claim alone could be stale after someone is
+ *     removed from the env var), so revoking takes effect on the next request.
  */
 export function isPlatformOwnerToken(decoded: { uid?: string; email?: string | null; email_verified?: boolean; platformOwner?: unknown }): boolean {
-  if (isCsOwnerUid(decoded.uid)) return true;
+  if (isOwnerUid(decoded.uid)) return true;
   return decoded.platformOwner === true && decoded.email_verified === true && isOwnerEmail(decoded.email);
-}
-
-export function isPreconfiguredAdminEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return parseEmailList(process.env.ADMIN_EMAILS).has(email.toLowerCase());
 }

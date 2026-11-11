@@ -3,10 +3,10 @@ import type { Form } from "@/lib/forms/types";
 import { hasRole } from "@/lib/forms/meta";
 
 // Pure helpers behind Team Breakdown's cards (P11). Like the rest of
-// lib/analytics they read the form schema, never BIOBUZZ field names.
+// lib/analytics they read the form schema, never a game's field names.
 
 export type KeyStats = {
-  /** Scored counters, summed across phases by label: "Tip Hive" = autonomous + teleop, "Pollen and Nectar" = flower + garden. Average per match. */
+  /** Scored counters, summed across phases by label: "Level 4" = autonomous + teleop, "Algae" = processor + net. Average per match. */
   counters: { label: string; avg: number }[];
   /** Scored toggles, each its own rate (0-100). A label that repeats across phases gets its phase added: "Park (auto)", "Park (endgame)". */
   rates: { label: string; rate: number }[];

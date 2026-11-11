@@ -31,7 +31,7 @@ export function computePendingLiveRobots(teamLiveSessions: PracticeSession[], ui
   const seen = new Set<string>();
   for (const s of mine) {
     const myTeam = s.robots[0];
-    // Every other robot on the alliance (one for FTC, up to two for FRC) that no one on the team has covered.
+    // Every other robot on the alliance (up to two) that no one on the team has covered.
     for (const otherTeam of s.allianceTeams!.filter((t) => t !== myTeam)) {
       const covered = teamLiveSessions.some(
         (o) =>

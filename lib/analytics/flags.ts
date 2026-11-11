@@ -1,7 +1,7 @@
 import type { EventMatch } from "@/lib/events/types";
 import type { AccuracyResult, ScoutEntry } from "@/lib/scout-entries";
-import { BIOBUZZ_UNREALISTIC, getBuiltinForm } from "@/lib/forms/builtin";
-import { entryValues } from "@/lib/forms/legacy";
+import { getBuiltinForm } from "@/lib/forms/builtin";
+import { entryValues } from "@/lib/forms/entry-values";
 import { formFieldMeta, hasRole } from "@/lib/forms/meta";
 import type { Form, StatRole } from "@/lib/forms/types";
 
@@ -10,16 +10,11 @@ import type { Form, StatRole } from "@/lib/forms/types";
  * here is a placeholder — tune against real match data once there's
  * enough of it to see what "normal" actually looks like.
  *
- * P21: the per-counter "unrealistic" limits live on the schema's fields (`unrealisticAbove`, set for BIOBUZZ in lib/forms/builtin.ts);
- * the four UNREALISTIC_* values below are BIOBUZZ's, re-exported from there so there is exactly one source for them.
+ * P21: the per-counter "unrealistic" limits live on the schema's fields (`unrealisticAbove`), never here.
  */
 export const FLAG_THRESHOLDS = {
-  UNREALISTIC_AUTO_TIP_HIVE: BIOBUZZ_UNREALISTIC.AUTO_TIP_HIVE,
-  UNREALISTIC_TELEOP_TIP_HIVE: BIOBUZZ_UNREALISTIC.TELEOP_TIP_HIVE,
-  UNREALISTIC_TELEOP_FLOWER_POLLEN: BIOBUZZ_UNREALISTIC.FLOWER_POLLEN,
-  UNREALISTIC_TELEOP_GARDEN_POLLEN: BIOBUZZ_UNREALISTIC.GARDEN_POLLEN,
   PLAUSIBLE_SINGLE_ROBOT_MAX_SCORE: 200,
-  /** Heuristic for "a full scoring run" when paired with Disabled by FTC. */
+  /** Heuristic for "a full scoring run" when paired with Disabled by FRC. */
   CONTRADICTORY_DISABLED_SCORE_MIN: 100,
   OUTLIER_STD_DEV_THRESHOLD: 3,
   OUTLIER_MIN_OTHER_ENTRIES: 4,

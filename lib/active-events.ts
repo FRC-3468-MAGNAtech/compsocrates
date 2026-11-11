@@ -1,4 +1,4 @@
-import { getEventStatus } from "@/lib/ftc/event-status";
+import { getEventStatus } from "@/lib/events/event-status";
 import type { EventInfo } from "@/lib/events/types";
 
 // Pure helpers behind the team's *several* active events (FIX1-2b). Kept free

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { EventName } from "@/components/events/event-name";
 import { niceTicks } from "@/lib/analytics/chart";
 import type { MatchScouted } from "@/lib/analytics/team-stats";
 import { springSnappy } from "@/lib/motion";
@@ -143,7 +144,7 @@ export function ScoreChart({ matches, average }: { matches: MatchScouted[]; aver
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-[var(--muted-foreground)]">{activeMatch.label}</span>
-              <span className="text-[var(--muted-foreground)]">{activeMatch.eventCode}</span>
+              <span className="text-[var(--muted-foreground)]"><EventName eventKey={activeMatch.eventCode} /></span>
             </div>
             <div className="mt-1 flex items-center gap-2">
               <span aria-hidden className="h-0.5 w-3 rounded-full" style={{ background: "var(--color-accent)" }} />

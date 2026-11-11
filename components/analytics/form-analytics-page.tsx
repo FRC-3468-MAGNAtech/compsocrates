@@ -7,13 +7,14 @@ import { CalendarX2, Download, Table2, Upload, Rows3 } from "lucide-react";
 import { AnalyticsDataTable, type SortState } from "@/components/analytics/data-table";
 import { ConfigModal } from "@/components/analytics/config-modal";
 import { FormImportDialog } from "@/components/analytics/form-import-dialog";
-import { FormSummaryView } from "@/components/analytics/form-summaries-view";
+import { RebuiltFormSummaryView } from "@/components/analytics/form-summaries-rebuilt-view";
 import { AnalyticsToolbar } from "@/components/analytics/toolbar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { entriesToCsv } from "@/lib/analytics/csv";
+import { currentEventName } from "@/lib/events/event-names";
 import { useAnalyticsData } from "@/lib/analytics/data-context";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 import { buildFormSchema, eventCodesForScope, formAnalyticsPage, selectFormEntries, type FormAnalyticsPage as PageDef, type FormAnalyticsSlug } from "@/lib/analytics/form-analytics";
@@ -100,7 +101,7 @@ export function FormAnalyticsView({ page, entries, allEntries, form, importForm,
   const configRow = configId ? (rows.find((r) => r.id === configId) ?? null) : null;
 
   const exportCsv = () => {
-    const csv = entriesToCsv(schema, visible, displayName);
+    const csv = entriesToCsv(schema, visible, displayName, { eventName: currentEventName });
     downloadTextFile(`${page.slug}-${eventCodes === null ? "all-events" : eventCodes.join("-") || "export"}.csv`, csv, "text/csv;charset=utf-8");
   };
 
@@ -180,7 +181,7 @@ export function FormAnalyticsView({ page, entries, allEntries, form, importForm,
           />
         )
       ) : (
-        <FormSummaryView page={page} form={form} entries={summaryEntries} allEntries={allEntries} teamNames={teamNames} hideNames={hideNames} />
+        <RebuiltFormSummaryView page={page} form={form} entries={summaryEntries} allEntries={allEntries} teamNames={teamNames} hideNames={hideNames} />
       )}
 
       {isAdmin && (

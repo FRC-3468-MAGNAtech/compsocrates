@@ -19,8 +19,6 @@ export type TeamMember = {
   isAdmin: boolean;
   /** Set only by app/api/auth/sync-roles — see docs/ASSUMPTIONS.md (P1b). Owner rows can't be edited by anyone through the UI (also enforced in firestore.rules). */
   isOwner: boolean;
-  /** P19: assigned FTC team ids; absent before the migration. Resolve with assignedFieldTeams() (lib/field-teams.ts) — empty counts as all teams. */
-  fieldTeamIds?: string[];
   /** P25: the member's avatar choice (mirrored on the user doc); initials when absent. */
   avatar?: AvatarChoice;
   /** P25: when the account joined the team (ms), from the user doc's createdAt; absent on old docs. */
@@ -81,12 +79,10 @@ export async function updateMemberAccess(
 ) {
   if (Object.keys(changes).length === 0) return;
 
-  // `fieldTeamIds` only joins the audit record when there is one (Firestore rejects `undefined` field values).
   const before: MemberAccess = {
     primaryRole: member.primaryRole,
     secondaryRoles: member.secondaryRoles,
     isAdmin: member.isAdmin,
-    ...(member.fieldTeamIds ? { fieldTeamIds: member.fieldTeamIds } : {}),
   };
   const after: MemberAccess = { ...before, ...changes };
 

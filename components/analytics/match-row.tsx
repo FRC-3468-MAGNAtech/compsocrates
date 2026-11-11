@@ -3,7 +3,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, ChevronDown, ExternalLink, EyeOff, Star, Trophy } from "lucide-react";
 import { OUR_TEAM_ROW_CLASS, OurTeamTag } from "@/components/analytics/team-bits";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { EventName } from "@/components/events/event-name";
+import { useIsOurTeam } from "@/lib/our-team";
 import { AllianceBar } from "@/components/analytics/alliance-bar";
 import { AnalyticsLink } from "@/components/analytics/analytics-link";
 import { PhaseLegend, PhaseStackedBar } from "@/components/analytics/phase-bars";
@@ -62,7 +63,7 @@ export function MatchRow({
       >
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-lg bg-white/10 px-2.5 py-1 font-mono text-sm font-semibold">{breakdown.label}</span>
-          {showEvent && <span className="text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">{match.eventCode}</span>}
+          {showEvent && <span className="text-[11px] text-[var(--muted-foreground)]" title={match.eventCode}><EventName eventKey={match.eventCode} /></span>}
           <CoverageChip scouted={breakdown.robotsScouted} total={breakdown.robotsTotal} />
           <motion.span animate={{ rotate: expanded ? 180 : 0 }} transition={spring} className="ml-auto text-[var(--muted-foreground)]">
             <ChevronDown className="h-5 w-5" />
@@ -146,7 +147,7 @@ function TeamLinks({ teams, side, align }: { teams: number[]; side: AllianceColo
             SIDE[side].badge,
             isOurs(t) && "ring-2 ring-[var(--color-primary)]"
           )}
-          aria-label={`Team ${t} profile${isOurs(t) ? " (one of our FTC teams)" : ""}`}
+          aria-label={`Team ${t} profile${isOurs(t) ? " (our team)" : ""}`}
         >
           {isOurs(t) && <Star className="h-3 w-3" aria-hidden />}
           {t}

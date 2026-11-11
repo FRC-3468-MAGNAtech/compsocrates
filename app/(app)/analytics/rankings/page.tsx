@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TeamTable, type TeamTableColumn, type TeamTableSort } from "@/components/analytics/team-table";
 import { LowSampleBadge, OUR_TEAM_ROW_CLASS, TeamCell } from "@/components/analytics/team-bits";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { useIsOurTeam } from "@/lib/our-team";
 import { useTeamStats } from "@/lib/analytics/data-context";
 import { DEFAULT_MIN_ENTRIES, RANK_METRICS, metricValue, rankTeams, type RankMetric, type RankedTeam } from "@/lib/analytics/team-stats";
 import { cn } from "@/lib/utils";

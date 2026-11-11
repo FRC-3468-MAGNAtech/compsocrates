@@ -9,7 +9,7 @@ import { useEventTeams } from "@/lib/analytics/use-event-data";
 import { useAuth } from "@/lib/auth";
 import { useTeamEventAttendance } from "@/lib/event-attendance";
 import { useFormEntries } from "@/lib/form-entries";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { useIsOurTeam } from "@/lib/our-team";
 import { canAccessPage } from "@/lib/page-access/access";
 import { usePageAccess } from "@/lib/page-access/store";
 import { getRole } from "@/lib/roles";

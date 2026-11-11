@@ -69,7 +69,7 @@ export type PracticeSession = {
    */
   matchType: MatchType | null;
   matchNumber: number | null;
-  /** P7, `kind: "live"` only — every team on `alliance` (2 for FTC, 3 for FRC), so "the other robot" (pending/presence/join logic) never needs a fresh FIRST API roster lookup. `robots` itself stays this session's own single scouted team. */
+  /** P7, `kind: "live"` only — every team on `alliance` (3 for FRC), so "the other robot" (pending/presence/join logic) never needs a fresh FIRST API roster lookup. `robots` itself stays this session's own single scouted team. */
   allianceTeams: number[] | null;
   /** P7, `kind: "live"` only — null for solo/lobby. The pasted livestream link. */
   streamUrl: string | null;

@@ -2,6 +2,7 @@
 
 import { CalendarClock, MapPin, Trophy } from "lucide-react";
 import { AllianceChip, Countdown, TeamLink } from "@/components/dashboard/shared";
+import { EventName } from "@/components/events/event-name";
 import { Badge } from "@/components/ui/badge";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,18 +41,18 @@ export function HeaderStrip() {
         {d.events.length > 1 ? (
           <Select value={t.event?.code ?? ""} onValueChange={d.setEventCode}>
             <SelectTrigger className="h-11" aria-label="Choose an active event">
-              <SelectValue>{t.event?.name}</SelectValue>
+              <SelectValue>{t.event ? <EventName eventKey={t.event.code} name={t.event.name} /> : null}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {d.events.map((e) => (
                 <SelectItem key={e.code} value={e.code}>
-                  {e.name}
+                  <EventName eventKey={e.code} name={e.name} />
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         ) : (
-          <div className="truncate text-lg font-semibold">{t.event?.name}</div>
+          <div className="truncate text-lg font-semibold">{t.event ? <EventName eventKey={t.event.code} name={t.event.name} /> : null}</div>
         )}
         <div className="flex flex-wrap items-center gap-2">
           {status && <Badge variant={status.variant}>{status.label}</Badge>}
@@ -63,7 +64,7 @@ export function HeaderStrip() {
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
           <Trophy className="h-3.5 w-3.5" /> Our rank
-          {t.ourNumber !== null && <span className="tabular-nums"> · FTC {t.ourNumber}</span>}
+          {t.ourNumber !== null && <span className="tabular-nums"> · Team {t.ourNumber}</span>}
         </div>
         {t.first.loading ? (
           <Shimmer className="h-9 w-32" />

@@ -470,11 +470,12 @@ describe("scoutEntryToCsDoc: new docs", () => {
     expect(entryOf(out)).toMatchObject({ source: "practice", mode: "competitive", sessionId: "s1", libraryMatchId: "lib-1" });
   });
 
-  it("refuses forms CS cannot store", () => {
-    expect(() => scoutEntryToCsDoc(draft({ formId: "biobuzz", game: undefined }), undefined)).toThrow(/does not belong/);
-    expect(() => scoutEntryToCsDoc(draft({ formId: "reefscape", game: "REEFSCAPE" }), undefined)).toThrow(/read-only/);
-    expect(canWriteToCs({ formId: "rebuilt", game: "REBUILT" })).toBe(true);
-    expect(canWriteToCs({ formId: "reefscape", game: "REEFSCAPE" })).toBe(false);
-    expect(canWriteToCs({ formId: "biobuzz", game: undefined })).toBe(false);
+  it("refuses forms no game owns, and accepts every game", () => {
+    expect(() => scoutEntryToCsDoc(draft({ formId: "sample", game: undefined }), undefined)).toThrow(/does not belong/);
+    for (const [formId, game] of [["rebuilt", "REBUILT"], ["reefscape", "REEFSCAPE"], ["charged_up", "CHARGED_UP"]] as const) {
+      expect(canWriteToCs({ formId, game })).toBe(true);
+      expect(scoutEntryToCsDoc(draft({ formId, game, values: {} }), undefined, { now: NOW }).game).toBe(game);
+    }
+    expect(canWriteToCs({ formId: "sample", game: undefined })).toBe(false);
   });
 });

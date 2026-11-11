@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { MatchListScreen } from "@/components/match-list/match-list-screen";
 import { useActiveEvents } from "@/lib/active-event";
 import { useEventMatches } from "@/lib/analytics/use-event-data";
-import { useIsOurTeam } from "@/lib/field-teams-context";
+import { useIsOurTeam } from "@/lib/our-team";
 
 /** The existing API cache cadence (lib/analytics/use-event-data.ts caches the schedule for 3 minutes): the page re-asks at that pace while it is open and visible. */
 export const MATCH_LIST_REFRESH_MS = 3 * 60 * 1000;
 
-/** The connected Match List: the active events (primary first), their FIRST API schedules and the account's FTC teams. */
+/** The connected Match List: the active events (primary first), their FIRST API schedules and our team's matches. */
 export function MatchListView() {
   const { events, loaded } = useActiveEvents();
   const isOurTeam = useIsOurTeam();

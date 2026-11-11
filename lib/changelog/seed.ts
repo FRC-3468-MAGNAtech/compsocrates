@@ -25,10 +25,10 @@ export const STARTER_ENTRIES: StarterEntry[] = [
     date: "2026-10-19",
     summary: "The first working version: pick an event, scout a match, and see the results in a table.",
     changes: [
-      { type: "new", text: "**Event Selection** — browse FTC events from the FIRST Events API and set the one your team is at." },
+      { type: "new", text: "**Event Selection** — browse FRC events from The Blue Alliance and FIRST and set the one your team is at." },
       { type: "new", text: "**Match Scout Form** — pick a match and team, then log autonomous, teleoperated, and endgame scoring plus incidents, with a live score bar." },
       { type: "new", text: "**Match Scout Analytics** — every scout entry in a sortable table with sticky match and team columns, flags, and a Config modal for reviewing an entry." },
-      { type: "new", text: "A glass design system with team and BIOBUZZ themes." },
+      { type: "new", text: "A glass design system with team and CompSocrates themes." },
     ],
   },
   {

@@ -124,7 +124,7 @@ export function SessionScreen({
     try {
       await saveRobotEntry(robot);
       const entries = await getEntriesForSession(session.teamId, session.id);
-      // One entry per scouted robot (2 for FTC, 3 for FRC); every one must be there to score the alliance.
+      // One entry per scouted robot (3 for FRC); every one must be there to score the alliance.
       const allianceEntries = entries.slice(0, session.robots.length);
       if (allianceEntries.length < session.robots.length) throw new Error("Couldn't find every robot's entries.");
 

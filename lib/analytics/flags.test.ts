@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { evaluateAutoFlagRuleIds, FLAG_THRESHOLDS, type FlagContext } from "@/lib/analytics/flags";
-import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
+import { evaluateAutoFlagRuleIds, type FlagContext } from "@/lib/analytics/flags";
+import type { ScoutEntry } from "@/lib/scout-entries";
+import { SAMPLE_FORM, SAMPLE_UNREALISTIC } from "@/lib/forms/test-fixtures";
 import type { EventMatch } from "@/lib/events/types";
 
 const stubMatch: EventMatch = {
@@ -26,14 +27,14 @@ function makeEntry(overrides: Partial<ScoutEntry> = {}): ScoutEntry {
     uid: "uid-1",
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: "Test Scout",
     eventCode: "EVENT1",
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber: 100,
-    fields: initialScoutEntryFields,
+    values: {},
     score: { auto: 0, teleop: 0, endgame: 0, total: 0 },
     comments: "",
     submittedAt: new Date().toISOString(),
@@ -54,19 +55,20 @@ const emptyContext: FlagContext = {
   allianceAccuracy: null,
   sameMatchEntries: [],
   sameTeamEntries: [],
+  form: SAMPLE_FORM,
 };
 
 describe("evaluateAutoFlagRuleIds", () => {
   it("flags zero scoring unless the robot never started or died", () => {
     expect(evaluateAutoFlagRuleIds(makeEntry(), emptyContext)).toContain("zero-main-scoring");
-    expect(evaluateAutoFlagRuleIds(makeEntry({ fields: { ...initialScoutEntryFields, neverStartedMatch: true } }), emptyContext)).not.toContain(
+    expect(evaluateAutoFlagRuleIds(makeEntry({ values: { neverStartedMatch: true } }), emptyContext)).not.toContain(
       "zero-main-scoring"
     );
   });
 
-  it("flags an auto tip hive count above the threshold", () => {
+  it("flags an auto score-A count above the threshold", () => {
     const entry = makeEntry({
-      fields: { ...initialScoutEntryFields, autoTipHive: FLAG_THRESHOLDS.UNREALISTIC_AUTO_TIP_HIVE + 1 },
+      values: { autoScoreA: SAMPLE_UNREALISTIC.AUTO_A + 1 },
       score: { auto: 100, teleop: 0, endgame: 0, total: 100 },
     });
     expect(evaluateAutoFlagRuleIds(entry, emptyContext)).toContain("unrealistic-auto-scoring");
@@ -80,7 +82,7 @@ describe("evaluateAutoFlagRuleIds", () => {
 
   it("flags never-started-but-scored", () => {
     const entry = makeEntry({
-      fields: { ...initialScoutEntryFields, neverStartedMatch: true },
+      values: { neverStartedMatch: true },
       score: { auto: 20, teleop: 0, endgame: 0, total: 20 },
     });
     expect(evaluateAutoFlagRuleIds(entry, emptyContext)).toContain("never-started-but-scored");
@@ -88,7 +90,7 @@ describe("evaluateAutoFlagRuleIds", () => {
 
   it("flags contradictory incidents", () => {
     const entry = makeEntry({
-      fields: { ...initialScoutEntryFields, neverStartedMatch: true, recoveredFromFreeze: true },
+      values: { neverStartedMatch: true, recoveredFromFreeze: true },
     });
     expect(evaluateAutoFlagRuleIds(entry, emptyContext)).toContain("contradictory-incidents");
   });

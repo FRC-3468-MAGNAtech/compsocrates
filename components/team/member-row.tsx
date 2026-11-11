@@ -5,8 +5,6 @@ import { motion } from "framer-motion";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { FieldTeamChips } from "@/components/team/field-team-chips";
 import { HoverTip } from "@/components/ui/hover-tip";
 import { getRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
@@ -29,7 +27,6 @@ export function MemberRow({
   highlight,
   onEdit,
   onPageAccess,
-  selection,
 }: {
   member: TeamMember;
   editState: MemberEditState;
@@ -38,8 +35,6 @@ export function MemberRow({
   onEdit?: () => void;
   /** P26: opens the member's page-access editor (admins only; omitted for everyone else). */
   onPageAccess?: () => void;
-  /** P19: bulk-assign selection. Omitted when there is only one FTC team; `disabled` for rows the viewer can't edit. */
-  selection?: { checked: boolean; onChange: (checked: boolean) => void; disabled: boolean };
 }) {
   const primaryRole = getRole(member.primaryRole);
 
@@ -55,15 +50,6 @@ export function MemberRow({
       className="glass-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
-        {selection && (
-          <Checkbox
-            checked={selection.checked}
-            onCheckedChange={(v) => selection.onChange(v === true)}
-            disabled={selection.disabled}
-            aria-label={selection.disabled ? `Select ${member.name} (not available)` : `Select ${member.name}`}
-            className="h-7 w-7"
-          />
-        )}
         <Avatar name={member.name} size="sm" avatar={member.avatar} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -90,7 +76,6 @@ export function MemberRow({
             {getRole(id).label}
           </Badge>
         ))}
-        <FieldTeamChips ids={member.fieldTeamIds} />
 
         {onPageAccess && (
           <Button size="sm" variant="glass" className="gap-1.5" onClick={onPageAccess} aria-label={`Page access for ${member.name}`} data-testid={`page-access-${member.uid}`}>

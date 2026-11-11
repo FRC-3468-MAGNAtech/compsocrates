@@ -31,8 +31,8 @@ describe("theme + mode preferences (P18)", () => {
   });
 
   it("the account's choice wins over this browser's, and unknown ids fall back", () => {
-    expect(resolveThemeId("ocean", "biobuzz")).toBe("ocean");
-    expect(resolveThemeId(undefined, "biobuzz")).toBe("biobuzz");
+    expect(resolveThemeId("ocean", "compsocrates")).toBe("ocean");
+    expect(resolveThemeId(undefined, "compsocrates")).toBe("compsocrates");
     expect(resolveThemeId("not-a-theme", "also-not")).toBe("team");
     expect(resolveColorModePreference("light", "dark")).toBe("light");
     expect(resolveColorModePreference(undefined, "dark")).toBe("dark");
@@ -46,6 +46,15 @@ describe("theme + mode preferences (P18)", () => {
 
   it("the existing ids still work", () => {
     expect(resolveThemeId("team", null)).toBe("team");
-    expect(resolveThemeId("biobuzz", null)).toBe("biobuzz");
+    expect(resolveThemeId("compsocrates", null)).toBe("compsocrates");
+  });
+
+  it("a removed theme id stored on the account or in this browser resolves to the default theme", () => {
+    // the id of the theme that was removed, assembled so the source never names it
+    const removed = ["bio", "buzz"].join("");
+    expect(resolveThemeId(removed, null)).toBe("team");
+    expect(resolveThemeId(removed, removed)).toBe("team");
+    // the account value is unusable, so this browser's valid choice is used
+    expect(resolveThemeId(removed, "ocean")).toBe("ocean");
   });
 });

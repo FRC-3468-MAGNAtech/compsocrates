@@ -90,6 +90,8 @@ export type CsTeamDoc = {
   teamNumber?: string | number;
   verifiedOwnerId?: string;
   selectedEvents?: string[];
+  /** ADDITIVE (rebuild only, CS ignores it): `{ [eventKey]: name }` for the selected events, written with `selectedEvents` so the names survive an API outage. */
+  selectedEventNames?: Record<string, string>;
   eventAttendees?: Record<string, string[]>;
   manualTeamListsByEvent?: Record<string, unknown>;
   formAccessOverrides?: Record<string, string[]>;

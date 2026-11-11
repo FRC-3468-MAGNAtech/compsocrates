@@ -2,7 +2,7 @@ import { ALLIANCE_SIZE } from "@/config/alliance";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 
 // O. EPA — an "expected points added" rating computed from an event's OFFICIAL
-// qualification scores alone (P12). FTC has no Statbotics-style source, and it
+// qualification scores alone (P12). It
 // is deliberately independent of our scouting data: the Pick List shows it
 // beside the scouted columns as a cross-check. Pure, no I/O.
 
@@ -25,9 +25,9 @@ export type EpaResult = {
 export const DEFAULT_EPA_PASSES = 2;
 
 /**
- * The configured alliance size (FRC 3, FTC 2): the fallback prior divisor when no alliance
+ * The configured alliance size (FRC: 3): the fallback prior divisor when no alliance
  * has teams. `computeEpa` itself divides by each alliance's actual team count, so 2-team
- * FTC data still works under a 3-robot configuration.
+ * data still works under a 3-robot configuration.
  */
 export const DEFAULT_ALLIANCE_SIZE = ALLIANCE_SIZE;
 

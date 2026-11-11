@@ -21,13 +21,13 @@ import { canonicalYouTubeUrl, parseYouTubeUrl } from "./youtube-url";
 
 const ID = "dQw4w9WgXcQ";
 
-// The suites below are the original 2-robot (FTC) behavior, so they pin the alliance size to 2 (the configured default is 3 for FRC).
+// The suites below are the original 2-robot behavior, so they pin the alliance size to 2 (the configured default is 3 for FRC).
 // The 3-robot suites sit at the bottom of the file, and the 2-team legacy cases keep running under the default in the 'legacy' block.
-const FTC_SIZE = 2;
-const validateRawMatch = (r: RawMatch, o: ValidateOptions = {}) => validateRawMatchFor(r, { allianceSize: FTC_SIZE, ...o });
-const validateBulk = (input: BulkInput) => validateBulkFor({ allianceSize: FTC_SIZE, ...input });
-const bulkTemplateCsv = () => bulkTemplateCsvFor(FTC_SIZE);
-const BULK_COLUMNS = bulkColumns(FTC_SIZE);
+const TWO_ROBOT_SIZE = 2;
+const validateRawMatch = (r: RawMatch, o: ValidateOptions = {}) => validateRawMatchFor(r, { allianceSize: TWO_ROBOT_SIZE, ...o });
+const validateBulk = (input: BulkInput) => validateBulkFor({ allianceSize: TWO_ROBOT_SIZE, ...input });
+const bulkTemplateCsv = () => bulkTemplateCsvFor(TWO_ROBOT_SIZE);
+const BULK_COLUMNS = bulkColumns(TWO_ROBOT_SIZE);
 
 describe("parseYouTubeUrl", () => {
   it("reads every common link form", () => {
@@ -178,7 +178,7 @@ describe("event codes", () => {
     expect(generateManualEventCode("Kitchen Table Scrimmage", new Set(["man-kitchentab", "MAN-KITCHENTAB-2"]))).toBe("MAN-KITCHENTAB-3");
     expect(generateManualEventCode("!!!", new Set())).toBe("MAN-EVENT");
     expect(generateManualEventCode("a", new Set())).toMatch(/^MAN-A$/);
-    // A generated code can never equal a real FTC code such as USWABON1 (it always has the MAN- prefix and a hyphen).
+    // A generated code can never equal a real event code such as USWABON1 (it always has the MAN- prefix and a hyphen).
     expect(generateManualEventCode("USWABON1", new Set(["USWABON1"]))).toBe("MAN-USWABON1");
   });
 
@@ -367,7 +367,7 @@ describe("optional start and end times", () => {
   it("round-trips through the form strings in every combination", () => {
     for (const times of [{}, { start: "1:10" }, { end: "3:40" }, { start: "1:10", end: "3:40" }]) {
       const first = video(times).match!;
-      const doc = buildManualMatchFields(first, { eventCode: "MAN-T", eventName: "T", seasonId: "biobuzz" });
+      const doc = buildManualMatchFields(first, { eventCode: "MAN-T", eventName: "T", seasonId: "rebuilt" });
       expect(validateRawMatch(matchToRaw(doc)).match).toEqual(first);
     }
   });
@@ -430,7 +430,7 @@ describe("optional times in CSV and pasted rows", () => {
 
 describe("difficulty comes from the typed scores", () => {
   it("is computed per alliance with the shared getDifficulty, and again on every edit", () => {
-    const event = { eventCode: "MAN-T", eventName: "T", seasonId: "biobuzz" };
+    const event = { eventCode: "MAN-T", eventName: "T", seasonId: "rebuilt" };
     const first = buildManualMatchFields(validateRawMatch(raw({ redScore: "30", blueScore: "95", redPenalty: "0" })).match!, event);
     expect(first.alliances.red.difficulty).toBe(getDifficulty(30));
     expect(first.alliances.red.difficulty).toBe("easy");
@@ -447,9 +447,9 @@ describe("difficulty comes from the typed scores", () => {
 
   it("builds the library match fields in the shape practice flows read", () => {
     const m = validateRawMatch(raw()).match!;
-    const doc = buildManualMatchFields(m, { eventCode: "MAN-T", eventName: "Test Event", seasonId: "biobuzz" });
+    const doc = buildManualMatchFields(m, { eventCode: "MAN-T", eventName: "Test Event", seasonId: "rebuilt" });
     expect(doc).toMatchObject({
-      seasonId: "biobuzz",
+      seasonId: "rebuilt",
       eventCode: "MAN-T",
       eventName: "Test Event",
       matchType: "Qualification",
@@ -461,7 +461,7 @@ describe("difficulty comes from the typed scores", () => {
 
   it("round-trips through the form strings", () => {
     const m = validateRawMatch(raw()).match!;
-    const doc = buildManualMatchFields(m, { eventCode: "MAN-T", eventName: "T", seasonId: "biobuzz" });
+    const doc = buildManualMatchFields(m, { eventCode: "MAN-T", eventName: "T", seasonId: "rebuilt" });
     const again = validateRawMatch(matchToRaw({ ...doc, matchType: doc.matchType })).match;
     expect(again).toEqual(m);
   });
@@ -673,7 +673,7 @@ describe("event form", () => {
 });
 
 describe("buildManualMatchDoc", () => {
-  const event = { eventCode: "MAN-T", eventName: "T", seasonId: "biobuzz" };
+  const event = { eventCode: "MAN-T", eventName: "T", seasonId: "rebuilt" };
   const match = () => validateRawMatch(raw()).match!;
   const options = { newPublished: false, newNeedsReview: true };
 

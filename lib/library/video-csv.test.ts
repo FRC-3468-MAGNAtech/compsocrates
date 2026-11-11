@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluatePracticeSessionFlags } from "@/lib/practice-flags";
-import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
+import { type ScoutEntry } from "@/lib/scout-entries";
 import { parseVideoCsv } from "./video-csv";
 import { clipProgress } from "./video-window";
 
@@ -33,8 +33,8 @@ describe("the bulk video CSV (matchKey,url,startSec,endSec)", () => {
 // The "Finished Early" flag (Competitive mode) must follow the clip's real length when the end time is blank.
 describe("the Finished Early flag with optional times", () => {
   const entry = (total: number): ScoutEntry => ({
-    id: "e", teamId: "t", uid: "u", source: "practice", mode: "competitive", formId: "biobuzz", formVersion: 1, scoutName: "S", eventCode: "USWABON1",
-    matchType: "Qualification", matchNumber: 1, teamNumber: 100, fields: initialScoutEntryFields, score: { auto: total, teleop: 0, endgame: 0, total },
+    id: "e", teamId: "t", uid: "u", source: "practice", mode: "competitive", formId: "sample", formVersion: 1, scoutName: "S", eventCode: "USWABON1",
+    matchType: "Qualification", matchNumber: 1, teamNumber: 100, values: {}, score: { auto: total, teleop: 0, endgame: 0, total },
     comments: "", submittedAt: "2026-11-05T00:00:00.000Z", excluded: false, autoFlags: [], manualFlags: [], accuracy: null, sessionId: "PS-ABCDEF", libraryMatchId: "USWABON1_Q1",
   });
   const flagFor = (videoProgressAtFinish: number | null) =>

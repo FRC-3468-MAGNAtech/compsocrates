@@ -15,8 +15,8 @@ import { fetchRecoveryTeams, forceOwnershipTransfer, type RecoveryTeam } from "@
 /**
  * P20: Admin Panel > Recovery (platform owners only). For an account whose owner is gone or locked out, a platform
  * owner can **force** a transfer of ownership to one of that account's admins. It needs a reason, a fresh
- * sign-in and the account's FTC team number typed in, it is labelled as a recovery transfer in that account's own
- * Audit Log, and it is also recorded in the platform log. This list shows each account's FTC teams, owner and admins
+ * sign-in and the account's team number typed in, it is labelled as a recovery transfer in that account's own
+ * Audit Log, and it is also recorded in the platform log. This list shows each account's team, owner and admins
  * and nothing else: no scouting data, no join codes, no non-admin members.
  */
 export function RecoveryPanel() {
@@ -52,7 +52,7 @@ export function RecoveryPanel() {
     try {
       await reauthenticate(password);
       await forceOwnershipTransfer(target.teamId, toUid, confirm, reason);
-      setDone(`Ownership of FTC ${target.fieldTeams[0]?.number ?? ""} was transferred.`);
+      setDone(`Ownership of team ${target.teamNumber ?? target.teamId} was transferred.`);
       setTarget(null);
       await load();
     } catch (err) {
@@ -93,12 +93,10 @@ export function RecoveryPanel() {
             <li key={t.teamId} className="glass-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  {t.fieldTeams.map((ft) => (
-                    <span key={ft.number} className="font-semibold tabular-nums">
-                      FTC {ft.number}
-                      {ft.name && <span className="ml-1.5 text-sm font-normal text-[var(--muted-foreground)]">{ft.name}</span>}
-                    </span>
-                  ))}
+                  <span className="font-semibold tabular-nums">
+                    {t.teamNumber !== null ? `Team ${t.teamNumber}` : t.teamId}
+                    {t.teamName && <span className="ml-1.5 text-sm font-normal text-[var(--muted-foreground)]">{t.teamName}</span>}
+                  </span>
                   {t.accountName && <Badge variant="outline">{t.accountName}</Badge>}
                 </div>
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">
@@ -117,7 +115,7 @@ export function RecoveryPanel() {
         <DialogContent className="glass-overlay w-[min(94vw,500px)]">
           <DialogTitle>Force-transfer ownership (recovery)</DialogTitle>
           <DialogDescription>
-            FTC {target?.fieldTeams.map((f) => f.number).join(" / ")}. Ownership moves immediately to the admin you choose; the old owner stays an admin. A pending transfer, if any, is cancelled.
+            {target?.teamNumber !== null && target?.teamNumber !== undefined ? `Team ${target.teamNumber}` : target?.teamId}. Ownership moves immediately to the admin you choose; the old owner stays an admin. A pending transfer, if any, is cancelled.
           </DialogDescription>
           <div className="mt-4 flex flex-col gap-4">
             <div>
@@ -142,7 +140,7 @@ export function RecoveryPanel() {
               <Textarea id="force-reason" rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} placeholder="For example: the owner graduated and can't be reached." />
             </div>
             <div>
-              <Label htmlFor="force-confirm">Type one of the account&apos;s FTC team numbers to confirm</Label>
+              <Label htmlFor="force-confirm">Type the account&apos;s team number to confirm</Label>
               <Input id="force-confirm" inputMode="numeric" maxLength={5} value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, ""))} disabled={busy} />
             </div>
             <ReauthField password={password} onPasswordChange={setPassword} disabled={busy} />

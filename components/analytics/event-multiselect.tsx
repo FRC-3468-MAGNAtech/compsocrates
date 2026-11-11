@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { STATUS_BADGE } from "@/components/event/selected-events-panel";
 import type { EventOption } from "@/lib/analytics/data-context";
 import type { EventScope } from "@/lib/analytics/filters";
-import { getEventStatus } from "@/lib/ftc/event-status";
+import { getEventStatus } from "@/lib/events/event-status";
+import { eventLabel } from "@/lib/events/names";
 import { spring, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +56,7 @@ export function EventMultiSelect({
 
   const customCodes = scope.kind === "custom" ? scope.codes : [];
   const selectedCodes = singleEvent ? (singleSelectedCode ? [singleSelectedCode] : []) : customCodes;
-  const nameOf = (code: string) => options.find((o) => o.code === code)?.name ?? code;
+  const nameOf = (code: string) => options.find((o) => o.code === code)?.name ?? eventLabel({ key: code });
 
   const summary = singleEvent
     ? singleSelectedCode

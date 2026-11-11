@@ -48,7 +48,7 @@ export async function resolvePendingLiveMatches(db: Firestore, messaging: Messag
 
   for (const docs of groups.values()) {
     const da = docs[0].data();
-    // A session records the whole alliance it belongs to; that length (2 for FTC, 3 for FRC) is how many completed sessions cover it.
+    // A session records the whole alliance it belongs to; that length (3 for FRC) is how many completed sessions cover it.
     const required: number = Array.isArray(da.allianceTeams) && da.allianceTeams.length > 0 ? da.allianceTeams.length : ALLIANCE_SIZE;
     if (docs.length !== required) continue; // alliance not yet covered by every robot's completed session
 

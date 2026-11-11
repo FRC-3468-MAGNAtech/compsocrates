@@ -15,7 +15,7 @@ import { usePermissions } from "@/lib/permissions";
 import { reauthenticate } from "@/lib/reauth";
 import { useTeamDoc } from "@/lib/team";
 import { useTeamMembers } from "@/lib/team-members";
-import { readFieldTeams } from "@/lib/field-teams";
+import { readTeamIdentity } from "@/lib/team-number";
 import { canCancelTransfer, livePendingTransfer } from "@/lib/team-owner";
 import { acceptOwnershipTransfer, cancelOwnershipTransfer, declineOwnershipTransfer, requestOwnershipTransfer } from "@/lib/team-transfer-client";
 
@@ -24,7 +24,7 @@ const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { mon
 /**
  * P20: Team Settings > Ownership. Everyone sees who owns the account and any pending transfer. The **team owner** can
  * start a transfer: pick an existing admin (their email must be verified: the server checks), confirm it's them by
- * re-authenticating, and type an FTC team number. That creates one pending transfer the recipient can accept or
+ * re-authenticating, and type the team number. That creates one pending transfer the recipient can accept or
  * decline (it expires after 7 days); the owner (or whoever requested it) can cancel. The previous owner stays an admin.
  */
 export function OwnershipSection() {
@@ -47,7 +47,7 @@ export function OwnershipSection() {
   // CS's `verifiedOwnerId` (exposed as `team.ownerUid`) is authoritative; the `isOwner` mirror on user docs is the fallback.
   const owner = members.find((m) => m.uid === team?.ownerUid) ?? members.find((m) => m.isOwner);
   const candidates = members.filter((m) => m.isAdmin && m.uid !== user?.uid);
-  const teamNumbers = team ? readFieldTeams(team).map((t) => t.number) : [];
+  const teamNumber = readTeamIdentity(team).number;
   const isRecipient = pending !== null && pending.toUid === user?.uid;
   const mayCancel = canCancelTransfer(pending, user?.uid ?? "", isOwner);
 
@@ -168,8 +168,7 @@ export function OwnershipSection() {
             </div>
             <div>
               <Label htmlFor="transfer-confirm">Type your team number to confirm</Label>
-              <Input id="transfer-confirm" inputMode="numeric" maxLength={5} value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, ""))} disabled={busy} placeholder={teamNumbers[0] ? String(teamNumbers[0]) : "12345"} />
-              {teamNumbers.length > 1 && <p className="mt-1 text-xs text-[var(--muted-foreground)]">Any of this account&apos;s FTC team numbers works: {teamNumbers.join(", ")}.</p>}
+              <Input id="transfer-confirm" inputMode="numeric" maxLength={5} value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, ""))} disabled={busy} placeholder={teamNumber !== null ? String(teamNumber) : "12345"} />
             </div>
             <ReauthField password={password} onPasswordChange={setPassword} disabled={busy} />
             {error && (

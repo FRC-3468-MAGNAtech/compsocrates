@@ -2,7 +2,7 @@ import type { EventInfo } from "@/lib/events/types";
 
 export type EventMatch = { event: EventInfo; confident: boolean };
 
-const STOP_WORDS = new Set(["the", "and", "for", "ftc", "first", "tech", "challenge", "live", "stream", "official"]);
+const STOP_WORDS = new Set(["the", "and", "for", "frc", "first", "robotics", "competition", "live", "stream", "official"]);
 
 function normalize(text: string): string[] {
   return text

@@ -5,9 +5,11 @@ import { db } from "@/lib/firebase/client";
 import { downloadTextFile } from "@/lib/download";
 import { logAuditEvent } from "@/lib/audit-log";
 import { entriesToCsv } from "@/lib/analytics/csv";
+import { currentEventName } from "@/lib/events/event-names";
+import { collectEventKeys, collectStoredEventNames, type StoredNameRow } from "@/lib/events/stored-names";
 import { buildGameSchema, unionForms } from "@/lib/analytics/game-schema";
 import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
-import { BIOBUZZ_FORM } from "@/lib/forms/builtin";
+import { DEFAULT_FORM_ID, getBuiltinForm } from "@/lib/forms/builtin";
 import type { Form } from "@/lib/forms/types";
 import { getEntries } from "@/lib/scout-entries";
 
@@ -47,7 +49,17 @@ export async function exportAllDataJson(teamId: string, actorUid: string, actorN
   collections.teams = teamSnap.exists() ? [{ id: teamSnap.id, ...teamSnap.data() }] : [];
   summary.push({ collection: "teams", count: collections.teams.length });
 
-  const payload = { exportedAt: new Date().toISOString(), teamId, collections };
+  // Every event key in the backup, with its name (API, then names stored in these documents and the team doc, then the static table), so the file reads without the app.
+  const rowsOf = (name: string) => collections[name] as StoredNameRow[];
+  const teamRow = collections.teams[0] as { selectedEventNames?: Record<string, string> } | undefined;
+  const sources = Object.values(collections) as StoredNameRow[][];
+  const stored = collectStoredEventNames(teamRow?.selectedEventNames, ...sources);
+  const eventNames: Record<string, string> = {};
+  for (const key of collectEventKeys(rowsOf("scouting"), rowsOf("practiceSessions"), rowsOf("matchAssignments"), rowsOf("pitAssignments"), rowsOf("teamAssignments"), rowsOf("practiceAssignments"), rowsOf("libraryMatches"), rowsOf("libraryEvents"))) {
+    eventNames[key] = currentEventName(key, stored);
+  }
+
+  const payload = { exportedAt: new Date().toISOString(), teamId, eventNames, collections };
   downloadTextFile(`compepicurus-backup-${teamId}-${Date.now()}.json`, JSON.stringify(payload, null, 2), "application/json");
   await logAuditEvent(teamId, actorUid, actorName, "export-backup", { format: "json", summary }, null, null);
   return summary;
@@ -64,7 +76,7 @@ export async function exportEntriesCsv(teamId: string, actorUid: string, actorNa
     const f = resolveForm(e);
     if (f) used.set(f.id, f);
   }
-  const csv = entriesToCsv(buildGameSchema(unionForms(used.size > 0 ? [...used.values()] : [BIOBUZZ_FORM])), entries, (name) => name);
+  const csv = entriesToCsv(buildGameSchema(unionForms(used.size > 0 ? [...used.values()] : [getBuiltinForm(DEFAULT_FORM_ID)!])), entries, (name) => name, { eventName: currentEventName, includeEvent: true });
   downloadTextFile(`compepicurus-entries-${teamId}-${Date.now()}.csv`, csv, "text/csv;charset=utf-8");
   await logAuditEvent(teamId, actorUid, actorName, "export-backup", { format: "csv", count: entries.length }, null, null);
   return entries.length;

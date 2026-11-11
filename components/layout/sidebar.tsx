@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 import { spring } from "@/lib/motion";
 import { ColorModeToggle } from "@/components/theme/color-mode-toggle";
 import { ConnectionChip } from "@/components/layout/connection-chip";
-import { FieldTeamSwitcher } from "@/components/layout/field-team-switcher";
-import { useFieldTeams } from "@/lib/field-teams-context";
+import { useOurTeam } from "@/lib/our-team";
+import { teamLabel } from "@/lib/team-number";
 import { usePermissions } from "@/lib/permissions";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 import { GlassLayerButton } from "@/components/theme/glass-layer-slider";
@@ -213,7 +213,7 @@ function SidebarInner({
 }) {
   const role = primaryRole ? getRole(primaryRole) : null;
   const { profile: me } = useAuth();
-  const { accountName } = useFieldTeams();
+  const { number: ourNumber, name: ourName } = useOurTeam();
   // P20: the platform owner sees how many team applications are waiting, on the Admin Panel item.
   const { isPlatformOwner } = usePermissions();
   const pendingApplications = usePendingApplicationCount(isPlatformOwner);
@@ -222,8 +222,7 @@ function SidebarInner({
   const canOpen = accessUser ? pageAccess.can : null;
   return (
     <>
-      {/* P19: the team line is data-driven now (it used to be hard-coded): the account's optional name under the
-          wordmark, and the active FTC team (number + name, with a switcher when assigned to several) below it. */}
+      {/* The team line is data-driven: our team's number and name under the wordmark (lib/our-team.ts; a multi-team switcher would go here). */}
       <div className="flex flex-col gap-2">
         <Link href="/dashboard" className="flex items-center gap-2.5 px-1.5 py-1">
           <span
@@ -235,11 +234,14 @@ function SidebarInner({
           {!collapsed && (
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">CompEpicurus</div>
-              {accountName && <div className="truncate text-[11px] text-[var(--muted-foreground)]">{accountName}</div>}
+              {ourNumber !== null && (
+                <div className="truncate text-[11px] text-[var(--muted-foreground)]" data-testid="our-team-line">
+                  {teamLabel(ourNumber, ourName)}
+                </div>
+              )}
             </div>
           )}
         </Link>
-        <FieldTeamSwitcher collapsed={collapsed} />
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto py-1">

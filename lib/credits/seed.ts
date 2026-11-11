@@ -53,10 +53,17 @@ export const DEFAULT_CREDITS: CreditSection[] = [
     order: 3,
     entries: [
       {
-        id: "ftc-events-api",
-        name: "FIRST Tech Challenge Events API",
+        id: "frc-events-api",
+        name: "FIRST FRC Events API",
         description: "Events, teams, matches, and official scores and rankings.",
-        link: "https://ftc-events.firstinspires.org/services/API",
+        link: "https://frc-events.firstinspires.org/services/API",
+        imageUrl: null,
+      },
+      {
+        id: "the-blue-alliance",
+        name: "The Blue Alliance",
+        description: "Event names, schedules, teams, rankings and playoff brackets.",
+        link: "https://www.thebluealliance.com/apidocs",
         imageUrl: null,
       },
     ],

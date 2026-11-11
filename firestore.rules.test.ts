@@ -127,7 +127,6 @@ describe("CS: users/{uid}", () => {
   it("lets a team admin or a coach edit a teammate (Team Management), merge-writes included", async () => {
     await assertSucceeds(setDoc(doc(as(ADMIN), "users", SCOUT), { role: "pit-scout", roles: ["pit-scout"], secondaryRoles: [] }, { merge: true }));
     await assertSucceeds(updateDoc(doc(as(COACH), "users", SCOUT), { isTeamAdmin: true }));
-    await assertSucceeds(updateDoc(doc(as(ADMIN), "users", SCOUT), { fieldTeamIds: ["ft1"] }));
   });
 
   it("does not let another team's admin edit this team's members", async () => {
@@ -156,7 +155,7 @@ describe("CS: users/{uid}", () => {
     await assertSucceeds(updateDoc(own, { fcmTokens: arrayUnion("token-1") }));
     await assertSucceeds(updateDoc(own, { workspaceFormWidth: 60, workspacePhoneSplit: 50 }));
     await assertSucceeds(updateDoc(own, { avatar: { type: "initials", value: "SC" } }));
-    await assertSucceeds(updateDoc(own, { themeId: "compsocrates", colorMode: "dark", activeFieldTeamId: null }));
+    await assertSucceeds(updateDoc(own, { themeId: "compsocrates", colorMode: "dark", gradientIntensity: "vivid" }));
   });
 });
 
@@ -192,11 +191,11 @@ describe("CS: teams/{teamId}", () => {
     await assertSucceeds(deleteDoc(doc(as(CS_OWNER), "teams", TEAM2)));
   });
 
-  it("lets a team admin write the additive CE fields (activeForms, fieldTeams, flags, judge book cards)", async () => {
+  it("lets a team admin write the additive CE fields (activeForms, flags, judge book cards) and rename the team", async () => {
     const ref = doc(as(ADMIN), "teams", TEAM1);
     await assertSucceeds(updateDoc(ref, { "activeForms.rebuilt": "my-form" }));
     await assertSucceeds(updateDoc(ref, { usePlaceholderVideo: true, libraryBackfilled: true, changelogSeeded: true }));
-    await assertSucceeds(updateDoc(ref, { fieldTeams: [{ id: "a", number: 1111, name: "A" }], accountName: "Account" }));
+    await assertSucceeds(updateDoc(ref, { teamName: "Renamed", teamNumber: "1111" }));
     await assertSucceeds(setDoc(ref, { judgeBookCards: [{ id: "c1" }], judgeBookUpdatedAt: Date.now() }, { merge: true }));
     await assertFails(updateDoc(doc(as(SCOUT), "teams", TEAM1), { usePlaceholderVideo: true }));
   });

@@ -18,7 +18,7 @@ export function OurTeamCard({
   teamNumber: number | null;
   row: PickRow | null;
   showEpa: boolean;
-  /** P19: a control to choose which of the account's FTC teams this card (and every Pick % on the board) is measured from. */
+  /** Optional control slot (a multi-team switcher would plug in here, see lib/our-team.ts); the app renders none today. */
   switcher?: React.ReactNode;
 }) {
   const record = row?.record ? `${row.record.wins}-${row.record.losses}-${row.record.ties}` : "-";

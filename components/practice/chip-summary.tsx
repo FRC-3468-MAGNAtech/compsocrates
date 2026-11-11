@@ -4,7 +4,7 @@ import type { SessionMode } from "@/lib/practice-sessions";
 
 const MODE_LABELS: Record<Exclude<SessionMode, null>, string> = { trial: "Trial", competitive: "Competitive" };
 
-/** The `BIOBUZZ · Trial · Medium`-style breadcrumb shown across every step once it's known. */
+/** The `REBUILT · Trial · Medium`-style breadcrumb shown across every step once it's known. */
 export function ChipSummary({
   seasonName,
   mode,

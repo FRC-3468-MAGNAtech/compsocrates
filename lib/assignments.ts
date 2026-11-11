@@ -18,11 +18,11 @@ import {
 import { commitPlan, eventRowsQuery, fetchMemberNames, fetchRows } from "@/lib/assignment-io";
 import { getMatchesForEvent } from "@/lib/events/actions";
 import { getDefaultSeason } from "@/lib/events/config";
-import { useFtcQuery } from "@/lib/events/use-event-query";
+import { useEventQuery } from "@/lib/events/use-event-query";
 import { auth, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/events/types";
-import { ftcMatchesToInputs } from "@/lib/scheduler/sources";
+import { eventMatchesToInputs } from "@/lib/scheduler/sources";
 import { parseScheduleSlots } from "@/lib/scheduler/parse";
 import type { RotationPattern, ScheduleSlot } from "@/lib/scheduler/types";
 
@@ -93,15 +93,15 @@ type PreviousRows = { match: CsAssignmentRow[]; practice: CsAssignmentRow[] };
 /** The rows as they were before this tab's last publish, by doc id: CE's single level of undo. Gone on reload (CS keeps no history). */
 const previousRows = new Map<string, PreviousRows>();
 
-/** The event's schedule as a slot lookup, fetched through the event facade (cached by `useFtcQuery`, shared with the Assignments page). */
+/** The event's schedule as a slot lookup, fetched through the event facade (cached by `useEventQuery`, shared with the Assignments page). */
 function useEventSchedule(eventCode: string | null, enabled: boolean) {
   const season = (eventCode ? getSeasonFromEventKey(eventCode) : null) ?? getDefaultSeason();
   const key = (type: string) => (enabled && eventCode ? `assign:${eventCode}:${type}:${season}` : null);
-  const qual = useFtcQuery(key("Q"), () => getMatchesForEvent(eventCode!, "Qualification", season));
-  const playoff = useFtcQuery(key("F"), () => getMatchesForEvent(eventCode!, "Playoff", season));
-  const practice = useFtcQuery(key("P"), () => getMatchesForEvent(eventCode!, "Practice", season));
+  const qual = useEventQuery(key("Q"), () => getMatchesForEvent(eventCode!, "Qualification", season));
+  const playoff = useEventQuery(key("F"), () => getMatchesForEvent(eventCode!, "Playoff", season));
+  const practice = useEventQuery(key("P"), () => getMatchesForEvent(eventCode!, "Practice", season));
   return useMemo(
-    () => buildScheduleLookup(ftcMatchesToInputs([...(qual.data ?? []), ...(playoff.data ?? []), ...(practice.data ?? [])])),
+    () => buildScheduleLookup(eventMatchesToInputs([...(qual.data ?? []), ...(playoff.data ?? []), ...(practice.data ?? [])])),
     [qual.data, playoff.data, practice.data]
   );
 }

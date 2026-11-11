@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * auto-grants require verification (P1b, see app/api/auth/sync-roles). Google
  * accounts are inherently verified, so this never shows for them.
  *
- * FIX2: when the account's email is the owner's (OWNER_EMAILS) the message says
+ * FIX2: when the account's email is the owner's (RELEASE_OWNER_EMAILS) the message says
  * so plainly — "Verify your email to activate owner access" — instead of owner
  * controls just being absent, and adds an "I've verified" button that
  * re-checks without a sign-out.

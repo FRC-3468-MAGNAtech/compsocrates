@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 import { IN_PROGRESS_WINDOW_MS, buildMatchRows, defaultTab, filterRows, formatStart, rowsInTab, tabCounts, winnerOf } from "./model";
 
-const ours = new Set([3468, 35792]);
-const isOurTeam = (n: number) => ours.has(n);
+const isOurTeam = (n: number) => n === 3468;
 const TZ = "America/Los_Angeles";
 // 2025-11-08 09:00 in Los Angeles (UTC-8 in November)
 const NINE_AM = Date.UTC(2025, 10, 8, 17, 0, 0);
@@ -43,10 +42,10 @@ describe("buildMatchRows", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("marks a match ours when any of the account's FTC teams (several) is in it, either alliance", () => {
+  it("marks a match ours when our team is in it, either alliance", () => {
     const rows = build([
       match({ matchType: "Qualification", matchNumber: 1, red: { teams: [3468, 5], score: null, penaltyPoints: null } }),
-      match({ matchType: "Qualification", matchNumber: 2, blue: { teams: [9, 35792], score: null, penaltyPoints: null } }),
+      match({ matchType: "Qualification", matchNumber: 2, blue: { teams: [9, 3468], score: null, penaltyPoints: null } }),
       match({ matchType: "Qualification", matchNumber: 3 }),
     ]);
     expect(rows.map((r) => r.ours)).toEqual([true, true, false]);
@@ -121,7 +120,7 @@ describe("filterRows", () => {
     match({ matchType: "Qualification", matchNumber: 2, red: { teams: [254, 1114], score: null, penaltyPoints: null }, blue: { teams: [2056, 67], score: null, penaltyPoints: null } }),
   ]);
 
-  it("Our matches keeps only matches with one of our teams", () => {
+  it("Our matches keeps only matches with our team", () => {
     expect(filterRows(rows, { ourOnly: true, search: "" }).map((r) => r.label)).toEqual(["Q1"]);
     expect(filterRows(rows, { ourOnly: false, search: "" })).toHaveLength(2);
   });

@@ -4,8 +4,8 @@ import type { MatchInput, ScheduleResult, ScheduleSettings, ScheduleSlot, SlotId
 
 const DEFAULT_INTERVAL_SIZE = 4;
 /**
- * How many scouts one match needs at full capacity: both alliances' robots (4 for FTC, 6 for FRC).
- * Taken from the data (the longest alliance in the schedule) so a 2-team FTC schedule still
+ * How many scouts one match needs at full capacity: both alliances' robots (6 for FRC).
+ * Taken from the data (the longest alliance in the schedule) so a stored 2-team schedule still
  * batches 4 under an event configured for 3; falls back to the configured size with no data.
  */
 function batchSizeFor(matches: MatchInput[]): number {
@@ -19,7 +19,7 @@ type SlotDescriptor = { slot: SlotId; teamNumber: number };
 
 function matchSlotDescriptors(match: MatchInput): SlotDescriptor[] {
   const descriptors: SlotDescriptor[] = [];
-  // One slot per team actually in the match (an FTC match has 2 even if the event is configured for 3).
+  // One slot per team actually in the match (a stored 2-team match has 2 even if the event is configured for 3).
   if (match.red) match.red.forEach((teamNumber, i) => descriptors.push({ slot: slotId("red", i) as SlotId, teamNumber }));
   if (match.blue) match.blue.forEach((teamNumber, i) => descriptors.push({ slot: slotId("blue", i) as SlotId, teamNumber }));
   return descriptors;

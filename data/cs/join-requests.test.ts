@@ -183,8 +183,8 @@ describe("documents written by the server", () => {
     expect(buildRequestOutcomePatch("denied", "adm", 7)).toEqual({ status: "denied", processedAt: 7, processedBy: "adm" });
   });
   it("new team doc: string teamNumber, verifiedOwnerId, empty selectedEvents", () => {
-    const team = buildNewTeamDoc({ teamNumber: 3468, teamName: " MAGNAtech ", ownerUid: "u1", fieldTeam: { id: "ft-3468", number: 3468, name: "MAGNAtech" } }, 11);
-    expect(team).toMatchObject({ teamName: "MAGNAtech", teamNumber: "3468", verifiedOwnerId: "u1", selectedEvents: [], createdAt: 11, fieldTeamNumbers: [3468] });
+    const team = buildNewTeamDoc({ teamNumber: 3468, teamName: " MAGNAtech ", ownerUid: "u1" }, 11);
+    expect(team).toEqual({ teamName: "MAGNAtech", teamNumber: "3468", verifiedOwnerId: "u1", selectedEvents: [], createdAt: 11 });
     expect(team).not.toHaveProperty("number");
     expect(team).not.toHaveProperty("ownerUid");
   });

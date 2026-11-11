@@ -9,7 +9,7 @@ export type PermissionAction = "manageTeam" | "manageScoutData" | "manageForms" 
 
 /**
  * Admin-only for most actions. P20 split "owner" in two: `isOwner` is the TEAM owner (teams.ownerUid; transfers ownership,
- * has the FIX2 protections) and `isPlatformOwner` is the platform owner (OWNER_EMAILS). `toggleTeamCreation` and
+ * has the FIX2 protections) and `isPlatformOwner` is the platform owner (RELEASE_OWNER_UIDS / RELEASE_OWNER_EMAILS). `toggleTeamCreation` and
  * `reviewApplications` are platform-owner-only: enforced for real on the server (the routes check the verified
  * token), this just drives the UI so nobody sees a control that would 403.
  *

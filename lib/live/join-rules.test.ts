@@ -70,7 +70,7 @@ describe("determineJoinOption — 3-robot alliances", () => {
     expect(result).toEqual({ kind: "choice", alliance: "red", teamNumbers: [200, 300] });
   });
 
-  it("still treats a 2-team (FTC) alliance as full at two", () => {
+  it("still treats a 2-team alliance as full at two", () => {
     expect(determineJoinOption([c(100, "red"), c(200, "red")], RED, BLUE)).toEqual({ kind: "choice", alliance: "blue", teamNumbers: BLUE });
   });
 });

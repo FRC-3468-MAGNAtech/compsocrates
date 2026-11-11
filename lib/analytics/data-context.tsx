@@ -10,7 +10,10 @@ import { resolveSingleEventCode, type AnalyticsFilters } from "@/lib/analytics/f
 import { buildAllTeamStats, type TeamStats } from "@/lib/analytics/team-stats";
 import { useTeamNames } from "@/lib/analytics/use-event-data";
 import { getEvents } from "@/lib/events/actions";
-import { useFtcQuery } from "@/lib/events/use-event-query";
+import { collectStoredEventNames } from "@/lib/events/stored-names";
+import { resolveEventName } from "@/lib/events/names";
+import { useEventNames, useRegisterStoredEventNames } from "@/lib/events/use-event-names";
+import { useEventQuery } from "@/lib/events/use-event-query";
 import type { EventInfo } from "@/lib/events/types";
 import { useAllLibraryMatches, type LibraryMatch } from "@/lib/match-library";
 import { useAllTeamPracticeSessions, type PracticeSession } from "@/lib/practice-sessions";
@@ -50,6 +53,8 @@ type AnalyticsDataValue = {
   activeEvents: EventInfo[];
   primaryCode: string | null;
   eventDirectory: ReadonlyMap<string, EventInfo>;
+  /** The display name of any event code through the shared chain (API, stored, static, key): never a bare key when a name is known. */
+  eventNameOf: (code: string) => string;
   /** Every imported library match — Practice mode's official matches (Match Breakdown). */
   libraryMatches: LibraryMatch[];
   eventOptions: EventOption[];
@@ -79,7 +84,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
 
   // Active events carry their own season; everything else is looked up in the
   // game's season list (shared, cached, with Event Selection's own query).
-  const seasonEvents = useFtcQuery(`events:${game.apiSeason}`, () => getEvents({ season: game.apiSeason }));
+  const seasonEvents = useEventQuery(`events:${game.apiSeason}`, () => getEvents({ season: game.apiSeason }));
   const eventDirectory = useMemo(() => {
     const map = new Map<string, EventInfo>();
     for (const e of seasonEvents.data ?? []) map.set(e.code, e);
@@ -95,21 +100,37 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   );
   const { schema } = useSchemaForEntries(selection.scope, filters.gameId);
 
+  // Names for every event the pickers can list, through the shared chain (API, then the names stored on library matches and the
+  // team doc, then the static table, then the key), so a data-only event never shows as a bare key.
+  const storedNames = useMemo(() => collectStoredEventNames(libraryMatches), [libraryMatches]);
+  useRegisterStoredEventNames(storedNames);
+  const nameKeys = useMemo(
+    () => [...new Set([...activeEventCodes, ...libraryMatches.map((m) => m.eventCode), ...allEntries.map((e) => e.eventCode)].filter(Boolean))],
+    [activeEventCodes, libraryMatches, allEntries]
+  );
+  const resolvedNames = useEventNames(nameKeys, { stored: storedNames });
+
+  const eventNameOf = useMemo(
+    () => (code: string) => resolvedNames[code]?.name ?? resolveEventName({ key: code, api: eventDirectory.get(code)?.name, stored: storedNames[code] }).name,
+    [resolvedNames, eventDirectory, storedNames]
+  );
+
   const eventOptions = useMemo(() => {
     const options = new Map<string, EventOption>();
+    const nameOf = eventNameOf;
     const add = (code: string, name: string, active: boolean) => {
       if (!options.has(code)) options.set(code, { code, name, event: eventDirectory.get(code) ?? null, active, count: 0 });
     };
 
     if (filters.practice) {
-      for (const m of libraryMatches) add(m.eventCode, m.eventName, false);
+      for (const m of libraryMatches) add(m.eventCode, nameOf(m.eventCode), false);
     } else {
-      for (const e of activeEvents) add(e.code, e.name, true);
+      for (const e of activeEvents) add(e.code, nameOf(e.code), true);
     }
     // Events with data under the current Game/Practice settings, whatever the Event filter says.
     const scopeAnyEvent = allEntries.filter((e) => isInScope(e, { ...filters, events: { kind: "all" } }, null, gameFormIds));
     for (const e of scopeAnyEvent) {
-      add(e.eventCode, eventDirectory.get(e.eventCode)?.name ?? e.eventCode, activeEventCodes.includes(e.eventCode) && !filters.practice);
+      add(e.eventCode, nameOf(e.eventCode), activeEventCodes.includes(e.eventCode) && !filters.practice);
       options.get(e.eventCode)!.count += 1;
     }
 
@@ -120,7 +141,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
         b.count - a.count ||
         a.name.localeCompare(b.name)
     );
-  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds]);
+  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds, eventNameOf]);
 
   // Names for every event that has data in scope (not just the ones passing the accuracy filter), so they don't flicker as the threshold changes.
   const nameRequests = useMemo(() => {
@@ -142,13 +163,14 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
       activeEvents,
       primaryCode,
       eventDirectory,
+      eventNameOf,
       libraryMatches,
       eventOptions,
       selection,
       teamStats,
       teamNames,
     }),
-    [entriesLoaded, sessionsLoaded, filters.practice, allEntries, sessionsById, schema, game.apiSeason, activeEventCodes, activeEvents, primaryCode, eventDirectory, libraryMatches, eventOptions, selection, teamStats, teamNames]
+    [entriesLoaded, sessionsLoaded, filters.practice, allEntries, sessionsById, schema, game.apiSeason, activeEventCodes, activeEvents, primaryCode, eventDirectory, eventNameOf, libraryMatches, eventOptions, selection, teamStats, teamNames]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

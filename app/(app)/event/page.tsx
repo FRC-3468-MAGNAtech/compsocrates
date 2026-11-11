@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { SelectedEventsPanel, STATUS_BADGE, formatDateRange } from "@/components/event/selected-events-panel";
+import { EventNamesNotice } from "@/components/events/event-names-notice";
 import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
@@ -25,8 +26,8 @@ import {
   sortEvents,
   type EventSort,
   type EventStatusFilter,
-} from "@/lib/ftc/event-status";
-import { useFtcQuery } from "@/lib/events/use-event-query";
+} from "@/lib/events/event-status";
+import { useEventQuery } from "@/lib/events/use-event-query";
 import { getEvents, getMatchesForEvent, getTeamsForEvent } from "@/lib/events/actions";
 import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
 import { cardEntranceVariants, springSnappy } from "@/lib/motion";
@@ -62,7 +63,7 @@ export default function EventSelectionPage() {
   // Fixed per visit so every status badge, count, and group agrees with each other.
   const [now] = useState(() => Date.now());
 
-  const eventsQuery = useFtcQuery(`events:${season}`, () => getEvents({ season }));
+  const eventsQuery = useEventQuery(`events:${season}`, () => getEvents({ season }));
 
   const state: ActiveEventsState = useMemo(() => ({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
   const activeCodes = useMemo(() => new Set(activeEvents.map((e) => e.code)), [activeEvents]);
@@ -135,6 +136,9 @@ export default function EventSelectionPage() {
             : "Only admins can change the active events — every other page reads from what they pick."}
         </p>
       </div>
+
+      {/* Admins see why names could not be loaded (missing TBA key, server sign-in not configured); everyone still sees the saved and built-in names. */}
+      {isAdmin && <EventNamesNotice />}
 
       <SelectedEventsPanel
         events={activeEvents}
@@ -362,7 +366,7 @@ function EventCard({
   );
 }
 
-function MatchTypeBadge({ label, query }: { label: "Qualification" | "Playoff"; query: ReturnType<typeof useFtcQuery<EventMatch[]>> }) {
+function MatchTypeBadge({ label, query }: { label: "Qualification" | "Playoff"; query: ReturnType<typeof useEventQuery<EventMatch[]>> }) {
   if (query.status === "loading") return <Badge variant="glass">{label}: loading…</Badge>;
   if (query.status === "error") return <Badge variant="danger">{label}: unavailable</Badge>;
 
@@ -386,13 +390,13 @@ function MatchTypeBadge({ label, query }: { label: "Qualification" | "Playoff"; 
 }
 
 function ActiveEventSummary({ event, now }: { event: EventInfo; now: number }) {
-  const teamsQuery = useFtcQuery(`teams:${event.code}:${event.season}`, () =>
+  const teamsQuery = useEventQuery(`teams:${event.code}:${event.season}`, () =>
     getTeamsForEvent(event.code, event.season)
   );
-  const qualQuery = useFtcQuery(`matches:${event.code}:${event.season}:Qualification`, () =>
+  const qualQuery = useEventQuery(`matches:${event.code}:${event.season}:Qualification`, () =>
     getMatchesForEvent(event.code, "Qualification", event.season)
   );
-  const playoffQuery = useFtcQuery(`matches:${event.code}:${event.season}:Playoff`, () =>
+  const playoffQuery = useEventQuery(`matches:${event.code}:${event.season}:Playoff`, () =>
     getMatchesForEvent(event.code, "Playoff", event.season)
   );
 

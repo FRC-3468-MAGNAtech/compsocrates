@@ -7,7 +7,7 @@ import { CheckboxTile } from "@/components/scout/checkbox-tile";
 import { RenderedField } from "@/components/scout/scout-form";
 import { formatMatch } from "@/lib/analytics/game-schema";
 import { logAuditEvent } from "@/lib/audit-log";
-import { entryValues } from "@/lib/forms/legacy";
+import { entryValues } from "@/lib/forms/entry-values";
 import { calculateScore } from "@/lib/forms/scoring";
 import { isSystemField, type FormValue, type FormValues } from "@/lib/forms/types";
 import { normalizeValues } from "@/lib/forms/values";

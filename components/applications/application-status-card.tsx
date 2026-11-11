@@ -38,7 +38,7 @@ export function ApplicationStatusCard({
         <div className="min-w-0">
           <h1 className="text-xl font-semibold">Your application</h1>
           <p className="text-sm text-[var(--muted-foreground)]">
-            FTC {application.teamNumber}
+            Team {application.teamNumber}
             {application.teamName ? ` · ${application.teamName}` : ""}
           </p>
         </div>

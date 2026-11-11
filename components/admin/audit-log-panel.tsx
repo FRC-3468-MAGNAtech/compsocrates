@@ -9,6 +9,12 @@ import { useAuth } from "@/lib/auth";
 import { useTeamMembers } from "@/lib/team-members";
 import { useAuditLog, type AuditAction, type AuditLogEntry } from "@/lib/audit-log";
 
+/** Actions an earlier version of the app wrote (multi-team accounts). No longer written, but old log entries still read well. */
+const LEGACY_ACTION_LABELS: Record<string, string> = {
+  "edit-member-teams": "Assign Members to Teams (legacy)",
+  "edit-field-teams": "Edit Team Settings (legacy)",
+};
+
 const ACTION_LABELS: Record<AuditAction, string> = {
   "hard-reset-scout-data": "Hard Reset Scout Data",
   "dismiss-flag": "Dismiss Flag",
@@ -20,8 +26,6 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "refresh-official-scores": "Refresh Official Scores",
   "export-backup": "Export Backup",
   "edit-member-roles": "Edit Member Roles",
-  "edit-member-teams": "Assign Members to FTC Teams",
-  "edit-field-teams": "Edit Team Settings",
   "approve-team-application": "Team Application Approved",
   "request-ownership-transfer": "Ownership Transfer Requested",
   "transfer-ownership": "Ownership Transferred",
@@ -141,7 +145,7 @@ function AuditRow({ entry, expanded, onToggle }: { entry: AuditLogEntry; expande
     <div className="glass-card flex flex-col gap-2 p-3">
       <button type="button" onClick={onToggle} className="flex w-full flex-wrap items-center gap-2 text-left">
         <Badge variant="glass" className="text-[10px]">
-          {ACTION_LABELS[entry.action] ?? entry.action}
+          {ACTION_LABELS[entry.action] ?? LEGACY_ACTION_LABELS[entry.action] ?? entry.action}
         </Badge>
         <span className="text-sm font-medium">{entry.actorName}</span>
         <span className="text-xs text-[var(--muted-foreground)]">{formatDate(entry.createdAt)}</span>

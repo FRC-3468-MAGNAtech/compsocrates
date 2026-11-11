@@ -8,46 +8,42 @@
 //
 // D1: the team doc is CS's, where the only event field is `selectedEvents` (TBA keys). `useTeamDoc` derives placeholder
 // events (name = key, no dates) from it; this hook enriches them with the real event (name, dates, status) through the
-// event layer, once per event per tab. No write ever happens from here: there is no migration, `selectedEvents` is the
-// single source of truth.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// event layer, ONE season-wide request per season (lib/events/name-store.ts). No write ever happens from here: there is no
+// migration, `selectedEvents` is the single source of truth (the Event Select page writes the additive `selectedEventNames`).
+import { useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
-import { getEvent } from "@/lib/events/actions";
 import { setActiveEvent as setTeamActiveEvent, useTeamDoc } from "@/lib/team";
 import { readActiveEvents } from "@/lib/active-events";
-import { getEventStatus } from "@/lib/ftc/event-status";
+import { getEventStatus } from "@/lib/events/event-status";
+import type { EventNameState } from "@/lib/events/name-store";
+import { collectStoredEventNames } from "@/lib/events/stored-names";
 import type { EventInfo } from "@/lib/events/types";
-
-/** Session cache of enriched events by code, shared by every component calling the hooks below. */
-const enriched = new Map<string, EventInfo>();
-const inFlight = new Set<string>();
+import { useEventNames, useRegisterStoredEventNames } from "@/lib/events/use-event-names";
 
 /** True for the placeholder `data/cs/teams.ts` builds from a bare key (no dates yet). */
 const isPlaceholder = (event: EventInfo) => event.dateStart === "" && event.dateEnd === "";
 
-function useEnrichedEvents(events: EventInfo[]): EventInfo[] {
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    for (const event of events) {
-      if (!isPlaceholder(event) || enriched.has(event.code) || inFlight.has(event.code)) continue;
-      inFlight.add(event.code);
-      getEvent(event.code, event.season)
-        .then((result) => {
-          if (result.ok && result.data) {
-            enriched.set(event.code, { ...result.data, status: getEventStatus(result.data) });
-            setVersion((v) => v + 1);
-          }
-        })
-        .catch(() => {
-          // Best-effort: the placeholder (name = TBA key) keeps working.
-        })
-        .finally(() => inFlight.delete(event.code));
-    }
-  }, [events]);
-
-  // `version` is read so a finished lookup re-renders the memo below.
-  return useMemo(() => events.map((e) => (isPlaceholder(e) ? (enriched.get(e.code) ?? e) : e)), [events, version]); // eslint-disable-line react-hooks/exhaustive-deps
+/**
+ * Names and enriches the placeholder events. One season-wide request names every event of that season and carries its
+ * dates (it replaces the old getEvent() call per placeholder, whose failures were swallowed and never retried). The name
+ * chain is: API, then the team doc's stored `selectedEventNames`, then the static table (config/event-names.ts), then the
+ * raw key. A failure is never hidden: each event reports `{ name, source, status: "loading" | "ready" | "fallback", error? }`
+ * (returned as `eventNames`) and the Event Select page tells admins why.
+ */
+function useEnrichedEvents(events: EventInfo[], stored: Record<string, string> | undefined): { events: EventInfo[]; names: Record<string, EventNameState> } {
+  const keys = useMemo(() => events.map((e) => e.code), [events]);
+  const names = useEventNames(keys, { stored });
+  const enriched = useMemo(
+    () =>
+      events.map((e) => {
+        const state = names[e.code];
+        if (!state || !isPlaceholder(e)) return e;
+        const base = state.info ? { ...state.info, status: getEventStatus(state.info) } : e;
+        return { ...base, name: state.name };
+      }),
+    [events, names]
+  );
+  return { events: enriched, names };
 }
 
 /**
@@ -62,12 +58,15 @@ export function useActiveEvents() {
   const { team, loaded } = useTeamDoc(teamId);
 
   const state = useMemo(() => readActiveEvents(team), [team]);
-  const events = useEnrichedEvents(state.events);
+  // Names the team doc stored beside selectedEvents (additive field): the second step of the name chain, shared app-wide.
+  const stored = useMemo(() => collectStoredEventNames(team?.selectedEventNames), [team]);
+  useRegisterStoredEventNames(stored);
+  const { events, names: eventNames } = useEnrichedEvents(state.events, stored);
   const primary = useMemo(() => events.find((e) => e.code === state.primaryCode) ?? null, [events, state.primaryCode]);
 
   const isActive = useCallback((code: string) => state.events.some((e) => e.code === code), [state.events]);
 
-  return { events, primary, primaryCode: state.primaryCode, isActive, loaded };
+  return { events, primary, primaryCode: state.primaryCode, isActive, loaded, eventNames };
 }
 
 /** The primary active event only — kept for callers that genuinely only need one. Anything that picks or filters by event should use `useActiveEvents()`. */

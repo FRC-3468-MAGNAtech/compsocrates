@@ -31,7 +31,7 @@ export type LobbyPairScoringPatch = {
 export function resolveLobbyPairScoring(
   match: LibraryMatch,
   alliance: AllianceColor,
-  /** One entry per robot of the alliance (a pair's two for FTC, a trio's three for FRC). */
+  /** One entry per robot of the alliance (a trio's three for FRC). */
   entries: readonly ScoutEntry[],
   mode: SessionMode,
   priorCompletedAttempt: boolean

@@ -21,14 +21,15 @@ import type { EventInfo } from "@/lib/events/types";
 import { useTeamMembers } from "@/lib/team-members";
 import { useEventAttendance, setEventAttendance } from "@/lib/event-attendance";
 import { publishAssignments, swapAssignmentSlot, undoAssignments, useAssignments, type AssignmentMatchSource, type AssignmentSettings, type AssignmentVersion } from "@/lib/assignments";
-import { useFtcQuery } from "@/lib/events/use-event-query";
+import { useEventQuery } from "@/lib/events/use-event-query";
 import { getEvents, getMatchesForEvent } from "@/lib/events/actions";
 import { getDefaultSeason } from "@/lib/events/config";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
 import { getEnabledSeasons, DEFAULT_SEASON_ID } from "@/lib/seasons";
 import { DIFFICULTY_LABELS, type Difficulty } from "@/lib/difficulty";
-import { ftcMatchesToInputs, libraryMatchesToInputs } from "@/lib/scheduler/sources";
+import { eventMatchesToInputs, libraryMatchesToInputs } from "@/lib/scheduler/sources";
 import type { MatchInput, ScheduleResult, SlotId } from "@/lib/scheduler/types";
+import { useEventName } from "@/lib/events/use-event-names";
 
 /** P31: the three kinds of assignment. Match Scouting is the original schedule; Pit Scouting and Team Strategy hand out teams. */
 type AssignmentTab = "match" | TeamAssignKind;
@@ -55,12 +56,14 @@ export default function AssignmentsPage() {
   const activeSelected = activeOptions.find((e) => e.code === eventCode) ?? null;
   const season = activeSelected?.season ?? getDefaultSeason();
 
-  const eventsQuery = useFtcQuery(`assignments-events:${season}`, () => getEvents({ season }));
+  const eventsQuery = useEventQuery(`assignments-events:${season}`, () => getEvents({ season }));
   const otherEvents: EventInfo[] = useMemo(
     () => (eventsQuery.data ?? []).filter((e) => !activeOptions.some((a) => a.code === e.code)),
     [eventsQuery.data, activeOptions]
   );
-  const selectedEventName = activeSelected?.name ?? eventsQuery.data?.find((e) => e.code === eventCode)?.name ?? eventCode ?? "Pick an event";
+  const selectedEventHint = activeSelected?.name ?? eventsQuery.data?.find((e) => e.code === eventCode)?.name;
+  const resolvedSelectedName = useEventName(eventCode ?? "", { name: selectedEventHint });
+  const selectedEventName = eventCode ? resolvedSelectedName.name : "Pick an event";
 
   const { members, loaded: membersLoaded } = useTeamMembers(teamId);
   const { attendance, loaded: attendanceLoaded } = useEventAttendance(teamId, eventCode);
@@ -76,15 +79,15 @@ export default function AssignmentsPage() {
   const [librarySeasonId, setLibrarySeasonId] = useState(DEFAULT_SEASON_ID);
   const [libraryDifficulty, setLibraryDifficulty] = useState<Difficulty>("medium");
 
-  const qualQuery = useFtcQuery(
+  const qualQuery = useEventQuery(
     matchSource !== "practice" && eventCode ? `assign:${eventCode}:Q:${season}` : null,
     () => getMatchesForEvent(eventCode!, "Qualification", season)
   );
-  const playoffQuery = useFtcQuery(
+  const playoffQuery = useEventQuery(
     matchSource !== "practice" && eventCode ? `assign:${eventCode}:F:${season}` : null,
     () => getMatchesForEvent(eventCode!, "Playoff", season)
   );
-  const practiceTypeQuery = useFtcQuery(
+  const practiceTypeQuery = useEventQuery(
     matchSource !== "practice" && eventCode ? `assign:${eventCode}:P:${season}` : null,
     () => getMatchesForEvent(eventCode!, "Practice", season)
   );
@@ -92,8 +95,8 @@ export default function AssignmentsPage() {
 
   const candidateMatches: MatchInput[] = useMemo(() => {
     if (matchSource === "practice") return libraryMatchesToInputs(libraryMatches, libraryDifficulty);
-    const ftc = [...(qualQuery.data ?? []), ...(playoffQuery.data ?? []), ...(practiceTypeQuery.data ?? [])];
-    return ftcMatchesToInputs(ftc);
+    const official = [...(qualQuery.data ?? []), ...(playoffQuery.data ?? []), ...(practiceTypeQuery.data ?? [])];
+    return eventMatchesToInputs(official);
   }, [matchSource, libraryMatches, libraryDifficulty, qualQuery.data, playoffQuery.data, practiceTypeQuery.data]);
 
   const attendingMembers = useMemo(() => members.filter((m) => effectiveAttendingUids.includes(m.uid)), [members, effectiveAttendingUids]);
@@ -160,7 +163,7 @@ export default function AssignmentsPage() {
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Assignments</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">Who&apos;s scouting which robot, for {eventCode ?? "the active event"}.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Who&apos;s scouting which robot, for {eventCode ? selectedEventName : "the active event"}.</p>
         </div>
         <GlassPanel className="flex flex-col gap-4">
           <h2 className="text-base font-semibold">Your assignments</h2>

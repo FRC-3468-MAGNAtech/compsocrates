@@ -10,7 +10,8 @@ import { ArrowDown, ArrowUp, CalendarX2, Check, ChevronDown, Clock, GripVertical
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { moveActiveEvent } from "@/lib/active-events";
-import { getEventStatus } from "@/lib/ftc/event-status";
+import { getEventStatus } from "@/lib/events/event-status";
+import { useNamedEvents } from "@/lib/events/use-event-names";
 import { spring, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { EventLifecycleStatus, EventInfo } from "@/lib/events/types";
@@ -66,7 +67,9 @@ const dragGripClass =
  * slot needs the page-tall container as its sticky containing block, and its
  * negative bottom margin cancels the flex gap it would otherwise add.
  */
-export function SelectedEventsPanel({ events, primaryCode, canEdit, onRemove, onMove }: PanelProps) {
+export function SelectedEventsPanel({ events: rawEvents, primaryCode, canEdit, onRemove, onMove }: PanelProps) {
+  // Every name below goes through the shared chain (API, stored, static, key), so a placeholder never shows as a bare key.
+  const events = useNamedEvents(rawEvents);
   const panelRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const [scrolledPast, setScrolledPast] = useState(false);

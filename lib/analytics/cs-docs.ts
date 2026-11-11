@@ -10,8 +10,7 @@ import type { ScoutEntry } from "@/lib/scout-entries";
 // (through the adapter in data/cs/scouting.ts) and read the identity fields the pages join on. Pure.
 
 /**
- * The CS document of an entry, or null when its game cannot be stored in CS's schema (the read-only games REEFSCAPE and
- * CHARGED_UP: their plugins have no `valuesToDoc`, so a document cannot be rebuilt from form values).
+ * The CS document of an entry, or null when its form cannot be stored in CS's schema (a form no game plugin owns).
  */
 export function entryToDoc(entry: ScoutEntry): CsDoc | null {
   try {
@@ -26,7 +25,7 @@ export function pluginForDoc(doc: CsDoc): FullGamePlugin | null {
   return gameForDoc(doc);
 }
 
-/** Entries whose documents can be rebuilt and belong to `gameId`, with their documents. `skipped` counts the rest (other games, read-only games). */
+/** Entries whose documents can be rebuilt and belong to `gameId`, with their documents. `skipped` counts the rest (other games, forms no game owns). */
 export function docsForGame(entries: readonly ScoutEntry[], gameId: GameId): { items: Array<{ entry: ScoutEntry; doc: CsDoc }>; skipped: number } {
   const plugin = getGamePlugin(gameId);
   const items: Array<{ entry: ScoutEntry; doc: CsDoc }> = [];

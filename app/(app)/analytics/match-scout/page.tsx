@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/auth";
 import { buildGameSchema, withPracticeColumns } from "@/lib/analytics/game-schema";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { entriesToCsv } from "@/lib/analytics/csv";
+import { currentEventName } from "@/lib/events/event-names";
 import { recomputeForEvent } from "@/lib/analytics/recompute";
 import { useAnalyticsData, useAnalyticsEntries, useSingleEvent } from "@/lib/analytics/data-context";
 import { useAnalyticsFilters, useSingleEventMode } from "@/lib/analytics/filter-context";
@@ -109,7 +110,7 @@ export default function MatchScoutAnalyticsPage() {
   const configSession = practiceMode && configEntry?.sessionId ? sessionsById.get(configEntry.sessionId) ?? null : null;
 
   const handleExport = () => {
-    const csv = entriesToCsv(schema, visibleEntries, resolveDisplayName);
+    const csv = entriesToCsv(schema, visibleEntries, resolveDisplayName, { eventName: currentEventName, includeEvent: true });
     const filename = practiceMode ? "match-scout-practice.csv" : `match-scout-${eventCode ?? "export"}.csv`;
     downloadTextFile(filename, csv, "text/csv;charset=utf-8");
   };

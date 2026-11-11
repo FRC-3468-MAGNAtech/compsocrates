@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSelectedEvents, csTeamToTeamDoc, getSubmissionLockout, placeholderEventForKey, readSelectedEvents, selectedEventsPatch } from "@/data/cs/teams";
+import { buildSelectedEvents, csTeamToTeamDoc, getSubmissionLockout, placeholderEventForKey, readSelectedEventNames, readSelectedEvents, selectedEventNamesPatch, selectedEventsPatch } from "@/data/cs/teams";
 import type { CsTeamDoc } from "@/data/cs/types";
 import { MAX_ACTIVE_EVENTS, readActiveEvents } from "@/lib/active-events";
 
@@ -88,5 +88,45 @@ describe("selectedEventsPatch", () => {
     const state = { events: [ev("2026lake"), ev("2026arli")], primaryCode: "2026lake" };
     const read = csTeamToTeamDoc("X", { selectedEvents: selectedEventsPatch(state).selectedEvents });
     expect(readActiveEvents(read).events.map((e) => e.code)).toEqual(["2026lake", "2026arli"]);
+  });
+});
+
+describe("selectedEventNames (additive field)", () => {
+  const ev = placeholderEventForKey;
+
+  it("is read through to the TeamDoc (usable names only, keys normalized) and absent when the doc has none", () => {
+    const t = csTeamToTeamDoc("X", csTeam({ selectedEventNames: { "2026ARLI": "Arkansas Regional", "2026lake": "2026lake", "2026okok": "  " } }));
+    expect(t.selectedEventNames).toEqual({ "2026arli": "Arkansas Regional" });
+    expect("selectedEventNames" in csTeamToTeamDoc("X", csTeam())).toBe(false);
+    expect("selectedEventNames" in csTeamToTeamDoc("X", csTeam({ selectedEventNames: "nope" as never }))).toBe(false);
+  });
+
+  it("readSelectedEventNames tolerates junk", () => {
+    expect(readSelectedEventNames(null)).toEqual({});
+    expect(readSelectedEventNames([1, 2])).toEqual({});
+    expect(readSelectedEventNames({ "2026arli": 5 })).toEqual({});
+  });
+
+  it("the patch holds the real names of the selected events and nothing else", () => {
+    const named = { ...ev("2026arli"), name: "Arkansas Regional" };
+    const state = { events: [named, ev("2026lake")], primaryCode: "2026arli" };
+    expect(selectedEventNamesPatch(state)).toEqual({ selectedEventNames: { "2026arli": "Arkansas Regional" } });
+  });
+
+  it("is empty (so nothing is written) when no event has a real name, and for an empty selection", () => {
+    expect(selectedEventNamesPatch({ events: [ev("2026arli")], primaryCode: "2026arli" })).toEqual({});
+    expect(selectedEventNamesPatch({ events: [], primaryCode: null })).toEqual({});
+  });
+
+  it("keys the name by the normalized (alias-resolved) key, like selectedEvents", () => {
+    const named = { ...ev("2025lake"), name: "Bayou Regional" };
+    expect(selectedEventNamesPatch({ events: [named], primaryCode: "2025lake" })).toEqual({ selectedEventNames: { "2026lake": "Bayou Regional" } });
+  });
+
+  it("round trip: written names read back, and selectedEventsPatch stays unchanged", () => {
+    const state = { events: [{ ...ev("2026lake"), name: "Bayou Regional" }], primaryCode: "2026lake" };
+    expect(Object.keys(selectedEventsPatch(state))).toEqual(["selectedEvents"]);
+    const read = csTeamToTeamDoc("X", { selectedEvents: ["2026lake"], ...selectedEventNamesPatch(state) });
+    expect(read.selectedEventNames).toEqual({ "2026lake": "Bayou Regional" });
   });
 });

@@ -1,4 +1,5 @@
 import "server-only";
+import { releaseOwnerEmails } from "@/lib/server/env";
 
 // P20: outbound email, just enough for application and ownership-transfer notices. A thin sender over Resend's HTTP
 // API (no SDK or new dependency): set RESEND_API_KEY and EMAIL_FROM ("CompEpicurus <notify@yourdomain.org>", a sender
@@ -45,10 +46,7 @@ export function appBaseUrl(): string {
   return vercel ? `https://${vercel}` : "http://localhost:3000";
 }
 
-/** Platform owners' addresses (OWNER_EMAILS), for "a new application arrived". */
+/** Platform owners' addresses (RELEASE_OWNER_EMAILS, lowercased), for "a new application arrived". */
 export function platformOwnerEmails(): string[] {
-  return (process.env.OWNER_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim())
-    .filter(Boolean);
+  return releaseOwnerEmails();
 }

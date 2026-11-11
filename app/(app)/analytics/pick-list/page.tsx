@@ -22,8 +22,8 @@ import { buildPickBoard, pickRowMatches, PICK_SORTS, sortPickRows, type PickSort
 import { useEpaMode, usePickList } from "@/lib/pick-list/store";
 import { usePermissions } from "@/lib/permissions";
 import { spring } from "@/lib/motion";
-import { useActiveFieldTeam, useFieldTeams } from "@/lib/field-teams-context";
-import { fieldTeamFullLabel, fieldTeamLabel } from "@/lib/field-teams";
+import { EventName } from "@/components/events/event-name";
+import { useOurTeam } from "@/lib/our-team";
 
 export default function PickListPage() {
   // One event at a time — the official data (ranks, EPA) belongs to a single event — even in Practice mode.
@@ -31,13 +31,8 @@ export default function PickListPage() {
 
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
-  // P19: "our team" starts as the FTC team this user is viewing as, and can be switched here among the
-  // account's teams. The switch only changes this page (the sidebar's choice is the user's saved default).
-  const { loaded: teamLoaded, fieldTeams } = useFieldTeams();
-  const { activeFieldTeam } = useActiveFieldTeam();
-  const [ourOverrideId, setOurOverrideId] = useState<string | null>(null);
-  const ourTeam = fieldTeams.find((t) => t.id === ourOverrideId) ?? activeFieldTeam;
-  const ourNumber = ourTeam?.number ?? null;
+  // "Our team" (lib/our-team.ts): every Pick % on the board is measured from it.
+  const { loaded: teamLoaded, number: ourNumber } = useOurTeam();
   const { can } = usePermissions();
   const canEdit = can("editPickList");
 
@@ -123,7 +118,7 @@ export default function PickListPage() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Pick List</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Plan alliance selection for {event?.name ?? eventCode}. <strong className="font-medium text-[var(--foreground)]">O.</strong> columns are official FIRST data;{" "}
+          Plan alliance selection for {eventCode ? <EventName eventKey={eventCode} name={event?.name} /> : "the event"}. <strong className="font-medium text-[var(--foreground)]">O.</strong> columns are official FIRST data;{" "}
           <strong className="font-medium text-[var(--foreground)]">S.</strong> columns come from our scouting and follow the filters above.
         </p>
       </div>
@@ -136,22 +131,6 @@ export default function PickListPage() {
             teamNumber={ourNumber}
             row={board.ours}
             showEpa={showEpa}
-            switcher={
-              fieldTeams.length > 1 ? (
-                <Select value={ourTeam?.id ?? ""} onValueChange={setOurOverrideId}>
-                  <SelectTrigger className="h-10 w-48" aria-label="Which of our teams to plan for">
-                    <SelectValue>{ourTeam ? fieldTeamLabel(ourTeam) : "Choose a team"}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fieldTeams.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {fieldTeamFullLabel(t)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null
-            }
           />
 
           {!canEdit && (

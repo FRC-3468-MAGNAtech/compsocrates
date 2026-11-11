@@ -1,9 +1,9 @@
 // P20: pure logic for team applications (no React, no Firebase): input sanitizing and validation, the
-// disposable-email check, canonical email keys, name matching against the FIRST API, and expiry. The server
+// disposable-email check, canonical email keys, name matching against the official team name, and expiry. The server
 // route (app/api/applications) and the form share it, so the limits a visitor sees are the limits enforced.
 
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-domains";
-import { parseFieldTeamNumber } from "@/lib/field-teams";
+import { parseTeamNumber } from "@/lib/team-number";
 import { ROLES, type RoleId } from "@/lib/roles";
 
 export type ApplicationStatus = "pending" | "approved" | "rejected" | "blocked" | "expired";
@@ -111,13 +111,13 @@ function normalizeForCompare(name: string): string {
   return name
     .toLowerCase()
     .replace(/&/g, " and ")
-    .replace(/\b(team|ftc|robotics|robotic|club|the)\b/g, " ")
+    .replace(/\b(team|frc|robotics|robotic|club|the)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
 /**
- * Does the name the applicant typed plausibly match FIRST's name for the team? Compares loosely (case,
+ * Does the name the applicant typed plausibly match the official name for the team? Compares loosely (case,
  * punctuation, and filler words like "Team"/"Robotics" don't matter) and accepts one containing the other,
  * since FIRST lists both a short and a long (sponsor-laden) name.
  */
@@ -141,8 +141,8 @@ export function validateApplication(raw: unknown): { ok: true; value: Applicatio
   const name = sanitizeLine(body.name, APPLICATION_LIMITS.name);
   if (name.length < 2) errors.name = "Enter your name.";
 
-  const teamNumber = parseFieldTeamNumber(typeof body.teamNumber === "number" || typeof body.teamNumber === "string" ? body.teamNumber : null);
-  if (teamNumber === null) errors.teamNumber = "Enter your FTC team number (1 to 5 digits).";
+  const teamNumber = parseTeamNumber(typeof body.teamNumber === "number" || typeof body.teamNumber === "string" ? body.teamNumber : null);
+  if (teamNumber === null) errors.teamNumber = "Enter your team number (1 to 5 digits).";
 
   const teamName = sanitizeLine(body.teamName, APPLICATION_LIMITS.teamName);
 
@@ -194,7 +194,7 @@ export type ApplicationSignals = {
   ipApplicationsLastHour: number;
   emailDomain: string;
   freeEmailProvider: boolean;
-  /** An account whose FTC teams already include this number (the platform owner should check before approving). */
+  /** An account whose team number is already this one (the platform owner should check before approving). */
   existingAccountForNumber: boolean;
 };
 
@@ -211,9 +211,9 @@ export function describeSignals(s: ApplicationSignals): { label: string; detail:
         : { label: "Team found on FIRST", detail: `"${s.firstApi.officialName ?? "?"}" (${s.firstApi.season} season), name matches`, tone: "good" }
     );
   } else if (s.firstApi.status === "not-found") {
-    out.push({ label: "Team not on FIRST", detail: `FIRST has no FTC team with this number for the ${s.firstApi.season} season (a rookie team may not be listed yet)`, tone: "warn" });
+    out.push({ label: "Team not on FIRST", detail: `No FRC team with this number is listed for the ${s.firstApi.season} season (a rookie team may not be listed yet)`, tone: "warn" });
   } else {
-    out.push({ label: "FIRST check unavailable", detail: "The FIRST API couldn't be reached when this was submitted", tone: "neutral" });
+    out.push({ label: "FIRST check unavailable", detail: "The team lookup (The Blue Alliance / FIRST) couldn't be reached when this was submitted", tone: "neutral" });
   }
   const ageDays = s.accountAgeMs === null ? null : s.accountAgeMs / 86_400_000;
   out.push(
@@ -228,6 +228,6 @@ export function describeSignals(s: ApplicationSignals): { label: string; detail:
   else out.push({ label: "CAPTCHA passed", detail: "Cloudflare Turnstile", tone: "good" });
   if (s.ipApplicationsLastHour >= 2) out.push({ label: "Repeated from this network", detail: `${s.ipApplicationsLastHour} applications from the same IP in the last hour`, tone: "warn" });
   if (s.fillSeconds < 15) out.push({ label: "Filled in very quickly", detail: `${s.fillSeconds}s from opening the form`, tone: "warn" });
-  if (s.existingAccountForNumber) out.push({ label: "An account already has this team", detail: "Another account lists this FTC team number", tone: "bad" });
+  if (s.existingAccountForNumber) out.push({ label: "An account already has this team", detail: "Another account already uses this team number", tone: "bad" });
   return out;
 }

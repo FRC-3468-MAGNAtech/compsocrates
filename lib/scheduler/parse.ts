@@ -6,7 +6,7 @@ const MATCH_TYPES: readonly string[] = ["Practice", "Qualification", "Playoff"];
 
 /**
  * Reads a stored `current.slots` array. The model is unchanged from the 2-robot
- * app: a legacy FTC doc holds only red1/red2/blue1/blue2, a 3-robot doc adds
+ * app: an older doc holds only red1/red2/blue1/blue2, a 3-robot doc adds
  * red3/blue3, and both read through here (any `<red|blue><n>` slot id is kept;
  * malformed rows are dropped rather than crashing a page that renders them).
  */

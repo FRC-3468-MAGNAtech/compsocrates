@@ -21,7 +21,7 @@ export { libraryMatchId };
 export type { LibraryOrigin };
 
 /**
- * Deliberately NOT teamId-scoped — this is public, real FTC competition
+ * Deliberately NOT teamId-scoped — this is public, real FRC competition
  * data (the same for every team), not this team's own scouting data, and
  * the prompt's own field list for libraryMatches omits teamId. See
  * docs/ASSUMPTIONS.md (P3) for the write-access trade-off this implies.
@@ -140,7 +140,7 @@ export async function importLibraryEvent(seasonId: string, eventCode: string): P
         skipped++;
         continue;
       }
-      // A plausible alliance is 2 teams (FTC) up to the event's alliance size (FRC 3); anything else is skipped.
+      // A plausible alliance is 2 teams up to the event's alliance size (FRC 3); anything else is skipped.
       if (!isValidAllianceTeams(match.redTeams) || !isValidAllianceTeams(match.blueTeams)) {
         skipped++;
         continue;

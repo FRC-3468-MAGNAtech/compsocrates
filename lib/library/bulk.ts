@@ -12,7 +12,7 @@ import { emptyRawMatch, manualMatchId, matchLabel, teamFieldsFor, validateRawMat
 const TAIL_COLUMNS = ["redScore", "blueScore", "redPenalty", "bluePenalty", "youtubeUrl", "startSec", "endSec", "notes"] as const;
 type TemplateColumn = "matchType" | "matchNumber" | TeamField | (typeof TAIL_COLUMNS)[number];
 
-/** The template's columns, in order, for an event of this alliance size (FTC: red1, red2, blue1, blue2; FRC adds red3 and blue3). `eventCode` is optional and not part of it. */
+/** The template's columns, in order, for an event of this alliance size (red1, red2, red3, blue1, blue2, blue3 for FRC). `eventCode` is optional and not part of it. */
 export function bulkColumns(size: number = ALLIANCE_SIZE): TemplateColumn[] {
   return ["matchType", "matchNumber", ...teamFieldsFor(size), ...TAIL_COLUMNS];
 }

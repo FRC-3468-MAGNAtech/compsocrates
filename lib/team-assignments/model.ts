@@ -13,7 +13,7 @@ export type TeamAssignKindInfo = {
   tab: string;
   /** What the scouts call it ("pit scouting"). */
   noun: string;
-  /** The running season's id for the form (REBUILT: "pit-scout-v1"; FTC mode: "biobuzz-pit-scout-v1"). */
+  /** The running season's id for the form (REBUILT: "pit-scout-v1"). */
   formId: string;
   /** The P26 page id whose access makes someone an eligible scout. */
   pageId: string;
@@ -30,7 +30,7 @@ export type TeamAssignSettings = {
   priorityTeams: number[];
   priorityCoverage: 1 | 2;
   mode: DistributeMode;
-  /** Our own FTC teams were included in the units. */
+  /** Our own team was included in the units. */
   includeOurs: boolean;
   seed: number;
 };

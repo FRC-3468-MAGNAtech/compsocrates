@@ -89,7 +89,7 @@ export type ValidateOptions = {
   defaultVideoUrl?: string | null;
   /** Used when `matchType` is blank (CSV/paste event defaults). */
   defaultMatchType?: MatchType | null;
-  /** Robots per alliance to require. Defaults to the configured event's (FRC 3, FTC 2). */
+  /** Robots per alliance to require. Defaults to the configured event's (FRC 3). */
   allianceSize?: number;
 };
 

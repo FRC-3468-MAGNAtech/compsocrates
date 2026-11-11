@@ -31,7 +31,7 @@ function fail(status: number, code: string, error: string, extra: Record<string,
  * measure runs here, server-side: a body-size cap, the honeypot, the signed time-to-submit token, input
  * validation and sanitizing, the disposable-email list, blocks, Cloudflare Turnstile (when configured), per-IP
  * (hashed) and per-email rate limits, one pending application per applicant / email / team number, and a check that
- * no account already has this FTC team. Nothing is ever approved automatically: this only files the application.
+ * no account already has this team. Nothing is ever approved automatically: this only files the application.
  */
 export async function POST(request: Request) {
   const decoded = await verifyBearerToken(request);
@@ -112,15 +112,11 @@ export async function POST(request: Request) {
   );
   if (livePending) return fail(409, "duplicate", "There's already a pending application for this person or this team.");
 
-  // An account for this FTC team already exists: they should join it, not create another.
-  const [byNumbers, byLegacy] = await Promise.all([
-    db.collection("teams").where("fieldTeamNumbers", "array-contains", input.teamNumber).limit(1).get(),
-    // CS's own field: `teamNumber` is a STRING.
-    db.collection("teams").where("teamNumber", "==", String(input.teamNumber)).limit(1).get(),
-  ]);
-  const existingAccountForNumber = !byNumbers.empty || !byLegacy.empty;
+  // An account for this team already exists: they should join it, not create another. CS's own field: `teamNumber` is a STRING.
+  const existing = await db.collection("teams").where("teamNumber", "==", String(input.teamNumber)).limit(1).get();
+  const existingAccountForNumber = !existing.empty;
   if (existingAccountForNumber) {
-    return fail(409, "account-exists", `An account for FTC ${input.teamNumber} already exists. Ask your team's admin for the join code instead.`);
+    return fail(409, "account-exists", `An account for team ${input.teamNumber} already exists. Ask your team's admin for the join code instead.`);
   }
 
   const first = await lookupTeamForApplication(input.teamNumber, input.teamName);

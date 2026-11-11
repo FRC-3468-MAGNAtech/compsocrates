@@ -5,12 +5,12 @@ const AT = new Date("2026-11-06T12:00:00.000Z");
 
 describe("describeFirestoreError", () => {
   it("reads a Firestore permission error and keeps its message verbatim", () => {
-    const f = describeFirestoreError("Couldn't load matches", { code: "permission-denied", message: "Missing or insufficient permissions." }, 'libraryMatches where seasonId == "biobuzz", published == true', AT);
+    const f = describeFirestoreError("Couldn't load matches", { code: "permission-denied", message: "Missing or insufficient permissions." }, 'libraryMatches where seasonId == "rebuilt", published == true', AT);
     expect(f).toEqual({
       context: "Couldn't load matches",
       code: "permission-denied",
       message: "Missing or insufficient permissions.",
-      path: 'libraryMatches where seasonId == "biobuzz", published == true',
+      path: 'libraryMatches where seasonId == "rebuilt", published == true',
       at: "2026-11-06T12:00:00.000Z",
     });
   });

@@ -4,7 +4,6 @@ import { getAdminAuth, getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
 import { APPLICATION_LIMITS, effectiveStatus, sanitizeLine, sanitizeText } from "@/lib/applications";
-import { migratedFieldTeamId } from "@/lib/field-teams";
 import { DEFAULT_ROLE_ID, type RoleId } from "@/lib/roles";
 import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, normalizeTeamCode } from "@/data/cs/join-requests";
 import type { CsUserDoc } from "@/data/cs/types";
@@ -29,13 +28,13 @@ function toMs(value: unknown): number | null {
 
 /**
  * P20: the platform owner's review actions on team applications. Every action requires a platform owner (verified
- * email in OWNER_EMAILS plus the claim) and is logged in `platformAuditLog`. Nothing here is automatic: approval
+ * email in RELEASE_OWNER_EMAILS plus the claim) and is logged in `platformAuditLog`. Nothing here is automatic: approval
  * only happens when the platform owner presses it.
  *
- *  - approve: ONE transaction creates the team account (join code, `fieldTeams` with the applied team, `ownerUid` =
+ *  - approve: ONE transaction creates the team account (join code, `teamName`/`teamNumber`, `verifiedOwnerId` =
  *    the applicant), makes the applicant its owner and admin, marks the application approved and writes the audit
  *    entries. Refuses an expired or already-decided application, an applicant who has since joined a team, and an
- *    FTC number some account already has.
+ *    team number some account already has.
  *  - reject (with a reason the applicant sees), block (email and/or team number, which also ends the application),
  *    unblock, and private notes.
  */
@@ -121,25 +120,23 @@ async function approve(db: Firestore, applicationId: string, actor: Actor): Prom
     if (status !== "pending") throw new RouteError(409, "already-decided", `This application is already ${status}.`);
 
     const userRef = db.collection("users").doc(app.applicantUid);
-    const [userSnap, numbersSnap, legacySnap, code] = await Promise.all([
+    const [userSnap, numberSnap, code] = await Promise.all([
       txn.get(userRef),
-      txn.get(db.collection("teams").where("fieldTeamNumbers", "array-contains", app.teamNumber).limit(1)),
+      // CS's own field: `teamNumber` is a STRING.
       txn.get(db.collection("teams").where("teamNumber", "==", String(app.teamNumber)).limit(1)),
       claimFreeTeamCode(db, txn),
     ]);
     const applicant = userSnap.exists ? ((userSnap.data() ?? {}) as CsUserDoc) : null;
     if (applicant && normalizeTeamCode(applicant.teamId) !== "") throw new RouteError(409, "already-member", "The applicant has already joined a team account.");
-    if (!numbersSnap.empty || !legacySnap.empty) throw new RouteError(409, "account-exists", `An account for FTC ${app.teamNumber} already exists.`);
+    if (!numberSnap.empty) throw new RouteError(409, "account-exists", `An account for team ${app.teamNumber} already exists.`);
     if (!code) throw new RouteError(503, "code-collision", "Couldn't pick a free join code. Try again.");
 
     const teamRef = db.collection("teams").doc(code);
-    const fieldTeam = { id: migratedFieldTeamId(app.teamNumber), number: app.teamNumber, name: app.teamName || "" };
     const role: RoleId = (app.role as RoleId) ?? DEFAULT_ROLE_ID;
 
-    // CS-shaped team (teamName, teamNumber string, verifiedOwnerId, selectedEvents) + the additive CE FTC-team fields and the
-    // application link; the applicant becomes its owner and team admin (merge: an existing CS user doc keeps all its other fields).
-    txn.set(teamRef, { ...buildNewTeamDoc({ teamNumber: app.teamNumber, teamName: app.teamName || "", ownerUid: app.applicantUid, fieldTeam }, Date.now()), applicationId });
-    const creatorPatch = buildCreatorUserPatch({ teamId: code, role, fieldTeamIds: [fieldTeam.id] });
+    // CS-shaped team (teamName, teamNumber string, verifiedOwnerId, selectedEvents) + the application link; the applicant becomes its owner and team admin (merge: an existing CS user doc keeps all its other fields).
+    txn.set(teamRef, { ...buildNewTeamDoc({ teamNumber: app.teamNumber, teamName: app.teamName || "", ownerUid: app.applicantUid }, Date.now()), applicationId });
+    const creatorPatch = buildCreatorUserPatch({ teamId: code, role });
     if (applicant) txn.set(userRef, creatorPatch, { merge: true });
     else txn.set(userRef, { ...buildBaseUserDoc({ uid: app.applicantUid, email: app.applicantEmail, displayName: app.applicantName, role }, Date.now()), ...creatorPatch });
     txn.update(appRef, { status: "approved", decidedAt: FieldValue.serverTimestamp(), decidedBy: actor.uid, teamId: teamRef.id });

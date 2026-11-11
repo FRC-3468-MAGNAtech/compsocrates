@@ -6,26 +6,20 @@ import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { EventInfo } from "@/lib/events/types";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
-import { csTeamToTeamDoc, selectedEventsPatch } from "@/data/cs/teams";
-import type { FieldTeam } from "@/lib/field-teams";
+import { csTeamToTeamDoc, selectedEventNamesPatch, selectedEventsPatch } from "@/data/cs/teams";
 
 export type TeamDoc = {
-  /** Legacy single FTC team number. Since P19 it mirrors the first entry of `fieldTeams` (still read as a fallback until the migration has run). Prefer useFieldTeams() (lib/field-teams-context.tsx). */
+  /** The team's number, from CS's `teamNumber` string (0 when it has none). Prefer useOurTeam() (lib/our-team.ts). */
   number: number;
+  /** The team's name, from CS's `teamName`. */
   name: string | null;
-  /** P19: the account's FTC teams, in the admin's order. Absent on accounts the migration hasn't reached; `readFieldTeams()` (lib/field-teams.ts) falls back to `number`/`name`. */
-  fieldTeams?: FieldTeam[];
-  /** P19: ids of `fieldTeams`, same order. A rules-only mirror (firestore.rules can't project a list of maps) that member `fieldTeamIds` writes are checked against. */
-  fieldTeamIdList?: string[];
   /** P21: which form each season uses (`{ [seasonId]: formId }`), set by an admin. Absent = every season uses its own default (the built-in). See lib/forms/resolve.ts `activeFormIdFor`. */
   activeForms?: Record<string, string>;
-  /** P19/P20: the numbers of `fieldTeams`, same order: a queryable mirror (Firestore can't query inside a list of maps) so an application can check whether an account already has an FTC team. */
-  fieldTeamNumbers?: number[];
   /** P20: the TEAM owner's uid: authoritative for ownership. Server-written only (rules refuse it from any client). See lib/team-owner.ts. */
   ownerUid?: string;
   /** P20: a pending ownership transfer (see `readPendingTransfer`/`livePendingTransfer` in lib/team-owner.ts). Server-written only; expires after 7 days. */
   pendingTransfer?: unknown;
-  /** P19: optional display name for the account itself (e.g. the robotics organisation), separate from the FTC teams. */
+  /** Optional display name for the account itself (e.g. the robotics organisation), separate from the team's own name. Additive, not written by this app. */
   accountName?: string | null;
   joinCode: string;
   activeEventCode: string | null;
@@ -47,6 +41,8 @@ export type TeamDoc = {
   activeEvents?: EventInfo[];
   /** D1: CS's `selectedEvents` (TBA keys): the SINGLE source of truth for the active events. `activeEvents` and friends above are derived from it on read. */
   selectedEvents?: string[];
+  /** ADDITIVE (rebuild only): `{ [eventKey]: name }` for the selected events, written with `selectedEvents` (see data/cs/teams.ts). The "stored" step of the event-name chain (lib/events/names.ts). */
+  selectedEventNames?: Record<string, string>;
   /** D1: CS `submissionControls` as stored. Use `submissionLockout` to gate a new submission. */
   submissionControls?: CsSubmissionControls;
   /** D1: the lockout CS's `assertSubmissionsOpen` enforces on every NEW submission (edit mode bypasses it). */
@@ -115,7 +111,8 @@ export function useTeamDoc(teamId: string | null) {
  * the call site (Event Selection page) via usePermissions(); also enforced in firestore.rules.
  */
 export async function setActiveEvents(teamId: string, state: ActiveEventsState) {
-  await setDoc(doc(db, "teams", teamId), selectedEventsPatch(state), { merge: true });
+  // `selectedEventNames` is the additive names map (merged key by key, nothing else touched); absent when no event has a real name yet.
+  await setDoc(doc(db, "teams", teamId), { ...selectedEventsPatch(state), ...selectedEventNamesPatch(state) }, { merge: true });
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */

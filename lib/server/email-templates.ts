@@ -29,9 +29,9 @@ export const emailTemplates = {
   applicationReceived(p: { to: string; name: string; teamNumber: number; statusUrl: string }): EmailMessage {
     return message(
       p.to,
-      `We received your application for FTC ${p.teamNumber}`,
+      `We received your application for team ${p.teamNumber}`,
       "Application received",
-      [`Hi ${p.name},`, `Thanks for applying to create a CompEpicurus account for FTC ${p.teamNumber}. The platform owner reviews every application by hand. You'll get an email when there's a decision, and you can check the status any time by signing in.`, "Applications that aren't reviewed within 30 days expire."],
+      [`Hi ${p.name},`, `Thanks for applying to create a CompEpicurus account for team ${p.teamNumber}. The platform owner reviews every application by hand. You'll get an email when there's a decision, and you can check the status any time by signing in.`, "Applications that aren't reviewed within 30 days expire."],
       { label: "Check your application", url: p.statusUrl }
     );
   },
@@ -39,9 +39,9 @@ export const emailTemplates = {
   newApplicationForOwner(p: { to: string[]; applicantName: string; applicantEmail: string; teamNumber: number; teamName: string; role: string; queueUrl: string }): EmailMessage {
     return message(
       p.to,
-      `New team application: FTC ${p.teamNumber}`,
+      `New team application: team ${p.teamNumber}`,
       "A new team application is waiting",
-      [`${p.applicantName} (${p.applicantEmail}) applied to create an account for FTC ${p.teamNumber}${p.teamName ? ` (${p.teamName})` : ""} as ${p.role}.`, "Open the review queue to see the verification signals and approve, reject or block it."],
+      [`${p.applicantName} (${p.applicantEmail}) applied to create an account for team ${p.teamNumber}${p.teamName ? ` (${p.teamName})` : ""} as ${p.role}.`, "Open the review queue to see the verification signals and approve, reject or block it."],
       { label: "Open the review queue", url: p.queueUrl }
     );
   },
@@ -49,9 +49,9 @@ export const emailTemplates = {
   applicationApproved(p: { to: string; name: string; teamNumber: number; appUrl: string }): EmailMessage {
     return message(
       p.to,
-      `Your CompEpicurus account for FTC ${p.teamNumber} is ready`,
+      `Your CompEpicurus account for team ${p.teamNumber} is ready`,
       "You're approved",
-      [`Hi ${p.name},`, `Your application for FTC ${p.teamNumber} was approved. Your team's account has been created and you're its owner and an admin. Sign in to set up your team, share the join code with your teammates, and choose your events.`],
+      [`Hi ${p.name},`, `Your application for team ${p.teamNumber} was approved. Your team's account has been created and you're its owner and an admin. Sign in to set up your team, share the join code with your teammates, and choose your events.`],
       { label: "Open CompEpicurus", url: p.appUrl }
     );
   },
@@ -59,9 +59,9 @@ export const emailTemplates = {
   applicationRejected(p: { to: string; name: string; teamNumber: number; reason: string; statusUrl: string }): EmailMessage {
     return message(
       p.to,
-      `Your application for FTC ${p.teamNumber}`,
+      `Your application for team ${p.teamNumber}`,
       "Your application wasn't approved",
-      [`Hi ${p.name},`, `We couldn't approve your application for FTC ${p.teamNumber}.`, `Reason: ${p.reason}`, "If that's something you can fix (for example, a clearer way for us to verify your team), you're welcome to apply again."],
+      [`Hi ${p.name},`, `We couldn't approve your application for team ${p.teamNumber}.`, `Reason: ${p.reason}`, "If that's something you can fix (for example, a clearer way for us to verify your team), you're welcome to apply again."],
       { label: "View your application", url: p.statusUrl }
     );
   },

@@ -6,7 +6,7 @@ import type { LibraryMatch } from "@/lib/match-library";
 function match(id: string, matchNumber: number, red: Difficulty, blue: Difficulty): LibraryMatch {
   return {
     id,
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     eventCode: "USWABON1",
     eventName: "Rookie Rumble",
     matchType: "Qualification",

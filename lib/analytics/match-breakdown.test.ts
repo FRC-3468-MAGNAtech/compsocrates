@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { initialScoutEntryFields, type ScoutEntryFields } from "@/lib/scout-entries";
-import { BIOBUZZ_FORM_SCHEMA } from "@/lib/scout-form/schema";
+import type { FormValues } from "@/lib/forms/types";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
 import type { EventMatch } from "@/lib/events/types";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { AnalyticsEntry } from "./entries";
 import {
   buildMatchBreakdowns,
-  ftcMatchToOfficial,
+  matchToOfficial,
   libraryMatchToOfficial,
   matchHasTeam,
   summarizeEntry,
@@ -14,23 +14,23 @@ import {
 } from "./match-breakdown";
 
 let n = 0;
-function entry(teamNumber: number, total: number, over: Omit<Partial<AnalyticsEntry>, "fields"> & { fields?: Partial<ScoutEntryFields> } = {}): AnalyticsEntry {
+function entry(teamNumber: number, total: number, over: Partial<AnalyticsEntry> & { values?: FormValues } = {}): AnalyticsEntry {
   n += 1;
-  const { fields, ...rest } = over;
+  const { values, ...rest } = over;
   return {
     id: `e${n}`,
     teamId: "t",
     uid: "u",
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: "Scout",
     eventCode: "EVT1",
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber,
-    fields: { ...initialScoutEntryFields, ...fields },
+    values: { ...values },
     score: { auto: 0, teleop: total, endgame: 0, total },
     comments: "",
     submittedAt: `2026-01-01T00:00:${String(n).padStart(2, "0")}.000Z`,
@@ -267,7 +267,7 @@ describe("ordering and search", () => {
 
 describe("converters", () => {
   it("converts a FIRST API match", () => {
-    const ftc: EventMatch = {
+    const raw: EventMatch = {
       id: "x",
       matchNumber: 7,
       type: "Playoff",
@@ -282,7 +282,7 @@ describe("converters", () => {
       bluePenaltyPoints: null,
       startTime: null,
     };
-    expect(ftcMatchToOfficial("EVT9", ftc)).toEqual({
+    expect(matchToOfficial("EVT9", raw)).toEqual({
       eventCode: "EVT9",
       matchType: "Playoff",
       matchNumber: 7,
@@ -311,26 +311,26 @@ describe("converters", () => {
 describe("summarizeEntry", () => {
   it("sums counters by game element, lists toggles that were on, and the incidents", () => {
     const e = entry(1, 40, {
-      fields: {
+      values: {
         autoLeave: true,
         autoPark: true,
         endgamePark: true,
-        autoTipHive: 1,
-        teleTipHive: 2,
-        flowerPollenNectar: 4,
+        autoScoreA: 1,
+        teleScoreA: 2,
+        teleScoreB: 4,
         diedDuringMatch: true,
         yellowCard: true,
       },
     });
-    const s = summarizeEntry(e, BIOBUZZ_FORM_SCHEMA);
-    expect(s.counts).toEqual(expect.arrayContaining([{ label: "Hive", count: 3 }, { label: "Flower", count: 4 }]));
-    expect(s.counts.find((c) => c.label === "Garden")).toBeUndefined();
+    const s = summarizeEntry(e, SAMPLE_FORM);
+    expect(s.counts).toEqual(expect.arrayContaining([{ label: "Target A", count: 3 }, { label: "Target B", count: 4 }]));
+    expect(s.counts.find((c) => c.label === "Target C")).toBeUndefined();
     // "Park" appears in both phases, so the phase is added; "Leave" is unique.
     expect(s.toggles.sort()).toEqual(["Leave", "Park (auto)", "Park (endgame)"].sort());
     expect(s.incidents.sort()).toEqual(["Died During Match", "Yellow Card"]);
   });
 
   it("is empty for a quiet robot", () => {
-    expect(summarizeEntry(entry(1, 0), BIOBUZZ_FORM_SCHEMA)).toEqual({ counts: [], toggles: [], incidents: [] });
+    expect(summarizeEntry(entry(1, 0), SAMPLE_FORM)).toEqual({ counts: [], toggles: [], incidents: [] });
   });
 });

@@ -78,7 +78,7 @@ function entry(id: string, uid: string, overrides: Partial<ScoutEntry> = {}): Sc
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber: 1,
-    fields: {} as ScoutEntry["fields"],
+    values: {},
     score: { auto: 0, teleop: 0, endgame: 0, total: 0 },
     comments: "",
     submittedAt: "2026-03-02T10:00:00.000Z",

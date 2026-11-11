@@ -2,17 +2,17 @@ import "server-only";
 import type { Firestore } from "firebase-admin/firestore";
 import { getAdminMessaging } from "@/lib/firebase/admin";
 import { appBaseUrl, platformOwnerEmails, sendEmail } from "@/lib/server/email";
+import { releaseOwnerUids } from "@/lib/server/env";
 import { emailTemplates } from "@/lib/server/email-templates";
-import { CS_OWNER_UIDS } from "@/config/cs";
 
 /**
  * Push tokens of every platform owner: users carrying the `isPlatformOwner` mirror (email owners, written by sync-roles) plus the
- * users whose uid is in `CS_OWNER_UIDS` (CS's owner layer has no mirror field, so they are read by id).
+ * users whose uid is in RELEASE_OWNER_UIDS (CS's owner layer has no mirror field, so they are read by id).
  */
 async function platformOwnerPushTokens(db: Firestore): Promise<string[]> {
   const [mirrored, byUid] = await Promise.all([
     db.collection("users").where("isPlatformOwner", "==", true).get(),
-    Promise.all(CS_OWNER_UIDS.map((uid) => db.collection("users").doc(uid).get())),
+    Promise.all(releaseOwnerUids().map((uid) => db.collection("users").doc(uid).get())),
   ]);
   const docs = [...mirrored.docs, ...byUid.filter((d) => d.exists)];
   return [...new Set(docs.flatMap((d) => (Array.isArray(d.data()?.fcmTokens) ? (d.data()?.fcmTokens as string[]) : [])))];
@@ -22,13 +22,13 @@ async function platformOwnerPushTokens(db: Firestore): Promise<string[]> {
  * P20: tells the platform owner(s) a new application arrived. Two best-effort channels (the in-app badge on the
  * Admin Panel needs no sending: it counts pending applications live): a web push to every device any
  * platform owner enabled push on (`users.fcmTokens`, the same tokens live-score notifications use), and an email to
- * the OWNER_EMAILS addresses (when email is configured). Neither can fail the application.
+ * the RELEASE_OWNER_EMAILS addresses (when email is configured). Neither can fail the application.
  */
 export async function notifyPlatformOwnersOfApplication(
   db: Firestore,
   app: { applicationId: string; applicantName: string; applicantEmail: string; teamNumber: number; teamName: string; role: string }
 ): Promise<void> {
-  const title = `New team application: FTC ${app.teamNumber}`;
+  const title = `New team application: team ${app.teamNumber}`;
   const body = `${app.applicantName} applied to create a team account.`;
 
   try {
@@ -51,7 +51,7 @@ export async function notifyPlatformOwnersOfApplication(
 
 /**
  * P23: tells the platform owner(s) a form template is waiting for review (a new publish request, or a new version of a public template). Same two
- * best-effort channels as applications (push to their devices, email to OWNER_EMAILS); the Template Review tab needs no sending, it reads the queue live.
+ * best-effort channels as applications (push to their devices, email to RELEASE_OWNER_EMAILS); the Template Review tab needs no sending, it reads the queue live.
  */
 export async function notifyPlatformOwnersOfTemplate(db: Firestore, t: { templateId: string; templateName: string; authorName: string; update: boolean }): Promise<void> {
   const title = t.update ? `Template update: ${t.templateName}` : `Template to review: ${t.templateName}`;

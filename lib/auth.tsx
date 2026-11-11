@@ -24,7 +24,7 @@ import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToProfile, profilePatchToCsUser } from "@/data/cs/users";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
-import { syncFieldTeams, syncRoles } from "@/lib/team-enrollment";
+import { syncRoles } from "@/lib/team-enrollment";
 import type { RoleId } from "@/lib/roles";
 import type { AvatarChoice } from "@/lib/profile/config";
 
@@ -72,17 +72,13 @@ export type UserDoc = {
   /** Set only by app/api/auth/sync-roles (Admin SDK) — see docs/ASSUMPTIONS.md (P1b). Clients can never write this (firestore.rules). */
   /** P20: the TEAM owner (a mirror of teams/{teamId}.ownerUid, written only by the server routes in the same transaction). Authoritative is `ownerUid`; see lib/team-owner.ts. */
   isOwner: boolean;
-  /** P20: a PLATFORM owner (an email in OWNER_EMAILS, set by app/api/auth/sync-roles). Approves applications, switches team creation, force-transfers for recovery. Clients can never write it. */
+  /** P20: a PLATFORM owner (a uid in RELEASE_OWNER_UIDS or a verified email in RELEASE_OWNER_EMAILS, set by app/api/auth/sync-roles). Approves applications, switches team creation, force-transfers for recovery. Clients can never write it. */
   isPlatformOwner?: boolean;
   themeId: string;
   /** P18: "light" | "dark" | "system". Separate from themeId; absent until the user first picks one (then this browser's, or the system's, applies). Ignored while a pride theme is active. */
   colorMode?: "light" | "dark" | "system";
   /** P32: how strongly a gradient / pride theme's painted page shows (Settings > Appearance > Gradient intensity). Absent means the default, Vivid. Their own to write (the own-profile update rule has no key allowlist). */
   gradientIntensity?: "subtle" | "normal" | "vivid";
-  /** P19: the FTC teams (ids from teams/{teamId}.fieldTeams) this member is assigned to. Admin-only to change (firestore.rules); absent until the migration runs, and an empty/unresolvable list counts as "all teams" (lib/field-teams.ts). */
-  fieldTeamIds?: string[];
-  /** P19: the FTC team this user is "viewing as" (their own choice, saved so it follows them across devices). Resolved against their assigned teams, so a stale id is harmless. */
-  activeFieldTeamId?: string | null;
   /** P14: when the user last opened the Changelog (a Firestore Timestamp; absent until they first do) — drives the unread dot on its nav item. */
   lastSeenChangelogAt?: unknown;
   /** FIX3: the layered-glass level (0.3-2, 1 = default), saved per user so it follows them across devices. See lib/glass-layer.tsx. */
@@ -120,9 +116,9 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
-  updateUserProfile: (patch: Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "activeFieldTeamId" | "avatar">>) => Promise<void>;
+  updateUserProfile: (patch: Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar">>) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
-  /** FIX2: this account's email is in OWNER_EMAILS but isn't verified yet, so owner access hasn't been applied. Drives the "Verify your email to activate owner access" notice. */
+  /** FIX2: this account's email is in RELEASE_OWNER_EMAILS but isn't verified yet, so owner access hasn't been applied. Drives the "Verify your email to activate owner access" notice. */
   ownerPendingVerification: boolean;
   /** After the user clicks the verification link: reloads the account, refreshes the ID token, and re-runs the owner/admin sync, without a sign-out. */
   recheckOwnerAccess: () => Promise<void>;
@@ -153,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const onSignedIn = async (signedInUser: FirebaseUser) => {
     setLinkedProviders(signedInUser.providerData.map((p) => p.providerId));
     await syncServerSession(signedInUser);
-    // Grants owner/admin (from OWNER_EMAILS/ADMIN_EMAILS) idempotently on
+    // Grants platform-owner access (from RELEASE_OWNER_UIDS / RELEASE_OWNER_EMAILS) idempotently on
     // every sign-in. If it actually changed anything, the custom claims on
     // this session are stale until the token is force-refreshed.
     const { changed, ownerPendingVerification: pending } = await syncRoles();
@@ -162,10 +158,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signedInUser.getIdToken(true);
       await syncServerSession(signedInUser);
     }
-    // P19: idempotent FTC-teams migration for this account (a no-op once done). Not awaited: nothing
-    // waits on it, readers fall back to the legacy team number until the doc updates, and the
-    // realtime listeners pick the result up on their own.
-    void syncFieldTeams();
   };
 
   const handleGoogleAuthError = (err: unknown): never => {
@@ -332,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLinkedProviders(auth.currentUser.providerData.map((p) => p.providerId));
   };
 
-  const updateUserProfile = async (patch: Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "activeFieldTeamId" | "avatar">>) => {
+  const updateUserProfile = async (patch: Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar">>) => {
     if (!auth.currentUser) throw new Error("Not signed in.");
     // CS field names, merge write: unknown CS fields (encryptedUserData, ...) are never touched (D10).
     await setDoc(doc(db, "users", auth.currentUser.uid), profilePatchToCsUser(patch, rawUserDoc.current ?? {}), { merge: true });

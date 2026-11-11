@@ -42,7 +42,7 @@ export function ResultsScreen({
     return <div className="glass-card h-64 animate-pulse" />;
   }
 
-  // One comparison tile per scouted robot (2 for FTC, 3 for FRC), in scouting order.
+  // One comparison tile per scouted robot (3 for FRC), in scouting order.
   const robotStats = session.robots.map((team, i) => ({ team, total: (entries.find((e) => e.teamNumber === team) ?? entries[i])?.score.total ?? 0 }));
   const accuracy = session.accuracy;
   const status = getStatus(accuracy);

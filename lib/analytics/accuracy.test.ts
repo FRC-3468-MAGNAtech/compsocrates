@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allianceForTeam, computeAllianceAccuracy } from "@/lib/analytics/accuracy";
-import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
+import { type ScoutEntry } from "@/lib/scout-entries";
 import type { EventMatch } from "@/lib/events/types";
 
 function makeEntry(overrides: Partial<ScoutEntry> & Pick<ScoutEntry, "teamNumber">): ScoutEntry {
@@ -10,13 +10,13 @@ function makeEntry(overrides: Partial<ScoutEntry> & Pick<ScoutEntry, "teamNumber
     uid: "uid-1",
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: "Test Scout",
     eventCode: "EVENT1",
     matchType: "Qualification",
     matchNumber: 1,
-    fields: initialScoutEntryFields,
+    values: {},
     score: { auto: 0, teleop: 0, endgame: 0, total: 0 },
     comments: "",
     submittedAt: new Date().toISOString(),

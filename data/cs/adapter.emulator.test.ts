@@ -146,7 +146,7 @@ vi.mock("react", async (importOriginal) => {
 });
 // useAssignments asks the event facade for the match schedule (TBA over the network). The tests have no schedule: slot positions fall back to
 // "first free slot" (documented in data/cs/assignments.ts), which is what the stored rows are matched by anyway.
-vi.mock("@/lib/events/use-event-query", () => ({ useFtcQuery: () => ({ data: [], error: null, loading: false }), useEventQuery: () => ({ data: [], error: null, loading: false }) }));
+vi.mock("@/lib/events/use-event-query", () => ({ useEventQuery: () => ({ data: [], error: null, loading: false }) }));
 vi.mock("@/lib/events/actions", () => ({ getMatchesForEvent: async () => ({ ok: true, data: [] }) }));
 
 const { renderHook } = rt;
@@ -189,6 +189,8 @@ const csTeams = await import("@/data/cs/teams");
 const { rebuiltPlugin } = await import("@/lib/games/rebuilt");
 const { REBUILT_FORM } = await import("@/lib/forms/builtin-rebuilt");
 const { calculateScore } = await import("@/lib/forms/scoring");
+const { BUILTIN_FORMS } = await import("@/lib/forms/builtin");
+const { defaultValues: formDefaultValues } = await import("@/lib/forms/values");
 
 const admin = () => getAdminFirestore()!;
 const PASSWORD = "password123";
@@ -445,6 +447,68 @@ describe("2. scouting writes", () => {
     await as(ada);
     await expect(scoutEntries.saveEntry(team, ada, rebuiltInput({ formId: "some-custom-form" }))).rejects.toThrow(/cannot be stored/);
     expect(await rowsOf("scouting", team)).toHaveLength(0);
+  });
+
+  // Per game: a submission of the game's own generated form goes through saveEntry (the same conversion as the pure data/cs/per-game.test.ts), is read back
+  // from the stored document, and scores what CS's own scoring gives that document. REEFSCAPE and CHARGED UP are writable like REBUILT.
+  describe.each([
+    {
+      game: "REEFSCAPE" as const,
+      formId: "reefscape",
+      entered: { startingPosition: "middle", leftStartingZone: true, autoCoralL4: 2, teleopCoralL2: 3, teleopNetHumanScored: 1, stageStatus: "deep", penaltyPoints: 5, incidents_tipped: true, notes: "fast" },
+      raw: { game: "REEFSCAPE", leftStartingZone: true, autoCoralL4: 2, teleopCoralL2: 3, teleopNetHumanScored: 1, stageStatus: "deep", penaltyPoints: 5, incidents: ["tipped"], notes: "fast" },
+      total: 47,
+    },
+    {
+      game: "CHARGED_UP" as const,
+      formId: "charged_up",
+      entered: { startingPosition: "Middle", mobility: true, auto_gridTop: 2, auto_chargeStation: "engaged", teleop_gridMiddle: 3, teleop_links: 1, endgame_chargeStation: "docked", penaltyPoints: 4, incidents_died: true, notes: "late" },
+      raw: {
+        game: "CHARGED_UP",
+        mobility: true,
+        auto: { mobility: true, gridTop: 2, chargeStation: "engaged" },
+        teleop: { gridMiddle: 3, links: 1 },
+        endgame: { chargeStation: "docked" },
+        penaltyPoints: 4,
+        incidents: ["died"],
+        notes: "late",
+      },
+      total: 51,
+    },
+  ])("saveEntry of a $game submission", ({ game, formId, entered, raw, total }) => {
+    it("stores the raw CS document, reads back with the oracle score, and a practice row carries the markers", async () => {
+      const form = BUILTIN_FORMS[formId];
+      const team = newTeamCode();
+      const ada = await seedUser(team, "ada");
+      await as(ada);
+      const values: FormValues = { ...formDefaultValues(form), ...(entered as unknown as FormValues) };
+      const input = { scoutName: "Ada Lovelace", eventCode: "2026arli", matchType: "Qualification" as const, matchNumber: 12, teamNumber: 1234, ...scoutEntries.entryPayloadFor(form, values, calculateScore(form, values)) };
+      await scoutEntries.saveEntry(team, ada, input);
+      await scoutEntries.saveEntry(team, ada, { ...input, matchNumber: 7, source: "practice", mode: "trial", sessionId: "PS-GAME01", libraryMatchId: "cs:2026arli_Q7" });
+
+      const stored = await rowsOf("scouting", team);
+      expect(stored).toHaveLength(2);
+      const official = stored.find((r) => r.data.matchNumber === "12")!.data;
+      expect(official).toMatchObject({ teamId: team, scoutId: ada, teamNumber: "1234", matchType: "qualification", ...raw });
+      for (const key of ["values", "formId", "formVersion", "source", "score", "uid"]) expect(official).not.toHaveProperty(key);
+      expect(oracleTotal(official, game)).toBe(total);
+
+      const entries = await scoutEntries.getEntries(team);
+      const entry = entries.find((e) => e.matchNumber === 12)!;
+      expect(entry).toMatchObject({ game, formId, source: "event", teamNumber: 1234, comments: entered.notes });
+      expect(entry.score.total).toBe(total);
+      for (const [key, value] of Object.entries(entered)) expect(entry.values?.[key], key).toEqual(value);
+
+      const [practice] = await scoutEntries.getEntriesForSession(team, "PS-GAME01");
+      expect(practice).toMatchObject({ game, source: "practice", mode: "trial", sessionId: "PS-GAME01" });
+      expect(stored.find((r) => r.id === practice.id)!.data).toMatchObject({ isPracticeScouting: true, practiceMode: "trial", practiceSessionId: "PS-GAME01", game });
+
+      // the admin editor path: an edit merge-writes only what changed and keeps the CS shape
+      await scoutEntries.updateEntry(entry.id, { values: { ...entry.values, notes: "edited" }, comments: "edited" }, { teamId: team });
+      const edited = (await rowsOf("scouting", team)).find((r) => r.id === entry.id)!.data;
+      expect(edited).toMatchObject({ ...raw, notes: "edited" });
+      expect(oracleTotal(edited, game)).toBe(total);
+    });
   });
 
   async function seeded(extra: CsRecord = {}) {

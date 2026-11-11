@@ -17,7 +17,7 @@ export type Role = {
 };
 
 // Fixed, distinct hues per role (not derived from the active theme's single
-// accent) — both existing themes (team red/gold, BIOBUZZ amber) are warm,
+// accent) — the original themes (team red/gold, CompSocrates red) are warm,
 // so role colors need to read as distinct from the theme *and* from each
 // other, not a tint of it.
 export const ROLES: Role[] = [

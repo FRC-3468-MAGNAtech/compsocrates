@@ -88,9 +88,9 @@ describe("the page background in CSS", () => {
     expect(themeCss()).not.toMatch(/in oklch|oklch\(|oklab\(/);
   });
 
-  it("Team Colors and BIOBUZZ still paint their plain, original backgrounds", () => {
+  it("Team Colors and CompSocrates still paint their plain, original backgrounds", () => {
     expect(pageBackground(tokensFor(getTheme("team"), "dark"))).toBe("#17070c");
-    expect(pageBackground(tokensFor(getTheme("biobuzz"), "dark"))).toBe("#16110a");
+    expect(pageBackground(tokensFor(getTheme("compsocrates"), "dark"))).toBe("#0f1117");
   });
 });
 

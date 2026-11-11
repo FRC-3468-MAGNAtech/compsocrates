@@ -28,7 +28,7 @@ function tripsUnrealisticScoringRule(entry: ScoutEntry): boolean {
 }
 
 export type PracticeFlagInput = {
-  /** One entry per scouted robot of the alliance (2 for FTC, 3 for FRC). */
+  /** One entry per scouted robot of the alliance (3 for FRC). */
   entries: readonly ScoutEntry[];
   mode: SessionMode;
   /** 0-1, how much of the video had played when the session finished — null if unknown/not applicable (e.g. Trial, where this flag never applies). */

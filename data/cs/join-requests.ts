@@ -313,8 +313,6 @@ export type NewTeamInput = {
   teamNumber: number;
   teamName?: string | null;
   ownerUid: string;
-  /** CE FTC-team extras (additive): the account's first FTC team. */
-  fieldTeam?: { id: string; number: number; name: string };
 };
 
 /**
@@ -329,9 +327,6 @@ export function buildNewTeamDoc(input: NewTeamInput, nowMs: number): CsRecord {
     verifiedOwnerId: input.ownerUid,
     selectedEvents: [],
     createdAt: nowMs,
-    ...(input.fieldTeam
-      ? { fieldTeams: [input.fieldTeam], fieldTeamIdList: [input.fieldTeam.id], fieldTeamNumbers: [input.fieldTeam.number] }
-      : {}),
   };
 }
 
@@ -339,7 +334,7 @@ export function buildNewTeamDoc(input: NewTeamInput, nowMs: number): CsRecord {
  * The user-doc patch for the creator of a team: a team admin on the new team (CS signup passed `isTeamAdmin: true` with the
  * team code as `teamId`). `isOwner` is the additive CE mirror of `verifiedOwnerId`, written only by server routes.
  */
-export function buildCreatorUserPatch(input: { teamId: string; role?: unknown; fieldTeamIds?: string[] }): CsRecord {
+export function buildCreatorUserPatch(input: { teamId: string; role?: unknown }): CsRecord {
   const role = isRoleId(input.role) ? input.role : DEFAULT_ROLE_ID;
   return {
     teamId: normalizeTeamCode(input.teamId),
@@ -348,7 +343,6 @@ export function buildCreatorUserPatch(input: { teamId: string; role?: unknown; f
     secondaryRoles: [],
     isTeamAdmin: true,
     isOwner: true,
-    ...(input.fieldTeamIds ? { fieldTeamIds: input.fieldTeamIds } : {}),
   };
 }
 

@@ -7,8 +7,9 @@ import { useTeamPracticeSessions } from "@/lib/practice-sessions";
 import type { RoleId } from "@/lib/roles";
 import { useTeamScoutEntries, type ScoutEntry } from "@/lib/scout-entries";
 import { useTeamMembers } from "@/lib/team-members";
-import { useFieldTeams } from "@/lib/field-teams-context";
+import { eventLabel } from "@/lib/events/names";
 import type { EventInfo } from "@/lib/events/types";
+import { useEventNames } from "@/lib/events/use-event-names";
 import { computeScoutStats } from "./engine";
 import type { RankingBasisId, RealEventCalculationScope, ScoutCategory, ScoutStatsResult } from "./types";
 
@@ -34,6 +35,9 @@ export function useScoutStatsSources(teamId: string | null) {
  * of the data-only events. With no active events this is unchanged.
  */
 export function useRealEventOptions(entries: ScoutEntry[], activeEvents: EventInfo[] = []): { eventCode: string; eventName: string }[] {
+  // Data-only events are named through the shared chain (API, stored, static, key) instead of showing as a bare key.
+  const dataCodes = useMemo(() => [...new Set(entries.filter((e) => e.source === "event" || e.source === "live").map((e) => e.eventCode))], [entries]);
+  const names = useEventNames(dataCodes);
   return useMemo(() => {
     const latestByCode = new Map<string, string>();
     for (const e of entries) {
@@ -46,9 +50,9 @@ export function useRealEventOptions(entries: ScoutEntry[], activeEvents: EventIn
     const dataOnly = [...latestByCode.entries()]
       .filter(([eventCode]) => !activeCodes.has(eventCode))
       .sort((a, b) => b[1].localeCompare(a[1]))
-      .map(([eventCode]) => ({ eventCode, eventName: eventCode }));
+      .map(([eventCode]) => ({ eventCode, eventName: names[eventCode]?.name ?? eventLabel({ key: eventCode }) }));
     return [...active, ...dataOnly];
-  }, [entries, activeEvents]);
+  }, [entries, activeEvents, names]);
 }
 
 export type UseScoutStatsOptions = {
@@ -56,20 +60,17 @@ export type UseScoutStatsOptions = {
   category: ScoutCategory;
   roleFilter: RoleId[];
   eventFilter: string[];
-  /** P19: FTC team ids to show (empty = everyone). */
-  teamFilter?: string[];
   rankingBasis: RankingBasisId;
   realEventScope: RealEventCalculationScope;
 };
 
 /** Combines `useScoutStatsSources` with `computeScoutStats`, memoized on every input that actually changes the result. */
-export function useScoutStats({ teamId, category, roleFilter, eventFilter, teamFilter, rankingBasis, realEventScope }: UseScoutStatsOptions): {
+export function useScoutStats({ teamId, category, roleFilter, eventFilter, rankingBasis, realEventScope }: UseScoutStatsOptions): {
   result: ScoutStatsResult | null;
   loaded: boolean;
   sources: ReturnType<typeof useScoutStatsSources>;
 } {
   const sources = useScoutStatsSources(teamId);
-  const { fieldTeams } = useFieldTeams();
   const { members, sessions, entries, libraryMatchesById, attendance, loaded } = sources;
 
   const result = useMemo(() => {
@@ -83,8 +84,6 @@ export function useScoutStats({ teamId, category, roleFilter, eventFilter, teamF
       attendance,
       roleFilter,
       eventFilter,
-      teamFilter,
-      fieldTeams,
       rankingBasis,
       realEventScope,
     });
@@ -99,8 +98,6 @@ export function useScoutStats({ teamId, category, roleFilter, eventFilter, teamF
     attendance,
     roleFilter,
     eventFilter,
-    teamFilter,
-    fieldTeams,
     rankingBasis,
     realEventScope.eventCode,
     realEventScope.variant,

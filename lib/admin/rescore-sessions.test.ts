@@ -3,12 +3,17 @@ import type { LibraryMatch } from "@/lib/match-library";
 import type { EventMatch } from "@/lib/events/types";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import type { ScoutEntry } from "@/lib/scout-entries";
-import { buildSessionRescorePlan, sessionRescorePatchChanges } from "./rescore-sessions";
+import type { FormValues } from "@/lib/forms/types";
+import { SAMPLE_FORM } from "@/lib/forms/test-fixtures";
+import { buildSessionRescorePlan as buildPlan, sessionRescorePatchChanges } from "./rescore-sessions";
+
+// the sample form is not a built-in, so rescoring resolves it explicitly
+const buildSessionRescorePlan = (...args: [Parameters<typeof buildPlan>[0], Parameters<typeof buildPlan>[1], Parameters<typeof buildPlan>[2], Parameters<typeof buildPlan>[3], Parameters<typeof buildPlan>[4]]) => buildPlan(...args, () => SAMPLE_FORM);
 
 function libraryMatch(overrides: Partial<LibraryMatch["alliances"]["red"]> = {}): LibraryMatch {
   return {
     id: "USWABON1_Q1",
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     eventCode: "USWABON1",
     eventName: "Rookie Rumble",
     matchType: "Qualification",
@@ -29,7 +34,7 @@ function session(overrides: Partial<PracticeSession> & { id: string }): Practice
     uid: overrides.id,
     scoutName: overrides.id,
     kind: "solo",
-    seasonId: "biobuzz",
+    seasonId: "rebuilt",
     mode: "trial",
     difficulty: "medium",
     libraryMatchId: "USWABON1_Q1",
@@ -61,39 +66,22 @@ function session(overrides: Partial<PracticeSession> & { id: string }): Practice
 }
 
 function entry(
-  overrides: Partial<Omit<ScoutEntry, "fields">> & { id: string; total: number; sessionId: string; fields?: Partial<ScoutEntry["fields"]> }
+  overrides: Partial<ScoutEntry> & { id: string; total: number; sessionId: string; values?: FormValues }
 ): ScoutEntry {
-  const { fields: fieldOverrides, ...rest } = overrides;
+  const { values: valueOverrides, ...rest } = overrides;
   return {
     teamId: "team1",
     uid: overrides.id,
     source: "practice",
     mode: "trial",
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: overrides.id,
     eventCode: "USWABON1",
     matchType: "Qualification",
     matchNumber: 1,
     teamNumber: 100,
-    fields: {
-      autoLeave: false,
-      autoPark: false,
-      autoTipHive: 0,
-      teleTipHive: 0,
-      flowerBottomNectar: false,
-      flowerPollenNectar: 0,
-      gardenPollenNectar: 0,
-      endgamePark: false,
-      diedDuringMatch: false,
-      neverStartedMatch: false,
-      disabledByFtc: false,
-      recoveredFromFreeze: false,
-      tippedOver: false,
-      yellowCard: false,
-      redCard: false,
-      ...fieldOverrides,
-    },
+    values: { ...valueOverrides },
     score: { auto: 0, teleop: 0, endgame: 0, total: overrides.total },
     comments: "",
     submittedAt: "2026-01-02T00:00:00.000Z",
@@ -107,12 +95,12 @@ function entry(
 }
 
 describe("buildSessionRescorePlan — solo", () => {
-  it("recomputes a solo session's accuracy from each entry's fields, not its stored score", () => {
+  it("recomputes a solo session's accuracy from each entry's values, not its stored score", () => {
     const sessions = [session({ id: "s1" })];
     const entries = [
-      // teleTipHive is worth 20/tip in BIOBUZZ_FORM_SCHEMA — 5 tips recalculates to 100,
+      // teleScoreA is worth 20/tally in SAMPLE_FORM — 5 tallies recalculates to 100,
       // regardless of the stale `total: 50` this factory would otherwise stamp on `score`.
-      entry({ id: "e1", total: 50, sessionId: "s1", teamNumber: 100, fields: { teleTipHive: 5 } }),
+      entry({ id: "e1", total: 50, sessionId: "s1", teamNumber: 100, values: { teleScoreA: 5 } }),
       entry({ id: "e2", total: 50, sessionId: "s1", teamNumber: 200 }),
     ];
     const libraryMatchesById = new Map([["USWABON1_Q1", libraryMatch()]]);
@@ -135,7 +123,7 @@ describe("buildSessionRescorePlan — solo", () => {
     const sessions = [session({ id: "s1", seasonId: "other-season" })];
     const entries = [entry({ id: "e1", total: 50, sessionId: "s1" }), entry({ id: "e2", total: 50, sessionId: "s1" })];
     const libraryMatchesById = new Map([["USWABON1_Q1", libraryMatch()]]);
-    expect(buildSessionRescorePlan(sessions, entries, libraryMatchesById, new Map(), { seasonId: "biobuzz" })).toHaveLength(0);
+    expect(buildSessionRescorePlan(sessions, entries, libraryMatchesById, new Map(), { seasonId: "rebuilt" })).toHaveLength(0);
     expect(buildSessionRescorePlan(sessions, entries, libraryMatchesById, new Map(), { seasonId: "other-season" })).toHaveLength(1);
   });
 });
@@ -168,7 +156,7 @@ describe("buildSessionRescorePlan — lobby", () => {
 });
 
 describe("buildSessionRescorePlan — live", () => {
-  function ftcMatch(overrides: Partial<EventMatch> = {}): EventMatch {
+  function liveMatch(overrides: Partial<EventMatch> = {}): EventMatch {
     return {
       id: "m1",
       matchNumber: 1,
@@ -193,10 +181,10 @@ describe("buildSessionRescorePlan — live", () => {
       session({ id: "s2", kind: "live", libraryMatchId: null, matchType: "Qualification", matchNumber: 1, lobbyId: null, pairId: null }),
     ];
     const entries = [
-      entry({ id: "e1", total: 50, sessionId: "s1", source: "live", teamNumber: 100, fields: { teleTipHive: 5 } }),
+      entry({ id: "e1", total: 50, sessionId: "s1", source: "live", teamNumber: 100, values: { teleScoreA: 5 } }),
       entry({ id: "e2", total: 50, sessionId: "s2", source: "live", teamNumber: 200 }),
     ];
-    const liveMatchesByKey = new Map([["USWABON1|Qualification|1", ftcMatch()]]);
+    const liveMatchesByKey = new Map([["USWABON1|Qualification|1", liveMatch()]]);
     const plan = buildSessionRescorePlan(sessions, entries, new Map(), liveMatchesByKey, {});
     expect(plan).toHaveLength(1);
     expect(plan[0].kind).toBe("live");
@@ -212,7 +200,7 @@ describe("buildSessionRescorePlan — live", () => {
       entry({ id: "e1", total: 50, sessionId: "s1", source: "live" }),
       entry({ id: "e2", total: 50, sessionId: "s2", source: "live" }),
     ];
-    const liveMatchesByKey = new Map([["USWABON1|Qualification|1", ftcMatch({ redScore: null })]]);
+    const liveMatchesByKey = new Map([["USWABON1|Qualification|1", liveMatch({ redScore: null })]]);
     const plan = buildSessionRescorePlan(sessions, entries, new Map(), liveMatchesByKey, {});
     expect(plan).toHaveLength(0);
   });

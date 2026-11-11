@@ -3,7 +3,7 @@ import { selectAnalyticsEntries, type AnalyticsEntry } from "@/lib/analytics/ent
 import { DEFAULT_FILTERS } from "@/lib/analytics/filters";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 import type { MatchType } from "@/lib/events/types";
-import { initialScoutEntryFields, type ScoutEntry } from "@/lib/scout-entries";
+import { type ScoutEntry } from "@/lib/scout-entries";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 import { canEditScoutTargets } from "./permissions";
 import { classifyMatch, finalsMatchNumbers, statusMatchLabel } from "./categories";
@@ -34,14 +34,14 @@ function entry(uid: string, matchType: MatchType, matchNumber: number, teamNumbe
     uid,
     source: "event",
     mode: null,
-    formId: "biobuzz",
+    formId: "sample",
     formVersion: 1,
     scoutName: uid.toUpperCase(),
     eventCode: "EV1",
     matchType,
     matchNumber,
     teamNumber,
-    fields: initialScoutEntryFields,
+    values: {},
     score: { auto: 0, teleop: 0, endgame: 0, total: 0 },
     comments: "",
     submittedAt: `2026-11-05T10:${String(matchNumber).padStart(2, "0")}:00.000Z`,
@@ -396,7 +396,7 @@ describe("the accuracy filter drives every number", () => {
   const entries = [rawEntry("a", 1, 95), rawEntry("a", 2, 70), rawEntry("a", 3, null), rawEntry("a", 4, 75)];
   const ctx = buildEventContext({ eventCode: "EV1", matches: [1, 2, 3, 4].map((n) => official("Qualification", n)), setup: EMPTY_SETUP, enabled: ALL });
   const rowsFor = (accuracy: number | null) => {
-    const { used } = selectAnalyticsEntries({ entries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, gameId: "biobuzz", accuracy }, activeEventCodes: ["EV1"] });
+    const { used } = selectAnalyticsEntries({ entries, sessionsById: new Map(), filters: { ...DEFAULT_FILTERS, gameId: "sample", accuracy }, activeEventCodes: ["EV1"] });
     const rows = buildScoutRows({ scouts: [{ uid: "a", name: "A", role: null, inTargets: true }], entries: used, events: [ctx], targets: new Map(), assignedSlots: new Map(), hasAssignments: false, playedFraction: 1 });
     return { row: rows[0], coverage: buildCoverage({ events: [ctx], entries: used, practiceDataset: false }) };
   };

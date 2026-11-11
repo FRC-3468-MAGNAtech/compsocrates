@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatMatch } from "@/lib/analytics/game-schema";
 import { schemaFieldMeta } from "@/lib/analytics/team-stats";
 import { hasRole } from "@/lib/forms/meta";
-import { entryValues } from "@/lib/forms/legacy";
+import { entryValues } from "@/lib/forms/entry-values";
 import { useDashboard } from "@/lib/dashboard/data";
 import { phaseAverages } from "@/lib/dashboard/insights";
 import { cn } from "@/lib/utils";

@@ -72,7 +72,7 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
   const accuracy = session.accuracy!;
   const status = getStatus(accuracy);
   const percentColor = getPercentColor(accuracy);
-  // This scout's own robot first, then every other robot on the alliance (1 for FTC, 2 for FRC).
+  // This scout's own robot first, then every other robot on the alliance (2 for FRC).
   const allianceTeams = session.allianceTeams ?? session.robots;
   const robotStats = [session.robots[0], ...allianceTeams.filter((t) => t !== session.robots[0])].map((team) => ({
     team,

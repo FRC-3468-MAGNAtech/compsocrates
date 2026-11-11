@@ -16,6 +16,7 @@ import { buildMatchComparison, type TeamComparison } from "@/lib/analytics/resco
 import { useAccuracyRescouts } from "@/lib/analytics/use-accuracy-rescouts";
 import { useAuth } from "@/lib/auth";
 import type { PhaseScore, RescoutField } from "@/lib/games/types";
+import { EventName } from "@/components/events/event-name";
 import { cn } from "@/lib/utils";
 
 /** "level-2" / "outpost_side" to "Level 2" / "Outpost Side"; empty and zero-ish values to a dash (CS `toDisplayTitle`). */
@@ -69,7 +70,7 @@ export function AccuracyCompareView() {
           <div>
             <h2 className="text-xl font-semibold tracking-tight">Accuracy Comparison</h2>
             <p className="text-sm text-[var(--muted-foreground)]">
-              {eventKey.toUpperCase()} · {formatMatchIdLong(matchKey)} · {alliance === "red" ? "Red" : "Blue"} Alliance
+              <EventName eventKey={eventKey} /> · {formatMatchIdLong(matchKey)} · {alliance === "red" ? "Red" : "Blue"} Alliance
             </p>
           </div>
           {comparison && comparison.summaryPercent !== null && <Badge variant="glass" className="px-4 py-2 text-sm font-semibold">Line-by-line diff: {comparison.summaryPercent}%</Badge>}

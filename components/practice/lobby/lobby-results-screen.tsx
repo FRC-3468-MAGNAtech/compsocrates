@@ -18,7 +18,7 @@ import type { PracticeSession } from "@/lib/practice-sessions";
 
 type PairResult = {
   pair: PairAssignment;
-  /** One session per player in the group (2 for FTC, 3 for FRC). */
+  /** One session per player in the group (3 for FRC). */
   sessions: PracticeSession[];
   accuracy: number;
 };

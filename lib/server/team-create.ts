@@ -3,7 +3,7 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import type { CsUserDoc } from "@/data/cs/types";
 import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, generateTeamCode, normalizeTeamCode } from "@/data/cs/join-requests";
 import { str } from "@/data/cs/util";
-import { migratedFieldTeamId, parseFieldTeamNumber } from "@/lib/field-teams";
+import { parseTeamNumber } from "@/lib/team-number";
 import { APP_SETTINGS_PATH, getTeamCreationEnabledInTransaction } from "@/lib/server/team-settings";
 import type { Caller, RouteResult } from "@/lib/server/join-requests";
 
@@ -26,8 +26,8 @@ export async function claimFreeTeamCode(db: Firestore, txn: Transaction, random:
 /**
  * Creates a team as CS stores it, makes the caller its owner and admin, and switches public creation off, in ONE transaction
  * (two simultaneous creators cannot both win). Writes:
- *   teams/{CODE}: teamName, teamNumber (string), verifiedOwnerId, selectedEvents [], createdAt (ms), + CE fieldTeams* extras
- *   users/{uid} (merge): teamId, role/roles/secondaryRoles, isTeamAdmin true, isOwner true (CE mirror), fieldTeamIds
+ *   teams/{CODE}: teamName, teamNumber (string), verifiedOwnerId, selectedEvents [], createdAt (ms)
+ *   users/{uid} (merge): teamId, role/roles/secondaryRoles, isTeamAdmin true, isOwner true (CE mirror)
  * `{CODE}` is a random uppercase code, checked for collisions against existing team docs inside the transaction.
  */
 export async function createTeamForCaller(
@@ -37,7 +37,7 @@ export async function createTeamForCaller(
   nowMs: number = Date.now(),
   random: () => number = Math.random
 ): Promise<RouteResult> {
-  const teamNumber = parseFieldTeamNumber(typeof input.teamNumber === "number" || typeof input.teamNumber === "string" ? input.teamNumber : null);
+  const teamNumber = parseTeamNumber(typeof input.teamNumber === "number" || typeof input.teamNumber === "string" ? input.teamNumber : null);
   if (teamNumber === null) return fail(400, "bad-number", "Enter a valid team number.");
   const teamName = str(input.teamName).trim().slice(0, 80);
   const displayName = str(input.name).trim() || str(caller.name).trim() || str(caller.email).split("@")[0] || "";
@@ -53,9 +53,8 @@ export async function createTeamForCaller(
 
     if (!code) return fail(503, "code-collision", "Couldn't pick a free join code. Try again.");
 
-    const fieldTeam = { id: migratedFieldTeamId(teamNumber), number: teamNumber, name: teamName };
-    txn.set(db.collection("teams").doc(code), buildNewTeamDoc({ teamNumber, teamName, ownerUid: caller.uid, fieldTeam }, nowMs));
-    const patch = buildCreatorUserPatch({ teamId: code, role: input.role ?? user?.role, fieldTeamIds: [fieldTeam.id] });
+    txn.set(db.collection("teams").doc(code), buildNewTeamDoc({ teamNumber, teamName, ownerUid: caller.uid }, nowMs));
+    const patch = buildCreatorUserPatch({ teamId: code, role: input.role ?? user?.role });
     if (user) {
       txn.set(userRef, patch, { merge: true });
     } else {

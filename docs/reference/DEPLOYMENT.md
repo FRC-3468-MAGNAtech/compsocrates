@@ -49,8 +49,8 @@ Firebase project for testing) can use different values without a commit.
 | `FIREBASE_ADMIN_CLIENT_EMAIL` | Same JSON file → `client_email` field |
 | `FIREBASE_ADMIN_PRIVATE_KEY` | Same JSON file → `private_key` field — see the gotcha below |
 | `CRON_SECRET` | Any random string you generate (e.g. `openssl rand -hex 32`). Required by `app/api/cron/poll-live-scores` (P7) — the job's request must send it as `Authorization: Bearer <CRON_SECRET>`. See §8 below for scheduling it. |
-| `OWNER_EMAILS` | Comma-separated emails (e.g. `you@example.com`) that are **platform owners** (P20): they approve team applications, switch public team creation on/off and can recover accounts, and are always admins of their own account. Synced on every login by `app/api/auth/sync-roles` — **after** that email verifies. This is *not* team ownership: each account's owner is `teams/{teamId}.ownerUid` and is transferable (see §9). |
-| `ADMIN_EMAILS` | Comma-separated emails that should get admin (not owner) the same way. Optional. |
+| `RELEASE_OWNER_EMAILS` | Comma-separated emails (e.g. `you@example.com`) that are **platform owners** (P20), named as in the CompSocrates app: they approve team applications, switch public team creation on/off and can recover accounts, and are always admins of their own account. Synced on every login by `app/api/auth/sync-roles` — **after** that email verifies. This is *not* team ownership: each account's owner is `teams/{teamId}.verifiedOwnerId` and is transferable (see §9). |
+| `RELEASE_OWNER_UIDS` | Comma-separated Firebase uids that are platform owners too (no email check needed: a uid cannot be spoofed). Optional; `NEXT_PUBLIC_RELEASE_OWNER_UIDS` is the browser copy that drives the UI. |
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret key (P20), server-only. Verifies the CAPTCHA on team applications. Optional: without it applications still run every other protection and the platform owner sees a warning. See §9. |
 | `RESEND_API_KEY` | Resend API key (P20), for application and ownership-transfer emails. Optional: without it (or `EMAIL_FROM`) no email is sent and everything still shows in the app. See §9. |
 | `EMAIL_FROM` | The sender, e.g. `CompEpicurus <notify@yourdomain.org>`, on a domain you verified in Resend. Optional (see above). |
@@ -197,7 +197,7 @@ platform owner approves each one under **Admin Panel → Team Applications**. Ap
 
 ### 9a. Two kinds of owner
 
-- **Platform owner**: an email in `OWNER_EMAILS` (verified). Gets the `platformOwner` custom claim; approves applications; turns public
+- **Platform owner**: a uid in `RELEASE_OWNER_UIDS`, or a verified email in `RELEASE_OWNER_EMAILS`. Gets the `platformOwner` custom claim; approves applications; turns public
   creation on/off; can force-transfer an account for recovery (Admin Panel → Recovery). It opens the application tools and nothing else:
   it gives no access to any account's scouting data.
 - **Team owner**: `teams/{teamId}.ownerUid`. What the Owner badge and the owner protections follow. Transferable from
@@ -221,7 +221,7 @@ For local testing without your own site, Cloudflare publishes always-pass test k
 
 ### 9c. Email (optional)
 
-Email is used for: a new application (to `OWNER_EMAILS`), the applicant's receipt and decision, and ownership-transfer notices. Create an account at
+Email is used for: a new application (to `RELEASE_OWNER_EMAILS`), the applicant's receipt and decision, and ownership-transfer notices. Create an account at
 <https://resend.com>, **verify a sending domain**, create an API key, then set `RESEND_API_KEY` and `EMAIL_FROM` (a sender on that domain) and `APP_URL`.
 With any of the first two unset, nothing is sent and nothing breaks: every notice is also shown in the app, and an email failure never fails a request.
 
@@ -257,10 +257,10 @@ No new environment variables or indexes (every query is equality-only on `visibi
 firebase deploy --only firestore:rules
 ```
 
-The new collection is `formTemplates` (with `updates`, `reports` and `imports` subcollections, written only by `/api/templates`). Then, once, as the platform owner (an email in `OWNER_EMAILS`), open **Admin Panel > Template Review** and
+The new collection is `formTemplates` (with `updates`, `reports` and `imports` subcollections, written only by `/api/templates`). Then, once, as the platform owner (an email in `RELEASE_OWNER_EMAILS`), open **Admin Panel > Template Review** and
 press **Seed official templates**: it publishes the BIOBUZZ Match Scout and Blank (standard phases) templates. Press it again after an app update that changes BIOBUZZ and it adds a new version of the official template.
 
-Review notifications reuse the P20 setup: push to devices where a platform owner enabled notifications, and email to `OWNER_EMAILS` when `RESEND_API_KEY`, `EMAIL_FROM` and `APP_URL` are set (authors are emailed the decision the same way). With
+Review notifications reuse the P20 setup: push to devices where a platform owner enabled notifications, and email to `RELEASE_OWNER_EMAILS` when `RESEND_API_KEY`, `EMAIL_FROM` and `APP_URL` are set (authors are emailed the decision the same way). With
 email unset nothing breaks: the Template Review tab always shows the queue.
 
 ## 12. Member profiles (P25)

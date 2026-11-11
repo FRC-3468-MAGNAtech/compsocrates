@@ -11,7 +11,7 @@ import type { TeamMember } from "@/lib/team-members";
 
 /**
  * The grid's columns: Red 1..n then Blue 1..n, where n is the widest alliance in the schedule itself
- * (a legacy 2-slot FTC schedule keeps its 4 columns even when the event is configured for 3), or the
+ * (a stored 2-slot schedule keeps its 4 columns even when the event is configured for 3), or the
  * configured alliance size while there are no slots yet.
  */
 function slotColumns(slots: ScheduleResult["slots"]): SlotId[] {
@@ -25,7 +25,7 @@ function nameFor(members: TeamMember[], uid: string | null): string {
 }
 
 /**
- * Matches as rows, Red 1..n / Blue 1..n as columns (n = 2 for FTC, 3 for FRC), scout names in cells,
+ * Matches as rows, Red 1..n / Blue 1..n as columns (n = 3), scout names in cells,
  * per-scout totals at the bottom. Editable (click a cell to swap) when
  * `onSwap` is given — omitted for the read-only view non-admins see and
  * for an unpublished draft (only takes `slots`/`counts`/`fair`/`warning`,
