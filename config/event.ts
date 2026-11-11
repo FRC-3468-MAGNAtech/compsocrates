@@ -1,27 +1,19 @@
 /**
- * The ONLY place that names the program (FRC or FTC), the season, the data APIs, the event-key
- * aliases and the FIRST-code rule. Everything under `lib/events`, `lib/frc` and `lib/ftc` reads
- * from here, so a future event or season is a config swap (see decisions D4, D5, D11, D12 in
- * docs/ROUTES.md).
+ * The ONLY place that names the season, the data APIs, the event-key aliases and the FIRST-code rule.
+ * Everything under `lib/events` and `lib/frc` reads from here, so a future event or season is a config
+ * swap (see decisions D4, D11, D12 in docs/ROUTES.md).
  *
- * Pure data and pure helpers: no `server-only`, no Node APIs, safe to import from client code.
- *
- * Program selection: `EVENT_PROGRAM=ftc` (server) switches the whole event layer to CE's FTC
- * provider. Browser bundles cannot see a plain `EVENT_PROGRAM`, so the client-side helpers
- * (default season, selectable seasons) only follow it when `NEXT_PUBLIC_EVENT_PROGRAM` is set to
- * the same value. Both are non-secret.
+ * Pure data and pure helpers: no `server-only`, no Node APIs, safe to import from client code. No keys live
+ * here: API keys are read on the server only, through lib/server/env.ts.
  */
 
-export type EventProgram = "frc" | "ftc";
-
 export type EventConfig = {
-  program: EventProgram;
-  /** FRC: the calendar year of the game season. FTC ignores this (it derives its season from the date). */
+  /** The calendar year of the game season. */
   season: number;
-  /** Teams per alliance: 3 for FRC, 2 for FTC. */
+  /** Robots per alliance (FRC: 3). */
   allianceSize: number;
   apis: {
-    /** The Blue Alliance v3 (events, teams, matches, rankings). Key: server env `TBA_API_KEY`. */
+    /** The Blue Alliance v3 (events, teams, matches, rankings). Key: server env `NEXT_PUBLIC_TBA_API_KEY` (read on the server only). */
     tba: { baseUrl: string };
     /** FIRST FRC API v3.0 (practice schedule, fallback). Credentials: `FIRST_API_USERNAME` / `FIRST_API_TOKEN`. */
     first: { baseUrl: string };
@@ -42,18 +34,9 @@ export type EventConfig = {
   };
 };
 
-function readProgram(): EventProgram {
-  // Literal property access so Next can inline NEXT_PUBLIC_EVENT_PROGRAM into client bundles.
-  const raw = (process.env.NEXT_PUBLIC_EVENT_PROGRAM ?? process.env.EVENT_PROGRAM ?? "").trim().toLowerCase();
-  return raw === "ftc" ? "ftc" : "frc";
-}
-
-const program = readProgram();
-
 export const EVENT_CONFIG: EventConfig = {
-  program,
   season: 2026,
-  allianceSize: program === "ftc" ? 2 : 3,
+  allianceSize: 3,
   apis: {
     tba: { baseUrl: "https://www.thebluealliance.com/api/v3" },
     first: { baseUrl: "https://frc-api.firstinspires.org/v3.0" },

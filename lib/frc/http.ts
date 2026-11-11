@@ -1,17 +1,19 @@
 import "server-only";
 import { EVENT_CONFIG } from "@/config/event";
+import { firstApiCredentials, firstApiMissingNames, tbaApiKey } from "@/lib/server/env";
 import type { ActionError } from "@/lib/events/types";
 
 /**
- * Shared HTTP helper for the three FRC data APIs. Mirrors lib/ftc/http.ts: same error codes
- * (`ActionErrorCode`), same short in-memory cache that dedupes concurrent and repeat requests
- * (server-local, reset on cold start; the client has its own longer cache in use-event-query.ts).
+ * Shared HTTP helper for the three FRC data APIs: one error type with `ActionErrorCode`s, and a short in-memory cache that
+ * dedupes concurrent and repeat requests (server-local, reset on cold start; the client has its own longer cache in
+ * use-event-query.ts).
  *
- * Keys are server-only env vars. There is exactly one server key per API:
- *   TBA_API_KEY, FIRST_API_USERNAME + FIRST_API_TOKEN. Statbotics needs none.
- * CS's per-team encrypted TBA keys are not used. A caller may later pass `apiKey` (a team's own
- * TBA key, decrypted on the server) to `frcFetch`; the cache is keyed by URL only, which is safe
- * because the same URL returns the same data whichever key asks.
+ * Keys come only from lib/server/env.ts, and only on the server: `NEXT_PUBLIC_TBA_API_KEY` (the CompSocrates name; it is
+ * never referenced from client code, so it is not inlined into a browser bundle) and `FIRST_API_USERNAME` +
+ * `FIRST_API_TOKEN`. Statbotics needs none. There are no per-team keys.
+ *
+ * Failure is loud and never cached: a missing key throws `missing_credentials`, a key the API rejects throws
+ * `unauthorized`, and both messages name the variable to fix. Only a successful response is kept in the cache.
  */
 
 export type FrcSource = "tba" | "first" | "statbotics";
@@ -40,22 +42,8 @@ export function clearFrcCache(): void {
   dedupeCache.clear();
 }
 
-export function getTbaKey(): string | null {
-  const key = (process.env.TBA_API_KEY ?? "").trim();
-  return key || null;
-}
-
-export function getFirstCredentials(): { username: string; token: string } | null {
-  const username = (process.env.FIRST_API_USERNAME ?? "").trim();
-  const token = (process.env.FIRST_API_TOKEN ?? "").trim();
-  if (!username || !token) return null;
-  return { username, token };
-}
-
 export type FrcFetchOptions = {
   query?: Record<string, string | number | undefined>;
-  /** Overrides the server TBA key for this call (a future per-team key). Ignored for the other sources. */
-  apiKey?: string;
 };
 
 function baseUrlFor(source: FrcSource): string {
@@ -72,25 +60,32 @@ export function buildFrcUrl(source: FrcSource, path: string, query?: FrcFetchOpt
   return url.toString();
 }
 
-function authHeaders(source: FrcSource, apiKey?: string): Record<string, string> {
+/** What to tell the user when this source's key is unset or refused. */
+function keyHint(source: FrcSource): string {
+  if (source === "tba") return "NEXT_PUBLIC_TBA_API_KEY";
+  if (source === "first") return "FIRST_API_USERNAME and FIRST_API_TOKEN";
+  return "";
+}
+
+function authHeaders(source: FrcSource): Record<string, string> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (source === "tba") {
-    const key = apiKey?.trim() || getTbaKey();
-    if (!key) throw new FrcApiError("missing_credentials", "TBA_API_KEY is not configured.");
+    const key = tbaApiKey();
+    if (!key) throw new FrcApiError("missing_credentials", "TBA key is not configured: set NEXT_PUBLIC_TBA_API_KEY.");
     headers["X-TBA-Auth-Key"] = key;
   } else if (source === "first") {
-    const credentials = getFirstCredentials();
+    const credentials = firstApiCredentials();
     if (!credentials) {
-      throw new FrcApiError("missing_credentials", "FIRST_API_USERNAME / FIRST_API_TOKEN are not configured.");
+      throw new FrcApiError("missing_credentials", `FIRST API credentials are not configured: set ${firstApiMissingNames().join(" and ") || keyHint("first")}.`);
     }
     headers.Authorization = `Basic ${Buffer.from(`${credentials.username}:${credentials.token}`).toString("base64")}`;
   }
   return headers;
 }
 
-async function fetchJson<T>(source: FrcSource, url: string, apiKey?: string): Promise<T> {
+async function fetchJson<T>(source: FrcSource, url: string): Promise<T> {
   const label = SOURCE_LABEL[source];
-  const headers = authHeaders(source, apiKey);
+  const headers = authHeaders(source);
 
   let response: Response;
   try {
@@ -100,7 +95,8 @@ async function fetchJson<T>(source: FrcSource, url: string, apiKey?: string): Pr
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new FrcApiError("unauthorized", `${label} rejected the configured credentials.`);
+    const hint = keyHint(source);
+    throw new FrcApiError("unauthorized", hint ? `${label} rejected the configured key: check ${hint}.` : `${label} refused the request (${response.status}).`);
   }
   if (response.status === 404) throw new FrcApiError("not_found", "The requested resource was not found.");
   if (response.status === 429) throw new FrcApiError("rate_limited", `${label} rate limit was hit. Try again shortly.`);
@@ -120,9 +116,12 @@ export function frcFetch<T>(source: FrcSource, path: string, options: FrcFetchOp
   const cached = dedupeCache.get(url);
   if (cached && cached.expires > now) return cached.promise as Promise<T>;
 
-  // Credentials are checked inside fetchJson, so a missing key rejects the promise and is never cached.
-  const promise = fetchJson<T>(source, url, options.apiKey);
+  // Credentials are checked inside fetchJson, so a missing key rejects the promise; every rejection is dropped from the
+  // cache below, so an error is never served twice.
+  const promise = fetchJson<T>(source, url);
   dedupeCache.set(url, { expires: now + FRC_CACHE_TTL_MS, promise });
-  promise.catch(() => dedupeCache.delete(url));
+  promise.catch(() => {
+    if (dedupeCache.get(url)?.promise === promise) dedupeCache.delete(url);
+  });
   return promise;
 }

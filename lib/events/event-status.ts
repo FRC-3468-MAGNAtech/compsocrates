@@ -2,7 +2,7 @@ import type { EventLifecycleStatus, EventInfo } from "@/lib/events/types";
 
 // Deliberately not "use server"/"use client" and free of any API/Firebase
 // imports: this is the one place an event's lifecycle status is derived, used
-// by the server action that builds `EventInfo.status` (lib/ftc/actions.ts) and
+// by the provider mappers that build `EventInfo.status` (lib/frc/tba-map.ts) and
 // by every client page that needs a *fresh* status (Event Selection, the
 // active-events hook) — `EventInfo.status` is frozen at fetch time, so an event
 // stored on the team doc days ago would otherwise still read "upcoming".

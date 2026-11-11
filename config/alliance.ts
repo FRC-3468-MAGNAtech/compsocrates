@@ -1,23 +1,11 @@
-// Alliance size: robots per alliance (FRC = 3, FTC = 2). Every place that used to assume
-// two robots reads this file. Another module may later re-point ALLIANCE_SIZE at
-// EVENT_CONFIG.allianceSize; keep this file tiny and dependency-free.
-//
-// NEXT_PUBLIC_* values are inlined at build time, so each is read as a literal property access.
+// Alliance size: robots per alliance (FRC = 3). Every place that needs the size reads this file; the value itself
+// is the config constant EVENT_CONFIG.allianceSize. Keep this file tiny.
 
 import { EVENT_CONFIG } from "./event";
 
 export type AllianceColor = "red" | "blue";
 
-const DEFAULT_SIZE = 3;
-
-function resolveAllianceSize(): number {
-  const explicit = Number(process.env.NEXT_PUBLIC_ALLIANCE_SIZE);
-  if (Number.isInteger(explicit) && explicit >= 2 && explicit <= 4) return explicit;
-  // One source of truth: the event config derives the size from the program (FRC 3, FTC 2).
-  return EVENT_CONFIG.allianceSize ?? DEFAULT_SIZE;
-}
-
-export const ALLIANCE_SIZE: number = resolveAllianceSize();
+export const ALLIANCE_SIZE: number = EVENT_CONFIG.allianceSize;
 
 export const ALLIANCE_COLORS: readonly AllianceColor[] = ["red", "blue"];
 
@@ -57,7 +45,7 @@ export function slotLabel(slot: string): string {
   return `${color === "red" ? "Red" : "Blue"} ${slotIndex(slot) + 1}`;
 }
 
-/** An alliance's team list is plausible: at least 2 teams (FTC) and at most the configured size (FRC 3). */
+/** An alliance's team list is plausible: at least 2 teams (a match with an unposted third robot) and at most the configured size. */
 export function isValidAllianceTeams(teams: readonly unknown[], size: number = ALLIANCE_SIZE): boolean {
   return teams.length >= 2 && teams.length <= Math.max(size, 2);
 }

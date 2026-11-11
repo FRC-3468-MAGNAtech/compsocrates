@@ -5,7 +5,7 @@ import { matchEventFromText } from "@/lib/live/matching";
 import { parseStreamUrl } from "@/lib/live/stream";
 
 /**
- * P7: given a pasted livestream link, tries to detect the FTC event. Runs
+ * P7: given a pasted livestream link, tries to detect the event. Runs
  * server-side because the browser can't call YouTube's oEmbed endpoint
  * cross-origin reliably in every case, and because `getEvents` (a Server
  * Action) already requires a signed-in session — this route inherits that
@@ -44,7 +44,8 @@ export async function POST(request: Request) {
 
   const eventsResult = await getEvents({ season });
   if (!eventsResult.ok) {
-    return NextResponse.json({ ok: true, detected: null, reason: "events-unavailable" });
+    // The reason (a missing or rejected TBA key, a rate limit) goes along so the page can say why, not just "unavailable".
+    return NextResponse.json({ ok: true, detected: null, reason: "events-unavailable", message: eventsResult.error.message });
   }
 
   const match = text ? matchEventFromText(text, eventsResult.data) : null;

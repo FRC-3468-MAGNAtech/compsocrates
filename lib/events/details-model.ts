@@ -1,4 +1,4 @@
-import { getEventStatus } from "@/lib/ftc/event-status";
+import { getEventStatus } from "@/lib/events/event-status";
 import type { EventInfo, EventMatch, EventRanking, EventTeam } from "@/lib/events/types";
 
 // Pure helpers for the Event Details page (/events/[eventKey]). No React, no network.

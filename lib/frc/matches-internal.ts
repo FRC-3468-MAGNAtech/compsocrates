@@ -2,11 +2,11 @@ import "server-only";
 import { EVENT_CONFIG } from "@/config/event";
 import { fetchFirstSchedule } from "./first";
 import { FrcApiError } from "./http";
-import { fetchTbaMatches, type TbaOptions } from "./tba";
+import { fetchTbaMatches } from "./tba";
 import type { EventMatch, MatchType } from "@/lib/events/types";
 
 /**
- * FRC counterpart of lib/ftc/matches-internal.ts: the fetch and merge logic with no auth gate, for
+ * The fetch and merge logic with no auth gate, for
  * trusted server contexts (the poll-live-scores cron, /api/live/check-scores) and for the gated
  * action in lib/events/actions.ts. Throws `FrcApiError`; callers decide how to present it.
  *
@@ -24,14 +24,13 @@ const FALLBACK_ON: ReadonlySet<string> = new Set(["missing_credentials", "unauth
 export async function fetchMatchesForEventInternal(
   eventCode: string,
   matchType: MatchType,
-  season?: number,
-  options?: TbaOptions
+  season?: number
 ): Promise<EventMatch[]> {
   const resolvedSeason = season ?? EVENT_CONFIG.season;
   if (matchType === "Practice") return fetchFirstSchedule(eventCode, "Practice", resolvedSeason);
 
   try {
-    return await fetchTbaMatches(eventCode, matchType, options);
+    return await fetchTbaMatches(eventCode, matchType);
   } catch (error) {
     if (matchType !== "Qualification" || !(error instanceof FrcApiError) || !FALLBACK_ON.has(error.code)) throw error;
     try {

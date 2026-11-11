@@ -1,12 +1,12 @@
 # config/
 
-The only place that names a game, an event program, an API, an alias or an alliance size. A new event or season is a change here (plus, at most, a form definition and a game plugin), never a hunt through components.
+The only place that names a game, an API, an alias or an alliance size. A new event or season is a change here (plus, at most, a form definition and a game plugin), never a hunt through components.
 
 | File | What it holds |
 |---|---|
-| `event.ts` | The event program (`frc` or `ftc`), season, API base URLs, TBA key aliases (`2025lake` to `2026lake`), FIRST code overrides, the fallback event key, playoff numbering (D11). `EVENT_PROGRAM=ftc` (and `NEXT_PUBLIC_EVENT_PROGRAM=ftc` for the browser) switches the whole event layer to CE's FTC provider. |
-| `alliance.ts` | Robots per alliance (FRC 3, FTC 2) and slot helpers (`red1`..`blue3`). Follows `event.ts`. |
-| `cs.ts` | CompSocrates-specific identity: the owner uid allowlist (`NEXT_PUBLIC_CS_OWNER_UIDS`) and the default theme id. |
+| `event.ts` | The season, alliance size (3), API base URLs, TBA key aliases (`2025lake` to `2026lake`), FIRST code overrides, the fallback event key, playoff numbering (D11). No keys live here; they are read on the server through `lib/server/env.ts`. |
+| `alliance.ts` | Robots per alliance (3) and slot helpers (`red1`..`blue3`). Follows `event.ts`. |
+| `cs.ts` | CompSocrates-specific identity: the owner uid allowlist (`NEXT_PUBLIC_RELEASE_OWNER_UIDS` / `RELEASE_OWNER_UIDS`) and the default theme id. |
 | `games/` | One file per game (`rebuilt`, `reefscape`, `charged-up`): scale tables, point values, incident lists, starting positions, verification tolerances, flag thresholds, prediction tiers. Declarative only. |
 | `legacy-redirects.ts` | Every old CS URL and where it goes. `next.config.ts` turns it into permanent redirects; `legacy-redirects.test.ts` fails if a CS route has no destination. |
 

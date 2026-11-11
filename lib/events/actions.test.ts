@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// A mutable config so each test can pick the program the dispatcher reads at call time.
-const config = vi.hoisted(() => ({ program: "frc" as "frc" | "ftc", season: 2026 }));
-vi.mock("@/config/event", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/config/event")>();
-  return { ...actual, EVENT_CONFIG: { ...actual.EVENT_CONFIG, get program() { return config.program; }, get season() { return config.season; } } };
+const checkSession = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/server/require-user", async () => {
+  // The real requireUserResult, over a mocked session check.
+  return {
+    requireUserResult: async () => {
+      const check = await checkSession();
+      if (check.ok) return check;
+      return { ok: false, error: { code: check.reason === "not-configured" ? "server_not_configured" : "unauthorized", message: check.message } };
+    },
+  };
 });
-
-const requireUser = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/server/require-user", () => ({ requireUser }));
 
 const frc = vi.hoisted(() => ({
   getEvents: vi.fn(), getEvent: vi.fn(), getTeamsForEvent: vi.fn(), getTeamByNumber: vi.fn(),
@@ -16,19 +18,11 @@ const frc = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/frc/provider", () => frc);
 
-const ftc = vi.hoisted(() => ({
-  getEvents: vi.fn(), getEvent: vi.fn(), getTeamsForEvent: vi.fn(), getTeamByNumber: vi.fn(),
-  getRankingsForEvent: vi.fn(), getMatchesForEvent: vi.fn(), getPlayoffBracket: vi.fn(),
-}));
-vi.mock("@/lib/ftc/actions", () => ftc);
-
 const statbotics = vi.hoisted(() => ({ getStatboticsTeam: vi.fn() }));
 vi.mock("@/lib/frc/statbotics", () => statbotics);
 
 const frcInternal = vi.hoisted(() => ({ fetchMatchesForEventInternal: vi.fn() }));
 vi.mock("@/lib/frc/matches-internal", () => frcInternal);
-const ftcInternal = vi.hoisted(() => ({ fetchMatchesForEventInternal: vi.fn() }));
-vi.mock("@/lib/ftc/matches-internal", () => ftcInternal);
 
 import * as events from "./actions";
 import { getDefaultSeason, getSelectableSeasons } from "./config";
@@ -38,11 +32,9 @@ const OK = { ok: true as const, data: [] };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  config.program = "frc";
-  requireUser.mockResolvedValue({ uid: "u1" });
-  for (const fn of [...Object.values(frc), ...Object.values(ftc), statbotics.getStatboticsTeam]) fn.mockResolvedValue(OK);
+  checkSession.mockResolvedValue({ ok: true, uid: "u1" });
+  for (const fn of [...Object.values(frc), statbotics.getStatboticsTeam]) fn.mockResolvedValue(OK);
   frcInternal.fetchMatchesForEventInternal.mockResolvedValue([]);
-  ftcInternal.fetchMatchesForEventInternal.mockResolvedValue([]);
 });
 
 const calls = [
@@ -55,57 +47,55 @@ const calls = [
   ["getPlayoffBracket", ["2026arli", 2026]],
 ] as const;
 
-describe("facade routing", () => {
-  it.each(calls)("routes %s to the FRC provider by default, behind requireUser", async (name, args) => {
-    await (events[name] as (...a: readonly unknown[]) => Promise<unknown>)(...args);
-    expect(requireUser).toHaveBeenCalledTimes(1);
-    expect(frc[name]).toHaveBeenCalledWith(...args);
-    expect(ftc[name]).not.toHaveBeenCalled();
-  });
+type AnyAction = (...a: readonly unknown[]) => Promise<{ ok: boolean; error?: { code: string; message: string } }>;
 
-  it.each(calls)("routes %s to FTC when the program is ftc, without a second session check", async (name, args) => {
-    config.program = "ftc";
-    await (events[name] as (...a: readonly unknown[]) => Promise<unknown>)(...args);
-    expect(ftc[name]).toHaveBeenCalledWith(...args);
-    expect(frc[name]).not.toHaveBeenCalled();
-    expect(requireUser).not.toHaveBeenCalled(); // lib/ftc/actions gates itself
+describe("event actions", () => {
+  it.each(calls)("routes %s straight to the FRC provider, behind the session check", async (name, args) => {
+    await (events[name] as AnyAction)(...args);
+    expect(checkSession).toHaveBeenCalledTimes(1);
+    expect(frc[name]).toHaveBeenCalledWith(...args);
   });
 
   it.each(calls)("returns an unauthorized result for %s without a session and never reaches the provider", async (name, args) => {
-    requireUser.mockResolvedValue(null);
-    const result = await (events[name] as (...a: readonly unknown[]) => Promise<{ ok: boolean; error?: { code: string } }>)(...args);
-    expect(result).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+    checkSession.mockResolvedValue({ ok: false, reason: "not-signed-in", message: "Sign in to view event data." });
+    const result = await (events[name] as AnyAction)(...args);
+    expect(result).toMatchObject({ ok: false, error: { code: "unauthorized", message: "Sign in to view event data." } });
     expect(frc[name]).not.toHaveBeenCalled();
   });
 
-  it("exposes Statbotics for FRC only", async () => {
+  it.each(calls)("says the server is not configured (naming the variables) for %s when the Admin SDK is unset", async (name, args) => {
+    checkSession.mockResolvedValue({ ok: false, reason: "not-configured", message: "Server sign-in is not configured: set FIREBASE_ADMIN_PROJECT_ID." });
+    const result = await (events[name] as AnyAction)(...args);
+    expect(result).toMatchObject({ ok: false, error: { code: "server_not_configured" } });
+    expect(result.error?.message).toContain("FIREBASE_ADMIN_PROJECT_ID");
+    expect(frc[name]).not.toHaveBeenCalled();
+  });
+
+  it("passes a provider error through untouched", async () => {
+    frc.getEvents.mockResolvedValue({ ok: false, error: { code: "missing_credentials", message: "TBA key is not configured: set NEXT_PUBLIC_TBA_API_KEY." } });
+    expect(await events.getEvents({ season: 2026 })).toEqual({ ok: false, error: { code: "missing_credentials", message: "TBA key is not configured: set NEXT_PUBLIC_TBA_API_KEY." } });
+  });
+
+  it("serves Statbotics behind the same gate", async () => {
     await events.getStatboticsTeam(254, 2026, "2026arli");
     expect(statbotics.getStatboticsTeam).toHaveBeenCalledWith(254, 2026, "2026arli");
-    config.program = "ftc";
-    expect(await events.getStatboticsTeam(254, 2026)).toMatchObject({ ok: false });
+    checkSession.mockResolvedValue({ ok: false, reason: "not-signed-in", message: "Sign in to view event data." });
+    expect(await events.getStatboticsTeam(254, 2026)).toMatchObject({ ok: false, error: { code: "unauthorized" } });
   });
 });
 
 describe("session-less match fetch", () => {
-  it("dispatches by program and passes the season through", async () => {
+  it("goes straight to the FRC fetch and passes the season through", async () => {
     await fetchMatchesForEventInternal("2026arli", "Playoff", 2026);
     expect(frcInternal.fetchMatchesForEventInternal).toHaveBeenCalledWith("2026arli", "Playoff", 2026);
-    config.program = "ftc";
-    await fetchMatchesForEventInternal("USWABON1", "Qualification");
-    expect(ftcInternal.fetchMatchesForEventInternal).toHaveBeenCalledWith("USWABON1", "Qualification", undefined);
+    await fetchMatchesForEventInternal("2026arli", "Qualification");
+    expect(frcInternal.fetchMatchesForEventInternal).toHaveBeenCalledWith("2026arli", "Qualification", undefined);
   });
 });
 
 describe("season helpers", () => {
-  it("FRC uses the configured season", () => {
+  it("use the configured season", () => {
     expect(getDefaultSeason()).toBe(2026);
     expect(getSelectableSeasons()).toEqual([2027, 2026, 2025, 2024]);
-  });
-
-  it("FTC keeps its date-derived season", () => {
-    config.program = "ftc";
-    expect(getDefaultSeason(new Date(2026, 9, 1))).toBe(2026);
-    expect(getDefaultSeason(new Date(2026, 2, 1))).toBe(2025);
-    expect(getSelectableSeasons(new Date(2026, 9, 1))).toEqual([2027, 2026, 2025, 2024]);
   });
 });

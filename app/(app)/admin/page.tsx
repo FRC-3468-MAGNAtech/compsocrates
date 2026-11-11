@@ -18,12 +18,13 @@ import { BackupsPanel } from "@/components/admin/backups-panel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApplicationsPanel } from "@/components/admin/applications-panel";
 import { RecoveryPanel } from "@/components/admin/recovery-panel";
+import { SetupCheckPanel } from "@/components/admin/setup-check-panel";
 import { FormsPanel } from "@/components/forms/forms-panel";
 import { PageAccessPanel } from "@/components/page-access/page-access-panel";
 import { ReviewPanelHost } from "@/components/templates/review-panel";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 
-type AdminTab = "match-library" | "forms" | "page-access" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery";
+type AdminTab = "match-library" | "forms" | "page-access" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery" | "setup-check";
 
 const TAB_LABELS: Record<AdminTab, string> = {
   "match-library": "Match Library",
@@ -42,6 +43,8 @@ const TAB_LABELS: Record<AdminTab, string> = {
   applications: "Team Applications",
   templates: "Template Review",
   recovery: "Recovery",
+  // Which environment variables the server cannot find (names only); admin-only
+  "setup-check": "Setup Check",
 };
 
 const PLATFORM_TABS: AdminTab[] = ["applications", "templates", "recovery"];
@@ -148,6 +151,7 @@ export default function AdminPanelPage() {
       {tab === "applications" && isPlatformOwner && <ApplicationsPanel />}
       {tab === "templates" && isPlatformOwner && <ReviewPanelHost />}
       {tab === "recovery" && isPlatformOwner && <RecoveryPanel />}
+      {tab === "setup-check" && <SetupCheckPanel />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { EVENT_CONFIG } from "@/config/event";
-import { getEventStatus } from "@/lib/ftc/event-status";
+import { getEventStatus } from "@/lib/events/event-status";
 import type { EventInfo, EventMatch, EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 /**

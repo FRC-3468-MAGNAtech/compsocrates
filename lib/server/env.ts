@@ -50,6 +50,7 @@ export const ENV_VARS: readonly EnvVarInfo[] = [
   { name: "BLOB_READ_WRITE_TOKEN", group: "optional", purpose: "Vercel Blob storage for photos", whenMissing: "Photo uploads." },
   { name: "NEXT_PUBLIC_FIREBASE_VAPID_KEY", group: "optional", purpose: "Web push key", whenMissing: "Push notifications." },
   { name: "APPLICATION_SECRET", group: "optional", purpose: "Signs team-application tokens", whenMissing: "Falls back to a key derived from the Admin credentials." },
+  { name: "NEXT_PUBLIC_RELEASE_OWNER_UIDS", group: "optional", purpose: "Optional browser copy of RELEASE_OWNER_UIDS", whenMissing: "Nothing: the server reads RELEASE_OWNER_UIDS; this only lets the UI know who the owner is." },
 ] as const;
 
 const read = (name: string): string => (process.env[name] ?? "").trim();
@@ -69,6 +70,16 @@ export function firstApiCredentials(): { username: string; token: string } | nul
   const username = read("FIRST_API_USERNAME");
   const token = read("FIRST_API_TOKEN");
   return username && token ? { username, token } : null;
+}
+
+/** The FIRST credential variables that are unset, by name (empty when both are set). */
+export function firstApiMissingNames(): string[] {
+  return ["FIRST_API_USERNAME", "FIRST_API_TOKEN"].filter((name) => !read(name));
+}
+
+/** The Firebase Admin variables that are unset, by name (empty when all three are set). */
+export function firebaseAdminMissingNames(): string[] {
+  return ["FIREBASE_ADMIN_PROJECT_ID", "FIREBASE_ADMIN_CLIENT_EMAIL", "FIREBASE_ADMIN_PRIVATE_KEY"].filter((name) => !read(name));
 }
 
 /** Raw Firebase Admin values; `lib/firebase/admin.ts` validates and cleans the private key. */

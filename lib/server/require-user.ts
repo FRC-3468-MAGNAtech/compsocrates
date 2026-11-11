@@ -1,44 +1,63 @@
 import "server-only";
 import { cookies } from "next/headers";
 import type { DecodedIdToken } from "firebase-admin/auth";
-import { getAdminAuth } from "@/lib/firebase/admin";
+import { firebaseAdminProblem, getAdminAuth } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME } from "@/lib/server/session-cookie";
+import type { ActionError } from "@/lib/events/types";
 
 /**
- * Verifies the session cookie set by app/api/auth/session on every FIRST API
- * Server Action call (see lib/ftc/actions.ts). Returns null — never throws —
- * so callers can fold "not signed in" into the same ActionResult error shape
- * every other failure already uses, rather than a special code path.
- *
- * Returns the decoded uid even when FIREBASE_ADMIN_* isn't configured and
- * Firestore-side auth can't be double-checked here; in that case there's no
- * admin SDK to verify against, so this returns null and every FIRST API call
- * fails closed with "unauthorized" until the server is configured.
+ * The outcome of a session check, with the reason a check failed. `not-configured` means the server's Admin SDK
+ * (FIREBASE_ADMIN_*) is not set up, so nobody can be verified; the message names the variables. `not-signed-in` means
+ * the visitor has no valid session.
  */
-export async function requireUser(): Promise<{ uid: string } | null> {
-  const adminAuth = getAdminAuth();
-  if (!adminAuth) return null;
+export type SessionCheck =
+  | { ok: true; uid: string }
+  | { ok: false; reason: "not-configured" | "not-signed-in"; message: string };
 
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  if (!sessionCookie) return null;
-
-  try {
-    const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
-    return { uid: decoded.uid };
-  } catch {
-    return null;
-  }
+/** Why server sign-in cannot work (the Admin SDK is unconfigured or broken), or null when it can. Names only, never values. */
+export function serverSignInProblem(): string | null {
+  return getAdminAuth() ? null : (firebaseAdminProblem() ?? "Server sign-in is not configured: set FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, FIREBASE_ADMIN_PRIVATE_KEY.");
 }
 
 /**
- * Verifies an `Authorization: Bearer <idToken>` header — used by the P1b
- * API routes (/api/team/create, /api/team/join, /api/auth/sync-roles) that
- * the client calls directly with a fresh ID token, rather than relying on
- * the session cookie (those calls happen *before* a user doc — and
- * sometimes before the session cookie sync — exists). Returns the full
- * decoded token (uid, email, email_verified, custom claims) since callers
- * need more than just the uid; null on any missing/invalid/expired token.
+ * Verifies the session cookie set by app/api/auth/session. Never throws, and says why when it fails, so a caller can tell
+ * "the server is not set up" (fix: the FIREBASE_ADMIN_* variables) from "you are not signed in".
+ */
+export async function checkSession(): Promise<SessionCheck> {
+  const adminAuth = getAdminAuth();
+  if (!adminAuth) return { ok: false, reason: "not-configured", message: serverSignInProblem() ?? "Server sign-in is not configured." };
+
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  if (!sessionCookie) return { ok: false, reason: "not-signed-in", message: "Sign in to view event data." };
+
+  try {
+    const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
+    return { ok: true, uid: decoded.uid };
+  } catch {
+    return { ok: false, reason: "not-signed-in", message: "Your session has expired. Sign in again." };
+  }
+}
+
+/** The signed-in user, or null for any failure (use `checkSession` when the reason matters). Never throws. */
+export async function requireUser(): Promise<{ uid: string } | null> {
+  const check = await checkSession();
+  return check.ok ? { uid: check.uid } : null;
+}
+
+/** For Server Actions: the signed-in user, or an `ActionResult`-shaped error that says why (a distinct code when the server is unconfigured). */
+export async function requireUserResult(): Promise<{ ok: true; uid: string } | { ok: false; error: ActionError }> {
+  const check = await checkSession();
+  if (check.ok) return check;
+  return { ok: false, error: { code: check.reason === "not-configured" ? "server_not_configured" : "unauthorized", message: check.message } };
+}
+
+/**
+ * Verifies an `Authorization: Bearer <idToken>` header — used by the API routes (/api/team/create, /api/team/join,
+ * /api/auth/sync-roles, ...) that the client calls directly with a fresh ID token, rather than relying on the session
+ * cookie (those calls happen *before* a user doc — and sometimes before the session cookie sync — exists). Returns the
+ * full decoded token (uid, email, email_verified, custom claims) since callers need more than just the uid; null on any
+ * missing/invalid/expired token. Routes that want to explain an unconfigured server call `serverSignInProblem()` first.
  */
 export async function verifyBearerToken(request: Request): Promise<DecodedIdToken | null> {
   const adminAuth = getAdminAuth();

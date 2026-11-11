@@ -10,8 +10,7 @@ import {
 } from "./event";
 
 describe("EVENT_CONFIG", () => {
-  it("defaults to FRC with three-team alliances", () => {
-    expect(EVENT_CONFIG.program).toBe("frc");
+  it("is the FRC season with three-team alliances", () => {
     expect(EVENT_CONFIG.allianceSize).toBe(3);
     expect(EVENT_CONFIG.season).toBe(2026);
     expect(EVENT_CONFIG.fallbackEventKey).toBe("app-testing");

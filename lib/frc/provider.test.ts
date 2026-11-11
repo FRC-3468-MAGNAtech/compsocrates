@@ -24,7 +24,7 @@ const has = (fragment: string) => (url: string) => url.includes(fragment);
 
 beforeEach(() => {
   clearFrcCache();
-  vi.stubEnv("TBA_API_KEY", "tba-secret");
+  vi.stubEnv("NEXT_PUBLIC_TBA_API_KEY", "tba-secret");
   vi.stubEnv("FIRST_API_USERNAME", "user");
   vi.stubEnv("FIRST_API_TOKEN", "token");
 });
@@ -55,7 +55,7 @@ describe("TBA", () => {
   });
 
   it("returns missing_credentials without calling out when no TBA key is set", async () => {
-    vi.stubEnv("TBA_API_KEY", "");
+    vi.stubEnv("NEXT_PUBLIC_TBA_API_KEY", "");
     const calls = stubFetch([]);
     const result = await getEvents({ season: 2026 });
     expect(result).toMatchObject({ ok: false, error: { code: "missing_credentials" } });

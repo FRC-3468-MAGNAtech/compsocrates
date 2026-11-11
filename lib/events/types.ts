@@ -103,7 +103,9 @@ export type ActionErrorCode =
   | "not_found"
   | "rate_limited"
   | "upstream_error"
-  | "network_error";
+  | "network_error"
+  /** The server's Firebase Admin credentials are not set, so nobody can be signed in server-side (the message names FIREBASE_ADMIN_*). */
+  | "server_not_configured";
 
 export type ActionError = {
   code: ActionErrorCode;

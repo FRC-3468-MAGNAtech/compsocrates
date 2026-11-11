@@ -1,5 +1,95 @@
-// The client-side query cache hook for the event layer. The implementation stays in
-// lib/ftc/use-ftc-query.ts (it is provider-neutral: it only caches ActionResult values); this file is
-// the stable import path so pages do not name a provider. `useFtcQuery` remains as an alias so
-// existing call sites keep compiling.
-export { useFtcQuery as useEventQuery, useFtcQuery } from "@/lib/ftc/use-ftc-query";
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ActionResult } from "@/lib/events/types";
+
+type Status = "loading" | "success" | "empty" | "error";
+
+type QueryState<T> = {
+  status: Status;
+  data: T | null;
+  error: { message: string } | null;
+};
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Session-level cache shared by every useEventQuery call in the tab: once an
+// event's teams/matches have been fetched, navigating between pages (Event
+// Selection, and later the Scout Form) reads from here instead of re-hitting
+// the server action, until the entry expires or refetch() is called.
+// Only successful results are stored: an error (a missing key, a rate limit, an outage) is never cached, so the
+// next render or refetch asks the server again.
+const cache = new Map<string, { data: unknown; expires: number }>();
+
+function isEmptyResult(data: unknown): boolean {
+  return Array.isArray(data) && data.length === 0;
+}
+
+/**
+ * key: a stable cache key (e.g. `events:2026`, `teams:2026arli:2026`). Pass
+ * null to skip fetching entirely (e.g. while a required param isn't ready yet).
+ */
+export function useEventQuery<T>(
+  key: string | null,
+  fetcher: () => Promise<ActionResult<T>>
+): QueryState<T> & { refetch: () => void } {
+  const [state, setState] = useState<QueryState<T>>({ status: "loading", data: null, error: null });
+  const fetcherRef = useRef(fetcher);
+  const requestKeyRef = useRef<string | null>(null);
+
+  // Keep the latest fetcher without calling it on every render — refs must be
+  // written outside of render, so this syncs it in an effect instead.
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  });
+
+  const load = useCallback(
+    (bypassCache: boolean) => {
+      if (!key) {
+        setState({ status: "loading", data: null, error: null });
+        return;
+      }
+
+      if (!bypassCache) {
+        const cached = cache.get(key);
+        if (cached && cached.expires > Date.now()) {
+          const data = cached.data as T;
+          setState({ status: isEmptyResult(data) ? "empty" : "success", data, error: null });
+          return;
+        }
+      }
+
+      requestKeyRef.current = key;
+      setState((s) => ({ ...s, status: "loading" }));
+      fetcherRef
+        .current()
+        .then((result) => {
+          // If `key` has changed since this request started, a newer request
+          // owns the state now — drop this stale response.
+          if (requestKeyRef.current !== key) return;
+          if (result.ok) {
+            cache.set(key, { data: result.data, expires: Date.now() + CACHE_TTL_MS });
+            setState({ status: isEmptyResult(result.data) ? "empty" : "success", data: result.data, error: null });
+          } else {
+            setState({ status: "error", data: null, error: result.error });
+          }
+        })
+        .catch(() => {
+          // The server action itself failed (network drop, deploy in flight): show an error, cache nothing.
+          if (requestKeyRef.current !== key) return;
+          setState({ status: "error", data: null, error: { message: "Could not reach the server. Check your connection and try again." } });
+        });
+    },
+    [key]
+  );
+
+  useEffect(() => {
+    // Deliberate: this is the data-fetching effect itself — `key` changing
+    // (new season, new event) should kick off a fetch and move the hook into
+    // its loading state, same as React's own documented data-fetching pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load(false);
+  }, [load]);
+
+  return { ...state, refetch: () => load(true) };
+}

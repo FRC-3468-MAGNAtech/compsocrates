@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import type { Firestore } from "firebase-admin/firestore";
 import { getAdminFirestore } from "@/lib/firebase/admin";
-import { verifyBearerToken } from "@/lib/server/require-user";
+import { serverSignInProblem, verifyBearerToken } from "@/lib/server/require-user";
 import type { Caller, RouteResult } from "@/lib/server/join-requests";
 
 /**
@@ -11,7 +11,10 @@ import type { Caller, RouteResult } from "@/lib/server/join-requests";
  */
 export async function withCaller(request: Request, handler: (db: Firestore, caller: Caller) => Promise<RouteResult>): Promise<NextResponse> {
   const decoded = await verifyBearerToken(request);
-  if (!decoded) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+  if (!decoded) {
+    const problem = serverSignInProblem();
+    return problem ? NextResponse.json({ ok: false, error: problem }, { status: 503 }) : NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+  }
   const db = getAdminFirestore();
   if (!db) return NextResponse.json({ ok: false, error: "Server isn't configured." }, { status: 503 });
   try {
