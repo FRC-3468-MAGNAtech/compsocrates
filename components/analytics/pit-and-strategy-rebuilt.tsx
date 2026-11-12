@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { ArrowRight } from "lucide-react";
 import { ClimbChips, Yes, dash, weightLabel } from "@/components/analytics/rebuilt-parts";
 import { Fact } from "@/components/analytics/summary-parts";

@@ -231,7 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // handler, onSnapshot's success callback simply never fires and
         // `profileLoaded` is stuck `false` forever, hanging every page on
         // its loading spinner — this treats that denial the same as "no
-        // profile doc" so app/(app)/layout.tsx's redirect to /finish-setup
+        // profile doc" so app/(app)/[program]/layout.tsx's redirect to /finish-setup
         // can actually run.
         console.error("users/{uid} subscription failed:", err);
         setProfile(null);

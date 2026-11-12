@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { useSearchParams } from "next/navigation";
 import { CalendarX2, Download, Table2, Upload, Rows3 } from "lucide-react";
 import { AnalyticsDataTable, type SortState } from "@/components/analytics/data-table";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Clock, MapPin, RefreshCw, SearchX } from "lucide-react";
 import { formatDateRange } from "@/components/event/selected-events-panel";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { MessageSquareText, Search, UserSearch, UsersRound } from "lucide-react";
 import { CommentCell } from "@/components/analytics/comment-cell";
 import { Widget } from "@/components/dashboard/widget";

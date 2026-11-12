@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { useSearchParams } from "next/navigation";
 import { CalendarX2, Download, RefreshCw, Upload } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";

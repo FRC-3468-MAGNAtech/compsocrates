@@ -7,6 +7,7 @@ import {
   LEGACY_REDIRECTS,
   PAGE_REDIRECTS,
   UNREACHABLE_ROUTES,
+  APP_SEGMENTS,
   toNextRedirects,
 } from "./legacy-redirects";
 
@@ -18,7 +19,8 @@ function collectPagePatterns(dir = APP_DIR, segments: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name);
     if (!statSync(full).isDirectory()) continue;
-    const isGroup = name.startsWith("(") && name.endsWith(")");
+    // Route groups and the `[program]` segment are not part of a program-relative path.
+    const isGroup = (name.startsWith("(") && name.endsWith(")")) || name === "[program]";
     const seg = name.startsWith("[") ? "*" : name;
     const next = isGroup ? segments : [...segments, seg];
     if (existsSync(path.join(full, "page.tsx"))) out.push("/" + next.join("/"));
@@ -96,7 +98,21 @@ describe("legacy redirect table", () => {
   it("produces permanent Next redirects with the query condition on the lead-scout row", () => {
     const next = toNextRedirects();
     expect(next.every((r) => r.permanent)).toBe(true);
-    const lead = next.find((r) => r.destination === "/lead-scout-form");
-    expect(lead?.has).toEqual([{ type: "query", key: "lead", value: "1" }]);
+    const lead = next.find((r) => r.destination === "/frc/lead-scout-form");
+    expect((lead as { has?: unknown } | undefined)?.has).toEqual([{ type: "query", key: "lead", value: "1" }]);
+  });
+});
+
+describe("program prefix redirects", () => {
+  it("lists every top-level folder of the signed-in app", () => {
+    const dir = path.join(APP_DIR, "(app)", "[program]");
+    const folders = readdirSync(dir).filter((n) => statSync(path.join(dir, n)).isDirectory());
+    expect([...APP_SEGMENTS].sort()).toEqual(folders.sort());
+  });
+
+  it("sends unprefixed app URLs to /frc and old CS URLs to their /frc page", () => {
+    const next = toNextRedirects();
+    expect(next).toContainEqual({ source: "/scout/:path*", destination: "/frc/scout/:path*", permanent: true });
+    expect(next.find((r) => r.source === "/event-selection")?.destination).toBe("/frc/event");
   });
 });

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "@/components/program/link";
+import { useRouter } from "@/lib/program/navigation";
 import { motion } from "framer-motion";
 import { LogIn } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -10,7 +10,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/auth/google-button";
 import { useAuth } from "@/lib/auth";
-import { cardEntranceVariants } from "@/lib/motion";
+import { cardEntranceVariants } from "@/lib/motion";
 import { BRAND } from "@/config/brand";
 
 function authErrorMessage(err: unknown): string {

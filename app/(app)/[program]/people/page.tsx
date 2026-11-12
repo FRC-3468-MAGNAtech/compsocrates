@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { ShieldCheck } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Avatar } from "@/components/ui/avatar";

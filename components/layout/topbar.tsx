@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { Menu, Trophy } from "lucide-react";
 import { motion } from "framer-motion";
 import { springSnappy } from "@/lib/motion";

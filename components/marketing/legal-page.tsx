@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { GlassPanel } from "@/components/ui/glass-panel";
 
 export type LegalSection = { heading: string; body: string };

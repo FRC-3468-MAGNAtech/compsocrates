@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { DatabaseBackup, Flag, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Shimmer } from "@/components/ui/shimmer";

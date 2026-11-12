@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { Hourglass } from "lucide-react";
 import { ReliabilityPill } from "@/components/analytics/reliability-pill";
 import { Badge } from "@/components/ui/badge";

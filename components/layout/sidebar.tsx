@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Link from "@/components/program/link";
+import { usePathname, useRouter } from "@/lib/program/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronsLeft, ChevronsRight, LogOut, Trophy } from "lucide-react";
 import { mainNav, secondaryNav, type NavItem } from "@/lib/nav";
@@ -23,6 +23,9 @@ import { useAuth } from "@/lib/auth";
 import { getRole } from "@/lib/roles";
 import { useChangelogUnread } from "@/lib/changelog/store";
 import { BRAND } from "@/config/brand";
+import { isUnavailableInProgram, programConfig } from "@/config/programs";
+import { useProgram } from "@/lib/program/context";
+import { ProgramSwitcher } from "@/components/program/program-switcher";
 
 function NavLink({
   item,
@@ -42,8 +45,23 @@ function NavLink({
   count?: number;
 }) {
   const pathname = usePathname();
+  const program = useProgram();
   const active = item.matchPrefix ? pathname.startsWith(item.href) : pathname === item.href;
   const Icon = item.icon;
+
+  // A page the active program does not have yet: shown, greyed out, not a link.
+  if (isUnavailableInProgram(program, item.href)) {
+    return (
+      <div
+        aria-disabled="true"
+        title={`Not available for ${programConfig(program).brand.label} yet`}
+        className="relative flex cursor-not-allowed items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium text-[var(--muted-foreground)] opacity-45"
+      >
+        <Icon className="h-[18px] w-[18px] shrink-0" />
+        {!collapsed && <span className="truncate">{item.label}</span>}
+      </div>
+    );
+  }
 
   return (
     <Link href={item.href} onClick={onNavigate} className="relative block">
@@ -245,6 +263,7 @@ function SidebarInner({
         </Link>
       </div>
 
+      {!collapsed && <ProgramSwitcher className="mb-1" />}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto py-1">
         {visibleNav(mainNav, canOpen).map((item) => (
           <NavLink key={item.href} item={item} collapsed={collapsed} onNavigate={onNavigate} scope={scope} />

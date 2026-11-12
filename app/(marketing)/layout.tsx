@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ColorModeToggle } from "@/components/theme/color-mode-toggle";

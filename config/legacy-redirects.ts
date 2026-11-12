@@ -187,12 +187,30 @@ export const CS_ROUTE_INVENTORY: string[] = [
 /** Old routes that the rebuild's own page redirects (not next.config), for completeness of the coverage test. */
 export const PAGE_REDIRECTS: string[] = ["/analytics"];
 
-/** Convert the table into Next's `redirects()` shape. */
+/**
+ * Top-level segments of the signed-in app (`app/(app)/[program]/`). Every unprefixed URL under one of them was an FRC URL
+ * (CS, and this app before programs) and redirects to `/frc/...`. `legacy-redirects.test.ts` fails if a segment is missing.
+ */
+export const APP_SEGMENTS: string[] = [
+  "account", "admin", "analytics", "assignments", "changelog", "credits", "dashboard", "drive-reflection-form", "event", "events",
+  "helper-form", "judge-book", "lead-scout-form", "match-list", "match-strategy-form", "my-scouting", "people", "pit-scout-form",
+  "practice-scouting", "profile", "scout", "scout-accuracy", "team-management", "team-settings", "team-strategy-form",
+];
+
+/** The program every old URL belongs to. */
+const LEGACY_PROGRAM = "frc";
+
+/** Convert the table into Next's `redirects()` shape: old CS URLs first (to their `/frc` page), then every unprefixed app URL. */
 export function toNextRedirects() {
-  return LEGACY_REDIRECTS.map((r) => ({
+  const legacy = LEGACY_REDIRECTS.map((r) => ({
     source: r.from,
-    destination: r.to,
+    destination: `/${LEGACY_PROGRAM}${r.to}`,
     permanent: true,
     ...(r.whenQuery ? { has: [{ type: "query" as const, key: r.whenQuery.key, value: r.whenQuery.value }] } : {}),
   }));
+  const unprefixed = APP_SEGMENTS.flatMap((seg) => [
+    { source: `/${seg}`, destination: `/${LEGACY_PROGRAM}/${seg}`, permanent: true },
+    { source: `/${seg}/:path*`, destination: `/${LEGACY_PROGRAM}/${seg}/:path*`, permanent: true },
+  ]);
+  return [...legacy, ...unprefixed];
 }

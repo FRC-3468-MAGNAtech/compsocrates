@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/program/navigation";
 import { motion } from "framer-motion";
 import { Clock, Rocket, Send, UserPlus } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";

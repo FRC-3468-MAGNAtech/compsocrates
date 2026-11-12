@@ -129,8 +129,8 @@ describe("Team Profile section on REBUILT data", () => {
     expect(html).toContain("reliable");
     expect(html).toContain("Friendly in the pit");
     expect(html).toMatch(/data-testid="capability-endgame-climb"[\s\S]*?Level 2[\s\S]*?Level 3/); // pit scout says level 2, the plan says level 3
-    expect(html).toContain('href="/analytics/pit-scout?view=summary"');
-    expect(html).toContain('href="/analytics/drive-reflection?view=summary"');
+    expect(html).toContain('href="/frc/analytics/pit-scout?view=summary"');
+    expect(html).toContain('href="/frc/analytics/drive-reflection?view=summary"');
   });
 
   it("leaves out sections it has no data for", () => {

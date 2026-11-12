@@ -21,6 +21,9 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 | `NEXT_PUBLIC_TBA_API_KEY` | The Blue Alliance read key. **Read on the server only**: no client code references it, so it is never inlined into a browser bundle. | Event names, schedules, teams, rankings and playoff brackets |
 | `FIRST_API_USERNAME` | FIRST FRC Events API username | Practice schedules and the FIRST fallback for teams and rankings |
 | `FIRST_API_TOKEN` | FIRST FRC Events API token | Same as `FIRST_API_USERNAME` |
+| `FTC_API_USERNAME` | FTC program: FIRST FTC Events API username | FTC event data; the FTC pages name the variable. FRC is unaffected |
+| `FTC_API_KEY` | FTC program: FTC Events API key | Same as `FTC_API_USERNAME` |
+| `FTC_API_BASE_URL` | FTC program: optional base URL override | Nothing (defaults to the public v2.0 API) |
 | `RELEASE_OWNER_UIDS` | Comma-separated uids of the platform owner(s) | Nobody is recognised as platform owner by uid |
 | `RELEASE_OWNER_EMAILS` | Comma-separated emails of the platform owner(s) | Owner-by-email recognition. One of the two owner variables is enough. |
 

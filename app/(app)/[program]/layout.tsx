@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { notFound, useParams } from "next/navigation";
+import { useRouter } from "@/lib/program/navigation";
+import { isProgramId, type ProgramId } from "@/config/programs/types";
+import { PROGRAMS } from "@/config/programs";
+import { ProgramProvider } from "@/lib/program/context";
+import { ProgramGate } from "@/components/program/program-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { PageTransition } from "@/components/layout/page-transition";
@@ -20,7 +25,7 @@ import { FormsProvider } from "@/lib/forms/forms-context";
 import { OwnershipTransferBanner } from "@/components/layout/ownership-transfer-banner";
 import { ImmersiveContext, useImmersiveValue } from "@/lib/shell-immersive";
 
-export default function AppShellLayout({ children }: { children: React.ReactNode }) {
+function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // P24: the practice workspace's Focus mode hides the sidebar and the mobile top bar (lib/shell-immersive.tsx).
   const [immersive, setImmersive] = useState(false);
@@ -76,4 +81,19 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       </PageAccessProvider>
     </OurTeamProvider>
   );
+}
+
+export default function ProgramLayout({ children }: { children: React.ReactNode }) {
+  const { program } = useParams<{ program: string }>();
+  if (!isProgramId(program)) notFound();
+  return (
+    <ProgramProvider program={program}>
+      <ProgramRoute program={program}>{children}</ProgramRoute>
+    </ProgramProvider>
+  );
+}
+
+/** Connected programs get the full shell; the others get the gate (see ProgramConfig.pagesConnected). */
+function ProgramRoute({ program, children }: { program: ProgramId; children: React.ReactNode }) {
+  return PROGRAMS[program].pagesConnected ? <AppShell>{children}</AppShell> : <ProgramGate />;
 }

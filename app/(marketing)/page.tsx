@@ -1,9 +1,10 @@
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { ArrowRight, BarChart3, ClipboardList, Sparkles, Target, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { BRAND } from "@/config/brand";
+import { ProgramCards } from "@/components/program/program-switcher";
 
 const features = [
   {
@@ -73,6 +74,10 @@ export default function LandingPage() {
             ))}
           </div>
         </GlassPanel>
+      </section>
+
+      <section className="mt-16" aria-label="Choose a program">
+        <ProgramCards />
       </section>
 
       <section className="mt-24 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">

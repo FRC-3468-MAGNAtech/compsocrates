@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { connectionNotice } from "@/lib/connection-notice";
 import { OurTeamContext, ourTeamFrom } from "@/lib/our-team";
 
-/** The app shell (same structure as app/(app)/layout.tsx) around the Appearance panel and one sample of each glass class. */
+/** The app shell (same structure as app/(app)/[program]/layout.tsx) around the Appearance panel and one sample of each glass class. */
 export function ThemeCheckFixture() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sim, setSim] = useState<"online" | "offline" | "syncing">("online");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { Check, ClipboardList, HandHelping, Lightbulb, Wrench } from "lucide-react";
 import { Widget } from "@/components/dashboard/widget";
 import { KeyNumber, teamHref } from "@/components/dashboard/shared";

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { QueryBoundary } from "@/components/events/query-boundary";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { getRankingsForEvent, getTeamsForEvent } from "@/lib/events/actions";

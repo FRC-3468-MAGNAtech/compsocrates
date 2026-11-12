@@ -147,7 +147,7 @@ describe("dialogs, bars, and units on a phone", () => {
   it("page-height layouts use dynamic viewport units, not 100vh/min-h-screen", () => {
     expect(read("app/(marketing)/layout.tsx")).toContain("min-h-dvh");
     expect(read("components/layout/sidebar.tsx")).toContain("100dvh");
-    for (const f of ["app/(marketing)/layout.tsx", "components/layout/sidebar.tsx", "components/layout/topbar.tsx", "app/(app)/layout.tsx"]) {
+    for (const f of ["app/(marketing)/layout.tsx", "components/layout/sidebar.tsx", "components/layout/topbar.tsx", "app/(app)/[program]/layout.tsx"]) {
       expect(read(f), f).not.toMatch(/100vh|min-h-screen|h-screen/);
     }
   });

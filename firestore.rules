@@ -998,6 +998,1063 @@ service cloud.firestore {
     }
 
     // =================================================================================================================
+    // 2b. FTC PROGRAM (docs/MERGE_PLAN.md section 3). Generated from the sister app's rules: every document path is
+    //     under programs/ftc/, every helper is prefixed ftc_ (so it cannot shadow the CS helpers above) and every
+    //     get()/exists() reads programs/ftc/users and programs/ftc/teams, never the root FRC collections.
+    //     Collection-group reads of scouts/players are not granted to FTC paths by anything here: the root recursive
+    //     rules above match them but evaluate against the FRC profile, so FTC code must read those subcollections by path.
+    //     Not deployed by this repo: review, run the rules tests against the emulator, then deploy by hand.
+    // =================================================================================================================
+    match /programs/ftc {
+
+      function ftc_isSignedIn() {
+        return request.auth != null;
+      }
+
+      function ftc_myProfile() {
+        return get(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid)).data;
+      }
+
+      function ftc_sameTeam(teamId) {
+        return ftc_isSignedIn() && ftc_myProfile().teamId == teamId;
+      }
+
+      function ftc_isAdmin() {
+        return ftc_isSignedIn() && ftc_myProfile().isAdmin == true;
+      }
+
+      // P20: the account's team owner (what "owner" means inside a team account; FIX2's protections follow
+      // it). `teams/{teamId}.ownerUid` is authoritative and only the server routes write it (sync-roles'
+      // bootstrap, the transfer routes, team creation/approval). Until an account has an `ownerUid` (the
+      // bootstrap hasn't reached it yet) the legacy per-user `isOwner` flag still counts, so the existing
+      // owner is never locked out in between. After that, a stale flag counts for nothing.
+      function ftc_ownerUidOf(teamId) {
+        return get(/databases/$(database)/documents/programs/ftc/teams/$(teamId)).data.get('ownerUid', null);
+      }
+
+      function ftc_isOwner() {
+        return ftc_isSignedIn() && (ftc_ownerUidOf(ftc_myProfile().teamId) == request.auth.uid
+          || (ftc_ownerUidOf(ftc_myProfile().teamId) == null && ftc_myProfile().get('isOwner', false) == true));
+      }
+
+      // P20: is this user doc's owner of its account? (the same rule, for the row being edited)
+      function ftc_isOwnerRow(uid, teamId) {
+        return ftc_ownerUidOf(teamId) == uid || (ftc_ownerUidOf(teamId) == null && resource.data.get('isOwner', false) == true);
+      }
+
+      // P20: the platform owner (an email in the server-only OWNER_EMAILS, verified). Carried as the
+      // `platformOwner` custom claim that app/api/auth/sync-roles sets; the claim is the only thing rules can
+      // see, and it grants access to the application tools only (see teamApplications below), never to
+      // another account's scouting data.
+      function ftc_isPlatformOwner() {
+        return ftc_isSignedIn() && 'platformOwner' in request.auth.token && request.auth.token.platformOwner == true;
+      }
+
+      // FIX2: who may use the member-management powers below — admins, and owners
+      // (who are always admins in practice, but this doesn't depend on that).
+      function ftc_canManageMembers() {
+        return ftc_isAdmin() || ftc_isOwner();
+      }
+
+      // P25: an avatar choice ({type, value}), on a profile and mirrored on the user doc. No uploads exist: a Google
+      // picture is an https URL on googleusercontent.com, a preset is one of the app's ids, initials carry nothing.
+      function ftc_validAvatar(a) {
+        return a is map && a.keys().hasOnly(['type', 'value']) && a.keys().hasAll(['type', 'value'])
+          && a.type in ['google', 'initials', 'preset']
+          && a.value is string && a.value.size() <= 500
+          && (a.type == 'google' ? a.value.matches('^https://lh[0-9]\\.googleusercontent\\.com/[^ ]*$')
+            : (a.type == 'preset' ? a.value.matches('^[a-z0-9-]{1,24}$') : a.value.size() <= 4));
+      }
+
+      // P25: an absent avatar is fine (initials apply); a present one must be valid.
+      function ftc_validUserAvatar(d) {
+        return d.get('avatar', null) == null || ftc_validAvatar(d.avatar);
+      }
+
+      // P25: another member's user doc, for "are they an admin / the owner".
+      function ftc_userDocOf(uid) {
+        return get(/databases/$(database)/documents/programs/ftc/users/$(uid)).data;
+      }
+
+      // P25: is this uid the owner of the account (teams.ownerUid, or the legacy flag until one is set)?
+      function ftc_isOwnerUid(uid, teamId) {
+        return ftc_ownerUidOf(teamId) == uid || (ftc_ownerUidOf(teamId) == null && ftc_userDocOf(uid).get('isOwner', false) == true);
+      }
+
+      // FIX1: the ids in lib/roles.ts's ROLES — keep in sync when a role is added.
+      function ftc_validRoleIds() {
+        return ['match-scout', 'pit-scout', 'pit-team', 'drive-team', 'lead-scout',
+                'lead-strategist', 'team-coach', 'media', 'judge-awards'];
+      }
+
+      // FIX1: a team can have several active events. `activeEventCode` stays
+      // as the *primary* (so pre-FIX1 readers keep working) and
+      // `activeEventCodes` is the full list. Only checked when the write
+      // actually carries `activeEventCodes`, so a pre-migration team doc (and
+      // the old single-event write) still passes. Rules can't loop over a list,
+      // so the per-element "is a string" check isn't expressible here — only
+      // admins can write this field (see below) and lib/active-events.ts
+      // always builds it from event codes; see docs/ASSUMPTIONS.md (FIX1).
+      function ftc_validActiveEvents() {
+        let d = request.resource.data;
+        return !('activeEventCodes' in d) || (
+          d.activeEventCodes is list
+          && d.activeEventCodes.size() <= 10
+          && (d.activeEventCode == null
+            ? d.activeEventCodes.size() == 0
+            // FIX4: the primary is always the FIRST event in the order.
+            : d.activeEventCode is string && d.activeEventCodes.size() >= 1 && d.activeEventCodes[0] == d.activeEventCode)
+          && (!('activeEvents' in d) || (d.activeEvents is list && d.activeEvents.size() == d.activeEventCodes.size()))
+        );
+      }
+
+      // P19: an account can have several FTC teams (`fieldTeams`: [{id, number, name}]). Only
+      // checked when the resulting doc carries `fieldTeams`, so a pre-migration team doc still
+      // passes. Rules can't project a list of maps, so `fieldTeamIdList` (a plain list of the ids,
+      // same order, written alongside by lib/field-teams.ts's fieldTeamsWrite()) is what member
+      // assignments are checked against below; the check here is that it is present and the same
+      // length. Per-entry shape (number 1-5 digits, unique) can't be expressed in rules — only
+      // admins/owners can write this and the Team Settings editor validates it first (see
+      // docs/ASSUMPTIONS.md, P19). `accountName` is an optional bounded string.
+      function ftc_validFieldTeams() {
+        let d = request.resource.data;
+        return (!('fieldTeams' in d) || (
+            d.fieldTeams is list
+            && d.fieldTeams.size() >= 1 && d.fieldTeams.size() <= 10
+            && 'fieldTeamIdList' in d && d.fieldTeamIdList is list
+            && d.fieldTeamIdList.size() == d.fieldTeams.size()))
+          && (!('accountName' in d) || d.accountName == null || (d.accountName is string && d.accountName.size() <= 60));
+      }
+
+      // P19: a member's `fieldTeamIds` may only change to a list of ids that exist on the account.
+      // `getAfter` (not `get`) so one batch can add an FTC team and assign members to it together.
+      // Unchanged is always fine, so a role edit never fails because an old assignment went stale.
+      function ftc_validMemberFieldTeams(teamId) {
+        let d = request.resource.data;
+        return d.get('fieldTeamIds', null) == resource.data.get('fieldTeamIds', null)
+          || (d.fieldTeamIds is list && d.fieldTeamIds.size() <= 10
+              && d.fieldTeamIds.hasOnly(getAfter(/databases/$(database)/documents/programs/ftc/teams/$(teamId)).data.get('fieldTeamIdList', [])));
+      }
+
+      // P21: `teams.activeForms` maps a season id to the form scouts fill in for it ({ biobuzz: "my-form" }). Only checked
+      // when the resulting doc carries it. The season ids are the code-defined ones in lib/seasons.ts: keep in sync when a
+      // season is added. (Whether the named form exists is the writer's job (lib/forms/firestore-store.ts setActiveForm
+      // checks) and readers fall back to the season's built-in form when it doesn't.)
+      function ftc_validActiveForms() {
+        let d = request.resource.data;
+        return !('activeForms' in d) || (
+          d.activeForms is map
+          && d.activeForms.keys().hasOnly(['biobuzz'])
+          && (!('biobuzz' in d.activeForms) || (d.activeForms.biobuzz is string && d.activeForms.biobuzz.size() >= 1 && d.activeForms.biobuzz.size() <= 40))
+        );
+      }
+
+      // P12: who may edit the shared Pick List — admins, or members whose primary
+      // OR secondary role is one of these. Mirrors lib/pick-list/permissions.ts's
+      // PICK_LIST_EDITOR_ROLES: keep both in sync.
+      function ftc_canEditPickList() {
+        let p = ftc_myProfile();
+        let editors = ['lead-strategist', 'lead-scout', 'team-coach', 'drive-team'];
+        return ftc_isSignedIn() && (p.isAdmin == true || p.primaryRole in editors || p.secondaryRoles.hasAny(editors));
+      }
+
+      // P26: page access. `canAccessPage()` in lib/page-access/access.ts is the twin of this (keep both in sync): an admin
+      // (the owner is always one) can always; otherwise a person can use a restricted page when one of their roles (primary OR
+      // secondary) is in the page's role list in `teams/{teamId}/settings/pageAccess`, or the page is in their member
+      // `grant` list, and the page is NOT in their `deny` list. The doc stores, beside the editable `roleGrants`, a
+      // `pageRoles` mirror (page id -> the roles that have it) because rules can't loop over a map or a list. Until an admin
+      // session has created the doc (a one-time, idempotent migration), and for a page the doc doesn't list, the page's
+      // default roles apply: each call site below passes them (the same ones as the PAGES registry in lib/page-access/pages.ts).
+      function ftc_pageAccessPath() {
+        return /databases/$(database)/documents/programs/ftc/teams/$(ftc_myProfile().teamId)/settings/pageAccess;
+      }
+
+      function ftc_hasAnyRoleOf(roles) {
+        return ftc_myProfile().primaryRole in roles || ftc_myProfile().secondaryRoles.hasAny(roles);
+      }
+
+      function ftc_pageAccessAllowed(pageId, defaultRoles) {
+        return ftc_isSignedIn() && (
+          ftc_myProfile().isAdmin == true
+          || (exists(ftc_pageAccessPath())
+            ? (((get(ftc_pageAccessPath()).data.get('pageRoles', {}).get(pageId, null) == null
+                  ? ftc_hasAnyRoleOf(defaultRoles)
+                  : ftc_hasAnyRoleOf(get(ftc_pageAccessPath()).data.pageRoles[pageId]))
+                || pageId in get(ftc_pageAccessPath()).data.get('memberOverrides', {}).get(request.auth.uid, {}).get('grant', []))
+              && !(pageId in get(ftc_pageAccessPath()).data.get('memberOverrides', {}).get(request.auth.uid, {}).get('deny', [])))
+            : ftc_hasAnyRoleOf(defaultRoles)));
+      }
+
+      // P26: the restricted pages that can be requested (the ids in lib/page-access/pages.ts; keep in sync).
+      function ftc_requestablePageIds() {
+        return ['lead-scout-form', 'pit-scout-form', 'team-strategy-form', 'match-strategy-form', 'drive-reflection-form',
+                'helper-form', 'scout-status', 'scout-accuracy', 'assignments', 'event-selection', 'team-management'];
+      }
+
+      function ftc_validPageAccessDoc(d) {
+        return d.keys().hasOnly(['roleGrants', 'pageRoles', 'memberOverrides', 'updatedBy', 'updatedAt'])
+          && d.keys().hasAll(['roleGrants', 'pageRoles', 'memberOverrides', 'updatedBy', 'updatedAt'])
+          && d.roleGrants is map && d.pageRoles is map && d.memberOverrides is map
+          && d.updatedBy == request.auth.uid
+          && d.updatedAt == request.time;
+      }
+
+      match /teams/{teamId} {
+        // P1b: no more public read. Team lookup by join code, the first-run
+        // "does a team exist" check, and team creation itself all moved
+        // server-side (app/api/team/join, app/api/team/create — both use the
+        // Admin SDK, which bypasses these rules entirely) once more than one
+        // team could exist, closing the P1-4 trade-off this replaced.
+        allow get: if ftc_sameTeam(teamId);
+        allow list: if false;
+
+        // P1b: teams are only ever created via /api/team/create's
+        // transaction (Admin SDK) — never directly by a client.
+        allow create: if false;
+
+        // Admins of *this* team can still update its settings directly
+        // (active events/season — see lib/team.ts's setActiveEvents) the same
+        // way as P1, FIX1 adding the active-events shape check above. P19: `fieldTeams` /
+        // `accountName` ride the same rule (admins and the owner), with their shape check.
+        // P20: `ownerUid` and `pendingTransfer` are server-only (the transfer routes): nobody can write
+        // them from a client, admins and the owner included.
+        allow update: if ftc_sameTeam(teamId) && ftc_canManageMembers() && ftc_validActiveEvents() && ftc_validFieldTeams() && ftc_validActiveForms()
+          && request.resource.data.get('ownerUid', null) == resource.data.get('ownerUid', null)
+          && request.resource.data.get('pendingTransfer', null) == resource.data.get('pendingTransfer', null);
+        allow delete: if false;
+
+        // P26: settings docs of the account. Only `pageAccess` exists today: every teammate reads it (the navigation and the
+        // route guard need it), only admins write it (never deleted). The Admin Panel's Page Access screen is its only writer.
+        match /settings/{docId} {
+          allow read: if ftc_sameTeam(teamId);
+          allow create, update: if docId == 'pageAccess' && ftc_sameTeam(teamId) && ftc_isAdmin() && ftc_validPageAccessDoc(request.resource.data);
+          allow delete: if false;
+        }
+
+        // P26: "Request access" on the no-access screen. One doc per person and page (id `{uid}_{pageId}`): the person creates
+        // their own (pending) and may ask again after a denial; admins read them all and decide (status only). Nobody deletes.
+        match /pageAccessRequests/{requestId} {
+          allow read: if ftc_sameTeam(teamId) && (ftc_isAdmin() || resource.data.uid == request.auth.uid);
+          allow create: if ftc_sameTeam(teamId)
+            && request.resource.data.keys().hasOnly(['teamId', 'uid', 'name', 'pageId', 'pageTitle', 'status', 'createdAt'])
+            && request.resource.data.keys().hasAll(['teamId', 'uid', 'name', 'pageId', 'pageTitle', 'status', 'createdAt'])
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.teamId == teamId
+            && request.resource.data.pageId in ftc_requestablePageIds()
+            && requestId == request.auth.uid + '_' + request.resource.data.pageId
+            && request.resource.data.status == 'pending'
+            && request.resource.data.name is string && request.resource.data.name.size() <= 80
+            && request.resource.data.pageTitle is string && request.resource.data.pageTitle.size() <= 60
+            && request.resource.data.createdAt == request.time;
+          allow update: if ftc_sameTeam(teamId) && (
+            (ftc_isAdmin()
+              && resource.data.status == 'pending'
+              && request.resource.data.status in ['approved', 'denied']
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedAt'])
+              && request.resource.data.decidedBy == request.auth.uid
+              && request.resource.data.decidedAt == request.time)
+            || (resource.data.uid == request.auth.uid
+              && resource.data.status == 'denied'
+              && request.resource.data.status == 'pending'
+              && request.resource.data.uid == request.auth.uid
+              && request.resource.data.pageId == resource.data.pageId
+              && request.resource.data.keys().hasOnly(['teamId', 'uid', 'name', 'pageId', 'pageTitle', 'status', 'createdAt'])
+              && request.resource.data.createdAt == request.time));
+          allow delete: if false;
+        }
+      }
+
+      match /users/{uid} {
+        allow read: if ftc_isSignedIn() && ftc_sameTeam(resource.data.teamId);
+
+        // P1b: user docs are only ever created via /api/team/join or
+        // /api/team/create (Admin SDK) — never directly by a client. This
+        // also closes a P1 gap where the create rule checked a target team
+        // *existed* but never that the caller's `teamId` actually matched a
+        // join code they supplied, which would have let anyone join any team
+        // by id once more than one could exist.
+        allow create: if false;
+
+        // You can update your own profile, but never teamId, primaryRole,
+        // secondaryRoles, isAdmin, or isOwner — those are admin-only (or,
+        // for isOwner, nobody — see below).
+        allow update: if ftc_isSignedIn() && request.auth.uid == uid
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.primaryRole == resource.data.primaryRole
+          && request.resource.data.secondaryRoles == resource.data.secondaryRoles
+          && request.resource.data.isAdmin == resource.data.isAdmin
+          && request.resource.data.isOwner == resource.data.isOwner
+          // P20: the platform-owner mirror is server-written too (the sync route sets it from OWNER_EMAILS).
+          && request.resource.data.get('isPlatformOwner', false) == resource.data.get('isPlatformOwner', false)
+          // P19: which FTC teams a member is assigned to is admin-only — you can't change your own
+          // (an admin changes theirs through the rule below). `.get` because pre-migration docs lack it.
+          && request.resource.data.get('fieldTeamIds', null) == resource.data.get('fieldTeamIds', null)
+          // P25: the avatar mirror is the member's own, and must be a valid choice.
+          && ftc_validUserAvatar(request.resource.data);
+
+        // Team Management's role editor — the matrix is mirrored by canEditMember()
+        // in lib/member-access.ts, so keep the two in sync:
+        //  - Admins (and the owner) edit the roles of any NON-owner member, other
+        //    admins and themselves included, and grant/revoke admin for them.
+        //  - An owner's row can be edited only by that owner — never by another
+        //    admin (FIX2; before this the owner was locked out of their own row too).
+        //    The owner's admin flag must stay true: owner access can't be removed.
+        //  - isOwner / isPlatformOwner are never writable by a client; the server routes set them (Admin SDK).
+        //  - teamId can't be moved, so nobody can remove a member from the team.
+        //  - Last-admin safeguard: an admin can't remove their *own* admin flag.
+        //    Rules can't count admins, but this is equivalent and race-free — the
+        //    last admin can only be demoted by themself (blocked here), and two
+        //    admins demoting each other at once fail because the second write no
+        //    longer passes ftc_isAdmin(). It only ever blocks removing admin status, never
+        //    a role edit. To step down, ask another admin.
+        //  - the roles written must be real role ids and isAdmin a boolean.
+        allow update: if ftc_sameTeam(resource.data.teamId) && ftc_canManageMembers()
+          && request.resource.data.isOwner == resource.data.isOwner
+          && request.resource.data.get('isPlatformOwner', false) == resource.data.get('isPlatformOwner', false)
+          && request.resource.data.teamId == resource.data.teamId
+          // P25: an admin's edit of someone's roles can't touch their avatar (that is the member's own choice).
+          && request.resource.data.get('avatar', null) == resource.data.get('avatar', null)
+          && request.resource.data.isAdmin is bool
+          && request.resource.data.primaryRole in ftc_validRoleIds()
+          && request.resource.data.secondaryRoles is list
+          && request.resource.data.secondaryRoles.size() <= 9
+          && request.resource.data.secondaryRoles.hasOnly(ftc_validRoleIds())
+          && ftc_validMemberFieldTeams(resource.data.teamId)
+          // P20: "is this row the owner" follows teams.ownerUid (the legacy flag only until an owner is set).
+          && (ftc_isOwnerRow(uid, resource.data.teamId)
+            ? (request.auth.uid == uid && ftc_isOwner() && request.resource.data.isAdmin == true)
+            : (request.auth.uid != uid || request.resource.data.isAdmin == true));
+
+        allow delete: if false;
+      }
+
+      // P25: profiles/{uid} — a member's public/private profile (display name, bio, pronouns, avatar, visibility).
+      // Readable by:
+      //  - the member themself (always), and a teammate who is an admin (always);
+      //  - any other teammate when the profile is public — or when the member is an admin or the owner, who are always
+      //    treated as public whatever their saved preference says (so promotion applies at once and demotion brings
+      //    their preference back without a write).
+      // A teammate who may not read it gets "permission denied" (the page shows the limited "This profile is private"
+      // card from the account's own user doc: name, role, avatar). `resource == null` is allowed for a teammate so
+      // "has no profile yet" isn't an error. Only the member writes their own profile; an admin can only CLEAR a
+      // teammate's bio and pronouns (never write them, never touch the owner's), and the client logs each clear to
+      // auditLog in the same batch. An admin's visibility can't be changed while they are an admin (the toggle is
+      // disabled; the saved preference is kept for after a demotion). Never deleted.
+      function ftc_validProfile(d) {
+        return d.keys().hasOnly(['teamId', 'displayName', 'bio', 'pronouns', 'avatar', 'visibility', 'updatedAt'])
+          && d.keys().hasAll(['teamId', 'displayName', 'bio', 'pronouns', 'avatar', 'visibility', 'updatedAt'])
+          && d.displayName is string && d.displayName.size() <= 40
+          && d.bio is string && d.bio.size() <= 280
+          && d.pronouns is string && d.pronouns.size() <= 30
+          && ftc_validAvatar(d.avatar)
+          && d.visibility in ['public', 'private']
+          && d.updatedAt == request.time;
+      }
+
+      match /profiles/{uid} {
+        allow get: if ftc_isSignedIn() && (
+          request.auth.uid == uid
+          || (resource == null
+            ? ftc_sameTeam(ftc_userDocOf(uid).teamId)
+            : (ftc_sameTeam(resource.data.teamId)
+              && (ftc_isAdmin() || resource.data.visibility == 'public' || ftc_userDocOf(uid).get('isAdmin', false) == true))));
+
+        allow create: if ftc_isSignedIn() && request.auth.uid == uid
+          && request.resource.data.teamId == ftc_myProfile().teamId
+          && ftc_validProfile(request.resource.data)
+          && (!ftc_isAdmin() || request.resource.data.visibility == 'public');
+
+        allow update: if ftc_isSignedIn() && (
+          (request.auth.uid == uid
+            && request.resource.data.teamId == resource.data.teamId
+            && ftc_validProfile(request.resource.data)
+            && (!ftc_isAdmin() || request.resource.data.visibility == resource.data.visibility))
+          || (request.auth.uid != uid
+            && ftc_isAdmin() && ftc_sameTeam(resource.data.teamId)
+            && !ftc_isOwnerUid(uid, resource.data.teamId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bio', 'pronouns', 'updatedAt'])
+            && request.resource.data.bio == '' && request.resource.data.pronouns == ''
+            && request.resource.data.updatedAt == request.time));
+
+        allow delete: if false;
+      }
+
+      // P1b: appSettings/global holds teamCreationEnabled. Every read and
+      // write goes through API routes using the Admin SDK (app/api/public/config,
+      // app/api/team/create, app/api/admin/team-creation) — no client ever
+      // needs direct access, so it's denied outright, including to admins.
+      match /appSettings/{document} {
+        allow read, write: if false;
+      }
+
+      // P20: team applications. Every write is a server route (Admin SDK): the public submit route,
+      // and the platform owner's decide route. Clients only ever read.
+      //  - teamApplications: the platform owner reads them all (the review queue); an applicant reads
+      //    only their own (queries must filter on applicantUid), which is what the status page shows.
+      //    Nothing on this doc is private from the applicant: the reviewer's notes, the verification
+      //    signals and the hashed IP live in applicationPrivate.
+      //  - applicationPrivate / applicationBlocks / platformAuditLog: platform owner reads; nobody writes.
+      //  - rateLimits: the submit route's hashed-IP / hashed-email counters; no client access at all.
+      // The platform owner's claim opens these collections and nothing else: it gives no read access to
+      // any account's scouting data (the rules above and below are all scoped by teamId, not by claim).
+      match /teamApplications/{applicationId} {
+        allow read: if ftc_isPlatformOwner() || (ftc_isSignedIn() && resource.data.applicantUid == request.auth.uid);
+        allow write: if false;
+      }
+      match /applicationPrivate/{applicationId} {
+        allow read: if ftc_isPlatformOwner();
+        allow write: if false;
+      }
+      match /applicationBlocks/{blockId} {
+        allow read: if ftc_isPlatformOwner();
+        allow write: if false;
+      }
+      match /platformAuditLog/{entryId} {
+        allow read: if ftc_isPlatformOwner();
+        allow write: if false;
+      }
+      match /rateLimits/{limitId} {
+        allow read, write: if false;
+      }
+
+      match /scoutEntries/{entryId} {
+        allow read: if ftc_sameTeam(resource.data.teamId);
+
+        // Create as yourself (CSV import also writes with the importing
+        // admin's own uid — see components/analytics/import-csv-dialog.tsx).
+        allow create: if ftc_isSignedIn()
+          && request.resource.data.uid == request.auth.uid
+          && ftc_sameTeam(request.resource.data.teamId);
+
+        allow update, delete: if ftc_sameTeam(resource.data.teamId) && ftc_isAdmin();
+      }
+
+      // P3: practiceSessions/{sessionId} — the doc id IS the Session ID (see
+      // lib/practice-sessions.ts's claimSessionId). Readable by the whole team
+      // (leaderboards need every member's sessions); a scout can keep
+      // updating their own session only while it's still in-progress/paused —
+      // once completed, further edits are admin-only, same pattern as
+      // scoutEntries.
+      //
+      // FIX3: `get` is allowed on a doc that doesn't exist yet. Starting a session
+      // reserves its id in a transaction that first *reads* the candidate id
+      // (lib/claim-doc.ts) — and `ftc_sameTeam(resource.data.teamId)` on a missing doc
+      // is an evaluation error, i.e. denied, which showed up as the raw "Missing or
+      // insufficient permissions" the moment a scout picked a match. An existing
+      // session of another team is still unreadable; the only thing a missing-doc
+      // read reveals is that the id is free. List queries are unchanged (they must
+      // still carry the team filter).
+      match /practiceSessions/{sessionId} {
+        allow get: if resource == null || ftc_sameTeam(resource.data.teamId);
+        allow list: if ftc_sameTeam(resource.data.teamId);
+
+        allow create: if ftc_isSignedIn()
+          && request.resource.data.uid == request.auth.uid
+          && ftc_sameTeam(request.resource.data.teamId);
+
+        allow update: if ftc_sameTeam(resource.data.teamId) && (
+          (resource.data.uid == request.auth.uid && resource.data.status in ["in-progress", "paused"])
+          || ftc_isAdmin()
+        );
+
+        // P4: the owner can delete their own session while it's still
+        // in-progress or paused — "Change Match," "Cancel"/"End Session," and
+        // the Resume banner's "Discard" all explicitly save nothing, and
+        // claimSessionId() already wrote a stub doc the moment a match was
+        // picked, so without this those abandoned attempts would linger
+        // forever and wrongly show up as "Opened" in Match Select.
+        //
+        // P5: admins can ALSO delete a *completed* session — this is what
+        // Scout Accuracy's "Hard Reset Scout Data" needs (it deletes every
+        // completed session, and their scoutEntries, for one scout+category).
+        // This supersedes P4's "once completed, never deletable by anyone,
+        // admin included" note — seeing a real, specified need for exactly
+        // that capability is reason enough to extend it. Deliberately scoped
+        // to `status == "completed"` only, not a blanket `ftc_isAdmin()`: an
+        // in-progress/paused session still can't be deleted by anyone but its
+        // own owner (an admin yanking a session out from under someone
+        // actively scouting it was never asked for, and P4's own test for
+        // that stays intact below).
+        allow delete: if ftc_sameTeam(resource.data.teamId) && (
+          (resource.data.uid == request.auth.uid && resource.data.status in ["in-progress", "paused"])
+          || (ftc_isAdmin() && resource.data.status == "completed")
+        );
+      }
+
+      // P15: a library match's origin. A doc written before P15 has no `origin`
+      // field and came from the API, so every check reads it with a default.
+      function ftc_libOrigin(d) {
+        return d.get('origin', 'api');
+      }
+
+      // P15: the doc id of a library match is `${eventCode}_${P|Q|F}${matchNumber}`
+      // (lib/library/ids.ts's libraryMatchId); this recomputes it from the doc's own fields.
+      function ftc_libMatchIdFor(d) {
+        return d.eventCode + '_'
+          + (d.matchType == 'Practice' ? 'P' : (d.matchType == 'Qualification' ? 'Q' : 'F'))
+          + string(d.matchNumber);
+      }
+
+      function ftc_validLibAlliance(a) {
+        return a.teams is list && a.teams.size() == 2
+          && a.score is int && a.score >= 0 && a.score <= 9999
+          && a.penaltyPoints is int && a.penaltyPoints >= 0 && a.penaltyPoints <= a.score
+          && a.difficulty in ['easy', 'medium', 'hard'];
+      }
+
+      // P15: a hand-entered match. It may only live under a *manual* event (so it can
+      // never sit under an API event's code), its id must be the one its fields give,
+      // and its alliance numbers must make sense. Rules can't loop, so the two team
+      // numbers inside `teams` aren't type-checked — lib/library/manual-match.ts
+      // validates them before the write.
+      function ftc_validManualMatch(matchId, d) {
+        return d.origin == 'manual'
+          && d.published is bool
+          && d.eventCode is string
+          && exists(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode))
+          && get(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode)).data.origin == 'manual'
+          && d.matchType in ['Practice', 'Qualification', 'Playoff']
+          && d.matchNumber is int && d.matchNumber >= 1 && d.matchNumber <= 9999
+          && matchId == ftc_libMatchIdFor(d)
+          && ftc_validLibAlliance(d.alliances.red)
+          && ftc_validLibAlliance(d.alliances.blue)
+          && d.createdBy is string
+          && d.updatedAt is string
+          && (!('notes' in d) || (d.notes is string && d.notes.size() <= 500))
+          && (!('needsReview' in d) || d.needsReview is bool);
+      }
+
+      // P3: libraryMatches/{matchId} — deliberately NOT teamId-scoped. This is
+      // public, real FTC competition data (the same for every team), not this
+      // team's own scouting data — see docs/ASSUMPTIONS.md for the resulting
+      // trade-off (any team's admin can write any match in the shared
+      // library, acceptable while the app is realistically single-team).
+      //
+      // P15 adds hand-entered ("manual") matches to the same collection:
+      //  - `published`: members read only matches with `published == true`; admins read
+      //    all. Rules aren't filters, so a non-admin's *query* must itself ask for
+      //    `published == true` (lib/match-library.ts does) — an unfiltered list is
+      //    rejected. The field is read strictly on purpose: `resource.data.get('published',
+      //    true)` would also let an unfiltered query through (the default makes it
+      //    provable — caught by the emulator tests) and expose unpublished matches. The
+      //    cost: a pre-P15 doc has no `published` field, so it stays admin-only until the
+      //    one-time backfill (lib/library/store.ts) stamps it.
+      //  - `origin` can never change on an existing doc, so an API import/refresh can't
+      //    overwrite a manual match and a manual write can't overwrite an API match —
+      //    even if a client tries to (lib/library/ids.ts's decideMatchWrite skips them first).
+      //  - API-origin writes can't land under a manual event's code.
+      //  - Only manual matches can be deleted.
+      match /libraryMatches/{matchId} {
+        allow read: if ftc_isSignedIn() && (resource.data.published == true || ftc_isAdmin());
+
+        allow create: if ftc_isAdmin() && (
+          (ftc_libOrigin(request.resource.data) == 'api'
+            && request.resource.data.get('published', true) is bool
+            && (!exists(/databases/$(database)/documents/programs/ftc/libraryEvents/$(request.resource.data.eventCode))
+                || get(/databases/$(database)/documents/programs/ftc/libraryEvents/$(request.resource.data.eventCode)).data.origin == 'api'))
+          || ftc_validManualMatch(matchId, request.resource.data)
+        );
+
+        allow update: if ftc_isAdmin()
+          && ftc_libOrigin(request.resource.data) == ftc_libOrigin(resource.data)
+          && request.resource.data.eventCode == resource.data.eventCode
+          && request.resource.data.get('published', true) is bool
+          && (ftc_libOrigin(request.resource.data) == 'api' || ftc_validManualMatch(matchId, request.resource.data));
+
+        allow delete: if ftc_isAdmin() && ftc_libOrigin(resource.data) == 'manual';
+      }
+
+      // P15: libraryEvents/{eventCode} — one doc per imported or hand-made event
+      // (`origin`, `eventName`, `seasonId`, optional `date`, `sourceUrl`,
+      // `defaultVideoUrl`). Every member reads; admins write. `origin` is fixed at
+      // creation, so a manual event's code can never be taken over by an API import
+      // (or the reverse). Only a manual event can be deleted.
+      match /libraryEvents/{eventCode} {
+        allow read: if ftc_isSignedIn();
+        allow create: if ftc_isAdmin()
+          && request.resource.data.origin in ['api', 'manual']
+          && request.resource.data.eventCode == eventCode
+          && request.resource.data.eventName is string && request.resource.data.eventName.size() > 0 && request.resource.data.eventName.size() <= 120
+          && request.resource.data.seasonId is string
+          && request.resource.data.createdBy == request.auth.uid
+          && (request.resource.data.origin == 'api' || (
+            eventCode.matches('^[A-Z0-9-]{3,24}$')
+            && (!('date' in request.resource.data) || request.resource.data.date == null || request.resource.data.date is string)
+            && (!('sourceUrl' in request.resource.data) || request.resource.data.sourceUrl == null || request.resource.data.sourceUrl is string)
+            && (!('defaultVideoUrl' in request.resource.data) || request.resource.data.defaultVideoUrl == null || request.resource.data.defaultVideoUrl is string)));
+        allow update: if ftc_isAdmin()
+          && request.resource.data.origin == resource.data.origin
+          && request.resource.data.eventCode == resource.data.eventCode
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.eventName is string && request.resource.data.eventName.size() > 0 && request.resource.data.eventName.size() <= 120;
+        allow delete: if ftc_isAdmin() && resource.data.origin == 'manual';
+      }
+
+      // P6: eventAttendance/{teamId}_{eventCode} — one doc per (team, event),
+      // `uids` the list of attending members. Admin-only write (the
+      // Assignments page's attendance checklist); every team member can read
+      // it (it drives the Scout Accuracy Event filter and People's
+      // "Attending" badge). P5 guessed a different, read-only, one-doc-per-uid
+      // shape for this collection before P6 existed — see docs/ASSUMPTIONS.md
+      // (P6) for the reconciliation.
+      match /eventAttendance/{id} {
+        allow read: if ftc_sameTeam(resource.data.teamId);
+        // P26: gated by the Assignments page's access (admins always; by default Lead Scouts; an admin can grant or deny others).
+        allow create, update: if ftc_pageAccessAllowed('assignments', ['lead-scout']) && ftc_sameTeam(request.resource.data.teamId);
+        allow delete: if false;
+      }
+
+      // P5: auditLog/{id} — one entry per admin-only scout-data action (Hard
+      // Reset, Dismiss Flag, Exclude/Include). Write-once: never updated or
+      // deleted by anyone, including admins, so it stays a trustworthy
+      // record. Not read by any P5 page — P9's Admin tools will.
+      //
+      // P12: Pick List editors who aren't admins (Lead Strategist, ...) may write
+      // *only* `edit-pick-list` entries — each pick-list change is logged in the same
+      // transaction as the change itself, so the log has to accept their writes.
+      // They still can't read the log.
+      match /auditLog/{id} {
+        allow read: if ftc_isAdmin();
+        allow create: if ftc_isSignedIn()
+          && request.resource.data.uid == request.auth.uid
+          && ftc_sameTeam(request.resource.data.teamId)
+          // P29: a scout editing their own form entry logs it ('edit-form-entry'); they still can't read the log
+          && (ftc_isAdmin() || (request.resource.data.action == 'edit-pick-list' && ftc_canEditPickList()) || request.resource.data.action == 'edit-form-entry');
+        allow update, delete: if false;
+      }
+
+      // P27: formEntries/{entryId}: the entries of the team's other forms (Lead Scout, Pit Scout, Team Strategy, Match Strategy, Drive Reflection, Helper and
+      // custom ones). Match Scout entries stay in scoutEntries. Every teammate reads. CREATE needs the right page access (P26) for the form's type, as yourself
+      // and in your own team: the page ids and default roles below are the ones in lib/page-access/pages.ts (keep in sync); a 'custom' form is open to the team.
+      // UPDATE: an admin may edit anything but who, where and what form it is; the person who wrote it may only change `values`, `stickyNotes` and `updatedAt`
+      // (a photo that finished uploading after submit is attached this way, and notes are edited). DELETE: admins only.
+      function ftc_formEntryCreateAllowed(formType) {
+        return formType == 'lead-scout' ? ftc_pageAccessAllowed('lead-scout-form', ['lead-scout'])
+          : formType == 'pit-scout' ? ftc_pageAccessAllowed('pit-scout-form', ['pit-scout'])
+          : formType == 'team-strategy' ? ftc_pageAccessAllowed('team-strategy-form', ['lead-strategist'])
+          : formType == 'match-strategy' ? ftc_pageAccessAllowed('match-strategy-form', ['lead-strategist'])
+          : formType == 'drive-reflection' ? ftc_pageAccessAllowed('drive-reflection-form', ['drive-team'])
+          : formType == 'helper' ? ftc_pageAccessAllowed('helper-form', ['pit-scout', 'pit-team'])
+          : formType == 'custom';
+      }
+
+      function ftc_validFormEntry(d) {
+        return d.keys().hasAll(['teamId', 'uid', 'scoutName', 'formId', 'formVersion', 'formType', 'eventCode', 'values', 'stickyNotes', 'excluded', 'flags', 'createdAt', 'updatedAt'])
+          && d.keys().hasOnly(['teamId', 'uid', 'scoutName', 'formId', 'formVersion', 'formType', 'eventCode', 'matchKey', 'alliance', 'teamNumber', 'values',
+                               'stickyNotes', 'linkedEntryId', 'planDifferences', 'flags', 'excluded', 'createdAt', 'updatedAt'])
+          && d.formId is string && d.formId.matches('^[A-Za-z0-9_-]{1,40}$')
+          && d.formVersion is int && d.formVersion >= 0
+          && d.formType in ['lead-scout', 'pit-scout', 'team-strategy', 'match-strategy', 'drive-reflection', 'helper', 'custom']
+          && d.scoutName is string && d.scoutName.size() <= 80
+          && d.eventCode is string && d.eventCode.size() <= 40
+          && (!('matchKey' in d) || d.matchKey == null || (d.matchKey is string && d.matchKey.size() <= 40))
+          && (!('alliance' in d) || d.alliance == null || d.alliance in ['red', 'blue'])
+          && (!('teamNumber' in d) || d.teamNumber == null || (d.teamNumber is int && d.teamNumber > 0))
+          && (!('linkedEntryId' in d) || d.linkedEntryId == null || d.linkedEntryId is string)
+          && (!('planDifferences' in d) || d.planDifferences is int)
+          && d.values is map
+          && d.stickyNotes is list && d.stickyNotes.size() <= 50
+          && d.flags is list && d.flags.size() <= 20
+          && d.excluded == false
+          && d.createdAt == request.time && d.updatedAt == request.time;
+      }
+
+      match /formEntries/{entryId} {
+        allow read: if ftc_sameTeam(resource.data.teamId);
+
+        allow create: if ftc_isSignedIn()
+          && request.resource.data.uid == request.auth.uid
+          && ftc_sameTeam(request.resource.data.teamId)
+          && ftc_validFormEntry(request.resource.data)
+          && ftc_formEntryCreateAllowed(request.resource.data.formType);
+
+        allow update: if ftc_sameTeam(resource.data.teamId) && (
+          (ftc_isAdmin()
+            && request.resource.data.teamId == resource.data.teamId
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.formId == resource.data.formId
+            && request.resource.data.formType == resource.data.formType
+            && request.resource.data.createdAt == resource.data.createdAt)
+          || (request.auth.uid == resource.data.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['values', 'stickyNotes', 'updatedAt'])
+            && request.resource.data.values is map
+            && request.resource.data.stickyNotes is list && request.resource.data.stickyNotes.size() <= 50));
+
+        allow delete: if ftc_sameTeam(resource.data.teamId) && ftc_isAdmin();
+      }
+
+      // P21: forms/{teamId}_{formId}: one form of one account, the working draft plus the latest published version number
+      // (see lib/forms/resolve.ts FormDoc). Every teammate reads (scouts fill the active form in); only admins and the owner write
+      // (the same people who can manage members: `can('manageForms')`). Forms are never deleted, only archived, so an entry's
+      // formId always resolves. A form's doc can't be moved to another team or id, and its published version only goes up.
+      // Rules can't validate the nested form (sections, fields) element by element: the builder validates it with the shared
+      // zod schema before every write (lib/forms/validate.ts), the same one the stores run.
+      function ftc_validFormDoc(d) {
+        return d.teamId is string && d.formId is string && d.formId.matches('^[A-Za-z0-9_-]{1,40}$')
+          && d.name is string && d.name.size() >= 1 && d.name.size() <= 120
+          && d.origin in ['built-in-override', 'custom', 'template']
+          && (d.publishedVersion == null || (d.publishedVersion is int && d.publishedVersion >= 1))
+          && (d.draft == null || d.draft is map)
+          && d.active is bool && d.archived is bool;
+      }
+
+      match /forms/{docId} {
+        allow get: if ftc_isSignedIn() && docId.split('_')[0] == ftc_myProfile().teamId;
+        allow list: if ftc_isSignedIn() && ftc_sameTeam(resource.data.teamId);
+
+        allow create: if ftc_canManageMembers()
+          && ftc_sameTeam(request.resource.data.teamId)
+          && docId == request.resource.data.teamId + '_' + request.resource.data.formId
+          && ftc_validFormDoc(request.resource.data);
+
+        allow update: if ftc_canManageMembers()
+          && ftc_sameTeam(resource.data.teamId)
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.formId == resource.data.formId
+          && ftc_validFormDoc(request.resource.data)
+          && (resource.data.publishedVersion == null
+            || (request.resource.data.publishedVersion != null && request.resource.data.publishedVersion >= resource.data.publishedVersion));
+
+        allow delete: if false;
+
+        // Published versions are immutable: created once, in the same transaction that bumps the form doc's publishedVersion to
+        // that number (getAfter), and never updated or deleted — so the form an old entry was scouted with is always recoverable.
+        match /versions/{v} {
+          allow read: if ftc_isSignedIn() && docId.split('_')[0] == ftc_myProfile().teamId;
+          allow create: if ftc_canManageMembers()
+            && ftc_sameTeam(request.resource.data.teamId)
+            && docId == request.resource.data.teamId + '_' + request.resource.data.formId
+            && request.resource.data.version is int && request.resource.data.version >= 1
+            && string(request.resource.data.version) == v
+            && request.resource.data.form is map
+            && request.resource.data.form.id == request.resource.data.formId
+            && getAfter(/databases/$(database)/documents/programs/ftc/forms/$(docId)).data.publishedVersion == request.resource.data.version
+            && (!exists(/databases/$(database)/documents/programs/ftc/forms/$(docId))
+              || get(/databases/$(database)/documents/programs/ftc/forms/$(docId)).data.publishedVersion == null
+              || get(/databases/$(database)/documents/programs/ftc/forms/$(docId)).data.publishedVersion < request.resource.data.version);
+          allow update, delete: if false;
+        }
+      }
+
+      // P23: formTemplates/{id}: a form saved as a template. Visibility: private (only the owning account), public-pending (waiting for the platform
+      // owner), public (any signed-in user can read it), rejected (back with the author, with a reason).
+      //  - A signed-in user reads `public` templates; an account reads its own in any state; the platform owner reads `public-pending` ones (to review
+      //    them) and public ones. Nobody else can read a private or rejected template: not another account, and not the platform owner either. List
+      //    queries must carry the matching filter (visibility == 'public', ownerTeamId == my team, or visibility == 'public-pending' for the platform owner).
+      //  - An account's admins and owner create a template (private, version 1, no uses or reports) and edit or delete it **only while it is private or
+      //    rejected**; editing a rejected one makes it private again. Everything else is server-only (app/api/templates, Admin SDK): asking to publish,
+      //    sending an update to a public template, approving, rejecting, taking down, marking official, reports and counting a use (so `importCount`,
+      //    `official` and `visibility` can't be forged from a browser).
+      //  - Rules can't validate the nested form, so the server re-validates it (strict parse, no blocking problems, sanitized text, size) before anything
+      //    becomes public; a private template is only ever seen by its own account.
+      function ftc_validTemplateShape(d) {
+        return d.ownerTeamId is string && d.authorName is string && d.authorName.size() <= 80
+          && d.name is string && d.name.size() >= 1 && d.name.size() <= 80
+          && d.description is string && d.description.size() <= 500
+          && d.tags is list && d.tags.size() <= 10
+          && d.version is int && d.version >= 1
+          && d.form is map && d.form.id is string
+          && d.checksum is string && d.checksum.size() <= 64
+          && d.fieldCount is int && d.sectionCount is int;
+      }
+
+      match /formTemplates/{id} {
+        allow get, list: if ftc_isSignedIn() && (resource.data.visibility == 'public'
+          || ftc_sameTeam(resource.data.ownerTeamId)
+          || (ftc_isPlatformOwner() && resource.data.visibility == 'public-pending'));
+
+        allow create: if ftc_canManageMembers()
+          && ftc_sameTeam(request.resource.data.ownerTeamId)
+          && request.resource.data.visibility == 'private'
+          && request.resource.data.version == 1
+          && request.resource.data.importCount == 0
+          && request.resource.data.reportCount == 0
+          && request.resource.data.official == false
+          && !('hasPendingUpdate' in request.resource.data)
+          && ftc_validTemplateShape(request.resource.data);
+
+        allow update: if ftc_canManageMembers()
+          && ftc_sameTeam(resource.data.ownerTeamId)
+          && resource.data.visibility in ['private', 'rejected']
+          && request.resource.data.visibility == 'private'
+          && request.resource.data.ownerTeamId == resource.data.ownerTeamId
+          && request.resource.data.official == false
+          && request.resource.data.importCount == resource.data.importCount
+          && request.resource.data.reportCount == resource.data.reportCount
+          && request.resource.data.version >= resource.data.version
+          && !('hasPendingUpdate' in request.resource.data)
+          && ftc_validTemplateShape(request.resource.data);
+
+        allow delete: if ftc_canManageMembers()
+          && ftc_sameTeam(resource.data.ownerTeamId)
+          && resource.data.visibility in ['private', 'rejected'];
+
+        // A public template's pending update (server-written). Its author's account and the platform owner can read it.
+        match /updates/{n} {
+          allow read: if ftc_isPlatformOwner() || (ftc_isSignedIn() && ftc_sameTeam(get(/databases/$(database)/documents/programs/ftc/formTemplates/$(id)).data.ownerTeamId));
+          allow write: if false;
+        }
+        // Reports and use-counts: server-written, readable by the platform owner only.
+        match /reports/{teamId} {
+          allow read: if ftc_isPlatformOwner();
+          allow write: if false;
+        }
+        match /imports/{teamId} {
+          allow read: if ftc_isPlatformOwner();
+          allow write: if false;
+        }
+      }
+
+      // P12: pickLists/{teamId}_{eventCode} — the shared alliance-selection board:
+      // an ordered list of team numbers we plan to pick, edited live by several
+      // people. Every team member can read it (the doc id carries the team id, so
+      // this works for a list that doesn't exist yet — the first read of a new
+      // event must not be denied); only pick-list editors can write, and only as
+      // themselves, to the id their own team/event give. Writes happen inside
+      // transactions that re-apply each edit to the latest list (lib/pick-list/
+      // store.ts), so two editors never overwrite each other. Rules can't loop,
+      // so the *elements* of `picked` aren't type-checked — only that it's a list
+      // of at most 100 — the writer is an editor and lib/pick-list/ops.ts builds it.
+      match /pickLists/{id} {
+        allow read: if ftc_isSignedIn() && id.split('_')[0] == ftc_myProfile().teamId;
+
+        allow create: if ftc_canEditPickList()
+          && ftc_sameTeam(request.resource.data.teamId)
+          && request.resource.data.eventCode is string
+          && id == request.resource.data.teamId + '_' + request.resource.data.eventCode
+          && request.resource.data.picked is list
+          && request.resource.data.picked.size() <= 100
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedByName is string;
+
+        allow update: if ftc_canEditPickList()
+          && ftc_sameTeam(resource.data.teamId)
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.eventCode == resource.data.eventCode
+          && request.resource.data.picked is list
+          && request.resource.data.picked.size() <= 100
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedByName is string;
+
+        allow delete: if false;
+      }
+
+      // P14: the shape of a changelog entry — keep in sync with lib/changelog/
+      // index.ts (limits) and store.ts (the only writer). Rules can't loop over
+      // `changes`, so its elements aren't type-checked here (the editor validates
+      // them and entryFromData() drops anything malformed on read); only that it's
+      // a list of 1-40. A published entry carries the time it went live in
+      // `publishedAt` (drives the unread dot); a draft has it null.
+      function ftc_validChangelog(d) {
+        return d.keys().hasOnly(['teamId', 'version', 'title', 'date', 'summary', 'changes', 'status', 'pinned', 'createdBy', 'createdAt', 'updatedAt', 'publishedAt'])
+          && d.keys().hasAll(['teamId', 'version', 'title', 'date', 'summary', 'changes', 'status', 'pinned', 'createdBy', 'createdAt', 'updatedAt', 'publishedAt'])
+          && d.version is string && d.version.size() > 0 && d.version.size() <= 40
+          && d.title is string && d.title.size() > 0 && d.title.size() <= 120
+          && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && d.summary is string && d.summary.size() <= 1000
+          && d.changes is list && d.changes.size() >= 1 && d.changes.size() <= 40
+          && d.status in ['draft', 'published']
+          && d.pinned is bool
+          && d.createdBy is string
+          && d.createdAt is timestamp
+          && d.updatedAt is timestamp
+          && (d.status == 'published' ? d.publishedAt is timestamp : d.publishedAt == null);
+      }
+
+      // P14: changelog/{id} — admin-edited release notes. Members read *published*
+      // entries only; drafts are admin-only. Rules aren't filters, so a member's
+      // list query must itself ask for `status == "published"` (lib/changelog/
+      // store.ts does) — an unfiltered list is rejected, not silently trimmed.
+      // Admins of the team read and write everything. A published entry keeps its
+      // original `publishedAt` through edits, so fixing a typo doesn't re-light
+      // everyone's unread dot.
+      match /changelog/{id} {
+        allow read: if ftc_sameTeam(resource.data.teamId) && (resource.data.status == 'published' || ftc_isAdmin());
+
+        allow create: if ftc_isAdmin()
+          && ftc_sameTeam(request.resource.data.teamId)
+          && request.resource.data.createdBy == request.auth.uid
+          && ftc_validChangelog(request.resource.data);
+
+        allow update: if ftc_isAdmin()
+          && ftc_sameTeam(resource.data.teamId)
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.createdAt == resource.data.createdAt
+          && ftc_validChangelog(request.resource.data)
+          && (resource.data.status != 'published' || request.resource.data.status != 'published'
+              || request.resource.data.publishedAt == resource.data.publishedAt);
+
+        allow delete: if ftc_isAdmin() && ftc_sameTeam(resource.data.teamId);
+      }
+
+      // P14: credits/{teamId} — the single, admin-edited Credits page: ordered
+      // `sections`, each with ordered `entries`. Every member reads it (the id
+      // is the team id, so a page that hasn't been saved yet still reads as
+      // "missing", not "denied"); only admins write, always as themselves,
+      // through the transaction in lib/credits/store.ts. Rules can't loop, so
+      // the sections' contents aren't type-checked — only that it's a list of at
+      // most 20; the editors enforce https-only links and lib/credits/ops.ts
+      // sanitizeSections() discards anything malformed on read.
+      match /credits/{id} {
+        allow read: if ftc_sameTeam(id);
+        allow create, update: if ftc_isAdmin()
+          && ftc_sameTeam(id)
+          && request.resource.data.teamId == id
+          && request.resource.data.sections is list
+          && request.resource.data.sections.size() <= 20
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedByName is string
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if false;
+      }
+
+      // P16: who may edit the Scout Status setup — admins, or members whose primary OR
+      // secondary role is Lead Scout. Mirrors lib/scout-status/permissions.ts's
+      // SCOUT_TARGET_EDITOR_ROLES: keep both in sync.
+      function ftc_canEditScoutTargets() {
+        let p = ftc_myProfile();
+        return ftc_isSignedIn() && (p.isAdmin == true || p.primaryRole == 'lead-scout' || p.secondaryRoles.hasAny(['lead-scout']));
+      }
+
+      // P16: the shape of a scoutTargets doc (lib/scout-status/store.ts is the only writer).
+      // Rules can't loop over maps, so the contents of `ranges`/`maxOverrides`/`individual`
+      // aren't type-checked — only that they're maps of a bounded size; the page validates
+      // the range text and clamps numbers, and setupFromData() drops anything malformed on read.
+      function ftc_validScoutTargets(id, d) {
+        return d.keys().hasOnly(['teamId', 'eventCode', 'ranges', 'maxOverrides', 'individual', 'extraScouts', 'teamTargets', 'updatedBy', 'updatedAt'])
+          // P30: teamTargets (teams-per-scout for Pit Scout and Team Strategy) is optional
+          && (!('teamTargets' in d) || (d.teamTargets is map && d.teamTargets.size() <= 2))
+          && d.keys().hasAll(['teamId', 'eventCode', 'ranges', 'maxOverrides', 'individual', 'extraScouts', 'updatedBy', 'updatedAt'])
+          && d.teamId is string && d.eventCode is string
+          && id == d.teamId + '_' + d.eventCode
+          && d.ranges is map && d.ranges.size() <= 4
+          && d.maxOverrides is map && d.maxOverrides.size() <= 4
+          && d.individual is map && d.individual.size() <= 200
+          && d.extraScouts is list && d.extraScouts.size() <= 200
+          && d.updatedBy == request.auth.uid
+          && d.updatedAt is timestamp;
+      }
+
+      // P16: scoutTargets/{teamId}_{eventCode} — the per-event setup behind the Scout Status
+      // page: range text per category, max-match overrides, per-scout targets, and scouts added
+      // by hand. Every team member reads it (as a team-scoped query — a doc that doesn't exist
+      // yet can't be read directly, see FIX3); only admins and Lead Scouts write, as themselves,
+      // to the id their own team/event give. Never deleted.
+      match /scoutTargets/{id} {
+        allow read: if ftc_sameTeam(resource.data.teamId);
+
+        // P26: gated by the Scout Status page's access (admins always; by default Lead Scouts and Team Coaches; configurable).
+        allow create: if ftc_pageAccessAllowed('scout-status', ['lead-scout', 'team-coach'])
+          && ftc_sameTeam(request.resource.data.teamId)
+          && ftc_validScoutTargets(id, request.resource.data);
+
+        allow update: if ftc_pageAccessAllowed('scout-status', ['lead-scout', 'team-coach'])
+          && ftc_sameTeam(resource.data.teamId)
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.eventCode == resource.data.eventCode
+          && ftc_validScoutTargets(id, request.resource.data);
+
+        allow delete: if false;
+      }
+
+      // P6: assignments/{teamId}_{eventCode} — the published scouting
+      // schedule, `current` + one level of `previous` for undo (see
+      // lib/assignments.ts). Admin-only write (generating/publishing/manual
+      // cell swaps all go through `publishAssignments`/`swapAssignmentSlot`,
+      // both plain `setDoc`/`updateDoc` calls gated by this rule, not an API
+      // route — same pattern as every other admin-only collection here).
+      // Every team member can read their own team's schedule (Match Scout
+      // Form and My Scouting both need to read it, not just admins).
+      match /assignments/{id} {
+        allow read: if ftc_sameTeam(resource.data.teamId);
+        // P26: the same Assignments page access as the attendance list above.
+        // P31: the Pit Scouting and Team Strategy assignments live here too ({teamId}_{eventCode}_{pit|teamStrategy}, with a `kind`): same readers, same writers;
+        // a doc that names a kind must be one of the two and have the matching id, so one kind can't overwrite another's or Match Scouting's.
+        allow create, update: if ftc_pageAccessAllowed('assignments', ['lead-scout']) && ftc_sameTeam(request.resource.data.teamId)
+          && (!('kind' in request.resource.data) || (request.resource.data.kind in ['pit', 'teamStrategy'] && request.resource.data.eventCode is string
+            && id == request.resource.data.teamId + '_' + request.resource.data.eventCode + '_' + request.resource.data.kind));
+        allow delete: if false;
+      }
+
+      // P7: liveMatches/{eventCode_matchKey} — presence while scouting a
+      // livestreamed real match. The parent doc itself is never written (no
+      // fields of its own); only its scouts subcollection exists, one doc
+      // per active scout. Deliberately NOT teamId-scoped at the match-key
+      // level, same reasoning as libraryMatches (P3-6) — a real match is the
+      // same match no matter which team is watching it — but every scout's
+      // OWN presence doc carries teamId, which is what actually scopes read
+      // access and the join-rules bookkeeping to one team at a time.
+      match /liveMatches/{matchKey} {
+        allow read, write: if false;
+
+        match /scouts/{uid} {
+          allow read: if ftc_sameTeam(resource.data.teamId);
+          allow create, update: if ftc_isSignedIn()
+            && request.auth.uid == uid
+            && request.resource.data.uid == uid
+            && ftc_sameTeam(request.resource.data.teamId);
+          allow delete: if ftc_isSignedIn() && request.auth.uid == uid;
+        }
+      }
+
+      // FIX3: COLLECTION-GROUP queries. A `collectionGroup("scouts")` or
+      // `collectionGroup("players")` query is only allowed by a rule written with a
+      // recursive wildcard — the nested `match .../scouts/{uid}` rules above and below
+      // don't apply to it, so these queries were denied outright (the practice landing
+      // page's "who's live" and "my lobby" lookups, the Presence panel, the live pill).
+      // Same conditions as the nested rules; the player rule also lets you read your own
+      // player docs, which is what the "which lobby am I in" query (where uid == you) proves.
+
+      // P7: notifications/{sessionId} — one per scout per resolved live
+      // alliance ("Scores are available"), doc id is the session id so
+      // app/api/cron/poll-live-scores / app/api/live/check-scores can check
+      // existence for idempotency before creating one. Only ever written by
+      // the Admin SDK (bypasses these rules entirely) — clients can read
+      // their own, nothing else.
+      match /notifications/{id} {
+        allow read: if ftc_sameTeam(resource.data.teamId) && resource.data.uid == request.auth.uid;
+        allow write: if false;
+      }
+
+      // P8: lobbies/{lobbyId} — the doc id IS the shareable join code (see
+      // lib/lobby.ts's claimLobbyId). Readable by the whole team (so "Join
+      // with code" can look a lobby up before the joiner has a player doc of
+      // their own yet); only the host can change the lobby doc itself
+      // (settings, match selection, pairing, status, their own heartbeat) —
+      // per the prompt's own spec. Per-pair accuracy is instead written by
+      // app/api/lobby/resolve-results (Admin SDK, bypasses these rules
+      // entirely) since a pair's two sessions belong to two different
+      // players and neither rule below lets one teammate write another's
+      // session — see docs/ASSUMPTIONS.md (P8).
+      //
+      // FIX3: the lobby code is reserved the same way as a Session ID (read the
+      // candidate, then create), so `get` is allowed on a missing doc — see
+      // practiceSessions above. Lists still need the team filter.
+      match /lobbies/{lobbyId} {
+        allow get: if resource == null || ftc_sameTeam(resource.data.teamId);
+        allow list: if ftc_sameTeam(resource.data.teamId);
+        allow create: if ftc_isSignedIn()
+          && request.resource.data.hostUid == request.auth.uid
+          && ftc_sameTeam(request.resource.data.teamId);
+        allow update: if ftc_sameTeam(resource.data.teamId) && resource.data.hostUid == request.auth.uid;
+        allow delete: if false;
+
+        // Presence/roster only — robot/alliance/pairId live on the lobby
+        // doc's own `pairing` array (host-written), not here, precisely
+        // because a player may only write their own player doc.
+        match /players/{uid} {
+          allow read: if ftc_sameTeam(resource.data.teamId);
+          allow create, update: if ftc_isSignedIn()
+            && request.auth.uid == uid
+            && request.resource.data.uid == uid
+            && ftc_sameTeam(request.resource.data.teamId);
+          allow delete: if ftc_isSignedIn() && request.auth.uid == uid;
+        }
+      }
+    }
+
+    // =================================================================================================================
     // 3. Everything else: closed (as in CS). Server-only collections (e.g. the legacy `scoutEntries`, `imports`) are reached
     //    through the Admin SDK, which bypasses rules.
     // =================================================================================================================

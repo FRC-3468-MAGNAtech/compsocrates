@@ -1329,3 +1329,43 @@ describe("the rules file itself", () => {
     expect(uids).toHaveLength(1);
   });
 });
+
+// =====================================================================================================================
+// 5. Program isolation: the FTC block (programs/ftc/...) is closed to FRC accounts, and FRC data is closed to FTC accounts.
+// =====================================================================================================================
+describe("program isolation", () => {
+  const FRC_ONLY = "frc-only-1"; // a profile at the root only
+  const FTC_ONLY = "ftc-only-1"; // a profile under programs/ftc only
+  const FT1 = "FTEAMONE";
+  const FT2 = "FTEAMTWO";
+
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, "users", FRC_ONLY), user({ teamId: TEAM1 }));
+      await setDoc(doc(db, "programs/ftc/users", FTC_ONLY), { email: "f@example.com", teamId: FT1, primaryRole: "scout", secondaryRoles: [], isAdmin: false });
+      await setDoc(doc(db, "programs/ftc/teams", FT1), { name: "FTC One", number: 1 });
+      await setDoc(doc(db, "programs/ftc/teams", FT2), { name: "FTC Two", number: 2 });
+    });
+  });
+
+  it("lets an FTC member read their own FTC team and profile, but not another FTC team", async () => {
+    await assertSucceeds(getDoc(doc(as(FTC_ONLY), "programs/ftc/teams", FT1)));
+    await assertSucceeds(getDoc(doc(as(FTC_ONLY), "programs/ftc/users", FTC_ONLY)));
+    await assertFails(getDoc(doc(as(FTC_ONLY), "programs/ftc/teams", FT2)));
+  });
+
+  it("keeps FRC accounts out of the FTC block", async () => {
+    await assertFails(getDoc(doc(as(FRC_ONLY), "programs/ftc/teams", FT1)));
+    await assertFails(getDoc(doc(as(FRC_ONLY), "programs/ftc/users", FTC_ONLY)));
+    await assertFails(setDoc(doc(as(FRC_ONLY), "programs/ftc/teams", FT1), { name: "x" }));
+  });
+
+  it("keeps FTC accounts out of the FRC collections", async () => {
+    await assertFails(getDoc(doc(as(FTC_ONLY), "teams", TEAM1)));
+    await assertFails(getDoc(doc(as(FTC_ONLY), "users", FRC_ONLY)));
+  });
+
+  it("denies the unauthenticated", async () => {
+    await assertFails(getDoc(doc(anon(), "programs/ftc/teams", FT1)));
+  });
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { useOurTeam } from "@/lib/our-team";
 import { teamLabel } from "@/lib/team-number";
 import { cn } from "@/lib/utils";

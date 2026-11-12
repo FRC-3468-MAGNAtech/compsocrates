@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { motion } from "framer-motion";
 import { AlertTriangle, ArrowRight, type LucideIcon } from "lucide-react";
 import { Shimmer } from "@/components/ui/shimmer";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/program/navigation";
 import { TriangleAlert } from "lucide-react";
 import { HighAccuracyCard, RescoutRow, SectionCard, VerifiedBadge } from "@/components/analytics/verification-sections";
 import { Button } from "@/components/ui/button";

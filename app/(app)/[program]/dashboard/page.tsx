@@ -1,11 +1,12 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "@/components/program/link";
+import { useRouter, useSearchParams } from "@/lib/program/navigation";
 import { CalendarX2 } from "lucide-react";
 import { AdminStrip } from "@/components/dashboard/admin-strip";
 import { HeaderStrip } from "@/components/dashboard/header-strip";
+import { ProgramSwitcher } from "@/components/program/program-switcher";
 import { dashboardRegistry } from "@/components/dashboard/registry";
 import { RoleSwitcher } from "@/components/dashboard/role-switcher";
 import { WIDGET_GRID_CLASS, WidgetBoundary } from "@/components/dashboard/widget";
@@ -119,6 +120,7 @@ function DashboardBody() {
 
   return (
     <>
+      <ProgramSwitcher className="mb-3 max-w-xs" />
       <HeaderStrip />
       {/* `dense` lets a small widget slide into a gap a wider one left, so rows stay full. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 [grid-auto-flow:dense]">

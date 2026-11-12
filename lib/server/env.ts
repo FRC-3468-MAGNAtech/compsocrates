@@ -15,7 +15,7 @@ import "server-only";
  * references it, so it is never inlined into a browser bundle.
  */
 
-export type EnvGroup = "cs" | "required" | "optional";
+export type EnvGroup = "cs" | "required" | "optional" | "ftc";
 
 export type EnvVarInfo = {
   name: string;
@@ -38,6 +38,9 @@ export const ENV_VARS: readonly EnvVarInfo[] = [
   { name: "FIRST_API_TOKEN", group: "cs", purpose: "FIRST FRC Events API token", whenMissing: "Practice schedules and the FIRST fallback for teams and rankings." },
   { name: "RELEASE_OWNER_UIDS", group: "cs", purpose: "Comma-separated uids of the platform owner(s)", whenMissing: "Nobody is treated as platform owner." },
   { name: "RELEASE_OWNER_EMAILS", group: "cs", purpose: "Comma-separated emails of the platform owner(s)", whenMissing: "Owner-by-email recognition." },
+  { name: "FTC_API_USERNAME", group: "ftc", purpose: "FIRST FTC Events API username (FTC program only)", whenMissing: "FTC event data (events, teams, schedules, rankings): the FTC pages show a notice naming the variable. FRC is unaffected." },
+  { name: "FTC_API_KEY", group: "ftc", purpose: "FIRST FTC Events API key (FTC program only)", whenMissing: "Same as FTC_API_USERNAME." },
+  { name: "FTC_API_BASE_URL", group: "ftc", purpose: "Override for the FTC Events API base URL (FTC program only)", whenMissing: "Nothing: it defaults to the public FIRST FTC API v2.0." },
   { name: "FIREBASE_ADMIN_CLIENT_EMAIL", group: "required", purpose: "Firebase Admin service account", whenMissing: "Server sign-in checks: event data, team join approvals, role sync, account deletion." },
   { name: "FIREBASE_ADMIN_PRIVATE_KEY", group: "required", purpose: "Firebase Admin service account (paste with \\n sequences)", whenMissing: "Server sign-in checks: event data, team join approvals, role sync, account deletion." },
   { name: "FIREBASE_ADMIN_PROJECT_ID", group: "optional", purpose: "Override for the Admin SDK's project id", whenMissing: "Nothing: it defaults to NEXT_PUBLIC_FIREBASE_PROJECT_ID, which is the same project in every normal setup." },
@@ -75,6 +78,23 @@ export function firstApiCredentials(): { username: string; token: string } | nul
 /** The FIRST credential variables that are unset, by name (empty when both are set). */
 export function firstApiMissingNames(): string[] {
   return ["FIRST_API_USERNAME", "FIRST_API_TOKEN"].filter((name) => !read(name));
+}
+
+/** FTC Events API credentials, or null unless both parts are set. */
+export function ftcApiCredentials(): { username: string; apiKey: string } | null {
+  const username = read("FTC_API_USERNAME");
+  const apiKey = read("FTC_API_KEY");
+  return username && apiKey ? { username, apiKey } : null;
+}
+
+/** FTC Events API base URL (override with FTC_API_BASE_URL). */
+export function ftcApiBaseUrl(): string {
+  return read("FTC_API_BASE_URL") || "https://ftc-api.firstinspires.org/v2.0";
+}
+
+/** The FTC credential variables that are unset, by name. */
+export function ftcApiMissingNames(): string[] {
+  return ["FTC_API_USERNAME", "FTC_API_KEY"].filter((name) => !read(name));
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { CalendarCheck, Flag, Flame, Layers, Lock, Medal, ShieldCheck, Sparkles, Target, Trophy, type LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";

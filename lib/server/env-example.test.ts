@@ -3,13 +3,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ENV_VARS, type EnvGroup } from "./env";
 
-/** The assignment lines of `.env.example` (`NAME=`), with the section (A, B or C) each sits under. */
+/** The assignment lines of `.env.example` (`NAME=`), with the section (A, B, C or D) each sits under. */
 function parseExample(): { name: string; section: string }[] {
   const text = readFileSync(path.resolve(__dirname, "../../.env.example"), "utf8");
   let section = "";
   const out: { name: string; section: string }[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const header = /^# \(([ABC])\) /.exec(line);
+    const header = /^# \(([ABCD])\) /.exec(line);
     if (header) section = header[1];
     const assign = /^([A-Z][A-Z0-9_]*)=/.exec(line);
     if (assign) out.push({ name: assign[1], section });
@@ -17,7 +17,7 @@ function parseExample(): { name: string; section: string }[] {
   return out;
 }
 
-const SECTION_OF_GROUP: Record<EnvGroup, string> = { cs: "A", required: "B", optional: "C" };
+const SECTION_OF_GROUP: Record<EnvGroup, string> = { cs: "A", required: "B", optional: "C", ftc: "D" };
 
 describe(".env.example", () => {
   const listed = parseExample();

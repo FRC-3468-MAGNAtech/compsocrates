@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from "@/components/program/link";
+import { usePathname } from "@/lib/program/navigation";
 import { motion } from "framer-motion";
 import { analyticsNav } from "@/lib/nav";
 import { spring } from "@/lib/motion";

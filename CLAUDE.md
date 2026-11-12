@@ -2,7 +2,17 @@
 
 # CompSocrates
 
-CompSocrates (CS): FRC scouting app on Next.js 16.3 / React 19 / TypeScript (strict). It reads and writes the existing CompSocrates Firestore schema through an adapter (`data/cs/*`). A sister scouting app will be merged in later, so keep the seams below intact (brand config, `lib/our-team.ts`).
+CompSocrates (CS): scouting app for two FIRST programs, FRC and FTC, on Next.js 16.3 / React 19 / TypeScript (strict). One site, one repo, one Firebase project (CS's), one account across both programs. FRC reads and writes the existing CompSocrates Firestore schema through an adapter (`data/cs/*`); FTC data lives under `programs/ftc/` (see Program model). Plan and status: `docs/MERGE_PLAN.md`.
+
+## Program model
+- `config/programs/{frc,ftc}.ts` implement `ProgramConfig` (brand copy, alliance size, season rule, Firestore prefix, greyed-out pages, `pagesConnected`). `useProgram()` / `useProgramConfig()` (`lib/program/context.tsx`) give the active program. A component asks the config; it never names a program.
+- Routes: the signed-in app is `app/(app)/[program]/...` (`/frc/scout`, `/ftc/scout`). Source code keeps writing program-relative paths (`"/scout"`): import `Link` from `@/components/program/link` and `useRouter`/`usePathname` from `@/lib/program/navigation`, never `next/link` or `next/navigation` for those. `lib/program/paths.ts` is the one place a path gets its program. Old CS URLs and every unprefixed app URL redirect to `/frc/...` (`config/legacy-redirects.ts`, `APP_SEGMENTS`).
+- Selector: home page cards, the sidebar and the dashboard header (`components/program/program-switcher.tsx`). The last-used program is in localStorage.
+- Firestore: FRC collections stay at the root, untouched. FTC is `programs/ftc/<collection>` with the sister app's schema; build every program path through `lib/firebase/paths.ts` (`programPath`, `programCollection`, `programDoc`) with an explicit program. FTC rules are the `match /programs/ftc` block of `firestore.rules` (helpers prefixed `ftc_`); FTC code must not use collection-group reads of `scouts`/`players` (the root recursive rules evaluate against the FRC profile).
+- `pagesConnected: false` (FTC today) makes the shell show `ProgramGate` instead of the shared pages, because they read FRC collections through `data/cs`. Connecting a program means giving the shared pages a program-aware data layer first, then flipping the flag.
+- FTC event data: `lib/ftc/` (FTC Events API) behind `lib/events/actions.ts`, which takes an optional trailing `program` (default FRC). Missing keys return a typed `missing_credentials` error; FRC is unaffected.
+- Migration: `scripts/migrate-ce-to-ftc.ts` (dry run by default; never run by the build or tests) with pure rules in `lib/ftc/migration.ts`.
+- A guard test (`config/brand-guard.test.ts`) keeps FTC names inside FTC-scoped files (and an allowlist with reasons) and FRC names out of them.
 
 ## Reference folders (read-only; the only place the old app is named)
 This repo sits in `compsocrates-rebuild/` next to two read-only folders the maintainers still need:
@@ -21,7 +31,7 @@ Never modify either folder. Never connect to a real Firebase project; use the em
   - `legacy-redirects.ts`: every old CS URL and its destination (turned into permanent redirects by `next.config.ts`).
   - `cs.ts`, `alliance.ts`: CS identity (owner uid list, default theme) and robots per alliance.
 - `lib/games/` game plugins behind one registry (`score`, `flags`, `normalize`, verification, prediction, rescout diff). `point-table.ts` generates the plugin for a pure point-table game from its config entry; `rebuilt.ts` is the hand-written plugin for REBUILT's fuel formulas. `cs-oracle/` holds verbatim copies of CS's own functions for golden tests only.
-- `lib/events/` is the event facade (types, names, status, actions) and picks the provider from `config/event.ts`; `lib/frc/` holds the FRC providers (TBA, FIRST FRC API, Statbotics). There is no second provider.
+- `lib/events/` is the event facade (types, names, status, actions) and picks the provider per program; `lib/frc/` holds the FRC providers (TBA, FIRST FRC API, Statbotics) and `lib/ftc/` the FTC one.
 - `lib/server/env.ts` is the only reader of server environment variables (see Rules).
 - `data/cs/` is the adapter: typed converters between CS's Firestore documents and the app's own types (`ScoutEntry`, `FormEntry`, `TeamDoc`, `UserDoc`), plus fixtures and tests.
 - `lib/our-team.ts` is the single seam for "our team" (one team per account): `useOurTeam`, `useIsOurTeam`, `OurTeamProvider`. A later multi-team switcher plugs in there and nowhere else (D13).
@@ -66,7 +76,8 @@ The decision table in `docs/ROUTES.md` is the record (D1 to D19). Short form: ad
 
 ## Rules for changes
 - Do not change CS's schema or scoring logic without approval. Additive fields are listed in `docs/REMAINING.md`; add to that list when you write a new one.
-- **Environment:** server code reads environment variables only through `lib/server/env.ts` (add the getter and an `ENV_VARS` entry, and keep `.env.example` and `docs/ENVIRONMENT.md` in step; a test checks the first two). Browser-inlined `NEXT_PUBLIC_*` values need a literal `process.env.NAME` access and are the exception. Never reference `NEXT_PUBLIC_TBA_API_KEY` from client code: despite its name it is a server secret.
+- **Environment:** the FTC keys (`FTC_API_USERNAME`, `FTC_API_KEY`, optional `FTC_API_BASE_URL`) are group `ftc` (section D of `.env.example`); the migration script alone reads `CE_ADMIN_*` and `CS_ADMIN_*`. Server code reads environment variables only through `lib/server/env.ts` (add the getter and an `ENV_VARS` entry, and keep `.env.example` and `docs/ENVIRONMENT.md` in step; a test checks the first two). Browser-inlined `NEXT_PUBLIC_*` values need a literal `process.env.NAME` access and are the exception. Never reference `NEXT_PUBLIC_TBA_API_KEY` from client code: despite its name it is a server secret.
+- **Programs:** FRC-only and FTC-only names, fields and API calls stay in their own scoped files (`config/programs/<id>.ts`, `lib/frc`, `lib/ftc`, `data/cs`, `data/ftc`). Shared code reads `ProgramConfig`. A user in one program never sees the other's data or names.
 - **Brand:** every user-visible product string, browser-storage key, exported-file marker and logo path comes from `config/brand.ts`. Do not write the product name or a storage key literal elsewhere.
 - **Games, events, aliases:** change `config/`, not components. A new game is one `config/games/` entry (plus a plugin only for cross-field scoring).
 - **Our team:** read the account's team through `lib/our-team.ts`, never from the team doc ad hoc.

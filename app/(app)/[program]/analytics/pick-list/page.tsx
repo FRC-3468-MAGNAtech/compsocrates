@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarX2, Eye, History, RotateCcw, Search, TriangleAlert, X } from "lucide-react";
 import { PickBoard } from "@/components/pick-list/pick-board";

@@ -81,6 +81,14 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - Entries and form docs: `stickyNotes` (and `linkedEntryId`, `planDifferences` where a form has them); `alliance` on match-strategy plan and drive-reflection docs; `eventKey` on helper docs; `teleop.humanPlayerFuelByShift` on REBUILT entries (D8).
 - A new `subInRequests` collection (D7).
 
+## Program merge (docs/MERGE_PLAN.md)
+- FTC data layer: the shared pages read FRC collections through `data/cs`, so the FTC shell shows `ProgramGate` (`pagesConnected: false` in `config/programs/ftc.ts`). Needs an FTC adapter for the sister app's `scoutEntries` / `formEntries` / forms, then flip the flag.
+- FTC multi-team accounts (sister app's `fieldTeams`) through `lib/our-team.ts`.
+- FTC game: port the sister app's one built-in game as an FTC form definition.
+- Run the migration script (`scripts/migrate-ce-to-ftc.ts`) as a dry run, review, then apply; deploy the rules and indexes by hand after review. Needs the sister project's Auth export and hash parameters.
+- FRC-only pages for FTC (greyed out now): accuracy-compare, accuracy-verification, match-prediction, performance-reliability, robot-radar, judge-book.
+- Unverified: FTC playoff bracket slot numbers, the FTC Events API against live keys, the Auth import (`importUsers`) path.
+
 ## Cleanup left
 - Mixed LF and CRLF line endings across files (git warns on commit). Normalise with a `.gitattributes` when convenient.
 - `npm audit` and dependency upgrades.

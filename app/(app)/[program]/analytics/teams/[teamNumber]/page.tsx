@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter } from "@/lib/program/navigation";
 import { motion } from "framer-motion";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ExternalLink, SearchX, Trophy } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";

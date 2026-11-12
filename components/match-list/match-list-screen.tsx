@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import Link from "next/link";
+import Link from "@/components/program/link";
 import { CalendarX2, Clock, RefreshCw, Search, Trophy } from "lucide-react";
 import { OUR_TEAM_ROW_CLASS, OurTeamTag } from "@/components/analytics/team-bits";
 import { Badge } from "@/components/ui/badge";
