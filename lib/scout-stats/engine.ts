@@ -6,6 +6,7 @@ import type { LibraryMatch } from "@/lib/match-library";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import type { RoleId } from "@/lib/roles";
 import type { ScoutEntry } from "@/lib/scout-entries";
+import { seasonIdForGame } from "@/data/cs/practice";
 import type { TeamMember } from "@/lib/team-members";
 import { computeRealEventEstimates, computeTeamAveragePrior, type RealEventObservation } from "./real-event-accuracy";
 import type {
@@ -97,6 +98,21 @@ function practiceSessionSummary(session: PracticeSession, libraryMatchesById: Ma
   };
 }
 
+/**
+ * A scout's "total entries" in one practice mode: the practice scouting entries they wrote, counted from the entries themselves
+ * as old CS did (`scouting` docs with `isPracticeScouting`, not live, matching `practiceMode`, by `scoutId` or `scoutName`).
+ * It is NOT read off the sessions: a session CS wrote carries no list of its entries, so summing `session.entryIds` gave 0.
+ */
+export function practiceEntryCount(entries: readonly ScoutEntry[], uid: string, name: string, mode: "trial" | "competitive", seasonId: string | null = null): number {
+  const nameKey = name.trim().toLowerCase();
+  return entries.filter((e) => {
+    if (e.source !== "practice" || e.mode !== mode) return false;
+    const mine = e.uid ? e.uid === uid : nameKey !== "" && e.scoutName.trim().toLowerCase() === nameKey;
+    if (!mine) return false;
+    return !seasonId || seasonIdForGame(e.game ?? e.formId) === seasonId;
+  }).length;
+}
+
 function computePracticeDetail(
   uid: string,
   name: string,
@@ -183,6 +199,8 @@ export type ScoutStatsInput = {
   rankingBasis: RankingBasisId;
   /** Only read when `category === "real-event"`. */
   realEventScope: RealEventCalculationScope;
+  /** Count only this game's practice entries (a season id). Null/absent counts every game. */
+  seasonId?: string | null;
 };
 
 /**
@@ -217,7 +235,12 @@ export function computeScoutStats(input: ScoutStatsInput): ScoutStatsResult {
     }
   } else {
     for (const member of members) {
-      detailsByUid.set(member.uid, computePracticeDetail(member.uid, member.name, sessions, category, libraryMatchesById));
+      const detail = computePracticeDetail(member.uid, member.name, sessions, category, libraryMatchesById);
+      // The entries are the truth; a session this app wrote also lists its entry ids, and the larger count wins so neither source undercounts.
+      detailsByUid.set(member.uid, {
+        ...detail,
+        totalEntries: Math.max(detail.totalEntries ?? 0, practiceEntryCount(entries, member.uid, member.name, category, input.seasonId ?? null)),
+      });
     }
   }
 

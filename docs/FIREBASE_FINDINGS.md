@@ -34,6 +34,8 @@ not per event.
    (`[firestore] team practiceSessions subscription failed`) and exposed as `error`, but I did not check every source or
    whether the page renders `error`. The browser console will show which one fails.
 
+7. **Total entries stuck at 0.** The rebuild summed `session.entryIds.length` (`lib/scout-stats/engine.ts`). A session CS wrote has no list of its entries, so the adapter maps it with `entryIds: []` and the sum is always 0. Old CS counted `scouting` docs with `isPracticeScouting`, not live, matching `practiceMode`, by `scoutId` or `scoutName` (`scout-accuracy/page.tsx:890`). Not a stored counter, not event-scoped, and no auth or swallowed-error problem (entries load team-wide through `useTeamScoutEntries`). Fixed by `practiceEntryCount`, which counts the same entries.
+
 ## Checked and fine
 - Collection names, field names and event-key aliasing match for these reads. No leftovers from the app this one was started from in these queries.
 - No `limit()` anywhere in these paths. All queries are equality-only, so no composite index is needed; the CS reference has no

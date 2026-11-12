@@ -89,6 +89,7 @@ export function useScoutStats({ teamId, category, roleFilter, eventFilter, ranki
       eventFilter,
       rankingBasis,
       realEventScope,
+      seasonId,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -104,6 +105,7 @@ export function useScoutStats({ teamId, category, roleFilter, eventFilter, ranki
     rankingBasis,
     realEventScope.eventCode,
     realEventScope.variant,
+    seasonId,
   ]);
 
   return { result, loaded, sources };

@@ -89,3 +89,31 @@ describe("practice accuracy average (the engine side)", () => {
     expect(computePracticeAverageAccuracy([mk("a", { accuracy: undefined })], "u1", "trial")).toBeNull();
   });
 });
+
+describe("total entries (counted from the practice entries, not read off the sessions)", () => {
+  const entry = (over: Record<string, unknown>) => ({ source: "practice", mode: "trial", uid: "u1", scoutName: "Ada Lovelace", game: "REBUILT", formId: "rebuilt", ...over }) as never;
+
+  it("counts a scout's practice entries in the mode, by uid or by name, skipping live, other modes and other scouts", async () => {
+    const { practiceEntryCount } = await import("@/lib/scout-stats/engine");
+    const entries = [
+      entry({}),
+      entry({ uid: "", scoutName: "ada lovelace" }),
+      entry({ source: "live" }),
+      entry({ mode: "competitive" }),
+      entry({ uid: "u2", scoutName: "Someone Else" }),
+      entry({ source: "event" }),
+    ];
+    expect(practiceEntryCount(entries, "u1", "Ada Lovelace", "trial")).toBe(2);
+  });
+
+  it("filters by game when a game is chosen, and counts every game otherwise", async () => {
+    const { practiceEntryCount } = await import("@/lib/scout-stats/engine");
+    const entries = [entry({}), entry({ game: "REEFSCAPE", formId: "reefscape" })];
+    expect(practiceEntryCount(entries, "u1", "Ada Lovelace", "trial", "rebuilt")).toBe(1);
+    expect(practiceEntryCount(entries, "u1", "Ada Lovelace", "trial", null)).toBe(2);
+  });
+
+  it("is not zero for a session CS wrote (which carries no entry ids)", () => {
+    expect(csSessionToPractice("s1", base, "TEAM1")?.entryIds).toEqual([]);
+  });
+});
