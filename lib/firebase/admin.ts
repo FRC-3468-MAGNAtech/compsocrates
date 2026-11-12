@@ -3,7 +3,7 @@ import { cert, getApps, getApp, initializeApp, type App } from "firebase-admin/a
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
-import { firebaseAdminEnv, firebaseAdminMissingNames } from "@/lib/server/env";
+import { firebaseAdminEnv, firebaseAdminMissingNames, firebaseProjectIdMismatch } from "@/lib/server/env";
 
 // Server-only counterpart to lib/firebase/client.ts. Used by app/api/auth/session
 // (to mint/verify session cookies) and lib/server/require-user.ts (to verify
@@ -17,6 +17,10 @@ let initFailed = false;
 function getServiceAccount() {
   const env = firebaseAdminEnv();
   const projectId = env.projectId;
+  // The Admin project id defaults to the web one. Both set and different would check sign-ins against the wrong project.
+  if (firebaseProjectIdMismatch()) {
+    console.error("FIREBASE_ADMIN_PROJECT_ID and NEXT_PUBLIC_FIREBASE_PROJECT_ID name different projects: remove FIREBASE_ADMIN_PROJECT_ID unless the service account really belongs to another project.");
+  }
   const clientEmail = env.clientEmail;
   // Vercel's env var UI (and most dashboards) can't store a literal newline
   // in a single-line value, so the private key is pasted with escaped `\n`

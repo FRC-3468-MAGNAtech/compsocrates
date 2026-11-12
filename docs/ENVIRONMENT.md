@@ -28,8 +28,7 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 
 | Variable | What it is | What breaks while it is unset |
 |---|---|---|
-| `FIREBASE_ADMIN_PROJECT_ID` | Firebase Admin service account | Server sign-in checks: event data, team join approvals, role sync, account deletion |
-| `FIREBASE_ADMIN_CLIENT_EMAIL` | Firebase Admin service account | Same |
+| `FIREBASE_ADMIN_CLIENT_EMAIL` | Firebase Admin service account | Server sign-in checks: event data, team join approvals, role sync, account deletion |
 | `FIREBASE_ADMIN_PRIVATE_KEY` | Firebase Admin service account. Paste it on one line with each line break written as `\n`; no real line breaks, no quotes inside the value. | Same |
 
 ### C. Optional (the feature is off when unset)
@@ -44,6 +43,7 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret | The bot check on the team application form is skipped |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage for photos | Photo uploads |
 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Web push key | Push notifications |
+| `FIREBASE_ADMIN_PROJECT_ID` | Override for the Admin SDK's project id. Leave it unset: it defaults to `NEXT_PUBLIC_FIREBASE_PROJECT_ID`. | Nothing |
 | `APPLICATION_SECRET` | Signs team-application tokens | Falls back to a key derived from `FIREBASE_ADMIN_PRIVATE_KEY` |
 | `NEXT_PUBLIC_RELEASE_OWNER_UIDS` | Optional browser copy of `RELEASE_OWNER_UIDS`; it lets the UI know who the owner is, and the server uses it when `RELEASE_OWNER_UIDS` is unset | Nothing, as long as `RELEASE_OWNER_UIDS` is set |
 
@@ -63,7 +63,8 @@ A bad setup is reported, never hidden, and an error is never cached.
 | 429 | "... rate limit was hit. Try again shortly." | `rate_limited` |
 | Network failure | "Could not reach The Blue Alliance." | `network_error` |
 | Any other non-2xx | "... returned 500." | `upstream_error` |
-| `FIREBASE_ADMIN_*` unset | "Server sign-in is not configured: set FIREBASE_ADMIN_PROJECT_ID, ..." (only the unset names). Routes answer 503, not 401. | `server_not_configured` |
+| `FIREBASE_ADMIN_CLIENT_EMAIL` or `FIREBASE_ADMIN_PRIVATE_KEY` unset | "Server sign-in is not configured: set FIREBASE_ADMIN_CLIENT_EMAIL, ..." (only the unset names). Routes answer 503, not 401. | `server_not_configured` |
+| `FIREBASE_ADMIN_PROJECT_ID` and `NEXT_PUBLIC_FIREBASE_PROJECT_ID` both set but different | Logged as an error at startup; sign-ins would be checked against the wrong project. | none (log only) |
 | `FIREBASE_ADMIN_PRIVATE_KEY` present but malformed | "Server sign-in could not start: check FIREBASE_ADMIN_PRIVATE_KEY ..." | `server_not_configured` |
 | Not signed in | "Sign in to view event data." | `unauthorized` |
 | `CRON_SECRET` unset | The poller answers 503 "CRON_SECRET is not configured". A wrong secret is 401. | n/a (route) |

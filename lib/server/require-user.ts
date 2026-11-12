@@ -16,7 +16,7 @@ export type SessionCheck =
 
 /** Why server sign-in cannot work (the Admin SDK is unconfigured or broken), or null when it can. Names only, never values. */
 export function serverSignInProblem(): string | null {
-  return getAdminAuth() ? null : (firebaseAdminProblem() ?? "Server sign-in is not configured: set FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, FIREBASE_ADMIN_PRIVATE_KEY.");
+  return getAdminAuth() ? null : (firebaseAdminProblem() ?? "Server sign-in is not configured: set FIREBASE_ADMIN_CLIENT_EMAIL and FIREBASE_ADMIN_PRIVATE_KEY.");
 }
 
 /**

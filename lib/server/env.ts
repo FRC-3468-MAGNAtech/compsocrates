@@ -38,9 +38,9 @@ export const ENV_VARS: readonly EnvVarInfo[] = [
   { name: "FIRST_API_TOKEN", group: "cs", purpose: "FIRST FRC Events API token", whenMissing: "Practice schedules and the FIRST fallback for teams and rankings." },
   { name: "RELEASE_OWNER_UIDS", group: "cs", purpose: "Comma-separated uids of the platform owner(s)", whenMissing: "Nobody is treated as platform owner." },
   { name: "RELEASE_OWNER_EMAILS", group: "cs", purpose: "Comma-separated emails of the platform owner(s)", whenMissing: "Owner-by-email recognition." },
-  { name: "FIREBASE_ADMIN_PROJECT_ID", group: "required", purpose: "Firebase Admin service account", whenMissing: "Server sign-in checks: event data, team join approvals, role sync, account deletion." },
-  { name: "FIREBASE_ADMIN_CLIENT_EMAIL", group: "required", purpose: "Firebase Admin service account", whenMissing: "Same as FIREBASE_ADMIN_PROJECT_ID." },
-  { name: "FIREBASE_ADMIN_PRIVATE_KEY", group: "required", purpose: "Firebase Admin service account (paste with \\n sequences)", whenMissing: "Same as FIREBASE_ADMIN_PROJECT_ID." },
+  { name: "FIREBASE_ADMIN_CLIENT_EMAIL", group: "required", purpose: "Firebase Admin service account", whenMissing: "Server sign-in checks: event data, team join approvals, role sync, account deletion." },
+  { name: "FIREBASE_ADMIN_PRIVATE_KEY", group: "required", purpose: "Firebase Admin service account (paste with \\n sequences)", whenMissing: "Server sign-in checks: event data, team join approvals, role sync, account deletion." },
+  { name: "FIREBASE_ADMIN_PROJECT_ID", group: "optional", purpose: "Override for the Admin SDK's project id", whenMissing: "Nothing: it defaults to NEXT_PUBLIC_FIREBASE_PROJECT_ID, which is the same project in every normal setup." },
   { name: "APP_URL", group: "optional", purpose: "Public URL used in links inside emails", whenMissing: "Falls back to the host's own URL variables." },
   { name: "CRON_SECRET", group: "optional", purpose: "Protects the scheduled live-score poller", whenMissing: "The poller route refuses to run." },
   { name: "RESEND_API_KEY", group: "optional", purpose: "Sends email through Resend", whenMissing: "No notification emails (the app still works)." },
@@ -77,15 +77,32 @@ export function firstApiMissingNames(): string[] {
   return ["FIRST_API_USERNAME", "FIRST_API_TOKEN"].filter((name) => !read(name));
 }
 
-/** The Firebase Admin variables that are unset, by name (empty when all three are set). */
+/**
+ * The project the Admin SDK talks to: `FIREBASE_ADMIN_PROJECT_ID` when set (an override), otherwise the same
+ * `NEXT_PUBLIC_FIREBASE_PROJECT_ID` the browser uses. They are the same project in every normal setup, so one is enough.
+ */
+function firebaseAdminProjectId(): string {
+  return read("FIREBASE_ADMIN_PROJECT_ID") || read("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
+}
+
+/** Both project ids when they are set and differ (a misconfiguration: sign-ins would be checked against the wrong project), else null. */
+export function firebaseProjectIdMismatch(): { admin: string; web: string } | null {
+  const admin = read("FIREBASE_ADMIN_PROJECT_ID");
+  const web = read("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
+  return admin && web && admin !== web ? { admin, web } : null;
+}
+
+/** The variables the Admin SDK still needs that are unset, by name (empty when it can start). The project id is reported as the web one it falls back to. */
 export function firebaseAdminMissingNames(): string[] {
-  return ["FIREBASE_ADMIN_PROJECT_ID", "FIREBASE_ADMIN_CLIENT_EMAIL", "FIREBASE_ADMIN_PRIVATE_KEY"].filter((name) => !read(name));
+  const missing = ["FIREBASE_ADMIN_CLIENT_EMAIL", "FIREBASE_ADMIN_PRIVATE_KEY"].filter((name) => !read(name));
+  if (!firebaseAdminProjectId()) missing.unshift("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
+  return missing;
 }
 
 /** Raw Firebase Admin values; `lib/firebase/admin.ts` validates and cleans the private key. */
 export function firebaseAdminEnv(): { projectId: string; clientEmail: string; privateKey: string } {
   return {
-    projectId: read("FIREBASE_ADMIN_PROJECT_ID"),
+    projectId: firebaseAdminProjectId(),
     clientEmail: read("FIREBASE_ADMIN_CLIENT_EMAIL"),
     privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY ?? "",
   };

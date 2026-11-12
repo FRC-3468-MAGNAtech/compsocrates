@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ENV_VARS, firebaseAdminEnv, firstApiCredentials, missingEnv, parseList, releaseOwnerEmails, releaseOwnerUids, tbaApiKey } from "./env";
+import { ENV_VARS, firebaseAdminEnv, firebaseAdminMissingNames, firebaseProjectIdMismatch, firstApiCredentials, missingEnv, parseList, releaseOwnerEmails, releaseOwnerUids, tbaApiKey } from "./env";
 
-const NAMES = ENV_VARS.map((v) => v.name).concat(["NEXT_PUBLIC_RELEASE_OWNER_UIDS"]);
+const NAMES = ENV_VARS.map((v) => v.name).concat(["NEXT_PUBLIC_RELEASE_OWNER_UIDS", "NEXT_PUBLIC_FIREBASE_PROJECT_ID"]);
 let saved: Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -45,6 +45,36 @@ describe("env getters", () => {
     process.env.FIREBASE_ADMIN_PROJECT_ID = " proj ";
     process.env.FIREBASE_ADMIN_PRIVATE_KEY = "line\\nbreak";
     expect(firebaseAdminEnv()).toEqual({ projectId: "proj", clientEmail: "", privateKey: "line\\nbreak" });
+  });
+
+  it("uses the web project id for the Admin SDK when no override is set", () => {
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = " web-project ";
+    process.env.FIREBASE_ADMIN_CLIENT_EMAIL = "svc@example.iam.gserviceaccount.com";
+    process.env.FIREBASE_ADMIN_PRIVATE_KEY = "key";
+    expect(firebaseAdminEnv().projectId).toBe("web-project");
+    expect(firebaseAdminMissingNames()).toEqual([]);
+    expect(firebaseProjectIdMismatch()).toBeNull();
+  });
+
+  it("lets FIREBASE_ADMIN_PROJECT_ID override it, and reports a mismatch", () => {
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = "web-project";
+    process.env.FIREBASE_ADMIN_PROJECT_ID = "other-project";
+    expect(firebaseAdminEnv().projectId).toBe("other-project");
+    expect(firebaseProjectIdMismatch()).toEqual({ admin: "other-project", web: "web-project" });
+    process.env.FIREBASE_ADMIN_PROJECT_ID = "web-project";
+    expect(firebaseProjectIdMismatch()).toBeNull();
+  });
+
+  it("names the web project id when neither id is set, and no longer asks for the Admin one", () => {
+    process.env.FIREBASE_ADMIN_CLIENT_EMAIL = "svc@example.iam.gserviceaccount.com";
+    process.env.FIREBASE_ADMIN_PRIVATE_KEY = "key";
+    expect(firebaseAdminMissingNames()).toEqual(["NEXT_PUBLIC_FIREBASE_PROJECT_ID"]);
+    expect(firebaseAdminMissingNames()).not.toContain("FIREBASE_ADMIN_PROJECT_ID");
+  });
+
+  it("does not report the optional project-id override as missing", () => {
+    expect(missingEnv().some((v) => v.name === "FIREBASE_ADMIN_PROJECT_ID")).toBe(false);
+    expect(missingEnv(["optional"]).some((v) => v.name === "FIREBASE_ADMIN_PROJECT_ID")).toBe(true);
   });
 
   it("parseList drops empties and duplicates", () => {

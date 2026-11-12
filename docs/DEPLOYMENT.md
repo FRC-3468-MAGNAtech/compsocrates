@@ -15,7 +15,7 @@ Set them in Vercel under Project Settings > Environment Variables, for **Product
 The full table (what each variable is, what breaks while it is unset, which are optional) is in **`docs/ENVIRONMENT.md`**; it is not repeated here. In short:
 
 - **Firebase web config** (`NEXT_PUBLIC_FIREBASE_*`) and the **TBA and FIRST keys** are needed for sign-in and event data.
-- **Firebase Admin** (`FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`) is required for every server route that verifies a sign-in.
+- **Firebase Admin** (`FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`; the project id comes from `NEXT_PUBLIC_FIREBASE_PROJECT_ID`) is required for every server route that verifies a sign-in.
 - **Owner** variables (`RELEASE_OWNER_UIDS` and/or `RELEASE_OWNER_EMAILS`) say who the platform owner is.
 - Everything else (`APP_URL`, `CRON_SECRET`, Resend, Turnstile, Blob, push, `APPLICATION_SECRET`) is optional and switches one feature on.
 
@@ -24,7 +24,7 @@ After deploying, a signed-in admin can open **Admin Panel > Setup Check** to see
 ### The Firebase Admin service account
 
 1. Firebase Console > Project Settings > Service Accounts > **Generate new private key**. A JSON file downloads.
-2. Copy three fields from it: `project_id` to `FIREBASE_ADMIN_PROJECT_ID`, `client_email` to `FIREBASE_ADMIN_CLIENT_EMAIL`, `private_key` to `FIREBASE_ADMIN_PRIVATE_KEY`. Never add `NEXT_PUBLIC_` to these.
+2. Copy two fields from it: `client_email` to `FIREBASE_ADMIN_CLIENT_EMAIL`, `private_key` to `FIREBASE_ADMIN_PRIVATE_KEY`. Never add `NEXT_PUBLIC_` to these. The project id is the web app's `NEXT_PUBLIC_FIREBASE_PROJECT_ID` (set `FIREBASE_ADMIN_PROJECT_ID` only to override it).
 3. **Escaping the private key.** The JSON's `private_key` is one string with literal `\n` sequences marking line breaks. Paste it on one line exactly like that, `\n` included, with no real line breaks. Most dashboards accept only single-line values, so `lib/firebase/admin.ts` turns the `\n` sequences back into real newlines at runtime. Do not wrap the value in quotes; if the value arrives wrapped in literal quotes the code strips them and logs it, but it is easy to miss by eye. A malformed key shows up as "Server sign-in could not start: check FIREBASE_ADMIN_PRIVATE_KEY" and routes answer 503.
 
 ## 3. Sign-in providers and authorized domains
