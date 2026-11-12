@@ -78,9 +78,10 @@ export function buildRealEventObservations(entries: ScoutEntry[], eventCode: str
 
 /** A member's own average accuracy (0-100) in one practice mode — the prior the (Trial)/(Competitive) Real Event calculation variants use. Null if they have no completed, non-excluded sessions in that mode. */
 export function computePracticeAverageAccuracy(sessions: PracticeSession[], uid: string, mode: "trial" | "competitive"): number | null {
-  const own = sessions.filter((s) => s.uid === uid && s.kind === "solo" && s.mode === mode && s.status === "completed" && !s.excluded);
+  // Old CS skipped live snapshots and sessions without a numeric accuracy; a missing accuracy is not a 0.
+  const own = sessions.filter((s) => s.uid === uid && s.kind === "solo" && !s.csLive && s.mode === mode && s.status === "completed" && !s.excluded && typeof s.accuracy === "number");
   if (own.length === 0) return null;
-  return mean(own.map((s) => s.accuracy ?? 0));
+  return mean(own.map((s) => s.accuracy as number));
 }
 
 function practiceSessionSummary(session: PracticeSession, libraryMatchesById: Map<string, LibraryMatch>): PracticeSessionSummary {
@@ -103,9 +104,10 @@ function computePracticeDetail(
   mode: "trial" | "competitive",
   libraryMatchesById: Map<string, LibraryMatch>
 ): ScoutCategoryDetail {
-  const own = sessions.filter((s) => s.uid === uid && s.kind === "solo" && s.mode === mode && s.status === "completed");
-  const nonExcluded = own.filter((s) => !s.excluded);
-  const averageAccuracy = nonExcluded.length > 0 ? mean(nonExcluded.map((s) => s.accuracy ?? 0)) : null;
+  const own = sessions.filter((s) => s.uid === uid && s.kind === "solo" && !s.csLive && s.mode === mode && s.status === "completed");
+  // Only sessions with a numeric accuracy count toward the average (old CS: `Number.isFinite`), never as a 0.
+  const nonExcluded = own.filter((s) => !s.excluded && typeof s.accuracy === "number");
+  const averageAccuracy = nonExcluded.length > 0 ? mean(nonExcluded.map((s) => s.accuracy as number)) : null;
   const sorted = [...own].sort((a, b) => (b.finishedAt ?? "").localeCompare(a.finishedAt ?? ""));
 
   return {

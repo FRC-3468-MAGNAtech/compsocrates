@@ -16,7 +16,7 @@ import type { RankingBasisId, RealEventCalculationScope, ScoutCategory, ScoutSta
 /** Every realtime source Scout Accuracy / My Scouting need, wired together — kept separate from the pure `computeScoutStats` so that function stays unit-testable with plain fixtures. */
 export function useScoutStatsSources(teamId: string | null) {
   const { members, loaded: membersLoaded } = useTeamMembers(teamId);
-  const { sessions, loaded: sessionsLoaded } = useTeamPracticeSessions(teamId);
+  const { sessions, loaded: sessionsLoaded, error: sessionsError } = useTeamPracticeSessions(teamId);
   const { entries, loaded: entriesLoaded } = useTeamScoutEntries(teamId);
   const { matches, loaded: matchesLoaded } = useAllLibraryMatches();
   const { attendance, loaded: attendanceLoaded } = useTeamEventAttendance(teamId);
@@ -24,7 +24,7 @@ export function useScoutStatsSources(teamId: string | null) {
   const libraryMatchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
   const loaded = membersLoaded && sessionsLoaded && entriesLoaded && matchesLoaded && attendanceLoaded;
 
-  return { members, sessions, entries, libraryMatchesById, attendance, loaded };
+  return { members, sessions, entries, libraryMatchesById, attendance, loaded, sessionsError };
 }
 
 /**
@@ -62,16 +62,19 @@ export type UseScoutStatsOptions = {
   eventFilter: string[];
   rankingBasis: RankingBasisId;
   realEventScope: RealEventCalculationScope;
+  /** Count only practice sessions of this game (a season id, e.g. "rebuilt"), as old CS averaged one game at a time. Null counts every game. */
+  seasonId?: string | null;
 };
 
 /** Combines `useScoutStatsSources` with `computeScoutStats`, memoized on every input that actually changes the result. */
-export function useScoutStats({ teamId, category, roleFilter, eventFilter, rankingBasis, realEventScope }: UseScoutStatsOptions): {
+export function useScoutStats({ teamId, category, roleFilter, eventFilter, rankingBasis, realEventScope, seasonId = null }: UseScoutStatsOptions): {
   result: ScoutStatsResult | null;
   loaded: boolean;
   sources: ReturnType<typeof useScoutStatsSources>;
 } {
   const sources = useScoutStatsSources(teamId);
-  const { members, sessions, entries, libraryMatchesById, attendance, loaded } = sources;
+  const { members, entries, libraryMatchesById, attendance, loaded } = sources;
+  const sessions = useMemo(() => (seasonId ? sources.sessions.filter((s) => s.seasonId === seasonId) : sources.sessions), [sources.sessions, seasonId]);
 
   const result = useMemo(() => {
     if (!loaded) return null;

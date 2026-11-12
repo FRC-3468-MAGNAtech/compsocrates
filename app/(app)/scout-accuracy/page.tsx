@@ -13,6 +13,7 @@ import { usePermissions } from "@/lib/permissions";
 import type { RoleId } from "@/lib/roles";
 import { useRealEventOptions, useScoutStats } from "@/lib/scout-stats/use-scout-stats";
 import { useActiveEvents } from "@/lib/active-event";
+import { DEFAULT_SEASON_ID, getEnabledSeasons } from "@/lib/seasons";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import type { RankingBasisId, RealEventCalculationScope, ScoutCategory } from "@/lib/scout-stats/types";
 
@@ -27,6 +28,8 @@ export default function ScoutAccuracyPage() {
   const [rankingBasis, setRankingBasis] = useState<RankingBasisId>("preserve");
   const [realEventScope, setRealEventScope] = useState<RealEventCalculationScope>({ eventCode: null, variant: "plain" });
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  // Practice accuracy is averaged one game at a time, as in the old app (REBUILT by default); "" counts every game.
+  const [seasonId, setSeasonId] = useState<string>(DEFAULT_SEASON_ID);
 
   // "Role Leaderboard"/"Event Leaderboard"/"both" only make sense while
   // their matching filter is actually active — derived here (not corrected
@@ -48,6 +51,7 @@ export default function ScoutAccuracyPage() {
     eventFilter,
     rankingBasis: effectiveRankingBasis,
     realEventScope,
+    seasonId: seasonId || null,
   });
   const { events: activeEvents, primaryCode } = useActiveEvents();
   const orderedActiveEvents = useMemo(() => orderPrimaryFirst({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
@@ -76,7 +80,34 @@ export default function ScoutAccuracyPage() {
         </div>
       </GlassPanel>
 
-      <CategoryTabs value={category} onChange={setCategory} />
+      <div className="flex flex-wrap items-center gap-3">
+        <CategoryTabs value={category} onChange={setCategory} />
+        <label className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+          Game
+          <select
+            value={seasonId}
+            onChange={(e) => setSeasonId(e.target.value)}
+            className="h-11 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 text-base text-[var(--foreground)]"
+          >
+            <option value="">All games</option>
+            {getEnabledSeasons().map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {sources.sessionsError && (
+        <GlassPanel role="alert" className="flex flex-col gap-1 text-sm">
+          <div className="font-semibold">{sources.sessionsError.context}</div>
+          <div className="text-[var(--muted-foreground)]">
+            {sources.sessionsError.code}: {sources.sessionsError.message}
+            {sources.sessionsError.path ? ` (${sources.sessionsError.path})` : ""}. Practice accuracy below may be incomplete.
+          </div>
+        </GlassPanel>
+      )}
 
       {!loaded || !result ? (
         <div className="glass-card h-64 animate-pulse" />

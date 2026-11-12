@@ -207,7 +207,10 @@ function mapCsSession(id: string, data: CsRecord): PracticeSession {
     officialScore: finiteOrNull(data.officialScore) ?? finiteOrNull(data.actualScore),
     platform: platformOf(data.deviceType),
     flags: [],
-    excluded: false,
+    // Old CS dropped a session from accuracy when its own `excludeFromAccuracy` was set (flag states are applied by `applySessionExclusions`).
+    excluded: Boolean(data.excludeFromAccuracy),
+    // Old CS left live sessions out of accuracy; kept so the stats can do the same.
+    csLive: live,
     lobbyId: null,
     pairId: null,
     startedAt: startedMs > 0 ? isoFromMs(startedMs) : "",
@@ -227,15 +230,61 @@ function mapCsSession(id: string, data: CsRecord): PracticeSession {
  * from `scoutId` when missing. A doc CS wrote (a finished snapshot) is mapped field by field as a completed `solo` session; its
  * `libraryMatchId` is the id the imported library gives that match (`importedMatchId`), so status, labels and stats find it.
  */
-export function csSessionToPractice(id: string, data: CsRecord): PracticeSession | null {
+export function csSessionToPractice(id: string, data: CsRecord, fallbackTeamId?: string): PracticeSession | null {
   if (isCsLobbyDoc(data)) return null;
   const ceShaped = (KINDS as readonly unknown[]).includes(data.kind) && (STATUSES as readonly unknown[]).includes(data.status);
-  if (!ceShaped) return str(data.teamId) ? mapCsSession(id, data) : null;
+  // A CS session saved by a scout with no team has an empty `teamId`. Old CS still counted it; `fallbackTeamId` (the team the
+  // scout belongs to, known to the caller) lets it be mapped instead of dropped.
+  if (!ceShaped) return str(data.teamId) ? mapCsSession(id, data) : fallbackTeamId ? mapCsSession(id, { ...data, teamId: fallbackTeamId }) : null;
   const out = { ...data, id } as unknown as PracticeSession;
   if (!out.uid) out.uid = str(data.scoutId);
   out.startedAt = msToIso(data.startedAt) ?? "";
   out.finishedAt = msToIso(data.finishedAt) ?? msToIso(data.completedAt);
   return out;
+}
+
+// ---- Reading sessions the way old CS did (docs/FIREBASE_FINDINGS.md) ---------------------------------------------------
+
+export type SessionMember = { uid: string; name: string };
+
+/** Old CS kept a session when its `teamId` was empty or ours, and dropped it only when it named another team. */
+export function sessionBelongsToTeam(data: CsRecord, teamId: string): boolean {
+  const own = str(data.teamId || data.team).trim();
+  return !own || own === teamId;
+}
+
+/** Sessions whose scout was stored only by name (no `scoutId`) go to the member with that name, case-insensitively, as old CS matched them. */
+export function assignSessionOwners(sessions: readonly PracticeSession[], members: readonly SessionMember[]): PracticeSession[] {
+  const byName = new Map<string, string>();
+  for (const m of members) {
+    const key = m.name.trim().toLowerCase();
+    if (key && m.uid && !byName.has(key)) byName.set(key, m.uid);
+  }
+  return sessions.map((s) => {
+    if (s.uid) return s;
+    const uid = byName.get(s.scoutName.trim().toLowerCase());
+    return uid ? { ...s, uid } : s;
+  });
+}
+
+/** The session ids a team excluded from accuracy through `scoutingFlagStates` (entity type `practiceSession`). */
+export function excludedSessionIds(flagStates: readonly CsRecord[]): Set<string> {
+  const out = new Set<string>();
+  for (const row of flagStates) {
+    if (str(row.entityType) === "practiceSession" && row.excludeFromAccuracy === true && str(row.entityId)) out.add(str(row.entityId));
+  }
+  return out;
+}
+
+export function applySessionExclusions(sessions: readonly PracticeSession[], excluded: ReadonlySet<string>): PracticeSession[] {
+  if (excluded.size === 0) return [...sessions];
+  return sessions.map((s) => (excluded.has(s.id) && !s.excluded ? { ...s, excluded: true } : s));
+}
+
+/** Union by id; the first list wins (the team query's copy over a member query's copy). */
+export function mergeSessionsById(primary: readonly PracticeSession[], extra: readonly PracticeSession[]): PracticeSession[] {
+  const seen = new Set(primary.map((s) => s.id));
+  return [...primary, ...extra.filter((s) => !seen.has(s.id))];
 }
 
 /** What a session write knows about the match beyond the patch (the library match the session is for). */

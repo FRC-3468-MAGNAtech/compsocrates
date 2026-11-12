@@ -9,7 +9,8 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { finalizeSessions, usePracticeExtras } from "@/lib/practice-extras";
 import { csSessionToPractice, practicePatchToCsFields, type SessionWriteContext } from "@/data/cs/practice";
 import { tryClaimDoc } from "@/lib/claim-doc";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
@@ -55,6 +56,8 @@ export type PracticeSession = {
   platform: Platform;
   flags: SessionFlag[];
   excluded: boolean;
+  /** Set only on a session read from CS's own `practiceSessions` docs that was a live-practice snapshot (`isLivePracticeScouting`). Accuracy stats skip these, as old CS did. */
+  csLive?: boolean;
   lobbyId: string | null;
   pairId: string | null;
   startedAt: string;
@@ -207,7 +210,7 @@ export function usePracticeSession(sessionId: string | null) {
  * 30-value `in`-query cap for a large library): one subscription, status
  * computed client-side.
  */
-export function useTeamPracticeSessions(teamId: string | null) {
+function useTeamPracticeSessionsBase(teamId: string | null) {
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const [error, setError] = useState<FirestoreFailure | null>(null);
@@ -284,7 +287,8 @@ export function useTeamLiveSessions(teamId: string | null) {
  * lobby sessions at once rather than one kind at a time like
  * `useTeamPracticeSessions`/`useTeamLiveSessions` do.
  */
-export function useAllTeamPracticeSessions(teamId: string | null) {
+function useAllTeamPracticeSessionsBase(teamId: string | null) {
+  const [error, setError] = useState<FirestoreFailure | null>(null);
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
 
@@ -302,7 +306,9 @@ export function useAllTeamPracticeSessions(teamId: string | null) {
         setLoaded(true);
       },
       (err) => {
-        reportFirestoreError("all team practiceSessions subscription failed", err, `practiceSessions where teamId == ${teamId}`);
+        const path = `practiceSessions where teamId == ${teamId}`;
+        reportFirestoreError("all team practiceSessions subscription failed", err, path);
+        setError(describeFirestoreError("Couldn't load practice sessions", err, path));
         setSessions([]);
         setLoaded(true);
       }
@@ -310,7 +316,7 @@ export function useAllTeamPracticeSessions(teamId: string | null) {
     return unsubscribe;
   }, [teamId]);
 
-  return { sessions, loaded };
+  return { sessions, loaded, error };
 }
 
 /** At most one paused session per user (spec) — realtime, so the Resume banner updates if it's resolved from another tab. */
@@ -357,7 +363,7 @@ export async function hasCompletedAttemptBefore(
   try {
     const own = await getDocs(scoutSessionsQuery(db, teamId, uid));
     return own.docs.some((d) => {
-      const s = toSession(d.id, d.data());
+      const s = csSessionToPractice(d.id, d.data(), teamId);
       return s !== null && s.status === "completed" && s.libraryMatchId === libraryMatchId && s.alliance === alliance;
     });
   } catch (err) {
@@ -388,4 +394,25 @@ export function getCategory(input: CategoryInput): ScoutingCategory {
   const isRealEvent = "source" in input ? input.source === "event" || input.source === "live" : input.kind === "live";
   if (isRealEvent) return "real-event";
   return input.mode ?? "trial";
+}
+
+/**
+ * The team's solo practice sessions as old CS saw them: the `teamId ==` query plus the sessions of team members saved with an
+ * empty team id, owners resolved by name, and exclusions applied (lib/practice-extras.ts, docs/FIREBASE_FINDINGS.md).
+ */
+export function useTeamPracticeSessions(teamId: string | null) {
+  const base = useTeamPracticeSessionsBase(teamId);
+  const extras = usePracticeExtras(teamId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sessions = useMemo(() => finalizeSessions(base.sessions, extras).filter((s) => s.kind === "solo"), [base.sessions, extras.sessions, extras.excluded, extras.members]);
+  return { sessions, loaded: base.loaded && extras.loaded, error: base.error ?? extras.error, retry: base.retry };
+}
+
+/** Every session of the team, any kind, with the same extras as `useTeamPracticeSessions`. */
+export function useAllTeamPracticeSessions(teamId: string | null) {
+  const base = useAllTeamPracticeSessionsBase(teamId);
+  const extras = usePracticeExtras(teamId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sessions = useMemo(() => finalizeSessions(base.sessions, extras), [base.sessions, extras.sessions, extras.excluded, extras.members]);
+  return { sessions, loaded: base.loaded && extras.loaded, error: base.error ?? extras.error };
 }

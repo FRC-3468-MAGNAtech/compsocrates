@@ -51,6 +51,19 @@ Never modify either folder. Never connect to a real Firebase project; use the em
 ## Key decisions
 The decision table in `docs/ROUTES.md` is the record (D1 to D19). Short form: adapter over CS's schema (D1), emulator only (D2), all three games (D3, D16), all three data APIs (D4), second provider removed (D5), permission model (D6), sub-ins in their own collection (D7), per-shift human-player fix (D8), CompSocrates theme (D9), unknown fields pass through (D10), playoff numbering (D11), TBA-key event codes (D12), one team per account with the `useOurTeam` seam (D13), event-name fallback chain (D14), brand config (D15), games as config entries (D16), favicon-only logo (D17), env module and CS variable names (D18), shared-login and per-team-key variables not carried (D19).
 
+## Data model and scoping rules
+- Scope a read to what the page needs and no narrower. Event pages are event-scoped. Scout accuracy, scout stats and practice
+  history are team-wide and cross-event: never filter them by the selected event.
+- A CS document can lack the field the app's query filters on. Old CS read practice sessions by `scoutId` or `scoutName`
+  (`teamId` is `""` when the scout had no team). Practice sessions are read in `lib/practice-extras.ts` (team query plus the team's
+  members by uid and name, fetched once and shared); `data/cs/practice.ts` maps them. Do not add a `teamId ==` to a practice read.
+- Session ownership is `scoutId`, else the member whose name matches (case-insensitive). Stats skip live (`csLive`), other-game,
+  excluded (`excludeFromAccuracy` field or a `scoutingFlagStates` `practiceSession:<id>` row) and accuracy-less sessions; a missing
+  accuracy is never a 0.
+- A read that fails must say so: use `reportFirestoreError` and `describeFirestoreError` and show the error, never an empty list.
+- Practice sessions must never be hidden by event-name resolution or event validation.
+- Why: `docs/FIREBASE_FINDINGS.md`.
+
 ## Rules for changes
 - Do not change CS's schema or scoring logic without approval. Additive fields are listed in `docs/REMAINING.md`; add to that list when you write a new one.
 - **Environment:** server code reads environment variables only through `lib/server/env.ts` (add the getter and an `ENV_VARS` entry, and keep `.env.example` and `docs/ENVIRONMENT.md` in step; a test checks the first two). Browser-inlined `NEXT_PUBLIC_*` values need a literal `process.env.NAME` access and are the exception. Never reference `NEXT_PUBLIC_TBA_API_KEY` from client code: despite its name it is a server secret.

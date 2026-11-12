@@ -47,7 +47,9 @@ export const completedAttemptQuery = (db: Firestore, teamId: string, uid: string
   );
 
 /** One scout's sessions by CS's `scoutId` (every doc the app writes carries it too): the way to find a snapshot CS wrote, which has no `uid` or `status`. */
-export const scoutSessionsQuery = (db: Firestore, teamId: string, uid: string) => query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("scoutId", "==", uid));
+// A scout's own sessions by `scoutId` alone, as old CS read them: a session saved while the scout had no team has an empty `teamId`, and
+// `teamId ==` here would hide it. `teamId` stays in the signature for callers; it no longer narrows the read.
+export const scoutSessionsQuery = (db: Firestore, _teamId: string, uid: string) => query(collection(db, "practiceSessions"), where("scoutId", "==", uid));
 
 export const lobbySessionsQuery = (db: Firestore, teamId: string, lobbyId: string) => query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("lobbyId", "==", lobbyId));
 
