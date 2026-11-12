@@ -35,7 +35,7 @@ not per event.
    whether the page renders `error`. The browser console will show which one fails.
 
 ## Checked and fine
-- Collection names, field names and event-key aliasing match for these reads. No FTC/CE leftovers in these queries.
+- Collection names, field names and event-key aliasing match for these reads. No leftovers from the app this one was started from in these queries.
 - No `limit()` anywhere in these paths. All queries are equality-only, so no composite index is needed; the CS reference has no
   rules or index files to compare, and the supplied production rules allow these reads for any signed-in user.
 - No query fires before auth: each hook waits for `teamId`.
