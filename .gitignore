@@ -52,3 +52,6 @@ next-env.d.ts
 
 # firebase emulator logs
 *-debug.log
+
+# Sensitive, keep local (see CLAUDE.md)
+docs/SECURITY-NOTES.md
