@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { useTeamDoc } from "@/lib/team";
 import { DEFAULT_SEASON_ID, getEnabledSeasons, getSeason } from "@/lib/seasons";
+import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
 import { useProgramData, type ProgramData, type ProgramSeason } from "@/lib/program/data";
 import { DEFAULT_FORM_ID, getBuiltinForm } from "@/lib/forms/builtin";
 import { unionForms } from "@/lib/analytics/game-schema";
@@ -46,6 +47,10 @@ export type FormsValue = {
   formIdForSeason: (seasonId?: string) => string;
   /** A season of this program (an unknown id reads as the default season), with its name and the events API's season year. */
   seasonFor: (seasonId?: string) => ProgramSeason;
+  /** The events API season the event pages open on (the program's current one). */
+  defaultApiSeason: number;
+  /** The events API seasons an admin can browse for events: the next one (events posted early), the current one and the two before it. */
+  selectableApiSeasons: number[];
 };
 
 /**
@@ -70,6 +75,9 @@ export function buildFormsValue(
     defaultSeasonId: games ? games.defaultSeasonId : DEFAULT_SEASON_ID,
     formIdForSeason: (seasonId) => seasonOf(seasonId).formId,
     seasonFor: seasonOf,
+    // The default program's range is the configured season (config/event.ts); a program with its own games uses its current game's season.
+    defaultApiSeason: games ? seasonOf().apiSeason : getDefaultSeason(),
+    selectableApiSeasons: games ? [seasonOf().apiSeason + 1, seasonOf().apiSeason, seasonOf().apiSeason - 1, seasonOf().apiSeason - 2] : getSelectableSeasons(),
     loaded,
     catalog,
     summaries: listFormSummaries(catalog),

@@ -6,6 +6,7 @@ import { eventNameStore } from "@/lib/events/event-names";
 import { isAdminFixableEventError, lookupSeasonForKey, type EventNameState } from "@/lib/events/name-store";
 import { collectStoredEventNames } from "@/lib/events/stored-names";
 import type { ActionError } from "@/lib/events/types";
+import { useProgramConfig } from "@/lib/program/context";
 
 /**
  * React hooks over the event-name store (`lib/events/name-store.ts`). Every component that shows an event reads its name
@@ -54,7 +55,10 @@ function useEnsureSeasons(keySignature: string): void {
 export function useEventNames(keys: readonly string[], opts?: { stored?: Readonly<Record<string, string>> }): Record<string, EventNameState> {
   const version = useStoreVersion();
   const keySignature = useMemo(() => [...new Set(keys.filter(Boolean))].join("|"), [keys]);
-  useEnsureSeasons(keySignature);
+  // Names are looked up from the events API only in a program that has it connected for this purpose; otherwise a name comes from the team's own data,
+  // the static table, or the key (the resolution below still runs, it just never asks the API).
+  const { eventLookup } = useProgramConfig().connection.features;
+  useEnsureSeasons(eventLookup ? keySignature : "");
   const stored = opts?.stored;
   return useMemo(() => {
     void version; // a store change (an answer, a failure, new stored names) re-resolves

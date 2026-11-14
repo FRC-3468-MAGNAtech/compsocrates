@@ -29,7 +29,9 @@ import {
 } from "@/lib/events/event-status";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { getEvents, getMatchesForEvent, getTeamsForEvent } from "@/lib/events/actions";
-import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgram } from "@/lib/program/context";
+import { scopedKey } from "@/lib/program/paths";
 import { cardEntranceVariants, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { EventLifecycleStatus, EventInfo, EventMatch } from "@/lib/events/types";
@@ -53,8 +55,10 @@ export default function EventSelectionPage() {
   const { events: activeEvents, primary, primaryCode } = useActiveEvents();
   const { isAdmin } = usePermissions();
   const { entries: scoutEntries } = useTeamScoutEntries(teamId);
-  const seasons = useMemo(() => getSelectableSeasons(), []);
-  const [season, setSeason] = useState(() => getDefaultSeason());
+  // The program picks the season range (its current game), the events API it asks, and where the selection is saved.
+  const program = useProgram();
+  const { selectableApiSeasons: seasons, defaultApiSeason } = useForms();
+  const [season, setSeason] = useState(defaultApiSeason);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<EventStatusFilter>("all");
   const [sort, setSort] = useState<EventSort>("status");
@@ -63,7 +67,7 @@ export default function EventSelectionPage() {
   // Fixed per visit so every status badge, count, and group agrees with each other.
   const [now] = useState(() => Date.now());
 
-  const eventsQuery = useEventQuery(`events:${season}`, () => getEvents({ season }));
+  const eventsQuery = useEventQuery(scopedKey(program, `events:${season}`), () => getEvents({ season }, program));
 
   const state: ActiveEventsState = useMemo(() => ({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
   const activeCodes = useMemo(() => new Set(activeEvents.map((e) => e.code)), [activeEvents]);
@@ -96,7 +100,7 @@ export default function EventSelectionPage() {
 
   const commit = (next: ActiveEventsState) => {
     if (!teamId || !isAdmin) return;
-    void setActiveEvents(teamId, next);
+    void setActiveEvents(teamId, next, program);
   };
 
   const scoutedCount = (code: string) => scoutEntries.filter((e) => e.source === "event" && e.eventCode === code).length;
@@ -390,14 +394,15 @@ function MatchTypeBadge({ label, query }: { label: "Qualification" | "Playoff"; 
 }
 
 function ActiveEventSummary({ event, now }: { event: EventInfo; now: number }) {
-  const teamsQuery = useEventQuery(`teams:${event.code}:${event.season}`, () =>
-    getTeamsForEvent(event.code, event.season)
+  const program = useProgram();
+  const teamsQuery = useEventQuery(scopedKey(program, `teams:${event.code}:${event.season}`), () =>
+    getTeamsForEvent(event.code, event.season, program)
   );
-  const qualQuery = useEventQuery(`matches:${event.code}:${event.season}:Qualification`, () =>
-    getMatchesForEvent(event.code, "Qualification", event.season)
+  const qualQuery = useEventQuery(scopedKey(program, `matches:${event.code}:${event.season}:Qualification`), () =>
+    getMatchesForEvent(event.code, "Qualification", event.season, program)
   );
-  const playoffQuery = useEventQuery(`matches:${event.code}:${event.season}:Playoff`, () =>
-    getMatchesForEvent(event.code, "Playoff", event.season)
+  const playoffQuery = useEventQuery(scopedKey(program, `matches:${event.code}:${event.season}:Playoff`), () =>
+    getMatchesForEvent(event.code, "Playoff", event.season, program)
   );
 
   const teamCount =

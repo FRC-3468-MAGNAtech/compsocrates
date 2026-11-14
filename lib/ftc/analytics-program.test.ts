@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseFilters } from "@/lib/analytics/filters";
+import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
 import { buildFormsValue } from "@/lib/forms/forms-context";
 import { ftcProgramData } from "@/lib/ftc/program-data";
 
@@ -37,5 +38,21 @@ describe("seasonFor", () => {
     const root = buildFormsValue({ docs: new Map(), versions: new Map() }, true, {}, () => {});
     expect(root.seasonFor("reefscape")).toMatchObject({ id: "reefscape", name: "REEFSCAPE" });
     expect(root.seasonFor().id).toBe("rebuilt");
+  });
+});
+
+describe("the events API season range", () => {
+  const catalog = { docs: new Map(), versions: new Map(), builtins: games.builtinForms };
+
+  it("is the program's current game's season, with the next one and the two before it", () => {
+    const value = buildFormsValue(catalog, true, {}, () => {}, new Set(), games);
+    expect(value.defaultApiSeason).toBe(2026);
+    expect(value.selectableApiSeasons).toEqual([2027, 2026, 2025, 2024]);
+  });
+
+  it("without a program's games it is the configured season range, as the event pages always used", () => {
+    const root = buildFormsValue({ docs: new Map(), versions: new Map() }, true, {}, () => {});
+    expect(root.defaultApiSeason).toBe(getDefaultSeason());
+    expect(root.selectableApiSeasons).toEqual(getSelectableSeasons());
   });
 });
