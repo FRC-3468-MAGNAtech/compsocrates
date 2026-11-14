@@ -4,7 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useAuth } from "@/lib/auth";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { useTeamDoc } from "@/lib/team";
-import { getSeason } from "@/lib/seasons";
+import { DEFAULT_SEASON_ID, getEnabledSeasons, getSeason } from "@/lib/seasons";
+import { useProgramData, type ProgramData, type ProgramSeason } from "@/lib/program/data";
 import { DEFAULT_FORM_ID, getBuiltinForm } from "@/lib/forms/builtin";
 import { unionForms } from "@/lib/analytics/game-schema";
 import type { Form } from "@/lib/forms/types";
@@ -37,14 +38,35 @@ export type FormsValue = {
   activeFormFor: (seasonId?: string) => Form;
   /** The form id that is active for a season. */
   activeFormIdFor: (seasonId?: string) => string;
+  /** The seasons (games) this program scouts that can take new entries, for the game picker. */
+  seasons: readonly ProgramSeason[];
+  /** The season new entries default to. */
+  defaultSeasonId: string;
+  /** The id of a season's built-in match form (default: the default season's). */
+  formIdForSeason: (seasonId?: string) => string;
 };
 
-/** Builds the context value from a catalog. Exported for the Playwright fixture page, which feeds it an in-memory store's catalog. */
-export function buildFormsValue(catalog: FormCatalog, loaded: boolean, activeForms: Readonly<Record<string, string>>, requireFn: FormsValue["require"], missing: ReadonlySet<string> = new Set()): FormsValue {
+/**
+ * Builds the context value from a catalog. Exported for the Playwright fixture page, which feeds it an in-memory store's catalog.
+ * `games` is a namespaced program's own seasons, default season and built-in forms (its data port); absent, the default program's (`lib/seasons.ts`).
+ */
+export function buildFormsValue(
+  catalog: FormCatalog,
+  loaded: boolean,
+  activeForms: Readonly<Record<string, string>>,
+  requireFn: FormsValue["require"],
+  missing: ReadonlySet<string> = new Set(),
+  games?: ProgramData["games"]
+): FormsValue {
   const latest = (formId: string) => resolveForm(catalog, formId);
   const forEntry: FormsValue["forEntry"] = (entry) => resolveFormForEntry(catalog, entry.formId, entry.formVersion);
-  const idFor = (seasonId?: string) => activeFormIdFor(getSeason(seasonId), activeForms);
+  const seasonOf = (seasonId?: string): ProgramSeason => (games ? (games.seasons.find((s) => s.id === (seasonId ?? games.defaultSeasonId)) ?? games.seasons.find((s) => s.id === games.defaultSeasonId) ?? games.seasons[0]) : getSeason(seasonId));
+  const idFor = (seasonId?: string) => activeFormIdFor(seasonOf(seasonId), activeForms);
+  const lastResort = (): Form => (games ? (games.builtinForms[seasonOf().formId] as Form) : (getBuiltinForm(DEFAULT_FORM_ID) as Form));
   return {
+    seasons: games ? games.seasons.filter((s) => s.enabled) : getEnabledSeasons(),
+    defaultSeasonId: games ? games.defaultSeasonId : DEFAULT_SEASON_ID,
+    formIdForSeason: (seasonId) => seasonOf(seasonId).formId,
     loaded,
     catalog,
     summaries: listFormSummaries(catalog),
@@ -58,7 +80,7 @@ export function buildFormsValue(catalog: FormCatalog, loaded: boolean, activeFor
     // An active form that can't be resolved (archived, unpublished) falls back to the season's built-in default: scouting never breaks.
     activeFormFor: (seasonId) => {
       const id = idFor(seasonId);
-      return (canBeActive(catalog, id) ? latest(id) : null) ?? latest(getSeason(seasonId).formId) ?? (getBuiltinForm(DEFAULT_FORM_ID) as Form);
+      return (canBeActive(catalog, id) ? latest(id) : null) ?? latest(seasonOf(seasonId).formId) ?? lastResort();
     },
   };
 }
@@ -71,6 +93,8 @@ export function FormsProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const { team } = useTeamDoc(teamId);
+  // A namespaced program's forms, versions, built-ins and seasons come through its data port; the default program's are read as ever.
+  const data = useProgramData();
   const [docs, setDocs] = useState<ReadonlyMap<string, FormDoc>>(new Map());
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const [versions, setVersions] = useState<ReadonlyMap<string, Form>>(new Map());
@@ -85,7 +109,8 @@ export function FormsProvider({ children }: { children: ReactNode }) {
       setLoaded(true);
       return;
     }
-    return subscribeFormDocs(
+    const subscribe = data ? data.forms.subscribeDocs : subscribeFormDocs;
+    return subscribe(
       teamId,
       (next) => {
         setDocs(next);
@@ -97,7 +122,7 @@ export function FormsProvider({ children }: { children: ReactNode }) {
         setLoaded(true);
       }
     );
-  }, [teamId]);
+  }, [teamId, data]);
 
   const load = useCallback(
     (pairs: { formId: string; version: number }[]) => {
@@ -106,7 +131,7 @@ export function FormsProvider({ children }: { children: ReactNode }) {
         const key = versionKey(formId, version);
         if (requested.has(key)) continue;
         requested.add(key);
-        loadFormVersion(teamId, formId, version)
+        (data ? data.forms.loadVersion : loadFormVersion)(teamId, formId, version)
           .then((form) => {
             if (form) setVersions((prev) => new Map(prev).set(key, form));
             else setMissing((prev) => new Set(prev).add(key)); // it doesn't exist: stop waiting for it (readers fall back to the current form)
@@ -114,7 +139,7 @@ export function FormsProvider({ children }: { children: ReactNode }) {
           .catch(() => requested.delete(key));
       }
     },
-    [teamId, requested]
+    [teamId, requested, data]
   );
 
   // Always have the latest version of every active form available.
@@ -124,7 +149,11 @@ export function FormsProvider({ children }: { children: ReactNode }) {
 
   const activeForms = useMemo(() => (team?.activeForms as Record<string, string> | undefined) ?? {}, [team?.activeForms]);
 
-  const value = useMemo(() => buildFormsValue({ docs, versions }, loaded, activeForms, load, missing), [docs, versions, loaded, activeForms, load, missing]);
+  const games = data?.games;
+  const value = useMemo(
+    () => buildFormsValue(games ? { docs, versions, builtins: games.builtinForms } : { docs, versions }, loaded, activeForms, load, missing, games),
+    [docs, versions, loaded, activeForms, load, missing, games]
+  );
   return <FormsContext.Provider value={value}>{children}</FormsContext.Provider>;
 }
 
@@ -159,7 +188,7 @@ export function useLockedForm(seasonId?: string): Form {
 export function useGameFormIds(gameId: string): ReadonlySet<string> {
   const f = useForms();
   return useMemo(() => {
-    const ids = new Set<string>([getSeason(gameId).formId, f.activeFormIdFor(gameId)]);
+    const ids = new Set<string>([f.formIdForSeason(gameId), f.activeFormIdFor(gameId)]);
     for (const id of f.catalog.docs.keys()) if (f.latest(id)?.tags.includes(gameId)) ids.add(id);
     return ids;
   }, [f, gameId]);

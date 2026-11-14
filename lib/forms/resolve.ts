@@ -34,7 +34,11 @@ export type FormVersion = { teamId: string; formId: string; version: number; for
 export type FormCatalog = {
   docs: ReadonlyMap<string, FormDoc>;
   versions: ReadonlyMap<string, Form>;
+  /** The program's built-in forms by id. Absent: the default program's (`BUILTIN_FORMS`), so every existing catalog reads exactly as before. */
+  builtins?: Readonly<Record<string, Form>>;
 };
+
+const builtinsOf = (catalog: Pick<FormCatalog, "builtins">): Readonly<Record<string, Form>> => catalog.builtins ?? BUILTIN_FORMS;
 
 export const versionKey = (formId: string, version: number): string => `${formId}@${version}`;
 export const formDocId = (teamId: string, formId: string): string => `${teamId}_${formId}`;
@@ -47,7 +51,7 @@ export const emptyCatalog = (): FormCatalog => ({ docs: new Map(), versions: new
  * override existed read with the form they were scouted with.
  */
 export function resolveForm(catalog: FormCatalog, formId: string, version?: number): Form | null {
-  const builtin = BUILTIN_FORMS[formId] ?? null;
+  const builtin = builtinsOf(catalog)[formId] ?? null;
   const doc = catalog.docs.get(formId) ?? null;
 
   if (version !== undefined) {
@@ -67,7 +71,7 @@ export function resolveForm(catalog: FormCatalog, formId: string, version?: numb
  * the built-in (so an entry always renders), and only an unknown custom form returns `null`.
  */
 export function resolveFormForEntry(catalog: FormCatalog, formId: string, version?: number): Form | null {
-  return resolveForm(catalog, formId, version) ?? resolveForm(catalog, formId) ?? BUILTIN_FORMS[formId] ?? null;
+  return resolveForm(catalog, formId, version) ?? resolveForm(catalog, formId) ?? builtinsOf(catalog)[formId] ?? null;
 }
 
 /** The version number the next publish will take: one past the latest published, and for a first override of a built-in, one past the built-in's own. */
@@ -105,7 +109,7 @@ export type FormSummary = {
 /** Every form the account can use: the code-defined built-ins (with their override's state when one exists) and the account's custom forms. */
 export function listFormSummaries(catalog: FormCatalog): FormSummary[] {
   const out: FormSummary[] = [];
-  for (const builtin of Object.values(BUILTIN_FORMS)) {
+  for (const builtin of Object.values(builtinsOf(catalog))) {
     const doc = catalog.docs.get(builtin.id);
     const overridden = !!doc && doc.active && doc.publishedVersion !== null;
     out.push({
@@ -122,7 +126,7 @@ export function listFormSummaries(catalog: FormCatalog): FormSummary[] {
     });
   }
   for (const doc of catalog.docs.values()) {
-    if (BUILTIN_FORMS[doc.formId]) continue;
+    if (builtinsOf(catalog)[doc.formId]) continue;
     out.push({
       id: doc.formId,
       name: doc.name,
@@ -151,6 +155,6 @@ export function canBeActive(catalog: FormCatalog, formId: string): boolean {
   // P28: only a match-scout form can be a season's active form (the team's other forms have their own pages)
   const resolved = resolveForm(catalog, formId);
   if (resolved && resolved.formType !== "match-scout") return false;
-  if (BUILTIN_FORMS[formId]) return true;
+  if (builtinsOf(catalog)[formId]) return true;
   return !!doc && doc.publishedVersion !== null;
 }
