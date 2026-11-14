@@ -13,6 +13,7 @@ import { ftcDocsToScoutEntries, ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/d
 import { ftcAttendanceDoc, ftcAttendanceDocId, ftcDocsToAttendance } from "@/data/ftc/attendance";
 import { ftcActiveEventsFields, ftcTeamToTeamDoc, readStoredEvent } from "@/data/ftc/teams";
 import { ftcProfilePatch, ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
+import { ftcJoinRequestDoc, ftcNewTeamDocs } from "@/data/ftc/enrollment";
 import { programPath } from "@/lib/firebase/paths";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 
@@ -429,5 +430,110 @@ describe("credits", () => {
     await assertFails(edit(PIT, T1));
     await assertFails(edit(ADMIN, T2));
     await assertFails(getDoc(doc(as(OTHER), P("credits"), T1)));
+  });
+});
+
+describe("starting or joining a team (enrollment)", () => {
+  const NEWBIE = "ftc-newbie-1";
+  const newTeam = (uid: string, code: string, over: Partial<{ teamNumber: number; teamName: string }> = {}) =>
+    ftcNewTeamDocs(code, { uid, email: `${uid}@example.org`, name: "Sam", teamNumber: 4242, teamName: "Robo Owls", location: "Austin", ...over }, serverTimestamp());
+  const createBatch = (uid: string, code: string, mutate?: (docs: ReturnType<typeof newTeam>) => void) => {
+    const db = as(uid);
+    const docs = newTeam(uid, code);
+    mutate?.(docs);
+    const batch = writeBatch(db);
+    batch.set(doc(db, P("teams"), code), docs.team);
+    batch.set(doc(db, P("users"), uid), docs.user);
+    return batch.commit();
+  };
+
+  it("a signed-in user creates a team and their own profile as its admin and owner", async () => {
+    await assertSucceeds(createBatch(NEWBIE, "NEWTEAM2"));
+    const db = as(NEWBIE);
+    const profile = await assertSucceeds(getDoc(doc(db, P("users"), NEWBIE)));
+    expect(profile.data()).toMatchObject({ teamId: "NEWTEAM2", isAdmin: true, isOwner: true });
+    const team = await assertSucceeds(getDoc(doc(db, P("teams"), "NEWTEAM2")));
+    expect(team.data()).toMatchObject({ ownerUid: NEWBIE, joinCode: "NEWTEAM2", number: 4242 });
+  });
+
+  it("refuses a profile on an existing team, so nobody can make themselves admin of someone else's team", async () => {
+    const db = as("ftc-intruder-1");
+    const docs = newTeam("ftc-intruder-1", T1);
+    await assertFails(setDoc(doc(db, P("users"), "ftc-intruder-1"), docs.user));
+    // even in one batch with an overwrite of the team doc (an update, owned by someone else)
+    const batch = writeBatch(db);
+    batch.set(doc(db, P("teams"), T1), docs.team);
+    batch.set(doc(db, P("users"), "ftc-intruder-1"), docs.user);
+    await assertFails(batch.commit());
+  });
+
+  it("refuses a team that names someone else as owner, a team without the caller's profile, and a profile for someone else", async () => {
+    await assertFails(createBatch("ftc-c1", "OWNERCHK", (d) => { d.team.ownerUid = "someone-else"; }));
+    const db = as("ftc-c2");
+    await assertFails(setDoc(doc(db, P("teams"), "LONETEAM"), newTeam("ftc-c2", "LONETEAM").team));
+    await assertFails(createBatch("ftc-c3", "FORGEDAD", (d) => { d.user.isOwner = false; d.user.isAdmin = false; d.user.primaryRole = "not-a-role"; }));
+    const db4 = as("ftc-c4");
+    const docs = newTeam("ftc-c4", "OTHERUSR");
+    const batch = writeBatch(db4);
+    batch.set(doc(db4, P("teams"), "OTHERUSR"), docs.team);
+    batch.set(doc(db4, P("users"), "ftc-victim"), { ...docs.user });
+    await assertFails(batch.commit());
+  });
+
+  it("refuses a team id that is not a random join code (a team number, a short or lower-case id) or that differs from joinCode", async () => {
+    await assertFails(createBatch("ftc-d1", "4242"));
+    await assertFails(createBatch("ftc-d2", "abcd2345"));
+    await assertFails(createBatch("ftc-d3", "ABCD234"));
+    await assertFails(createBatch("ftc-d4", "ABCD2346", (d) => { d.team.joinCode = "ZZZZ9999"; }));
+  });
+
+  it("refuses extra fields and bad shapes in the team and the profile", async () => {
+    await assertFails(createBatch("ftc-e1", "EXTRAFLD", (d) => { d.team.accountName = "x"; d.team.platformFlag = true; }));
+    await assertFails(createBatch("ftc-e2", "EXTRAUSR", (d) => { d.user.isPlatformOwner = true; }));
+    await assertFails(createBatch("ftc-e3", "TWOTEAMS", (d) => { d.team.fieldTeams = [...(d.team.fieldTeams as unknown[]), { id: "ft-1", number: 1, name: "" }]; d.team.fieldTeamIdList = ["ft-4242", "ft-1"]; }));
+    await assertFails(createBatch("ftc-e4", "NOMEMBER", (d) => { d.user.fieldTeamIds = ["ft-1"]; }));
+  });
+
+  it("a person who already has a profile cannot start another team through this path", async () => {
+    await assertFails(createBatch(SCOUT, "SECONDTM"));
+  });
+
+  it("gains nothing at the root collections: an FTC member cannot change another account's root team or user documents", async () => {
+    // The root rules are CS's own and stay as they are (CS-OPEN: any signed-in user may create a root user or team document, see docs/SECURITY-NOTES.md).
+    // What matters here is that enrolling in this program grants no write to somebody else's root documents, and that the enrollment writes only touch programs/ftc.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "teams", "ROOTTEAM"), { teamName: "Root Team", teamNumber: "1" });
+      await setDoc(doc(ctx.firestore(), "users", "root-victim"), { name: "Victim", teamId: "ROOTTEAM", role: "scout" });
+    });
+    const db = as(NEWBIE);
+    await assertFails(updateDoc(doc(db, "teams", "ROOTTEAM"), { teamName: "Hijacked" }));
+    await assertFails(updateDoc(doc(db, "users", "root-victim"), { role: "admin" }));
+    await assertFails(deleteDoc(doc(db, "teams", "ROOTTEAM")));
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore(), "users", NEWBIE))).exists()).toBe(false);
+      expect((await getDoc(doc(ctx.firestore(), "teams", "NEWTEAM2"))).exists()).toBe(false);
+    });
+  });
+
+  it("sends a join request for an existing team, as yourself, pending", async () => {
+    const db = as("ftc-j1");
+    await assertSucceeds(setDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-j1"), ftcJoinRequestDoc({ uid: "ftc-j1", name: "Joe" }, serverTimestamp())));
+    const mine = await assertSucceeds(getDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-j1")));
+    expect(mine.data()).toMatchObject({ uid: "ftc-j1", status: "pending" });
+    // the team's admin reads it; an ordinary teammate does not
+    await assertSucceeds(getDoc(doc(as(ADMIN), P("teams"), T1, "joinRequests", "ftc-j1")));
+    await assertFails(getDoc(doc(as(SCOUT), P("teams"), T1, "joinRequests", "ftc-j1")));
+    // withdrawing is allowed to the applicant only
+    await assertFails(deleteDoc(doc(as(ADMIN), P("teams"), T1, "joinRequests", "ftc-j1")));
+    await assertSucceeds(deleteDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-j1")));
+  });
+
+  it("refuses join requests for a missing team, for someone else, already approved, from a person with a profile, or with a bad shape", async () => {
+    const db = as("ftc-j2");
+    await assertFails(setDoc(doc(db, P("teams"), "NOSUCHTM", "joinRequests", "ftc-j2"), ftcJoinRequestDoc({ uid: "ftc-j2", name: "Jo" }, serverTimestamp())));
+    await assertFails(setDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-someone"), ftcJoinRequestDoc({ uid: "ftc-someone", name: "Jo" }, serverTimestamp())));
+    await assertFails(setDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-j2"), { ...ftcJoinRequestDoc({ uid: "ftc-j2", name: "Jo" }, serverTimestamp()), status: "approved" }));
+    await assertFails(setDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-j2"), { ...ftcJoinRequestDoc({ uid: "ftc-j2", name: "Jo" }, serverTimestamp()), isAdmin: true }));
+    await assertFails(setDoc(doc(as(SCOUT), P("teams"), T2, "joinRequests", SCOUT), ftcJoinRequestDoc({ uid: SCOUT, name: "Ada" }, serverTimestamp())));
   });
 });

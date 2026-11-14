@@ -1218,9 +1218,30 @@ service cloud.firestore {
         allow get: if ftc_sameTeam(teamId);
         allow list: if false;
 
-        // P1b: teams are only ever created via /api/team/create's
-        // transaction (Admin SDK) — never directly by a client.
-        allow create: if false;
+        // Session A: a signed-in person with no profile yet starts a team. The id is a random 8-character join code (never the team
+        // number, see data/ftc/enrollment.ts), the owner is the caller, and the same batch must write the caller's own profile on this
+        // team (checked with getAfter), so a team never exists without its admin. Everything else stays server-only or admin-only.
+        allow create: if ftc_isSignedIn()
+          && teamId.matches('^[A-HJ-NP-Z2-9]{8}$')
+          && !exists(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid))
+          && request.resource.data.keys().hasOnly(['number', 'name', 'fieldTeams', 'fieldTeamIdList', 'fieldTeamNumbers', 'location', 'ownerUid', 'joinCode',
+            'activeEventCode', 'activeSeasonId', 'activeEvent', 'activeEventCodes', 'activeEvents', 'createdAt'])
+          && request.resource.data.keys().hasAll(['number', 'name', 'fieldTeams', 'fieldTeamIdList', 'fieldTeamNumbers', 'ownerUid', 'joinCode', 'createdAt'])
+          && request.resource.data.ownerUid == request.auth.uid
+          && request.resource.data.joinCode == teamId
+          && request.resource.data.number is int && request.resource.data.number > 0 && request.resource.data.number < 100000
+          && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
+          && (!('location' in request.resource.data) || (request.resource.data.location is string && request.resource.data.location.size() <= 80))
+          && ftc_validFieldTeams()
+          && request.resource.data.fieldTeams.size() == 1
+          && request.resource.data.fieldTeams[0].number == request.resource.data.number
+          && request.resource.data.fieldTeamIdList == [request.resource.data.fieldTeams[0].id]
+          && request.resource.data.fieldTeamNumbers == [request.resource.data.number]
+          && request.resource.data.get('activeEventCode', null) == null
+          && request.resource.data.get('activeEventCodes', []) == []
+          && request.resource.data.get('activeEvents', []) == []
+          && request.resource.data.createdAt == request.time
+          && getAfter(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid)).data.teamId == teamId;
 
         // Admins of *this* team can still update its settings directly
         // (active events/season — see lib/team.ts's setActiveEvents) the same
@@ -1272,6 +1293,25 @@ service cloud.firestore {
               && request.resource.data.createdAt == request.time));
           allow delete: if false;
         }
+
+        // Session A: a request to join, `joinRequests/{uid}` (the sister app joined instantly through a server route and had no such
+        // document, so this is new). The person writes only their own, only for a team that exists, only while they have no profile, and
+        // only as pending. They and the team's admins read it; they may withdraw it. Approval (an admin creating the applicant's profile)
+        // is NOT allowed yet: it needs its own rule and the Team Management UI.
+        match /joinRequests/{reqUid} {
+          allow read: if ftc_isSignedIn() && (reqUid == request.auth.uid || (ftc_sameTeam(teamId) && ftc_canManageMembers()));
+          allow create: if ftc_isSignedIn() && reqUid == request.auth.uid
+            && exists(/databases/$(database)/documents/programs/ftc/teams/$(teamId))
+            && !exists(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid))
+            && request.resource.data.keys().hasOnly(['uid', 'name', 'status', 'createdAt'])
+            && request.resource.data.keys().hasAll(['uid', 'name', 'status', 'createdAt'])
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
+            && request.resource.data.status == 'pending'
+            && request.resource.data.createdAt == request.time;
+          allow update: if false;
+          allow delete: if ftc_isSignedIn() && reqUid == request.auth.uid;
+        }
       }
 
       match /users/{uid} {
@@ -1283,7 +1323,22 @@ service cloud.firestore {
         // *existed* but never that the caller's `teamId` actually matched a
         // join code they supplied, which would have let anyone join any team
         // by id once more than one could exist.
-        allow create: if false;
+        // Session A: a person creates their OWN profile, only as the admin and owner of a team created in the same batch (the team
+        // must not exist before the batch, and its owner must be the caller). That is the only way to get admin rights from a client:
+        // an existing team can never be claimed, and joining someone else's team needs an approval a later session adds.
+        allow create: if ftc_isSignedIn() && request.auth.uid == uid
+          && request.resource.data.teamId is string
+          && !exists(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId))
+          && getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)).data.ownerUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['name', 'email', 'teamId', 'primaryRole', 'secondaryRoles', 'isAdmin', 'isOwner', 'fieldTeamIds', 'themeId', 'createdAt'])
+          && request.resource.data.keys().hasAll(['name', 'teamId', 'primaryRole', 'secondaryRoles', 'isAdmin', 'isOwner', 'fieldTeamIds', 'createdAt'])
+          && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
+          && request.resource.data.get('email', '') is string
+          && request.resource.data.isAdmin == true && request.resource.data.isOwner == true
+          && request.resource.data.primaryRole in ftc_validRoleIds()
+          && request.resource.data.secondaryRoles == []
+          && request.resource.data.fieldTeamIds == getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)).data.fieldTeamIdList
+          && request.resource.data.createdAt == request.time;
 
         // You can update your own profile, but never teamId, primaryRole,
         // secondaryRoles, isAdmin, or isOwner — those are admin-only (or,
