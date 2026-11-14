@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Pin, Plus, StickyNote as StickyNoteIcon, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Pin, Plus, StickyNote as StickyNoteIcon, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { readFraction, writeFraction } from "@/lib/workspace/layout";
@@ -10,7 +10,7 @@ import { MAX_NOTES, MAX_NOTE_LENGTH, NOTE_COLORS, PANEL_DEFAULT_PX, PANEL_MAX_PX
 import { cn } from "@/lib/utils";
 import { storageKey } from "@/config/brand";
 
-// P28: the sticky notes panel. A side panel that stays beside the form on desktop (sticky, collapsible, resizable; the width is remembered in this browser),
+// P28: the sticky notes panel. A side panel that stays beside the form on desktop (sticky, always visible, resizable; the width is remembered in this browser),
 // and on a phone an edge tab that opens an expandable / collapsible bottom sheet. It never blocks the form (non-modal: no overlay, no focus trap). Notes are
 // plain cards: add, type (saved into the form's state with every keystroke), pick a colour, pin to the top, delete. The parent owns the notes array.
 
@@ -179,17 +179,9 @@ export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disable
     writeFraction(storage(), WIDTH_KEY, next / 1000);
   };
 
+  // Large screens: a small notes box that is always on screen beside the form (no expand or collapse control). The notes live in the parent, and the
+  // phone sheet's open state is kept here, so resizing or rotating across the breakpoint loses nothing.
   if (desktop) {
-    if (!open) {
-      return (
-        <aside className="sticky top-4 hidden self-start lg:block" aria-label="Sticky notes" data-testid="notes-panel" data-state="collapsed">
-          <TabButton count={count} onClick={() => setOpen(true)} expanded={false} label="Open sticky notes">
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-            Notes
-          </TabButton>
-        </aside>
-      );
-    }
     return (
       <aside className="sticky top-4 flex max-h-[calc(100dvh-2rem)] shrink-0 self-start lg:flex" style={{ width }} aria-label="Sticky notes" data-testid="notes-panel" data-state="open">
         <div
@@ -230,9 +222,6 @@ export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disable
               <StickyNoteIcon className="h-4 w-4" aria-hidden /> Notes
               {count > 0 && <span className="rounded-full bg-[var(--color-primary)] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--color-primary-foreground)]" data-testid="notes-badge">{count}</span>}
             </h2>
-            <Button type="button" variant="ghost" size="icon" aria-label="Collapse sticky notes" onClick={() => setOpen(false)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <StickyNotesList notes={notes} onChange={onChange} disabled={disabled} />

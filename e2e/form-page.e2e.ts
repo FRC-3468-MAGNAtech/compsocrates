@@ -103,7 +103,7 @@ test.describe("Match Strategy", () => {
     await page.getByTestId("team-box-2").getByRole("checkbox", { name: "Will score in auto" }).click();
     await expect(page.getByTestId("team-box-2")).toContainText("Will score in auto");
     // notes (the panel is a side panel on a wide screen, a bottom sheet on a phone)
-    await page.getByTestId("notes-tab").click(); // the form starts the panel closed
+    if (isMobile) await page.getByTestId("notes-tab").click(); // the phone sheet starts closed; the wide-screen panel is always open
     await page.getByTestId("note-add").click();
     await page.getByRole("textbox", { name: "Note" }).first().fill("Opponent plays defense on teleop");
     await expect(page.getByTestId("notes-badge").first()).toHaveText("1");
@@ -173,9 +173,8 @@ test.describe("sticky notes panel", () => {
     test.skip(!!isMobile, "the desktop side panel (the phone sheet is covered below)");
     await open(page, "form=strategy");
     const panel = page.getByTestId("notes-panel");
-    await expect(panel).toHaveAttribute("data-state", "collapsed"); // the form starts it closed
-    await panel.getByTestId("notes-tab").click();
-    await expect(panel).toHaveAttribute("data-state", "open");
+    await expect(panel).toHaveAttribute("data-state", "open"); // always visible on a wide screen: no tab, no expand or collapse button
+    await expect(page.getByTestId("notes-tab")).toHaveCount(0);
     await expect(page.getByTestId("notes-badge")).toHaveCount(0);
 
     await panel.getByTestId("note-add").click();
@@ -209,10 +208,9 @@ test.describe("sticky notes panel", () => {
     await expect(panel.getByTestId("note-card")).toHaveCount(0);
   });
 
-  test("collapses to a tab, and resizes by keyboard within its limits", async ({ page, isMobile }) => {
+  test("resizes by keyboard within its limits", async ({ page, isMobile }) => {
     test.skip(!!isMobile, "desktop panel");
     await open(page, "form=strategy");
-    await page.getByTestId("notes-tab").click();
     const handle = page.getByTestId("notes-resize");
     const before = Number(await handle.getAttribute("aria-valuenow"));
     await handle.focus();
@@ -226,10 +224,8 @@ test.describe("sticky notes panel", () => {
     expect(Number(await handle.getAttribute("aria-valuenow"))).toBe(320);
     // the width is remembered
     await page.reload();
-    await page.getByTestId("notes-tab").click();
     expect(Number(await page.getByTestId("notes-resize").getAttribute("aria-valuenow"))).toBe(320);
-    await page.getByRole("button", { name: "Collapse sticky notes" }).click();
-    await expect(page.getByTestId("notes-panel")).toHaveAttribute("data-state", "collapsed");
+    await expect(page.getByRole("button", { name: "Collapse sticky notes" })).toHaveCount(0);
   });
 
   test("on a phone: an edge tab opens an expandable, collapsible bottom sheet that doesn't block the form", async ({ page, isMobile }) => {
