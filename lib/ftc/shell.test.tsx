@@ -24,7 +24,8 @@ describe("the forms context for a program with its own games", () => {
     expect(value.activeFormFor("biobuzz").id).toBe("biobuzz");
     expect(value.activeFormFor("some-unknown-season").id).toBe("biobuzz");
     expect(value.latest("biobuzz")?.id).toBe("biobuzz");
-    expect(value.summaries.map((s) => s.id)).toEqual(["biobuzz"]);
+    // the program's built-in forms are the ones it lists: its game and the six other forms
+    expect(value.summaries.map((s) => s.id).sort()).toEqual(["biobuzz", "drive-reflection-v1", "helper-v1", "lead-scout-v1", "match-strategy-v1", "pit-scout-v1", "team-strategy-v1"]);
   });
 
   it("an entry resolves to the program's built-in form, and the default program's forms are not visible", () => {

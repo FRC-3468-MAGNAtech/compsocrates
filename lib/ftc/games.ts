@@ -7,6 +7,8 @@ import { CURRENT_FTC_GAME_ID, FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, type FtcGa
 import type { PointTableGameDefinition } from "@/config/games/definition";
 import { buildGameForm } from "@/lib/forms/game-form";
 import type { Form } from "@/lib/forms/types";
+import { PIT_BUILTIN_FORMS } from "@/lib/ftc/forms/pit-forms";
+import { TEAM_BUILTIN_FORMS } from "@/lib/ftc/forms/team-forms";
 import { createPointTablePlugin } from "@/lib/games/point-table";
 import type { FullGamePlugin } from "@/lib/games/types";
 
@@ -35,6 +37,9 @@ export function buildFtcGameForm(def: PointTableGameDefinition<FtcGameId>): Form
 export const FTC_GAME_FORMS: Readonly<Record<string, Form>> = Object.fromEntries(
   FTC_GAME_ID_LIST.map((id) => [FTC_GAME_DEFINITIONS[id].formId, buildFtcGameForm(FTC_GAME_DEFINITIONS[id])] as const)
 );
+
+/** Every form the FTC program has in code: its games' match forms, then the other six (lead scout, match strategy, drive reflection, pit scout, team strategy, helper), by id. */
+export const FTC_BUILTIN_FORMS: Readonly<Record<string, Form>> = { ...FTC_GAME_FORMS, ...TEAM_BUILTIN_FORMS, ...PIT_BUILTIN_FORMS };
 
 /** The form new FTC match entries use. */
 export const DEFAULT_FTC_FORM_ID: string = FTC_GAME_DEFINITIONS[CURRENT_FTC_GAME_ID].formId;
