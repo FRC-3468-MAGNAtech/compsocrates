@@ -9,6 +9,12 @@ export function parseTeamNumber(input: string | number | null | undefined): numb
   return n > 0 ? n : null;
 }
 
+/**
+ * One of the teams an account scouts for, in a program where an account may hold several (`ProgramConfig.multiTeam`). `id` is stable
+ * across renames; the number and name are what the person sees. A program with one team per account has none of these.
+ */
+export type AccountTeam = { id: string; number: number; name: string | null };
+
 /** "Team 3468" (or "Team 3468 · Name"): the label for a team in headers and messages. */
 export function teamLabel(number: number | string, name?: string | null): string {
   const base = `Team ${number}`;

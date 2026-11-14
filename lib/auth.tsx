@@ -89,6 +89,8 @@ export type UserDoc = {
   workspacePhoneSplit?: number;
   /** P25: the member's avatar choice, mirrored from their profile so teammates (and the limited "private profile" card) can show it. Absent = initials. */
   avatar?: AvatarChoice;
+  /** For a program that allows several teams per account: the ids of the account teams this member may view as. Absent or empty: all of them. */
+  assignedTeamIds?: string[];
   /** D1 (CS profile fields, additive): kept from the CS user doc. */
   bio?: string;
   photoURL?: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ourTeamFrom } from "@/lib/our-team";
+import { chooseAccountTeam, ourTeamFrom } from "@/lib/our-team";
 import { parseTeamNumber, readTeamIdentity, teamLabel } from "@/lib/team-number";
 
 describe("ourTeamFrom", () => {
@@ -43,5 +43,35 @@ describe("team numbers", () => {
   it("readTeamIdentity is the server-safe half of ourTeamFrom", () => {
     expect(readTeamIdentity({ teamNumber: "3468", teamName: "A" })).toEqual({ number: 3468, name: "A" });
     expect(readTeamIdentity(null)).toEqual({ number: null, name: null });
+  });
+});
+
+describe("chooseAccountTeam", () => {
+  const teams = [
+    { id: "a", number: 111, name: "Alpha" },
+    { id: "b", number: 222, name: null },
+    { id: "c", number: 333, name: "Gamma" },
+  ];
+
+  it("selects the stored pick while it is available, else the first", () => {
+    expect(chooseAccountTeam(teams, "b").selected?.id).toBe("b");
+    expect(chooseAccountTeam(teams, "gone").selected?.id).toBe("a");
+    expect(chooseAccountTeam(teams, null).selected?.id).toBe("a");
+    expect(chooseAccountTeam(teams, "b").teams.map((t) => t.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("a member assigned to some teams can only pick those; the stored pick of another is ignored", () => {
+    const r = chooseAccountTeam(teams, "a", ["c", "b"]);
+    expect(r.teams.map((t) => t.id)).toEqual(["b", "c"]);
+    expect(r.selected?.id).toBe("b");
+    expect(chooseAccountTeam(teams, "c", ["c", "b"]).selected?.id).toBe("c");
+  });
+
+  it("no assignment (absent or empty), or one that matches nothing, means all teams", () => {
+    for (const assigned of [undefined, null, [], ["zzz"]]) expect(chooseAccountTeam(teams, null, assigned).teams.map((t) => t.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("no teams: nothing to choose", () => {
+    expect(chooseAccountTeam([], "a")).toEqual({ teams: [], selected: null });
   });
 });

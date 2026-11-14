@@ -65,6 +65,12 @@ describe("ftcUserToProfile", () => {
     for (const key of ["colorMode", "gradientIntensity", "glassLayerLevel", "workspaceFormWidth", "workspacePhoneSplit", "avatar", "lastSeenChangelogAt"]) expect(profile).not.toHaveProperty(key);
   });
 
+  it("carries the member's assigned team ids; none assigned (absent or empty) leaves the field out", () => {
+    expect(ftcUserToProfile("u", stored({ fieldTeamIds: ["ft-1", 7, "ft-2"] })).assignedTeamIds).toEqual(["ft-1", "ft-2"]);
+    expect(ftcUserToProfile("u", stored({ fieldTeamIds: [] }))).not.toHaveProperty("assignedTeamIds");
+    expect(ftcUserToProfile("u", stored())).not.toHaveProperty("assignedTeamIds");
+  });
+
   it("reads the avatar through the shared parser", () => {
     const raw = { kind: "preset", id: "owl" };
     expect(ftcUserToProfile("u", stored({ avatar: raw })).avatar).toEqual(parseAvatar(raw));

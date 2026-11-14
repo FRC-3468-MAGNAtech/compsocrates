@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { EventInfo } from "@/lib/events/types";
+import type { AccountTeam } from "@/lib/team-number";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
 import { csTeamToTeamDoc, selectedEventNamesPatch, selectedEventsPatch } from "@/data/cs/teams";
@@ -39,6 +40,8 @@ export type TeamDoc = {
   activeEventCodes?: string[];
   /** Denormalized copies of every active event, same reason as `activeEvent`. */
   activeEvents?: EventInfo[];
+  /** The teams this account scouts for, in the account's order, for a program that allows several (see lib/our-team.ts). Absent: the one team in `number` / `name`. */
+  accountTeams?: AccountTeam[];
   /** D1: CS's `selectedEvents` (TBA keys): the SINGLE source of truth for the active events. `activeEvents` and friends above are derived from it on read. */
   selectedEvents?: string[];
   /** ADDITIVE (rebuild only): `{ [eventKey]: name }` for the selected events, written with `selectedEvents` (see data/cs/teams.ts). The "stored" step of the event-name chain (lib/events/names.ts). */

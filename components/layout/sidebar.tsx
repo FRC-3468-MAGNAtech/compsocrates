@@ -26,6 +26,7 @@ import { BRAND } from "@/config/brand";
 import { isUnavailableInProgram, programConfig } from "@/config/programs";
 import { useProgram } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
+import { TeamSwitcher } from "@/components/program/team-switcher";
 
 function NavLink({
   item,
@@ -264,6 +265,7 @@ function SidebarInner({
       </div>
 
       {!collapsed && <ProgramSwitcher className="mb-1" />}
+      {!collapsed && <TeamSwitcher className="mb-1" />}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto py-1">
         {visibleNav(mainNav, canOpen).map((item) => (
           <NavLink key={item.href} item={item} collapsed={collapsed} onNavigate={onNavigate} scope={scope} />

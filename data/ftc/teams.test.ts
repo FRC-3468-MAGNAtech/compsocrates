@@ -82,6 +82,19 @@ describe("ftcTeamToTeamDoc", () => {
     expect(ftcTeamToTeamDoc("team-1", stored())).toMatchObject({ number: 12345, name: "First Team", joinCode: "JOIN42", ownerUid: "uid-owner", accountName: "Robotics Club" });
   });
 
+  it("lists every team of the account for the team switcher, in order, with a blank name as null", () => {
+    expect(ftcTeamToTeamDoc("team-1", stored()).accountTeams).toEqual([
+      { id: "ft-1", number: 12345, name: "First Team" },
+      { id: "fteam_abcd1234", number: 54321, name: "Second Team" },
+    ]);
+    expect(ftcTeamToTeamDoc("t", { fieldTeams: [{ id: "x", number: 7, name: " " }] }).accountTeams).toEqual([{ id: "x", number: 7, name: null }]);
+  });
+
+  it("an account with only the legacy single number still has one team in the list; none at all has no list", () => {
+    expect(ftcTeamToTeamDoc("t", { number: 4242, name: "Old" }).accountTeams).toEqual([{ id: "ft-4242", number: 4242, name: "Old" }]);
+    expect(ftcTeamToTeamDoc("t", {})).not.toHaveProperty("accountTeams");
+  });
+
   it("falls back to the legacy number and name, and to the doc id for the join code", () => {
     const team = ftcTeamToTeamDoc("team-1", { number: 4242, name: "Old", activeEvents: [] });
     expect(team).toMatchObject({ number: 4242, name: "Old", joinCode: "team-1" });

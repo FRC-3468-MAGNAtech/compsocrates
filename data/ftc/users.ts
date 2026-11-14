@@ -67,6 +67,7 @@ export function ftcUserToProfile(uid: string, doc: FtcUserDoc): UserDoc {
   const glassLayerLevel = finiteNumber(doc.glassLayerLevel);
   const workspaceFormWidth = finiteNumber(doc.workspaceFormWidth);
   const workspacePhoneSplit = finiteNumber(doc.workspacePhoneSplit);
+  const assignedTeamIds = readMemberFieldTeamIds(doc);
 
   return {
     name: nonEmptyString(doc.name) ?? email.split("@")[0] ?? "",
@@ -77,6 +78,7 @@ export function ftcUserToProfile(uid: string, doc: FtcUserDoc): UserDoc {
     isAdmin: doc.isAdmin === true,
     isOwner: doc.isOwner === true,
     isPlatformOwner: doc.isPlatformOwner === true,
+    ...(assignedTeamIds && assignedTeamIds.length > 0 ? { assignedTeamIds } : {}),
     themeId: isThemeId(doc.themeId) ? doc.themeId : defaultThemeId,
     ...(colorMode ? { colorMode } : {}),
     ...(gradientIntensity ? { gradientIntensity } : {}),

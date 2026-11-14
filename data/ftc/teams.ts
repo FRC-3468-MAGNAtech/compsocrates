@@ -11,6 +11,7 @@
  */
 import type { EventInfo, EventLifecycleStatus } from "@/lib/events/types";
 import type { TeamDoc } from "@/lib/team";
+import type { AccountTeam } from "@/lib/team-number";
 import { digitsToNumber, finiteNumber, isRecord, nonEmptyString, str, stringList } from "@/data/ftc/util";
 
 export type FtcFieldTeam = { id: string; number: number; name: string };
@@ -113,9 +114,12 @@ export function ftcTeamToTeamDoc(id: string, doc: FtcTeamDoc): TeamDoc {
   const accountName = nonEmptyString(doc.accountName);
   const ownerUid = nonEmptyString(doc.ownerUid);
 
+  const accountTeams = readFieldTeams(doc).map((t): AccountTeam => ({ id: t.id, number: t.number, name: t.name || null }));
+
   const team: TeamDoc = {
     number: first?.number ?? 0,
     name: first?.name || null,
+    ...(accountTeams.length > 0 ? { accountTeams } : {}),
     joinCode: nonEmptyString(doc.joinCode) ?? id,
     ...(ownerUid ? { ownerUid } : {}),
     ...(doc.pendingTransfer !== undefined && doc.pendingTransfer !== null ? { pendingTransfer: doc.pendingTransfer } : {}),
