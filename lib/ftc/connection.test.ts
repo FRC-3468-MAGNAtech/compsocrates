@@ -10,12 +10,18 @@ describe("program connection config", () => {
     expect(isPathConnected("frc", "/anything/at/all")).toBe(true);
   });
 
-  it("the FTC program connects the scout page, Active Events, the Match List and the scout-entry analytics so far, and allows several teams per account", () => {
+  it("the FTC program connects exactly the pages that have a program-aware data layer, and allows several teams per account", () => {
+    const connected = [
+      "/scout", "/event", "/match-list",
+      "/lead-scout-form", "/pit-scout-form", "/team-strategy-form", "/match-strategy-form", "/drive-reflection-form", "/helper-form",
+      "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
+      "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings",
+    ];
     expect(PROGRAMS.ftc.multiTeam).toBe(true);
-    expect(PROGRAMS.ftc.connection.paths).toEqual(["/scout", "/event", "/match-list", "/analytics/match-scout", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings"]);
-    for (const path of ["/scout", "/scout/anything", "/event", "/match-list", "/analytics/match-scout", "/analytics/rankings", "/analytics/team-breakdown", "/analytics/team-averages"]) expect(isPathConnected("ftc", path), path).toBe(true);
+    expect([...(PROGRAMS.ftc.connection.paths as readonly string[])].sort()).toEqual([...connected].sort());
+    for (const path of [...connected, "/scout/anything", "/pit-scout-form/x"]) expect(isPathConnected("ftc", path), path).toBe(true);
     // everything else shows the notice, including the neighbours of a connected path
-    for (const path of ["/", "/dashboard", "/match-lists", "/events", "/eventual", "/scouting", "/scoutish", "/analytics", "/analytics/match-scoutish", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/lead-scout", "/my-scouting", "/judge-book"]) {
+    for (const path of ["/", "/dashboard", "/match-lists", "/events", "/eventual", "/scouting", "/scoutish", "/analytics", "/analytics/match-scoutish", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/my-scouting", "/judge-book", "/pit-scout-forms"]) {
       expect(isPathConnected("ftc", path), path).toBe(false);
     }
   });

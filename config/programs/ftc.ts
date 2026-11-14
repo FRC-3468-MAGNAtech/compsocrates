@@ -25,10 +25,31 @@ export const FTC_PROGRAM: ProgramConfig = {
   firestorePrefix: "programs/ftc/",
   unavailablePaths: FTC_UNAVAILABLE_PATHS,
   pagesConnected: true,
-  // The shell is mounted, but only the scout page, Active Events, the Match List and the analytics pages that read the team's scout entries are connected so far. Every other path shows "not available yet" inside the
-  // shell until its data layer is program-aware, so no shared page reads the other program's collections. Add a path here when it is connected.
+  // The shell is mounted, but only the pages listed here have a program-aware data layer: the scout page, Active Events, the Match List, the six other forms and
+  // the analytics pages over scout and form entries. Every other path shows "not available yet" inside the shell, so no shared page reads the other program's
+  // collections. Add a path here when it is connected.
   connection: {
-    paths: ["/scout", "/event", "/match-list", "/analytics/match-scout", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings"],
+    paths: [
+      "/scout",
+      "/event",
+      "/match-list",
+      "/lead-scout-form",
+      "/pit-scout-form",
+      "/team-strategy-form",
+      "/match-strategy-form",
+      "/drive-reflection-form",
+      "/helper-form",
+      "/analytics/match-scout",
+      "/analytics/lead-scout",
+      "/analytics/pit-scout",
+      "/analytics/team-strategy",
+      "/analytics/match-strategy",
+      "/analytics/drive-reflection",
+      "/analytics/helper",
+      "/analytics/team-averages",
+      "/analytics/team-breakdown",
+      "/analytics/rankings",
+    ],
     features: { assignments: false, subIns: false, practice: false, live: false, library: false, accuracy: false, csvImport: false, changelog: false, applications: false, eventLookup: false },
   },
   multiTeam: true,

@@ -18,7 +18,8 @@ import { editOwnFormEntry, saveFormEntry, useFormEntries } from "@/lib/form-entr
 import { rookieSuggestion } from "@/lib/forms/pit-suggest";
 import type { PlanCandidate } from "@/lib/forms/compare";
 import { useForms } from "@/lib/forms/forms-context";
-import { getBuiltinForm, seasonFormId } from "@/lib/forms/builtin";
+import { seasonFormId } from "@/lib/forms/builtin";
+import { useProgram } from "@/lib/program/context";
 import type { EventInfo } from "@/lib/events/types";
 import { myAssignedTeams, type TeamAssignKind } from "@/lib/team-assignments/model";
 import { useTeamAssignmentDocs } from "@/lib/team-assignments/store";
@@ -59,12 +60,13 @@ export function FormPage({
   assignmentKind?: TeamAssignKind;
 }) {
   const { user, profile } = useAuth();
+  const program = useProgram();
   const teamId = profile?.teamId ?? null;
   const forms = useForms();
   const lockout = useSubmissionLockout(teamId);
   // CS rebuild: the page names the REBUILT form; the non-match forms exist for REBUILT only, so the page resolves to that set
   const formId = seasonFormId(pageFormId);
-  const form = forms.latest(formId) ?? getBuiltinForm(formId);
+  const form = forms.latest(formId);
   const { events, primaryCode, loaded } = useActiveEvents();
   const ordered = useMemo(() => orderPrimaryFirst({ events, primaryCode }), [events, primaryCode]);
   const [now] = useState(() => Date.now());
@@ -125,12 +127,12 @@ export function FormPage({
         assignedTeams={assigned}
         onUpdate={(entry, patch) => {
           if (!teamId || !user || !profile) return Promise.reject(new Error("Not signed in."));
-          return editOwnFormEntry({ teamId, uid: user.uid, name: profile.name }, entry, patch);
+          return editOwnFormEntry({ teamId, uid: user.uid, name: profile.name }, entry, patch, program);
         }}
         renderMatchPicker={({ field, event, matchKey, disabled, onPick }) => <MatchPickerSlot label={field.label} event={event} matchKey={matchKey} disabled={disabled} onPick={onPick} />}
         onSave={(doc) => {
           if (!teamId || !user) return Promise.reject(new Error("Not signed in."));
-          return saveFormEntry(teamId, user.uid, doc);
+          return saveFormEntry(teamId, user.uid, doc, program);
         }}
       />
     </PhotoUploadProvider>

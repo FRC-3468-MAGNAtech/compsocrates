@@ -20,10 +20,10 @@ import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 import { buildFormSchema, eventCodesForScope, formAnalyticsPage, selectFormEntries, type FormAnalyticsPage as PageDef, type FormAnalyticsSlug } from "@/lib/analytics/form-analytics";
 import { unionForms } from "@/lib/analytics/game-schema";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { downloadTextFile } from "@/lib/download";
 import { adminUpdateFormEntry, deleteFormEntry, saveFormEntry, useFormEntries } from "@/lib/form-entries";
 import { formEntryToRow, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
-import { getBuiltinForm } from "@/lib/forms/builtin";
 import { useForms, useFormsForEntries } from "@/lib/forms/forms-context";
 import type { Form } from "@/lib/forms/types";
 import type { ManualFlagReason, ScoutEntry } from "@/lib/scout-entries";
@@ -232,6 +232,7 @@ export function FormAnalyticsView({ page, entries, allEntries, form, importForm,
 export function FormAnalyticsPage({ slug }: { slug: FormAnalyticsSlug }) {
   const page = formAnalyticsPage(slug)!;
   const { user, profile } = useAuth();
+  const program = useProgram();
   const teamId = profile?.teamId ?? null;
   const isAdmin = profile?.isAdmin ?? false;
   const searchParams = useSearchParams();
@@ -251,8 +252,9 @@ export function FormAnalyticsPage({ slug }: { slug: FormAnalyticsSlug }) {
 
   // the form the shown entries were filled in with (every version of every form of this type, unioned), or the built-in while there are none
   const { forms: usedForms } = useFormsForEntries(scope);
-  const form: Form = useMemo(() => (usedForms.length > 0 ? unionForms(usedForms) : (forms.latest(page.formId) ?? getBuiltinForm(page.formId)!)), [usedForms, forms, page.formId]);
-  const importForm: Form = forms.latest(page.formId) ?? getBuiltinForm(page.formId)!;
+  const form: Form = useMemo(() => (usedForms.length > 0 ? unionForms(usedForms) : forms.latest(page.formId)!), [usedForms, forms, page.formId]);
+  // (the forms context resolves the built-ins of the active program, so no separate fallback to the default program's forms)
+  const importForm: Form = forms.latest(page.formId)!;
   const importEvent = eventCodes && eventCodes.length === 1 ? eventCodes[0] : (data.primaryCode ?? data.activeEventCodes[0] ?? null);
 
   return (
@@ -268,9 +270,9 @@ export function FormAnalyticsPage({ slug }: { slug: FormAnalyticsSlug }) {
       teamNames={data.teamNames}
       importEvent={importEvent}
       initialView={searchParams.get("view") === "summary" ? "summary" : "table"}
-      onUpdate={(id, patch) => void adminUpdateFormEntry(id, patch)}
-      onDelete={(id) => void deleteFormEntry(id)}
-      onImportSave={(input) => (teamId && user ? saveFormEntry(teamId, user.uid, input) : Promise.reject(new Error("Not signed in.")))}
+      onUpdate={(id, patch) => void adminUpdateFormEntry(id, patch, program)}
+      onDelete={(id) => void deleteFormEntry(id, program)}
+      onImportSave={(input) => (teamId && user ? saveFormEntry(teamId, user.uid, input, program) : Promise.reject(new Error("Not signed in.")))}
     />
   );
 }

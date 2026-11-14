@@ -7,6 +7,7 @@ import { CS_MATCH_ASSIGNMENTS, CS_PIT_ASSIGNMENTS, CS_TEAM_ASSIGNMENTS, csTeamRo
 import { commitPlan, eventRowsQuery, fetchMemberNames, fetchRows } from "@/lib/assignment-io";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
+import { useProgramConfig } from "@/lib/program/context";
 import type { FormEntryType } from "@/lib/form-entries-model";
 import { assignedTeamCounts, type TeamAssignKind, type TeamAssignmentsDoc, type TeamAssignVersion } from "@/lib/team-assignments/model";
 
@@ -35,9 +36,11 @@ type Held = { teamId: string; pit: CsAssignmentRow[]; team: CsAssignmentRow[]; m
  * and Scout Status all want several). Three team-scoped queries (pit, team, and the team-strategy mirror) merged into the app's docs.
  */
 export function useTeamAssignmentDocs(teamId: string | null): { docs: TeamAssignmentsDoc[]; loaded: boolean } {
+  // A program that has not connected assignments has none: this hook reads the default program's collections only (never another program's).
+  const { assignments: connected } = useProgramConfig().connection.features;
   const [held, setHeld] = useState<Held | null>(null);
   useEffect(() => {
-    if (!teamId || !isFirebaseConfigured()) return;
+    if (!connected || !teamId || !isFirebaseConfigured()) return;
     const apply = (key: "pit" | "team" | "mirror", rows: CsAssignmentRow[]) =>
       setHeld((prev) => {
         const base: Held = prev?.teamId === teamId ? prev : { teamId, pit: [], team: [], mirror: [], answered: [] };
@@ -58,7 +61,7 @@ export function useTeamAssignmentDocs(teamId: string | null): { docs: TeamAssign
       listen(mirrorQuery(teamId), "mirror", `${CS_MATCH_ASSIGNMENTS} team mirror where teamId == ${teamId}`),
     ];
     return () => stops.forEach((stop) => stop());
-  }, [teamId]);
+  }, [connected, teamId]);
 
   const current = teamId && held?.teamId === teamId ? held : null;
   const docs = useMemo(() => {
@@ -72,7 +75,7 @@ export function useTeamAssignmentDocs(teamId: string | null): { docs: TeamAssign
       return { ...d, previous: csTeamRowsToDocs(d.kind, rows, teamId).find((p) => p.eventCode === d.eventCode)?.current ?? null };
     });
   }, [teamId, current]);
-  if (!teamId || !isFirebaseConfigured()) return { docs: [], loaded: true };
+  if (!connected || !teamId || !isFirebaseConfigured()) return { docs: [], loaded: true };
   // Loaded once each of the three listeners has answered (a listener the rules deny answers with an error, which counts).
   return { docs, loaded: (current?.answered.length ?? 0) >= 3 };
 }
