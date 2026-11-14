@@ -3,12 +3,13 @@
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/config/games/ftc";
 import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
-import { getFormVersion, subscribeFormDocs, subscribeFormEntries, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
+import { getFormVersion, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
 import {
   adminUpdateFormEntry,
   deleteFormEntry,
   deleteScoutEntry,
   editOwnFormEntry,
+  editPickList,
   saveFormEntry,
   saveScoutEntry,
   setActiveEvents,
@@ -38,6 +39,7 @@ export const ftcProgramData: ProgramData = {
     adminUpdate: adminUpdateFormEntry,
     delete: deleteFormEntry,
   },
+  pickList: { subscribe: subscribePickList, edit: editPickList },
   members: { subscribe: subscribeTeamMembers, updateAccess: updateMemberAccess },
   attendance: { subscribeTeam: subscribeTeamAttendance, set: setEventAttendance },
   forms: { subscribeDocs: subscribeFormDocs, loadVersion: getFormVersion },

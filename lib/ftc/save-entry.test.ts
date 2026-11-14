@@ -6,6 +6,7 @@ vi.mock("@/data/ftc/write", () => ({
   updateScoutEntry: (...args: unknown[]) => h.update(...args),
   deleteScoutEntry: (...args: unknown[]) => h.remove(...args),
   setEventAttendance: (...args: unknown[]) => h.other(...args),
+  editPickList: (...args: unknown[]) => h.other(...args),
   updateMemberAccess: (...args: unknown[]) => h.other(...args),
   setActiveEvents: (...args: unknown[]) => h.events(...args),
   saveFormEntry: (...args: unknown[]) => h.other(...args),
@@ -19,6 +20,7 @@ import { deleteEntry, saveEntry, updateEntry, type SaveEntryInput } from "@/lib/
 import { setActiveEvent, setActiveEvents } from "@/lib/team";
 import { setEventAttendance } from "@/lib/event-attendance";
 import { updateMemberAccess } from "@/lib/team-members";
+import { editPickList } from "@/lib/pick-list/store";
 import { adminUpdateFormEntry, deleteFormEntry, editOwnFormEntry, saveFormEntry, updateFormEntry } from "@/lib/form-entries";
 
 const input: SaveEntryInput = {
@@ -150,6 +152,21 @@ describe("people writers and the program", () => {
   it("the default program never touches the program port", async () => {
     await updateMemberAccess(actor, member, { isAdmin: true }).catch(() => undefined);
     await setEventAttendance("team-a", "EV1", ["u1"]).catch(() => undefined);
+    expect(h.other).not.toHaveBeenCalled();
+  });
+});
+
+describe("pick list edits and the program", () => {
+  const ctx = { teamId: "team-a", eventCode: "EV1", uid: "u1", name: "Ada" };
+
+  it("write through the program's own data port when the program has one, and report whether anything changed", async () => {
+    h.other.mockResolvedValue(true);
+    expect(await editPickList(ctx, { type: "reset" }, "ftc")).toBe(true);
+    expect(h.other).toHaveBeenCalledWith(ctx, { type: "reset" });
+  });
+
+  it("the default program never touches the program port", async () => {
+    await editPickList(ctx, { type: "reset" }).catch(() => undefined);
     expect(h.other).not.toHaveBeenCalled();
   });
 });

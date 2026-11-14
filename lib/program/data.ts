@@ -17,6 +17,8 @@ import type { UserDoc } from "@/lib/auth";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import type { EventAttendance } from "@/lib/event-attendance";
 import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
+import type { PickOp } from "@/lib/pick-list/ops";
+import type { PickListDoc } from "@/lib/pick-list/store";
 import type { MemberAccess } from "@/lib/member-access";
 import type { TeamMember } from "@/lib/team-members";
 import type { FormDoc } from "@/lib/forms/resolve";
@@ -69,6 +71,12 @@ export type ProgramData = {
     /** Admins only, by the rules. */
     adminUpdate(id: string, patch: { excluded?: boolean; flags?: FormEntry["flags"]; values?: FormValues }): Promise<void>;
     delete(id: string): Promise<void>;
+  };
+  pickList: {
+    /** One event's shared pick list (null while it has never been written). */
+    subscribe(teamId: string, eventCode: string, onData: (list: PickListDoc | null) => void, onError: DataError): Unsubscribe;
+    /** Applies one edit transactionally with its audit entry; false when it changes nothing. */
+    edit(ctx: { teamId: string; eventCode: string; uid: string; name: string }, op: PickOp): Promise<boolean>;
   };
   members: {
     /** The team's roster. */

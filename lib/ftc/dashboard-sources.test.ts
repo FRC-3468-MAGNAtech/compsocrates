@@ -13,13 +13,13 @@ describe("the dashboard sources a program has connected", () => {
     }
   });
 
-  it("a program without practice, library, assignments or the pick list does not read those sources, and still reads the rest", () => {
+  it("a program without practice, library or assignments does not read those sources, and still reads the rest (the pick list is connected)", () => {
     const got = connectedSources(all, PROGRAMS.ftc.connection.features);
-    expect([...got].sort()).toEqual(["attendance", "formEntries", "members"]);
+    expect([...got].sort()).toEqual(["attendance", "formEntries", "members", "pickList"]);
   });
 
   it("only the features a source needs matter", () => {
     const features = { ...PROGRAMS.ftc.connection.features, practice: true, assignments: true };
-    expect([...connectedSources(all, features)].sort()).toEqual(["assignments", "attendance", "formEntries", "members", "sessions", "teamAssignments"]);
+    expect([...connectedSources(all, features)].sort()).toEqual(["assignments", "attendance", "formEntries", "members", "pickList", "sessions", "teamAssignments"]);
   });
 });

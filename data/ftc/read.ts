@@ -33,6 +33,7 @@ import type { UserDoc } from "@/lib/auth";
 import type { MatchType } from "@/lib/events/types";
 import type { EventAttendance } from "@/lib/event-attendance";
 import type { FormEntry } from "@/lib/form-entries-model";
+import type { PickListDoc } from "@/lib/pick-list/store";
 import { formDocId, type FormDoc, type FormVersion } from "@/lib/forms/resolve";
 import type { Form } from "@/lib/forms/types";
 import type { ScoutEntry } from "@/lib/scout-entries";
@@ -44,6 +45,7 @@ import { ftcDocsToScoutEntries, isEventEntry, type FtcRawRow } from "@/data/ftc/
 import { ftcTeamToTeamDoc } from "@/data/ftc/teams";
 import { ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
 import { ftcDocsToAttendance } from "@/data/ftc/attendance";
+import { ftcDocToPickList, ftcPickListId } from "@/data/ftc/pick-list";
 import { isRecord } from "@/data/ftc/util";
 
 const PROGRAM = "ftc" as const;
@@ -54,6 +56,7 @@ const FORMS = "forms";
 const TEAMS = "teams";
 const USERS = "users";
 const EVENT_ATTENDANCE = "eventAttendance";
+const PICK_LISTS = "pickLists";
 
 type Equality = [field: string, value: string | number];
 type Target = { q: Query; path: string };
@@ -278,4 +281,13 @@ export function subscribeUserProfile(uid: string, onData: (profile: UserDoc | nu
 /** Realtime, every event the team has attendance recorded for. */
 export function subscribeTeamAttendance(teamId: string, onData: (records: EventAttendance[]) => void, onError: Failure): Unsubscribe {
   return watchRows("Couldn't load event attendance", teamQuery(EVENT_ATTENDANCE, teamId), (rows) => onData(ftcDocsToAttendance(rows)), onError);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// the shared pick list
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Realtime pick list of one event (null while it has never been written). Read by id: the rules allow a teammate to read the account's lists, not to list them. */
+export function subscribePickList(teamId: string, eventCode: string, onData: (list: PickListDoc | null) => void, onError: Failure): Unsubscribe {
+  return watchOne("Couldn't load the pick list", programDoc(db, PROGRAM, PICK_LISTS, ftcPickListId(teamId, eventCode)), (_id, data) => ftcDocToPickList(data), onData, onError);
 }

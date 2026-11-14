@@ -6,7 +6,7 @@
  * So far: saving, editing and deleting a Match Scout entry, and setting the active events. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
  * rules; a refusal is reported and rethrown like any other failure.
  */
-import { addDoc, deleteDoc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, deleteDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError } from "@/lib/firestore-errors";
@@ -19,6 +19,8 @@ import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from
 import type { FormValues, StickyNote } from "@/lib/forms/types";
 import { stripUndefined } from "@/data/ftc/util";
 import { ftcAttendanceDoc, ftcAttendanceDocId } from "@/data/ftc/attendance";
+import { ftcPickListDoc, ftcPickListId } from "@/data/ftc/pick-list";
+import { applyPickOp, samePicks, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
 import type { MemberAccess } from "@/lib/member-access";
 import type { TeamMember } from "@/lib/team-members";
 
@@ -28,6 +30,7 @@ const TEAMS = "teams";
 const FORM_ENTRIES = "formEntries";
 const USERS = "users";
 const EVENT_ATTENDANCE = "eventAttendance";
+const PICK_LISTS = "pickLists";
 
 /** Runs a write; a failure is reported with its path and rethrown, so the caller can show it. */
 async function reported<T>(context: string, path: string, write: () => Promise<T>): Promise<T> {
@@ -164,4 +167,29 @@ export function updateMemberAccess(
     batch.set(newAuditLogRef(PROGRAM), buildAuditEntry(actor.teamId, actor.uid, actor.name, "edit-member-roles", { targetUid: member.uid, targetName: member.name }, before, after));
     await batch.commit();
   });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// the shared pick list
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Applies one edit to an event's pick list inside a transaction: read the latest stored list, apply the edit to THAT, write it back with an `edit-pick-list`
+ * audit entry, so two people editing at once compose instead of one overwriting the other and a change can never land unlogged. Resolves false (writing
+ * nothing) when the edit changes nothing. The editors are admins and the roles the rules name; anyone else is refused.
+ */
+export function editPickList(ctx: { teamId: string; eventCode: string; uid: string; name: string }, op: PickOp): Promise<boolean> {
+  const id = ftcPickListId(ctx.teamId, ctx.eventCode);
+  return reported("Couldn't save the pick list", `${programPath(PROGRAM, PICK_LISTS)}/${id}`, () =>
+    runTransaction(db, async (tx) => {
+      const ref = programDoc(db, PROGRAM, PICK_LISTS, id);
+      const snap = await tx.get(ref);
+      const before = sanitizePicks(snap.exists() ? snap.data().picked : []);
+      const after = applyPickOp(before, op);
+      if (samePicks(before, after)) return false;
+      tx.set(ref, ftcPickListDoc(ctx, after, serverTimestamp));
+      tx.set(newAuditLogRef(PROGRAM), buildAuditEntry(ctx.teamId, ctx.uid, ctx.name, "edit-pick-list", { eventCode: ctx.eventCode, op: op.type }, { picked: before }, { picked: after }));
+      return true;
+    })
+  );
 }

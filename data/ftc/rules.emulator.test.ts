@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { ftcDocToPickList, ftcPickListDoc, ftcPickListId } from "@/data/ftc/pick-list";
+import { applyPickOp, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
 import { buildAuditEntry } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type NewFormEntry } from "@/lib/form-entries-model";
 import { ftcDocsToFormEntries } from "@/data/ftc/form-entries";
@@ -296,5 +298,39 @@ describe("the team's people: roles and attendance", () => {
     expect(ftcDocsToAttendance(snap.docs.map((d) => ({ id: d.id, data: d.data() })))).toMatchObject([{ id, teamId: T1, eventCode: "EV1", uids: [SCOUT, PIT] }]);
     await assertFails(setDoc(doc(as(PIT), P("eventAttendance"), ftcAttendanceDocId(T1, "EV2")), ftcAttendanceDoc(T1, "EV2", [PIT], serverTimestamp)));
     await assertFails(getDocs(query(collection(as(PIT), P("eventAttendance")), where("teamId", "==", T2))));
+  });
+});
+
+describe("the shared pick list", () => {
+  const LEAD = "ftc-lead-1";
+  const ctx = { teamId: T1, eventCode: "EV1", uid: LEAD, name: "Grace" };
+  const id = ftcPickListId(T1, "EV1");
+  // the same transaction as the app's editPickList (data/ftc/write.ts), run as a given person
+  const edit = (uid: string, teamId: string, op: PickOp) => {
+    const db = as(uid);
+    return runTransaction(db, async (tx) => {
+      const ref = doc(db, P("pickLists"), ftcPickListId(teamId, "EV1"));
+      const snap = await tx.get(ref);
+      const after = applyPickOp(sanitizePicks(snap.exists() ? snap.data().picked : []), op);
+      tx.set(ref, ftcPickListDoc({ ...ctx, teamId, uid }, after, serverTimestamp));
+      tx.set(doc(collection(db, P("auditLog"))), buildAuditEntry(teamId, uid, "n", "edit-pick-list", { eventCode: "EV1", op: op.type }, {}, { picked: after }));
+    });
+  };
+
+  it("a lead scout (an editor role) builds the list, with its audit entry, and any teammate reads it back", async () => {
+    await assertSucceeds(edit(LEAD, T1, { type: "place", team: 254, before: null }));
+    await assertSucceeds(edit(LEAD, T1, { type: "place", team: 1678, before: 254 }));
+    const snap = await assertSucceeds(getDoc(doc(as(PIT), P("pickLists"), id)));
+    expect(ftcDocToPickList(snap.data() ?? {})).toMatchObject({ teamId: T1, eventCode: "EV1", picked: [1678, 254], updatedBy: LEAD, updatedByName: "Grace" });
+  });
+
+  it("a member without an editor role cannot edit, and nobody reads or writes another team's list", async () => {
+    await assertFails(edit(PIT, T1, { type: "place", team: 971, before: null }));
+    await assertFails(getDoc(doc(as(OTHER), P("pickLists"), id)));
+    await assertFails(edit(LEAD, T2, { type: "place", team: 971, before: null }));
+  });
+
+  it("an admin edits too", async () => {
+    await assertSucceeds(edit(ADMIN, T1, { type: "remove", team: 254 }));
   });
 });

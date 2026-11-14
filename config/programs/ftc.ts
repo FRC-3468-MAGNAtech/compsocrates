@@ -50,11 +50,12 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/analytics/match-strategy",
       "/analytics/drive-reflection",
       "/analytics/helper",
+      "/analytics/pick-list",
       "/analytics/team-averages",
       "/analytics/team-breakdown",
       "/analytics/rankings",
     ],
-    features: { assignments: false, subIns: false, practice: false, live: false, library: false, pickList: false, accuracy: false, csvImport: false, changelog: false, applications: false, joinRequests: false, announcements: false, eventLookup: false },
+    features: { assignments: false, subIns: false, practice: false, live: false, library: false, pickList: true, accuracy: false, csvImport: false, changelog: false, applications: false, joinRequests: false, announcements: false, eventLookup: false },
   },
   multiTeam: true,
 };

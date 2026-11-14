@@ -8,6 +8,9 @@ import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { applyPickOp, samePicks, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
 import { storageKey } from "@/config/brand";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
+import { useProgram } from "@/lib/program/context";
 
 // Persistence for the shared Pick List board (P12). D1: CS keeps one list per team at `teams/{teamId}.pickList`
 // (`{ picks: [{ teamNumber, pickOrder }], updatedAt, updatedBy }`, data/cs/pick-list.ts), so the board reads and writes that field
@@ -39,7 +42,10 @@ export function pickListId(teamId: string, eventCode: string): string {
  * overwriting the other. Returns false (and writes nothing) if the op changes
  * nothing, e.g. adding a team someone else already added.
  */
-export async function editPickList(ctx: { teamId: string; eventCode: string; uid: string; name: string }, op: PickOp): Promise<boolean> {
+export async function editPickList(ctx: { teamId: string; eventCode: string; uid: string; name: string }, op: PickOp, program: ProgramId = DEFAULT_PROGRAM): Promise<boolean> {
+  // A namespaced program keeps one list per team and event in its own collection (its port runs the same transaction there).
+  const data = programData(program);
+  if (data) return data.pickList.edit(ctx, op);
   const ref = doc(db, COLLECTION, ctx.teamId);
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
@@ -66,6 +72,8 @@ export async function editPickList(ctx: { teamId: string; eventCode: string; uid
  * change or linger.
  */
 export function usePickList(teamId: string | null, eventCode: string | null, actor: { uid: string; name: string } | null) {
+  const program = useProgram();
+  const data = useProgramData();
   const [list, setList] = useState<PickListDoc | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const [optimistic, setOptimistic] = useState<{ picks: number[]; base: PickListDoc | null } | null>(null);
@@ -81,6 +89,21 @@ export function usePickList(teamId: string | null, eventCode: string | null, act
     }
     // A new event's list isn't loaded until its first snapshot — don't flash the previous one.
     setLoaded(false);
+    if (data) {
+      return data.pickList.subscribe(
+        teamId,
+        eventCode,
+        (next) => {
+          setList(next);
+          setLoaded(true);
+        },
+        () => {
+          // already reported by the port
+          setList(null);
+          setLoaded(true);
+        }
+      );
+    }
     const unsubscribe = onSnapshot(
       doc(db, COLLECTION, teamId),
       (snap) => {
@@ -100,7 +123,7 @@ export function usePickList(teamId: string | null, eventCode: string | null, act
       }
     );
     return unsubscribe;
-  }, [teamId, eventCode]);
+  }, [teamId, eventCode, data]);
 
   const serverPicked = list?.picked ?? [];
   const picked = optimistic && optimistic.base === list ? optimistic.picks : serverPicked;
@@ -111,14 +134,14 @@ export function usePickList(teamId: string | null, eventCode: string | null, act
       setError(null);
       setOptimistic({ picks: applyPickOp(picked, op), base: list });
       try {
-        await editPickList({ teamId, eventCode, uid: actor.uid, name: actor.name }, op);
+        await editPickList({ teamId, eventCode, uid: actor.uid, name: actor.name }, op, program);
       } catch (err) {
         console.error("pick list edit failed:", err);
         setOptimistic(null);
         setError("Couldn't save that change. You may be offline, or no longer allowed to edit.");
       }
     },
-    [teamId, eventCode, actor, picked, list]
+    [teamId, eventCode, actor, picked, list, program]
   );
 
   return { list, picked, loaded, edit, error, clearError: () => setError(null) };
