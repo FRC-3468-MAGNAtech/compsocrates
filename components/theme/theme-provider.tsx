@@ -2,9 +2,17 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
-import { getTheme, isFlagTheme, tokensFor, type ColorMode, type ColorModePreference, type ThemeDefinition } from "@/lib/themes";
+import { defaultThemeId, getTheme, isFlagTheme, tokensFor, type ColorMode, type ColorModePreference, type ThemeDefinition } from "@/lib/themes";
+import {
+  ACCOUNT_APPEARANCE_OWNER_KEY,
+  clearAccountAppearance,
+  markAccountAppearance,
+  readAccountAppearanceOwner,
+  signOutResetNeeded,
+} from "@/lib/account-appearance";
 import {
   COLOR_MODE_STORAGE_KEY,
+  DEFAULT_COLOR_MODE,
   GRADIENT_INTENSITY_STORAGE_KEY,
   THEME_STORAGE_KEY,
   effectiveColorMode,
@@ -61,9 +69,11 @@ function readLocal(key: string): string | null {
   }
 }
 
-function writeLocal(key: string, value: string) {
+/** Stores a non-default value and removes the key for the default, so a cleared look leaves nothing behind (the pre-paint script treats a missing key as the default). */
+function writeLocal(key: string, value: string, defaultValue: string) {
   try {
-    localStorage.setItem(key, value);
+    if (value === defaultValue) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
     // storage blocked: the choice still applies for this session
   }
@@ -72,7 +82,7 @@ function writeLocal(key: string, value: string) {
 const systemPrefersLight = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches;
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const { user, profile, updateUserProfile } = useAuth();
+  const { user, loading, profile, updateUserProfile } = useAuth();
   const accountThemeId = profile?.themeId;
   const accountMode = profile?.colorMode;
   const accountIntensity = profile?.gradientIntensity;
@@ -103,6 +113,37 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  // Sign-out: drop the account's look (memory and this browser's mirrors) and render the defaults at once. The saved copy in Firestore is
+  // untouched, so the same account gets its theme back on the next sign-in. The owner marker also covers a session that ended without a
+  // click on "sign out" (expired, revoked, ended in another tab), including on a hard refresh of the login page. See lib/account-appearance.ts.
+  const wasSignedIn = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (user) {
+      wasSignedIn.current = true;
+      markAccountAppearance(user.uid);
+      return;
+    }
+    if (!signOutResetNeeded({ wasSignedIn: wasSignedIn.current, ownerMarker: readAccountAppearanceOwner() })) return;
+    wasSignedIn.current = false;
+    clearAccountAppearance();
+    setThemeIdState(defaultThemeId);
+    setColorModeState(DEFAULT_COLOR_MODE);
+    setGradientIntensityState(DEFAULT_GRADIENT_INTENSITY);
+  }, [user, loading]);
+
+  // Signing out in another tab: Firebase Auth shares the session between tabs, so this tab's `user` turns null by itself and the effect above
+  // resets it. The other tab's clean-up removes the owner marker first, though; if this tab is still signed in when that arrives, put the marker
+  // back so a refresh before the sign-out reaches us still knows the mirrors are account-derived.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== ACCOUNT_APPEARANCE_OWNER_KEY || e.newValue !== null || !user) return;
+      markAccountAppearance(user.uid);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [user]);
+
   // Once the account's profile is known, its saved choices win (they follow the user between devices).
   useEffect(() => {
     if (accountThemeId === undefined && accountMode === undefined) return;
@@ -122,7 +163,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Gradient intensity: this browser's copy, and the CSS variable the page-gradient layer reads (lib/theme-css.ts sets it pre-paint too).
   useEffect(() => {
     if (!ready) return;
-    writeLocal(GRADIENT_INTENSITY_STORAGE_KEY, gradientIntensity);
+    writeLocal(GRADIENT_INTENSITY_STORAGE_KEY, gradientIntensity, DEFAULT_GRADIENT_INTENSITY);
     document.documentElement.style.setProperty("--gradient-strength", String(gradientStrength(gradientIntensity)));
   }, [ready, gradientIntensity]);
 
@@ -132,8 +173,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Mirror to this browser, and put it on <html>.
   useEffect(() => {
     if (!ready) return;
-    writeLocal(THEME_STORAGE_KEY, themeId);
-    writeLocal(COLOR_MODE_STORAGE_KEY, colorMode);
+    writeLocal(THEME_STORAGE_KEY, themeId, defaultThemeId);
+    writeLocal(COLOR_MODE_STORAGE_KEY, colorMode, DEFAULT_COLOR_MODE);
     const el = document.documentElement;
     const animate = hasApplied.current && (el.getAttribute("data-theme") !== themeId || el.getAttribute("data-mode") !== resolvedMode);
     hasApplied.current = true;

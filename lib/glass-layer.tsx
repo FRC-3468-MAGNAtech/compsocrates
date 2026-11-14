@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/lib/auth";
+import { APPEARANCE_RESET_EVENT } from "@/lib/account-appearance";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import {
   GLASS_LAYER_DEFAULT,
@@ -78,6 +79,14 @@ export function GlassLayerProvider({ children }: { children: ReactNode }) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLevelState(local);
     }
+  }, []);
+
+  // Sign-out (ThemeProvider cleared the account-derived mirrors, lib/account-appearance.ts): back to the default level. The saved level in
+  // the user doc is untouched. Any pending debounced save belongs to the account that just left and has already been flushed or is dropped.
+  useEffect(() => {
+    const onReset = () => setLevelState(GLASS_LAYER_DEFAULT);
+    window.addEventListener(APPEARANCE_RESET_EVENT, onReset);
+    return () => window.removeEventListener(APPEARANCE_RESET_EVENT, onReset);
   }, []);
 
   // Once the profile is known, the account's level wins; a level only this browser had is saved to the account once.
