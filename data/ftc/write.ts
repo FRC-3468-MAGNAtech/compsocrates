@@ -6,7 +6,7 @@
  * So far: saving, editing and deleting a Match Scout entry, and setting the active events. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
  * rules; a refusal is reported and rethrown like any other failure.
  */
-import { addDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, deleteDoc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError } from "@/lib/firestore-errors";
@@ -18,11 +18,16 @@ import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
 import { stripUndefined } from "@/data/ftc/util";
+import { ftcAttendanceDoc, ftcAttendanceDocId } from "@/data/ftc/attendance";
+import type { MemberAccess } from "@/lib/member-access";
+import type { TeamMember } from "@/lib/team-members";
 
 const PROGRAM = "ftc" as const;
 const SCOUT_ENTRIES = "scoutEntries";
 const TEAMS = "teams";
 const FORM_ENTRIES = "formEntries";
+const USERS = "users";
+const EVENT_ATTENDANCE = "eventAttendance";
 
 /** Runs a write; a failure is reported with its path and rethrown, so the caller can show it. */
 async function reported<T>(context: string, path: string, write: () => Promise<T>): Promise<T> {
@@ -128,4 +133,35 @@ export function adminUpdateFormEntry(id: string, patch: { excluded?: boolean; fl
 /** Admins only. */
 export function deleteFormEntry(id: string): Promise<void> {
   return reported("Couldn't delete the form entry", formEntryPath(id), () => deleteDoc(programDoc(db, PROGRAM, FORM_ENTRIES, id)));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// the team's people
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Records who attends an event: one doc per team and event. Allowed by the rules to whoever has the Assignments page (a lead scout by default; admins always). */
+export function setEventAttendance(teamId: string, eventCode: string, uids: string[]): Promise<void> {
+  const id = ftcAttendanceDocId(teamId, eventCode);
+  return reported("Couldn't save who is attending", `${programPath(PROGRAM, EVENT_ATTENDANCE)}/${id}`, () => setDoc(programDoc(db, PROGRAM, EVENT_ATTENDANCE, id), ftcAttendanceDoc(teamId, eventCode, uids, serverTimestamp)));
+}
+
+/**
+ * Saves what the Team Management editor changed (primary role, secondary roles, admin flag) and its `edit-member-roles` audit entry in one batch, so a role
+ * change can never land without its audit record. The member's doc already uses the app's own field names, so the changes are written as they are. Admins
+ * and the owner only, by the rules (an owner's row only by that owner; nobody removes their own admin flag). No-op for an empty change.
+ */
+export function updateMemberAccess(
+  actor: { teamId: string; uid: string; name: string },
+  member: Pick<TeamMember, "uid" | "name"> & MemberAccess,
+  changes: Partial<MemberAccess>
+): Promise<void> {
+  if (Object.keys(changes).length === 0) return Promise.resolve();
+  const before: MemberAccess = { primaryRole: member.primaryRole, secondaryRoles: member.secondaryRoles, isAdmin: member.isAdmin };
+  const after: MemberAccess = { ...before, ...changes };
+  return reported("Couldn't save the member's roles", `${programPath(PROGRAM, USERS)}/${member.uid}`, async () => {
+    const batch = writeBatch(db);
+    batch.update(programDoc(db, PROGRAM, USERS, member.uid), stripUndefined({ ...changes }));
+    batch.set(newAuditLogRef(PROGRAM), buildAuditEntry(actor.teamId, actor.uid, actor.name, "edit-member-roles", { targetUid: member.uid, targetName: member.name }, before, after));
+    await batch.commit();
+  });
 }

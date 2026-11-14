@@ -31,6 +31,7 @@ import { programCollection, programDoc, programPath } from "@/lib/firebase/paths
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import type { UserDoc } from "@/lib/auth";
 import type { MatchType } from "@/lib/events/types";
+import type { EventAttendance } from "@/lib/event-attendance";
 import type { FormEntry } from "@/lib/form-entries-model";
 import { formDocId, type FormDoc, type FormVersion } from "@/lib/forms/resolve";
 import type { Form } from "@/lib/forms/types";
@@ -42,6 +43,7 @@ import { ftcDocsToFormDocs, ftcDocToFormDoc, ftcDocToFormVersion } from "@/data/
 import { ftcDocsToScoutEntries, isEventEntry, type FtcRawRow } from "@/data/ftc/scouting";
 import { ftcTeamToTeamDoc } from "@/data/ftc/teams";
 import { ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
+import { ftcDocsToAttendance } from "@/data/ftc/attendance";
 import { isRecord } from "@/data/ftc/util";
 
 const PROGRAM = "ftc" as const;
@@ -51,6 +53,7 @@ const FORM_ENTRIES = "formEntries";
 const FORMS = "forms";
 const TEAMS = "teams";
 const USERS = "users";
+const EVENT_ATTENDANCE = "eventAttendance";
 
 type Equality = [field: string, value: string | number];
 type Target = { q: Query; path: string };
@@ -266,4 +269,13 @@ export function getUserProfile(uid: string): Promise<UserDoc | null> {
 /** Realtime profile (null while the account has no user doc here). */
 export function subscribeUserProfile(uid: string, onData: (profile: UserDoc | null) => void, onError: Failure): Unsubscribe {
   return watchOne("Couldn't load the profile", programDoc(db, PROGRAM, USERS, uid), ftcUserToProfile, onData, onError);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// event attendance
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Realtime, every event the team has attendance recorded for. */
+export function subscribeTeamAttendance(teamId: string, onData: (records: EventAttendance[]) => void, onError: Failure): Unsubscribe {
+  return watchRows("Couldn't load event attendance", teamQuery(EVENT_ATTENDANCE, teamId), (rows) => onData(ftcDocsToAttendance(rows)), onError);
 }

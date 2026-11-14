@@ -15,7 +15,10 @@ import { ftcProgramData } from "@/lib/ftc/program-data";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { UserDoc } from "@/lib/auth";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
+import type { EventAttendance } from "@/lib/event-attendance";
 import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
+import type { MemberAccess } from "@/lib/member-access";
+import type { TeamMember } from "@/lib/team-members";
 import type { FormDoc } from "@/lib/forms/resolve";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { useProgram } from "@/lib/program/context";
@@ -66,6 +69,17 @@ export type ProgramData = {
     /** Admins only, by the rules. */
     adminUpdate(id: string, patch: { excluded?: boolean; flags?: FormEntry["flags"]; values?: FormValues }): Promise<void>;
     delete(id: string): Promise<void>;
+  };
+  members: {
+    /** The team's roster. */
+    subscribe(teamId: string, onData: (members: TeamMember[]) => void, onError: DataError): Unsubscribe;
+    /** Saves a role or admin change and its audit entry in one batch (admins and the owner, by the rules). */
+    updateAccess(actor: { teamId: string; uid: string; name: string }, member: Pick<TeamMember, "uid" | "name"> & MemberAccess, changes: Partial<MemberAccess>): Promise<void>;
+  };
+  attendance: {
+    /** Every event the team has attendance recorded for. */
+    subscribeTeam(teamId: string, onData: (records: EventAttendance[]) => void, onError: DataError): Unsubscribe;
+    set(teamId: string, eventCode: string, uids: string[]): Promise<void>;
   };
   forms: {
     subscribeDocs(teamId: string, onData: (docs: Map<string, FormDoc>) => void, onError: DataError): Unsubscribe;

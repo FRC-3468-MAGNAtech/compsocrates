@@ -48,14 +48,14 @@ type Actor = { teamId: string; uid: string; name: string };
  * `edit-page-access` audit entry), so two admins editing different cells at once compose instead of one overwriting the
  * other. `change` says what was changed, for the log. Returns false (writing nothing) when the edit changes nothing.
  */
-export async function updatePageAccess(actor: Actor, apply: (config: PageAccessConfig) => PageAccessConfig, change: Record<string, unknown>): Promise<boolean> {
+export async function updatePageAccess(actor: Actor, apply: (config: PageAccessConfig) => PageAccessConfig, change: Record<string, unknown>, program: ProgramId = DEFAULT_PROGRAM): Promise<boolean> {
   return runTransaction(db, async (tx) => {
-    const snap = await tx.get(settingsRef(actor.teamId));
+    const snap = await tx.get(settingsRef(actor.teamId, program));
     const before = parsePageAccess(snap.exists() ? snap.data() : undefined);
     const after = apply(before);
     if (samePageAccess(before, after)) return false;
-    tx.set(settingsRef(actor.teamId), pageAccessDocData(after, actor.uid));
-    tx.set(newAuditLogRef(), buildAuditEntry(actor.teamId, actor.uid, actor.name, "edit-page-access", change, summarize(before), summarize(after)));
+    tx.set(settingsRef(actor.teamId, program), pageAccessDocData(after, actor.uid));
+    tx.set(newAuditLogRef(program), buildAuditEntry(actor.teamId, actor.uid, actor.name, "edit-page-access", change, summarize(before), summarize(after)));
     return true;
   });
 }
@@ -102,18 +102,18 @@ export async function requestPageAccess(actor: Actor, pageId: string, program: P
  * and marks the request; denying only marks the request. One audit entry either way. A request someone else already
  * decided is left alone (returns false).
  */
-export async function decidePageAccessRequest(actor: Actor, request: PageAccessRequest, approve: boolean): Promise<boolean> {
-  const requestRef = doc(requestsRef(actor.teamId), request.id);
+export async function decidePageAccessRequest(actor: Actor, request: PageAccessRequest, approve: boolean, program: ProgramId = DEFAULT_PROGRAM): Promise<boolean> {
+  const requestRef = doc(requestsRef(actor.teamId, program), request.id);
   return runTransaction(db, async (tx) => {
-    const [requestSnap, settingsSnap] = await Promise.all([tx.get(requestRef), tx.get(settingsRef(actor.teamId))]);
+    const [requestSnap, settingsSnap] = await Promise.all([tx.get(requestRef), tx.get(settingsRef(actor.teamId, program))]);
     if (!requestSnap.exists() || requestSnap.data().status !== "pending") return false;
     tx.update(requestRef, { status: approve ? "approved" : "denied", decidedBy: actor.uid, decidedAt: serverTimestamp() });
     if (approve) {
       const before = parsePageAccess(settingsSnap.exists() ? settingsSnap.data() : undefined);
-      tx.set(settingsRef(actor.teamId), pageAccessDocData(grantMemberPage(before, request.uid, request.pageId), actor.uid));
+      tx.set(settingsRef(actor.teamId, program), pageAccessDocData(grantMemberPage(before, request.uid, request.pageId), actor.uid));
     }
     tx.set(
-      newAuditLogRef(),
+      newAuditLogRef(program),
       buildAuditEntry(actor.teamId, actor.uid, actor.name, "decide-page-access-request", { targetUid: request.uid, targetName: request.name, pageId: request.pageId, decision: approve ? "approved" : "denied" }, null, null)
     );
     return true;

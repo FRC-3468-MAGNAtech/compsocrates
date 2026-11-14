@@ -5,6 +5,8 @@ vi.mock("@/data/ftc/write", () => ({
   saveScoutEntry: (...args: unknown[]) => h.save(...args),
   updateScoutEntry: (...args: unknown[]) => h.update(...args),
   deleteScoutEntry: (...args: unknown[]) => h.remove(...args),
+  setEventAttendance: (...args: unknown[]) => h.other(...args),
+  updateMemberAccess: (...args: unknown[]) => h.other(...args),
   setActiveEvents: (...args: unknown[]) => h.events(...args),
   saveFormEntry: (...args: unknown[]) => h.other(...args),
   updateFormEntry: (...args: unknown[]) => h.other(...args),
@@ -15,6 +17,8 @@ vi.mock("@/data/ftc/write", () => ({
 
 import { deleteEntry, saveEntry, updateEntry, type SaveEntryInput } from "@/lib/scout-entries";
 import { setActiveEvent, setActiveEvents } from "@/lib/team";
+import { setEventAttendance } from "@/lib/event-attendance";
+import { updateMemberAccess } from "@/lib/team-members";
 import { adminUpdateFormEntry, deleteFormEntry, editOwnFormEntry, saveFormEntry, updateFormEntry } from "@/lib/form-entries";
 
 const input: SaveEntryInput = {
@@ -122,6 +126,30 @@ describe("form entry writers and the program", () => {
     await saveFormEntry("team-a", "u1", entryInput).catch(() => undefined);
     await deleteFormEntry("fe1").catch(() => undefined);
     await adminUpdateFormEntry("fe1", { excluded: true }).catch(() => undefined);
+    expect(h.other).not.toHaveBeenCalled();
+  });
+});
+
+describe("people writers and the program", () => {
+  const actor = { teamId: "team-a", uid: "u1", name: "Ada" };
+  const member = { uid: "u2", name: "Grace", primaryRole: "match-scout" as const, secondaryRoles: [], isAdmin: false };
+
+  it("write through the program's own data port when the program has one", async () => {
+    h.other.mockResolvedValue(undefined);
+    await updateMemberAccess(actor, member, { isAdmin: true }, "ftc");
+    await setEventAttendance("team-a", "EV1", ["u1"], "ftc");
+    expect(h.other).toHaveBeenCalledWith(actor, member, { isAdmin: true });
+    expect(h.other).toHaveBeenCalledWith("team-a", "EV1", ["u1"]);
+  });
+
+  it("an empty role change writes nothing, anywhere", async () => {
+    await updateMemberAccess(actor, member, {}, "ftc");
+    expect(h.other).not.toHaveBeenCalled();
+  });
+
+  it("the default program never touches the program port", async () => {
+    await updateMemberAccess(actor, member, { isAdmin: true }).catch(() => undefined);
+    await setEventAttendance("team-a", "EV1", ["u1"]).catch(() => undefined);
     expect(h.other).not.toHaveBeenCalled();
   });
 });

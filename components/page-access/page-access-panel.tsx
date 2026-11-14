@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { setMemberPageState, setRoleGrant, type MemberPageState, type PageAccessConfig } from "@/lib/page-access/access";
 import { decidePageAccessRequest, updatePageAccess, usePageAccess, usePageAccessRequests, type PageAccessRequest } from "@/lib/page-access/store";
 import { getRole, type RoleId } from "@/lib/roles";
@@ -147,6 +148,8 @@ export function PageAccessPanelView({
 /** The write helpers both connected views use: each edit is a transaction that applies to the latest stored config. */
 function usePageAccessEditing() {
   const { user, profile } = useAuth();
+  // the edit is written to the active program's account, with its audit entry
+  const program = useProgram();
   const [error, setError] = useState<string | null>(null);
   const actor = user && profile ? { teamId: profile.teamId, uid: user.uid, name: profile.name } : null;
 
@@ -154,7 +157,7 @@ function usePageAccessEditing() {
     if (!actor) return;
     setError(null);
     try {
-      await updatePageAccess(actor, apply, change);
+      await updatePageAccess(actor, apply, change, program);
     } catch {
       setError("Couldn't save that change. You may be offline, or no longer allowed to edit page access.");
     }
@@ -162,6 +165,7 @@ function usePageAccessEditing() {
   return {
     error,
     actor,
+    program,
     toggleRole: (role: RoleId, pageId: string, on: boolean) => run((c) => setRoleGrant(c, role, pageId, on), { kind: "role", role, pageId, on }),
     setMemberPage: (member: TeamMember, pageId: string, state: MemberPageState) => run((c) => setMemberPageState(c, member.uid, pageId, state), { kind: "member", targetUid: member.uid, targetName: member.name, pageId, state }),
   };
@@ -183,7 +187,7 @@ export function PageAccessPanel() {
     setBusyId(request.id);
     setDecideError(null);
     try {
-      await decidePageAccessRequest(edit.actor, request, approve);
+      await decidePageAccessRequest(edit.actor, request, approve, edit.program);
     } catch {
       setDecideError("Couldn't save that decision. Check your connection and try again.");
     } finally {

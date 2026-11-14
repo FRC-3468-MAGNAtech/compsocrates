@@ -10,9 +10,9 @@ describe("the program data port", () => {
     expect(programData(DEFAULT_PROGRAM)).toBeNull();
   });
 
-  it("offers every read and write the scout page uses", () => {
-    expect(Object.keys(ftcProgramData).sort()).toEqual(["formEntries", "forms", "games", "profile", "scoutEntries", "team"]);
-    for (const fn of [ftcProgramData.profile.subscribe, ftcProgramData.team.subscribe, ftcProgramData.team.setActiveEvents, ftcProgramData.scoutEntries.subscribeTeam, ftcProgramData.scoutEntries.save, ftcProgramData.scoutEntries.update, ftcProgramData.scoutEntries.delete, ftcProgramData.formEntries.subscribe, ftcProgramData.forms.subscribeDocs, ftcProgramData.forms.loadVersion]) {
+  it("offers every read and write the connected pages use", () => {
+    expect(Object.keys(ftcProgramData).sort()).toEqual(["attendance", "formEntries", "forms", "games", "members", "profile", "scoutEntries", "team"]);
+    for (const fn of [ftcProgramData.profile.subscribe, ftcProgramData.team.subscribe, ftcProgramData.team.setActiveEvents, ftcProgramData.scoutEntries.subscribeTeam, ftcProgramData.scoutEntries.save, ftcProgramData.scoutEntries.update, ftcProgramData.scoutEntries.delete, ftcProgramData.formEntries.subscribe, ftcProgramData.forms.subscribeDocs, ftcProgramData.forms.loadVersion, ftcProgramData.members.subscribe, ftcProgramData.members.updateAccess, ftcProgramData.attendance.subscribeTeam, ftcProgramData.attendance.set]) {
       expect(typeof fn).toBe("function");
     }
   });

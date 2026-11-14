@@ -7,6 +7,7 @@ import { diffEntryValues, formEntryDoc, type NewFormEntry } from "@/lib/form-ent
 import { ftcDocsToFormEntries } from "@/data/ftc/form-entries";
 import { ftcDocsToFormDocs, ftcDocToFormVersion } from "@/data/ftc/forms";
 import { ftcDocsToScoutEntries, ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
+import { ftcAttendanceDoc, ftcAttendanceDocId, ftcDocsToAttendance } from "@/data/ftc/attendance";
 import { ftcActiveEventsFields, ftcTeamToTeamDoc, readStoredEvent } from "@/data/ftc/teams";
 import { ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
 import { programPath } from "@/lib/firebase/paths";
@@ -262,5 +263,38 @@ describe("form entries: saving, editing your own, admin edit and delete", () => 
     await assertSucceeds(updateDoc(doc(as(ADMIN), P("formEntries"), ref.id), { excluded: true, flags: [{ id: "f1", reason: "Other", addedAt: "t" }], updatedAt: serverTimestamp() }));
     await assertFails(deleteDoc(doc(as(PIT), P("formEntries"), ref.id)));
     await assertSucceeds(deleteDoc(doc(as(ADMIN), P("formEntries"), ref.id)));
+  });
+});
+
+describe("the team's people: roles and attendance", () => {
+  const LEAD = "ftc-lead-1";
+  const changes = { primaryRole: "lead-scout", secondaryRoles: ["pit-scout"], isAdmin: false };
+  const roleBatch = (uid: string, target: string, patch: Record<string, unknown>) => {
+    const db = as(uid);
+    const batch = writeBatch(db);
+    batch.update(doc(db, P("users"), target), patch);
+    batch.set(doc(collection(db, P("auditLog"))), buildAuditEntry(T1, uid, "n", "edit-member-roles", { targetUid: target }, {}, patch));
+    return batch.commit();
+  };
+
+  it("an admin changes a member's roles with the audit entry in the same batch, and it reads back as that member", async () => {
+    await assertSucceeds(roleBatch(ADMIN, SCOUT, changes));
+    const snap = await assertSucceeds(getDoc(doc(as(ADMIN), P("users"), SCOUT)));
+    expect(ftcUserToMember(snap.id, snap.data() ?? {})).toMatchObject({ uid: SCOUT, primaryRole: "lead-scout", secondaryRoles: ["pit-scout"], isAdmin: false });
+  });
+
+  it("a member cannot change roles, an admin of another team cannot, and nobody removes their own admin flag", async () => {
+    await assertFails(roleBatch(PIT, PIT, { primaryRole: "lead-scout", secondaryRoles: [], isAdmin: true }));
+    await assertFails(roleBatch(OTHER, SCOUT, changes));
+    await assertFails(roleBatch(ADMIN, ADMIN, { isAdmin: false }));
+  });
+
+  it("a lead scout records attendance (the Assignments page's default) and it reads back; a match scout cannot", async () => {
+    const id = ftcAttendanceDocId(T1, "EV1");
+    await assertSucceeds(setDoc(doc(as(LEAD), P("eventAttendance"), id), ftcAttendanceDoc(T1, "EV1", [SCOUT, PIT, SCOUT], serverTimestamp)));
+    const snap = await assertSucceeds(getDocs(query(collection(as(PIT), P("eventAttendance")), where("teamId", "==", T1))));
+    expect(ftcDocsToAttendance(snap.docs.map((d) => ({ id: d.id, data: d.data() })))).toMatchObject([{ id, teamId: T1, eventCode: "EV1", uids: [SCOUT, PIT] }]);
+    await assertFails(setDoc(doc(as(PIT), P("eventAttendance"), ftcAttendanceDocId(T1, "EV2")), ftcAttendanceDoc(T1, "EV2", [PIT], serverTimestamp)));
+    await assertFails(getDocs(query(collection(as(PIT), P("eventAttendance")), where("teamId", "==", T2))));
   });
 });

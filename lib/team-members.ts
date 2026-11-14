@@ -9,6 +9,8 @@ import type { RoleId } from "@/lib/roles";
 import type { AvatarChoice } from "@/lib/profile/config";
 import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToMember, profilePatchToCsUser } from "@/data/cs/users";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
 
 export type TeamMember = {
   uid: string;
@@ -29,6 +31,8 @@ export type TeamMember = {
 
 /** Realtime roster for a team — backs both Team Management (editable, admin-only) and People (read-only). */
 export function useTeamMembers(teamId: string | null) {
+  // A namespaced program reads its roster through its data port; the root program's read below is untouched.
+  const data = useProgramData();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -41,6 +45,20 @@ export function useTeamMembers(teamId: string | null) {
       setMembers([]);
       setLoaded(true);
       return;
+    }
+    if (data) {
+      return data.members.subscribe(
+        teamId,
+        (next) => {
+          setMembers(next);
+          setLoaded(true);
+        },
+        () => {
+          // already reported by the port
+          setMembers([]);
+          setLoaded(true);
+        }
+      );
     }
     const q = query(collection(db, "users"), where("teamId", "==", teamId));
     const unsubscribe = onSnapshot(
@@ -58,7 +76,7 @@ export function useTeamMembers(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId]);
+  }, [teamId, data]);
 
   return { members, loaded };
 }
@@ -75,9 +93,13 @@ export function useTeamMembers(teamId: string | null) {
 export async function updateMemberAccess(
   actor: { teamId: string; uid: string; name: string },
   member: Pick<TeamMember, "uid" | "name" | "legacyRole"> & MemberAccess,
-  changes: Partial<MemberAccess>
+  changes: Partial<MemberAccess>,
+  program: ProgramId = DEFAULT_PROGRAM
 ) {
   if (Object.keys(changes).length === 0) return;
+  // A namespaced program's member docs already use the app's field names; its port writes them and the audit entry in one batch.
+  const data = programData(program);
+  if (data) return data.members.updateAccess(actor, member, changes);
 
   const before: MemberAccess = {
     primaryRole: member.primaryRole,
