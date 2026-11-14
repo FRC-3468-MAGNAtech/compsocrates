@@ -18,6 +18,7 @@ import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
 import { stripUndefined } from "@/data/ftc/util";
+import { ftcProfilePatch, type FtcProfilePatch } from "@/data/ftc/users";
 import { ftcAttendanceDoc, ftcAttendanceDocId } from "@/data/ftc/attendance";
 import { ftcPickListDoc, ftcPickListId } from "@/data/ftc/pick-list";
 import { applyPickOp, samePicks, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
@@ -192,4 +193,11 @@ export function editPickList(ctx: { teamId: string; eventCode: string; uid: stri
       return true;
     })
   );
+}
+
+/** A person changes their own profile (name, theme, avatar). Nothing is written for a change with no allowed field; the rules refuse any change to roles, team or flags. */
+export function updateUserProfile(uid: string, patch: FtcProfilePatch): Promise<void> {
+  const fields = ftcProfilePatch(patch);
+  if (Object.keys(fields).length === 0) return Promise.resolve();
+  return reported("Couldn't save your profile", `${programPath(PROGRAM, USERS)}/${uid}`, () => updateDoc(programDoc(db, PROGRAM, USERS, uid), fields));
 }

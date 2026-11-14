@@ -17,6 +17,7 @@ import {
   updateFormEntry,
   updateMemberAccess,
   updateScoutEntry,
+  updateUserProfile,
 } from "@/data/ftc/write";
 
 /** A game is a season, named like the stored data names it: the game id lower-cased. */
@@ -28,7 +29,7 @@ export const FTC_SEASONS: readonly ProgramSeason[] = FTC_GAME_ID_LIST.map((id) =
 });
 
 export const ftcProgramData: ProgramData = {
-  profile: { subscribe: subscribeUserProfile },
+  profile: { subscribe: subscribeUserProfile, update: updateUserProfile },
   team: { subscribe: subscribeTeamDoc, setActiveEvents },
   scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry, update: updateScoutEntry, delete: deleteScoutEntry },
   formEntries: {

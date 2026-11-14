@@ -43,7 +43,11 @@ export type ProgramSeason = {
 export type FormEntriesQuery = { formId?: string; formType?: string; eventCode?: string };
 
 export type ProgramData = {
-  profile: { subscribe(uid: string, onData: (profile: UserDoc | null) => void, onError: DataError): Unsubscribe };
+  profile: {
+    subscribe(uid: string, onData: (profile: UserDoc | null) => void, onError: DataError): Unsubscribe;
+    /** A person changes their own name, theme or avatar. */
+    update(uid: string, patch: Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar">>): Promise<void>;
+  };
   team: {
     subscribe(teamId: string, onData: (team: TeamDoc | null) => void, onError: DataError): Unsubscribe;
     /** Sets the account's active events (admins and the owner, by the rules). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ftcUserToMember, ftcUserToProfile, readMemberFieldTeamIds, rolesFromFtcUser, type FtcUserDoc } from "@/data/ftc/users";
+import { ftcProfilePatch, ftcUserToMember, ftcUserToProfile, readMemberFieldTeamIds, rolesFromFtcUser, type FtcUserDoc } from "@/data/ftc/users";
 import { parseAvatar } from "@/lib/profile/model";
 import { defaultThemeId } from "@/lib/themes";
 
@@ -104,5 +104,17 @@ describe("readMemberFieldTeamIds", () => {
     expect(readMemberFieldTeamIds({ fieldTeamIds: [] })).toEqual([]);
     expect(readMemberFieldTeamIds({})).toBeUndefined();
     expect(readMemberFieldTeamIds({ fieldTeamIds: "ft-1" })).toBeUndefined();
+  });
+});
+
+describe("ftcProfilePatch (what a person's own change writes)", () => {
+  it("keeps the name, theme, colour mode, gradient and avatar, and nothing else", () => {
+    const patch = ftcProfilePatch({ name: "Ada", themeId: "team", colorMode: "dark", gradientIntensity: "vivid", avatar: { kind: "initials" } as never, isAdmin: true, teamId: "x", primaryRole: "lead-scout" } as never);
+    expect(patch).toEqual({ name: "Ada", themeId: "team", colorMode: "dark", gradientIntensity: "vivid", avatar: { kind: "initials" } });
+  });
+
+  it("drops undefined values; an empty change is empty", () => {
+    expect(ftcProfilePatch({ name: undefined, themeId: "team" })).toEqual({ themeId: "team" });
+    expect(ftcProfilePatch({})).toEqual({});
   });
 });

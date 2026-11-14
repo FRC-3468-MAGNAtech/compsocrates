@@ -2,7 +2,10 @@
 
 import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { programPath } from "@/lib/firebase/paths";
+import { useProgram } from "@/lib/program/context";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { CATEGORY_IDS, type StatusCategory } from "@/lib/scout-status/categories";
 import { EMPTY_SETUP, type EventSetup } from "@/lib/scout-status/compute";
@@ -56,6 +59,7 @@ export function setupFromData(data: Record<string, unknown> | undefined): EventS
 
 /** Realtime setups for every event of the team, by event code. Read as a team-scoped query (rules are not filters, and a doc that does not exist yet cannot be read directly). */
 export function useScoutTargets(teamId: string | null) {
+  const program = useProgram();
   const [setups, setSetups] = useState<Map<string, EventSetup>>(new Map());
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const [error, setError] = useState<FirestoreFailure | null>(null);
@@ -70,27 +74,27 @@ export function useScoutTargets(teamId: string | null) {
     }
     setError(null);
     const unsubscribe = onSnapshot(
-      query(collection(db, COLLECTION), where("teamId", "==", teamId)),
+      query(collection(db, programPath(program, COLLECTION)), where("teamId", "==", teamId)),
       (snap) => {
         setSetups(new Map(snap.docs.map((d) => [String(d.data().eventCode), setupFromData(d.data())])));
         setLoaded(true);
       },
       (err) => {
-        reportFirestoreError("scoutTargets subscription failed", err, `scoutTargets where teamId == ${teamId}`);
-        setError(describeFirestoreError("Couldn't load the scout targets", err, `scoutTargets where teamId == ${teamId}`));
+        reportFirestoreError("scoutTargets subscription failed", err, `${programPath(program, COLLECTION)} where teamId == ${teamId}`);
+        setError(describeFirestoreError("Couldn't load the scout targets", err, `${programPath(program, COLLECTION)} where teamId == ${teamId}`));
         setSetups(new Map());
         setLoaded(true);
       }
     );
     return unsubscribe;
-  }, [teamId, attempt]);
+  }, [teamId, attempt, program]);
 
   return useMemo(() => ({ setups, loaded, error, retry: () => setAttempt((n) => n + 1) }), [setups, loaded, error]);
 }
 
 /** Saves one event's whole setup (replacing the doc). */
-export async function saveScoutTargets(actor: { teamId: string; uid: string }, eventCode: string, setup: EventSetup): Promise<void> {
-  await setDoc(doc(db, COLLECTION, scoutTargetsId(actor.teamId, eventCode)), {
+export async function saveScoutTargets(actor: { teamId: string; uid: string }, eventCode: string, setup: EventSetup, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  await setDoc(doc(db, programPath(program, COLLECTION), scoutTargetsId(actor.teamId, eventCode)), {
     teamId: actor.teamId,
     eventCode,
     ranges: setup.ranges,

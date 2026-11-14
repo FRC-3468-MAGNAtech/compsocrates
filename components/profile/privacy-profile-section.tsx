@@ -11,6 +11,7 @@ import { Shimmer } from "@/components/ui/shimmer";
 import { useAuth } from "@/lib/auth";
 import { AVATAR_PRESETS, BIO_MAX, DEFAULT_AVATAR, DISPLAY_NAME_MAX, PRONOUNS_MAX, type AvatarChoice, type ProfileVisibility } from "@/lib/profile/config";
 import { isGoogleAvatarUrl, sanitizeBio, sanitizeDisplayName, sanitizePronouns, visibilityToSave, type ProfileDoc } from "@/lib/profile/model";
+import { useProgram } from "@/lib/program/context";
 import { saveOwnProfile, useProfile, type ProfileEdit } from "@/lib/profile/service";
 import { DEFAULT_PROFILE_VISIBILITY } from "@/lib/profile/config";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ const sameAvatar = (a: AvatarChoice, b: AvatarChoice) => a.type === b.type && a.
 /** Account Settings > Privacy and profile (P25): picture, display name, pronouns, bio and who can see the profile page. */
 export function PrivacyProfileSection() {
   const { user, profile: me } = useAuth();
+  const program = useProgram();
   const state = useProfile(user?.uid ?? null, me?.teamId ?? null);
   // Held here, not in the form: a save changes the stored profile, which restarts the form (see the key below).
   const [justSaved, setJustSaved] = useState(false);
@@ -43,7 +45,7 @@ export function PrivacyProfileSection() {
       googleUrl={user.photoURL && isGoogleAvatarUrl(user.photoURL) ? user.photoURL : null}
       justSaved={justSaved}
       onSave={async (edit) => {
-        await saveOwnProfile({ uid: user.uid, teamId: me.teamId }, edit);
+        await saveOwnProfile({ uid: user.uid, teamId: me.teamId }, edit, program);
         setJustSaved(true);
       }}
       // FIX4: the visibility choice saves by itself, with the profile's stored text (never what is half-typed in the form).
@@ -56,7 +58,8 @@ export function PrivacyProfileSection() {
             pronouns: saved?.pronouns ?? "",
             avatar: saved?.avatar ?? me.avatar ?? DEFAULT_AVATAR,
             visibility,
-          }
+          },
+          program
         )
       }
     />

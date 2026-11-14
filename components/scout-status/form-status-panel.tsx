@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useAnalyticsData } from "@/lib/analytics/data-context";
 import { useEventTeams } from "@/lib/analytics/use-event-data";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { useTeamEventAttendance } from "@/lib/event-attendance";
 import { useFormEntries } from "@/lib/form-entries";
 import { useIsOurTeam } from "@/lib/our-team";
@@ -359,6 +360,7 @@ function HelperStatus({ rows, now }: { rows: HelperCountRow[]; now: number }) {
  */
 export function FormStatusPanel({ type, views, eventCodes, members, canEdit, practice, assignedCounts }: { type: ScoutStatusFormType; views: EventSetupView[]; eventCodes: string[]; members: { uid: string; name: string; primaryRole: string; secondaryRoles: string[]; isAdmin: boolean; isOwner?: boolean }[]; canEdit: boolean; practice: boolean; assignedCounts: ReadonlyMap<string, number> | null }) {
   const { user, profile } = useAuth();
+  const program = useProgram();
   const teamId = profile?.teamId ?? null;
   const data = useAnalyticsData();
   const { config } = usePageAccess();
@@ -395,7 +397,7 @@ export function FormStatusPanel({ type, views, eventCodes, members, canEdit, pra
   const singleView = views.length === 1 ? views[0] : null;
   const save = (view: EventSetupView, next: TeamTargetSetup) => {
     if (!teamId || !user || (type.id !== "pit-scout" && type.id !== "team-strategy")) return;
-    void saveScoutTargets({ teamId, uid: user.uid }, view.eventCode, { ...view.setup, teamTargets: { ...view.setup.teamTargets, [type.id]: next } }).catch((err) => console.error("couldn't save the team targets:", err));
+    void saveScoutTargets({ teamId, uid: user.uid }, view.eventCode, { ...view.setup, teamTargets: { ...view.setup.teamTargets, [type.id]: next } }, program).catch((err) => console.error("couldn't save the team targets:", err));
   };
 
   const props = useMemo<Omit<FormStatusViewProps, "type" | "now" | "multiEvent">>(() => {

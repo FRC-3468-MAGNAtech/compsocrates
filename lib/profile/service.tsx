@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, serverTimestamp, writeBatch } from "firebase/firestore";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { programPath } from "@/lib/firebase/paths";
+import { useProgram } from "@/lib/program/context";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import type { AvatarChoice, ProfileVisibility } from "@/lib/profile/config";
 import { parseProfile, type ProfileDoc } from "@/lib/profile/model";
@@ -27,6 +30,7 @@ export type ProfileState =
  * (the rules re-check an open listener); turning it back is picked up on the next retry.
  */
 export function useProfile(uid: string | null, teamId: string | null): ProfileState {
+  const program = useProgram();
   const [held, setHeld] = useState<{ key: string; state: ProfileState } | null>(null);
   // FIX4: Firestore ends a listener for good once the rules refuse it, so "denied" would never turn back into "ready"
   // when the member makes their profile public again. A refused listener is therefore re-opened after a pause.
@@ -38,14 +42,14 @@ export function useProfile(uid: string | null, teamId: string | null): ProfileSt
     const k = `${uid}|${teamId}`;
     let retry: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = onSnapshot(
-      doc(db, "profiles", uid),
+      doc(db, programPath(program, "profiles"), uid),
       (snap) => setHeld({ key: k, state: { status: "ready", profile: snap.exists() ? parseProfile(snap.data(), teamId) : null } }),
       (err) => {
         if ((err as { code?: string }).code === "permission-denied") {
           setHeld({ key: k, state: { status: "denied" } });
           retry = setTimeout(() => setAttempt((n) => n + 1), DENIED_RETRY_MS);
         } else {
-          reportFirestoreError("profile subscription failed", err, `profiles/${uid}`);
+          reportFirestoreError("profile subscription failed", err, `${programPath(program, "profiles")}/${uid}`);
           setHeld({ key: k, state: { status: "error" } });
         }
       }
@@ -54,7 +58,7 @@ export function useProfile(uid: string | null, teamId: string | null): ProfileSt
       if (retry) clearTimeout(retry);
       unsubscribe();
     };
-  }, [uid, teamId, attempt]);
+  }, [uid, teamId, attempt, program]);
 
   if (!key || !isFirebaseConfigured()) return { status: "ready", profile: null };
   return held?.key === key ? held.state : { status: "loading" };
@@ -73,9 +77,9 @@ export type ProfileEdit = {
  * show it) in one batch. The caller sanitizes the text (lib/profile/model.ts) and, for an admin, passes the
  * visibility they already have (the rules refuse a change).
  */
-export async function saveOwnProfile(actor: { uid: string; teamId: string }, edit: ProfileEdit): Promise<void> {
+export async function saveOwnProfile(actor: { uid: string; teamId: string }, edit: ProfileEdit, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
   const batch = writeBatch(db);
-  batch.set(doc(db, "profiles", actor.uid), {
+  batch.set(doc(db, programPath(program, "profiles"), actor.uid), {
     teamId: actor.teamId,
     displayName: edit.displayName,
     bio: edit.bio,
@@ -84,7 +88,7 @@ export async function saveOwnProfile(actor: { uid: string; teamId: string }, edi
     visibility: edit.visibility,
     updatedAt: serverTimestamp(),
   });
-  batch.update(doc(db, "users", actor.uid), { avatar: edit.avatar });
+  batch.update(doc(db, programPath(program, "users"), actor.uid), { avatar: edit.avatar });
   await batch.commit();
 }
 
@@ -94,12 +98,13 @@ export async function saveOwnProfile(actor: { uid: string; teamId: string }, edi
  */
 export async function clearProfileText(
   actor: { teamId: string; uid: string; name: string },
-  target: { uid: string; name: string; bio: string; pronouns: string }
+  target: { uid: string; name: string; bio: string; pronouns: string },
+  program: ProgramId = DEFAULT_PROGRAM
 ): Promise<void> {
   const batch = writeBatch(db);
-  batch.update(doc(db, "profiles", target.uid), { bio: "", pronouns: "", updatedAt: serverTimestamp() });
+  batch.update(doc(db, programPath(program, "profiles"), target.uid), { bio: "", pronouns: "", updatedAt: serverTimestamp() });
   batch.set(
-    newAuditLogRef(),
+    newAuditLogRef(program),
     buildAuditEntry(
       actor.teamId,
       actor.uid,

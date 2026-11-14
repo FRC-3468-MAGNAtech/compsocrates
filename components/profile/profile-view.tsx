@@ -11,6 +11,7 @@ import { eventLabel } from "@/lib/events/names";
 import { useEventNames } from "@/lib/events/use-event-names";
 import type { ProfileDoc } from "@/lib/profile/model";
 import { clearProfileText, useProfile } from "@/lib/profile/service";
+import { useProgram } from "@/lib/program/context";
 import { computeProfileStats, eventTargetProgress } from "@/lib/profile/stats";
 import { useScoutStatsSources } from "@/lib/scout-stats/use-scout-stats";
 import { useScoutTargets } from "@/lib/scout-status/store";
@@ -79,6 +80,7 @@ export function ProfileView({ uid }: { uid: string }) {
 /** The part that loads the team's scouting data: only mounted when the viewer may see this profile. */
 function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member: TeamMember; profile: ProfileDoc | null; teamId: string | null; isSelf: boolean; canModerate: boolean }) {
   const { user, profile: me } = useAuth();
+  const program = useProgram();
   const sources = useScoutStatsSources(teamId);
   const { events: activeEvents, primaryCode } = useActiveEvents();
   const targets = useScoutTargets(teamId);
@@ -119,7 +121,7 @@ function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member:
       target={target}
       targetEventName={primaryCode ? eventName(primaryCode) : null}
       canModerate={canModerate}
-      onClear={profile && user && me ? () => clearProfileText({ teamId: me.teamId, uid: user.uid, name: me.name }, { uid: member.uid, name: member.name, bio: profile.bio, pronouns: profile.pronouns }) : undefined}
+      onClear={profile && user && me ? () => clearProfileText({ teamId: me.teamId, uid: user.uid, name: me.name }, { uid: member.uid, name: member.name, bio: profile.bio, pronouns: profile.pronouns }, program) : undefined}
     />
   );
 }

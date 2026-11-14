@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AuthContext, useAuth, type AuthContextValue, type UserDoc } from "@/lib/auth";
 import { useProgramData } from "@/lib/program/data";
 
-const NOT_AVAILABLE = "Editing your profile is not available in this program yet.";
+const NOT_SIGNED_IN = "Not signed in.";
 
 /**
  * The signed-in person's profile for the active program. The sign-in itself (the Firebase user, sign out, password) is one account across programs and
@@ -12,8 +12,7 @@ const NOT_AVAILABLE = "Editing your profile is not available in this program yet
  * own user doc, so `useAuth().profile` anywhere under it is that program's profile. The root program has no port: this renders its children untouched
  * and its profile is read by `AuthProvider` exactly as before.
  *
- * Writes to the profile (`updateUserProfile`) go to the root program's user doc, so under a ported program they refuse instead of writing there.
- * Settings and the profile page are not connected for such a program yet.
+ * Writes to the profile (`updateUserProfile`: name, theme, avatar) go to that program's own user doc through its port, never to the root program's.
  */
 export function ProgramAuth({ children }: { children: ReactNode }) {
   const data = useProgramData();
@@ -37,7 +36,7 @@ export function ProgramAuth({ children }: { children: ReactNode }) {
       ...base,
       profile: uid !== null && held?.uid === uid ? held.profile : null,
       loading: base.loading || !loaded,
-      updateUserProfile: () => Promise.reject(new Error(NOT_AVAILABLE)),
+      updateUserProfile: (patch) => (uid ? data.profile.update(uid, patch) : Promise.reject(new Error(NOT_SIGNED_IN))),
     };
   }, [data, base, uid, held]);
 

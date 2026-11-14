@@ -106,3 +106,15 @@ export function ftcUserToMember(uid: string, doc: FtcUserDoc): TeamMember {
     ...(joinedAtMs ? { joinedAtMs } : {}),
   };
 }
+
+/** The fields of an account's own profile the app lets a person change (their name, the look of the app, their avatar choice). */
+export type FtcProfilePatch = Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar">>;
+
+const PROFILE_FIELDS = ["name", "themeId", "colorMode", "gradientIntensity", "avatar"] as const satisfies readonly (keyof FtcProfilePatch)[];
+
+/** What to write for a change to one's own profile: only those fields, none of them `undefined`. Roles, team, admin and owner flags are never part of it. */
+export function ftcProfilePatch(patch: FtcProfilePatch): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of PROFILE_FIELDS) if (patch[key] !== undefined) out[key] = patch[key];
+  return out;
+}

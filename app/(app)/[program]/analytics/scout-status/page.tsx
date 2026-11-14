@@ -10,6 +10,7 @@ import { LoadError } from "@/components/practice/load-error";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Shimmer } from "@/components/ui/shimmer";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { usePermissions } from "@/lib/permissions";
 import { CATEGORY_IDS, STATUS_CATEGORIES, type StatusCategory } from "@/lib/scout-status/categories";
 import { DEFAULT_FORM_TYPE, scoutStatusFormType, scoutStatusFormTypes, type ScoutStatusFormTypeId } from "@/lib/scout-status/form-types";
@@ -38,6 +39,7 @@ function Section({ title, hint, defaultOpen, children }: { title: string; hint?:
 
 export default function ScoutStatusPage() {
   const { user, profile } = useAuth();
+  const program = useProgram();
   const { can } = usePermissions();
   const canEdit = can("editScoutTargets");
 
@@ -69,7 +71,7 @@ export default function ScoutStatusPage() {
     const view = status.views.find((v) => v.eventCode === eventCode);
     if (!view || !profile || !user) return;
     setSaveError(null);
-    saveScoutTargets({ teamId: profile.teamId, uid: user.uid }, eventCode, mutate(view.setup)).catch((err) => {
+    saveScoutTargets({ teamId: profile.teamId, uid: user.uid }, eventCode, mutate(view.setup), program).catch((err) => {
       console.error("couldn't save the scout targets:", err);
       setSaveError("Couldn't save that change. You may be offline, or no longer allowed to edit.");
     });

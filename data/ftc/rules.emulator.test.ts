@@ -11,7 +11,7 @@ import { ftcDocsToFormDocs, ftcDocToFormVersion } from "@/data/ftc/forms";
 import { ftcDocsToScoutEntries, ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
 import { ftcAttendanceDoc, ftcAttendanceDocId, ftcDocsToAttendance } from "@/data/ftc/attendance";
 import { ftcActiveEventsFields, ftcTeamToTeamDoc, readStoredEvent } from "@/data/ftc/teams";
-import { ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
+import { ftcProfilePatch, ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
 import { programPath } from "@/lib/firebase/paths";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 
@@ -332,5 +332,26 @@ describe("the shared pick list", () => {
 
   it("an admin edits too", async () => {
     await assertSucceeds(edit(ADMIN, T1, { type: "remove", team: 254 }));
+  });
+});
+
+describe("your own profile", () => {
+  it("changing your name, theme and avatar is accepted and reads back as that profile; roles, team and admin are not yours to change", async () => {
+    const db = as(PIT);
+    await assertSucceeds(updateDoc(doc(db, P("users"), PIT), ftcProfilePatch({ name: "Pia R.", themeId: "team", colorMode: "dark", gradientIntensity: "subtle", avatar: { type: "preset", value: "owl" } })));
+    const snap = await assertSucceeds(getDoc(doc(db, P("users"), PIT)));
+    expect(ftcUserToProfile(snap.id, snap.data() ?? {})).toMatchObject({ name: "Pia R.", themeId: "team", colorMode: "dark", gradientIntensity: "subtle", primaryRole: "pit-scout", isAdmin: false });
+    await assertFails(updateDoc(doc(db, P("users"), PIT), { primaryRole: "lead-scout" }));
+    await assertFails(updateDoc(doc(db, P("users"), PIT), { isAdmin: true }));
+    await assertFails(updateDoc(doc(as(SCOUT), P("users"), PIT), { name: "Not Pia" }));
+  });
+
+  it("saving the profile page writes the profile doc and mirrors the avatar in one batch; nobody writes another member's profile", async () => {
+    const db = as(PIT);
+    const batch = writeBatch(db);
+    batch.set(doc(db, P("profiles"), PIT), { teamId: T1, displayName: "Pia", bio: "Pit crew", pronouns: "", avatar: { type: "initials", value: "" }, visibility: "public", updatedAt: serverTimestamp() });
+    batch.update(doc(db, P("users"), PIT), { avatar: { type: "initials", value: "" } });
+    await assertSucceeds(batch.commit());
+    await assertFails(setDoc(doc(as(SCOUT), P("profiles"), PIT), { teamId: T1, displayName: "x", bio: "", pronouns: "", avatar: { type: "initials", value: "" }, visibility: "public", updatedAt: serverTimestamp() }));
   });
 });
