@@ -30,6 +30,7 @@ Never modify either folder. Never connect to a real Firebase project; use the em
   - `games/`: one `GameDefinition` per game (`rebuilt`, `reefscape`, `charged-up`), plus `shared.ts` and `index.ts`.
   - `legacy-redirects.ts`: every old CS URL and its destination (turned into permanent redirects by `next.config.ts`).
   - `cs.ts`, `alliance.ts`: CS identity (owner uid list, default theme) and robots per alliance.
+- `config/games/ftc/` holds the FTC program's games in their own registry (D21); `lib/ftc/games.ts` builds their plugins and forms. They are not in the lists above.
 - `lib/games/` game plugins behind one registry (`score`, `flags`, `normalize`, verification, prediction, rescout diff). `point-table.ts` generates the plugin for a pure point-table game from its config entry; `rebuilt.ts` is the hand-written plugin for REBUILT's fuel formulas. `cs-oracle/` holds verbatim copies of CS's own functions for golden tests only.
 - `lib/events/` is the event facade (types, names, status, actions) and picks the provider per program; `lib/frc/` holds the FRC providers (TBA, FIRST FRC API, Statbotics) and `lib/ftc/` the FTC one.
 - `lib/server/env.ts` is the only reader of server environment variables (see Rules).
