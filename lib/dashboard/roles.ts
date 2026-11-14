@@ -1,3 +1,4 @@
+import type { ProgramFeatures } from "@/config/programs/types";
 import { ROLES, type RoleId } from "@/lib/roles";
 
 // Which realtime data each role's dashboard needs, and which role to show
@@ -8,6 +9,26 @@ import { ROLES, type RoleId } from "@/lib/roles";
 // Always loaded, whatever the role: the team's scout entries and the FIRST API
 // data for the selected event (matches, rankings, teams) — both are cheap,
 // shared, and every role's header strip uses the latter.
+
+/**
+ * Which of a program's data features each optional dashboard source needs; a source whose feature is off is not read (and its cards show their empty states).
+ * The sources that read the team's own roster, entries and forms need no feature.
+ */
+export const SOURCE_FEATURE: Partial<Record<DashboardSource, keyof ProgramFeatures>> = {
+  sessions: "practice",
+  library: "library",
+  assignments: "assignments",
+  teamAssignments: "assignments",
+  pickList: "pickList",
+};
+
+/** The sources a program can serve, of the ones a role asks for. */
+export function connectedSources(needs: ReadonlySet<DashboardSource>, features: ProgramFeatures): Set<DashboardSource> {
+  return new Set([...needs].filter((source) => {
+    const feature = SOURCE_FEATURE[source];
+    return feature === undefined || features[feature];
+  }));
+}
 
 export type DashboardSource =
   /** `users` for the team — scout names and the accuracy leaderboard. */

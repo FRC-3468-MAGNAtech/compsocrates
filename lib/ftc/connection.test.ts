@@ -14,7 +14,7 @@ describe("program connection config", () => {
     const connected = [
       "/scout", "/event", "/match-list",
       "/lead-scout-form", "/pit-scout-form", "/team-strategy-form", "/match-strategy-form", "/drive-reflection-form", "/helper-form",
-      "/people", "/team-management",
+      "/dashboard", "/my-scouting", "/people", "/team-management",
       "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
       "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings",
     ];
@@ -22,7 +22,7 @@ describe("program connection config", () => {
     expect([...(PROGRAMS.ftc.connection.paths as readonly string[])].sort()).toEqual([...connected].sort());
     for (const path of [...connected, "/scout/anything", "/pit-scout-form/x"]) expect(isPathConnected("ftc", path), path).toBe(true);
     // everything else shows the notice, including the neighbours of a connected path
-    for (const path of ["/", "/dashboard", "/match-lists", "/events", "/eventual", "/scouting", "/scoutish", "/analytics", "/analytics/match-scoutish", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/my-scouting", "/judge-book", "/pit-scout-forms"]) {
+    for (const path of ["/", "/dashboards", "/match-lists", "/events", "/eventual", "/scouting", "/scoutish", "/analytics", "/analytics/match-scoutish", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/my-scouting-x", "/judge-book", "/pit-scout-forms"]) {
       expect(isPathConnected("ftc", path), path).toBe(false);
     }
   });

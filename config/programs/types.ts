@@ -45,6 +45,8 @@ export type ProgramFeatures = {
   live: boolean;
   /** The match library and its admin backfill. */
   library: boolean;
+  /** The shared pick list (the board and its edit log). */
+  pickList: boolean;
   /** Accuracy and flag recompute after a save (reads official results and rewrites entries). */
   accuracy: boolean;
   /** Importing scouting entries from a CSV file. */

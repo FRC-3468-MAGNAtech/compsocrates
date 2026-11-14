@@ -11,7 +11,8 @@ import { useEventMatches, useEventRankingsStatus, useEventTeams } from "@/lib/an
 import { useAssignments, type AssignmentsDoc } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
 import { buildOurMatches, nextOurMatch, ourRecord, type OurMatch, type Record3 } from "@/lib/dashboard/schedule";
-import { sourcesFor, type DashboardSource } from "@/lib/dashboard/roles";
+import { connectedSources, sourcesFor, type DashboardSource } from "@/lib/dashboard/roles";
+import { useProgramConfig } from "@/lib/program/context";
 import { useTeamEventAttendance, type EventAttendance } from "@/lib/event-attendance";
 import { getEventStatus } from "@/lib/events/event-status";
 import type { EventLifecycleStatus, EventInfo, EventRanking, EventTeam } from "@/lib/events/types";
@@ -121,7 +122,9 @@ export function DashboardProvider({ role, children }: { role: RoleId; children: 
   const uid = user?.uid ?? null;
   const teamId = profile?.teamId ?? null;
   const isAdmin = profile?.isAdmin ?? false;
-  const needs = useMemo(() => sourcesFor(role, isAdmin), [role, isAdmin]);
+  // the sources this role wants, of the ones the active program has connected (an unconnected one is not read)
+  const { features } = useProgramConfig().connection;
+  const needs = useMemo(() => connectedSources(sourcesFor(role, isAdmin), features), [role, isAdmin, features]);
 
   // "Our team" (lib/our-team.ts): the header strip, next match, rank and record all follow it.
   const { number: ourNumber } = useOurTeam();

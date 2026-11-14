@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { programPath } from "@/lib/firebase/paths";
+import { useProgram } from "@/lib/program/context";
 import { fetchTeamCreationEnabled } from "@/lib/team-enrollment";
 
 // Data for the dashboard's admin strip (P13). Mounted only for admins, so none
@@ -23,6 +25,7 @@ function toMillis(value: unknown): number {
  * `lastMs` is null when no export has ever been logged.
  */
 export function useLastBackup(teamId: string | null): { lastMs: number | null; loaded: boolean } {
+  const program = useProgram();
   const [lastMs, setLastMs] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
 
@@ -32,7 +35,7 @@ export function useLastBackup(teamId: string | null): { lastMs: number | null; l
       setLoaded(true);
       return;
     }
-    const q = query(collection(db, "auditLog"), where("teamId", "==", teamId), where("action", "==", "export-backup"));
+    const q = query(collection(db, programPath(program, "auditLog")), where("teamId", "==", teamId), where("action", "==", "export-backup"));
     return onSnapshot(
       q,
       (snap) => {
@@ -46,7 +49,7 @@ export function useLastBackup(teamId: string | null): { lastMs: number | null; l
         setLoaded(true);
       }
     );
-  }, [teamId]);
+  }, [teamId, program]);
 
   return { lastMs, loaded };
 }

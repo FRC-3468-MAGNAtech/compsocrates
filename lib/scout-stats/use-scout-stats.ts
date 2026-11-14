@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useProgramConfig } from "@/lib/program/context";
 import { useTeamEventAttendance } from "@/lib/event-attendance";
 import { useAllLibraryMatches } from "@/lib/match-library";
 import { useTeamPracticeSessions } from "@/lib/practice-sessions";
@@ -15,10 +16,12 @@ import type { RankingBasisId, RealEventCalculationScope, ScoutCategory, ScoutSta
 
 /** Every realtime source Scout Accuracy / My Scouting need, wired together — kept separate from the pure `computeScoutStats` so that function stays unit-testable with plain fixtures. */
 export function useScoutStatsSources(teamId: string | null) {
+  // Practice sessions and the match library are the default program's collections: a program without them connected asks for neither (a null team reads nothing).
+  const { practice, library } = useProgramConfig().connection.features;
   const { members, loaded: membersLoaded } = useTeamMembers(teamId);
-  const { sessions, loaded: sessionsLoaded, error: sessionsError } = useTeamPracticeSessions(teamId);
+  const { sessions, loaded: sessionsLoaded, error: sessionsError } = useTeamPracticeSessions(practice ? teamId : null);
   const { entries, loaded: entriesLoaded } = useTeamScoutEntries(teamId);
-  const { matches, loaded: matchesLoaded } = useAllLibraryMatches();
+  const { matches, loaded: matchesLoaded } = useAllLibraryMatches(library);
   const { attendance, loaded: attendanceLoaded } = useTeamEventAttendance(teamId);
 
   const libraryMatchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
