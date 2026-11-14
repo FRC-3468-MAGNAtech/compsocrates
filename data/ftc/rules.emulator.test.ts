@@ -406,3 +406,28 @@ describe("assignments (match scouting, pit scouting and team strategy)", () => {
     await assertFails(teamQuery(OTHER, T1));
   });
 });
+
+describe("credits", () => {
+  const sections = [{ id: "s1", title: "Tools", entries: [{ id: "e1", name: "Firebase", url: "https://firebase.google.com" }] }];
+  // the shape lib/credits/store.ts writes: the credits doc and its audit entry in one transaction
+  const edit = (uid: string, teamId: string) => {
+    const db = as(uid);
+    return runTransaction(db, async (tx) => {
+      tx.set(doc(db, P("credits"), teamId), { teamId, sections, updatedBy: uid, updatedByName: "n", updatedAt: serverTimestamp() });
+      tx.set(doc(collection(db, P("auditLog"))), buildAuditEntry(teamId, uid, "n", "edit-credits", { op: "add" }, null, null));
+    });
+  };
+
+  it("an admin saves the team's credits and every teammate reads them by id, even before any are saved", async () => {
+    await assertSucceeds(getDoc(doc(as(PIT), P("credits"), T1)));
+    await assertSucceeds(edit(ADMIN, T1));
+    const snap = await assertSucceeds(getDoc(doc(as(PIT), P("credits"), T1)));
+    expect(snap.data()?.sections).toHaveLength(1);
+  });
+
+  it("a non-admin cannot edit, nobody edits another team's, and another team cannot read", async () => {
+    await assertFails(edit(PIT, T1));
+    await assertFails(edit(ADMIN, T2));
+    await assertFails(getDoc(doc(as(OTHER), P("credits"), T1)));
+  });
+});

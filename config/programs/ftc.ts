@@ -45,6 +45,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/people",
       "/account",
       "/profile",
+      "/credits",
       "/team-management",
       "/analytics/match-scout",
       "/analytics/lead-scout",
