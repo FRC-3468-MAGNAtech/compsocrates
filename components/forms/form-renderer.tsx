@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { diffAgainstPlan, expandFieldMap, plannedText, prefillFromPlan, type PlanCandidate, type PlanDifference } from "@/lib/forms/compare";
 import { layoutOf } from "@/lib/forms/edit";
 import { repeatGroupOf, slotCountFor, slotKey } from "@/lib/forms/repeat";
+import { teamFillFor } from "@/lib/forms/team-fill";
 import { isSystemField, type Form, type FormField, type FormSection, type FormValue, type FormValues } from "@/lib/forms/types";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
 import type { EventInfo } from "@/lib/events/types";
@@ -87,16 +88,8 @@ export function FormRenderer(props: FormRendererProps) {
   const teamKeys = useMemo(() => form.sections.flatMap((s) => s.fields.filter((f) => f.type === "teamPicker" && repeatGroupOf(s, f)).map((f) => f.key)), [form]);
   const allianceSig = allianceTeams.join(",");
   useEffect(() => {
-    if (teamKeys.length === 0) return;
-    let next: FormValues | null = null;
-    allianceTeams.forEach((team, i) => {
-      for (const key of teamKeys) {
-        const k = slotKey(i + 1, key);
-        if (touched.current.has(k) || valuesRef.current[k] === team) continue;
-        next ??= { ...valuesRef.current };
-        next[k] = team;
-      }
-    });
+    // team pickers of a repeating group (`t1_team`) and the REBUILT alliance forms' `robot1_teamNumber` fields: see lib/forms/team-fill.ts
+    const next = teamFillFor(form, allianceTeams, valuesRef.current, touched.current);
     if (next) onValuesChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allianceSig]);
