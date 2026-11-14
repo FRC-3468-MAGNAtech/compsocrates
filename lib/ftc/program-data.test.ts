@@ -11,8 +11,8 @@ describe("the program data port", () => {
   });
 
   it("offers every read and write the connected pages use", () => {
-    expect(Object.keys(ftcProgramData).sort()).toEqual(["attendance", "formEntries", "forms", "games", "members", "pickList", "profile", "scoutEntries", "team"]);
-    for (const fn of [ftcProgramData.profile.subscribe, ftcProgramData.profile.update, ftcProgramData.team.subscribe, ftcProgramData.team.setActiveEvents, ftcProgramData.scoutEntries.subscribeTeam, ftcProgramData.scoutEntries.save, ftcProgramData.scoutEntries.update, ftcProgramData.scoutEntries.delete, ftcProgramData.formEntries.subscribe, ftcProgramData.forms.subscribeDocs, ftcProgramData.forms.loadVersion, ftcProgramData.members.subscribe, ftcProgramData.members.updateAccess, ftcProgramData.attendance.subscribeTeam, ftcProgramData.attendance.set, ftcProgramData.pickList.subscribe, ftcProgramData.pickList.edit]) {
+    expect(Object.keys(ftcProgramData).sort()).toEqual(["assignments", "attendance", "formEntries", "forms", "games", "members", "pickList", "profile", "scoutEntries", "team", "teamAssignments"]);
+    for (const fn of [ftcProgramData.profile.subscribe, ftcProgramData.profile.update, ftcProgramData.team.subscribe, ftcProgramData.team.setActiveEvents, ftcProgramData.scoutEntries.subscribeTeam, ftcProgramData.scoutEntries.save, ftcProgramData.scoutEntries.update, ftcProgramData.scoutEntries.delete, ftcProgramData.formEntries.subscribe, ftcProgramData.forms.subscribeDocs, ftcProgramData.forms.loadVersion, ftcProgramData.members.subscribe, ftcProgramData.members.updateAccess, ftcProgramData.attendance.subscribeTeam, ftcProgramData.attendance.set, ftcProgramData.pickList.subscribe, ftcProgramData.pickList.edit, ftcProgramData.assignments.subscribe, ftcProgramData.assignments.publish, ftcProgramData.assignments.undo, ftcProgramData.assignments.swapSlot, ftcProgramData.teamAssignments.subscribeTeam, ftcProgramData.teamAssignments.publish, ftcProgramData.teamAssignments.undo]) {
       expect(typeof fn).toBe("function");
     }
   });

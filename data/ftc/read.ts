@@ -31,12 +31,14 @@ import { programCollection, programDoc, programPath } from "@/lib/firebase/paths
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import type { UserDoc } from "@/lib/auth";
 import type { MatchType } from "@/lib/events/types";
+import type { AssignmentsDoc } from "@/lib/assignments";
 import type { EventAttendance } from "@/lib/event-attendance";
 import type { FormEntry } from "@/lib/form-entries-model";
 import type { PickListDoc } from "@/lib/pick-list/store";
 import { formDocId, type FormDoc, type FormVersion } from "@/lib/forms/resolve";
 import type { Form } from "@/lib/forms/types";
 import type { ScoutEntry } from "@/lib/scout-entries";
+import type { TeamAssignmentsDoc } from "@/lib/team-assignments/model";
 import type { TeamDoc } from "@/lib/team";
 import type { TeamMember } from "@/lib/team-members";
 import { ftcDocsToFormEntries } from "@/data/ftc/form-entries";
@@ -46,6 +48,7 @@ import { ftcTeamToTeamDoc } from "@/data/ftc/teams";
 import { ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
 import { ftcDocsToAttendance } from "@/data/ftc/attendance";
 import { ftcDocToPickList, ftcPickListId } from "@/data/ftc/pick-list";
+import { ftcDocsToTeamAssignments, pickMatchAssignments } from "@/data/ftc/assignments";
 import { isRecord } from "@/data/ftc/util";
 
 const PROGRAM = "ftc" as const;
@@ -57,6 +60,7 @@ const TEAMS = "teams";
 const USERS = "users";
 const EVENT_ATTENDANCE = "eventAttendance";
 const PICK_LISTS = "pickLists";
+const ASSIGNMENTS = "assignments";
 
 type Equality = [field: string, value: string | number];
 type Target = { q: Query; path: string };
@@ -290,4 +294,26 @@ export function subscribeTeamAttendance(teamId: string, onData: (records: EventA
 /** Realtime pick list of one event (null while it has never been written). Read by id: the rules allow a teammate to read the account's lists, not to list them. */
 export function subscribePickList(teamId: string, eventCode: string, onData: (list: PickListDoc | null) => void, onError: Failure): Unsubscribe {
   return watchOne("Couldn't load the pick list", programDoc(db, PROGRAM, PICK_LISTS, ftcPickListId(teamId, eventCode)), (_id, data) => ftcDocToPickList(data), onData, onError);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// assignments (match scouting, and pit scouting / team strategy)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Realtime match assignments of one event (null while none are published). Read as a team-and-event query, not by id: the rules read the doc's own `teamId`, so a
+ * direct read of an event with no assignments yet would be refused.
+ */
+export function subscribeAssignments(teamId: string, eventCode: string, onData: (doc: AssignmentsDoc | null) => void, onError: Failure): Unsubscribe {
+  return watchRows("Couldn't load the assignments", teamQuery(ASSIGNMENTS, teamId, [["eventCode", eventCode]]), (rows) => onData(pickMatchAssignments(teamId, eventCode, rows)), onError);
+}
+
+/** Realtime pit scouting and team strategy assignments of the team, every event. */
+export function subscribeTeamAssignments(teamId: string, onData: (docs: TeamAssignmentsDoc[]) => void, onError: Failure): Unsubscribe {
+  return watchRows("Couldn't load the team assignments", teamQuery(ASSIGNMENTS, teamId), (rows) => onData(ftcDocsToTeamAssignments(rows)), onError);
+}
+
+/** One read of an event's match assignments (the writers need the stored version before changing it). */
+export function getAssignments(teamId: string, eventCode: string): Promise<AssignmentsDoc | null> {
+  return readRows("Couldn't load the assignments", teamQuery(ASSIGNMENTS, teamId, [["eventCode", eventCode]]), (rows) => pickMatchAssignments(teamId, eventCode, rows));
 }

@@ -3,10 +3,15 @@
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/config/games/ftc";
 import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
-import { getFormVersion, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
+import { getFormVersion, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
 import {
   adminUpdateFormEntry,
   deleteFormEntry,
+  publishAssignments,
+  publishTeamAssignments,
+  swapAssignmentSlot,
+  undoAssignments,
+  undoTeamAssignments,
   deleteScoutEntry,
   editOwnFormEntry,
   editPickList,
@@ -40,6 +45,8 @@ export const ftcProgramData: ProgramData = {
     adminUpdate: adminUpdateFormEntry,
     delete: deleteFormEntry,
   },
+  assignments: { subscribe: subscribeAssignments, publish: publishAssignments, undo: undoAssignments, swapSlot: swapAssignmentSlot },
+  teamAssignments: { subscribeTeam: subscribeTeamAssignments, publish: publishTeamAssignments, undo: undoTeamAssignments },
   pickList: { subscribe: subscribePickList, edit: editPickList },
   members: { subscribe: subscribeTeamMembers, updateAccess: updateMemberAccess },
   attendance: { subscribeTeam: subscribeTeamAttendance, set: setEventAttendance },

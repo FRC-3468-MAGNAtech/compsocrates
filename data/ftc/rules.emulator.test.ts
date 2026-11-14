@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ftcDocToPickList, ftcPickListDoc, ftcPickListId } from "@/data/ftc/pick-list";
+import { applySlotSwap, ftcAssignmentDocId, ftcAssignmentsDoc, ftcDocsToTeamAssignments, ftcTeamAssignmentDocId, ftcTeamAssignmentsDoc, pickMatchAssignments, readAssignmentVersion } from "@/data/ftc/assignments";
 import { applyPickOp, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
 import { buildAuditEntry } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type NewFormEntry } from "@/lib/form-entries-model";
@@ -353,5 +354,55 @@ describe("your own profile", () => {
     batch.update(doc(db, P("users"), PIT), { avatar: { type: "initials", value: "" } });
     await assertSucceeds(batch.commit());
     await assertFails(setDoc(doc(as(SCOUT), P("profiles"), PIT), { teamId: T1, displayName: "x", bio: "", pronouns: "", avatar: { type: "initials", value: "" }, visibility: "public", updatedAt: serverTimestamp() }));
+  });
+});
+
+describe("assignments (match scouting, pit scouting and team strategy)", () => {
+  const LEAD = "ftc-lead-1";
+  const stored = {
+    generatedBy: LEAD,
+    generatedAt: "2026-01-10T10:00:00.000Z",
+    settings: { matchSource: "event", scoutUids: [PIT], seed: 1 },
+    slots: [
+      { matchType: "Qualification", matchNumber: 1, slot: "red1", teamNumber: 100, scoutUid: PIT },
+      { matchType: "Qualification", matchNumber: 1, slot: "red2", teamNumber: 200, scoutUid: null },
+    ],
+    counts: { [PIT]: 1 },
+    fair: true,
+    warning: null,
+  };
+  const version = readAssignmentVersion(stored)!;
+  const matchId = ftcAssignmentDocId(T1, "EV1");
+  const rows = (snap: { docs: { id: string; data: () => unknown }[] }) => snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+  const teamQuery = (uid: string, teamId: string) => getDocs(query(collection(as(uid), P("assignments")), where("teamId", "==", teamId), where("eventCode", "==", "EV1")));
+
+  it("a lead scout (the Assignments page default) publishes the event schedule, and a teammate reads it back by a team and event query", async () => {
+    await assertSucceeds(setDoc(doc(as(LEAD), P("assignments"), matchId), ftcAssignmentsDoc(T1, "EV1", version, null, serverTimestamp)));
+    const snap = await assertSucceeds(teamQuery(PIT, T1));
+    const found = pickMatchAssignments(T1, "EV1", rows(snap));
+    expect(found?.current?.slots).toHaveLength(2);
+    expect(found?.current?.slots[0]).toMatchObject({ slot: "red1", teamNumber: 100, scoutUid: PIT });
+  });
+
+  it("a slot edit is accepted for a lead scout and reads back recounted", async () => {
+    const swapped = applySlotSwap(version, "Qualification", 1, "red2", PIT)!;
+    await assertSucceeds(updateDoc(doc(as(LEAD), P("assignments"), matchId), { current: swapped, previous: version, updatedAt: serverTimestamp() }));
+    const found = pickMatchAssignments(T1, "EV1", rows(await assertSucceeds(teamQuery(LEAD, T1))));
+    expect(found?.current?.counts).toEqual({ [PIT]: 2 });
+    expect(found?.previous?.counts).toEqual({ [PIT]: 1 });
+  });
+
+  it("a pit doc is accepted under its own id, refused under another, and listed by the team query", async () => {
+    const pit = { generatedBy: LEAD, generatedAt: "t", settings: {}, teams: [{ teamNumber: 55, scoutUids: [PIT], locked: false }], counts: { [PIT]: 1 }, uneven: false, warning: null };
+    const id = ftcTeamAssignmentDocId(T1, "EV1", "pit");
+    await assertSucceeds(setDoc(doc(as(LEAD), P("assignments"), id), ftcTeamAssignmentsDoc(T1, "EV1", "pit", pit as never, null, serverTimestamp)));
+    await assertFails(setDoc(doc(as(LEAD), P("assignments"), `${id}_x`), ftcTeamAssignmentsDoc(T1, "EV1", "pit", pit as never, null, serverTimestamp)));
+    const snap = await assertSucceeds(getDocs(query(collection(as(PIT), P("assignments")), where("teamId", "==", T1))));
+    expect(ftcDocsToTeamAssignments(rows(snap)).map((d) => [d.id, d.kind])).toEqual([[id, "pit"]]);
+  });
+
+  it("a pit scout (no Assignments page) cannot publish, and another team cannot read", async () => {
+    await assertFails(setDoc(doc(as(PIT), P("assignments"), matchId), ftcAssignmentsDoc(T1, "EV1", version, null, serverTimestamp)));
+    await assertFails(teamQuery(OTHER, T1));
   });
 });

@@ -8,6 +8,11 @@ vi.mock("@/data/ftc/write", () => ({
   setEventAttendance: (...args: unknown[]) => h.other(...args),
   editPickList: (...args: unknown[]) => h.other(...args),
   updateUserProfile: (...args: unknown[]) => h.other(...args),
+  publishAssignments: (...args: unknown[]) => h.other(...args),
+  undoAssignments: (...args: unknown[]) => h.other(...args),
+  swapAssignmentSlot: (...args: unknown[]) => h.other(...args),
+  publishTeamAssignments: (...args: unknown[]) => h.other(...args),
+  undoTeamAssignments: (...args: unknown[]) => h.other(...args),
   updateMemberAccess: (...args: unknown[]) => h.other(...args),
   setActiveEvents: (...args: unknown[]) => h.events(...args),
   saveFormEntry: (...args: unknown[]) => h.other(...args),
@@ -22,6 +27,8 @@ import { setActiveEvent, setActiveEvents } from "@/lib/team";
 import { setEventAttendance } from "@/lib/event-attendance";
 import { updateMemberAccess } from "@/lib/team-members";
 import { editPickList } from "@/lib/pick-list/store";
+import { publishAssignments, swapAssignmentSlot, undoAssignments } from "@/lib/assignments";
+import { publishTeamAssignments, undoTeamAssignments } from "@/lib/team-assignments/store";
 import { adminUpdateFormEntry, deleteFormEntry, editOwnFormEntry, saveFormEntry, updateFormEntry } from "@/lib/form-entries";
 
 const input: SaveEntryInput = {
@@ -168,6 +175,31 @@ describe("pick list edits and the program", () => {
 
   it("the default program never touches the program port", async () => {
     await editPickList(ctx, { type: "reset" }).catch(() => undefined);
+    expect(h.other).not.toHaveBeenCalled();
+  });
+});
+
+describe("assignment writers and the program", () => {
+  const version = { generatedBy: "u", generatedAt: "t", settings: {}, slots: [], counts: {}, fair: true, warning: null } as never;
+  const teamVersion = { generatedBy: "u", generatedAt: "t", settings: {}, teams: [], counts: {}, uneven: false, warning: null } as never;
+  const teamDoc = { id: "t_EV_pit", teamId: "t", eventCode: "EV", kind: "pit", current: null, previous: null } as never;
+
+  it("write through the program data port when the program has one", async () => {
+    h.other.mockResolvedValue(undefined);
+    await publishAssignments("t", "EV", version, "ftc");
+    await undoAssignments("t", "EV", "ftc");
+    await swapAssignmentSlot("t", "EV", "Qualification", 1, "red1", "u", undefined, "ftc");
+    await publishTeamAssignments("t", "EV", "pit", teamVersion, null, "ftc");
+    await undoTeamAssignments("t", "EV", "pit", teamDoc, "ftc");
+    expect(h.other).toHaveBeenCalledTimes(5);
+    expect(h.other).toHaveBeenCalledWith("t", "EV", version);
+    expect(h.other).toHaveBeenCalledWith("t", "EV", "Qualification", 1, "red1", "u");
+  });
+
+  it("the default program never touches the program port", async () => {
+    await publishAssignments("t", "EV", version).catch(() => undefined);
+    await undoAssignments("t", "EV").catch(() => undefined);
+    await publishTeamAssignments("t", "EV", "pit", teamVersion, null).catch(() => undefined);
     expect(h.other).not.toHaveBeenCalled();
   });
 });

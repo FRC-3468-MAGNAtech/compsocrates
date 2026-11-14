@@ -21,6 +21,12 @@ import { stripUndefined } from "@/data/ftc/util";
 import { ftcProfilePatch, type FtcProfilePatch } from "@/data/ftc/users";
 import { ftcAttendanceDoc, ftcAttendanceDocId } from "@/data/ftc/attendance";
 import { ftcPickListDoc, ftcPickListId } from "@/data/ftc/pick-list";
+import { applySlotSwap, ftcAssignmentDocId, ftcAssignmentsDoc, ftcTeamAssignmentDocId, ftcTeamAssignmentsDoc } from "@/data/ftc/assignments";
+import { getAssignments } from "@/data/ftc/read";
+import type { AssignmentVersion } from "@/lib/assignments";
+import type { MatchType } from "@/lib/events/types";
+import type { ScheduleSlot } from "@/lib/scheduler/types";
+import type { TeamAssignKind, TeamAssignVersion, TeamAssignmentsDoc } from "@/lib/team-assignments/model";
 import { applyPickOp, samePicks, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
 import type { MemberAccess } from "@/lib/member-access";
 import type { TeamMember } from "@/lib/team-members";
@@ -32,6 +38,7 @@ const FORM_ENTRIES = "formEntries";
 const USERS = "users";
 const EVENT_ATTENDANCE = "eventAttendance";
 const PICK_LISTS = "pickLists";
+const ASSIGNMENTS = "assignments";
 
 /** Runs a write; a failure is reported with its path and rethrown, so the caller can show it. */
 async function reported<T>(context: string, path: string, write: () => Promise<T>): Promise<T> {
@@ -200,4 +207,51 @@ export function updateUserProfile(uid: string, patch: FtcProfilePatch): Promise<
   const fields = ftcProfilePatch(patch);
   if (Object.keys(fields).length === 0) return Promise.resolve();
   return reported("Couldn't save your profile", `${programPath(PROGRAM, USERS)}/${uid}`, () => updateDoc(programDoc(db, PROGRAM, USERS, uid), fields));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// assignments
+// ---------------------------------------------------------------------------------------------------------------------
+
+const assignmentPath = (id: string) => `${programPath(PROGRAM, ASSIGNMENTS)}/${id}`;
+
+/**
+ * Publishes a version of an event's match assignments: it becomes `current` and the one it replaces becomes `previous` (a single level of undo). Allowed by the
+ * rules to whoever has the Assignments page (a lead scout by default; admins always).
+ */
+export async function publishAssignments(teamId: string, eventCode: string, version: AssignmentVersion): Promise<void> {
+  const id = ftcAssignmentDocId(teamId, eventCode);
+  const existing = await getAssignments(teamId, eventCode);
+  await reported("Couldn't publish the assignments", assignmentPath(id), () => setDoc(programDoc(db, PROGRAM, ASSIGNMENTS, id), ftcAssignmentsDoc(teamId, eventCode, version, existing?.current ?? null, serverTimestamp)));
+}
+
+/** Swaps `current` back to `previous` and clears `previous`. Nothing to undo does nothing. */
+export async function undoAssignments(teamId: string, eventCode: string): Promise<void> {
+  const existing = await getAssignments(teamId, eventCode);
+  if (!existing?.previous) return;
+  const id = ftcAssignmentDocId(teamId, eventCode);
+  await reported("Couldn't undo the assignments", assignmentPath(id), () => updateDoc(programDoc(db, PROGRAM, ASSIGNMENTS, id), { current: existing.previous, previous: null, updatedAt: serverTimestamp() }));
+}
+
+/** One manual cell edit of the published version: re-point a slot at another scout, or clear it. Nothing published, or no such slot, does nothing. */
+export async function swapAssignmentSlot(teamId: string, eventCode: string, matchType: MatchType, matchNumber: number, slot: ScheduleSlot["slot"], newScoutUid: string | null): Promise<void> {
+  const existing = await getAssignments(teamId, eventCode);
+  if (!existing?.current) return;
+  const next = applySlotSwap(existing.current, matchType, matchNumber, slot, newScoutUid);
+  if (!next) return;
+  const id = existing.id;
+  await reported("Couldn't change that assignment", assignmentPath(id), () => updateDoc(programDoc(db, PROGRAM, ASSIGNMENTS, id), { current: next, updatedAt: serverTimestamp() }));
+}
+
+/** Publishes a pit scouting or team strategy version (one doc per team, event and kind). */
+export function publishTeamAssignments(teamId: string, eventCode: string, kind: TeamAssignKind, version: TeamAssignVersion, existing: TeamAssignmentsDoc | null): Promise<void> {
+  const id = ftcTeamAssignmentDocId(teamId, eventCode, kind);
+  return reported("Couldn't publish the assignments", assignmentPath(id), () => setDoc(programDoc(db, PROGRAM, ASSIGNMENTS, id), ftcTeamAssignmentsDoc(teamId, eventCode, kind, version, existing?.current ?? null, serverTimestamp)));
+}
+
+/** Swaps a pit scouting or team strategy `current` back to `previous`. */
+export function undoTeamAssignments(teamId: string, eventCode: string, kind: TeamAssignKind, existing: TeamAssignmentsDoc): Promise<void> {
+  if (!existing.previous) return Promise.resolve();
+  const id = ftcTeamAssignmentDocId(teamId, eventCode, kind);
+  return reported("Couldn't undo the assignments", assignmentPath(id), () => setDoc(programDoc(db, PROGRAM, ASSIGNMENTS, id), ftcTeamAssignmentsDoc(teamId, eventCode, kind, existing.previous as TeamAssignVersion, null, serverTimestamp)));
 }

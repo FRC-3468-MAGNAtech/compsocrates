@@ -13,6 +13,10 @@ import type { Unsubscribe } from "firebase/firestore";
 import type { ProgramId } from "@/config/programs/types";
 import { ftcProgramData } from "@/lib/ftc/program-data";
 import type { ActiveEventsState } from "@/lib/active-events";
+import type { AssignmentsDoc, AssignmentVersion } from "@/lib/assignments";
+import type { MatchType } from "@/lib/events/types";
+import type { ScheduleSlot } from "@/lib/scheduler/types";
+import type { TeamAssignKind, TeamAssignVersion, TeamAssignmentsDoc } from "@/lib/team-assignments/model";
 import type { UserDoc } from "@/lib/auth";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import type { EventAttendance } from "@/lib/event-attendance";
@@ -75,6 +79,19 @@ export type ProgramData = {
     /** Admins only, by the rules. */
     adminUpdate(id: string, patch: { excluded?: boolean; flags?: FormEntry["flags"]; values?: FormValues }): Promise<void>;
     delete(id: string): Promise<void>;
+  };
+  assignments: {
+    /** One event's published match assignments (null while there are none). */
+    subscribe(teamId: string, eventCode: string, onData: (doc: AssignmentsDoc | null) => void, onError: DataError): Unsubscribe;
+    publish(teamId: string, eventCode: string, version: AssignmentVersion): Promise<void>;
+    undo(teamId: string, eventCode: string): Promise<void>;
+    swapSlot(teamId: string, eventCode: string, matchType: MatchType, matchNumber: number, slot: ScheduleSlot["slot"], newScoutUid: string | null): Promise<void>;
+  };
+  teamAssignments: {
+    /** Pit scouting and team strategy assignments of the team, every event. */
+    subscribeTeam(teamId: string, onData: (docs: TeamAssignmentsDoc[]) => void, onError: DataError): Unsubscribe;
+    publish(teamId: string, eventCode: string, kind: TeamAssignKind, version: TeamAssignVersion, existing: TeamAssignmentsDoc | null): Promise<void>;
+    undo(teamId: string, eventCode: string, kind: TeamAssignKind, existing: TeamAssignmentsDoc): Promise<void>;
   };
   pickList: {
     /** One event's shared pick list (null while it has never been written). */
