@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ftcDocsToScoutEntries, ftcDocToScoutEntry, isEventEntry, readAccuracy, readEntryValues, readScore, readStickyNotes, type FtcScoutEntryDoc } from "@/data/ftc/scouting";
+import { ftcDocsToScoutEntries, ftcDocToScoutEntry, ftcScoutEntryDoc, isEventEntry, readAccuracy, readEntryValues, readScore, readStickyNotes, type FtcScoutEntryDoc } from "@/data/ftc/scouting";
+import type { SaveEntryInput } from "@/lib/scout-entries";
 
 const stored = (over: FtcScoutEntryDoc = {}): FtcScoutEntryDoc => ({
   teamId: "team-1",
@@ -154,6 +155,57 @@ describe("readScore / readAccuracy / readStickyNotes", () => {
   it("sticky notes keep only maps with an id and text", () => {
     expect(readStickyNotes([{ id: "a", text: "" }, { text: "x" }, null])).toHaveLength(1);
     expect(readStickyNotes("nope")).toEqual([]);
+  });
+});
+
+describe("ftcScoutEntryDoc (what a new entry is stored as)", () => {
+  const input: SaveEntryInput = {
+    scoutName: "Ada",
+    eventCode: "USTXAUS1",
+    matchType: "Qualification",
+    matchNumber: 7,
+    teamNumber: 4242,
+    formId: "biobuzz",
+    formVersion: 1,
+    values: { autoLeave: true, teleTipHive: 2 },
+    score: { auto: 3, teleop: 40, endgame: 0, total: 43 },
+    comments: "fast",
+  };
+  const make = (over: Partial<SaveEntryInput> = {}) => ftcScoutEntryDoc("team-a", "uid-ada", { ...input, ...over }, () => "SERVER_TIME", "2026-01-10T15:00:00.000Z");
+
+  it("has what the rules need and every reader expects, with a real-event default", () => {
+    expect(make()).toEqual({
+      ...input,
+      teamId: "team-a",
+      uid: "uid-ada",
+      source: "event",
+      mode: null,
+      sessionId: null,
+      libraryMatchId: null,
+      submittedAt: "2026-01-10T15:00:00.000Z",
+      createdAt: "SERVER_TIME",
+      excluded: false,
+      autoFlags: [],
+      manualFlags: [],
+      accuracy: null,
+    });
+  });
+
+  it("keeps a practice entry's session, mode and library match, and a scoring-off form's marker", () => {
+    expect(make({ source: "practice", mode: "trial", sessionId: "s1", libraryMatchId: "lm1", scored: false })).toMatchObject({ source: "practice", mode: "trial", sessionId: "s1", libraryMatchId: "lm1", scored: false });
+  });
+
+  it("never holds undefined (Firestore refuses it), and does not copy the event code through any alias table", () => {
+    const doc = make({ stickyNotes: undefined });
+    expect(Object.values(doc).includes(undefined)).toBe(false);
+    expect(doc).not.toHaveProperty("stickyNotes");
+    expect(doc.eventCode).toBe("USTXAUS1");
+  });
+
+  it("reads back as the entry that was saved", () => {
+    const entry = ftcDocToScoutEntry("e", make({ stickyNotes: [{ id: "n", text: "fast", color: "yellow", createdAt: 1 }] }));
+    expect(entry).toMatchObject({ teamId: "team-a", uid: "uid-ada", source: "event", formId: "biobuzz", teamNumber: 4242, values: { autoLeave: true, teleTipHive: 2 }, score: { total: 43 }, excluded: false, accuracy: null });
+    expect(entry.stickyNotes).toHaveLength(1);
   });
 });
 

@@ -164,11 +164,12 @@ export function subscribeScoutEntriesForMatch(
 // formEntries (the team's other forms)
 // ---------------------------------------------------------------------------------------------------------------------
 
-export type FormEntriesFilter = { formId?: string; eventCode?: string };
+export type FormEntriesFilter = { formId?: string; formType?: string; eventCode?: string };
 
 function formEntriesTarget(teamId: string, filter: FormEntriesFilter): Target {
   const extra: Equality[] = [];
   if (filter.formId) extra.push(["formId", filter.formId]);
+  if (filter.formType) extra.push(["formType", filter.formType]);
   if (filter.eventCode) extra.push(["eventCode", filter.eventCode]);
   return teamQuery(FORM_ENTRIES, teamId, extra);
 }

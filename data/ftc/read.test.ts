@@ -151,6 +151,12 @@ describe("form entries", () => {
     expect(filters(askedQuery())).toEqual(['teamId == "team1"']);
   });
 
+  it("filters by form type (the scout page reads this event's pit entries)", async () => {
+    h.getDocs.mockResolvedValue(querySnap([]));
+    await getFormEntries("team1", { formType: "pit-scout", eventCode: "EV1" });
+    expect(filters(askedQuery())).toEqual(['teamId == "team1"', 'formType == "pit-scout"', 'eventCode == "EV1"']);
+  });
+
   it("subscribeFormEntries converts snapshots", () => {
     const onData = vi.fn();
     subscribeFormEntries("team1", { formId: "lead-scout" }, onData, vi.fn());

@@ -11,8 +11,8 @@
  */
 import type { MatchType } from "@/lib/events/types";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
-import type { AccuracyResult, AccuracyStatus, AutoFlag, ManualFlag, ManualFlagReason, ScoreBreakdown, ScoutEntry, ScoutEntryMode, ScoutEntrySource } from "@/lib/scout-entries";
-import { finiteNumber, isoFromMs, isRecord, nonEmptyString, numberOr, str, toEpochMs } from "@/data/ftc/util";
+import type { AccuracyResult, AccuracyStatus, AutoFlag, ManualFlag, ManualFlagReason, SaveEntryInput, ScoreBreakdown, ScoutEntry, ScoutEntryMode, ScoutEntrySource } from "@/lib/scout-entries";
+import { finiteNumber, isoFromMs, isRecord, nonEmptyString, numberOr, str, stripUndefined, toEpochMs } from "@/data/ftc/util";
 
 /** `programs/ftc/scoutEntries/{id}` as stored (the Firestore body, keys and values untouched). */
 export type FtcScoutEntryDoc = Record<string, unknown>;
@@ -127,6 +127,31 @@ export function ftcDocToScoutEntry(id: string, doc: FtcScoutEntryDoc): ScoutEntr
     sessionId: nonEmptyString(doc.sessionId),
     libraryMatchId: nonEmptyString(doc.libraryMatchId),
   };
+}
+
+/**
+ * The document a new Match Scout entry is stored as, in the shape the rules accept and every reader above expects: the entry's own fields (the form,
+ * its values, the score as stored, the summary comment), who wrote it and for which team, where it was scouted (`source`, `mode`, session and library
+ * match, defaulting to a real-event entry), a client `submittedAt` usable at once (offline too), the server `createdAt`, and no flags or accuracy yet.
+ * `now` supplies `createdAt` (a server timestamp in the app; a plain value in tests). Nothing is `undefined`: Firestore refuses it.
+ */
+export function ftcScoutEntryDoc(teamId: string, uid: string, input: SaveEntryInput, now: () => unknown, submittedAt: string = new Date().toISOString()): Record<string, unknown> {
+  const { source = "event", mode = null, sessionId = null, libraryMatchId = null, ...rest } = input;
+  return stripUndefined({
+    ...rest,
+    teamId,
+    uid,
+    source,
+    mode,
+    sessionId,
+    libraryMatchId,
+    submittedAt,
+    createdAt: now(),
+    excluded: false,
+    autoFlags: [],
+    manualFlags: [],
+    accuracy: null,
+  });
 }
 
 /** Every row as an entry, in the order given. A row whose body is not a map (it cannot be a Firestore document) is skipped. */
