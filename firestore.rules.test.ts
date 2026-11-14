@@ -1368,4 +1368,45 @@ describe("program isolation", () => {
   it("denies the unauthenticated", async () => {
     await assertFails(getDoc(doc(anon(), "programs/ftc/teams", FT1)));
   });
+
+  // The root recursive rules (`/{path=**}/scouts/{uid}`, `/{path=**}/players/{uid}`) also match FTC subpaths such as
+  // programs/ftc/lobbies/{id}/players/{uid} and programs/ftc/liveMatches/{key}/scouts/{uid}. They evaluate sameTeam() against
+  // the FRC profile, so an FRC account whose team code equals the teamId on an FTC presence doc must still not read it.
+  describe("root recursive wildcards do not reach FTC subpaths", () => {
+    const LOBBY_PLAYER = "programs/ftc/lobbies/LOBBY1/players";
+    const LIVE_SCOUT = "programs/ftc/liveMatches/M1/scouts";
+
+    beforeEach(async () => {
+      await seed(async (db) => {
+        // teamId deliberately equals the FRC team code TEAM1 (the worst case: an id collision across programs).
+        await setDoc(doc(db, LOBBY_PLAYER, FTC_ONLY), { uid: FTC_ONLY, teamId: TEAM1, name: "ftc player" });
+        await setDoc(doc(db, LIVE_SCOUT, FTC_ONLY), { uid: FTC_ONLY, teamId: TEAM1 });
+        // The FRC twins, which the wildcards exist for.
+        await setDoc(doc(db, "lobbies/LOBBY1/players", FRC_ONLY), { uid: FRC_ONLY, teamId: TEAM1 });
+        await setDoc(doc(db, "liveMatches/M1/scouts", FRC_ONLY), { uid: FRC_ONLY, teamId: TEAM1 });
+      });
+    });
+
+    it("denies an FRC account a direct read of an FTC lobby player and an FTC live scout", async () => {
+      await assertFails(getDoc(doc(as(FRC_ONLY), LOBBY_PLAYER, FTC_ONLY)));
+      await assertFails(getDoc(doc(as(FRC_ONLY), LIVE_SCOUT, FTC_ONLY)));
+    });
+
+    it("keeps the FRC collection-group queries working (a path guard on `list` would deny them)", async () => {
+      // The FRC app's own queries (lib/practice-queries.ts shape). KNOWN RESIDUAL: these also match FTC docs whose teamId
+      // equals the FRC team code; the rules cannot exclude them without denying the queries (see the wildcard comment).
+      await assertSucceeds(getDocs(query(collectionGroup(as(FRC_ONLY), "players"), where("uid", "==", FRC_ONLY))));
+      await assertSucceeds(getDocs(query(collectionGroup(as(FRC_ONLY), "scouts"), where("teamId", "==", TEAM1))));
+    });
+
+    it("never grants a write to FTC subpaths through the wildcards", async () => {
+      await assertFails(setDoc(doc(as(FRC_ONLY), LOBBY_PLAYER, FRC_ONLY), { uid: FRC_ONLY, teamId: TEAM1 }));
+      await assertFails(setDoc(doc(as(FRC_ONLY), LIVE_SCOUT, FRC_ONLY), { uid: FRC_ONLY, teamId: TEAM1 }));
+    });
+
+    it("still lets the FRC account read its own FRC lobby player and live scout", async () => {
+      await assertSucceeds(getDoc(doc(as(FRC_ONLY), "lobbies/LOBBY1/players", FRC_ONLY)));
+      await assertSucceeds(getDoc(doc(as(FRC_ONLY), "liveMatches/M1/scouts", FRC_ONLY)));
+    });
+  });
 });

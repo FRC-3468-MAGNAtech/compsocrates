@@ -6,7 +6,7 @@ The event-data, sign-in and owner code (`lib/frc`, `lib/firebase/admin.ts`, `lib
 
 ## Variables
 
-Group A uses the same names as the CompSocrates app. Group B is required by this rebuild's server routes. Group C switches an optional feature on.
+Group A uses the same names as the CompSocrates app. Group B is required by this rebuild's server routes. Group C switches an optional feature on. Group D holds the FTC program's keys (the same grouping as section D of `.env.example`). Group E is read only by the one-off migration script, never by the app.
 
 ### A. CompSocrates (same names as the CompSocrates app)
 
@@ -21,9 +21,6 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 | `NEXT_PUBLIC_TBA_API_KEY` | The Blue Alliance read key. **Read on the server only**: no client code references it, so it is never inlined into a browser bundle. | Event names, schedules, teams, rankings and playoff brackets |
 | `FIRST_API_USERNAME` | FIRST FRC Events API username | Practice schedules and the FIRST fallback for teams and rankings |
 | `FIRST_API_TOKEN` | FIRST FRC Events API token | Same as `FIRST_API_USERNAME` |
-| `FTC_API_USERNAME` | FTC program: FIRST FTC Events API username | FTC event data; the FTC pages name the variable. FRC is unaffected |
-| `FTC_API_KEY` | FTC program: FTC Events API key | Same as `FTC_API_USERNAME` |
-| `FTC_API_BASE_URL` | FTC program: optional base URL override | Nothing (defaults to the public v2.0 API) |
 | `RELEASE_OWNER_UIDS` | Comma-separated uids of the platform owner(s) | Nobody is recognised as platform owner by uid |
 | `RELEASE_OWNER_EMAILS` | Comma-separated emails of the platform owner(s) | Owner-by-email recognition. One of the two owner variables is enough. |
 
@@ -49,6 +46,25 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 | `FIREBASE_ADMIN_PROJECT_ID` | Override for the Admin SDK's project id. Leave it unset: it defaults to `NEXT_PUBLIC_FIREBASE_PROJECT_ID`. | Nothing |
 | `APPLICATION_SECRET` | Signs team-application tokens | Falls back to a key derived from `FIREBASE_ADMIN_PRIVATE_KEY` |
 | `NEXT_PUBLIC_RELEASE_OWNER_UIDS` | Optional browser copy of `RELEASE_OWNER_UIDS`; it lets the UI know who the owner is, and the server uses it when `RELEASE_OWNER_UIDS` is unset | Nothing, as long as `RELEASE_OWNER_UIDS` is set |
+
+### D. FTC program (the FTC pages name the variable when it is unset; FRC is unaffected)
+
+| Variable | What it is | What breaks while it is unset |
+|---|---|---|
+| `FTC_API_USERNAME` | FIRST FTC Events API username | FTC event data |
+| `FTC_API_KEY` | FTC Events API key | Same as `FTC_API_USERNAME` |
+| `FTC_API_BASE_URL` | Optional base URL override | Nothing (defaults to the public v2.0 API) |
+
+### E. Migration script only (`scripts/migrate-ce-to-ftc.ts`)
+
+Not read by the app, not in `.env.example` or `ENV_VARS`, and not needed on the host. Set them in a local shell only, for the one-off run (dry run by default; `--apply` also needs `--confirm-project` equal to `CS_ADMIN_PROJECT_ID`).
+
+| Variable | What it is | What breaks while it is unset |
+|---|---|---|
+| `CE_ADMIN_PROJECT_ID`, `CE_ADMIN_CLIENT_EMAIL`, `CE_ADMIN_PRIVATE_KEY` | Admin service account of the source (CompEpicurus) project. Read only. | The script stops and names the missing variable |
+| `CS_ADMIN_PROJECT_ID`, `CS_ADMIN_CLIENT_EMAIL`, `CS_ADMIN_PRIVATE_KEY` | Admin service account of the destination (CompSocrates) project. Written only with `--apply`. | The script falls back to the same-named `FIREBASE_ADMIN_*` variable, which is the app's own key. Check the fallback is the project you mean before `--apply`. |
+
+The private keys use the same one-line `\n` format as `FIREBASE_ADMIN_PRIVATE_KEY`. Never put real values, key files, exported users or password-hash parameters in the repository; once the migration is finished, delete the keys and the export (see `docs/SECURITY-NOTES.md`, section 5).
 
 ### Deliberately not read
 

@@ -961,11 +961,21 @@ service cloud.firestore {
     // COLLECTION-GROUP queries (`collectionGroup("scouts")`, `collectionGroup("players")`) need rules written with a recursive
     // wildcard; the nested rules above and below do not apply to them. Same conditions as the nested rules; the player
     // rule also lets you read your own player docs (the "which lobby am I in" query).
+    // A direct `get` does not reach into programs/ftc/: sameTeam() reads the FRC profile, so without the guard an FTC presence
+    // doc whose teamId equals an FRC team code would be readable by that FRC team. The guard is on `get` only: during a `list`
+    // (the collection-group queries) resource.__name__ is undefined, and a guard there denies the FRC queries outright.
+    // KNOWN RESIDUAL: an FRC collectionGroup("players"/"scouts") query filtered to an FRC team code would also return FTC docs
+    // carrying that same teamId. FTC team ids must therefore never equal an FRC team code, and FTC code reads these by path.
+    function inFtcProgram(name) {
+      return string(name).matches('.*/documents/programs/ftc/.*');
+    }
     match /{path=**}/scouts/{uid} {
-      allow read: if sameTeam(resource.data.teamId);
+      allow get: if !inFtcProgram(resource.__name__) && sameTeam(resource.data.teamId);
+      allow list: if sameTeam(resource.data.teamId);
     }
     match /{path=**}/players/{uid} {
-      allow read: if signedIn() && (resource.data.uid == request.auth.uid || sameTeam(resource.data.teamId));
+      allow get: if !inFtcProgram(resource.__name__) && signedIn() && (resource.data.uid == request.auth.uid || sameTeam(resource.data.teamId));
+      allow list: if signedIn() && (resource.data.uid == request.auth.uid || sameTeam(resource.data.teamId));
     }
 
     // notifications/{sessionId}: written only by the Admin SDK; a user reads their own.

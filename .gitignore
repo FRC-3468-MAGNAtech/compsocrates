@@ -55,3 +55,11 @@ next-env.d.ts
 
 # Sensitive, keep local (see CLAUDE.md)
 docs/SECURITY-NOTES.md
+
+# Credentials and exported user data: never commit
+*-firebase-adminsdk-*.json
+*firebase-adminsdk*.json
+*service-account*.json
+*serviceAccount*.json
+ce-users.json
+**/ce-users.json
