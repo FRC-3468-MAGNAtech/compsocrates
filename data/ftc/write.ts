@@ -13,6 +13,7 @@ import { reportFirestoreError } from "@/lib/firestore-errors";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import { ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
 import { ftcActiveEventsFields } from "@/data/ftc/teams";
+import { ftcJoinRequestDoc, ftcNewTeamDocs, newFtcJoinCode, type JoinRequestInput, type NewTeamInput } from "@/data/ftc/enrollment";
 import type { ActiveEventsState } from "@/lib/active-events";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
@@ -207,6 +208,33 @@ export function updateUserProfile(uid: string, patch: FtcProfilePatch): Promise<
   const fields = ftcProfilePatch(patch);
   if (Object.keys(fields).length === 0) return Promise.resolve();
   return reported("Couldn't save your profile", `${programPath(PROGRAM, USERS)}/${uid}`, () => updateDoc(programDoc(db, PROGRAM, USERS, uid), fields));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// enrollment: start a team, or ask to join one
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Creates a team and the caller's membership profile (team admin and owner) in ONE batch. The team id is a fresh random join code; the rules
+ * require the id to have that shape, the team to be new, the owner to be the caller and the profile to point at it, so a person can neither
+ * claim an existing team nor leave a team with no member. The batch only ever touches `programs/ftc/`.
+ */
+export async function createTeam(input: NewTeamInput): Promise<{ teamId: string; joinCode: string }> {
+  const code = newFtcJoinCode();
+  const docs = ftcNewTeamDocs(code, input, serverTimestamp());
+  return reported("Couldn't create your team", `${programPath(PROGRAM, TEAMS)}/${code}`, async () => {
+    const batch = writeBatch(db);
+    batch.set(programDoc(db, PROGRAM, TEAMS, code), docs.team);
+    batch.set(programDoc(db, PROGRAM, USERS, input.uid), docs.user);
+    await batch.commit();
+    return { teamId: code, joinCode: code };
+  });
+}
+
+/** Asks to join the team with this join code: `teams/{code}/joinRequests/{uid}`, pending. The rules refuse a code that matches no team. */
+export function requestToJoinTeam(joinCode: string, input: JoinRequestInput): Promise<void> {
+  const path = `${programPath(PROGRAM, TEAMS)}/${joinCode}/joinRequests/${input.uid}`;
+  return reported("Couldn't send your request", path, () => setDoc(programDoc(db, PROGRAM, TEAMS, joinCode, "joinRequests", input.uid), ftcJoinRequestDoc(input, serverTimestamp())));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

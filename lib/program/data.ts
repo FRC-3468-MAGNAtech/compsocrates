@@ -105,6 +105,12 @@ export type ProgramData = {
     /** Saves a role or admin change and its audit entry in one batch (admins and the owner, by the rules). */
     updateAccess(actor: { teamId: string; uid: string; name: string }, member: Pick<TeamMember, "uid" | "name"> & MemberAccess, changes: Partial<MemberAccess>): Promise<void>;
   };
+  enrollment: {
+    /** Starts a team and the caller's profile on it (team admin and owner), in one batch. The team id is a fresh random join code. */
+    createTeam(input: { uid: string; email: string; name: string; teamNumber: number; teamName: string; location: string }): Promise<{ teamId: string; joinCode: string }>;
+    /** Sends a request to join the team with this (normalized) join code. */
+    requestToJoin(joinCode: string, input: { uid: string; name: string }): Promise<void>;
+  };
   attendance: {
     /** Every event the team has attendance recorded for. */
     subscribeTeam(teamId: string, onData: (records: EventAttendance[]) => void, onError: DataError): Unsubscribe;
