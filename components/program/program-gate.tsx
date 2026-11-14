@@ -9,6 +9,8 @@ import { useAuth } from "@/lib/auth";
 import { useRouter } from "@/lib/program/navigation";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
+import { TeamSetup } from "@/components/program/team-setup";
+import { useProgramData } from "@/lib/program/data";
 
 type Membership = "loading" | "none" | "member" | { error: string };
 
@@ -21,6 +23,7 @@ type Membership = "loading" | "none" | "member" | { error: string };
 export function ProgramGate() {
   const program = useProgram();
   const config = useProgramConfig();
+  const data = useProgramData();
   const { user, loading } = useAuth();
   const router = useRouter();
   const [membership, setMembership] = useState<Membership>("loading");
@@ -42,6 +45,9 @@ export function ProgramGate() {
   return (
     <div className="mx-auto flex min-h-[70vh] w-full max-w-xl flex-col justify-center gap-4 px-4">
       <ProgramSwitcher />
+      {membership === "none" && data ? (
+        <TeamSetup />
+      ) : (
       <div className="glass-card flex flex-col gap-2 p-6">
         <h1 className="text-xl font-semibold">{config.brand.fullName}</h1>
         {membership === "loading" && <p className="text-sm text-[var(--muted-foreground)]">Checking your {config.brand.label} team...</p>}
@@ -57,6 +63,7 @@ export function ProgramGate() {
         )}
         {typeof membership === "object" && <p className="text-sm text-[var(--destructive,#d33)]">Could not read your {config.brand.label} membership: {membership.error}</p>}
       </div>
+      )}
     </div>
   );
 }
