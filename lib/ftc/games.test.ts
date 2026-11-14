@@ -150,7 +150,8 @@ describe("BIOBUZZ generated form", () => {
   it("is a valid published match-scout form with the original value fields in the original order", () => {
     expect(checkForm(form).filter((i) => i.severity === "error")).toEqual([]);
     expect(form).toMatchObject({ id: "biobuzz", name: "BIOBUZZ", formType: "match-scout", version: 1, status: "published", scoringEnabled: true, origin: "built-in" });
-    expect(valueFields(form).map((f) => f.key)).toEqual(oracleFields.map((f) => f.key));
+    // the alliance role select is the one added key (the original had none); every original key keeps its place
+    expect(valueFields(form).map((f) => f.key).filter((k) => k !== "allianceRole")).toEqual(oracleFields.map((f) => f.key));
   });
 
   it("scores by its fields' own rules (no custom scorer) and has the sticky notes panel on", () => {

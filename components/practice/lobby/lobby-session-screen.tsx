@@ -6,6 +6,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScoutForm, type ScoutFormHandle } from "@/components/scout/scout-form";
+import { allianceRoleFor } from "@/lib/forms/alliance-role";
 import { VideoPlayer } from "@/components/video/video-player";
 import { ScoutingWorkspace } from "@/components/practice/scouting-workspace";
 import { clipDurationOrFallback } from "@/lib/library/video-window";
@@ -271,6 +272,8 @@ export function LobbySessionScreen({
                   showSubmitButton={false}
                   lockedFields={["teamNumber"]}
                   prefill={{ teamNumber: myRobot, scoutName: profile?.name ?? "" }}
+                  // both scouts of the pair seed from the lobby, so they get opposite roles
+                  allianceRole={allianceRoleFor(form, { eventKey: lobby.id, matchType: chosenMatch?.matchType ?? "", matchNumber: chosenMatch?.matchNumber ?? 0, alliance: myPair.alliance, teams: chosenMatch?.alliances[myPair.alliance].teams, teamNumber: myRobot })}
                   commentsMode="popout"
                   comments={joinNotes(notes)}
                   onCommentsChange={() => undefined}

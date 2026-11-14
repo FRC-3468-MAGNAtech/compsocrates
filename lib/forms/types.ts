@@ -112,6 +112,8 @@ export type VisibleWhen =
   | { fieldKey: string; op: "checked" }
   | { fieldKey: string; op: "equals"; value: string | number | boolean }
   | { fieldKey: string; op: "gt"; value: number }
+  // holds while the field is anything but `value`, including when it has no value at all (an entry without a role shows every role's fields)
+  | { fieldKey: string; op: "notEquals"; value: string | number | boolean }
   | { fieldKey: string; op: "xor"; otherFieldKey: string; value?: boolean };
 
 export type ScoringMode = "none" | "whenOn" | "perTally" | "perUnit" | "byOption";
@@ -195,6 +197,11 @@ export type FormField = {
   statRoles?: StatRole[];
   /** Auto-flag: a value above this is "unrealistic scoring" (counters/numbers). */
   unrealisticAbove?: number;
+  /**
+   * An alliance objective only one scout per alliance records (`lib/forms/alliance-role.ts`): the id of the role that records this field. Its value is stored
+   * only for that role (absent, not 0, for the other), and team stats read it as an alliance stat over the entries that recorded it.
+   */
+  allianceRole?: string;
   /** A short scouting tip shown while filling the form (P22). */
   tip?: string;
   /** slider: the labels at the two ends, and tick marks along the track (`min`, `max` and `step` are the integer range). */

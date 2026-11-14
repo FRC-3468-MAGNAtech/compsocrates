@@ -62,6 +62,7 @@ const visibleWhen = z.discriminatedUnion("op", [
   z.object({ fieldKey: z.string().regex(KEY), op: z.literal("checked") }).strict(),
   z.object({ fieldKey: z.string().regex(KEY), op: z.literal("equals"), value: z.union([z.string().max(80), finite, z.boolean()]) }).strict(),
   z.object({ fieldKey: z.string().regex(KEY), op: z.literal("gt"), value: finite }).strict(),
+  z.object({ fieldKey: z.string().regex(KEY), op: z.literal("notEquals"), value: z.union([z.string().max(80), finite, z.boolean()]) }).strict(),
   z.object({ fieldKey: z.string().regex(KEY), op: z.literal("xor"), otherFieldKey: z.string().regex(KEY), value: z.boolean().optional() }).strict(),
 ]);
 
@@ -111,6 +112,7 @@ const fieldSchema = z
       .optional(),
     statRoles: z.array(z.enum(STAT_ROLES)).max(STAT_ROLES.length).optional(),
     unrealisticAbove: finite.optional(),
+    allianceRole: z.string().regex(KEY).optional(),
     tip: text(FORM_LIMITS.tip).optional(),
     endLabels: z.object({ min: text(40).optional(), max: text(40).optional() }).strict().optional(),
     ticks: z.boolean().optional(),

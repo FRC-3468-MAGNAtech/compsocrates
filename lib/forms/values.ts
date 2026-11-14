@@ -193,7 +193,11 @@ export function coerceFieldValue(field: FormField, raw: unknown): FormValue {
 export function normalizeValues(form: Pick<Form, "sections" | "keyAliases">, raw: Record<string, unknown>): FormValues {
   const aliased = applyAliases(raw, form.keyAliases);
   const out: FormValues = {};
-  for (const s of valueSlots(form)) out[s.storageKey] = s.storageKey in aliased ? coerceFieldValue(s.field, aliased[s.storageKey]) : defaultFieldValue(s.field);
+  for (const s of valueSlots(form)) {
+    if (s.storageKey in aliased) out[s.storageKey] = coerceFieldValue(s.field, aliased[s.storageKey]);
+    // an alliance-role field nobody recorded stays absent (not 0): "not recorded" differs from "recorded zero"
+    else if (s.field.allianceRole === undefined) out[s.storageKey] = defaultFieldValue(s.field);
+  }
   return out;
 }
 

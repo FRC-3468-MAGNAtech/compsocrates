@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScoutForm, type ScoutFormHandle, type ScoutFormValues } from "@/components/scout/scout-form";
+import { allianceRoleFor } from "@/lib/forms/alliance-role";
 import { VideoPlayer } from "@/components/video/video-player";
 import { clipProgress, windowStart } from "@/lib/library/video-window";
 import { MOCK_VIDEO_DURATION_SEC } from "@/components/video/mock-video-player";
@@ -272,6 +273,8 @@ export function SessionScreen({
             showSubmitButton={false}
             lockedFields={["teamNumber"]}
             prefill={{ teamNumber, scoutName: session.scoutName }}
+            // one session, two robots: the same seeded rule gives each robot an opposite role
+            allianceRole={allianceRoleFor(form, { eventKey: session.libraryMatchId ?? "", matchType: session.matchType ?? "", matchNumber: session.matchNumber ?? 0, alliance: session.alliance, sessionId: session.id, teams: session.robots, teamNumber })}
             commentsMode="popout"
             comments={joinNotes(notes)}
             onCommentsChange={() => undefined}

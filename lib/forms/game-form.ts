@@ -1,4 +1,5 @@
 import type { GameField, GameFieldPoints, PointTableGameDefinition } from "@/config/games/definition";
+import { ALLIANCE_ROLE_KEY } from "@/lib/forms/alliance-role";
 import { incidentField, incidentSpecs } from "@/lib/forms/incidents";
 import { pointsFor } from "@/lib/games/point-table";
 import { systemFields } from "@/lib/forms/new-form";
@@ -38,7 +39,23 @@ function displayScoring(points: GameFieldPoints | undefined): FormField["scoring
   }
 }
 
+/** The form field that holds an entry's alliance role (never drawn by the scout form, which shows a role badge instead; the admin editor shows it). */
+function roleField(def: PointTableGameDefinition<string>): FormField {
+  return {
+    id: `f-${ALLIANCE_ROLE_KEY}`,
+    key: ALLIANCE_ROLE_KEY,
+    type: "select",
+    label: "Alliance role",
+    options: (def.allianceRoles ?? []).map((r) => ({ value: r.id, label: r.label })),
+    scoring: none,
+    analytics: { include: true, category: "Information", label: "Alliance role", aggregate: "last" },
+  };
+}
+
 function toFormField(def: PointTableGameDefinition<string>, f: GameField): FormField {
+  // a field of one alliance role shows unless the entry's role is the other one (an entry with no role shows both)
+  const role = def.allianceRoles?.find((r) => r.fieldKeys.includes(f.key));
+  const otherRole = role ? def.allianceRoles?.find((r) => r.id !== role.id) : undefined;
   const options = f.options?.map((o) => ({ value: o.value, label: o.label, ...(f.points ? { points: pointsFor(f.points, o.value) } : {}) }));
   return {
     id: `f-${f.key}`,
@@ -56,6 +73,8 @@ function toFormField(def: PointTableGameDefinition<string>, f: GameField): FormF
     analytics: { include: true, category: f.category, aggregate: AGGREGATE_OF_KIND[f.kind] },
     ...(f.statRoles && f.statRoles.length > 0 ? { statRoles: [...f.statRoles] } : {}),
     ...(f.unrealisticAbove !== undefined ? { unrealisticAbove: f.unrealisticAbove } : {}),
+    ...(role ? { allianceRole: role.id } : {}),
+    ...(role && otherRole ? { visibleWhen: { fieldKey: ALLIANCE_ROLE_KEY, op: "notEquals" as const, value: otherRole.id } } : {}),
   };
 }
 
@@ -74,7 +93,10 @@ export function buildGameForm(def: PointTableGameDefinition<string>): Form {
   def.sections.forEach((section) => {
     const own = def.fields.filter((f) => f.section === section.id).map((f) => toFormField(def, f));
     const fields: FormField[] = [];
-    if (section.phase === "prematch") fields.push(...systemFields().filter((f) => f.type !== "matchPicker"));
+    if (section.phase === "prematch") {
+      fields.push(...systemFields().filter((f) => f.type !== "matchPicker"));
+      if (def.allianceRoles && def.allianceRoles.length > 0) fields.push(roleField(def));
+    }
     if (section.phase === "misc") {
       // the incident checkboxes sit above the notes (the field that mirrors to the entry's comment), or at the end when there are none
       const incidents = incidentSpecs(def.incidents).map(incidentField);

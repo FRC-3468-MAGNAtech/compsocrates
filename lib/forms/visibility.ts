@@ -9,6 +9,8 @@ export function conditionHolds(when: VisibleWhen, values: FormValues): boolean {
     case "equals":
       // a number typed into a text-ish value, or an option value, compares as written
       return typeof when.value === "boolean" ? v === when.value : String(v ?? "") === String(when.value);
+    case "notEquals":
+      return typeof when.value === "boolean" ? v !== when.value : String(v ?? "") !== String(when.value);
     case "gt":
       return typeof v === "number" ? v > when.value : typeof v === "string" && v.trim() !== "" && Number(v) > when.value;
     case "xor":

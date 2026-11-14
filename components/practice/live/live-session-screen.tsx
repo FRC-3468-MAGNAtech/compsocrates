@@ -6,6 +6,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ScoutForm, type ScoutFormHandle } from "@/components/scout/scout-form";
+import { allianceRoleFor } from "@/lib/forms/alliance-role";
 import { ScoutingWorkspace } from "@/components/practice/scouting-workspace";
 import { embedUrlFor, parseStreamUrl } from "@/lib/live/stream";
 import { LIVE_CONFIG } from "@/lib/live/config";
@@ -158,6 +159,7 @@ export function LiveSessionScreen({
             showSubmitButton={false}
             lockedFields={["teamNumber"]}
             prefill={{ teamNumber, scoutName: session.scoutName }}
+            allianceRole={allianceRoleFor(form, { eventKey: session.eventCode ?? "", matchType: session.matchType ?? "", matchNumber: session.matchNumber ?? 0, alliance: session.alliance, teams: session.allianceTeams, teamNumber })}
             commentsMode="popout"
             comments={joinNotes(notes)}
             onCommentsChange={() => undefined}

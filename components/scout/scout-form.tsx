@@ -39,6 +39,7 @@ import { browserDraftStorage, clearDraft, DRAFT_DEBOUNCE_MS, draftAge, hasProgre
 import { settleSubmit } from "@/lib/forms/submit-state";
 import { fieldWithRole } from "@/lib/forms/meta";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
+import { ALLIANCE_ROLE_KEY, allianceRoleFor, allianceRoleLabel, applyAllianceRole, hasAllianceRoles } from "@/lib/forms/alliance-role";
 import { isSystemField, type FormValue, type Form, type FormField, type FormSection, type FormValues, type ImageValue } from "@/lib/forms/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import type { EventInfo } from "@/lib/events/types";
@@ -115,6 +116,11 @@ export type ScoutFormProps = {
   matchPickerMarks?: (type: AssignedMatch["type"], matchNumber: number) => MatchMark | null;
   /** The "Request Sub-In" control, shown beside the match button (event scouting only; the page owns the data). */
   subInControl?: ReactNode;
+  /**
+   * The scout's alliance role for a form that splits alliance objectives (`lib/forms/alliance-role.ts`). Leave out when the form picks its own match and team (it works the
+   * role out from them); a practice screen that has no match picker passes it (`null`: no role, every field shown).
+   */
+  allianceRole?: string | null;
 };
 
 const FLAG_SECTION_NOTE = "These don't affect score but are saved with the submission.";
@@ -365,6 +371,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     pit,
     matchPickerMarks,
     subInControl,
+    allianceRole: allianceRoleProp,
   },
   ref
 ) {
@@ -375,6 +382,22 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
   const [rawValues, setValues] = useState<FormValues>(() => ({ ...defaultValues(schema), ...prefill?.values, ...(commentsField && comments !== undefined ? { [commentsField.key]: comments } : {}) } as FormValues));
   // In popout mode the comments text is the caller's (the drawer edits it), so it overrides whatever the form holds for that field.
   const values = useMemo<FormValues>(() => (popout && commentsField ? { ...rawValues, [commentsField.key]: comments ?? "" } : rawValues), [rawValues, popout, commentsField, comments]);
+
+  // Alliance role: given by the caller, or worked out from the picked match and team. Both scouts of an alliance get opposite roles (a seeded choice, no stored state).
+  const splitsRoles = useMemo(() => hasAllianceRoles(schema), [schema]);
+  const role = useMemo(() => {
+    if (!splitsRoles) return null;
+    if (allianceRoleProp !== undefined) return allianceRoleProp;
+    if (!assignedMatch || teamNumber === null) return null;
+    const m = assignedMatch.match;
+    const alliance = m.redTeams.includes(teamNumber) ? "red" : m.blueTeams.includes(teamNumber) ? "blue" : null;
+    return allianceRoleFor(schema, { eventKey: activeEvent?.code ?? m.id, matchType: assignedMatch.type, matchNumber: m.matchNumber, alliance, teams: alliance === "red" ? m.redTeams : m.blueTeams, teamNumber });
+  }, [splitsRoles, allianceRoleProp, assignedMatch, teamNumber, schema, activeEvent?.code]);
+  // keep the values in step with the role (a new match, a restored draft, a reset): the other role's fields are absent, not 0
+  const storedRole = typeof rawValues[ALLIANCE_ROLE_KEY] === "string" ? (rawValues[ALLIANCE_ROLE_KEY] as string) : null;
+  useEffect(() => {
+    if (splitsRoles && storedRole !== role) setValues((v) => applyAllianceRole(schema, v, role));
+  }, [splitsRoles, storedRole, role, schema]);
 
   const [matchDialogOpen, setMatchDialogOpen] = useState(false);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
@@ -434,7 +457,8 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
 
   const score = useMemo(() => calculateScore(schema, values), [schema, values]);
   const visible = useMemo(() => visibleFieldKeys(schema, values), [schema, values]);
-  const currentValues = (): ScoutFormValues => ({ values, teamNumber, match: assignedMatch, scoutName });
+  // what is submitted never carries the other role's fields (absent, not 0), even if a draft or a late render left them in
+  const currentValues = (): ScoutFormValues => ({ values: splitsRoles ? applyAllianceRole(schema, values, role) : values, teamNumber, match: assignedMatch, scoutName });
 
   useEffect(() => {
     onChange?.(currentValues(), score);
@@ -563,6 +587,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
       const fields = section.fields.filter((f) => {
         if (f.type === "matchPicker") return !hideMatchPicker;
         if (isSystemField(f)) return true;
+        if (f.key === ALLIANCE_ROLE_KEY) return false; // shown as the role badge, never as an input
         if (popout && commentsField && f.key === commentsField.key) return false;
         return visible.has(f.key);
       });
@@ -732,6 +757,12 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
         {alreadyScouted && (
           <p role="status" data-testid="already-scouted-note" className="mt-2 text-xs font-medium text-amber-300">
             Team {teamNumber} is already scouted for this match.
+          </p>
+        )}
+        {role && (
+          <p role="status" data-testid="alliance-role" className="mt-2 text-sm font-semibold">
+            You are scouting: {allianceRoleLabel(schema, role)}
+            <span className="ml-2 text-xs font-normal text-[var(--muted-foreground)]">The other scout on your alliance records the rest.</span>
           </p>
         )}
         {pit && teamNumber !== null && (

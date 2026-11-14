@@ -92,6 +92,15 @@ export const BIOBUZZ_CONFIG = {
     }),
   ],
 
+  /**
+   * Hive, Flower and Garden are scored by the alliance, so only one scout per alliance records each (see `lib/forms/alliance-role.ts`). Two scouts, two roles:
+   * the Hive scout records Tip Hive (auto and teleop); the Garden scout records Garden and Flower. The other role's fields are stored absent.
+   */
+  allianceRoles: [
+    { id: "hive", label: "Hive", fieldKeys: ["autoTipHive", "teleTipHive"] },
+    { id: "garden", label: "Garden", fieldKeys: ["flowerBottomNectar", "flowerPollenNectar", "gardenPollenNectar"] },
+  ],
+
   /** Stored entries carry their incidents as the flat boolean fields above. */
   incidents: [],
   rescoutFields: [],

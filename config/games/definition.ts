@@ -122,6 +122,11 @@ export type PointTableGameDefinition<Id extends string = GameId> = GameBase<Id> 
   sections: readonly GameSection[];
   /** The fields, in form order. */
   fields: readonly GameField[];
+  /**
+   * Objectives scored by the alliance, not one robot: exactly two roles, and each scouted robot of an alliance records one role's fields (the other
+   * role's are stored absent). `lib/forms/alliance-role.ts` chooses the split. Absent for a game where every robot records everything (all of them but BIOBUZZ).
+   */
+  allianceRoles?: readonly { id: string; label: string; fieldKeys: readonly string[] }[];
   /** CS doc path of the penalty points the official result adds to a total. */
   penaltyPath?: string;
   /** Auto-flag rules, for a game that has them (CS raises none for CHARGED UP). */
