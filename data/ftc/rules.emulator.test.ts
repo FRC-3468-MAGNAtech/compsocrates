@@ -5,7 +5,7 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimes
 import { ftcDocsToFormEntries } from "@/data/ftc/form-entries";
 import { ftcDocsToFormDocs, ftcDocToFormVersion } from "@/data/ftc/forms";
 import { ftcDocsToScoutEntries, ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
-import { ftcTeamToTeamDoc } from "@/data/ftc/teams";
+import { ftcActiveEventsFields, ftcTeamToTeamDoc, readStoredEvent } from "@/data/ftc/teams";
 import { ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
 import { programPath } from "@/lib/firebase/paths";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
@@ -41,6 +41,7 @@ beforeAll(async () => {
     await setDoc(doc(db, P("users"), OTHER), { name: "Other", email: "o@example.org", teamId: T2, primaryRole: "match-scout", secondaryRoles: [], isAdmin: false, isOwner: false });
     await setDoc(doc(db, P("teams"), T1), {
       joinCode: "J1",
+      fieldTeamIdList: ["ft-1", "ft-2"],
       fieldTeams: [
         { id: "ft-1", number: 1111, name: "Alpha" },
         { id: "ft-2", number: 2222, name: "Beta" },
@@ -179,5 +180,37 @@ describe("reading the account's own data", () => {
   it("the page-access settings of the account are readable by a member", async () => {
     await assertSucceeds(getDoc(doc(as(SCOUT), P("teams"), T1, "settings", "pageAccess")));
     await assertFails(getDoc(doc(as(OTHER), P("teams"), T1, "settings", "pageAccess")));
+  });
+});
+
+// Last: these change the shared team doc that the reads above check.
+describe("setting the active events", () => {
+  const ev = (code: string, season: number) => readStoredEvent({ code, season, name: code, dateStart: "2026-01-10", dateEnd: "2026-01-11", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "upcoming" })!;
+  const selection = { events: [ev("EVA", 2026), ev("EVB", 2026)], primaryCode: "EVB" };
+
+  it("an admin's selection is accepted and reads back, primary first, as the scout page and the event page read it", async () => {
+    await assertSucceeds(updateDoc(doc(as(ADMIN), P("teams"), T1), ftcActiveEventsFields(selection)));
+    const snap = await assertSucceeds(getDoc(doc(as(SCOUT), P("teams"), T1)));
+    const team = ftcTeamToTeamDoc(snap.id, snap.data() ?? {});
+    expect(team.activeEventCode).toBe("EVB");
+    expect(team.activeEventCodes).toEqual(["EVB", "EVA"]);
+    expect(team.activeEvents?.map((e) => e.code)).toEqual(["EVB", "EVA"]);
+    expect(team.activeSeasonId).toBe(2026);
+    // the account's teams are untouched by it
+    expect(team.accountTeams?.map((t) => t.number)).toEqual([1111, 2222]);
+  });
+
+  it("clearing the selection is accepted", async () => {
+    await assertSucceeds(updateDoc(doc(as(ADMIN), P("teams"), T1), ftcActiveEventsFields({ events: [], primaryCode: null })));
+  });
+
+  it("a scout's change is refused, and so is a selection whose primary is not first", async () => {
+    await assertFails(updateDoc(doc(as(SCOUT), P("teams"), T1), ftcActiveEventsFields(selection)));
+    const fields = ftcActiveEventsFields(selection);
+    await assertFails(updateDoc(doc(as(ADMIN), P("teams"), T1), { ...fields, activeEventCodes: ["EVA", "EVB"] }));
+  });
+
+  it("another team's admin cannot change it", async () => {
+    await assertFails(updateDoc(doc(as(OTHER), P("teams"), T1), ftcActiveEventsFields(selection)));
   });
 });

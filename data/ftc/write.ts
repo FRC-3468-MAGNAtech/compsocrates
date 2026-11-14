@@ -3,7 +3,7 @@
  * failure is reported (`reportFirestoreError`) and rethrown so the caller can show it. The documents themselves are built by the pure functions beside
  * this file; only the Firestore calls are here.
  *
- * So far: saving, editing and deleting a Match Scout entry. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
+ * So far: saving, editing and deleting a Match Scout entry, and setting the active events. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
  * rules; a refusal is reported and rethrown like any other failure.
  */
 import { addDoc, deleteDoc, serverTimestamp, updateDoc } from "firebase/firestore";
@@ -12,9 +12,12 @@ import { programCollection, programDoc, programPath } from "@/lib/firebase/paths
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import { ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
+import { ftcActiveEventsFields } from "@/data/ftc/teams";
+import type { ActiveEventsState } from "@/lib/active-events";
 
 const PROGRAM = "ftc" as const;
 const SCOUT_ENTRIES = "scoutEntries";
+const TEAMS = "teams";
 
 /** Saves a new Match Scout entry as `uid`, for `teamId`. Offline, the write waits in Firestore's queue and this stays pending, as it does for every save. */
 export async function saveScoutEntry(teamId: string, uid: string, input: SaveEntryInput): Promise<void> {
@@ -44,6 +47,16 @@ export async function deleteScoutEntry(id: string): Promise<void> {
     await deleteDoc(programDoc(db, PROGRAM, SCOUT_ENTRIES, id));
   } catch (err) {
     reportFirestoreError("Couldn't delete the scout entry", err, `${programPath(PROGRAM, SCOUT_ENTRIES)}/${id}`);
+    throw err;
+  }
+}
+
+/** Sets the account's active events (admins and the owner, by the rules). Writes the five active-event fields and nothing else on the team doc. */
+export async function setActiveEvents(teamId: string, state: ActiveEventsState): Promise<void> {
+  try {
+    await updateDoc(programDoc(db, PROGRAM, TEAMS, teamId), ftcActiveEventsFields(state));
+  } catch (err) {
+    reportFirestoreError("Couldn't save the active events", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
     throw err;
   }
 }

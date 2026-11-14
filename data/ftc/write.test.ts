@@ -20,7 +20,7 @@ vi.mock("firebase/firestore", () => ({
 }));
 vi.mock("@/lib/firebase/client", () => ({ db: { fake: true } }));
 
-import { deleteScoutEntry, saveScoutEntry, updateScoutEntry } from "@/data/ftc/write";
+import { deleteScoutEntry, saveScoutEntry, setActiveEvents, updateScoutEntry } from "@/data/ftc/write";
 import type { SaveEntryInput } from "@/lib/scout-entries";
 
 const input: SaveEntryInput = {
@@ -92,5 +92,25 @@ describe("updateScoutEntry and deleteScoutEntry", () => {
     await expect(updateScoutEntry("e1", { excluded: true })).rejects.toBe(denied);
     await expect(deleteScoutEntry("e1")).rejects.toBe(denied);
     expect(errorSpy.mock.calls.length).toBe(2);
+  });
+});
+
+describe("setActiveEvents", () => {
+  const ev = (code: string) => ({ code, season: 2026, name: code, dateStart: "", dateEnd: "", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "upcoming" as const });
+
+  it("writes the five active-event fields, and only those, to the program's team doc", async () => {
+    h.updateDoc.mockResolvedValue(undefined);
+    await setActiveEvents("team-a", { events: [ev("EVA"), ev("EVB")], primaryCode: "EVB" });
+    const [ref, fields] = h.updateDoc.mock.calls[0];
+    expect(ref).toEqual({ kind: "doc", path: "programs/ftc/teams/team-a" });
+    expect(Object.keys(fields).sort()).toEqual(["activeEvent", "activeEventCode", "activeEventCodes", "activeEvents", "activeSeasonId"]);
+    expect(fields.activeEventCodes).toEqual(["EVB", "EVA"]);
+  });
+
+  it("reports a refusal and rethrows it", async () => {
+    const denied = Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+    h.updateDoc.mockRejectedValue(denied);
+    await expect(setActiveEvents("team-a", { events: [], primaryCode: null })).rejects.toBe(denied);
+    expect(String(errorSpy.mock.calls[0][0])).toContain("programs/ftc/teams/team-a");
   });
 });

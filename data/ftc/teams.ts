@@ -12,7 +12,8 @@
 import type { EventInfo, EventLifecycleStatus } from "@/lib/events/types";
 import type { TeamDoc } from "@/lib/team";
 import type { AccountTeam } from "@/lib/team-number";
-import { digitsToNumber, finiteNumber, isRecord, nonEmptyString, str, stringList } from "@/data/ftc/util";
+import { digitsToNumber, finiteNumber, isRecord, nonEmptyString, str, stringList, stripUndefined } from "@/data/ftc/util";
+import { orderPrimaryFirst, type ActiveEventsState } from "@/lib/active-events";
 
 export type FtcFieldTeam = { id: string; number: number; name: string };
 
@@ -135,4 +136,27 @@ export function ftcTeamToTeamDoc(id: string, doc: FtcTeamDoc): TeamDoc {
     ...(typeof doc.libraryBackfilled === "boolean" ? { libraryBackfilled: doc.libraryBackfilled } : {}),
   };
   return team;
+}
+
+/**
+ * What is written to `programs/ftc/teams/{id}` for an active-event selection: the primary event (always the FIRST: the rules check
+ * `activeEventCodes[0] === activeEventCode`), its code and season, the list of codes, and the full event records, so every reader gets complete events
+ * without a second lookup. A selection handed in with its primary elsewhere is written with that event moved to the front; an empty one clears all five.
+ */
+export function ftcActiveEventsFields(state: ActiveEventsState): {
+  activeEventCode: string | null;
+  activeSeasonId: number | null;
+  activeEvent: EventInfo | null;
+  activeEventCodes: string[];
+  activeEvents: EventInfo[];
+} {
+  const events = orderPrimaryFirst(state);
+  const primary = events[0] ?? null;
+  return stripUndefined({
+    activeEventCode: primary?.code ?? null,
+    activeSeasonId: primary?.season ?? null,
+    activeEvent: primary,
+    activeEventCodes: events.map((e) => e.code),
+    activeEvents: events,
+  });
 }

@@ -5,7 +5,8 @@ import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { EventInfo } from "@/lib/events/types";
 import type { AccountTeam } from "@/lib/team-number";
-import { useProgramData } from "@/lib/program/data";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
 import { csTeamToTeamDoc, selectedEventNamesPatch, selectedEventsPatch } from "@/data/cs/teams";
@@ -129,14 +130,17 @@ export function useTeamDoc(teamId: string | null) {
  * write, and to nothing else: `selectedEvents` is the single source of truth, every other team field is left untouched. Admin-gated at
  * the call site (Event Selection page) via usePermissions(); also enforced in firestore.rules.
  */
-export async function setActiveEvents(teamId: string, state: ActiveEventsState) {
+export async function setActiveEvents(teamId: string, state: ActiveEventsState, program: ProgramId = DEFAULT_PROGRAM) {
+  // A namespaced program stores its active events in its own shape (complete event records) and writes them through its data port.
+  const data = programData(program);
+  if (data) return data.team.setActiveEvents(teamId, state);
   // `selectedEventNames` is the additive names map (merged key by key, nothing else touched); absent when no event has a real name yet.
   await setDoc(doc(db, "teams", teamId), { ...selectedEventsPatch(state), ...selectedEventNamesPatch(state) }, { merge: true });
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */
-export async function setActiveEvent(teamId: string, event: EventInfo | null) {
-  await setActiveEvents(teamId, event ? { events: [event], primaryCode: event.code } : { events: [], primaryCode: null });
+export async function setActiveEvent(teamId: string, event: EventInfo | null, program: ProgramId = DEFAULT_PROGRAM) {
+  await setActiveEvents(teamId, event ? { events: [event], primaryCode: event.code } : { events: [], primaryCode: null }, program);
 }
 
 /** Admin-gated at the call site (Admin Panel > Match Library) via usePermissions(); also enforced in firestore.rules. */

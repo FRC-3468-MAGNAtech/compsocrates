@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ save: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+const h = vi.hoisted(() => ({ save: vi.fn(), update: vi.fn(), remove: vi.fn(), events: vi.fn() }));
 vi.mock("@/data/ftc/write", () => ({
   saveScoutEntry: (...args: unknown[]) => h.save(...args),
   updateScoutEntry: (...args: unknown[]) => h.update(...args),
   deleteScoutEntry: (...args: unknown[]) => h.remove(...args),
+  setActiveEvents: (...args: unknown[]) => h.events(...args),
 }));
 
 import { deleteEntry, saveEntry, updateEntry, type SaveEntryInput } from "@/lib/scout-entries";
+import { setActiveEvent, setActiveEvents } from "@/lib/team";
 
 const input: SaveEntryInput = {
   scoutName: "Ada",
@@ -27,6 +29,7 @@ beforeEach(() => {
   h.save.mockReset();
   h.update.mockReset();
   h.remove.mockReset();
+  h.events.mockReset();
 });
 
 describe("saveEntry and the program", () => {
@@ -64,5 +67,23 @@ describe("updateEntry and deleteEntry and the program", () => {
     await deleteEntry("e1").catch(() => undefined);
     expect(h.update).not.toHaveBeenCalled();
     expect(h.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("setActiveEvents and the program", () => {
+  const state = { events: [], primaryCode: null };
+
+  it("writes through the program's own data port when the program has one, and the single-event form passes the program along", async () => {
+    h.events.mockResolvedValue(undefined);
+    await setActiveEvents("team-a", state, "ftc");
+    await setActiveEvent("team-a", null, "ftc");
+    expect(h.events).toHaveBeenCalledTimes(2);
+    expect(h.events).toHaveBeenCalledWith("team-a", state);
+  });
+
+  it("the default program never touches the program port", async () => {
+    await setActiveEvents("team-a", state).catch(() => undefined);
+    await setActiveEvent("team-a", null).catch(() => undefined);
+    expect(h.events).not.toHaveBeenCalled();
   });
 });

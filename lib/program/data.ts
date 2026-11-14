@@ -12,6 +12,7 @@
 import type { Unsubscribe } from "firebase/firestore";
 import type { ProgramId } from "@/config/programs/types";
 import { ftcProgramData } from "@/lib/ftc/program-data";
+import type { ActiveEventsState } from "@/lib/active-events";
 import type { UserDoc } from "@/lib/auth";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import type { FormEntry } from "@/lib/form-entries-model";
@@ -38,7 +39,11 @@ export type FormEntriesQuery = { formId?: string; formType?: string; eventCode?:
 
 export type ProgramData = {
   profile: { subscribe(uid: string, onData: (profile: UserDoc | null) => void, onError: DataError): Unsubscribe };
-  team: { subscribe(teamId: string, onData: (team: TeamDoc | null) => void, onError: DataError): Unsubscribe };
+  team: {
+    subscribe(teamId: string, onData: (team: TeamDoc | null) => void, onError: DataError): Unsubscribe;
+    /** Sets the account's active events (admins and the owner, by the rules). */
+    setActiveEvents(teamId: string, state: ActiveEventsState): Promise<void>;
+  };
   scoutEntries: {
     /** Every entry of the team, all events and sources. */
     subscribeTeam(teamId: string, onData: (entries: ScoutEntry[]) => void, onError: DataError): Unsubscribe;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ftcTeamToTeamDoc, migratedFieldTeamId, readFieldTeams, readStoredEvent, type FtcTeamDoc } from "@/data/ftc/teams";
+import { ftcActiveEventsFields, ftcTeamToTeamDoc, migratedFieldTeamId, readFieldTeams, readStoredEvent, type FtcTeamDoc } from "@/data/ftc/teams";
+import { orderPrimaryFirst } from "@/lib/active-events";
 import { readActiveEvents } from "@/lib/active-events";
 
 const event = (code: string, over: Record<string, unknown> = {}) => ({
@@ -141,5 +142,36 @@ describe("ftcTeamToTeamDoc", () => {
   it("passes a pending transfer through untouched", () => {
     const pending = { toUid: "u2", expiresAt: 5 };
     expect(ftcTeamToTeamDoc("t", { pendingTransfer: pending }).pendingTransfer).toBe(pending);
+  });
+});
+
+describe("ftcActiveEventsFields (what saving the active events writes)", () => {
+  const a = readStoredEvent(event("EVA", { season: 2026 }))!;
+  const b = readStoredEvent(event("EVB", { season: 2026 }))!;
+  const c = readStoredEvent(event("EVC", { season: 2025 }))!;
+
+  it("writes the primary first, with its code and season, the codes and the full records", () => {
+    const fields = ftcActiveEventsFields({ events: [a, b, c], primaryCode: "EVA" });
+    expect(fields).toEqual({ activeEventCode: "EVA", activeSeasonId: 2026, activeEvent: a, activeEventCodes: ["EVA", "EVB", "EVC"], activeEvents: [a, b, c] });
+  });
+
+  it("moves a primary that is elsewhere to the front (the rules need activeEventCodes[0] to be the primary)", () => {
+    const fields = ftcActiveEventsFields({ events: [a, b, c], primaryCode: "EVC" });
+    expect(fields.activeEventCodes).toEqual(["EVC", "EVA", "EVB"]);
+    expect(fields.activeEventCodes[0]).toBe(fields.activeEventCode);
+    expect(fields.activeSeasonId).toBe(2025);
+    expect(fields.activeEvents.map((e) => e.code)).toEqual(fields.activeEventCodes);
+  });
+
+  it("an empty selection clears all five fields", () => {
+    expect(ftcActiveEventsFields({ events: [], primaryCode: null })).toEqual({ activeEventCode: null, activeSeasonId: null, activeEvent: null, activeEventCodes: [], activeEvents: [] });
+  });
+
+  it("reads back, through the team converter, as the selection that was saved", () => {
+    const state = { events: [b, a], primaryCode: "EVA" };
+    const team = ftcTeamToTeamDoc("t", ftcActiveEventsFields(state));
+    expect(team.activeEventCode).toBe("EVA");
+    expect(team.activeEvents).toEqual(orderPrimaryFirst(state));
+    expect(team.activeEventCodes).toEqual(["EVA", "EVB"]);
   });
 });
