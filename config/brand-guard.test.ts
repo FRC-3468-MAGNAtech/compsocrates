@@ -18,7 +18,7 @@ const ROOT = path.resolve(__dirname, "..");
 const SELF = path.relative(ROOT, __filename).split(path.sep).join("/");
 
 /** Files that belong to the FTC program: they may name FTC terms and must not name FRC ones. */
-const FTC_SCOPE: RegExp[] = [/^config\/programs\/ftc\.ts$/, /^lib\/ftc\//, /^data\/ftc\//, /^scripts\/migrate-ce-to-ftc/, /^docs\/ftc\//];
+const FTC_SCOPE: RegExp[] = [/^config\/programs\/ftc\.ts$/, /^config\/games\/ftc\//, /^lib\/ftc\//, /^data\/ftc\//, /^scripts\/migrate-ce-to-ftc/, /^docs\/ftc\//];
 
 /** path -> why this file may name a forbidden term. Keep it as small as possible. */
 const ALLOWED: Record<string, string> = {
