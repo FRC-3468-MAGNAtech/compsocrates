@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScoutForm, type ScoutFormValues } from "@/components/scout/scout-form";
 import { GameSelect } from "@/components/scout/game-select";
-import { DEFAULT_SEASON_ID } from "@/lib/seasons";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { StickyNotesLayout } from "@/components/forms/sticky-notes-panel";
 import { notesForSave } from "@/lib/sticky-notes";
 import type { StickyNote } from "@/lib/forms/types";
@@ -81,9 +81,11 @@ function MatchScoutFormContent() {
   const name = profile?.name ?? "";
   const teamId = profile?.teamId ?? null;
   // The scout picks the game (REBUILT by default); P21: they fill in that game's active form (the built-in unless an admin chose another or edited it).
-  const [gameId, setGameId] = useState(DEFAULT_SEASON_ID);
-  const { form, loaded: formsLoaded } = useActiveForm(gameId);
+  const program = useProgram();
+  const { features } = useProgramConfig().connection;
   const forms = useForms();
+  const [gameId, setGameId] = useState(forms.defaultSeasonId);
+  const { form, loaded: formsLoaded } = useActiveForm(gameId);
 
   const { assignments } = useAssignments(teamId, activeEvent?.code ?? null);
   const { entries } = useTeamScoutEntries(teamId);
@@ -167,7 +169,7 @@ function MatchScoutFormContent() {
         matchNumber: values.match.match.matchNumber,
         teamNumber: values.teamNumber,
         ...entryPayloadFor(form, values.values, score, { stickyNotes: notesForSave(submittedNotes) }),
-      });
+      }, program);
     } catch (error) {
       setNotes((current) => [...submittedNotes, ...current]);
       throw error;
@@ -176,7 +178,8 @@ function MatchScoutFormContent() {
     // different robot's entry can flip from "Needs Robots" to resolved once
     // its alliance partner is scouted too. Fire-and-forget: it never throws
     // (every call inside is already error-handled) and shouldn't block reset.
-    void recomputeForEvent(profile.teamId, activeEvent.code, activeEvent.season, forms.currentResolver);
+    // (Only in a program whose accuracy is connected: it reads official results and rewrites entries in the default program's collections.)
+    if (features.accuracy) void recomputeForEvent(profile.teamId, activeEvent.code, activeEvent.season, forms.currentResolver);
     // The just-saved entry's realtime update will advance `nextAssignment` —
     // clear the loaded override so the form reflects whatever that becomes.
     setLoadedAssignment(null);
@@ -238,13 +241,15 @@ function MatchScoutFormContent() {
         matchPickerMarks={matchMarkFor}
         pit={pit}
         subInControl={
-          <RequestSubIn
-            teamId={teamId}
-            eventKey={eventCode}
-            actor={uid ? { uid, name: name || "Scout" } : null}
-            assigned={handOverable}
-            requests={subIns}
-          />
+          features.subIns ? (
+            <RequestSubIn
+              teamId={teamId}
+              eventKey={eventCode}
+              actor={uid ? { uid, name: name || "Scout" } : null}
+              assigned={handOverable}
+              requests={subIns}
+            />
+          ) : undefined
         }
         onSubmit={handleSubmit}
       />

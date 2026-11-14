@@ -24,11 +24,12 @@ export const FTC_PROGRAM: ProgramConfig = {
   event: { allianceSize: 2, seasonKind: "start-year", hasEpa: false },
   firestorePrefix: "programs/ftc/",
   unavailablePaths: FTC_UNAVAILABLE_PATHS,
-  pagesConnected: false,
-  // The scout page is the first connected slice. Every other path shows the gate inside the shell until its data layer is program-aware.
+  pagesConnected: true,
+  // The shell is mounted, but only the scout page is connected so far (the first vertical slice). Every other path shows "not available yet" inside the
+  // shell until its data layer is program-aware, so no shared page reads the other program's collections. Add a path here when it is connected.
   connection: {
     paths: ["/scout"],
-    features: { assignments: false, subIns: false, practice: false, live: false, library: false, changelog: false, applications: false, eventLookup: false },
+    features: { assignments: false, subIns: false, practice: false, live: false, library: false, accuracy: false, changelog: false, applications: false, eventLookup: false },
   },
   multiTeam: true,
 };

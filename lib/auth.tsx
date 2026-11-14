@@ -102,7 +102,7 @@ export type UserDoc = {
 
 export type GoogleLinkPrompt = { email: string };
 
-type AuthContextValue = {
+export type AuthContextValue = {
   user: FirebaseUser | null;
   profile: UserDoc | null;
   /** True until the initial auth state (and, if signed in, the profile doc) has loaded. */
@@ -131,7 +131,7 @@ type AuthContextValue = {
   dismissGoogleLinkPrompt: () => void;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null);

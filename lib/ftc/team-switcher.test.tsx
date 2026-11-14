@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { TeamSwitcher } from "@/components/program/team-switcher";
@@ -12,10 +12,14 @@ const TEAMS = [
 ];
 
 function render(program: ProgramId, choice: AccountTeamChoice): string {
-  const tree: ReactNode = createElement(
-    ProgramProvider,
-    { program },
-    createElement(OurTeamContext.Provider, { value: ourTeamFrom({ number: 111, name: "Alpha" }) }, createElement(AccountTeamContext.Provider, { value: choice }, createElement(TeamSwitcher)))
+  const tree: ReactNode = (
+    <ProgramProvider program={program}>
+      <OurTeamContext.Provider value={ourTeamFrom({ number: 111, name: "Alpha" })}>
+        <AccountTeamContext.Provider value={choice}>
+          <TeamSwitcher />
+        </AccountTeamContext.Provider>
+      </OurTeamContext.Provider>
+    </ProgramProvider>
   );
   return renderToStaticMarkup(tree);
 }

@@ -45,6 +45,8 @@ export type ProgramFeatures = {
   live: boolean;
   /** The match library and its admin backfill. */
   library: boolean;
+  /** Accuracy and flag recompute after a save (reads official results and rewrites entries). */
+  accuracy: boolean;
   /** The changelog and its unread dot. */
   changelog: boolean;
   /** Team applications (the platform owner's pending count). */

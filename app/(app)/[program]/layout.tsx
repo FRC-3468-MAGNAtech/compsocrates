@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { notFound, useParams } from "next/navigation";
-import { useRouter } from "@/lib/program/navigation";
+import { usePathname, useRouter } from "@/lib/program/navigation";
 import { isProgramId, type ProgramId } from "@/config/programs/types";
-import { PROGRAMS } from "@/config/programs";
-import { ProgramProvider } from "@/lib/program/context";
+import { isPathConnected, PROGRAMS } from "@/config/programs";
+import { ProgramProvider, useProgram, useProgramConfig } from "@/lib/program/context";
+import { useProgramData } from "@/lib/program/data";
 import { ProgramGate } from "@/components/program/program-gate";
+import { ProgramAuth } from "@/components/program/program-auth";
+import { UnconnectedPage } from "@/components/program/unconnected-page";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { PageTransition } from "@/components/layout/page-transition";
@@ -32,6 +35,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const immersiveValue = useImmersiveValue(immersive, setImmersive);
   const router = useRouter();
   const { user, profile, loading } = useAuth();
+  const program = useProgram();
+  const pathname = usePathname();
+  // A program with its own data port (not the root program) has its own profile and team, and only the features it has connected.
+  const ported = useProgramData() !== null;
+  const { features } = useProgramConfig().connection;
   // One subscription for the offline / unsynced badge, shared by the sidebar and the mobile top bar.
   const connection = useConnectionNotice();
   useEffect(() => {
@@ -40,10 +48,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
     // Signed in but no user doc yet (first-time Google sign-in, or anyone
     // who closed the tab before finishing).
     // CS user docs exist from signup with `teamId: ""` (a pending join request): same destination, which shows the pending state.
-    else if (!profile?.teamId) router.replace("/finish-setup");
-  }, [loading, user, profile, router]);
+    // (A ported program's people have no setup flow here yet: they get the gate below, which says why, instead of the root program's.)
+    else if (!profile?.teamId && !ported) router.replace("/finish-setup");
+  }, [loading, user, profile, router, ported]);
 
   if (loading || !user || !profile?.teamId) {
+    if (!loading && user && ported) return <ProgramGate />;
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="glass-card h-10 w-10 animate-pulse rounded-full" />
@@ -65,16 +75,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <main className="min-w-0">
             <VerifyEmailBanner className="mb-4" />
             <OwnershipTransferBanner className="mb-4" />
-            <LiveMatchPill />
+            {features.live && <LiveMatchPill />}
             <PageTransition>
-              <PageGuard>{children}</PageGuard>
+              {/* A path whose data layer is not connected for this program shows a notice, never the shared page (it would read another program's data). */}
+              {isPathConnected(program, pathname) ? <PageGuard>{children}</PageGuard> : <UnconnectedPage />}
             </PageTransition>
           </main>
           <SiteFooter className="mt-10" />
         </div>
-        <ScoresReadyWatcher />
-        <TeamAssignmentsWatcher />
-        {profile.isAdmin && <LibraryBackfill />}
+        {features.practice && <ScoresReadyWatcher />}
+        {features.assignments && <TeamAssignmentsWatcher />}
+        {profile.isAdmin && features.library && <LibraryBackfill />}
       </div>
       </ImmersiveContext.Provider>
       </FormsProvider>
@@ -95,5 +106,11 @@ export default function ProgramLayout({ children }: { children: React.ReactNode 
 
 /** Connected programs get the full shell; the others get the gate (see ProgramConfig.pagesConnected). */
 function ProgramRoute({ program, children }: { program: ProgramId; children: React.ReactNode }) {
-  return PROGRAMS[program].pagesConnected ? <AppShell>{children}</AppShell> : <ProgramGate />;
+  return PROGRAMS[program].pagesConnected ? (
+    <ProgramAuth>
+      <AppShell>{children}</AppShell>
+    </ProgramAuth>
+  ) : (
+    <ProgramGate />
+  );
 }
