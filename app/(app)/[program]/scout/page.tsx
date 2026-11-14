@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ScoutForm, type ScoutFormValues } from "@/components/scout/scout-form";
 import { GameSelect } from "@/components/scout/game-select";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
-import { StickyNotesLayout } from "@/components/forms/sticky-notes-panel";
+import { FormNotesLayout } from "@/components/forms/sticky-notes-panel";
 import { notesForSave } from "@/lib/sticky-notes";
 import type { StickyNote } from "@/lib/forms/types";
 import type { AssignedMatch } from "@/components/scout/match-picker-dialog";
@@ -28,6 +28,7 @@ import { useAssignments } from "@/lib/assignments";
 import { useTeamScoutEntries, saveEntry, entryPayloadFor } from "@/lib/scout-entries";
 import type { ScoreResult } from "@/lib/forms/scoring";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
+import { fieldWithRole } from "@/lib/forms/meta";
 import { recomputeForEvent } from "@/lib/analytics/recompute";
 import { nextAssignment as findNextAssignment } from "@/lib/dashboard/insights";
 import type { EventMatch } from "@/lib/events/types";
@@ -136,6 +137,9 @@ function MatchScoutFormContent() {
   const handOverable = uid && eventCode ? allSlots.filter((s) => s.scoutUid === uid && !scoutedTeamsFor(entries.filter((e) => e.uid === uid), eventCode, s.matchType, s.matchNumber).has(s.teamNumber)) : [];
   // P28: the sticky notes written while scouting this robot (saved with the entry; the old Comments column folds them in)
   const [notes, setNotes] = useState<StickyNote[]>([]);
+  // A form without sticky notes keeps its own notes field; it moves into the notes box beside the form (large screens) or the notes sheet (phones).
+  const [comments, setComments] = useState("");
+  const notesInSideBox = !form.stickyNotes?.enabled && !!fieldWithRole(form, "comments");
   const [loadedAssignment, setLoadedAssignment] = useState<{ match: AssignedMatch; teamNumber: number } | null>(null);
 
   const nextAssignment = user && activeEvent && allSlots.length > 0 ? findNextAssignment(allSlots, user.uid, activeEvent.code, entries) : null;
@@ -215,10 +219,11 @@ function MatchScoutFormContent() {
       {!formsLoaded ? (
         <div className="glass-card h-64 animate-pulse" />
       ) : (
-      <StickyNotesLayout enabled={!!form.stickyNotes?.enabled} defaultOpen={form.stickyNotes?.defaultOpen} notes={notes} onChange={setNotes}>
+      <FormNotesLayout stickyEnabled={!!form.stickyNotes?.enabled} defaultOpen={form.stickyNotes?.defaultOpen} notes={notes} onNotesChange={setNotes} comments={notesInSideBox ? { value: comments, onChange: setComments } : undefined}>
       <ScoutForm
         key={`${form.id}@${form.version}`}
         schema={form}
+        {...(notesInSideBox ? { commentsMode: "popout" as const, comments, onCommentsChange: setComments } : {})}
         mode="event"
         activeEvent={activeEvent}
         eventChoices={eventChoices}
@@ -248,7 +253,7 @@ function MatchScoutFormContent() {
         }
         onSubmit={handleSubmit}
       />
-      </StickyNotesLayout>
+      </FormNotesLayout>
       )}
     </div>
   );

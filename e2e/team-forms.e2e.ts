@@ -134,9 +134,8 @@ test.describe("Team Strategy Form", () => {
     await page.getByRole("option", { name: "Defense" }).click();
     for (const label of ["Can score", "Can collect", "Shoot while intaking", "Shoot while moving"]) await expect(page.getByRole("checkbox", { name: label })).toBeVisible();
     await page.getByRole("checkbox", { name: "Shoot while moving" }).click();
-    await page.getByTestId("notes-tab").click();
-    await page.getByTestId("note-add").click();
-    await page.getByRole("textbox", { name: "Note" }).first().fill("great driver");
+    if (isMobile) await page.getByTestId("notes-tab").click(); // the wide-screen notes box is always there
+    await page.getByTestId("notes-box").fill("great driver");
     if (isMobile) await page.getByTestId("notes-close").click(); // the phone's notes sheet covers the submit bar
     await page.getByTestId("submit-form").click();
     const [entry] = await saved(page);
@@ -201,8 +200,8 @@ test.describe("one entry per team: edit previous or submit another", () => {
     await page.getByTestId("edit-previous").click();
     await expect(page.getByTestId("editing-banner")).toContainText("Editing your earlier entry for team 222");
     await expect(page.getByRole("combobox", { name: /Best at/ })).toContainText("Scoring");
-    await page.getByTestId("notes-tab").click();
-    await expect(page.getByRole("textbox", { name: "Note" }).first()).toHaveValue("earlier note");
+    if (isMobile) await page.getByTestId("notes-tab").click();
+    await expect(page.getByTestId("notes-box")).toHaveValue("earlier note");
     if (isMobile) await page.getByTestId("notes-close").click();
     await page.getByRole("checkbox", { name: "Can score", exact: true }).click();
     await expect(page.getByTestId("submit-form")).toHaveText(/Save changes/);

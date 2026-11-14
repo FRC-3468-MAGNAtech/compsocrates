@@ -61,3 +61,25 @@ export const PANEL_MIN_PX = 240;
 export const PANEL_MAX_PX = 520;
 export const PANEL_DEFAULT_PX = 320;
 export const clampPanelWidth = (px: number): number => (Number.isFinite(px) ? Math.min(PANEL_MAX_PX, Math.max(PANEL_MIN_PX, Math.round(px))) : PANEL_DEFAULT_PX);
+
+// The form pages show ONE big notes box, not a stack of cards (analytics shows the same: one block of text). It is stored as a single entry of `stickyNotes[]`
+// so the saved shape and old entries are unchanged.
+
+/** The most the single notes box holds. */
+export const MAX_NOTES_BOX_LENGTH = 5000;
+
+/** The box's text: the one note's text; an older draft or entry with several notes shows them oldest first, separated by a blank line. */
+export const notesBoxText = (notes: readonly StickyNote[]): string =>
+  [...notes]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((n) => n.text)
+    .filter((t) => t !== "")
+    .join("\n\n");
+
+/** The notes after the box's text becomes `text`: one note (the oldest one's id, colour and time are kept, any others are folded into it), or none for empty text. */
+export function setNotesBoxText(notes: readonly StickyNote[], text: string, now: number = Date.now()): StickyNote[] {
+  const next = text.slice(0, MAX_NOTES_BOX_LENGTH);
+  const first = [...notes].sort((a, b) => a.createdAt - b.createdAt)[0];
+  if (!first) return next === "" ? [] : [{ ...newNote(DEFAULT_NOTE_COLOR, now), text: next }];
+  return [{ ...first, text: next }];
+}

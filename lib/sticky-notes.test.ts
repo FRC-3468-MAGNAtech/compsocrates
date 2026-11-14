@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StickyNote } from "@/lib/forms/types";
-import { MAX_NOTES, MAX_NOTE_LENGTH, PANEL_DEFAULT_PX, PANEL_MAX_PX, PANEL_MIN_PX, addNote, clampPanelWidth, deleteNote, editNote, newNote, noteColorClass, noteCount, notesForSave, setNoteColor, sortNotes, togglePin } from "./sticky-notes";
+import { MAX_NOTES, MAX_NOTES_BOX_LENGTH, MAX_NOTE_LENGTH, notesBoxText, setNotesBoxText, PANEL_DEFAULT_PX, PANEL_MAX_PX, PANEL_MIN_PX, addNote, clampPanelWidth, deleteNote, editNote, newNote, noteColorClass, noteCount, notesForSave, setNoteColor, sortNotes, togglePin } from "./sticky-notes";
 
 const note = (id: string, createdAt: number, over: Partial<StickyNote> = {}): StickyNote => ({ id, text: id, color: "yellow", createdAt, ...over });
 
@@ -60,5 +60,36 @@ describe("sticky notes", () => {
     expect(clampPanelWidth(5000)).toBe(PANEL_MAX_PX);
     expect(clampPanelWidth(333.4)).toBe(333);
     expect(clampPanelWidth(Number.NaN)).toBe(PANEL_DEFAULT_PX);
+  });
+});
+
+describe("the single notes box", () => {
+  const n = (id: string, text: string, createdAt: number) => ({ id, text, color: "yellow", createdAt });
+
+  it("starts empty, and typing creates exactly one note", () => {
+    expect(notesBoxText([])).toBe("");
+    expect(setNotesBoxText([], "", 5)).toEqual([]);
+    const made = setNotesBoxText([], "hello", 5);
+    expect(made).toHaveLength(1);
+    expect(made[0]).toMatchObject({ text: "hello", createdAt: 5 });
+  });
+
+  it("keeps editing the same note, and survives a round trip (layout switch or draft restore)", () => {
+    const one = setNotesBoxText([], "a", 5);
+    const two = setNotesBoxText(one, "ab", 9);
+    expect(two).toHaveLength(1);
+    expect(two[0].id).toBe(one[0].id);
+    expect(notesBoxText(two)).toBe("ab");
+  });
+
+  it("folds an older multi-note draft into the one box, oldest first", () => {
+    const old = [n("b", "second", 2), n("a", "first", 1)];
+    expect(notesBoxText(old)).toBe("first\n\nsecond");
+    const folded = setNotesBoxText(old, "first\n\nsecond!", 9);
+    expect(folded).toEqual([{ id: "a", text: "first\n\nsecond!", color: "yellow", createdAt: 1 }]);
+  });
+
+  it("caps the length", () => {
+    expect(setNotesBoxText([], "x".repeat(MAX_NOTES_BOX_LENGTH + 10), 1)[0].text).toHaveLength(MAX_NOTES_BOX_LENGTH);
   });
 });

@@ -104,8 +104,7 @@ test.describe("Match Strategy", () => {
     await expect(page.getByTestId("team-box-2")).toContainText("Will score in auto");
     // notes (the panel is a side panel on a wide screen, a bottom sheet on a phone)
     if (isMobile) await page.getByTestId("notes-tab").click(); // the phone sheet starts closed; the wide-screen panel is always open
-    await page.getByTestId("note-add").click();
-    await page.getByRole("textbox", { name: "Note" }).first().fill("Opponent plays defense on teleop");
+    await page.getByTestId("notes-box").fill("Opponent plays defense on teleop");
     await expect(page.getByTestId("notes-badge").first()).toHaveText("1");
     if (isMobile) await page.getByTestId("notes-close").click();
     await page.getByTestId("submit-form").click();
@@ -169,43 +168,27 @@ test.describe("Drive Reflection", () => {
 });
 
 test.describe("sticky notes panel", () => {
-  test("add, type, colour, pin to the top, delete with a confirmation, and the count badge", async ({ page, isMobile }) => {
+  test("one big notes box: type, count badge, saved as a single note, cleared for the next entry", async ({ page, isMobile }) => {
     test.skip(!!isMobile, "the desktop side panel (the phone sheet is covered below)");
     await open(page, "form=strategy");
     const panel = page.getByTestId("notes-panel");
     await expect(panel).toHaveAttribute("data-state", "open"); // always visible on a wide screen: no tab, no expand or collapse button
     await expect(page.getByTestId("notes-tab")).toHaveCount(0);
     await expect(page.getByTestId("notes-badge")).toHaveCount(0);
-
-    await panel.getByTestId("note-add").click();
-    await page.getByRole("textbox", { name: "Note" }).first().fill("first note");
-    await panel.getByTestId("note-add").click();
-    await page.getByRole("textbox", { name: "Note" }).first().fill("second note");
-    await expect(panel.getByTestId("note-card")).toHaveCount(2);
-    await expect(panel.getByTestId("notes-badge")).toHaveText("2");
-    // newest first
-    await expect(panel.getByTestId("note-card").first().getByRole("textbox", { name: "Note" })).toHaveValue("second note");
-    // pin the older one: it jumps to the top
-    await panel.getByTestId("note-card").nth(1).getByRole("button", { name: "Pin note to the top" }).click();
-    await expect(panel.getByTestId("note-card").first().getByRole("textbox", { name: "Note" })).toHaveValue("first note");
-    await expect(panel.getByTestId("note-card").first()).toHaveAttribute("data-pinned", "true");
-    // a colour
-    await panel.getByTestId("note-card").first().getByRole("radio", { name: "Blue" }).click();
-    await expect(panel.getByTestId("note-card").first().getByRole("radio", { name: "Blue" })).toHaveAttribute("aria-checked", "true");
-    // delete needs a second tap when the note has text
-    await panel.getByTestId("note-card").nth(1).getByTestId("note-delete").click();
-    await expect(panel.getByTestId("note-card")).toHaveCount(2);
-    await panel.getByTestId("note-delete-confirm").click();
-    await expect(panel.getByTestId("note-card")).toHaveCount(1);
+    const box = page.getByTestId("notes-box");
+    await expect(page.getByTestId("note-card")).toHaveCount(0); // no stack of cards
+    await box.fill("first line second line");
     await expect(panel.getByTestId("notes-badge")).toHaveText("1");
+    // the box is as tall as the screen's usable height
+    const h = (await panel.boundingBox())!.height;
+    expect(h).toBeGreaterThan(page.viewportSize()!.height * 0.8);
 
-    // saved into the entry with its colour and pin
     await choose(page, "Q5", "red");
     await page.getByTestId("submit-form").click();
     const [entry] = await saved(page);
-    expect(entry.stickyNotes).toEqual([expect.objectContaining({ text: "first note", color: "blue", pinned: true })]);
+    expect(entry.stickyNotes).toEqual([expect.objectContaining({ text: "first line second line" })]);
     // the notes are cleared for the next entry
-    await expect(panel.getByTestId("note-card")).toHaveCount(0);
+    await expect(box).toHaveValue("");
   });
 
   test("resizes by keyboard within its limits", async ({ page, isMobile }) => {

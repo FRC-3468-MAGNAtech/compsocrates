@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { readFraction, writeFraction } from "@/lib/workspace/layout";
 import type { StickyNote } from "@/lib/forms/types";
-import { MAX_NOTES, MAX_NOTE_LENGTH, NOTE_COLORS, PANEL_DEFAULT_PX, PANEL_MAX_PX, PANEL_MIN_PX, addNote, clampPanelWidth, deleteNote, editNote, formatNoteTime, newNote, noteColorClass, noteCount, setNoteColor, sortNotes, togglePin } from "@/lib/sticky-notes";
+import { MAX_NOTES, MAX_NOTES_BOX_LENGTH, MAX_NOTE_LENGTH, notesBoxText, setNotesBoxText, NOTE_COLORS, PANEL_DEFAULT_PX, PANEL_MAX_PX, PANEL_MIN_PX, addNote, clampPanelWidth, deleteNote, editNote, formatNoteTime, newNote, noteColorClass, noteCount, setNoteColor, sortNotes, togglePin } from "@/lib/sticky-notes";
 import { cn } from "@/lib/utils";
 import { storageKey } from "@/config/brand";
 
@@ -148,6 +148,22 @@ function NoteTextarea({ note, testId, autoFocus, disabled, onChange }: { note: S
   );
 }
 
+/** The one big notes box of the form pages: a single text area that fills its panel (saved as one note; analytics shows it as one block). */
+function NotesTextArea({ value, onChange, disabled }: { value: string; onChange: (text: string) => void; disabled?: boolean }) {
+  return (
+    <textarea
+      value={value}
+      disabled={disabled}
+      maxLength={MAX_NOTES_BOX_LENGTH}
+      aria-label="Notes"
+      data-testid="notes-box"
+      placeholder="Write your notes here…"
+      onChange={(e) => onChange(e.target.value)}
+      className="h-full min-h-0 w-full flex-1 resize-none rounded-2xl bg-transparent p-2 text-base outline-none placeholder:text-[var(--muted-foreground)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--glow),0.5)]"
+    />
+  );
+}
+
 /** The tab (desktop strip or phone edge tab) with the notes icon and the count badge. */
 function TabButton({ count, onClick, expanded, label, className, children }: { count: number; onClick: () => void; expanded: boolean; label: string; className?: string; children?: ReactNode }) {
   return (
@@ -163,15 +179,36 @@ function TabButton({ count, onClick, expanded, label, className, children }: { c
   );
 }
 
+/** The notes box over a `StickyNote[]` (the form pages with sticky notes on): one note, see `setNotesBoxText`. */
+function NotesBox({ notes, onChange, disabled }: { notes: StickyNote[]; onChange: (notes: StickyNote[]) => void; disabled?: boolean }) {
+  return <NotesTextArea value={notesBoxText(notes)} disabled={disabled} onChange={(text) => onChange(setNotesBoxText(notes, text))} />;
+}
+
 /**
  * The panel itself. Mount it as a sibling of the form (see `StickyNotesLayout`). `defaultOpen` is the form's setting; the open or closed state is the person's own after that.
  */
 export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disabled }: { notes: StickyNote[]; onChange: (notes: StickyNote[]) => void; defaultOpen?: boolean; disabled?: boolean }) {
+  return (
+    <NotesPanelShell count={noteCount(notes)} defaultOpen={defaultOpen}>
+      <NotesBox notes={notes} onChange={onChange} disabled={disabled} />
+    </NotesPanelShell>
+  );
+}
+
+/** The same panel over one text value: the Match Scout Form's own notes (comments) field, so the box beside the form and the saved field are one thing. */
+export function CommentsPanel({ value, onChange, defaultOpen = false, disabled }: { value: string; onChange: (text: string) => void; defaultOpen?: boolean; disabled?: boolean }) {
+  return (
+    <NotesPanelShell count={value.trim() === "" ? 0 : 1} defaultOpen={defaultOpen}>
+      <NotesTextArea value={value} disabled={disabled} onChange={onChange} />
+    </NotesPanelShell>
+  );
+}
+
+function NotesPanelShell({ count, defaultOpen, children }: { count: number; defaultOpen: boolean; children: ReactNode }) {
   const desktop = useMediaQuery("(min-width: 1024px)");
   const [open, setOpen] = useState(defaultOpen);
   const [expanded, setExpanded] = useState(false); // the phone sheet: taller
   const [width, setWidth] = useState(() => clampPanelWidth((readFraction(storage(), WIDTH_KEY) ?? PANEL_DEFAULT_PX / 1000) * 1000));
-  const count = noteCount(notes);
 
   const resize = (px: number) => {
     const next = clampPanelWidth(px);
@@ -183,7 +220,7 @@ export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disable
   // phone sheet's open state is kept here, so resizing or rotating across the breakpoint loses nothing.
   if (desktop) {
     return (
-      <aside className="sticky top-4 flex max-h-[calc(100dvh-2rem)] shrink-0 self-start lg:flex" style={{ width }} aria-label="Sticky notes" data-testid="notes-panel" data-state="open">
+      <aside className="sticky top-4 flex h-[calc(100dvh-2rem)] shrink-0 self-start lg:flex" style={{ width }} aria-label="Sticky notes" data-testid="notes-panel" data-state="open">
         <div
           role="separator"
           aria-orientation="vertical"
@@ -223,8 +260,8 @@ export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disable
               {count > 0 && <span className="rounded-full bg-[var(--color-primary)] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--color-primary-foreground)]" data-testid="notes-badge">{count}</span>}
             </h2>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <StickyNotesList notes={notes} onChange={onChange} disabled={disabled} />
+          <div className="flex min-h-0 flex-1 flex-col">
+            {children}
           </div>
         </div>
       </aside>
@@ -262,8 +299,8 @@ export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disable
               </Button>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <StickyNotesList notes={notes} onChange={onChange} disabled={disabled} />
+          <div className="flex min-h-0 flex-1 flex-col">
+            {children}
           </div>
         </aside>
       )}
@@ -280,4 +317,32 @@ export function StickyNotesLayout({ enabled, defaultOpen, notes, onChange, disab
       <StickyNotesPanel notes={notes} onChange={onChange} defaultOpen={defaultOpen} disabled={disabled} />
     </div>
   );
+}
+
+/** The form with a notes box beside it (large screens) or over it (phone) that edits one text value, for a form whose notes are a field of its own. */
+export function CommentsLayout({ value, onChange, disabled, children }: { value: string; onChange: (text: string) => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-4">
+      <div className="min-w-0 flex-1">{children}</div>
+      <CommentsPanel value={value} onChange={onChange} disabled={disabled} />
+    </div>
+  );
+}
+
+/**
+ * The Match Scout Form's notes: the sticky-notes panel when the form has it on, else the form's own notes (comments) field moved into the same box beside the form
+ * (`comments` is the field's text; the caller passes it to the form as `commentsMode="popout"`). With neither, the children render alone.
+ */
+export function FormNotesLayout({ stickyEnabled, defaultOpen, notes, onNotesChange, comments, disabled, children }: {
+  stickyEnabled: boolean;
+  defaultOpen?: boolean;
+  notes: StickyNote[];
+  onNotesChange: (notes: StickyNote[]) => void;
+  comments?: { value: string; onChange: (text: string) => void };
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  if (stickyEnabled) return <StickyNotesLayout enabled defaultOpen={defaultOpen} notes={notes} onChange={onNotesChange} disabled={disabled}>{children}</StickyNotesLayout>;
+  if (comments) return <CommentsLayout value={comments.value} onChange={comments.onChange} disabled={disabled}>{children}</CommentsLayout>;
+  return <>{children}</>;
 }
