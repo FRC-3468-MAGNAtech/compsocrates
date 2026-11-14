@@ -151,7 +151,7 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
         initial={false}
         animate={{ width: collapsed ? 84 : 272 }}
         transition={spring}
-        className="sticky top-4 z-30 hidden h-[calc(100dvh-2rem)] shrink-0 lg:block"
+        className="sticky top-4 z-[var(--z-sidebar)] hidden h-[calc(100dvh-2rem)] shrink-0 lg:block"
       >
         <div className="glass-panel flex h-full flex-col gap-4 overflow-hidden p-4">
           <SidebarInner
@@ -177,7 +177,7 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
 
       <AnimatePresence>
         {mobileOpen && (
-          <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="fixed inset-0 z-[var(--z-sheet)] lg:hidden">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

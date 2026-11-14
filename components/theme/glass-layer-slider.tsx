@@ -150,7 +150,7 @@ export function GlassLayerButton({ compact = false, side = "top" }: { compact?: 
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: side === "top" ? 4 : -4 }}
                 transition={springSnappy}
-                className="glass-overlay fixed z-50 flex flex-col gap-3 rounded-2xl p-4 shadow-2xl"
+                className="glass-overlay fixed z-[var(--z-popover)] flex flex-col gap-3 rounded-2xl p-4 shadow-2xl"
                 style={{
                   width: POPOVER_WIDTH,
                   left: coords.left,

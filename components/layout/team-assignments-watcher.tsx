@@ -69,7 +69,7 @@ export function TeamAssignmentsWatcher() {
   return (
     <AnimatePresence>
       {notice && info && (
-        <motion.div initial={{ opacity: 0, y: -24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -24 }} transition={springSnappy} className="glass-strong fixed left-1/2 top-3 z-50 flex w-[min(92vw,420px)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl" role="status" data-testid="assignments-notice">
+        <motion.div initial={{ opacity: 0, y: -24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -24 }} transition={springSnappy} className="glass-strong fixed left-1/2 top-3 z-[var(--z-toast)] flex w-[min(92vw,420px)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl" role="status" data-testid="assignments-notice">
           <Bell className="h-4 w-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold">New {info.noun} assignments</div>

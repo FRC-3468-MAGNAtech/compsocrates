@@ -83,7 +83,7 @@ export function ConnectionChip({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -4 }}
                   transition={springSnappy}
-                  className="glass-overlay pointer-events-none fixed z-50 max-w-[240px] rounded-xl px-3 py-2 text-xs text-[var(--foreground)] shadow-2xl"
+                  className="glass-overlay pointer-events-none fixed z-[var(--z-popover)] max-w-[240px] rounded-xl px-3 py-2 text-xs text-[var(--foreground)] shadow-2xl"
                   style={{ top: tip.top, left: tip.left, translate: "0 -50%" }}
                 >
                   {status.detail}

@@ -1,9 +1,8 @@
 "use client";
 
-import { useId, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useId, useRef, useState } from "react";
 import { Info } from "lucide-react";
-import { spring } from "@/lib/motion";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,12 +24,14 @@ export function InfoTip({
   align?: "start" | "end";
 }) {
   const id = useId();
+  const rootRef = useRef<HTMLSpanElement>(null);
   const [hover, setHover] = useState(false);
   const [pinned, setPinned] = useState(false);
   const open = hover || pinned;
 
   return (
     <span
+      ref={rootRef}
       className={cn("relative inline-flex", className)}
       onPointerEnter={(e) => e.pointerType === "mouse" && setHover(true)}
       onPointerLeave={() => setHover(false)}
@@ -52,24 +53,16 @@ export function InfoTip({
       >
         <Info className="h-4 w-4" />
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            id={id}
-            role="tooltip"
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={spring}
-            className={cn(
-              "glass-overlay absolute top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-3 text-xs leading-relaxed shadow-2xl",
-              align === "end" ? "right-0" : "left-0"
-            )}
-          >
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <FloatingPanel
+        open={open}
+        anchorRef={rootRef}
+        align={align}
+        id={id}
+        role="tooltip"
+        className="w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-3 text-xs leading-relaxed shadow-2xl"
+      >
+        {children}
+      </FloatingPanel>
     </span>
   );
 }

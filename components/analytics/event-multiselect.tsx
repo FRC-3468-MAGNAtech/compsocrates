@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Check, ChevronDown, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_BADGE } from "@/components/event/selected-events-panel";
@@ -9,7 +10,7 @@ import type { EventOption } from "@/lib/analytics/data-context";
 import type { EventScope } from "@/lib/analytics/filters";
 import { getEventStatus } from "@/lib/events/event-status";
 import { eventLabel } from "@/lib/events/names";
-import { spring, springSnappy } from "@/lib/motion";
+import { springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,12 +39,15 @@ export function EventMultiSelect({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const now = useNow();
 
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // The list is portaled (FloatingPanel), so it is not inside rootRef.
+      if (rootRef.current && !rootRef.current.contains(t) && !panelRef.current?.contains(t)) setOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("pointerdown", onPointerDown);
@@ -99,17 +103,14 @@ export function EventMultiSelect({
         </motion.span>
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            role="listbox"
-            aria-multiselectable={!singleEvent}
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={spring}
-            className="glass-overlay absolute left-0 top-full z-50 mt-2 flex max-h-[min(24rem,60vh)] w-[min(26rem,calc(100vw-2rem))] flex-col gap-0.5 overflow-y-auto rounded-2xl p-1.5 shadow-2xl"
-          >
+      <FloatingPanel
+        open={open}
+        anchorRef={rootRef}
+        panelRef={panelRef}
+        role="listbox"
+        aria-multiselectable={!singleEvent}
+        className="flex max-h-[min(24rem,60vh)] w-[min(26rem,calc(100vw-2rem))] flex-col gap-0.5 overflow-y-auto rounded-2xl p-1.5 shadow-2xl"
+      >
             {!singleEvent && (
               <>
                 {!practice && (
@@ -171,9 +172,7 @@ export function EventMultiSelect({
                 </button>
               );
             })}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </FloatingPanel>
     </div>
   );
 }

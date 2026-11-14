@@ -61,7 +61,7 @@ export function DialogContent({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={spring}
-                className="fixed inset-0 z-50 bg-black/50 scrim-blur"
+                className="fixed inset-0 z-[var(--z-dialog)] bg-black/50 scrim-blur"
               />
             </DialogPrimitive.Overlay>
             <DialogPrimitive.Content forceMount asChild {...props}>
@@ -71,7 +71,7 @@ export function DialogContent({
                 exit={{ opacity: 0, scale: 0.94, y: 16 }}
                 transition={spring}
                 className={cn(
-                  "glass-strong fixed left-1/2 top-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-[28px] p-6 shadow-2xl",
+                  "glass-strong fixed left-1/2 top-1/2 z-[var(--z-dialog)] w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-[28px] p-6 shadow-2xl",
                   // P17: on a phone the dialog is a bottom sheet — full width, pinned to the bottom edge, rounded on top only, at most
                   // 92% of the *dynamic* viewport (so the on-screen keyboard and browser toolbars can't push it off screen), scrolling
                   // inside, with the home-indicator safe area below its content. The solid .glass-strong/.glass-overlay backing is unchanged.

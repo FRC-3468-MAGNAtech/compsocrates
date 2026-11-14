@@ -106,7 +106,7 @@ export function SelectContent({
             sideOffset={8}
             forceMount
             className={cn(
-              "glass-overlay z-50 overflow-hidden rounded-2xl p-1 shadow-2xl",
+              "glass-overlay z-[var(--z-popover)] overflow-hidden rounded-2xl p-1 shadow-2xl",
               className
             )}
             {...props}

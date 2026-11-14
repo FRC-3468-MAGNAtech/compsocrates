@@ -65,7 +65,7 @@ export function ScoresReadyWatcher() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -24 }}
           transition={springSnappy}
-          className="glass-strong fixed left-1/2 top-3 z-50 flex w-[min(92vw,420px)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
+          className="glass-strong fixed left-1/2 top-3 z-[var(--z-toast)] flex w-[min(92vw,420px)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
         >
           <Bell className="h-4 w-4 shrink-0 text-[var(--color-primary)]" />
           <div className="min-w-0 flex-1">

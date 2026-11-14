@@ -1,8 +1,7 @@
 "use client";
 
-import { useId, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { spring } from "@/lib/motion";
+import { useId, useRef, useState } from "react";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,12 +23,14 @@ export function HoverTip({
   align?: "start" | "center" | "end";
 }) {
   const id = useId();
+  const rootRef = useRef<HTMLSpanElement>(null);
   const [hover, setHover] = useState(false);
   const [pinned, setPinned] = useState(false);
   const open = hover || pinned;
 
   return (
     <span
+      ref={rootRef}
       className={cn("relative inline-flex", className)}
       onPointerEnter={(e) => e.pointerType === "mouse" && setHover(true)}
       onPointerLeave={() => setHover(false)}
@@ -54,26 +55,16 @@ export function HoverTip({
       >
         {children}
       </span>
-      <AnimatePresence>
-        {open && (
-          <motion.span
-            id={id}
-            role="tooltip"
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={spring}
-            className={cn(
-              "glass-overlay pointer-events-none absolute top-full z-50 mt-2 block w-max max-w-[min(18rem,calc(100vw-2rem))] rounded-xl p-3 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-[var(--foreground)] shadow-2xl",
-              align === "start" && "left-0",
-              align === "end" && "right-0",
-              align === "center" && "left-1/2 -translate-x-1/2"
-            )}
-          >
-            {content}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      <FloatingPanel
+        open={open}
+        anchorRef={rootRef}
+        align={align}
+        id={id}
+        role="tooltip"
+        className="pointer-events-none block w-max max-w-[min(18rem,calc(100vw-2rem))] rounded-xl p-3 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-[var(--foreground)] shadow-2xl"
+      >
+        {content}
+      </FloatingPanel>
     </span>
   );
 }

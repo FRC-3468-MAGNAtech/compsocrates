@@ -20,6 +20,18 @@
   --radius-lg: 28px;
   --radius-md: 20px;
   --radius-sm: 14px;
+
+  /* The one z-index scale for layers that sit above page content. Use these (z-[var(--z-popover)]), never a bare number, for anything
+     floating. Order, low to high: in-page sticky bits < topbar < sidebar < sheet (mobile nav drawer, notes sheet) < dialog < toast < popover.
+     A popover (dropdown, select, tooltip) is above dialogs on purpose: selects live inside dialogs. Overlays must also be portaled to the
+     document root (components/ui/floating-panel.tsx), because a backdrop-filter glass panel is its own stacking context. */
+  --z-raised: 10;
+  --z-topbar: 20;
+  --z-sidebar: 30;
+  --z-sheet: 40;
+  --z-dialog: 50;
+  --z-toast: 55;
+  --z-popover: 60;
 }
 
 /* One gradient, from the active theme's fitted stops (--theme-stops): buttons, active tabs/pills, progress bars. */
@@ -234,6 +246,19 @@ html,
 body {
   max-width: 100%;
   overflow-x: clip;
+}
+
+/* Scroll lock must not change layout. Radix (Select, Dialog) locks the page through react-remove-scroll, which writes
+   `body[data-scroll-locked] { overflow: hidden; position: relative; margin-right: <scrollbar width>; padding: ... } !important`.
+   With the clip rule above that turns <body> into its own scroll container and shifts it by the scrollbar width, so the sticky sidebar and top
+   bar jump or vanish whenever a dropdown opens. Keep the body exactly as it is: the library still blocks wheel / touch scrolling behind the open
+   layer with event handlers, it just no longer restyles the page. `html body[...]` out-ranks the library's `body[...]` selector. */
+html body[data-scroll-locked] {
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+  position: static !important;
+  margin-right: 0 !important;
+  padding: 0 !important;
 }
 
 /* Wide containers scroll with momentum and don't chain the gesture to the page. */

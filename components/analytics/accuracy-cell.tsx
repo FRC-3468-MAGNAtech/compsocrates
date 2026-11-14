@@ -1,8 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { springSnappy } from "@/lib/motion";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import type { AccuracyResult } from "@/lib/scout-entries";
 import { useGlassOverlap } from "@/lib/use-glass-overlap";
 import { getPercentColor } from "@/lib/accuracy/engine";
@@ -11,6 +10,7 @@ import { cn } from "@/lib/utils";
 export function AccuracyCell({ accuracy }: { accuracy: AccuracyResult | null }) {
   const [open, setOpen] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLSpanElement>(null);
   const overGlass = useGlassOverlap(tooltipRef, open);
 
   if (!accuracy || accuracy.status !== "complete" || accuracy.value === null) {
@@ -20,7 +20,7 @@ export function AccuracyCell({ accuracy }: { accuracy: AccuracyResult | null }) 
   const percent = Math.round(accuracy.value * 100);
 
   return (
-    <span className="relative inline-block">
+    <span ref={rootRef} className="relative inline-block">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -30,17 +30,14 @@ export function AccuracyCell({ accuracy }: { accuracy: AccuracyResult | null }) 
       >
         {percent}%
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            ref={tooltipRef}
-            initial={{ opacity: 0, y: -4, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.96 }}
-            transition={springSnappy}
-            className="glass-overlay absolute left-1/2 top-full z-50 mt-2 w-48 -translate-x-1/2 rounded-xl p-3 text-xs shadow-2xl"
-            style={overGlass ? undefined : ({ "--glass-shade": 1 } as React.CSSProperties)}
-          >
+      <FloatingPanel
+        open={open}
+        anchorRef={rootRef}
+        panelRef={tooltipRef}
+        align="center"
+        className="pointer-events-none w-48 rounded-xl p-3 text-xs shadow-2xl"
+        style={overGlass ? undefined : ({ "--glass-shade": 1 } as React.CSSProperties)}
+      >
             <div className="flex justify-between gap-3">
               <span className="text-[var(--muted-foreground)]">Scouted total</span>
               <span className="font-medium">{accuracy.scoutedTotal}</span>
@@ -53,9 +50,7 @@ export function AccuracyCell({ accuracy }: { accuracy: AccuracyResult | null }) 
               <span className="text-[var(--muted-foreground)]">Official score</span>
               <span className="font-medium">{accuracy.officialScore}</span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </FloatingPanel>
     </span>
   );
 }

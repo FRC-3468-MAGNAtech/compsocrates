@@ -246,7 +246,7 @@ export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disable
   return (
     <>
       {!open && (
-        <div className="fixed bottom-24 right-0 z-30" data-testid="notes-panel" data-state="collapsed">
+        <div className="fixed bottom-24 right-0 z-[var(--z-sheet)]" data-testid="notes-panel" data-state="collapsed">
           <TabButton count={count} onClick={() => setOpen(true)} expanded={false} label="Open sticky notes" className="rounded-r-none">
             Notes
           </TabButton>
@@ -257,7 +257,7 @@ export function StickyNotesPanel({ notes, onChange, defaultOpen = false, disable
           aria-label="Sticky notes"
           data-testid="notes-panel"
           data-state={expanded ? "expanded" : "open"}
-          className={cn("glass-overlay fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 rounded-t-3xl p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl", expanded ? "h-[85dvh]" : "h-[45dvh]")}
+          className={cn("glass-overlay fixed inset-x-0 bottom-0 z-[var(--z-sheet)] flex flex-col gap-2 rounded-t-3xl p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl", expanded ? "h-[85dvh]" : "h-[45dvh]")}
         >
           <div className="flex items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
