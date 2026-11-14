@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { TeamAssignmentsView, type ScoutOption } from "@/components/assignments/team-assignments-panel";
 import { useEventTeams } from "@/lib/analytics/use-event-data";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { useFormEntries } from "@/lib/form-entries";
 import { useIsOurTeam } from "@/lib/our-team";
 import { canAccessPage } from "@/lib/page-access/access";
@@ -17,6 +18,7 @@ import { KIND_FORM_TYPE, findTeamAssignments, publishTeamAssignments, undoTeamAs
 /** The Pit Scouting / Team Strategy tab on live data: the event's FIRST teams, who can open the form (P26), the published doc, and the person's own entries. */
 export function TeamAssignmentsPanel({ kind, eventCode, season, members, attendingUids, canEdit }: { kind: TeamAssignKind; eventCode: string; season: number; members: TeamMember[]; attendingUids: string[]; canEdit: boolean }) {
   const { user, profile } = useAuth();
+  const program = useProgram();
   const teamId = profile?.teamId ?? null;
   const info = TEAM_ASSIGN_KIND_INFO[kind];
   const { config } = usePageAccess();
@@ -62,12 +64,12 @@ export function TeamAssignmentsPanel({ kind, eventCode, season, members, attendi
       onPublish={(version) => {
         if (!teamId || !user) return;
         setPublishing(true);
-        publishTeamAssignments(teamId, eventCode, kind, { ...version, generatedBy: user.uid, generatedAt: new Date().toISOString() }, published)
+        publishTeamAssignments(teamId, eventCode, kind, { ...version, generatedBy: user.uid, generatedAt: new Date().toISOString() }, published, program)
           .catch((err) => console.error("couldn't publish the assignments:", err))
           .finally(() => setPublishing(false));
       }}
       onUndo={() => {
-        if (teamId && published) void undoTeamAssignments(teamId, eventCode, kind, published).catch((err) => console.error("couldn't undo:", err));
+        if (teamId && published) void undoTeamAssignments(teamId, eventCode, kind, published, program).catch((err) => console.error("couldn't undo:", err));
       }}
     />
   );

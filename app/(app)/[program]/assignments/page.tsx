@@ -23,9 +23,11 @@ import { useEventAttendance, setEventAttendance } from "@/lib/event-attendance";
 import { publishAssignments, swapAssignmentSlot, undoAssignments, useAssignments, type AssignmentMatchSource, type AssignmentSettings, type AssignmentVersion } from "@/lib/assignments";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { getEvents, getMatchesForEvent } from "@/lib/events/actions";
-import { getDefaultSeason } from "@/lib/events/config";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
-import { getEnabledSeasons, DEFAULT_SEASON_ID } from "@/lib/seasons";
+import { getEnabledSeasons } from "@/lib/seasons";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { scopedKey } from "@/lib/program/paths";
 import { DIFFICULTY_LABELS, type Difficulty } from "@/lib/difficulty";
 import { eventMatchesToInputs, libraryMatchesToInputs } from "@/lib/scheduler/sources";
 import type { MatchInput, ScheduleResult, SlotId } from "@/lib/scheduler/types";
@@ -35,6 +37,11 @@ import { useEventName } from "@/lib/events/use-event-names";
 type AssignmentTab = "match" | TeamAssignKind;
 const TAB_LABELS: Record<AssignmentTab, string> = { match: "Match Scouting", pit: "Pit Scouting", teamStrategy: "Team Strategy" };
 
+/** Which match sources the active program can serve: its own event schedule always; the practice library and live scouting where those are connected. */
+function matchSourceConnected(source: AssignmentMatchSource, features: { library: boolean; live: boolean }): boolean {
+  return source === "event" || (source === "practice" ? features.library : features.live);
+}
+
 const MATCH_SOURCE_LABELS: Record<AssignmentMatchSource, string> = {
   event: "Event schedule",
   practice: "Practice library",
@@ -43,6 +50,8 @@ const MATCH_SOURCE_LABELS: Record<AssignmentMatchSource, string> = {
 
 export default function AssignmentsPage() {
   const { user, profile } = useAuth();
+  const program = useProgram();
+  const { features } = useProgramConfig().connection;
   // P26: anyone who can open Assignments (admins, Lead Scouts by default, or anyone an admin granted) edits it: the rules follow the same access.
   const { can } = usePermissions();
   const canEdit = can("editAssignments");
@@ -54,9 +63,10 @@ export default function AssignmentsPage() {
   const [eventOverride, setEventOverride] = useState<string | null>(null);
   const eventCode = eventOverride ?? primaryCode ?? null;
   const activeSelected = activeOptions.find((e) => e.code === eventCode) ?? null;
-  const season = activeSelected?.season ?? getDefaultSeason();
+  const forms = useForms();
+  const season = activeSelected?.season ?? forms.defaultApiSeason;
 
-  const eventsQuery = useEventQuery(`assignments-events:${season}`, () => getEvents({ season }));
+  const eventsQuery = useEventQuery(scopedKey(program, `assignments-events:${season}`), () => getEvents({ season }, program));
   const otherEvents: EventInfo[] = useMemo(
     () => (eventsQuery.data ?? []).filter((e) => !activeOptions.some((a) => a.code === e.code)),
     [eventsQuery.data, activeOptions]
@@ -76,20 +86,20 @@ export default function AssignmentsPage() {
 
   const [tab, setTab] = useState<AssignmentTab>("match");
   const [matchSource, setMatchSource] = useState<AssignmentMatchSource>("event");
-  const [librarySeasonId, setLibrarySeasonId] = useState(DEFAULT_SEASON_ID);
+  const [librarySeasonId, setLibrarySeasonId] = useState(forms.defaultSeasonId);
   const [libraryDifficulty, setLibraryDifficulty] = useState<Difficulty>("medium");
 
   const qualQuery = useEventQuery(
-    matchSource !== "practice" && eventCode ? `assign:${eventCode}:Q:${season}` : null,
-    () => getMatchesForEvent(eventCode!, "Qualification", season)
+    matchSource !== "practice" && eventCode ? scopedKey(program, `assign:${eventCode}:Q:${season}`) : null,
+    () => getMatchesForEvent(eventCode!, "Qualification", season, program)
   );
   const playoffQuery = useEventQuery(
-    matchSource !== "practice" && eventCode ? `assign:${eventCode}:F:${season}` : null,
-    () => getMatchesForEvent(eventCode!, "Playoff", season)
+    matchSource !== "practice" && eventCode ? scopedKey(program, `assign:${eventCode}:F:${season}`) : null,
+    () => getMatchesForEvent(eventCode!, "Playoff", season, program)
   );
   const practiceTypeQuery = useEventQuery(
-    matchSource !== "practice" && eventCode ? `assign:${eventCode}:P:${season}` : null,
-    () => getMatchesForEvent(eventCode!, "Practice", season)
+    matchSource !== "practice" && eventCode ? scopedKey(program, `assign:${eventCode}:P:${season}`) : null,
+    () => getMatchesForEvent(eventCode!, "Practice", season, program)
   );
   const { matches: libraryMatches } = useLibraryMatchesBySeason(matchSource === "practice" ? librarySeasonId : null);
 
@@ -134,7 +144,7 @@ export default function AssignmentsPage() {
         fair: draft.result.fair,
         warning: draft.result.warning,
       };
-      await publishAssignments(teamId, eventCode, version);
+      await publishAssignments(teamId, eventCode, version, program);
       setDraft(null);
     } finally {
       setPublishing(false);
@@ -145,7 +155,7 @@ export default function AssignmentsPage() {
     if (!teamId || !eventCode) return;
     setUndoing(true);
     try {
-      await undoAssignments(teamId, eventCode);
+      await undoAssignments(teamId, eventCode, program);
     } finally {
       setUndoing(false);
     }
@@ -153,7 +163,7 @@ export default function AssignmentsPage() {
 
   const handleSwap = (matchType: string, matchNumber: number, slot: SlotId, newScoutUid: string | null) => {
     if (!teamId || !eventCode) return;
-    void swapAssignmentSlot(teamId, eventCode, matchType as never, matchNumber, slot, newScoutUid, assignments?.current?.slots);
+    void swapAssignmentSlot(teamId, eventCode, matchType as never, matchNumber, slot, newScoutUid, assignments?.current?.slots, program);
   };
 
   const myAssignments = !assignments?.current || !user ? [] : assignments.current.slots.filter((s) => s.scoutUid === user.uid);
@@ -272,7 +282,7 @@ export default function AssignmentsPage() {
 
             <Tabs value={matchSource} onValueChange={(v) => setMatchSource(v as AssignmentMatchSource)}>
               <TabsList>
-                {(Object.keys(MATCH_SOURCE_LABELS) as AssignmentMatchSource[]).map((s) => (
+                {(Object.keys(MATCH_SOURCE_LABELS) as AssignmentMatchSource[]).filter((s) => matchSourceConnected(s, features)).map((s) => (
                   <TabsTrigger key={s} value={s}>
                     {MATCH_SOURCE_LABELS[s]}
                   </TabsTrigger>

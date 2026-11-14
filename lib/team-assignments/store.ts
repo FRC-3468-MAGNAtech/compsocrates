@@ -8,6 +8,8 @@ import { commitPlan, eventRowsQuery, fetchMemberNames, fetchRows } from "@/lib/a
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { useProgramConfig } from "@/lib/program/context";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
 import type { FormEntryType } from "@/lib/form-entries-model";
 import { assignedTeamCounts, type TeamAssignKind, type TeamAssignmentsDoc, type TeamAssignVersion } from "@/lib/team-assignments/model";
 
@@ -38,9 +40,20 @@ type Held = { teamId: string; pit: CsAssignmentRow[]; team: CsAssignmentRow[]; m
 export function useTeamAssignmentDocs(teamId: string | null): { docs: TeamAssignmentsDoc[]; loaded: boolean } {
   // A program that has not connected assignments has none: this hook reads the default program's collections only (never another program's).
   const { assignments: connected } = useProgramConfig().connection.features;
+  // A namespaced program keeps these in one collection beside the match assignments and reads them through its data port.
+  const data = useProgramData();
+  const [ported, setPorted] = useState<{ teamId: string; docs: TeamAssignmentsDoc[] } | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   useEffect(() => {
-    if (!connected || !teamId || !isFirebaseConfigured()) return;
+    if (!data || !connected || !teamId || !isFirebaseConfigured()) return;
+    return data.teamAssignments.subscribeTeam(
+      teamId,
+      (docs) => setPorted({ teamId, docs }),
+      () => setPorted({ teamId, docs: [] }) // already reported by the port
+    );
+  }, [data, connected, teamId]);
+  useEffect(() => {
+    if (data || !connected || !teamId || !isFirebaseConfigured()) return;
     const apply = (key: "pit" | "team" | "mirror", rows: CsAssignmentRow[]) =>
       setHeld((prev) => {
         const base: Held = prev?.teamId === teamId ? prev : { teamId, pit: [], team: [], mirror: [], answered: [] };
@@ -61,7 +74,7 @@ export function useTeamAssignmentDocs(teamId: string | null): { docs: TeamAssign
       listen(mirrorQuery(teamId), "mirror", `${CS_MATCH_ASSIGNMENTS} team mirror where teamId == ${teamId}`),
     ];
     return () => stops.forEach((stop) => stop());
-  }, [connected, teamId]);
+  }, [data, connected, teamId]);
 
   const current = teamId && held?.teamId === teamId ? held : null;
   const docs = useMemo(() => {
@@ -76,6 +89,7 @@ export function useTeamAssignmentDocs(teamId: string | null): { docs: TeamAssign
     });
   }, [teamId, current]);
   if (!connected || !teamId || !isFirebaseConfigured()) return { docs: [], loaded: true };
+  if (data) return ported?.teamId === teamId ? { docs: ported.docs, loaded: true } : { docs: [], loaded: false };
   // Loaded once each of the three listeners has answered (a listener the rules deny answers with an error, which counts).
   return { docs, loaded: (current?.answered.length ?? 0) >= 3 };
 }
@@ -120,7 +134,9 @@ async function writeKind(teamId: string, eventCode: string, kind: TeamAssignKind
  * scout keeps its document). The rows as they were are kept in memory as `previous` (one level of undo). `existing` is accepted for
  * call-site compatibility; the stored rows are read here instead.
  */
-export async function publishTeamAssignments(teamId: string, eventCode: string, kind: TeamAssignKind, version: TeamAssignVersion, existing: TeamAssignmentsDoc | null): Promise<void> {
+export async function publishTeamAssignments(teamId: string, eventCode: string, kind: TeamAssignKind, version: TeamAssignVersion, existing: TeamAssignmentsDoc | null, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.teamAssignments.publish(teamId, eventCode, kind, version, existing);
   void existing;
   const rows = await loadKindRows(teamId, eventCode, kind);
   previousRows.set(teamAssignmentDocId(teamId, eventCode, kind), rows);
@@ -128,7 +144,9 @@ export async function publishTeamAssignments(teamId: string, eventCode: string, 
 }
 
 /** Restores the rows from before this tab's last publish (a single level of undo, lost on reload: CS keeps no history). */
-export async function undoTeamAssignments(teamId: string, eventCode: string, kind: TeamAssignKind, existing: TeamAssignmentsDoc): Promise<void> {
+export async function undoTeamAssignments(teamId: string, eventCode: string, kind: TeamAssignKind, existing: TeamAssignmentsDoc, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.teamAssignments.undo(teamId, eventCode, kind, existing);
   const id = teamAssignmentDocId(teamId, eventCode, kind);
   if (!previousRows.get(id) || !existing.previous) return;
   const now = await loadKindRows(teamId, eventCode, kind);

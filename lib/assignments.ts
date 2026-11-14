@@ -21,6 +21,8 @@ import { getDefaultSeason } from "@/lib/events/config";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { auth, isFirebaseConfigured } from "@/lib/firebase/client";
 import { useProgramConfig } from "@/lib/program/context";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/events/types";
 import { eventMatchesToInputs } from "@/lib/scheduler/sources";
@@ -111,11 +113,24 @@ function useEventSchedule(eventCode: string | null, enabled: boolean) {
 export function useAssignments(teamId: string | null, eventCode: string | null) {
   // A program that has not connected assignments yet has none: this hook reads the default program's collections only (never another program's).
   const { assignments: connected } = useProgramConfig().connection.features;
+  // A namespaced program stores one assignments doc per team and event and reads it through its data port; the root program's rows below are untouched.
+  const data = useProgramData();
+  const [ported, setPorted] = useState<{ key: string; doc: AssignmentsDoc | null } | null>(null);
   const [held, setHeld] = useState<{ key: string; match: CsAssignmentRow[]; practice: CsAssignmentRow[]; matchLoaded: boolean } | null>(null);
   const subscriptionKey = teamId && eventCode ? docId(teamId, eventCode) : null;
 
   useEffect(() => {
-    if (!connected || !teamId || !eventCode || !isFirebaseConfigured() || !subscriptionKey) return;
+    if (!data || !connected || !teamId || !eventCode || !subscriptionKey || !isFirebaseConfigured()) return;
+    return data.assignments.subscribe(
+      teamId,
+      eventCode,
+      (doc) => setPorted({ key: subscriptionKey, doc }),
+      () => setPorted({ key: subscriptionKey, doc: null }) // already reported by the port
+    );
+  }, [data, connected, teamId, eventCode, subscriptionKey]);
+
+  useEffect(() => {
+    if (data || !connected || !teamId || !eventCode || !isFirebaseConfigured() || !subscriptionKey) return;
     const toRows = (docs: { id: string; data: () => Record<string, unknown> }[]): CsAssignmentRow[] => docs.map((d) => ({ id: d.id, data: d.data() }));
     const apply = (patch: Partial<{ match: CsAssignmentRow[]; practice: CsAssignmentRow[]; matchLoaded: boolean }>) =>
       setHeld((prev) => ({ match: [], practice: [], matchLoaded: false, ...(prev?.key === subscriptionKey ? prev : {}), ...patch, key: subscriptionKey }));
@@ -137,7 +152,7 @@ export function useAssignments(teamId: string | null, eventCode: string | null) 
       unsubMatch();
       unsubPractice();
     };
-  }, [connected, teamId, eventCode, subscriptionKey]);
+  }, [data, connected, teamId, eventCode, subscriptionKey]);
 
   const current = held && held.key === subscriptionKey ? held : null;
   const rows = useMemo(() => [...(current?.match ?? []).filter((r) => !isTeamMirrorRow(r.data)), ...(current?.practice ?? [])], [current]);
@@ -155,6 +170,7 @@ export function useAssignments(teamId: string | null, eventCode: string | null) 
   }, [teamId, eventCode, rows, lookup]);
 
   if (!connected || !teamId || !eventCode || !isFirebaseConfigured()) return { assignments: null, loaded: true };
+  if (data) return ported?.key === subscriptionKey ? { assignments: ported.doc, loaded: true } : { assignments: null, loaded: false };
   return { assignments, loaded: Boolean(current?.matchLoaded) };
 }
 
@@ -169,7 +185,9 @@ async function loadScope(teamId: string, eventCode: string): Promise<PreviousRow
  * and team keep their document; others are added or removed). The "Practice library" source writes `practiceAssignments`, every
  * other source writes `matchAssignments`. The rows as they were are kept in memory as `previous` (one level of undo).
  */
-export async function publishAssignments(teamId: string, eventCode: string, version: AssignmentVersion): Promise<void> {
+export async function publishAssignments(teamId: string, eventCode: string, version: AssignmentVersion, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.assignments.publish(teamId, eventCode, version);
   const [scope, scoutNames] = await Promise.all([loadScope(teamId, eventCode), fetchMemberNames(teamId)]);
   previousRows.set(docId(teamId, eventCode), scope);
   const target = version.settings.matchSource === "practice" ? "practice" : "match";
@@ -179,7 +197,9 @@ export async function publishAssignments(teamId: string, eventCode: string, vers
 }
 
 /** Admin-only. Restores the rows from before this tab's last publish (a single level of undo, not a history; lost on reload). */
-export async function undoAssignments(teamId: string, eventCode: string): Promise<void> {
+export async function undoAssignments(teamId: string, eventCode: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.assignments.undo(teamId, eventCode);
   const id = docId(teamId, eventCode);
   const previous = previousRows.get(id);
   if (!previous) return;
@@ -202,8 +222,11 @@ export async function swapAssignmentSlot(
   matchNumber: number,
   slot: ScheduleSlot["slot"],
   newScoutUid: string | null,
-  knownSlots?: readonly ScheduleSlot[]
+  knownSlots?: readonly ScheduleSlot[],
+  program: ProgramId = DEFAULT_PROGRAM
 ): Promise<void> {
+  const data = programData(program);
+  if (data) return data.assignments.swapSlot(teamId, eventCode, matchType, matchNumber, slot, newScoutUid);
   const scope = await loadScope(teamId, eventCode);
   const slots = knownSlots ?? csRowsToSlots([...scope.match, ...scope.practice]);
   const target = slots.find((s) => s.matchType === matchType && s.matchNumber === matchNumber && s.slot === slot);
