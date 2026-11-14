@@ -67,10 +67,8 @@ test.describe("layout (tablet and desktop)", () => {
     expect(barAfter.y + barAfter.height).toBeLessThanOrEqual(900);
     await expect(page.getByTestId("next-robot")).toBeInViewport();
     await expect(page.getByTestId("workspace-video-box")).toBeInViewport();
-    // the score bar sticks inside the form panel, above the action bar
-    const score = page.getByText("Total", { exact: true }).first();
-    const sb = (await score.boundingBox())!;
-    expect(sb.y + sb.height).toBeLessThanOrEqual(barAfter.y + 1);
+    // scouts never see a live total while entering data
+    await expect(page.getByText("Total", { exact: true })).toHaveCount(0);
     await page.screenshot({ path: `${SHOTS}/${info.project.name}-desktop-1440.png` });
   });
 

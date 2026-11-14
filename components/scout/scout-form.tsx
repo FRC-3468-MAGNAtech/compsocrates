@@ -21,7 +21,6 @@ import { PlanDiffIcon } from "@/components/forms/plan-diff-icon";
 import { TeamSelect, type TeamOption } from "@/components/forms/team-select";
 import type { PhotoTarget } from "@/components/forms/photo-upload";
 import { SectionNav, type ScoutSection } from "@/components/scout/section-nav";
-import { ScoreBar } from "@/components/scout/score-bar";
 import { MatchPickerDialog, type AssignedMatch, type MatchMark } from "@/components/scout/match-picker-dialog";
 import { TeamPickerDialog } from "@/components/scout/team-picker-dialog";
 import { ConfirmDialog } from "@/components/scout/confirm-dialog";
@@ -40,7 +39,7 @@ import { browserDraftStorage, clearDraft, DRAFT_DEBOUNCE_MS, draftAge, hasProgre
 import { settleSubmit } from "@/lib/forms/submit-state";
 import { fieldWithRole } from "@/lib/forms/meta";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
-import { isSystemField, phaseLabel, type FormValue, type Form, type FormField, type FormSection, type FormValues, type ImageValue } from "@/lib/forms/types";
+import { isSystemField, type FormValue, type Form, type FormField, type FormSection, type FormValues, type ImageValue } from "@/lib/forms/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import type { EventInfo } from "@/lib/events/types";
 
@@ -665,17 +664,6 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
   const sections: ScoutSection[] = renderedSections.map(({ section }) => ({ id: section.id, label: section.title }));
   const compact = layout === "side-panel";
 
-  const scorePhases = useMemo(() => {
-    const extra = Object.entries(score.byPhase).filter(([phase]) => phase !== "auto" && phase !== "teleop" && phase !== "endgame");
-    if (extra.length === 0) return undefined;
-    return [
-      { label: "Auto", value: score.auto },
-      { label: "Teleop", value: score.teleop },
-      { label: "Endgame", value: score.endgame },
-      ...extra.map(([phase, value]) => ({ label: phaseLabel(schema, phase), value })),
-    ];
-  }, [score, schema]);
-
   const renderMatchPicker = (field: FormField) => (
     <div key={field.id} className="flex flex-col gap-4">
       {eventChoices.length > 1 && (
@@ -849,8 +837,7 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
         </Button>
       )}
 
-      {schema.scoringEnabled && <ScoreBar score={score} phases={scorePhases} />}
-
+      {/* No live total here: a scout could read it back to match the official score. The score is still calculated for the saved entry and for onChange. */}
       {!hideMatchPicker && (
         <MatchPickerDialog open={matchDialogOpen} onOpenChange={setMatchDialogOpen} activeEvent={activeEvent} onSelect={selectMatch} marks={matchPickerMarks} />
       )}
