@@ -38,7 +38,7 @@ function displayScoring(points: GameFieldPoints | undefined): FormField["scoring
   }
 }
 
-function toFormField(def: PointTableGameDefinition, f: GameField): FormField {
+function toFormField(def: PointTableGameDefinition<string>, f: GameField): FormField {
   const options = f.options?.map((o) => ({ value: o.value, label: o.label, ...(f.points ? { points: pointsFor(f.points, o.value) } : {}) }));
   return {
     id: `f-${f.key}`,
@@ -55,11 +55,12 @@ function toFormField(def: PointTableGameDefinition, f: GameField): FormField {
     scoring: displayScoring(f.points),
     analytics: { include: true, category: f.category, aggregate: AGGREGATE_OF_KIND[f.kind] },
     ...(f.statRoles && f.statRoles.length > 0 ? { statRoles: [...f.statRoles] } : {}),
+    ...(f.unrealisticAbove !== undefined ? { unrealisticAbove: f.unrealisticAbove } : {}),
   };
 }
 
 /** The match-scout Form for a point-table game. Pure: the same definition always gives the same form (its content hash is what an override is compared with). */
-export function buildGameForm(def: PointTableGameDefinition): Form {
+export function buildGameForm(def: PointTableGameDefinition<string>): Form {
   const sections: FormSection[] = [
     {
       id: "assigned-match",

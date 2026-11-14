@@ -87,8 +87,8 @@ export type RescoutDiff = {
   fields: RescoutField[];
 };
 
-export interface GamePlugin {
-  id: GameId;
+export interface GamePlugin<Id extends string = GameId> {
+  id: Id;
   label: string;
   /** Calendar year of the game (2026 for REBUILT). */
   season: number;
@@ -133,4 +133,4 @@ export interface GamePlugin {
 }
 
 /** A plugin with every optional member present; what the registry hands out. */
-export type FullGamePlugin = Required<GamePlugin>;
+export type FullGamePlugin<Id extends string = GameId> = Required<GamePlugin<Id>>;

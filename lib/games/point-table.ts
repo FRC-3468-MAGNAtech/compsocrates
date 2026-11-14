@@ -9,7 +9,7 @@
 import type { GameField, GameFieldPoints, PointTableGameDefinition } from "@/config/games/definition";
 import { DEFAULT_VERIFICATION_METRICS, VERIFICATION_THRESHOLD } from "@/config/games/shared";
 import { buildTacticalPrediction, compareScoutToLead, computeRescoutDiff, finiteNum, normalizeGameName, num, readPath } from "@/lib/games/common";
-import type { CsDoc, FullGamePlugin, GameValues, PhaseScore, ScoutingFlag } from "@/lib/games/types";
+import type { CsDoc, FullGamePlugin, GameId, GameValues, PhaseScore, ScoutingFlag } from "@/lib/games/types";
 
 /** The value of a field on a CS doc: the first of its paths (`path`, then `mirrors`) that holds a value, as CS's `auto.mobility ?? mobility` does. */
 export function readField(doc: CsDoc, field: Pick<GameField, "path" | "mirrors">): unknown {
@@ -73,7 +73,7 @@ const fill = (template: string, figures: Record<string, number>): string => temp
 /** The default form value of a field: 0 for a tally or number, off for a toggle, empty text for the rest. */
 const defaultFor = (kind: GameField["kind"]): unknown => (kind === "counter" || kind === "number" ? 0 : kind === "toggle" ? false : "");
 
-export function createPointTablePlugin(def: PointTableGameDefinition): FullGamePlugin {
+export function createPointTablePlugin<Id extends string = GameId>(def: PointTableGameDefinition<Id>): FullGamePlugin<Id> {
   const phaseOf = new Map(def.sections.map((s) => [s.id, s.phase]));
   const scored = def.fields.filter((f) => f.points !== undefined);
 

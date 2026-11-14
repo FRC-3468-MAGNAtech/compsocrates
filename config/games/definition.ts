@@ -66,6 +66,8 @@ export type GameField = {
   options?: readonly { value: string; label: string }[];
   points?: GameFieldPoints;
   flagGroup?: GameFlagGroup;
+  /** Auto-flag: a counter or number above this is "unrealistic scoring" (carried onto the generated form field, which the flag rules read). */
+  unrealisticAbove?: number;
   /** `textarea`/`text` that mirrors to the entry's summary comment (CS `notes`). */
   statRoles?: readonly StatRole[];
 };
@@ -80,8 +82,9 @@ export type GameFlagRules = {
 };
 
 /** What every game has, whichever way its plugin and form are made. */
-export type GameBase = {
-  id: GameId;
+export type GameBase<Id extends string = GameId> = {
+  /** The id of a game of the default program is a `GameId`; another program's games name their own id type. */
+  id: Id;
   label: string;
   /** Calendar year the game was played (2026 for REBUILT). */
   year: number;
@@ -113,7 +116,7 @@ export type GameBase = {
  * A pure point table: no `formulas`. Its plugin and its form are generated from `fields`
  * (`createPointTablePlugin`, `buildGameForm`).
  */
-export type PointTableGameDefinition = GameBase & {
+export type PointTableGameDefinition<Id extends string = GameId> = GameBase<Id> & {
   formulas?: undefined;
   /** Section ids, titles and score phases of the generated form, in order. The match and scout pickers are always added in front. */
   sections: readonly GameSection[];
