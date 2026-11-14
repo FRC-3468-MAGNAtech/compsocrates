@@ -22,6 +22,8 @@ import { csDocsToScoutEntries, csDocToScoutEntry, entryFlagStatePatch, flagState
 import type { CsFlagState, CsRecord } from "@/data/cs/types";
 import { str, stripUndefined } from "@/data/cs/util";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
 import type { MatchType } from "@/lib/events/types";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { storableScore, type ScoreResult } from "@/lib/forms/scoring";
@@ -360,7 +362,10 @@ export function entryDocForSave(teamId: string, uid: string, input: SaveEntryInp
   return stripUndefined(scoutEntryToCsDoc(draft, undefined, { actorUid: uid, now: options.now }));
 }
 
-export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput): Promise<void> {
+/** `program` picks where the entry is written: the default program's `scouting` collection (below), or a namespaced program's own through its data port. */
+export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.scoutEntries.save(teamId, uid, input);
   // Throws for a form CS cannot store: nothing is written.
   await addDoc(collection(db, COLLECTION), entryDocForSave(teamId, uid, input));
 }
@@ -499,6 +504,7 @@ function subscribeTeamFeed(teamId: string, listener: (s: TeamSnapshot) => void):
  * listener per team (the rows, the flag states and a one-shot legacy fallback) however many components call this.
  */
 export function useTeamScoutEntries(teamId: string | null) {
+  const data = useProgramData();
   const [state, setState] = useState<TeamSnapshot>({ entries: [], loaded: !isFirebaseConfigured() });
 
   useEffect(() => {
@@ -507,8 +513,16 @@ export function useTeamScoutEntries(teamId: string | null) {
       setState({ entries: [], loaded: true });
       return;
     }
+    // A namespaced program reads its team's entries through its data port (no legacy rows, no separate flag states: they are on the entry).
+    if (data) {
+      return data.scoutEntries.subscribeTeam(
+        teamId,
+        (entries) => setState({ entries, loaded: true }),
+        () => setState({ entries: [], loaded: true }) // already reported by the port
+      );
+    }
     return subscribeTeamFeed(teamId, setState);
-  }, [teamId]);
+  }, [teamId, data]);
 
   return { entries: state.entries, loaded: state.loaded };
 }

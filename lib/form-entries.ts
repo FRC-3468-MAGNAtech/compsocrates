@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CURRENT_GAME_ID } from "@/config/games";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
+import { useProgramData } from "@/lib/program/data";
 import { formEntryDoc, toFormEntry, type FormEntry, type FormEntryType, type NewFormEntry } from "@/lib/form-entries-model";
 import { diffEntryValues } from "@/lib/form-entries-model";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
@@ -249,12 +250,27 @@ type Held = { key: string; bySource: Record<string, Array<{ id: string; data: Cs
 
 /** The team's entries, live, optionally of one form and/or one event, newest first. */
 export function useFormEntries(teamId: string | null, filter: FormEntriesFilter = {}): { entries: FormEntry[]; loaded: boolean } {
+  // A namespaced program reads its form entries through its data port (one collection, filtered by the server); the root program's reads below are untouched.
+  const data = useProgramData();
   const [held, setHeld] = useState<Held | null>(null);
+  const [ported, setPorted] = useState<{ key: string; entries: FormEntry[] } | null>(null);
   const { formId, eventCode, formType, game, includePractice } = filter;
   const key = teamId ? `${teamId}|${formId ?? ""}|${formType ?? ""}` : null;
+  const portedKey = teamId ? `${key}|${eventCode ?? ""}` : null;
 
   useEffect(() => {
-    if (!teamId || !isFirebaseConfigured()) return;
+    if (!data || !teamId || !isFirebaseConfigured()) return;
+    const k = `${teamId}|${formId ?? ""}|${formType ?? ""}|${eventCode ?? ""}`;
+    return data.formEntries.subscribe(
+      teamId,
+      { formId, formType, eventCode },
+      (entries) => setPorted({ key: k, entries }),
+      () => setPorted({ key: k, entries: [] }) // already reported by the port
+    );
+  }, [data, teamId, formId, formType, eventCode]);
+
+  useEffect(() => {
+    if (data || !teamId || !isFirebaseConfigured()) return;
     const k = `${teamId}|${formId ?? ""}|${formType ?? ""}`;
     const sources = sourcesFor(teamId, { formId, formType });
     const publish = (source: Source, docs: Array<{ id: string; data: CsRecord }>) => setHeld((prev) => ({ key: k, bySource: { ...(prev?.key === k ? prev.bySource : {}), [source.id]: docs } }));
@@ -277,7 +293,7 @@ export function useFormEntries(teamId: string | null, filter: FormEntriesFilter 
       )
     );
     return () => unsubs.forEach((u) => u());
-  }, [teamId, formId, formType]);
+  }, [data, teamId, formId, formType]);
 
   const entries = useMemo(() => {
     if (!key || !teamId || held?.key !== key) return null;
@@ -305,6 +321,7 @@ export function useFormEntries(teamId: string | null, filter: FormEntriesFilter 
   }, [held, key, teamId, formId, formType, game, includePractice, eventCode]);
 
   if (!key) return { entries: [], loaded: true };
+  if (data) return ported && ported.key === portedKey ? { entries: ported.entries, loaded: true } : { entries: [], loaded: false };
   return entries ? { entries, loaded: true } : { entries: [], loaded: false };
 }
 

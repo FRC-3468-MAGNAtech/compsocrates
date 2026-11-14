@@ -1,0 +1,44 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({ save: vi.fn() }));
+vi.mock("@/data/ftc/write", () => ({ saveScoutEntry: (...args: unknown[]) => h.save(...args) }));
+
+import { saveEntry, type SaveEntryInput } from "@/lib/scout-entries";
+
+const input: SaveEntryInput = {
+  scoutName: "Ada",
+  eventCode: "EV1",
+  matchType: "Qualification",
+  matchNumber: 3,
+  teamNumber: 100,
+  formId: "biobuzz",
+  formVersion: 1,
+  values: { autoLeave: true },
+  score: { auto: 3, teleop: 0, endgame: 0, total: 3 },
+  comments: "",
+};
+
+// (braces matter: a function returned from beforeEach is run as a teardown, and `mockReset()` returns the mock itself)
+beforeEach(() => {
+  h.save.mockReset();
+});
+
+describe("saveEntry and the program", () => {
+  it("writes through the program's own data port when the program has one", async () => {
+    h.save.mockResolvedValue(undefined);
+    await saveEntry("team-a", "uid-ada", input, "ftc");
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save).toHaveBeenCalledWith("team-a", "uid-ada", input);
+  });
+
+  it("surfaces a failed save to the caller (the scout page puts the notes back and shows the error)", async () => {
+    h.save.mockRejectedValue(new Error("denied"));
+    await expect(saveEntry("team-a", "uid-ada", input, "ftc")).rejects.toThrow("denied");
+  });
+
+  it("the default program never touches the program port", async () => {
+    // its own write (the root `scouting` collection) refuses this entry here: no Firestore client in a unit test, and a form it cannot store
+    await saveEntry("team-a", "uid-ada", input).catch(() => undefined);
+    expect(h.save).not.toHaveBeenCalled();
+  });
+});
