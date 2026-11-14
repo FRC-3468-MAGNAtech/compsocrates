@@ -23,11 +23,18 @@ const base = (key: string, groupId?: string): Pick<FormField, "id" | "key" | "gr
 
 const noScore = { mode: "none" } as const;
 
+/**
+ * Scouts get field labels only: the per-field description under each counter, toggle, scale and timer is not shown (the copy stays at the call sites so
+ * turning it back on is this one flag). Notice lines keep their text: it is their content, not a description of a field.
+ */
+const SHOW_FIELD_DESCRIPTIONS = false;
+const described = (helpText?: string): Pick<FormField, "helpText"> | Record<string, never> => (SHOW_FIELD_DESCRIPTIONS && helpText ? { helpText } : {});
+
 const counter = (key: string, label: string, groupId: string, category: string, helpText?: string, extra: Partial<FormField> = {}): FormField => ({
   ...base(key, groupId),
   type: "counter",
   label,
-  ...(helpText ? { helpText } : {}),
+  ...described(helpText),
   min: 0,
   step: 1,
   scoring: noScore,
@@ -39,7 +46,7 @@ const toggle = (key: string, label: string, groupId: string, category: string, h
   ...base(key, groupId),
   type: "toggle",
   label,
-  ...(helpText ? { helpText } : {}),
+  ...described(helpText),
   scoring: noScore,
   analytics: { include: true, category, aggregate: "rate" },
   ...extra,
@@ -50,7 +57,7 @@ const scale = (key: string, label: string, groupId: string, category: string, la
   ...base(key, groupId),
   type: "slider",
   label,
-  helpText,
+  ...described(helpText),
   min: 0,
   max: labels.length - 1,
   step: 1,
@@ -65,7 +72,7 @@ const timer = (key: string, label: string, groupId: string, category: string, he
   ...base(key, groupId),
   type: "timerList",
   label,
-  helpText,
+  ...described(helpText),
   max: 150,
   maxCycles: 60,
   scoring: noScore,

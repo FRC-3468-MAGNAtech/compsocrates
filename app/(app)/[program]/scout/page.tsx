@@ -195,11 +195,6 @@ function MatchScoutFormContent() {
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <GameSelect value={gameId} onChange={setGameId} />
-          {formsLoaded && (
-            <span className="glass-pill px-3 py-1.5 text-xs font-medium" data-testid="active-form-name">
-              {form.name}
-            </span>
-          )}
         </div>
       </div>
 
