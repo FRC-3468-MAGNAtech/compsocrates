@@ -7,6 +7,7 @@ import { CS_MATCH_ASSIGNMENTS, csRowsToSlots, isTeamMirrorRow, type CsAssignment
 import { teamRowsQuery } from "@/lib/assignment-io";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
+import { useProgramConfig } from "@/lib/program/context";
 import type { ScheduleSlot } from "@/lib/scheduler/types";
 
 /**
@@ -16,11 +17,13 @@ import type { ScheduleSlot } from "@/lib/scheduler/types";
  * scout's matches, it does not read the slot id.
  */
 export function useTeamAssignmentSlots(teamId: string | null): { slotsByEvent: Map<string, ScheduleSlot[]>; loaded: boolean } {
+  // A program that has not connected assignments has none: this hook reads the default program's collection only (never another program's).
+  const { assignments: connected } = useProgramConfig().connection.features;
   const [slotsByEvent, setSlotsByEvent] = useState<Map<string, ScheduleSlot[]>>(new Map());
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
 
   useEffect(() => {
-    if (!teamId || !isFirebaseConfigured()) {
+    if (!connected || !teamId || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSlotsByEvent(new Map());
       setLoaded(true);
@@ -47,7 +50,7 @@ export function useTeamAssignmentSlots(teamId: string | null): { slotsByEvent: M
       }
     );
     return unsubscribe;
-  }, [teamId]);
+  }, [connected, teamId]);
 
   return { slotsByEvent, loaded };
 }
