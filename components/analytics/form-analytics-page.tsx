@@ -136,7 +136,7 @@ export function FormAnalyticsView({ page, entries, allEntries, form, importForm,
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={view} onValueChange={(v) => setView(v as View)}>
-            <TabsList className="h-10" aria-label="View">
+            <TabsList aria-label="View">
               <TabsTrigger value="table" className="gap-1.5" data-testid="view-table">
                 <Table2 className="h-4 w-4" aria-hidden /> Table
               </TabsTrigger>

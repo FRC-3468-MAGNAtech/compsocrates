@@ -224,7 +224,7 @@ function AccuracySegmented() {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Tabs value={segment} onValueChange={select}>
-        <TabsList className="h-11">
+        <TabsList>
           <TabsTrigger value="all">ALL</TabsTrigger>
           {ACCURACY_PRESETS.map((p) => (
             <TabsTrigger key={p} value={String(p)}>

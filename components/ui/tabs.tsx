@@ -41,7 +41,8 @@ export function TabsList({
 }: React.ComponentProps<typeof TabsPrimitive.List>) {
   return (
     <TabsPrimitive.List
-      className={cn("glass-pill inline-flex items-center gap-1 p-1", className)}
+      // No fixed height here or at call sites: a fixed h-10 clamped the 44px touch-target triggers and made Table / Summary look cramped.
+      className={cn("glass-pill inline-flex items-center gap-1 p-1.5", className)}
       {...props}
     />
   );
@@ -60,7 +61,8 @@ export function TabsTrigger({
     <TabsPrimitive.Trigger
       value={value}
       className={cn(
-        "relative z-10 rounded-full px-4 py-2 text-sm font-medium text-[var(--muted-foreground)] outline-none transition-colors duration-200 data-[state=active]:text-[var(--color-primary-foreground)]",
+        // Roomy by default (px-5, min-h-10 on a mouse; the global coarse-pointer rule lifts buttons to 44px) and never wraps its label.
+        "relative z-10 inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-5 py-2 text-sm font-medium text-[var(--muted-foreground)] outline-none transition-colors duration-200 data-[state=active]:text-[var(--color-primary-foreground)]",
         className
       )}
       {...props}
