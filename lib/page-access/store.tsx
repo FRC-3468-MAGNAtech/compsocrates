@@ -6,6 +6,10 @@ import { useAuth } from "@/lib/auth";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programPath } from "@/lib/firebase/paths";
+import { useProgramData } from "@/lib/program/data";
+import { useProgram } from "@/lib/program/context";
 import {
   canAccessPage,
   defaultPageAccessConfig,
@@ -21,8 +25,10 @@ import { getPage } from "@/lib/page-access/pages";
 // P26: the page-access doc `teams/{teamId}/settings/pageAccess` (realtime, one subscription shared by the nav, the route
 // guard and the Admin Panel) and the access requests `teams/{teamId}/pageAccessRequests/{uid}_{pageId}`.
 
-const settingsRef = (teamId: string) => doc(db, "teams", teamId, "settings", "pageAccess");
-const requestsRef = (teamId: string) => collection(db, "teams", teamId, "pageAccessRequests");
+// `program` defaults to the root program, so every existing call reads and writes exactly the paths it always did; a namespaced program's account
+// lives under its own prefix (lib/firebase/paths.ts).
+const settingsRef = (teamId: string, program: ProgramId = DEFAULT_PROGRAM) => doc(db, programPath(program, "teams"), teamId, "settings", "pageAccess");
+const requestsRef = (teamId: string, program: ProgramId = DEFAULT_PROGRAM) => collection(db, programPath(program, "teams"), teamId, "pageAccessRequests");
 export const requestDocId = (uid: string, pageId: string) => `${uid}_${pageId}`;
 
 /** The stored shape (what the rules read): the config plus the `pageRoles` mirror, who wrote it and when. */
@@ -77,10 +83,10 @@ export type PageAccessRequest = {
 const toMs = (v: unknown): number => (v && typeof v === "object" && "toMillis" in v && typeof (v as { toMillis: unknown }).toMillis === "function" ? (v as { toMillis: () => number }).toMillis() : 0);
 
 /** A member asks for a page they can't open. One request per person and page (re-asking after a denial replaces it). */
-export async function requestPageAccess(actor: Actor, pageId: string): Promise<void> {
+export async function requestPageAccess(actor: Actor, pageId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
   const page = getPage(pageId);
   if (!page || page.access !== "restricted") throw new Error("That page can't be requested.");
-  await setDoc(doc(requestsRef(actor.teamId), requestDocId(actor.uid, pageId)), {
+  await setDoc(doc(requestsRef(actor.teamId, program), requestDocId(actor.uid, pageId)), {
     teamId: actor.teamId,
     uid: actor.uid,
     name: actor.name,
@@ -144,12 +150,15 @@ export function PageAccessProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const accessUser = useAccessUser();
+  const program = useProgram();
+  // The first-admin migration below writes the root program's defaults (and an audit entry there): a namespaced program has its own, already migrated.
+  const ownsDefaults = useProgramData() === null;
   const [state, setState] = useState<{ teamId: string; config: PageAccessConfig; exists: boolean } | null>(null);
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) return;
     return onSnapshot(
-      settingsRef(teamId),
+      settingsRef(teamId, program),
       (snap) => setState({ teamId, config: parsePageAccess(snap.exists() ? snap.data() : undefined), exists: snap.exists() }),
       (err) => {
         // Not readable (rules not deployed yet, or offline with nothing cached): fall back to the defaults rather than lock people out of the app.
@@ -157,7 +166,7 @@ export function PageAccessProvider({ children }: { children: ReactNode }) {
         setState({ teamId, config: defaultPageAccessConfig(), exists: false });
       }
     );
-  }, [teamId]);
+  }, [teamId, program]);
 
   const current = state && state.teamId === teamId ? state : null;
 
@@ -165,13 +174,13 @@ export function PageAccessProvider({ children }: { children: ReactNode }) {
   const isAdmin = profile?.isAdmin ?? false;
   const uid = accessUser?.uid ?? null;
   useEffect(() => {
-    if (!teamId || !uid || !isAdmin || !current || current.exists || migrationsAttempted.has(teamId)) return;
+    if (!ownsDefaults || !teamId || !uid || !isAdmin || !current || current.exists || migrationsAttempted.has(teamId)) return;
     migrationsAttempted.add(teamId);
     ensurePageAccessDoc(teamId, uid).catch((err) => {
       migrationsAttempted.delete(teamId);
       console.error("page access migration failed:", err);
     });
-  }, [teamId, uid, isAdmin, current]);
+  }, [ownsDefaults, teamId, uid, isAdmin, current]);
 
   const config = current?.config ?? DEFAULT_VALUE.config;
   const can = useCallback((pageId: string) => canAccessPage(accessUser, pageId, config), [accessUser, config]);
@@ -190,13 +199,14 @@ export function usePageAccess(): PageAccessValue {
 
 /** Requests, live. An admin passes `all` and gets every request of the team; anyone else gets their own. */
 export function usePageAccessRequests(teamId: string | null, opts: { all: boolean; uid: string | null }): { requests: PageAccessRequest[]; loaded: boolean } {
+  const program = useProgram();
   const [held, setHeld] = useState<{ key: string; requests: PageAccessRequest[] } | null>(null);
-  const key = teamId && (opts.all || opts.uid) ? `${teamId}|${opts.all ? "all" : opts.uid}` : null;
+  const key = teamId && (opts.all || opts.uid) ? `${program}|${teamId}|${opts.all ? "all" : opts.uid}` : null;
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured() || (!opts.all && !opts.uid)) return;
-    const k = `${teamId}|${opts.all ? "all" : opts.uid}`;
-    const q = opts.all ? query(requestsRef(teamId)) : query(requestsRef(teamId), where("uid", "==", opts.uid));
+    const k = `${program}|${teamId}|${opts.all ? "all" : opts.uid}`;
+    const q = opts.all ? query(requestsRef(teamId, program)) : query(requestsRef(teamId, program), where("uid", "==", opts.uid));
     return onSnapshot(
       q,
       (snap) =>
@@ -214,7 +224,7 @@ export function usePageAccessRequests(teamId: string | null, opts: { all: boolea
         setHeld({ key: k, requests: [] });
       }
     );
-  }, [teamId, opts.all, opts.uid]);
+  }, [teamId, program, opts.all, opts.uid]);
 
   if (!key) return { requests: [], loaded: true };
   return held?.key === key ? { requests: held.requests, loaded: true } : { requests: [], loaded: false };

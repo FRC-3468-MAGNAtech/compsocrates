@@ -4,6 +4,7 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, query, runTransaction, 
 import { useEffect, useMemo, useState } from "react";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
+import { useProgramConfig } from "@/lib/program/context";
 import {
   buildSubInRequest,
   cancelPatch,
@@ -22,9 +23,11 @@ import {
 
 /** The team's sub-in requests, live, all events and statuses (the model decides what is visible). */
 export function useSubInRequests(teamId: string | null): { requests: SubInRequest[]; loaded: boolean } {
+  // A program that has not connected sub-ins has none: this hook reads the default program's collection only (never another program's).
+  const { subIns: connected } = useProgramConfig().connection.features;
   const [held, setHeld] = useState<{ teamId: string; requests: SubInRequest[] } | null>(null);
   useEffect(() => {
-    if (!teamId || !isFirebaseConfigured()) return;
+    if (!connected || !teamId || !isFirebaseConfigured()) return;
     return onSnapshot(
       query(collection(db, SUB_IN_COLLECTION), where("teamId", "==", teamId)),
       (snap) => setHeld({ teamId, requests: snap.docs.map((d) => parseSubInRequest(d.id, d.data())) }),
@@ -33,11 +36,11 @@ export function useSubInRequests(teamId: string | null): { requests: SubInReques
         setHeld({ teamId, requests: [] });
       }
     );
-  }, [teamId]);
+  }, [connected, teamId]);
   return useMemo(() => {
-    if (!teamId || !isFirebaseConfigured()) return { requests: [], loaded: true };
+    if (!connected || !teamId || !isFirebaseConfigured()) return { requests: [], loaded: true };
     return held?.teamId === teamId ? { requests: held.requests, loaded: true } : { requests: [], loaded: false };
-  }, [teamId, held]);
+  }, [connected, teamId, held]);
 }
 
 export type SubInResult = { ok: true } | { ok: false; reason: string };

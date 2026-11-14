@@ -5,6 +5,7 @@ import { usePathname } from "@/lib/program/navigation";
 import { NoAccessScreen, type RequestStatus } from "@/components/page-access/no-access-screen";
 import { Shimmer } from "@/components/ui/shimmer";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { pageForPath, type PageDef } from "@/lib/page-access/pages";
 import { requestPageAccess, usePageAccess, usePageAccessRequests } from "@/lib/page-access/store";
 
@@ -26,6 +27,7 @@ export function PageGuard({ children }: { children: React.ReactNode }) {
 
 function ConnectedNoAccess({ page }: { page: PageDef }) {
   const { user, profile } = useAuth();
+  const program = useProgram();
   const teamId = profile?.teamId ?? null;
   const { requests } = usePageAccessRequests(teamId, { all: false, uid: user?.uid ?? null });
   const [sending, setSending] = useState(false);
@@ -39,7 +41,7 @@ function ConnectedNoAccess({ page }: { page: PageDef }) {
     setSending(true);
     setError(null);
     try {
-      await requestPageAccess({ teamId: profile.teamId, uid: user.uid, name: profile.name }, page.id);
+      await requestPageAccess({ teamId: profile.teamId, uid: user.uid, name: profile.name }, page.id, program);
     } catch {
       setError("Couldn't send that request. Check your connection and try again.");
     } finally {

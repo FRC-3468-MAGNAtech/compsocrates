@@ -24,7 +24,7 @@ import { getRole } from "@/lib/roles";
 import { useChangelogUnread } from "@/lib/changelog/store";
 import { BRAND } from "@/config/brand";
 import { isUnavailableInProgram, programConfig } from "@/config/programs";
-import { useProgram } from "@/lib/program/context";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
 import { TeamSwitcher } from "@/components/program/team-switcher";
 
@@ -132,7 +132,9 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
     secondaryNav.filter((item) => item.href !== "/admin" || isAdmin),
     canOpen
   );
-  const changelogUnread = useChangelogUnread(profile?.teamId ?? null, profile?.lastSeenChangelogAt);
+  // The changelog is read from the default program's collection, so a program without it connected asks for nothing (no team = no subscription).
+  const { features } = useProgramConfig().connection;
+  const changelogUnread = useChangelogUnread(features.changelog ? (profile?.teamId ?? null) : null, profile?.lastSeenChangelogAt);
 
   const handleLogout = () => {
     void logout();
@@ -236,7 +238,8 @@ function SidebarInner({
   const { number: ourNumber, name: ourName } = useOurTeam();
   // P20: the platform owner sees how many team applications are waiting, on the Admin Panel item.
   const { isPlatformOwner } = usePermissions();
-  const pendingApplications = usePendingApplicationCount(isPlatformOwner);
+  const { features: programFeatures } = useProgramConfig().connection;
+  const pendingApplications = usePendingApplicationCount(isPlatformOwner && programFeatures.applications);
   const pageAccess = usePageAccess();
   const accessUser = useAccessUser();
   const canOpen = accessUser ? pageAccess.can : null;

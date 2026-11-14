@@ -20,6 +20,7 @@ import { getMatchesForEvent } from "@/lib/events/actions";
 import { getDefaultSeason } from "@/lib/events/config";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { auth, isFirebaseConfigured } from "@/lib/firebase/client";
+import { useProgramConfig } from "@/lib/program/context";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/events/types";
 import { eventMatchesToInputs } from "@/lib/scheduler/sources";
@@ -108,11 +109,13 @@ function useEventSchedule(eventCode: string | null, enabled: boolean) {
 
 /** Realtime — the Assignments page, Match Scout Form's "next assignment," and the Dashboard/My Scouting "upcoming assignments" card all read this. */
 export function useAssignments(teamId: string | null, eventCode: string | null) {
+  // A program that has not connected assignments yet has none: this hook reads the default program's collections only (never another program's).
+  const { assignments: connected } = useProgramConfig().connection.features;
   const [held, setHeld] = useState<{ key: string; match: CsAssignmentRow[]; practice: CsAssignmentRow[]; matchLoaded: boolean } | null>(null);
   const subscriptionKey = teamId && eventCode ? docId(teamId, eventCode) : null;
 
   useEffect(() => {
-    if (!teamId || !eventCode || !isFirebaseConfigured() || !subscriptionKey) return;
+    if (!connected || !teamId || !eventCode || !isFirebaseConfigured() || !subscriptionKey) return;
     const toRows = (docs: { id: string; data: () => Record<string, unknown> }[]): CsAssignmentRow[] => docs.map((d) => ({ id: d.id, data: d.data() }));
     const apply = (patch: Partial<{ match: CsAssignmentRow[]; practice: CsAssignmentRow[]; matchLoaded: boolean }>) =>
       setHeld((prev) => ({ match: [], practice: [], matchLoaded: false, ...(prev?.key === subscriptionKey ? prev : {}), ...patch, key: subscriptionKey }));
@@ -134,7 +137,7 @@ export function useAssignments(teamId: string | null, eventCode: string | null) 
       unsubMatch();
       unsubPractice();
     };
-  }, [teamId, eventCode, subscriptionKey]);
+  }, [connected, teamId, eventCode, subscriptionKey]);
 
   const current = held && held.key === subscriptionKey ? held : null;
   const rows = useMemo(() => [...(current?.match ?? []).filter((r) => !isTeamMirrorRow(r.data)), ...(current?.practice ?? [])], [current]);
@@ -151,7 +154,7 @@ export function useAssignments(teamId: string | null, eventCode: string | null) 
     };
   }, [teamId, eventCode, rows, lookup]);
 
-  if (!teamId || !eventCode || !isFirebaseConfigured()) return { assignments: null, loaded: true };
+  if (!connected || !teamId || !eventCode || !isFirebaseConfigured()) return { assignments: null, loaded: true };
   return { assignments, loaded: Boolean(current?.matchLoaded) };
 }
 

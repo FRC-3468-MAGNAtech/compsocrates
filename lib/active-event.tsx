@@ -12,6 +12,7 @@
 // migration, `selectedEvents` is the single source of truth (the Event Select page writes the additive `selectedEventNames`).
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
+import { useProgramConfig } from "@/lib/program/context";
 import { setActiveEvent as setTeamActiveEvent, useTeamDoc } from "@/lib/team";
 import { readActiveEvents } from "@/lib/active-events";
 import { getEventStatus } from "@/lib/events/event-status";
@@ -30,8 +31,9 @@ const isPlaceholder = (event: EventInfo) => event.dateStart === "" && event.date
  * raw key. A failure is never hidden: each event reports `{ name, source, status: "loading" | "ready" | "fallback", error? }`
  * (returned as `eventNames`) and the Event Select page tells admins why.
  */
-function useEnrichedEvents(events: EventInfo[], stored: Record<string, string> | undefined): { events: EventInfo[]; names: Record<string, EventNameState> } {
-  const keys = useMemo(() => events.map((e) => e.code), [events]);
+function useEnrichedEvents(events: EventInfo[], stored: Record<string, string> | undefined, lookup: boolean): { events: EventInfo[]; names: Record<string, EventNameState> } {
+  // A program whose team doc holds complete event records (`eventLookup` off) asks the events API for nothing: there is nothing to enrich.
+  const keys = useMemo(() => (lookup ? events.map((e) => e.code) : []), [events, lookup]);
   const names = useEventNames(keys, { stored });
   const enriched = useMemo(
     () =>
@@ -61,7 +63,8 @@ export function useActiveEvents() {
   // Names the team doc stored beside selectedEvents (additive field): the second step of the name chain, shared app-wide.
   const stored = useMemo(() => collectStoredEventNames(team?.selectedEventNames), [team]);
   useRegisterStoredEventNames(stored);
-  const { events, names: eventNames } = useEnrichedEvents(state.events, stored);
+  const { eventLookup } = useProgramConfig().connection.features;
+  const { events, names: eventNames } = useEnrichedEvents(state.events, stored, eventLookup);
   const primary = useMemo(() => events.find((e) => e.code === state.primaryCode) ?? null, [events, state.primaryCode]);
 
   const isActive = useCallback((code: string) => state.events.some((e) => e.code === code), [state.events]);
