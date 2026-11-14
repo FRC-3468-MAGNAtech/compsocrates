@@ -10,12 +10,14 @@ describe("program connection config", () => {
     expect(isPathConnected("frc", "/anything/at/all")).toBe(true);
   });
 
-  it("the FTC program connects only the scout page so far, and allows several teams per account", () => {
+  it("the FTC program connects the scout page and the scout-entry analytics so far, and allows several teams per account", () => {
     expect(PROGRAMS.ftc.multiTeam).toBe(true);
-    expect(PROGRAMS.ftc.connection.paths).toEqual(["/scout"]);
-    expect(isPathConnected("ftc", "/scout")).toBe(true);
-    expect(isPathConnected("ftc", "/scout/anything")).toBe(true);
-    for (const path of ["/", "/dashboard", "/match-list", "/scouting", "/scoutish", "/analytics/team-stats", "/judge-book"]) expect(isPathConnected("ftc", path), path).toBe(false);
+    expect(PROGRAMS.ftc.connection.paths).toEqual(["/scout", "/analytics/match-scout", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings"]);
+    for (const path of ["/scout", "/scout/anything", "/analytics/match-scout", "/analytics/rankings", "/analytics/team-breakdown", "/analytics/team-averages"]) expect(isPathConnected("ftc", path), path).toBe(true);
+    // everything else shows the notice, including the neighbours of a connected path
+    for (const path of ["/", "/dashboard", "/match-list", "/scouting", "/scoutish", "/analytics", "/analytics/match-scoutish", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/lead-scout", "/my-scouting", "/judge-book"]) {
+      expect(isPathConnected("ftc", path), path).toBe(false);
+    }
   });
 
   it("no data feature is on for FTC until it has a program-aware data layer", () => {

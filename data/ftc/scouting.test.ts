@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ftcDocsToScoutEntries, ftcDocToScoutEntry, ftcScoutEntryDoc, isEventEntry, readAccuracy, readEntryValues, readScore, readStickyNotes, type FtcScoutEntryDoc } from "@/data/ftc/scouting";
+import { ftcDocsToScoutEntries, ftcDocToScoutEntry, ftcScoutEntryDoc, ftcScoutEntryPatch, isEventEntry, readAccuracy, readEntryValues, readScore, readStickyNotes, type FtcScoutEntryDoc } from "@/data/ftc/scouting";
 import type { SaveEntryInput } from "@/lib/scout-entries";
 
 const stored = (over: FtcScoutEntryDoc = {}): FtcScoutEntryDoc => ({
@@ -206,6 +206,29 @@ describe("ftcScoutEntryDoc (what a new entry is stored as)", () => {
     const entry = ftcDocToScoutEntry("e", make({ stickyNotes: [{ id: "n", text: "fast", color: "yellow", createdAt: 1 }] }));
     expect(entry).toMatchObject({ teamId: "team-a", uid: "uid-ada", source: "event", formId: "biobuzz", teamNumber: 4242, values: { autoLeave: true, teleTipHive: 2 }, score: { total: 43 }, excluded: false, accuracy: null });
     expect(entry.stickyNotes).toHaveLength(1);
+  });
+});
+
+describe("ftcScoutEntryPatch (what an edit may write)", () => {
+  it("keeps only the editable fields the patch carries", () => {
+    const patch = ftcScoutEntryPatch({
+      excluded: true,
+      autoFlags: [{ ruleId: "r", dismissed: true }],
+      manualFlags: [],
+      accuracy: null,
+      comments: "edited",
+      id: "never",
+      teamId: "never",
+      uid: "never",
+      submittedAt: "never",
+      source: "event",
+    } as never);
+    expect(patch).toEqual({ excluded: true, autoFlags: [{ ruleId: "r", dismissed: true }], manualFlags: [], accuracy: null, comments: "edited" });
+  });
+
+  it("drops undefined values and the fields the app does not own; nothing to write is empty", () => {
+    expect(ftcScoutEntryPatch({ comments: undefined, legacy: { kind: "official" }, game: "REBUILT" } as never)).toEqual({});
+    expect(ftcScoutEntryPatch({})).toEqual({});
   });
 });
 

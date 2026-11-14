@@ -4,7 +4,7 @@ import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/c
 import { FTC_GAME_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
 import { getFormVersion, subscribeFormDocs, subscribeFormEntries, subscribeTeamDoc, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
-import { saveScoutEntry } from "@/data/ftc/write";
+import { deleteScoutEntry, saveScoutEntry, updateScoutEntry } from "@/data/ftc/write";
 
 /** A game is a season, named like the stored data names it: the game id lower-cased. */
 const seasonIdOf = (gameId: string): string => gameId.toLowerCase();
@@ -17,7 +17,7 @@ export const FTC_SEASONS: readonly ProgramSeason[] = FTC_GAME_ID_LIST.map((id) =
 export const ftcProgramData: ProgramData = {
   profile: { subscribe: subscribeUserProfile },
   team: { subscribe: subscribeTeamDoc },
-  scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry },
+  scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry, update: updateScoutEntry, delete: deleteScoutEntry },
   formEntries: { subscribe: (teamId, query, onData, onError) => subscribeFormEntries(teamId, query, onData, onError) },
   forms: { subscribeDocs: subscribeFormDocs, loadVersion: getFormVersion },
   games: { seasons: FTC_SEASONS, defaultSeasonId: seasonIdOf(CURRENT_FTC_GAME_ID), builtinForms: FTC_GAME_FORMS },

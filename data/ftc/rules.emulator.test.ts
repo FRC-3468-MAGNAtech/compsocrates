@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { ftcDocsToFormEntries } from "@/data/ftc/form-entries";
 import { ftcDocsToFormDocs, ftcDocToFormVersion } from "@/data/ftc/forms";
-import { ftcDocsToScoutEntries, ftcScoutEntryDoc } from "@/data/ftc/scouting";
+import { ftcDocsToScoutEntries, ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
 import { ftcTeamToTeamDoc } from "@/data/ftc/teams";
 import { ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
 import { programPath } from "@/lib/firebase/paths";
-import type { SaveEntryInput } from "@/lib/scout-entries";
+import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 
 // The FTC data layer against the real firestore.rules (the `programs/ftc` block), in the Firestore emulator: the documents it writes are accepted, and
 // every query it makes (the same shapes as data/ftc/read.ts, whose constraints data/ftc/read.test.ts pins) is one the rules allow: only the account's
@@ -21,6 +21,7 @@ const T1 = "ftcteam1";
 const T2 = "ftcteam2";
 const SCOUT = "ftc-scout-1";
 const OTHER = "ftc-scout-other";
+const ADMIN = "ftc-admin-1";
 
 const P = (name: string) => programPath("ftc", name);
 
@@ -33,6 +34,10 @@ beforeAll(async () => {
     const db = ctx.firestore();
     await setDoc(doc(db, P("users"), SCOUT), { name: "Ada", email: "ada@example.org", teamId: T1, primaryRole: "match-scout", secondaryRoles: [], isAdmin: false, isOwner: false });
     await setDoc(doc(db, P("users"), "ftc-lead-1"), { name: "Grace", email: "grace@example.org", teamId: T1, primaryRole: "lead-scout", secondaryRoles: [], isAdmin: false, isOwner: false, fieldTeamIds: ["ft-1"] });
+    await setDoc(doc(db, P("users"), ADMIN), { name: "Admin", email: "admin@example.org", teamId: T1, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+    for (const id of ["edit-1", "edit-2", "edit-3"]) {
+      await setDoc(doc(db, P("scoutEntries"), id), { teamId: T1, uid: SCOUT, source: "event", eventCode: "EV1", matchType: "Qualification", matchNumber: 9, teamNumber: 300, formId: "biobuzz", formVersion: 1, values: {}, score: { auto: 0, teleop: 0, endgame: 0, total: 0 }, comments: "", submittedAt: "2026-01-10T10:00:00.000Z", excluded: false, autoFlags: [], manualFlags: [], accuracy: null });
+    }
     await setDoc(doc(db, P("users"), OTHER), { name: "Other", email: "o@example.org", teamId: T2, primaryRole: "match-scout", secondaryRoles: [], isAdmin: false, isOwner: false });
     await setDoc(doc(db, P("teams"), T1), {
       joinCode: "J1",
@@ -90,6 +95,32 @@ describe("saving a Match Scout entry", () => {
   });
 });
 
+describe("editing and deleting a Match Scout entry (admins only)", () => {
+  const edit: Partial<ScoutEntry> = { excluded: true, manualFlags: [{ id: "mf-1", reason: "Duplicate entry", note: "twice", addedAt: "2026-01-10T16:00:00.000Z" }], autoFlags: [{ ruleId: "r", dismissed: true }], accuracy: null };
+
+  it("an admin's edit is accepted, and reads back with the flags and exclusion", async () => {
+    const db = as(ADMIN);
+    await assertSucceeds(updateDoc(doc(db, P("scoutEntries"), "edit-1"), ftcScoutEntryPatch(edit)));
+    const snap = await assertSucceeds(getDoc(doc(db, P("scoutEntries"), "edit-1")));
+    const [entry] = ftcDocsToScoutEntries([{ id: snap.id, data: snap.data() }]);
+    expect(entry).toMatchObject({ excluded: true, manualFlags: [{ id: "mf-1", reason: "Duplicate entry", note: "twice" }], autoFlags: [{ ruleId: "r", dismissed: true }], teamId: T1, uid: SCOUT });
+  });
+
+  it("a scout's edit or delete of their own entry is refused", async () => {
+    const db = as(SCOUT);
+    await assertFails(updateDoc(doc(db, P("scoutEntries"), "edit-2"), ftcScoutEntryPatch(edit)));
+    await assertFails(deleteDoc(doc(db, P("scoutEntries"), "edit-2")));
+  });
+
+  it("an admin of another team cannot touch it, and an admin can delete their own team's entry", async () => {
+    await assertFails(deleteDoc(doc(as(OTHER), P("scoutEntries"), "edit-3")));
+    await assertSucceeds(deleteDoc(doc(as(ADMIN), P("scoutEntries"), "edit-3")));
+    // (the rules refuse a `get` of a missing doc, so check the team's list instead)
+    const left = await assertSucceeds(getDocs(query(collection(as(ADMIN), P("scoutEntries")), where("teamId", "==", T1))));
+    expect(left.docs.some((d) => d.id === "edit-3")).toBe(false);
+  });
+});
+
 describe("reading the account's own data", () => {
   it("scout entries: the team's whole list, and one event's, never another team's", async () => {
     const db = as(SCOUT);
@@ -141,7 +172,7 @@ describe("reading the account's own data", () => {
     expect(ftcUserToProfile(me.id, me.data() ?? {})).toMatchObject({ name: "Ada", teamId: T1, primaryRole: "match-scout", isAdmin: false });
     const members = await assertSucceeds(getDocs(query(collection(db, P("users")), where("teamId", "==", T1))));
     const rows = members.docs.map((d) => ftcUserToMember(d.id, d.data()));
-    expect(rows.map((m) => m.name).sort()).toEqual(["Ada", "Grace"]);
+    expect(rows.map((m) => m.name).sort()).toEqual(["Ada", "Admin", "Grace"]);
     await assertFails(getDocs(query(collection(db, P("users")), where("teamId", "==", T2))));
   });
 

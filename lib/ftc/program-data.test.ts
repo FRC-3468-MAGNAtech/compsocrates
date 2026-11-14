@@ -12,7 +12,7 @@ describe("the program data port", () => {
 
   it("offers every read and write the scout page uses", () => {
     expect(Object.keys(ftcProgramData).sort()).toEqual(["formEntries", "forms", "games", "profile", "scoutEntries", "team"]);
-    for (const fn of [ftcProgramData.profile.subscribe, ftcProgramData.team.subscribe, ftcProgramData.scoutEntries.subscribeTeam, ftcProgramData.scoutEntries.save, ftcProgramData.formEntries.subscribe, ftcProgramData.forms.subscribeDocs, ftcProgramData.forms.loadVersion]) {
+    for (const fn of [ftcProgramData.profile.subscribe, ftcProgramData.team.subscribe, ftcProgramData.scoutEntries.subscribeTeam, ftcProgramData.scoutEntries.save, ftcProgramData.scoutEntries.update, ftcProgramData.scoutEntries.delete, ftcProgramData.formEntries.subscribe, ftcProgramData.forms.subscribeDocs, ftcProgramData.forms.loadVersion]) {
       expect(typeof fn).toBe("function");
     }
   });

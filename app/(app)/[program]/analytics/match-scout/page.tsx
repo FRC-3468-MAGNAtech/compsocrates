@@ -12,6 +12,7 @@ import { AnalyticsDataTable, type SortState } from "@/components/analytics/data-
 import { ConfigModal } from "@/components/analytics/config-modal";
 import { ImportCsvDialog } from "@/components/analytics/import-csv-dialog";
 import { useAuth } from "@/lib/auth";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { buildGameSchema, withPracticeColumns } from "@/lib/analytics/game-schema";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { entriesToCsv } from "@/lib/analytics/csv";
@@ -27,6 +28,9 @@ export default function MatchScoutAnalyticsPage() {
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const searchParams = useSearchParams();
+  // Edits and deletes are written to the active program's own collection; CSV import and the accuracy recompute exist only where they are connected.
+  const program = useProgram();
+  const { features } = useProgramConfig().connection;
 
   // Game / Event / Practice now come from the shared filter bar (P10). Import
   // and Recalculate act on a single event, so this page asks the bar's Event
@@ -125,7 +129,7 @@ export default function MatchScoutAnalyticsPage() {
   const withEntry = (id: string, patch: (entry: ScoutEntry) => Partial<ScoutEntry>) => {
     const entry = sourceEntries.find((e) => e.id === id);
     if (!entry) return;
-    void updateEntry(id, patch(entry));
+    void updateEntry(id, patch(entry), {}, program);
   };
 
   const handleDismissAutoFlags = (id: string) =>
@@ -147,12 +151,12 @@ export default function MatchScoutAnalyticsPage() {
       return;
     }
     withEntry(id, (e) => ({ excluded: !e.excluded }));
-    if (eventCode && teamId) void recomputeForEvent(teamId, eventCode, eventSeason, forms.currentResolver);
+    if (features.accuracy && eventCode && teamId) void recomputeForEvent(teamId, eventCode, eventSeason, forms.currentResolver);
   };
 
   const confirmDelete = () => {
     if (!deleteTarget) return;
-    void deleteEntry(deleteTarget.id);
+    void deleteEntry(deleteTarget.id, program);
     setDeleteTarget(null);
   };
 
@@ -188,13 +192,17 @@ export default function MatchScoutAnalyticsPage() {
           </Button>
           {!practiceMode && (
             <>
-              <Button variant="glass" size="sm" className="gap-2" onClick={() => setImportOpen(true)}>
-                <Upload className="h-4 w-4" /> Import CSV
-              </Button>
-              <Button size="sm" className="gap-2" onClick={handleRecalculate} disabled={recalculating}>
-                <RefreshCw className={recalculating ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                {recalculating ? "Recalculating…" : "Recalculate Accuracy"}
-              </Button>
+              {features.csvImport && (
+                <Button variant="glass" size="sm" className="gap-2" onClick={() => setImportOpen(true)}>
+                  <Upload className="h-4 w-4" /> Import CSV
+                </Button>
+              )}
+              {features.accuracy && (
+                <Button size="sm" className="gap-2" onClick={handleRecalculate} disabled={recalculating}>
+                  <RefreshCw className={recalculating ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                  {recalculating ? "Recalculating…" : "Recalculate Accuracy"}
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -244,7 +252,7 @@ export default function MatchScoutAnalyticsPage() {
         onToggleSessionExclude={configEntry ? () => handleToggleExclude(configEntry.id) : undefined}
       />
 
-      {!practiceMode && teamId && user && eventCode && (
+      {features.csvImport && !practiceMode && teamId && user && eventCode && (
         <ImportCsvDialog
           open={importOpen}
           onOpenChange={setImportOpen}

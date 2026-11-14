@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ addDoc: vi.fn(), refs: [] as string[] }));
+const h = vi.hoisted(() => ({ addDoc: vi.fn(), updateDoc: vi.fn(), deleteDoc: vi.fn(), refs: [] as string[] }));
 
 vi.mock("firebase/firestore", () => ({
   collection: (_db: unknown, p: string, ...segments: string[]) => {
@@ -8,12 +8,19 @@ vi.mock("firebase/firestore", () => ({
     h.refs.push(path);
     return { kind: "collection", path };
   },
+  doc: (_db: unknown, p: string, ...segments: string[]) => {
+    const path = [p, ...segments].join("/");
+    h.refs.push(path);
+    return { kind: "doc", path };
+  },
   addDoc: (...args: unknown[]) => h.addDoc(...args),
+  updateDoc: (...args: unknown[]) => h.updateDoc(...args),
+  deleteDoc: (...args: unknown[]) => h.deleteDoc(...args),
   serverTimestamp: () => "SERVER_TIMESTAMP",
 }));
 vi.mock("@/lib/firebase/client", () => ({ db: { fake: true } }));
 
-import { saveScoutEntry } from "@/data/ftc/write";
+import { deleteScoutEntry, saveScoutEntry, updateScoutEntry } from "@/data/ftc/write";
 import type { SaveEntryInput } from "@/lib/scout-entries";
 
 const input: SaveEntryInput = {
@@ -29,9 +36,11 @@ const input: SaveEntryInput = {
   comments: "",
 };
 
-let errorSpy: { mockRestore: () => void };
+let errorSpy: { mockRestore: () => void; mock: { calls: unknown[][] } };
 beforeEach(() => {
   h.addDoc.mockReset();
+  h.updateDoc.mockReset();
+  h.deleteDoc.mockReset();
   h.refs.length = 0;
   errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -51,6 +60,37 @@ describe("saveScoutEntry", () => {
     const denied = Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
     h.addDoc.mockRejectedValue(denied);
     await expect(saveScoutEntry("team-a", "uid-ada", input)).rejects.toBe(denied);
-    expect(String((errorSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0])).toContain("programs/ftc/scoutEntries");
+    expect(String(errorSpy.mock.calls[0][0])).toContain("programs/ftc/scoutEntries");
+  });
+});
+
+describe("updateScoutEntry and deleteScoutEntry", () => {
+  it("updates only the editable fields of the entry in the program's collection", async () => {
+    h.updateDoc.mockResolvedValue(undefined);
+    await updateScoutEntry("e1", { excluded: true, manualFlags: [{ id: "f", reason: "Other", addedAt: "t" }], teamId: "someone-else", uid: "x", id: "ignored", accuracy: null } as never);
+    expect(h.refs).toEqual(["programs/ftc/scoutEntries/e1"]);
+    const [ref, fields] = h.updateDoc.mock.calls[0];
+    expect(ref).toEqual({ kind: "doc", path: "programs/ftc/scoutEntries/e1" });
+    expect(fields).toEqual({ excluded: true, manualFlags: [{ id: "f", reason: "Other", addedAt: "t" }], accuracy: null });
+  });
+
+  it("writes nothing for a patch with no editable field", async () => {
+    await updateScoutEntry("e1", { id: "x", teamId: "t" } as never);
+    expect(h.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("deletes the entry from the program's collection", async () => {
+    h.deleteDoc.mockResolvedValue(undefined);
+    await deleteScoutEntry("e1");
+    expect(h.deleteDoc.mock.calls[0][0]).toEqual({ kind: "doc", path: "programs/ftc/scoutEntries/e1" });
+  });
+
+  it("reports a refused edit or delete and rethrows it", async () => {
+    const denied = Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+    h.updateDoc.mockRejectedValue(denied);
+    h.deleteDoc.mockRejectedValue(denied);
+    await expect(updateScoutEntry("e1", { excluded: true })).rejects.toBe(denied);
+    await expect(deleteScoutEntry("e1")).rejects.toBe(denied);
+    expect(errorSpy.mock.calls.length).toBe(2);
   });
 });

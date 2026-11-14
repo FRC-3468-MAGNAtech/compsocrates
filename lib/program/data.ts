@@ -43,6 +43,9 @@ export type ProgramData = {
     /** Every entry of the team, all events and sources. */
     subscribeTeam(teamId: string, onData: (entries: ScoutEntry[]) => void, onError: DataError): Unsubscribe;
     save(teamId: string, uid: string, input: SaveEntryInput): Promise<void>;
+    /** Applies an app-shaped patch to a stored entry (admins only, by the rules). */
+    update(id: string, patch: Partial<ScoutEntry>): Promise<void>;
+    delete(id: string): Promise<void>;
   };
   formEntries: { subscribe(teamId: string, query: FormEntriesQuery, onData: (entries: FormEntry[]) => void, onError: DataError): Unsubscribe };
   forms: {

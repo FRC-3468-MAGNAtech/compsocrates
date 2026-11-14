@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ save: vi.fn() }));
-vi.mock("@/data/ftc/write", () => ({ saveScoutEntry: (...args: unknown[]) => h.save(...args) }));
+const h = vi.hoisted(() => ({ save: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+vi.mock("@/data/ftc/write", () => ({
+  saveScoutEntry: (...args: unknown[]) => h.save(...args),
+  updateScoutEntry: (...args: unknown[]) => h.update(...args),
+  deleteScoutEntry: (...args: unknown[]) => h.remove(...args),
+}));
 
-import { saveEntry, type SaveEntryInput } from "@/lib/scout-entries";
+import { deleteEntry, saveEntry, updateEntry, type SaveEntryInput } from "@/lib/scout-entries";
 
 const input: SaveEntryInput = {
   scoutName: "Ada",
@@ -21,6 +25,8 @@ const input: SaveEntryInput = {
 // (braces matter: a function returned from beforeEach is run as a teardown, and `mockReset()` returns the mock itself)
 beforeEach(() => {
   h.save.mockReset();
+  h.update.mockReset();
+  h.remove.mockReset();
 });
 
 describe("saveEntry and the program", () => {
@@ -40,5 +46,23 @@ describe("saveEntry and the program", () => {
     // its own write (the root `scouting` collection) refuses this entry here: no Firestore client in a unit test, and a form it cannot store
     await saveEntry("team-a", "uid-ada", input).catch(() => undefined);
     expect(h.save).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateEntry and deleteEntry and the program", () => {
+  it("write through the program's own data port when the program has one", async () => {
+    h.update.mockResolvedValue(undefined);
+    h.remove.mockResolvedValue(undefined);
+    await updateEntry("e1", { excluded: true }, {}, "ftc");
+    await deleteEntry("e1", "ftc");
+    expect(h.update).toHaveBeenCalledWith("e1", { excluded: true });
+    expect(h.remove).toHaveBeenCalledWith("e1");
+  });
+
+  it("the default program never touches the program port", async () => {
+    await updateEntry("e1", { excluded: true }).catch(() => undefined);
+    await deleteEntry("e1").catch(() => undefined);
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.remove).not.toHaveBeenCalled();
   });
 });

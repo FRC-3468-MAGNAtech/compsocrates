@@ -154,6 +154,39 @@ export function ftcScoutEntryDoc(teamId: string, uid: string, input: SaveEntryIn
   });
 }
 
+/** The fields of a stored entry an edit may change (who wrote it, for which team, and when are never rewritten). */
+const EDITABLE_FIELDS = [
+  "scoutName",
+  "eventCode",
+  "matchType",
+  "matchNumber",
+  "teamNumber",
+  "values",
+  "score",
+  "scored",
+  "comments",
+  "stickyNotes",
+  "alliance",
+  "linkedEntryId",
+  "planDifferences",
+  "excluded",
+  "autoFlags",
+  "manualFlags",
+  "accuracy",
+  "sessionId",
+  "libraryMatchId",
+] as const satisfies readonly (keyof ScoutEntry)[];
+
+/**
+ * The fields to write for an app-shaped patch to an entry: only the editable ones the patch carries (so the entry's identity and anything the app does
+ * not own is never touched by an edit), none of them `undefined`. An empty result means there is nothing to write.
+ */
+export function ftcScoutEntryPatch(patch: Partial<ScoutEntry>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of EDITABLE_FIELDS) if (patch[key] !== undefined) out[key] = patch[key];
+  return stripUndefined(out);
+}
+
 /** Every row as an entry, in the order given. A row whose body is not a map (it cannot be a Firestore document) is skipped. */
 export function ftcDocsToScoutEntries(rows: readonly FtcRawRow[]): ScoutEntry[] {
   return rows.flatMap((row) => (isRecord(row.data) ? [ftcDocToScoutEntry(row.id, row.data)] : []));

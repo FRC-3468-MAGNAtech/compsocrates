@@ -541,7 +541,10 @@ export type UpdateEntryOptions = {
  * top-level fields that changed are merge-written (unknown CS fields are untouched). Flag, dismissal and exclude-from-accuracy
  * changes are written to `scoutingFlagStates/scoutingEntry:<id>`; `excluded` is CS's `excludeFromStats` on the doc itself.
  */
-export async function updateEntry(id: string, patch: Partial<ScoutEntry>, options: UpdateEntryOptions = {}): Promise<void> {
+export async function updateEntry(id: string, patch: Partial<ScoutEntry>, options: UpdateEntryOptions = {}, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  // A namespaced program stores flags, accuracy and exclusion on the entry itself and writes through its own port.
+  const data = programData(program);
+  if (data) return data.scoutEntries.update(id, patch);
   const ref = doc(db, COLLECTION, id);
   const flagRef = doc(db, FLAG_COLLECTION, flagStateDocId(id));
   const [snap, flagSnap] = await Promise.all([getDoc(ref), getDoc(flagRef).catch(() => null)]);
@@ -562,7 +565,9 @@ export async function updateEntry(id: string, patch: Partial<ScoutEntry>, option
   if (flagPatch) await setDoc(flagRef, stripUndefined(flagPatch), { merge: true });
 }
 
-export async function deleteEntry(id: string): Promise<void> {
+export async function deleteEntry(id: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.scoutEntries.delete(id);
   await deleteDoc(doc(db, COLLECTION, id));
   // Best effort: a flag state with no entry is harmless (readers match flag states to entries by id).
   await deleteDoc(doc(db, FLAG_COLLECTION, flagStateDocId(id))).catch(() => {});
