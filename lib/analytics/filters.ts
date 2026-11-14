@@ -73,7 +73,7 @@ function splitCodes(raw: string): string[] {
 }
 
 /** Reads filters off URL params; anything missing or invalid falls back to its default, so a hand-edited link can't produce an impossible state. */
-export function parseFilters(params: ParamReader, validGameIds: string[] = Object.keys(GAMES)): AnalyticsFilters {
+export function parseFilters(params: ParamReader, validGameIds: string[] = Object.keys(GAMES), defaultGameId: string = DEFAULT_FILTERS.gameId): AnalyticsFilters {
   const game = params.get("game");
   const eventsRaw = params.get("events");
   const modeRaw = params.get("mode");
@@ -90,7 +90,7 @@ export function parseFilters(params: ParamReader, validGameIds: string[] = Objec
   const acc = accRaw && /^\d{1,3}$/.test(accRaw) ? clampAccuracy(Number(accRaw)) : null;
 
   return {
-    gameId: game && validGameIds.includes(game) ? game : DEFAULT_FILTERS.gameId,
+    gameId: game && validGameIds.includes(game) ? game : defaultGameId,
     events,
     practice: params.get("practice") === "1",
     practiceMode: MODES.includes(modeRaw as PracticeModeFilter) ? (modeRaw as PracticeModeFilter) : "all",

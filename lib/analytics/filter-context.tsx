@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "@/lib/program/navigation";
+import { useProgramConfig } from "@/lib/program/context";
+import { useForms } from "@/lib/forms/forms-context";
 import {
   DEFAULT_FILTERS,
   filtersToQuery,
@@ -44,7 +46,13 @@ export function AnalyticsFilterProvider({ children }: { children: React.ReactNod
   const [single, setSingle] = useState({ on: false, includePractice: false });
   const setSingleEvent = useCallback((value: boolean, includePractice: boolean = false) => setSingle({ on: value, includePractice }), []);
 
-  const filters = useMemo(() => parseFilters(new URLSearchParams(queryString)), [queryString]);
+  // The games are the active program's (the forms context), and Practice mode exists only where practice is connected: a hand-edited link cannot turn it on.
+  const { seasons, defaultSeasonId } = useForms();
+  const { practice: practiceConnected } = useProgramConfig().connection.features;
+  const filters = useMemo(() => {
+    const parsed = parseFilters(new URLSearchParams(queryString), seasons.map((s) => s.id), defaultSeasonId);
+    return practiceConnected ? parsed : { ...parsed, practice: false };
+  }, [queryString, seasons, defaultSeasonId, practiceConnected]);
 
   const setFilters = useCallback(
     (patch: Partial<AnalyticsFilters>, mode: "push" | "replace" = "push") => {

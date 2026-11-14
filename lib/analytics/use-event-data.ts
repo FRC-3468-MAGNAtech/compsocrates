@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getMatchesForEvent, getRankingsForEvent, getTeamsForEvent } from "@/lib/events/actions";
+import type { ProgramId } from "@/config/programs/types";
+import { useProgram } from "@/lib/program/context";
+import { scopedKey } from "@/lib/program/paths";
 import { matchToOfficial, type OfficialMatch } from "@/lib/analytics/match-breakdown";
 import type { EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
@@ -14,7 +17,9 @@ import type { EventRanking, EventTeam, MatchType } from "@/lib/events/types";
 
 export type EventRequest = { code: string; season: number };
 
-const requestKey = (r: EventRequest) => `${r.code}:${r.season}`;
+const plainKey = (r: EventRequest) => `${r.code}:${r.season}`;
+/** The cache key of a request, scoped by program so two programs never share cached results (the default program's keys are unchanged). */
+const requestKey = (r: EventRequest, program: ProgramId) => scopedKey(program, plainKey(r));
 
 const RANKING_TTL_MS = 3 * 60 * 1000;
 const MATCHES_TTL_MS = 3 * 60 * 1000;
@@ -28,7 +33,7 @@ const inflight = new Set<string>();
 
 /** A stable string for a request list so hooks re-run only when the *set* of events changes. */
 function keyOf(requests: EventRequest[]): string {
-  return [...new Set(requests.map(requestKey))].sort().join("|");
+  return [...new Set(requests.map(plainKey))].sort().join("|");
 }
 
 function parseKey(key: string): EventRequest[] {
@@ -41,14 +46,15 @@ function parseKey(key: string): EventRequest[] {
 /** Loads (once, cached) each requested event's team list; `loading` until every event has answered. Shared by useTeamNames and useEventTeams. */
 function useTeamLists(requests: EventRequest[]): { byEvent: Map<string, EventTeam[]>; loading: boolean; error: boolean } {
   const key = keyOf(requests);
+  const program = useProgram();
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     for (const r of parseKey(key)) {
-      const k = requestKey(r);
+      const k = requestKey(r, program);
       if (teamsCache.has(k) || inflight.has(k)) continue;
       inflight.add(k);
-      getTeamsForEvent(r.code, r.season)
+      getTeamsForEvent(r.code, r.season, program)
         .then((res) => {
           if (!res.ok) failedTeams.add(k);
           teamsCache.set(k, res.ok ? res.data : []);
@@ -62,22 +68,22 @@ function useTeamLists(requests: EventRequest[]): { byEvent: Map<string, EventTea
           setVersion((v) => v + 1);
         });
     }
-  }, [key]);
+  }, [key, program]);
 
   return useMemo(() => {
     const byEvent = new Map<string, EventTeam[]>();
     let loading = false;
     let error = false;
     for (const r of parseKey(key)) {
-      const cached = teamsCache.get(requestKey(r));
+      const cached = teamsCache.get(requestKey(r, program));
       if (cached) byEvent.set(r.code, cached);
       else loading = true;
-      if (failedTeams.has(requestKey(r))) error = true;
+      if (failedTeams.has(requestKey(r, program))) error = true;
     }
     return { byEvent, loading, error };
     // `version` is the cache's change signal — the cache itself isn't React state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, version]);
+  }, [key, version, program]);
 }
 
 /** Team number → short name, merged across the requested events. Fills in as each event's team list arrives. */
@@ -111,6 +117,7 @@ const MATCH_TYPES: MatchType[] = ["Practice", "Qualification", "Playoff"];
  */
 export function useEventMatches(requests: EventRequest[]): { matches: OfficialMatch[]; loading: boolean; error: boolean; updatedAt: number | null; refreshing: boolean; refresh: () => void } {
   const key = keyOf(requests);
+  const program = useProgram();
   const [version, setVersion] = useState(0);
   // FIX4: a manual refresh. It marks the cached entries stale (the old data stays on screen meanwhile) and re-runs the fetch effect.
   const [refreshTick, setRefreshTick] = useState(0);
@@ -118,11 +125,11 @@ export function useEventMatches(requests: EventRequest[]): { matches: OfficialMa
 
   useEffect(() => {
     for (const r of parseKey(key)) {
-      const k = requestKey(r);
+      const k = requestKey(r, program);
       const cached = matchesCache.get(k);
       if ((cached && cached.expires > Date.now()) || inflight.has(`matches:${k}`)) continue;
       inflight.add(`matches:${k}`);
-      Promise.all(MATCH_TYPES.map((type) => getMatchesForEvent(r.code, type, r.season)))
+      Promise.all(MATCH_TYPES.map((type) => getMatchesForEvent(r.code, type, r.season, program)))
         .then((results) => {
           const data = results.flatMap((res) => (res.ok ? res.data.map((m) => matchToOfficial(r.code, m)) : []));
           const failed = results.some((res) => !res.ok);
@@ -140,12 +147,12 @@ export function useEventMatches(requests: EventRequest[]): { matches: OfficialMa
           setRefreshPending(false);
         });
     }
-  }, [key, refreshTick]);
+  }, [key, refreshTick, program]);
 
   const refresh = () => {
     if (key === "") return; // nothing requested, nothing to wait for
     for (const r of parseKey(key)) {
-      const cached = matchesCache.get(requestKey(r));
+      const cached = matchesCache.get(requestKey(r, program));
       if (cached) cached.expires = 0;
     }
     setRefreshPending(true);
@@ -160,18 +167,18 @@ export function useEventMatches(requests: EventRequest[]): { matches: OfficialMa
     let updatedAt: number | null = null;
     let refreshing = false;
     for (const r of parsed) {
-      const cached = matchesCache.get(requestKey(r));
+      const cached = matchesCache.get(requestKey(r, program));
       if (cached) {
         matches.push(...cached.data);
         if (cached.failed) error = true;
         // The oldest event's fetch time: "last updated" must not claim more than every event has.
         updatedAt = updatedAt === null ? cached.fetchedAt : Math.min(updatedAt, cached.fetchedAt);
-        if (inflight.has(`matches:${requestKey(r)}`)) refreshing = true;
+        if (inflight.has(`matches:${requestKey(r, program)}`)) refreshing = true;
       } else loading = true;
     }
     return { matches, loading, error, updatedAt, refreshing };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, version]);
+  }, [key, version, program]);
 
   return { ...state, refreshing: state.refreshing || refreshPending, refresh };
 }
@@ -184,15 +191,16 @@ export function useEventRankings(requests: EventRequest[]): ReadonlyMap<string, 
 /** `useEventRankings` plus `loading` (true until each event has answered once) — for pages that must not reorder when the ranks arrive. */
 export function useEventRankingsStatus(requests: EventRequest[]): { rankings: ReadonlyMap<string, EventRanking[]>; loading: boolean; error: boolean } {
   const key = keyOf(requests);
+  const program = useProgram();
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     for (const r of parseKey(key)) {
-      const k = requestKey(r);
+      const k = requestKey(r, program);
       const cached = rankingsCache.get(k);
       if ((cached && cached.expires > Date.now()) || inflight.has(`rank:${k}`)) continue;
       inflight.add(`rank:${k}`);
-      getRankingsForEvent(r.code, r.season)
+      getRankingsForEvent(r.code, r.season, program)
         .then((res) => rankingsCache.set(k, { data: res.ok ? res.data : [], expires: Date.now() + RANKING_TTL_MS, failed: !res.ok }))
         .catch(() => rankingsCache.set(k, { data: [], expires: Date.now() + RANKING_TTL_MS, failed: true }))
         .finally(() => {
@@ -200,19 +208,19 @@ export function useEventRankingsStatus(requests: EventRequest[]): { rankings: Re
           setVersion((v) => v + 1);
         });
     }
-  }, [key]);
+  }, [key, program]);
 
   return useMemo(() => {
     const byEvent = new Map<string, EventRanking[]>();
     let loading = false;
     let error = false;
     for (const r of parseKey(key)) {
-      const cached = rankingsCache.get(requestKey(r));
+      const cached = rankingsCache.get(requestKey(r, program));
       if (cached && cached.data.length > 0) byEvent.set(r.code, cached.data);
       if (!cached) loading = true;
       else if (cached.failed) error = true;
     }
     return { rankings: byEvent as ReadonlyMap<string, EventRanking[]>, loading, error };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, version]);
+  }, [key, version, program]);
 }

@@ -17,10 +17,11 @@ import { useEventQuery } from "@/lib/events/use-event-query";
 import type { EventInfo } from "@/lib/events/types";
 import { useAllLibraryMatches, type LibraryMatch } from "@/lib/match-library";
 import { useAllTeamPracticeSessions, type PracticeSession } from "@/lib/practice-sessions";
-import { getSeason } from "@/lib/seasons";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { scopedKey } from "@/lib/program/paths";
 import { useTeamScoutEntries, type ScoutEntry } from "@/lib/scout-entries";
 import type { Form } from "@/lib/forms/types";
-import { useGameFormIds, useSchemaForEntries } from "@/lib/forms/forms-context";
+import { useForms, useGameFormIds, useSchemaForEntries } from "@/lib/forms/forms-context";
 
 // The one realtime data layer every Analytics subpage reads (P10). It is
 // mounted once in the Analytics layout, so there is exactly one team-wide
@@ -66,17 +67,23 @@ type AnalyticsDataValue = {
 
 const DataContext = createContext<AnalyticsDataValue | null>(null);
 
+const NO_KEYS: string[] = [];
+
 export function AnalyticsDataProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const { filters } = useAnalyticsFilters();
   const { events: activeEventsRaw, primaryCode } = useActiveEvents();
+  // Everything below reads only what the active program has connected: practice sessions, the match library and event-name lookups are the default
+  // program's collections and API, so a program without them asks for nothing (the filters already turn Practice off there).
+  const program = useProgram();
+  const { practice: practiceConnected, library: libraryConnected, eventLookup } = useProgramConfig().connection.features;
 
   const { entries: allEntries, loaded: entriesLoaded } = useTeamScoutEntries(teamId);
-  const { sessions, loaded: sessionsLoaded } = useAllTeamPracticeSessions(filters.practice ? teamId : null);
-  const { matches: libraryMatches } = useAllLibraryMatches();
+  const { sessions, loaded: sessionsLoaded } = useAllTeamPracticeSessions(filters.practice && practiceConnected ? teamId : null);
+  const { matches: libraryMatches } = useAllLibraryMatches(libraryConnected);
 
-  const game = getSeason(filters.gameId);
+  const game = useForms().seasonFor(filters.gameId);
   const gameFormIds = useGameFormIds(filters.gameId);
 
   const activeEvents = useMemo(() => orderPrimaryFirst({ events: activeEventsRaw, primaryCode }), [activeEventsRaw, primaryCode]);
@@ -84,7 +91,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
 
   // Active events carry their own season; everything else is looked up in the
   // game's season list (shared, cached, with Event Selection's own query).
-  const seasonEvents = useEventQuery(`events:${game.apiSeason}`, () => getEvents({ season: game.apiSeason }));
+  const seasonEvents = useEventQuery(scopedKey(program, `events:${game.apiSeason}`), () => getEvents({ season: game.apiSeason }, program));
   const eventDirectory = useMemo(() => {
     const map = new Map<string, EventInfo>();
     for (const e of seasonEvents.data ?? []) map.set(e.code, e);
@@ -108,7 +115,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
     () => [...new Set([...activeEventCodes, ...libraryMatches.map((m) => m.eventCode), ...allEntries.map((e) => e.eventCode)].filter(Boolean))],
     [activeEventCodes, libraryMatches, allEntries]
   );
-  const resolvedNames = useEventNames(nameKeys, { stored: storedNames });
+  const resolvedNames = useEventNames(eventLookup ? nameKeys : NO_KEYS, { stored: storedNames });
 
   const eventNameOf = useMemo(
     () => (code: string) => resolvedNames[code]?.name ?? resolveEventName({ key: code, api: eventDirectory.get(code)?.name, stored: storedNames[code] }).name,

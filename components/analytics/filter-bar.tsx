@@ -18,7 +18,8 @@ import {
   type PracticeModeFilter,
   type PracticeSourceFilter,
 } from "@/lib/analytics/filters";
-import { getEnabledSeasons } from "@/lib/seasons";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgramConfig } from "@/lib/program/context";
 import { cn } from "@/lib/utils";
 
 const MODE_LABELS: Record<PracticeModeFilter, string> = { all: "Both", trial: "Trial", competitive: "Competitive" };
@@ -55,7 +56,9 @@ export function AnalyticsFilterBar() {
     [singleMode, filters, single.code]
   );
   const { scopeCount, usedCount, loaded } = useAnalyticsEntries(countFilters, raw ? { applyAccuracy: false, includeExcluded: true } : undefined);
-  const games = getEnabledSeasons();
+  // The active program's games, and only the filters it has connected: Practice mode and the accuracy threshold need practice and official results.
+  const games = useForms().seasons;
+  const { practice: practiceConnected, accuracy: accuracyConnected } = useProgramConfig().connection.features;
 
   return (
     <div className="glass-card flex flex-col gap-3 p-4">
@@ -87,7 +90,7 @@ export function AnalyticsFilterBar() {
           />
         </Control>
 
-        {!formRoute && (
+        {!formRoute && practiceConnected && (
         <label className="flex h-11 cursor-pointer items-center gap-2.5 text-sm font-medium">
           <Checkbox checked={filters.practice} onCheckedChange={(v) => setFilters({ practice: v === true, events: { kind: "active" } })} aria-label="Practice data" />
           Practice
@@ -127,7 +130,7 @@ export function AnalyticsFilterBar() {
           </>
         )}
 
-        {!raw && !formRoute && (
+        {!raw && !formRoute && accuracyConnected && (
           <Control
             label="Accuracy"
             hint={

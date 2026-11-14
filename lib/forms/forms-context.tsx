@@ -44,6 +44,8 @@ export type FormsValue = {
   defaultSeasonId: string;
   /** The id of a season's built-in match form (default: the default season's). */
   formIdForSeason: (seasonId?: string) => string;
+  /** A season of this program (an unknown id reads as the default season), with its name and the events API's season year. */
+  seasonFor: (seasonId?: string) => ProgramSeason;
 };
 
 /**
@@ -67,6 +69,7 @@ export function buildFormsValue(
     seasons: games ? games.seasons.filter((s) => s.enabled) : getEnabledSeasons(),
     defaultSeasonId: games ? games.defaultSeasonId : DEFAULT_SEASON_ID,
     formIdForSeason: (seasonId) => seasonOf(seasonId).formId,
+    seasonFor: seasonOf,
     loaded,
     catalog,
     summaries: listFormSummaries(catalog),
