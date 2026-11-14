@@ -14,6 +14,7 @@ describe("program connection config", () => {
     const connected = [
       "/scout", "/event", "/match-list",
       "/lead-scout-form", "/pit-scout-form", "/team-strategy-form", "/match-strategy-form", "/drive-reflection-form", "/helper-form",
+      "/people", "/team-management",
       "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
       "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings",
     ];

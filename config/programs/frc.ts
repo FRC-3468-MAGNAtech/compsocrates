@@ -16,7 +16,7 @@ export const FRC_PROGRAM: ProgramConfig = {
   pagesConnected: true,
   connection: {
     paths: "all",
-    features: { assignments: true, subIns: true, practice: true, live: true, library: true, accuracy: true, csvImport: true, changelog: true, applications: true, eventLookup: true },
+    features: { assignments: true, subIns: true, practice: true, live: true, library: true, accuracy: true, csvImport: true, changelog: true, applications: true, joinRequests: true, announcements: true, eventLookup: true },
   },
   multiTeam: false,
 };

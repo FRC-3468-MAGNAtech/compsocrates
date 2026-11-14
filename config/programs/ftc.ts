@@ -39,6 +39,8 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/match-strategy-form",
       "/drive-reflection-form",
       "/helper-form",
+      "/people",
+      "/team-management",
       "/analytics/match-scout",
       "/analytics/lead-scout",
       "/analytics/pit-scout",
@@ -50,7 +52,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/analytics/team-breakdown",
       "/analytics/rankings",
     ],
-    features: { assignments: false, subIns: false, practice: false, live: false, library: false, accuracy: false, csvImport: false, changelog: false, applications: false, eventLookup: false },
+    features: { assignments: false, subIns: false, practice: false, live: false, library: false, accuracy: false, csvImport: false, changelog: false, applications: false, joinRequests: false, announcements: false, eventLookup: false },
   },
   multiTeam: true,
 };

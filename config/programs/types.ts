@@ -53,6 +53,10 @@ export type ProgramFeatures = {
   changelog: boolean;
   /** Team applications (the platform owner's pending count). */
   applications: boolean;
+  /** Joining a team with its code: the join code on Team Management and the join-requests queue. */
+  joinRequests: boolean;
+  /** The team communication hub (announcements, strategy notes, match alerts). */
+  announcements: boolean;
   /** Event names and dates are looked up from the program's events API (placeholders on the team doc). Off: the team doc holds complete event records. */
   eventLookup: boolean;
 };

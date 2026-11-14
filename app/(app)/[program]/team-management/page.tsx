@@ -10,6 +10,7 @@ import { AnnouncementsPanel } from "@/components/announcements/announcements-pan
 import { MemberEditorDialog } from "@/components/team/member-editor-dialog";
 import { MemberAccessDialog } from "@/components/page-access/page-access-panel";
 import { useAuth } from "@/lib/auth";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { useTeamDoc } from "@/lib/team";
 import { useOurTeam } from "@/lib/our-team";
 import { teamLabel } from "@/lib/team-number";
@@ -19,6 +20,9 @@ import { getMemberEditState, type MemberAccess } from "@/lib/member-access";
 
 export default function TeamManagementPage() {
   const { user, profile } = useAuth();
+  // Role edits are written to the active program's account; joining by code and the announcements hub exist only where they are connected.
+  const program = useProgram();
+  const { features } = useProgramConfig().connection;
   const { team, loaded: teamLoaded } = useTeamDoc(profile?.teamId ?? null);
   const { isAdmin, isOwner } = usePermissions();
   const { members, loaded: membersLoaded } = useTeamMembers(profile?.teamId ?? null);
@@ -65,7 +69,7 @@ export default function TeamManagementPage() {
     if (!getMemberEditState(actor, member, adminCount).canEdit) throw new Error("not allowed");
 
     // One atomic batch: the role change and its audit entry land together or not at all.
-    await updateMemberAccess({ teamId: profile.teamId, uid: user.uid, name: profile.name }, member, changes);
+    await updateMemberAccess({ teamId: profile.teamId, uid: user.uid, name: profile.name }, member, changes, program);
     setSavedUid(member.uid);
     setTimeout(() => setSavedUid((current) => (current === member.uid ? null : current)), 1500);
   };
@@ -75,7 +79,7 @@ export default function TeamManagementPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Team Management</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">Roles, admin access, join requests, and the team join code.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Roles, admin access{features.joinRequests ? ", join requests, and the team join code" : ""}.</p>
         </div>
       </div>
 
@@ -97,7 +101,7 @@ export default function TeamManagementPage() {
             <div className="text-xl font-semibold">Loading…</div>
           )}
         </div>
-        {isAdmin && team && (
+        {isAdmin && team && features.joinRequests && (
           <div className="flex items-center gap-2">
             {showJoinCode ? (
               <>
@@ -116,10 +120,10 @@ export default function TeamManagementPage() {
       </GlassPanel>
 
       {/* CS's approval queue: people who asked to join with the team code wait here for an admin. */}
-      {isAdmin && profile?.teamId && <JoinRequestsPanel teamId={profile.teamId} />}
+      {isAdmin && profile?.teamId && features.joinRequests && <JoinRequestsPanel teamId={profile.teamId} />}
 
       {/* CS's Team Communication hub (announcements, strategy notes, match alerts): every teammate reads and posts, a team admin deletes. */}
-      {profile?.teamId && <AnnouncementsPanel teamId={profile.teamId} />}
+      {profile?.teamId && features.announcements && <AnnouncementsPanel teamId={profile.teamId} />}
 
       <GlassPanel className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
