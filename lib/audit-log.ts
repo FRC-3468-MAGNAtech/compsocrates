@@ -2,7 +2,10 @@
 
 import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { programPath } from "@/lib/firebase/paths";
+import { useProgram } from "@/lib/program/context";
 
 /**
  * P5: every admin-only scout-data action (Hard Reset, Dismiss Flag, Exclude/
@@ -95,8 +98,8 @@ export function buildAuditEntry(
 }
 
 /** A new, empty `auditLog` doc ref — for batched writes that need the ref up front. */
-export function newAuditLogRef() {
-  return doc(collection(db, COLLECTION));
+export function newAuditLogRef(program: ProgramId = DEFAULT_PROGRAM) {
+  return doc(collection(db, programPath(program, COLLECTION)));
 }
 
 export async function logAuditEvent(
@@ -106,9 +109,10 @@ export async function logAuditEvent(
   action: AuditAction,
   target: Record<string, unknown>,
   before: unknown,
-  after: unknown
+  after: unknown,
+  program: ProgramId = DEFAULT_PROGRAM
 ): Promise<void> {
-  await addDoc(collection(db, COLLECTION), buildAuditEntry(teamId, uid, actorName, action, target, before, after));
+  await addDoc(collection(db, programPath(program, COLLECTION)), buildAuditEntry(teamId, uid, actorName, action, target, before, after));
 }
 
 /**
@@ -118,6 +122,7 @@ export async function logAuditEvent(
  * revisit if `auditLog` ever grows enough to need a real query pattern.
  */
 export function useAuditLog(teamId: string | null) {
+  const program = useProgram();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
 
@@ -128,7 +133,7 @@ export function useAuditLog(teamId: string | null) {
       setLoaded(true);
       return;
     }
-    const q = query(collection(db, COLLECTION), where("teamId", "==", teamId));
+    const q = query(collection(db, programPath(program, COLLECTION)), where("teamId", "==", teamId));
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
@@ -144,7 +149,7 @@ export function useAuditLog(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId]);
+  }, [teamId, program]);
 
   return { entries, loaded };
 }

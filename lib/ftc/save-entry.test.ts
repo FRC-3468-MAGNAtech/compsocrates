@@ -1,15 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ save: vi.fn(), update: vi.fn(), remove: vi.fn(), events: vi.fn() }));
+const h = vi.hoisted(() => ({ save: vi.fn(), update: vi.fn(), remove: vi.fn(), events: vi.fn(), other: vi.fn() }));
 vi.mock("@/data/ftc/write", () => ({
   saveScoutEntry: (...args: unknown[]) => h.save(...args),
   updateScoutEntry: (...args: unknown[]) => h.update(...args),
   deleteScoutEntry: (...args: unknown[]) => h.remove(...args),
   setActiveEvents: (...args: unknown[]) => h.events(...args),
+  saveFormEntry: (...args: unknown[]) => h.other(...args),
+  updateFormEntry: (...args: unknown[]) => h.other(...args),
+  editOwnFormEntry: (...args: unknown[]) => h.other(...args),
+  adminUpdateFormEntry: (...args: unknown[]) => h.other(...args),
+  deleteFormEntry: (...args: unknown[]) => h.other(...args),
 }));
 
 import { deleteEntry, saveEntry, updateEntry, type SaveEntryInput } from "@/lib/scout-entries";
 import { setActiveEvent, setActiveEvents } from "@/lib/team";
+import { adminUpdateFormEntry, deleteFormEntry, editOwnFormEntry, saveFormEntry, updateFormEntry } from "@/lib/form-entries";
 
 const input: SaveEntryInput = {
   scoutName: "Ada",
@@ -30,6 +36,7 @@ beforeEach(() => {
   h.update.mockReset();
   h.remove.mockReset();
   h.events.mockReset();
+  h.other.mockReset();
 });
 
 describe("saveEntry and the program", () => {
@@ -85,5 +92,36 @@ describe("setActiveEvents and the program", () => {
     await setActiveEvents("team-a", state).catch(() => undefined);
     await setActiveEvent("team-a", null).catch(() => undefined);
     expect(h.events).not.toHaveBeenCalled();
+  });
+});
+
+describe("form entry writers and the program", () => {
+  const entryInput = { scoutName: "Pia", formId: "pit-scout-v1", formVersion: 1, formType: "pit-scout", eventCode: "EV1", values: {} } as const;
+  const actor = { teamId: "team-a", uid: "u1", name: "Pia" };
+  const own = { id: "fe1", formId: "pit-scout-v1", eventCode: "EV1", teamNumber: 1, values: {}, stickyNotes: [] };
+
+  it("write through the program's own data port when the program has one", async () => {
+    h.other.mockResolvedValue("new-id");
+    expect(await saveFormEntry("team-a", "u1", entryInput, "ftc")).toBe("new-id");
+    await updateFormEntry("fe1", { values: {} }, "ftc");
+    await editOwnFormEntry(actor, own, { values: {}, stickyNotes: [] }, "ftc");
+    await adminUpdateFormEntry("fe1", { excluded: true }, "ftc");
+    await deleteFormEntry("fe1", "ftc");
+    expect(h.other).toHaveBeenCalledTimes(5);
+    expect(h.other).toHaveBeenCalledWith("team-a", "u1", entryInput);
+    expect(h.other).toHaveBeenCalledWith("fe1");
+  });
+
+  it("a handle that is an entry names its id", async () => {
+    h.other.mockResolvedValue(undefined);
+    await deleteFormEntry({ id: "fe9", formType: "pit-scout", legacy: undefined }, "ftc");
+    expect(h.other).toHaveBeenCalledWith("fe9");
+  });
+
+  it("the default program never touches the program port", async () => {
+    await saveFormEntry("team-a", "u1", entryInput).catch(() => undefined);
+    await deleteFormEntry("fe1").catch(() => undefined);
+    await adminUpdateFormEntry("fe1", { excluded: true }).catch(() => undefined);
+    expect(h.other).not.toHaveBeenCalled();
   });
 });

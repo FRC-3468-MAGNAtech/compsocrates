@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { CURRENT_GAME_ID } from "@/config/games";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
-import { useProgramData } from "@/lib/program/data";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
 import { formEntryDoc, toFormEntry, type FormEntry, type FormEntryType, type NewFormEntry } from "@/lib/form-entries-model";
 import { diffEntryValues } from "@/lib/form-entries-model";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
@@ -107,7 +108,10 @@ function withoutUndefined<T extends Record<string, unknown>>(data: T): T {
 }
 
 /** Saves an entry as yourself. Resolves with its id (so a photo still uploading can be attached to it afterwards). */
-export async function saveFormEntry(teamId: string, uid: string, input: NewFormEntry): Promise<string> {
+export async function saveFormEntry(teamId: string, uid: string, input: NewFormEntry, program: ProgramId = DEFAULT_PROGRAM): Promise<string> {
+  // A namespaced program stores every form's entries in its own `formEntries` collection, written through its data port.
+  const data = programData(program);
+  if (data) return data.formEntries.save(teamId, uid, input);
   if (!isCsBackedFormType(input.formType)) {
     const ref = await addDoc(collection(db, CUSTOM_COLLECTION), formEntryDoc(teamId, uid, input));
     known.set(ref.id, { collection: CUSTOM_COLLECTION, formType: input.formType });
@@ -150,7 +154,9 @@ async function csPatchFor(handle: FormEntryHandle, change: (entry: FormEntry) =>
 }
 
 /** The writer may change only values and notes; an admin may change more (the rules decide). */
-export async function updateFormEntry(handle: FormEntryHandle, patch: { values?: FormValues; stickyNotes?: StickyNote[] }): Promise<void> {
+export async function updateFormEntry(handle: FormEntryHandle, patch: { values?: FormValues; stickyNotes?: StickyNote[] }, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.formEntries.update(typeof handle === "string" ? handle : handle.id, patch);
   const { id, ref } = await resolveRef(handle);
   if (ref.collection === CUSTOM_COLLECTION) {
     await updateDoc(doc(db, CUSTOM_COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
@@ -164,7 +170,14 @@ export async function updateFormEntry(handle: FormEntryHandle, patch: { values?:
  * A scout edits their own earlier entry (P29): the new values and notes, and an `edit-form-entry` audit entry with what changed, in one batch. The rules let the
  * writer change only `values`, `stickyNotes` and `updatedAt`; the log keeps the history (admins read it in Admin Panel > Audit Log).
  */
-export async function editOwnFormEntry(actor: { teamId: string; uid: string; name: string }, entry: Pick<FormEntry, "id" | "formId" | "eventCode" | "teamNumber" | "values" | "stickyNotes">, patch: { values: FormValues; stickyNotes: StickyNote[] }): Promise<void> {
+export async function editOwnFormEntry(
+  actor: { teamId: string; uid: string; name: string },
+  entry: Pick<FormEntry, "id" | "formId" | "eventCode" | "teamNumber" | "values" | "stickyNotes">,
+  patch: { values: FormValues; stickyNotes: StickyNote[] },
+  program: ProgramId = DEFAULT_PROGRAM
+): Promise<void> {
+  const data = programData(program);
+  if (data) return data.formEntries.editOwn(actor, entry, patch);
   const { id, ref } = await resolveRef(entry.id);
   const batch = writeBatch(db);
   if (ref.collection === CUSTOM_COLLECTION) {
@@ -184,7 +197,9 @@ export async function editOwnFormEntry(actor: { teamId: string; uid: string; nam
  * Admins only (the rules decide): exclude an entry, set its flags, or fix its values (an import-time correction). For a CS-backed entry `excluded` is the doc's
  * own `excludeFromStats` and the flags are `scoutingFlagStates` (what CS's analytics Config modal writes), both in one batch.
  */
-export async function adminUpdateFormEntry(handle: FormEntryHandle, patch: { excluded?: boolean; flags?: FormEntry["flags"]; values?: FormValues }): Promise<void> {
+export async function adminUpdateFormEntry(handle: FormEntryHandle, patch: { excluded?: boolean; flags?: FormEntry["flags"]; values?: FormValues }, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.formEntries.adminUpdate(typeof handle === "string" ? handle : handle.id, patch);
   const { id, ref } = await resolveRef(handle);
   if (ref.collection === CUSTOM_COLLECTION) {
     await updateDoc(doc(db, CUSTOM_COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
@@ -211,7 +226,9 @@ export async function adminUpdateFormEntry(handle: FormEntryHandle, patch: { exc
 }
 
 /** Admins only. */
-export async function deleteFormEntry(handle: FormEntryHandle): Promise<void> {
+export async function deleteFormEntry(handle: FormEntryHandle, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const data = programData(program);
+  if (data) return data.formEntries.delete(typeof handle === "string" ? handle : handle.id);
   const { id, ref } = await resolveRef(handle);
   await deleteDoc(doc(db, ref.collection, id));
   known.delete(id);

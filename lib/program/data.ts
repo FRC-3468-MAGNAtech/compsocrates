@@ -15,9 +15,9 @@ import { ftcProgramData } from "@/lib/ftc/program-data";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { UserDoc } from "@/lib/auth";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
-import type { FormEntry } from "@/lib/form-entries-model";
+import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
 import type { FormDoc } from "@/lib/forms/resolve";
-import type { Form } from "@/lib/forms/types";
+import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { useProgram } from "@/lib/program/context";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import type { TeamDoc } from "@/lib/team";
@@ -52,7 +52,21 @@ export type ProgramData = {
     update(id: string, patch: Partial<ScoutEntry>): Promise<void>;
     delete(id: string): Promise<void>;
   };
-  formEntries: { subscribe(teamId: string, query: FormEntriesQuery, onData: (entries: FormEntry[]) => void, onError: DataError): Unsubscribe };
+  formEntries: {
+    subscribe(teamId: string, query: FormEntriesQuery, onData: (entries: FormEntry[]) => void, onError: DataError): Unsubscribe;
+    /** Saves an entry as yourself; resolves with its id. */
+    save(teamId: string, uid: string, input: NewFormEntry): Promise<string>;
+    update(id: string, patch: { values?: FormValues; stickyNotes?: StickyNote[] }): Promise<void>;
+    /** A scout edits their own entry (and an audit entry is written in the same batch). */
+    editOwn(
+      actor: { teamId: string; uid: string; name: string },
+      entry: Pick<FormEntry, "id" | "formId" | "eventCode" | "teamNumber" | "values" | "stickyNotes">,
+      patch: { values: FormValues; stickyNotes: StickyNote[] }
+    ): Promise<void>;
+    /** Admins only, by the rules. */
+    adminUpdate(id: string, patch: { excluded?: boolean; flags?: FormEntry["flags"]; values?: FormValues }): Promise<void>;
+    delete(id: string): Promise<void>;
+  };
   forms: {
     subscribeDocs(teamId: string, onData: (docs: Map<string, FormDoc>) => void, onError: DataError): Unsubscribe;
     loadVersion(teamId: string, formId: string, version: number): Promise<Form | null>;
@@ -60,16 +74,19 @@ export type ProgramData = {
   games: {
     seasons: readonly ProgramSeason[];
     defaultSeasonId: string;
-    /** The program's built-in forms by id (its games' match forms). */
+    /** The program's built-in forms by id: its games' match forms and its other forms in code (pit scout, lead scout, strategy ...). */
     builtinForms: Readonly<Record<string, Form>>;
   };
 };
 
-const PORTS: Partial<Record<ProgramId, ProgramData>> = { ftc: ftcProgramData };
-
-/** The program's data port, or null for the root program (whose hooks read their own collections). */
+/**
+ * The program's data port, or null for the root program (whose hooks read their own collections). The table is built per call, not at load: the modules a
+ * port imports can import this one back (the entry writers share types and helpers with the hooks), and a table built at load would capture a port that
+ * has not finished loading.
+ */
 export function programData(program: ProgramId): ProgramData | null {
-  return PORTS[program] ?? null;
+  const ports: Partial<Record<ProgramId, ProgramData>> = { ftc: ftcProgramData };
+  return ports[program] ?? null;
 }
 
 /** The active program's data port, or null for the root program. */

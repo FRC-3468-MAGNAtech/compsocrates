@@ -6,7 +6,7 @@
  * So far: saving, editing and deleting a Match Scout entry, and setting the active events. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
  * rules; a refusal is reported and rethrown like any other failure.
  */
-import { addDoc, deleteDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { addDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError } from "@/lib/firestore-errors";
@@ -14,10 +14,25 @@ import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import { ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
 import { ftcActiveEventsFields } from "@/data/ftc/teams";
 import type { ActiveEventsState } from "@/lib/active-events";
+import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
+import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
+import type { FormValues, StickyNote } from "@/lib/forms/types";
+import { stripUndefined } from "@/data/ftc/util";
 
 const PROGRAM = "ftc" as const;
 const SCOUT_ENTRIES = "scoutEntries";
 const TEAMS = "teams";
+const FORM_ENTRIES = "formEntries";
+
+/** Runs a write; a failure is reported with its path and rethrown, so the caller can show it. */
+async function reported<T>(context: string, path: string, write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (err) {
+    reportFirestoreError(context, err, path);
+    throw err;
+  }
+}
 
 /** Saves a new Match Scout entry as `uid`, for `teamId`. Offline, the write waits in Firestore's queue and this stays pending, as it does for every save. */
 export async function saveScoutEntry(teamId: string, uid: string, input: SaveEntryInput): Promise<void> {
@@ -59,4 +74,58 @@ export async function setActiveEvents(teamId: string, state: ActiveEventsState):
     reportFirestoreError("Couldn't save the active events", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// formEntries (the team's other forms)
+// ---------------------------------------------------------------------------------------------------------------------
+
+const formEntryPath = (id?: string) => (id ? `${programPath(PROGRAM, FORM_ENTRIES)}/${id}` : programPath(PROGRAM, FORM_ENTRIES));
+
+/** Saves an entry as yourself. Resolves with its id (so a photo still uploading can be attached to it afterwards). */
+export function saveFormEntry(teamId: string, uid: string, input: NewFormEntry): Promise<string> {
+  return reported("Couldn't save the form entry", formEntryPath(), async () => (await addDoc(programCollection(db, PROGRAM, FORM_ENTRIES), formEntryDoc(teamId, uid, input))).id);
+}
+
+/** The writer may change only values and notes (the rules decide); an attached photo is written this way once its upload finishes. */
+export function updateFormEntry(id: string, patch: { values?: FormValues; stickyNotes?: StickyNote[] }): Promise<void> {
+  return reported("Couldn't update the form entry", formEntryPath(id), () => updateDoc(programDoc(db, PROGRAM, FORM_ENTRIES, id), stripUndefined({ ...patch, updatedAt: serverTimestamp() })));
+}
+
+/**
+ * A scout edits their own earlier entry: the new values and notes, and an `edit-form-entry` audit entry with what changed, in one batch. The rules let the
+ * writer change only `values`, `stickyNotes` and `updatedAt`.
+ */
+export function editOwnFormEntry(
+  actor: { teamId: string; uid: string; name: string },
+  entry: Pick<FormEntry, "id" | "formId" | "eventCode" | "teamNumber" | "values" | "stickyNotes">,
+  patch: { values: FormValues; stickyNotes: StickyNote[] }
+): Promise<void> {
+  return reported("Couldn't save your changes", formEntryPath(entry.id), async () => {
+    const batch = writeBatch(db);
+    batch.update(programDoc(db, PROGRAM, FORM_ENTRIES, entry.id), { values: patch.values, stickyNotes: patch.stickyNotes, updatedAt: serverTimestamp() });
+    batch.set(
+      newAuditLogRef(PROGRAM),
+      buildAuditEntry(
+        actor.teamId,
+        actor.uid,
+        actor.name,
+        "edit-form-entry",
+        { entryId: entry.id, formId: entry.formId, eventCode: entry.eventCode, teamNumber: entry.teamNumber ?? null },
+        { values: entry.values, notes: entry.stickyNotes.length },
+        { values: patch.values, notes: patch.stickyNotes.length, changedKeys: diffEntryValues(entry.values, patch.values) }
+      )
+    );
+    await batch.commit();
+  });
+}
+
+/** Admins only (the rules decide): exclude an entry, set its flags, or fix its values. */
+export function adminUpdateFormEntry(id: string, patch: { excluded?: boolean; flags?: FormEntry["flags"]; values?: FormValues }): Promise<void> {
+  return reported("Couldn't update the form entry", formEntryPath(id), () => updateDoc(programDoc(db, PROGRAM, FORM_ENTRIES, id), stripUndefined({ ...patch, updatedAt: serverTimestamp() })));
+}
+
+/** Admins only. */
+export function deleteFormEntry(id: string): Promise<void> {
+  return reported("Couldn't delete the form entry", formEntryPath(id), () => deleteDoc(programDoc(db, PROGRAM, FORM_ENTRIES, id)));
 }

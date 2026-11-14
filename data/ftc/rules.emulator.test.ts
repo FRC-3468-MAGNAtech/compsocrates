@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { buildAuditEntry } from "@/lib/audit-log";
+import { diffEntryValues, formEntryDoc, type NewFormEntry } from "@/lib/form-entries-model";
 import { ftcDocsToFormEntries } from "@/data/ftc/form-entries";
 import { ftcDocsToFormDocs, ftcDocToFormVersion } from "@/data/ftc/forms";
 import { ftcDocsToScoutEntries, ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
@@ -22,6 +24,7 @@ const T2 = "ftcteam2";
 const SCOUT = "ftc-scout-1";
 const OTHER = "ftc-scout-other";
 const ADMIN = "ftc-admin-1";
+const PIT = "ftc-pit-1";
 
 const P = (name: string) => programPath("ftc", name);
 
@@ -35,6 +38,7 @@ beforeAll(async () => {
     await setDoc(doc(db, P("users"), SCOUT), { name: "Ada", email: "ada@example.org", teamId: T1, primaryRole: "match-scout", secondaryRoles: [], isAdmin: false, isOwner: false });
     await setDoc(doc(db, P("users"), "ftc-lead-1"), { name: "Grace", email: "grace@example.org", teamId: T1, primaryRole: "lead-scout", secondaryRoles: [], isAdmin: false, isOwner: false, fieldTeamIds: ["ft-1"] });
     await setDoc(doc(db, P("users"), ADMIN), { name: "Admin", email: "admin@example.org", teamId: T1, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+    await setDoc(doc(db, P("users"), PIT), { name: "Pia", email: "pia@example.org", teamId: T1, primaryRole: "pit-scout", secondaryRoles: [], isAdmin: false, isOwner: false });
     for (const id of ["edit-1", "edit-2", "edit-3"]) {
       await setDoc(doc(db, P("scoutEntries"), id), { teamId: T1, uid: SCOUT, source: "event", eventCode: "EV1", matchType: "Qualification", matchNumber: 9, teamNumber: 300, formId: "biobuzz", formVersion: 1, values: {}, score: { auto: 0, teleop: 0, endgame: 0, total: 0 }, comments: "", submittedAt: "2026-01-10T10:00:00.000Z", excluded: false, autoFlags: [], manualFlags: [], accuracy: null });
     }
@@ -173,7 +177,7 @@ describe("reading the account's own data", () => {
     expect(ftcUserToProfile(me.id, me.data() ?? {})).toMatchObject({ name: "Ada", teamId: T1, primaryRole: "match-scout", isAdmin: false });
     const members = await assertSucceeds(getDocs(query(collection(db, P("users")), where("teamId", "==", T1))));
     const rows = members.docs.map((d) => ftcUserToMember(d.id, d.data()));
-    expect(rows.map((m) => m.name).sort()).toEqual(["Ada", "Admin", "Grace"]);
+    expect(rows.map((m) => m.name).sort()).toEqual(["Ada", "Admin", "Grace", "Pia"]);
     await assertFails(getDocs(query(collection(db, P("users")), where("teamId", "==", T2))));
   });
 
@@ -212,5 +216,51 @@ describe("setting the active events", () => {
 
   it("another team's admin cannot change it", async () => {
     await assertFails(updateDoc(doc(as(OTHER), P("teams"), T1), ftcActiveEventsFields(selection)));
+  });
+});
+
+// Last: these add form entries that the reads above would otherwise count.
+describe("form entries: saving, editing your own, admin edit and delete", () => {
+  const pit: NewFormEntry = { scoutName: "Pia", formId: "pit-scout-v1", formVersion: 1, formType: "pit-scout", eventCode: "EV1", teamNumber: 4242, values: { drivetrain: "mecanum" }, stickyNotes: [] };
+  const save = (uid: string, teamId: string, input: NewFormEntry) => addDoc(collection(as(uid), P("formEntries")), formEntryDoc(teamId, uid, input, serverTimestamp));
+
+  it("a pit scout's pit entry is accepted and reads back as the entry that was saved", async () => {
+    const ref = await assertSucceeds(save(PIT, T1, pit));
+    const snap = await assertSucceeds(getDoc(doc(as(SCOUT), P("formEntries"), ref.id)));
+    const [entry] = ftcDocsToFormEntries([{ id: snap.id, data: snap.data() }]);
+    expect(entry).toMatchObject({ teamId: T1, uid: PIT, formId: "pit-scout-v1", formType: "pit-scout", teamNumber: 4242, values: { drivetrain: "mecanum" }, excluded: false });
+    expect(entry.createdAtMs).toBeGreaterThan(0);
+  });
+
+  it("the page defaults gate the form types by role: a match scout cannot save a pit entry, but can save a custom form's", async () => {
+    await assertFails(save(SCOUT, T1, pit));
+    await assertSucceeds(save(SCOUT, T1, { ...pit, formId: "my-form", formType: "custom" }));
+  });
+
+  it("an entry is refused for another team, or as someone else", async () => {
+    await assertFails(save(PIT, T2, pit));
+    await assertFails(addDoc(collection(as(PIT), P("formEntries")), formEntryDoc(T1, SCOUT, pit, serverTimestamp)));
+  });
+
+  it("the writer edits their own entry (values and notes) and the audit entry is accepted in the same batch; changing anything else is refused", async () => {
+    const db = as(PIT);
+    const ref = await assertSucceeds(save(PIT, T1, pit));
+    const entry = { id: ref.id, formId: pit.formId, eventCode: pit.eventCode, teamNumber: 4242, values: pit.values, stickyNotes: [] };
+    const next = { values: { drivetrain: "swerve" }, stickyNotes: [{ id: "n1", text: "tidy", color: "green", createdAt: 1 }] };
+    const batch = writeBatch(db);
+    batch.update(doc(db, P("formEntries"), ref.id), { ...next, updatedAt: serverTimestamp() });
+    batch.set(doc(collection(db, P("auditLog"))), buildAuditEntry(T1, PIT, "Pia", "edit-form-entry", { entryId: ref.id }, { values: entry.values }, { values: next.values, changedKeys: diffEntryValues(entry.values, next.values) }));
+    await assertSucceeds(batch.commit());
+    const snap = await assertSucceeds(getDoc(doc(db, P("formEntries"), ref.id)));
+    expect(snap.data()?.values).toEqual({ drivetrain: "swerve" });
+    await assertFails(updateDoc(doc(db, P("formEntries"), ref.id), { excluded: true, updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as(SCOUT), P("formEntries"), ref.id), { ...next, updatedAt: serverTimestamp() }));
+  });
+
+  it("an admin excludes, flags and fixes an entry, and deletes it; a scout cannot delete", async () => {
+    const ref = await assertSucceeds(save(PIT, T1, pit));
+    await assertSucceeds(updateDoc(doc(as(ADMIN), P("formEntries"), ref.id), { excluded: true, flags: [{ id: "f1", reason: "Other", addedAt: "t" }], updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(doc(as(PIT), P("formEntries"), ref.id)));
+    await assertSucceeds(deleteDoc(doc(as(ADMIN), P("formEntries"), ref.id)));
   });
 });
