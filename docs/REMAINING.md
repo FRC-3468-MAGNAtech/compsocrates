@@ -83,6 +83,7 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - `scoutingFlagStates`: `manualReasonText` and `manualNoteText` (the extra manual-flag reason and note).
 - Entries and form docs: `stickyNotes` (and `linkedEntryId`, `planDifferences` where a form has them); `alliance` on match-strategy plan and drive-reflection docs; `eventKey` on helper docs; `teleop.humanPlayerFuelByShift` on REBUILT entries (D8).
 - A new `subInRequests` collection (D7).
+- FTC only (`programs/ftc/`): `teams/{CODE}` (id is an 8-character random join code) carries an optional `location`; new `teams/{CODE}/joinRequests/{uid}` (`uid`, `name`, `status`, `createdAt`). Rules for both are written in `firestore.rules` and NOT deployed.
 
 ## Program merge (docs/MERGE_PLAN.md)
 - **FTC program status** (D22; the connected paths are `connection.paths` in `config/programs/ftc.ts`; `pagesConnected` is true and any other path shows `UnconnectedPage`). Shared pages reach FTC data through the port (`lib/program/data.ts`, `lib/ftc/program-data.ts`, over `data/ftc/`) or a store that builds its path with `programPath`.
@@ -100,7 +101,7 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
     - Features off, so the parts they cover are hidden: sub-ins, practice, live, library, accuracy (post-save accuracy, "Recalculate Accuracy"), CSV import, changelog, applications, join requests, announcements, event lookup.
     - The six FRC-only pages stay greyed out (listed below).
   - **Known gaps:**
-    - No setup or join flow for an FTC person with no profile (they see the gate), and no join code, request or announcement UI.
+    - Setup (Session A, `docs/SESSION_A_RESULTS.md`): an FTC person with no profile now gets a create-a-team / request-to-join screen in the gate (`components/program/team-setup.tsx`, port `enrollment`). Not built: the approval of a join request (needs a rule letting a team admin create the applicant's profile, plus a Team Management panel; `features.joinRequests` stays off), showing a pending request again after a reload, adding more teams to an account from Settings, and any announcement UI. Team creation has no `appSettings` gate (the FTC rules and code never used one).
     - Multi-team: the switcher and `lib/our-team.ts` work (`accountTeams`, `assignedTeamIds`). Not built: adding, renaming or removing an account's teams and assigning members (Settings), filtering events or entries by the selected team (entries belong to the account, not a team), and a check against real multi-team accounts.
     - A failed read in the shared hooks still shows an empty list (reported to the console; the port passes the `FirestoreFailure` through for a page to show).
     - Event and team names, schedules, match pickers and photos need FTC Events API credentials and Blob config; without them the pickers fall back to manual entry.

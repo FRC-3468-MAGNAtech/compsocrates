@@ -27,6 +27,8 @@ const ALLOWED: Record<string, string> = {
   "docs/ENVIRONMENT.md": "lists the per-program environment variables",
   "docs/ROUTES.md": "the decision table records the program decisions",
   "docs/REMAINING.md": "lists what is left of the program merge",
+  "docs/STEP1_RESULTS.md": "the results of the docs and tree reconciliation, which names both programs",
+  "docs/SESSION_A_RESULTS.md": "the results of the program selector and FTC team setup session",
   ".env.example": "lists the per-program environment variables",
   "lib/server/env.ts": "the one reader of environment variables, including the FTC ones",
   "lib/events/actions.ts": "dispatches event data calls to the FTC provider",
