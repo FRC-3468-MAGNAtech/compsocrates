@@ -241,6 +241,17 @@ function AllianceCard({
         </div>
       </div>
 
+      {alliance.objectives.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" data-testid="alliance-objectives">
+          {alliance.objectives.map((o) => (
+            <span key={o.role} className="tabular-nums">
+              <span className="text-[var(--muted-foreground)]">{o.label} (alliance): </span>
+              <strong>{o.recorded ? `${o.points} pts` : "not recorded"}</strong>
+            </span>
+          ))}
+        </div>
+      )}
+
       {alliance.official && (
         <div className="text-xs text-[var(--muted-foreground)]">
           Official {alliance.official.score}

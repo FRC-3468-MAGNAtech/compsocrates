@@ -5,6 +5,7 @@ import type { MatchType } from "@/lib/events/types";
 import type { Form } from "@/lib/forms/types";
 import { elementOf, formFieldMeta, hasRole, type FieldMeta } from "@/lib/forms/meta";
 import { entryValues } from "@/lib/forms/entry-values";
+import { isRecorded } from "@/lib/forms/alliance-role";
 import { fieldPoints } from "@/lib/forms/scoring";
 
 // Pure team statistics for Team Profile, Team Averages and Rankings (P10).
@@ -30,6 +31,13 @@ export type FieldStat = {
   rate: number | null;
   /** Mean points this field contributed per entry — null for fields that don't score. */
   avgPoints: number | null;
+  /**
+   * An alliance objective (Hive, Flower, Garden): only one scout per alliance records it, so this is NOT the team's own: it is read from the alliances the
+   * team has played on, over `recorded` entries (those that recorded it), and `avg`/`high`/`rate`/`avgPoints` divide by that count, not by every entry.
+   */
+  allianceStat?: boolean;
+  /** Entries that recorded this field (alliance stats only; the others are asked of every entry). */
+  recorded?: number;
 };
 
 export type ElementStat = {
@@ -172,32 +180,36 @@ export function buildTeamStats(
     }
     if (field.type !== "toggle" && field.type !== "counter" && field.type !== "checkbox" && field.type !== "number" && field.type !== "rating") continue;
 
-    const base = { key: field.key, label: field.label, type: field.type, sectionId: m.sectionId, groupLabel: m.groupLabel };
+    // an alliance-role field averages over the entries that recorded it (absent is "not asked", not 0)
+    const alliance = field.allianceRole !== undefined;
+    const pool = alliance ? entries.filter((e) => isRecorded(entryValues(e, schema), field.key)) : entries;
+    const np = pool.length;
+    const base = { key: field.key, label: field.label, type: field.type, sectionId: m.sectionId, groupLabel: m.groupLabel, ...(alliance ? { allianceStat: true, recorded: np } : {}) };
     const scored = !!m.points;
 
     if (field.type === "number" || field.type === "rating") {
-      const values = entries.map((e) => numberValue(e, field.key));
+      const values = pool.map((e) => numberValue(e, field.key));
       const avg = mean(values);
       fieldStats[field.key] = {
         ...base,
         avg,
-        high: n === 0 ? 0 : Math.max(...values),
+        high: np === 0 ? 0 : Math.max(...values),
         rate: null,
-        avgPoints: m.scored ? mean(entries.map((e) => fieldPoints(field, rawValue(e, field.key)))) : null,
+        avgPoints: m.scored ? mean(pool.map((e) => fieldPoints(field, rawValue(e, field.key)))) : null,
       };
     } else if (field.type === "counter") {
-      const tallies = entries.map((e) => numberValue(e, field.key));
+      const tallies = pool.map((e) => numberValue(e, field.key));
       const avg = mean(tallies);
       fieldStats[field.key] = {
         ...base,
         avg,
-        high: n === 0 ? 0 : Math.max(...tallies),
+        high: np === 0 ? 0 : Math.max(...tallies),
         rate: null,
         avgPoints: scored ? avg * m.points! : null,
       };
     } else {
-      const on = entries.filter((e) => rawValue(e, field.key) === true).length;
-      const rate = n === 0 ? 0 : (on / n) * 100;
+      const on = pool.filter((e) => rawValue(e, field.key) === true).length;
+      const rate = np === 0 ? 0 : (on / np) * 100;
       fieldStats[field.key] = { ...base, avg: null, high: null, rate, avgPoints: scored ? (rate / 100) * m.points! : null };
       if (field.type === "checkbox") incidentRates[field.key] = rate;
     }

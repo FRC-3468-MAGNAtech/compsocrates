@@ -180,6 +180,8 @@ export function parseImportCsv(schema: GameSchema, csvText: string): ImportResul
       const field = col.field;
       if (!field) continue;
       const cell = get(col.key);
+      // an alliance objective the scout was not asked to record exports as an empty cell and imports back as absent (not 0, not off)
+      if (field.allianceRole !== undefined && cell.trim() === "") continue;
       if (col.parseCell) {
         col.parseCell(cell, values);
         continue;
@@ -313,6 +315,8 @@ export function parseFormImportCsv(schema: GameSchema, csvText: string): FormImp
       const field = col.field;
       if (!field) continue;
       const cell = get(col.key);
+      // an alliance objective the scout was not asked to record exports as an empty cell and imports back as absent (not 0, not off)
+      if (field.allianceRole !== undefined && cell.trim() === "") continue;
       if (col.parseCell) {
         col.parseCell(cell, values);
         continue;

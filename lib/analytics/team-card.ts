@@ -5,6 +5,9 @@ import { hasRole } from "@/lib/forms/meta";
 // Pure helpers behind Team Breakdown's cards (P11). Like the rest of
 // lib/analytics they read the form schema, never a game's field names.
 
+/** What follows the name of a stat that comes from the team's alliances rather than the team alone. */
+export const ALLIANCE_STAT_SUFFIX = "(alliance)";
+
 export type KeyStats = {
   /** Scored counters, summed across phases by label: "Level 4" = autonomous + teleop, "Algae" = processor + net. Average per match. */
   counters: { label: string; avg: number }[];
@@ -20,10 +23,13 @@ export type KeyStats = {
 export function buildKeyStats(stats: TeamStats, schema: Form): KeyStats {
   const meta = schemaFieldMeta(schema).filter((m) => m.points && stats.fieldStats[m.field.key]);
 
+  // an alliance objective (Hive, Flower, Garden) is recorded by one scout per alliance, so its stat is the alliances the team played on, not the team: label it so
+  const asAlliance = (label: string, m: { field: { allianceRole?: string } }): string => (m.field.allianceRole !== undefined ? `${label} ${ALLIANCE_STAT_SUFFIX}` : label);
   const counterTotals = new Map<string, number>();
   for (const m of meta) {
     if (m.field.type !== "counter") continue;
-    counterTotals.set(m.field.label, (counterTotals.get(m.field.label) ?? 0) + (stats.fieldStats[m.field.key].avg ?? 0));
+    const label = asAlliance(m.field.label, m);
+    counterTotals.set(label, (counterTotals.get(label) ?? 0) + (stats.fieldStats[m.field.key].avg ?? 0));
   }
 
   const toggles = meta.filter((m) => m.field.type === "toggle");
@@ -33,7 +39,7 @@ export function buildKeyStats(stats: TeamStats, schema: Form): KeyStats {
   return {
     counters: [...counterTotals.entries()].map(([label, avg]) => ({ label, avg })),
     rates: toggles.map((m) => ({
-      label: (labelUses.get(m.field.label) ?? 0) > 1 ? `${m.field.label} (${m.phase})` : m.field.label,
+      label: asAlliance((labelUses.get(m.field.label) ?? 0) > 1 ? `${m.field.label} (${m.phase})` : m.field.label, m),
       rate: stats.fieldStats[m.field.key].rate ?? 0,
     })),
   };

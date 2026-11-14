@@ -269,9 +269,18 @@ function FieldRow({ stat }: { stat: FieldStat }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-3 text-sm">
-        <span>{stat.label}</span>
+        <span>
+          {stat.label}
+          {stat.allianceStat && (
+            <span className="ml-1.5 rounded-full border border-[var(--glass-border)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]" title="One scout per alliance records this objective, so it describes the alliances this team has played on, not this team on its own.">
+              alliance stat
+            </span>
+          )}
+        </span>
         <span className="tabular-nums text-[var(--muted-foreground)]">
-          {isCounter ? (
+          {stat.allianceStat && stat.recorded === 0 ? (
+            "not recorded yet"
+          ) : isCounter ? (
             <>
               <strong className="text-[var(--foreground)]">{(stat.avg ?? 0).toFixed(2)}</strong> avg · high {stat.high}
             </>
@@ -300,8 +309,15 @@ function Averages({ stats, schema }: { stats: TeamStats; schema: Form }) {
 
   const incidents = meta.filter((m) => m.field.type === "checkbox" && stats.fieldStats[m.field.key]);
 
+  const hasAllianceStats = Object.values(stats.fieldStats).some((f) => f.allianceStat);
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {hasAllianceStats && (
+        <p className="text-xs text-[var(--muted-foreground)] lg:col-span-3" data-testid="alliance-stat-note">
+          Hive, Flower and Garden are <strong>alliance stats</strong>: one scout per alliance records each, so these numbers come from the alliances this team has played on, not from this team on its own. They average over the matches where the objective was recorded.
+        </p>
+      )}
       {sections.map(({ section, fields, phase }) => {
         const groups = [...new Set(fields.map((f) => f.groupLabel))];
         return (

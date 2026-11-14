@@ -7,6 +7,8 @@ import type { LibraryMatch } from "@/lib/match-library";
 import type { Form } from "@/lib/forms/types";
 import { elementOf } from "@/lib/forms/meta";
 import { entryValues } from "@/lib/forms/entry-values";
+import { ALLIANCE_ROLE_KEY, allianceRoleFields, allianceRoleIds, isRecorded } from "@/lib/forms/alliance-role";
+import { fieldPoints } from "@/lib/forms/scoring";
 
 // Pure model behind Match Breakdown (P11): official matches joined to the
 // scouted entries for them, per alliance. The UI only renders what this
@@ -79,11 +81,16 @@ export type TeamSlot = {
   entry: AnalyticsEntry | null;
 };
 
+/** An objective the ALLIANCE scores (Hive, Flower and Garden are one scout per alliance): its points counted once for the alliance, not once per robot. */
+export type AllianceObjective = { role: string; label: string; points: number; recorded: boolean };
+
 export type AllianceBreakdown = {
   color: AllianceColor;
   teams: TeamSlot[];
   scoutedCount: number;
   visibility: AllianceVisibility;
+  /** The alliance-level objective points (one per role of the form, counted once across the alliance); empty when the form has none or the numbers are withheld. */
+  objectives: AllianceObjective[];
   /** Sum of the scouted robot scores; null unless `visibility === "shown"`. */
   scoutedTotal: number | null;
   /** Alliance accuracy (0-100) from the shared engine; null when it can't be computed. Kept even when numbers are withheld — the reason label quotes it. */
@@ -151,12 +158,34 @@ function latestSessionEntries(entries: AnalyticsEntry[]): AnalyticsEntry[] {
   return best;
 }
 
+/**
+ * The alliance-level value of each role: for every field a role records, the value its scout entered. A robot that was not asked leaves the field absent, so the two
+ * robots never both contribute; an old entry that recorded everything for both robots is counted once too (the entry scouted in that role wins, else the highest value).
+ */
+export function allianceObjectives(entries: AnalyticsEntry[], schema: Form): AllianceObjective[] {
+  return allianceRoleIds(schema).map((role) => {
+    let points = 0;
+    let recorded = false;
+    for (const field of allianceRoleFields(schema, role)) {
+      const holders = entries.filter((e) => isRecorded(entryValues(e, schema), field.key));
+      if (holders.length === 0) continue;
+      recorded = true;
+      const own = holders.filter((e) => entryValues(e, schema)[ALLIANCE_ROLE_KEY] === role);
+      const pool = own.length > 0 ? own : holders;
+      points += Math.max(...pool.map((e) => fieldPoints(field, entryValues(e, schema)[field.key])));
+    }
+    const label = schema.sections.flatMap((s) => s.fields).find((f) => f.key === ALLIANCE_ROLE_KEY)?.options?.find((o) => o.value === role)?.label ?? role;
+    return { role, label, points, recorded };
+  });
+}
+
 function buildAlliance(
   color: AllianceColor,
   official: OfficialAlliance,
   matchEntries: AnalyticsEntry[],
   threshold: number | null,
-  practice: boolean
+  practice: boolean,
+  schema?: Form
 ): AllianceBreakdown {
   const own = matchEntries.filter((e) => official.teams.includes(e.teamNumber));
   const allianceEntries = practice ? latestSessionEntries(own) : own;
@@ -188,6 +217,7 @@ function buildAlliance(
     teams: slots.map((s) => ({ teamNumber: s.teamNumber, scouted: s.entry !== null, entry: shown ? s.entry : null })),
     scoutedCount,
     visibility,
+    objectives: shown && schema ? allianceObjectives(slots.flatMap((s) => (s.entry ? [s.entry] : [])), schema) : [],
     scoutedTotal: shown ? slots.reduce((sum, s) => sum + (s.entry?.score.total ?? 0), 0) : null,
     accuracy,
     official: officialScore,
@@ -220,6 +250,8 @@ export function buildMatchBreakdowns(input: {
   /** Whole percent, or null for ALL. */
   accuracyThreshold: number | null;
   practice: boolean;
+  /** The form the entries were scouted with: adds the alliance-level objective points to each alliance. */
+  schema?: Form;
 }): MatchBreakdown[] {
   const byMatch = new Map<string, AnalyticsEntry[]>();
   for (const e of input.entries) {
@@ -232,8 +264,8 @@ export function buildMatchBreakdowns(input: {
   const rows = input.matches.map((match): MatchBreakdown => {
     const key = matchKey(match.eventCode, match.matchType, match.matchNumber);
     const matchEntries = byMatch.get(key) ?? [];
-    const red = buildAlliance("red", match.red, matchEntries, input.accuracyThreshold, input.practice);
-    const blue = buildAlliance("blue", match.blue, matchEntries, input.accuracyThreshold, input.practice);
+    const red = buildAlliance("red", match.red, matchEntries, input.accuracyThreshold, input.practice, input.schema);
+    const blue = buildAlliance("blue", match.blue, matchEntries, input.accuracyThreshold, input.practice, input.schema);
 
     const redTotal = red.scoutedTotal;
     const blueTotal = blue.scoutedTotal;

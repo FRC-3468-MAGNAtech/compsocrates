@@ -99,3 +99,14 @@ export function allianceRoleLabel(form: Pick<Form, "sections">, role: string): s
   const field = form.sections.flatMap((s) => s.fields).find((f) => f.key === ALLIANCE_ROLE_KEY);
   return field?.options?.find((o) => o.value === role)?.label ?? role;
 }
+
+/**
+ * Values an admin saved from the entry editor: if the entry has a role but now also holds a value of another role's field (the admin corrected it), the entry
+ * records both roles, so the role is dropped (like an old entry). Otherwise a later rescore, which honours the role, would drop the admin's correction.
+ */
+export function reconcileRoleAfterEdit(form: Pick<Form, "sections">, values: FormValues): FormValues {
+  const role = values[ALLIANCE_ROLE_KEY];
+  if (typeof role !== "string" || role === "") return values;
+  const holdsOtherRole = allianceRoleFields(form).some((f) => f.allianceRole !== role && isRecorded(values, f.key));
+  return holdsOtherRole ? withoutRole(values) : values;
+}

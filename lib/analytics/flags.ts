@@ -2,6 +2,7 @@ import type { EventMatch } from "@/lib/events/types";
 import type { AccuracyResult, ScoutEntry } from "@/lib/scout-entries";
 import { getBuiltinForm } from "@/lib/forms/builtin";
 import { entryValues } from "@/lib/forms/entry-values";
+import { ALLIANCE_ROLE_KEY, allianceRoleFields, isRecorded } from "@/lib/forms/alliance-role";
 import { formFieldMeta, hasRole } from "@/lib/forms/meta";
 import type { Form, StatRole } from "@/lib/forms/types";
 
@@ -72,12 +73,29 @@ function counterAboveLimit(e: ScoutEntry, ctx: FlagContext, inPhase: (phase: str
 /** Score-based rules mean nothing for a form that doesn't score (every total would be 0). A form we can't find is treated as scoring, like every entry used to be. */
 const scores = (e: ScoutEntry, ctx: FlagContext): boolean => e.scored !== false && formOf(e, ctx)?.scoringEnabled !== false;
 
+/**
+ * Did this entry skip an alliance objective (a role field with no value)? Its total then leaves that objective out, so a low or zero total says nothing about
+ * the robot: the total-based rules below that would misfire on it stand down. An old entry (every value present) is unaffected.
+ */
+function skippedAllianceObjective(e: ScoutEntry, ctx: FlagContext): boolean {
+  const form = formOf(e, ctx);
+  if (!form) return false;
+  const values = entryValues(e, form);
+  return allianceRoleFields(form).some((f) => !isRecorded(values, f.key));
+}
+
+/** The alliance role an entry was scouted in, or "" (an old entry that recorded everything). */
+const roleOf = (e: ScoutEntry, ctx: FlagContext): string => {
+  const v = entryValues(e, formOf(e, ctx))[ALLIANCE_ROLE_KEY];
+  return typeof v === "string" ? v : "";
+};
+
 export const FLAG_RULES: FlagRule[] = [
   {
     id: "zero-main-scoring",
     title: "Zero Main Scoring",
     explanation: "No auto/teleop/endgame scoring recorded.",
-    evaluate: (e, ctx) => scores(e, ctx) && !roleOn(e, ctx, "neverStarted") && !roleOn(e, ctx, "died") && e.score.total === 0,
+    evaluate: (e, ctx) => scores(e, ctx) && !roleOn(e, ctx, "neverStarted") && !roleOn(e, ctx, "died") && e.score.total === 0 && !skippedAllianceObjective(e, ctx),
   },
   {
     id: "unrealistic-auto-scoring",
@@ -136,7 +154,10 @@ export const FLAG_RULES: FlagRule[] = [
     explanation: `This entry's total is more than ${T.OUTLIER_STD_DEV_THRESHOLD} standard deviations from this team's own average.`,
     evaluate: (e, ctx) => {
       if (!scores(e, ctx) || ctx.sameTeamEntries.length < T.OUTLIER_MIN_OTHER_ENTRIES) return false;
-      const totals = ctx.sameTeamEntries.map((o) => o.score.total);
+      // a Hive scout's total (20-point tips) and a Garden scout's (1-point shifts) are different scales: compare like with like
+      const peers = ctx.sameTeamEntries.filter((o) => roleOf(o, ctx) === roleOf(e, ctx));
+      if (peers.length < T.OUTLIER_MIN_OTHER_ENTRIES) return false;
+      const totals = peers.map((o) => o.score.total);
       const mean = totals.reduce((a, b) => a + b, 0) / totals.length;
       const variance = totals.reduce((a, b) => a + (b - mean) ** 2, 0) / totals.length;
       const stdDev = Math.sqrt(variance);

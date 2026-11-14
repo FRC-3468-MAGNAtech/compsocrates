@@ -65,8 +65,8 @@ export default function MatchBreakdownPage() {
   }, [practice, eventMatches, data.libraryMatches, filters, data.activeEventCodes]);
 
   const breakdowns = useMemo(
-    () => buildMatchBreakdowns({ matches: officialMatches, entries, accuracyThreshold: filters.accuracy, practice }),
-    [officialMatches, entries, filters.accuracy, practice]
+    () => buildMatchBreakdowns({ matches: officialMatches, entries, accuracyThreshold: filters.accuracy, practice, schema }),
+    [officialMatches, entries, filters.accuracy, practice, schema]
   );
 
   // --- list controls -----------------------------------------------------------

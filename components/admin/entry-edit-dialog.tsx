@@ -8,6 +8,7 @@ import { RenderedField } from "@/components/scout/scout-form";
 import { formatMatch } from "@/lib/analytics/game-schema";
 import { logAuditEvent } from "@/lib/audit-log";
 import { entryValues } from "@/lib/forms/entry-values";
+import { hasAllianceRoles, reconcileRoleAfterEdit, withoutRole } from "@/lib/forms/alliance-role";
 import { calculateScore } from "@/lib/forms/scoring";
 import { isSystemField, type FormValue, type FormValues } from "@/lib/forms/types";
 import { normalizeValues } from "@/lib/forms/values";
@@ -58,8 +59,9 @@ export function EntryEditDialog({
     if (!form) return;
     setSaving(true);
     try {
-      const next = normalizeValues(form, values);
-      const score = calculateScore(form, next);
+      // an admin can correct any field, so the role does not hide or zero anything here (and an entry given both roles' values stops carrying a role)
+      const next = reconcileRoleAfterEdit(form, normalizeValues(form, values));
+      const score = calculateScore(form, withoutRole(next));
       const payload = entryPayloadFor(form, next, score);
       await updateEntry(entry.id, payload);
       await logAuditEvent(
@@ -78,7 +80,8 @@ export function EntryEditDialog({
     }
   };
 
-  const visible = form ? visibleFieldKeys(form, values) : new Set<string>();
+  // the editor shows every role's fields (an admin may correct any), so the entry's role is left out of the visibility check
+  const visible = form ? visibleFieldKeys(form, withoutRole(values)) : new Set<string>();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -92,6 +95,11 @@ export function EntryEditDialog({
           <p className="mt-4 text-sm text-[var(--muted-foreground)]">This entry&apos;s form (&ldquo;{entry.formId}&rdquo;) isn&apos;t available, so it can&apos;t be edited.</p>
         ) : (
           <div className="mt-4 flex flex-col gap-4">
+            {hasAllianceRoles(form) && (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Hive, Flower and Garden are recorded by one scout per alliance. A field the scout was not asked to record shows 0 here but stays &ldquo;not recorded&rdquo; until you change it.
+              </p>
+            )}
             {form.sections.map((section) => {
               const fields = section.fields.filter((f) => !isSystemField(f) && visible.has(f.key));
               if (fields.length === 0) return null;
