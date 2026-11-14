@@ -4,7 +4,7 @@
  * The generic ones (`isRecord`, `str`, `toEpochMs`, `digitsToNumber`) are the same ones the other adapter uses; they are re-exported here so
  * this folder has a single seam to them and nothing program-specific is shared.
  */
-export { digitsToNumber, isRecord, str, toEpochMs } from "@/data/cs/util";
+export { digitsToNumber, isoFromMs, isRecord, str, toEpochMs } from "@/data/cs/util";
 
 /** A finite number, or null (numeric strings are not numbers here: the FTC schema stores numbers as numbers). */
 export function finiteNumber(value: unknown): number | null {
