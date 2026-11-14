@@ -89,10 +89,10 @@ export function FormRenderer(props: FormRendererProps) {
   const allianceSig = allianceTeams.join(",");
   useEffect(() => {
     // team pickers of a repeating group (`t1_team`) and the REBUILT alliance forms' `robot1_teamNumber` fields: see lib/forms/team-fill.ts
-    const next = teamFillFor(form, allianceTeams, valuesRef.current, touched.current);
+    const next = teamFillFor(form, allianceTeams, valuesRef.current, touched.current, entry.alliance);
     if (next) onValuesChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allianceSig]);
+  }, [allianceSig, entry.alliance]);
 
   // --- plan versus actual ---------------------------------------------------------------------------------------------
   const compare = form.compareWith ?? null;

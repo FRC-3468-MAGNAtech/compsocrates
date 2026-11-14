@@ -49,6 +49,17 @@ describe("teamFillFor", () => {
     expect(teamFillFor(form, [], {})).toBeNull();
   });
 
+  it("fills the Lead Scout's alliance box with the colour and teams, and leaves it once the person typed there", () => {
+    const form = LEAD_SCOUT_REBUILT_FORM;
+    expect(teamFillFor(form, [1111, 2222, 3333], {}, new Set(), "red")?.overallAlliance_teams).toBe("RED / 1111, 2222, 3333");
+    expect(teamFillFor(form, [1111, 2222, 3333], {}, new Set(), "blue")?.overallAlliance_teams).toBe("BLUE / 1111, 2222, 3333");
+    expect(teamFillFor(form, [1111, 2222, 3333], {}, new Set(["overallAlliance_teams"]), "red")).not.toHaveProperty("overallAlliance_teams");
+    expect(teamFillFor(form, [1111, 2222, 3333], {}, new Set(), null)).not.toHaveProperty("overallAlliance_teams"); // no colour yet
+    expect(teamFillFor(form, [], {}, new Set(), "red")).toBeNull();
+    // forms without that box are untouched by it
+    expect(teamFillFor(MATCH_STRATEGY_REBUILT_FORM, [1, 2, 3], {}, new Set(), "red")).not.toHaveProperty("overallAlliance_teams");
+  });
+
   it("replaces another match's teams when the alliance changes", () => {
     expect(teamFillFor(LEAD_SCOUT_REBUILT_FORM, [7, 8, 9], { robot1_teamNumber: "111" })?.robot1_teamNumber).toBe("7");
   });
