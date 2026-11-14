@@ -4,7 +4,9 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { parsePageAccess } from "@/lib/page-access/access";
 import { verifyBearerToken } from "@/lib/server/require-user";
-import { authorizeBlobUpload, blobUserFromCsDoc, type BlobAuthDeps } from "@/lib/server/blob-auth";
+import { authorizeBlobUpload, blobUserFromAppDoc, blobUserFromCsDoc, parseClientPayload, type BlobAuthDeps } from "@/lib/server/blob-auth";
+import { PROGRAMS } from "@/config/programs";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import type { CsUserDoc } from "@/data/cs/types";
 
 // The token request is a few hundred bytes of JSON (the photo itself goes browser -> Vercel Blob directly).
@@ -43,15 +45,21 @@ export async function POST(request: Request) {
 
   const db = getAdminFirestore();
   if (!db) return json({ code: "not-configured", error: "Server isn't configured." }, 503);
-  const deps: BlobAuthDeps = {
-    getUser: async (id) => {
-      const snap = await db.doc(`users/${id}`).get();
-      return snap.exists ? blobUserFromCsDoc(id, (snap.data() ?? {}) as CsUserDoc) : null;
-    },
-    getPageAccessConfig: async (teamId) => {
-      const snap = await db.doc(`teams/${teamId}/settings/pageAccess`).get();
-      return parsePageAccess(snap.exists ? snap.data() : undefined);
-    },
+  // The caller's profile and the team's page access are read from the namespace of the program the upload names (the default program when it names none).
+  const depsFor = (program: ProgramId): BlobAuthDeps => {
+    const prefix = PROGRAMS[program].firestorePrefix;
+    return {
+      getUser: async (id) => {
+        const snap = await db.doc(`${prefix}users/${id}`).get();
+        if (!snap.exists) return null;
+        const data = (snap.data() ?? {}) as Record<string, unknown>;
+        return prefix === "" ? blobUserFromCsDoc(id, data as CsUserDoc) : blobUserFromAppDoc(data);
+      },
+      getPageAccessConfig: async (teamId) => {
+        const snap = await db.doc(`${prefix}teams/${teamId}/settings/pageAccess`).get();
+        return parsePageAccess(snap.exists ? snap.data() : undefined);
+      },
+    };
   };
 
   // handleUpload throws for the token event when onBeforeGenerateToken throws; carry our decision out of the callback.
@@ -61,7 +69,7 @@ export async function POST(request: Request) {
       request,
       body,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
-        const decision = await authorizeBlobUpload({ uid: uid ?? "", pathname, clientPayload, deps });
+        const decision = await authorizeBlobUpload({ uid: uid ?? "", pathname, clientPayload, deps: depsFor(parseClientPayload(clientPayload)?.program ?? DEFAULT_PROGRAM) });
         if (!decision.ok) {
           denied = { status: decision.status, code: decision.code, message: decision.message };
           throw new Error(decision.code);

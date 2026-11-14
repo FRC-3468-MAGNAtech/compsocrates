@@ -21,6 +21,8 @@ import { notesForSave } from "@/lib/sticky-notes";
 import type { Form, FormField, FormValues, StickyNote } from "@/lib/forms/types";
 import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
 import { springSnappy } from "@/lib/motion";
+import { programPath } from "@/lib/firebase/paths";
+import { useProgram } from "@/lib/program/context";
 
 // P28: the page shell shared by Lead Scout, Match Strategy and Drive Reflection (and any other form of the team's built from the schema). Everything the page
 // needs from the world is a prop (events, the schedule, teams, the plan entries, how to pick a match, how to save), so the same component runs on the real
@@ -71,6 +73,8 @@ const ALLIANCE_SECTION = "alliance";
 export function FormPageView(props: FormPageViewProps) {
   const { form, title, subtitle, events, eventsLoaded, defaultEventCode, scoutName, matches, teams, planEntries, renderMatchPicker, onSave, onEventChange, myUid, existingEntries = [], onUpdate, assignedTeams, suggestFor, hideEventPickerIfSingle, photoKind = "form", lockout } = props;
   const uploads = usePhotoUploads();
+  // where a saved entry lives, for attaching a photo that finishes uploading after the save
+  const program = useProgram();
 
   const [entry, setEntry] = useState<FormEntryState>(() => ({ eventCode: defaultEventCode ?? "", matchKey: null, alliance: null, teamNumber: null, scoutName }));
   const [values, setValues] = useState<FormValues>(() => defaultValues(form));
@@ -192,7 +196,7 @@ export function FormPageView(props: FormPageViewProps) {
         // an edit of my own earlier entry: values and notes change, nothing else (the page logs it)
         const doc = buildSubmission(form, answers, values, notes, allianceTeams.length || 2, plan);
         await onUpdate(editing, { values: doc.values, stickyNotes: notesForSave(notes) });
-        if (uploads) for (const [key, ids] of Object.entries(pending.current)) if (ids.length > 0) uploads.attachWhenDone(ids, `formEntries/${editing.id}`, key);
+        if (uploads) for (const [key, ids] of Object.entries(pending.current)) if (ids.length > 0) uploads.attachWhenDone(ids, programPath(program, `formEntries/${editing.id}`), key);
         pending.current = {};
         setDone(true);
         setTimeout(() => setDone(false), 2200);
@@ -202,7 +206,7 @@ export function FormPageView(props: FormPageViewProps) {
       const doc = buildSubmission(form, answers, values, notes, allianceTeams.length || 2, plan);
       const id = await onSave(doc);
       // a photo that is still uploading is attached to the saved entry when it finishes: nobody waits on the network
-      if (uploads) for (const [key, ids] of Object.entries(pending.current)) if (ids.length > 0) uploads.attachWhenDone(ids, `formEntries/${id}`, key);
+      if (uploads) for (const [key, ids] of Object.entries(pending.current)) if (ids.length > 0) uploads.attachWhenDone(ids, programPath(program, `formEntries/${id}`), key);
       pending.current = {};
       setDone(true);
       setTimeout(() => setDone(false), 2200);

@@ -8,6 +8,8 @@ import { auth, db } from "@/lib/firebase/client";
 import { buildBlobPath, isAllowedImageType, MAX_IMAGE_BYTES } from "@/lib/blob/paths";
 import { CompressError, compressImage } from "@/lib/blob/compress";
 import { deleteImageBlob, uploadImageBlob, type UploadResult } from "@/lib/blob/client";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { useProgram } from "@/lib/program/context";
 import { openUploadQueue, startQueueProcessing, type QueueItem, type UploadQueue, type Uploader } from "@/lib/blob/upload-queue";
 
 // P27: photo uploads for the `image` field. One provider per page: it opens the IndexedDB queue (photos survive a reload and bad Wi-Fi), uploads in the
@@ -66,6 +68,8 @@ export type PhotoUploadDeps = {
 
 export function PhotoUploadProvider({ children, deps }: { children: ReactNode; deps?: PhotoUploadDeps }) {
   const { user, profile } = useAuth();
+  // The upload names the program, so the server reads this person's profile and page access from the right place.
+  const program = useProgram();
   const uid = user?.uid ?? "anonymous";
   const teamId = profile?.teamId ?? "team";
   const [queue, setQueue] = useState<UploadQueue | null>(null);
@@ -153,12 +157,12 @@ export function PhotoUploadProvider({ children, deps }: { children: ReactNode; d
       if (blob.size > MAX_IMAGE_BYTES) throw new Error("That photo is too big even after shrinking it (6 MB limit).");
       const path = await buildBlobPath({ kind: target.kind, teamId, eventCode: target.eventCode, teamNumber: String(target.teamNumber), uid });
       const id = crypto.randomUUID();
-      await queue.enqueue({ id, blob, path, fieldRef, clientPayload: JSON.stringify({ formId: target.formId, kind: target.kind, teamId, eventCode: target.eventCode, teamNumber: String(target.teamNumber) }) });
+      await queue.enqueue({ id, blob, path, fieldRef, clientPayload: JSON.stringify({ formId: target.formId, kind: target.kind, teamId, eventCode: target.eventCode, teamNumber: String(target.teamNumber), ...(program !== DEFAULT_PROGRAM ? { program } : {}) }) });
       // start uploading now (the queue also retries on its own when the network returns and on a timer)
       void queue.processAll(uploadFn);
       return id;
     },
-    [queue, teamId, uid, uploadFn]
+    [queue, teamId, uid, uploadFn, program]
   );
 
   const value = useMemo<PhotoUploadValue>(
@@ -169,7 +173,7 @@ export function PhotoUploadProvider({ children, deps }: { children: ReactNode; d
       addPhoto,
       discard: async (id) => void (await queue?.remove(id)),
       retryNow: () => void queue?.processAll(uploadFn, { force: true }),
-      deleteUploaded: (url) => (depsRef.current ? Promise.resolve() : deleteImageBlob(url, getToken)),
+      deleteUploaded: (url) => (depsRef.current ? Promise.resolve() : deleteImageBlob(url, getToken, program)),
       attachWhenDone: (queueIds, entryPath, fieldKey) => {
         const map = readAttach();
         for (const id of queueIds) map[id] = { path: entryPath, fieldKey };
@@ -178,7 +182,7 @@ export function PhotoUploadProvider({ children, deps }: { children: ReactNode; d
         setItems((cur) => [...cur]);
       },
     }),
-    [queue, online, items, addPhoto, getToken, uploadFn]
+    [queue, online, items, addPhoto, getToken, uploadFn, program]
   );
 
   return <PhotoUploadContext.Provider value={value}>{children}</PhotoUploadContext.Provider>;

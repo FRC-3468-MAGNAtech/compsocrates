@@ -3,7 +3,8 @@
 // decision after "this is uid X" lives here so it can be unit-tested.
 import { MAX_IMAGE_BYTES, ALLOWED_IMAGE_TYPES, parseBlobPath, uidTagOf, validateUploadRequest, type BlobPathParts } from "@/lib/blob/paths";
 import { canAccessPage, type AccessUser, type PageAccessConfig } from "@/lib/page-access/access";
-import { DEFAULT_ROLE_ID, ROLES, type RoleId } from "@/lib/roles";
+import { DEFAULT_PROGRAM, isProgramId, type ProgramId } from "@/config/programs/types";
+import { DEFAULT_ROLE_ID, isRoleId, ROLES, type RoleId } from "@/lib/roles";
 import { nonMatchTypeOfFormId, type NonMatchFormType } from "@/lib/forms/builtin";
 import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToProfile } from "@/data/cs/users";
@@ -28,7 +29,15 @@ export function pageIdForForm(formId: string): string {
 }
 
 /** What the client sends as `clientPayload` (a JSON string) with every upload. */
-export type BlobClientPayload = { formId: string; kind: string; teamId: string; eventCode: string; teamNumber: string };
+export type BlobClientPayload = {
+  formId: string;
+  kind: string;
+  teamId: string;
+  eventCode: string;
+  teamNumber: string;
+  /** The program whose profile and page access decide the upload. Absent: the default program (so its payloads are exactly what they always were). */
+  program?: ProgramId;
+};
 
 /** The fields of `users/{uid}` this module reads. Everything is `unknown` because it comes from Firestore. */
 export type BlobUserDoc = { teamId?: unknown; primaryRole?: unknown; secondaryRoles?: unknown; isAdmin?: unknown; isOwner?: unknown };
@@ -41,6 +50,20 @@ export type BlobUserDoc = { teamId?: unknown; primaryRole?: unknown; secondaryRo
 export function blobUserFromCsDoc(uid: string, doc: CsUserDoc): BlobUserDoc {
   const profile = csUserToProfile(uid, doc);
   return { teamId: profile.teamId, primaryRole: profile.primaryRole, secondaryRoles: profile.secondaryRoles, isAdmin: profile.isAdmin, isOwner: profile.isOwner };
+}
+
+/**
+ * A user doc that already has the app's own field names (`teamId`, `primaryRole`, `secondaryRoles`, `isAdmin`, `isOwner`): what a program with its own namespace
+ * stores. Unknown roles are dropped, anything that is not exactly `true` is not an admin or owner.
+ */
+export function blobUserFromAppDoc(doc: Record<string, unknown>): BlobUserDoc {
+  return {
+    teamId: typeof doc.teamId === "string" ? doc.teamId : "",
+    primaryRole: isRoleId(doc.primaryRole) ? doc.primaryRole : DEFAULT_ROLE_ID,
+    secondaryRoles: Array.isArray(doc.secondaryRoles) ? doc.secondaryRoles.filter(isRoleId) : [],
+    isAdmin: doc.isAdmin === true,
+    isOwner: doc.isOwner === true,
+  };
 }
 
 export type BlobAuthDeps = {
@@ -98,7 +121,8 @@ export function parseClientPayload(raw: string | null | undefined): BlobClientPa
   const eventCode = str(v.eventCode, 32);
   const team = str(teamNumber, 16);
   if (!formId || !kind || !teamId || !eventCode || !team) return null;
-  return { formId, kind, teamId, eventCode, teamNumber: team };
+  const program = isProgramId(v.program) && v.program !== DEFAULT_PROGRAM ? v.program : undefined;
+  return { formId, kind, teamId, eventCode, teamNumber: team, ...(program ? { program } : {}) };
 }
 
 /**

@@ -1,5 +1,6 @@
 // Browser side of photo uploads: talks to /api/blob/upload (token) + Vercel Blob (bytes), and /api/blob/delete.
 import { upload } from "@vercel/blob/client";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 
 export type UploadResult = { url: string; pathname: string; size: number; contentType: string };
 
@@ -39,11 +40,11 @@ export async function uploadImageBlob(input: { blob: Blob; path: string; clientP
 }
 
 /** Deletes a photo by its blob URL. Server allows the uploader or an admin only. Throws BlobUploadError with the server's message. */
-export async function deleteImageBlob(url: string, getToken: GetToken): Promise<void> {
+export async function deleteImageBlob(url: string, getToken: GetToken, program?: ProgramId): Promise<void> {
   const res = await fetch("/api/blob/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getToken()}` },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, ...(program && program !== DEFAULT_PROGRAM ? { program } : {}) }),
   });
   if (res.ok) return;
   const data = (await res.json().catch(() => null)) as { error?: string } | null;
