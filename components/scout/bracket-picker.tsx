@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { AlertTriangle, Trophy } from "lucide-react";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { getPlayoffBracket } from "@/lib/events/actions";
+import { useProgram } from "@/lib/program/context";
+import { scopedKey } from "@/lib/program/paths";
 import type { BracketMatch, BracketStructure, EventMatch } from "@/lib/events/types";
 import { cn } from "@/lib/utils";
 
@@ -128,7 +130,8 @@ export function BracketPicker({
   season: number;
   onSelect: (match: EventMatch) => void;
 }) {
-  const bracketQuery = useEventQuery(`bracket:${eventCode}:${season}`, () => getPlayoffBracket(eventCode, season));
+  const program = useProgram();
+  const bracketQuery = useEventQuery(scopedKey(program, `bracket:${eventCode}:${season}`), () => getPlayoffBracket(eventCode, season, program));
 
   const { slots, unrecognizedCount } = useMemo(() => mapBracketToSlots(bracketQuery.data), [bracketQuery.data]);
 

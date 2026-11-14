@@ -9,6 +9,8 @@ import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
 import { Button } from "@/components/ui/button";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { getTeamsForEvent } from "@/lib/events/actions";
+import { useProgram } from "@/lib/program/context";
+import { scopedKey } from "@/lib/program/paths";
 import { TEAM_MARK_LABEL, type TeamMark } from "@/components/scout/team-status";
 import type { EventTeam } from "@/lib/events/types";
 import { cn } from "@/lib/utils";
@@ -37,7 +39,8 @@ export function TeamPickerDialog({
   const [search, setSearch] = useState("");
   const [manualMode, setManualMode] = useState(false);
   const [manualNumber, setManualNumber] = useState("");
-  const teamsQuery = useEventQuery(`teams:${eventCode}:${season}`, () => getTeamsForEvent(eventCode, season));
+  const program = useProgram();
+  const teamsQuery = useEventQuery(scopedKey(program, `teams:${eventCode}:${season}`), () => getTeamsForEvent(eventCode, season, program));
 
   const teams = useMemo(() => {
     const list = teamsQuery.data ?? [];

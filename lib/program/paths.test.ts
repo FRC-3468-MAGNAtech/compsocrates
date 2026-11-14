@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { programPath } from "@/lib/firebase/paths";
-import { isPlatformPath, programHref, splitProgramPath } from "./paths";
+import { isPlatformPath, programHref, scopedKey, splitProgramPath } from "./paths";
 
 describe("programHref", () => {
   it("prefixes app paths with the program", () => {
@@ -31,5 +31,12 @@ describe("programPath", () => {
   it("leaves FRC paths at the root and namespaces FTC", () => {
     expect(programPath("frc", "teams")).toBe("teams");
     expect(programPath("ftc", "teams")).toBe("programs/ftc/teams");
+  });
+});
+
+describe("scopedKey", () => {
+  it("leaves the default program's keys alone and prefixes another program's", () => {
+    expect(scopedKey("frc", "teams:2026arli:2026")).toBe("teams:2026arli:2026");
+    expect(scopedKey("ftc", "teams:USTXAUS1:2025")).toBe("ftc:teams:USTXAUS1:2025");
   });
 });

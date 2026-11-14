@@ -13,6 +13,8 @@ import { GlassSkeletonCard } from "@/components/ui/glass-skeleton";
 import { BracketPicker } from "@/components/scout/bracket-picker";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { getMatchesForEvent } from "@/lib/events/actions";
+import { useProgram } from "@/lib/program/context";
+import { scopedKey } from "@/lib/program/paths";
 import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 
@@ -233,7 +235,8 @@ function MatchList({
   onSelect: (match: EventMatch) => void;
   marks?: (type: MatchType, matchNumber: number) => MatchMark | null;
 }) {
-  const query = useEventQuery(`matches:${eventCode}:${season}:${type}`, () => getMatchesForEvent(eventCode, type, season));
+  const program = useProgram();
+  const query = useEventQuery(scopedKey(program, `matches:${eventCode}:${season}:${type}`), () => getMatchesForEvent(eventCode, type, season, program));
 
   if (query.status === "loading") {
     return (
