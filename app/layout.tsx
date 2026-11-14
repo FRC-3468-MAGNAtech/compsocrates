@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth";
 import { GlassLayerProvider } from "@/lib/glass-layer";
 import { BackgroundBlobs } from "@/components/layout/background-blobs";
 import { MotionProvider } from "@/components/layout/motion-provider";
+import { ScrollToTop } from "@/components/layout/scroll-to-top";
 import { BRAND } from "@/config/brand";
 
 const geistSans = Geist({
@@ -68,6 +69,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <GlassLayerProvider>
               <MotionProvider>
                 <BackgroundBlobs />
+                <ScrollToTop />
                 {children}
               </MotionProvider>
             </GlassLayerProvider>
