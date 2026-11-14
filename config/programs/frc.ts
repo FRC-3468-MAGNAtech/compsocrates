@@ -14,4 +14,9 @@ export const FRC_PROGRAM: ProgramConfig = {
   firestorePrefix: "",
   unavailablePaths: [],
   pagesConnected: true,
+  connection: {
+    paths: "all",
+    features: { assignments: true, subIns: true, practice: true, live: true, library: true, changelog: true, applications: true, eventLookup: true },
+  },
+  multiTeam: false,
 };

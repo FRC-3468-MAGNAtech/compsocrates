@@ -30,6 +30,35 @@ export type ProgramEventRules = {
   hasEpa: boolean;
 };
 
+/**
+ * The data features of the shared app a program has wired up. A shell piece or page control whose feature is off does not mount (or is
+ * hidden) for that program, so it never reads the other program's collections. Turning one on means giving it a program-aware data layer first.
+ */
+export type ProgramFeatures = {
+  /** Scout assignments (the schedule), the assignment watcher and the "next assignment" prompt. */
+  assignments: boolean;
+  /** Sub-in requests (a scout hands a match to a teammate). */
+  subIns: boolean;
+  /** Practice sessions and the "scores ready" watcher. */
+  practice: boolean;
+  /** Live match presence. */
+  live: boolean;
+  /** The match library and its admin backfill. */
+  library: boolean;
+  /** The changelog and its unread dot. */
+  changelog: boolean;
+  /** Team applications (the platform owner's pending count). */
+  applications: boolean;
+  /** Event names and dates are looked up from the program's events API (placeholders on the team doc). Off: the team doc holds complete event records. */
+  eventLookup: boolean;
+};
+
+export type ProgramConnection = {
+  /** App paths (no program segment) whose data layer is connected. "all" for a program whose pages all are. Any other path shows the gate inside the shell. */
+  paths: readonly string[] | "all";
+  features: ProgramFeatures;
+};
+
 export type ProgramConfig = {
   id: ProgramId;
   brand: ProgramBrand;
@@ -46,4 +75,8 @@ export type ProgramConfig = {
    * the pages (they would otherwise read another program's collections).
    */
   pagesConnected: boolean;
+  /** Which paths and data features of the shared app are connected (read when `pagesConnected`). */
+  connection: ProgramConnection;
+  /** May one account hold several teams and switch between them (lib/our-team.ts)? Off: one team per account, and no switcher is shown. */
+  multiTeam: boolean;
 };

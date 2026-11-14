@@ -25,4 +25,10 @@ export const FTC_PROGRAM: ProgramConfig = {
   firestorePrefix: "programs/ftc/",
   unavailablePaths: FTC_UNAVAILABLE_PATHS,
   pagesConnected: false,
+  // The scout page is the first connected slice. Every other path shows the gate inside the shell until its data layer is program-aware.
+  connection: {
+    paths: ["/scout"],
+    features: { assignments: false, subIns: false, practice: false, live: false, library: false, changelog: false, applications: false, eventLookup: false },
+  },
+  multiTeam: true,
 };
