@@ -5,6 +5,7 @@ import { Menu, Trophy } from "lucide-react";
 import { motion } from "framer-motion";
 import { springSnappy } from "@/lib/motion";
 import { ColorModeToggle } from "@/components/theme/color-mode-toggle";
+import { ProgramChip } from "@/components/program/program-switcher";
 import { ConnectionChip } from "@/components/layout/connection-chip";
 import { GlassLayerButton } from "@/components/theme/glass-layer-slider";
 import type { ConnectionNotice } from "@/lib/connection-notice";
@@ -24,6 +25,7 @@ export function Topbar({ onMenuClick, connection = null }: { onMenuClick: () => 
       </Link>
       <div className="flex items-center gap-2">
         {/* P18: the connection chip is always here (fixed width, solid backing); the sun/moon is the light/dark mode only. */}
+        <ProgramChip />
         <ConnectionChip connection={connection} fixedWidth />
         <ColorModeToggle compact />
         <GlassLayerButton compact side="bottom" />

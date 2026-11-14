@@ -5,6 +5,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { BRAND } from "@/config/brand";
 import { ProgramCards } from "@/components/program/program-switcher";
+import { HomeRedirect } from "@/components/program/home-redirect";
 
 const features = [
   {
@@ -32,6 +33,7 @@ const features = [
 export default function LandingPage() {
   return (
     <div className="pb-20">
+      <HomeRedirect />
       <section className="relative flex flex-col items-center gap-8 pt-16 text-center sm:pt-24">
         <Badge variant="glass" className="gap-2 px-4 py-1.5">
           <Sparkles className="h-3.5 w-3.5" style={{ color: "var(--color-secondary)" }} />

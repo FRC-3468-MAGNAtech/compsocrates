@@ -11,22 +11,40 @@ import { programConfig } from "@/config/programs";
 const ProgramContext = createContext<ProgramId | null>(null);
 
 const STORAGE_KEY = `${BRAND.storagePrefix}.program`;
+const COOKIE_NAME = "program";
 
-export function readLastProgram(): ProgramId {
+/** The program the person used last, or null when there is no history (the home page then shows the selector instead of guessing). */
+export function readStoredProgram(): ProgramId | null {
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
     if (isProgramId(v)) return v;
   } catch {
-    /* storage blocked: fall through */
+    /* storage blocked: fall through to the cookie */
   }
-  return DEFAULT_PROGRAM;
+  try {
+    const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_NAME}=([^;]*)`));
+    if (m && isProgramId(m[1])) return m[1];
+  } catch {
+    /* cookies blocked: no history */
+  }
+  return null;
 }
 
+export function readLastProgram(): ProgramId {
+  return readStoredProgram() ?? DEFAULT_PROGRAM;
+}
+
+/** Remembers the program in localStorage and in the `program` cookie (one year, this site only). Switching programs never changes data, only the path. */
 export function rememberProgram(id: ProgramId): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, id);
   } catch {
-    /* storage blocked: the choice just is not remembered */
+    /* storage blocked: the cookie below may still work */
+  }
+  try {
+    document.cookie = `${COOKIE_NAME}=${id}; path=/; max-age=31536000; samesite=lax`;
+  } catch {
+    /* cookies blocked: the choice just is not remembered */
   }
 }
 

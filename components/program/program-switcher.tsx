@@ -1,7 +1,9 @@
 "use client";
 
 import NextLink from "next/link";
+import { LayoutGrid } from "lucide-react";
 import { PROGRAMS, PROGRAM_IDS } from "@/config/programs";
+import { CHOOSE_PROGRAM_HREF } from "@/components/program/home-redirect";
 import { useProgram } from "@/lib/program/context";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +32,31 @@ export function ProgramSwitcher({ className }: { className?: string }) {
           {PROGRAMS[id].brand.label}
         </NextLink>
       ))}
+      <NextLink
+        href={CHOOSE_PROGRAM_HREF}
+        aria-label="All programs"
+        title="All programs"
+        className="flex min-h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </NextLink>
     </div>
+  );
+}
+
+/** A compact chip for the mobile top bar: the active program's name, linking back to the selector. */
+export function ProgramChip({ className }: { className?: string }) {
+  const active = useProgram();
+  return (
+    <NextLink
+      href={CHOOSE_PROGRAM_HREF}
+      title="Switch program"
+      aria-label={`${PROGRAMS[active].brand.fullName}: switch program`}
+      className={cn("glass-pill flex h-11 items-center gap-1.5 px-3 text-xs font-semibold", className)}
+    >
+      {PROGRAMS[active].brand.label}
+      <LayoutGrid className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+    </NextLink>
   );
 }
 
