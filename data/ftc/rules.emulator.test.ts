@@ -16,6 +16,8 @@ import { ftcProfilePatch, ftcUserToMember, ftcUserToProfile } from "@/data/ftc/u
 import { ftcJoinRequestDoc, ftcNewTeamDocs } from "@/data/ftc/enrollment";
 import { ftcApprovedProfileDoc, ftcJoinDecisionFields } from "@/data/ftc/join-request-docs";
 import { programPath } from "@/lib/firebase/paths";
+import { ftcAccountTeamsFields as fieldTeamsFields } from "@/data/ftc/teams";
+import { FTC_STARTER_ENTRIES } from "@/lib/ftc/changelog-seed";
 import { ftcMatchId, planScheduleImport } from "@/lib/ftc/library";
 import { buildManualMatchDoc } from "@/lib/library/schedule";
 import { tryClaimDoc } from "@/lib/claim-doc";
@@ -1219,5 +1221,211 @@ describe("Scout Accuracy, post-save accuracy and CSV import (Batch 4)", () => {
     // the first import wrote exactly what was sent, the marker on all of it (800 imported, plus the scout's own B4-NEW that carries the marker in this test)
     const imported = await assertSucceeds(getDocs(query(coll(ADMIN, "scoutEntries"), where("teamId", "==", T1), where("importedFrom", "==", "csv"))));
     expect(imported.size).toBe(801);
+  });
+});
+
+describe("Team Settings and the Changelog (Batch 5a)", () => {
+  const MEMBER = SCOUT; // a plain member of team 1 (seeded above); never an admin
+  const ADMIN_T2 = "ftc-admin-b5-t2"; // an admin of ANOTHER team
+  const LEGACY_T = "ftcteam-b5-legacy"; // a team whose doc has no fieldTeams / fieldTeamIdList yet (it predates the list)
+  const LEGACY_ADMIN = "ftc-admin-b5-legacy";
+  const LEGACY_MEMBER = "ftc-member-b5-legacy";
+  const S = (name: string) => programPath("ftc", name);
+  const anon = () => testEnv.unauthenticatedContext().firestore();
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+  const teamRef = (uid: string, teamId = T1) => doc(as(uid), S("teams"), teamId);
+  const userRef = (uid: string, target: string) => doc(as(uid), S("users"), target);
+  const audit = (teamId: string, uid: string, action: "edit-account-teams" | "edit-member-teams" | "set-active-form" = "edit-account-teams") => buildAuditEntry(teamId, uid, "Someone", action, { change: "x" }, null, null);
+  const three = [
+    { id: "ft-1", number: 1111, name: "Alpha" },
+    { id: "ft-2", number: 2222, name: "Beta" },
+    { id: "fteam_b5new", number: 3333, name: "Gamma" },
+  ];
+  const changelogDoc = (teamId: string, uid: string, extra: Record<string, unknown> = {}) => ({
+    teamId, version: "v9.0.0", title: "An entry", date: "2026-11-15", summary: "s", changes: [{ type: "new", text: "x" }], status: "draft", pinned: false, createdBy: uid,
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp(), publishedAt: null, ...extra,
+  });
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, S("users"), ADMIN_T2), { name: "Admin T2", email: "b5t2@example.org", teamId: T2, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+      await setDoc(doc(db, S("teams"), LEGACY_T), { joinCode: "JL", number: 4444, name: "Legacy" });
+      await setDoc(doc(db, S("users"), LEGACY_ADMIN), { name: "Legacy Admin", email: "la@example.org", teamId: LEGACY_T, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+      await setDoc(doc(db, S("users"), LEGACY_MEMBER), { name: "Legacy Member", email: "lm@example.org", teamId: LEGACY_T, primaryRole: "match-scout", secondaryRoles: [], isAdmin: false, isOwner: false });
+      const published = (teamId: string, status: string) => ({ teamId, version: "v1", title: `${status} entry`, date: "2026-11-01", summary: "", changes: [{ type: "new", text: "x" }], status, pinned: false, createdBy: "seed", createdAt: new Date(), updatedAt: new Date(), publishedAt: status === "published" ? new Date() : null });
+      await setDoc(doc(db, S("changelog"), "cl-pub"), published(T1, "published"));
+      await setDoc(doc(db, S("changelog"), "cl-draft"), published(T1, "draft"));
+      await setDoc(doc(db, S("changelog"), "cl-t2"), published(T2, "published"));
+    });
+  });
+
+  it("an admin adds a team, assigns a member to it and logs it, in ONE batch (the assignment is checked against the team doc AFTER the batch)", async () => {
+    const db = as(ADMIN);
+    const batch = writeBatch(db);
+    batch.update(doc(db, S("teams"), T1), fieldTeamsFields(three.map((t) => ({ ...t, name: t.name }))));
+    batch.update(doc(db, S("users"), MEMBER), { fieldTeamIds: ["ft-1", "fteam_b5new"] });
+    batch.set(doc(collection(db, S("auditLog"))), audit(T1, ADMIN));
+    await assertSucceeds(batch.commit());
+    const team = (await getDoc(doc(as(ADMIN), S("teams"), T1))).data();
+    expect(team?.fieldTeamIdList).toEqual(["ft-1", "ft-2", "fteam_b5new"]);
+    expect(team?.fieldTeamNumbers).toEqual([1111, 2222, 3333]);
+    expect((await getDoc(doc(as(ADMIN), S("users"), MEMBER))).data()?.fieldTeamIds).toEqual(["ft-1", "fteam_b5new"]);
+  });
+
+  it("the same batch is refused without the team write when the member is put on a team that does not exist yet", async () => {
+    const db = as(ADMIN);
+    const batch = writeBatch(db);
+    batch.update(doc(db, S("users"), MEMBER), { fieldTeamIds: ["fteam_not_there"] });
+    await assertFails(batch.commit());
+  });
+
+  it("renaming a team (same ids) is allowed for an admin", async () => {
+    const renamed = three.map((t) => (t.id === "ft-2" ? { ...t, name: "Beta Renamed" } : t));
+    await assertSucceeds(updateDoc(teamRef(ADMIN), fieldTeamsFields(renamed)));
+    expect(((await getDoc(teamRef(ADMIN))).data()?.fieldTeams as { name: string }[])[1].name).toBe("Beta Renamed");
+  });
+
+  it("who may change the team list: a plain member, an admin of another team and a signed-out user may not", async () => {
+    const fields = fieldTeamsFields(three);
+    await assertFails(updateDoc(teamRef(MEMBER), fields));
+    await assertFails(updateDoc(teamRef(ADMIN_T2), fields));
+    await assertFails(updateDoc(doc(anon(), S("teams"), T1), fields));
+    // and the other team's doc is out of reach of team 1's admin
+    await assertFails(updateDoc(teamRef(ADMIN, T2), fieldTeamsFields([{ id: "x", number: 1, name: "" }])));
+  });
+
+  it("invalid shapes of fieldTeams are refused: no list, more than 10, an id list of another length, an id list that is not a list", async () => {
+    const ok = fieldTeamsFields(three);
+    await assertFails(updateDoc(teamRef(ADMIN), { ...ok, fieldTeams: [], fieldTeamIdList: [] }));
+    const eleven = Array.from({ length: 11 }, (_, i) => ({ id: `t${i}`, number: i + 1, name: "" }));
+    await assertFails(updateDoc(teamRef(ADMIN), { fieldTeams: eleven, fieldTeamIdList: eleven.map((t) => t.id) }));
+    await assertFails(updateDoc(teamRef(ADMIN), { ...ok, fieldTeamIdList: ["ft-1"] }));
+    await assertFails(updateDoc(teamRef(ADMIN), { ...ok, fieldTeamIdList: "ft-1" }));
+    await assertFails(updateDoc(teamRef(ADMIN), { fieldTeams: "nope" }));
+    // what the rules do NOT check (the editor and the pure validation do): a number's digits and uniqueness inside an entry
+    await assertSucceeds(updateDoc(teamRef(ADMIN), fieldTeamsFields(three)));
+  });
+
+  it("removing a team that a member still lists is accepted by the rules (the app refuses it first); the member's own stale list then cannot be re-saved with the removed id", async () => {
+    const without = three.filter((t) => t.id !== "fteam_b5new");
+    await assertSucceeds(updateDoc(teamRef(ADMIN), fieldTeamsFields(without)));
+    // unchanged is always fine (a role edit never fails on an old assignment) ...
+    await assertSucceeds(updateDoc(userRef(ADMIN, MEMBER), { primaryRole: "match-scout" }));
+    // ... but a NEW list may only name teams that exist
+    await assertFails(updateDoc(userRef(ADMIN, MEMBER), { fieldTeamIds: ["ft-2", "fteam_b5new"] }));
+    await assertSucceeds(updateDoc(userRef(ADMIN, MEMBER), { fieldTeamIds: ["ft-1"] }));
+  });
+
+  it("fieldTeamIds: an admin may set them (own row included); the member may not change their own, for any value; another team's admin and a signed-out user may not", async () => {
+    await assertSucceeds(updateDoc(userRef(ADMIN, MEMBER), { fieldTeamIds: ["ft-1", "ft-2"] }));
+    await assertSucceeds(updateDoc(userRef(ADMIN, ADMIN), { fieldTeamIds: ["ft-2"] }));
+    // a member assigning THEMSELVES to a team (even one that exists) is refused; the rules lock fieldTeamIds on the self-update
+    await assertFails(updateDoc(userRef(MEMBER, MEMBER), { fieldTeamIds: ["ft-2"] }));
+    await assertFails(updateDoc(userRef(MEMBER, MEMBER), { fieldTeamIds: [] }));
+    await assertFails(updateDoc(userRef(MEMBER, "ftc-lead-1"), { fieldTeamIds: ["ft-2"] })); // nor a teammate
+    await assertFails(updateDoc(userRef(ADMIN_T2, MEMBER), { fieldTeamIds: ["ft-1"] }));
+    await assertFails(updateDoc(doc(anon(), S("users"), MEMBER), { fieldTeamIds: ["ft-1"] }));
+    // a list of ids that are not on the account, or more than ten
+    await assertFails(updateDoc(userRef(ADMIN, MEMBER), { fieldTeamIds: ["ft-1", "nope"] }));
+    await assertFails(updateDoc(userRef(ADMIN, MEMBER), { fieldTeamIds: "ft-1" }));
+    // the member's other self-edits still work
+    await assertSucceeds(updateDoc(userRef(MEMBER, MEMBER), { themeId: "default" }));
+  });
+
+  it("an account that predates the list: assigning needs the team doc's id list, so the app writes the team list in the same batch (and that batch is accepted)", async () => {
+    const db = as(LEGACY_ADMIN);
+    const alone = writeBatch(db);
+    alone.update(doc(db, S("users"), LEGACY_MEMBER), { fieldTeamIds: ["ft-4444"] });
+    await assertFails(alone.commit());
+    const both = writeBatch(db);
+    both.update(doc(db, S("teams"), LEGACY_T), fieldTeamsFields([{ id: "ft-4444", number: 4444, name: "Legacy" }]));
+    both.update(doc(db, S("users"), LEGACY_MEMBER), { fieldTeamIds: ["ft-4444"] });
+    both.set(doc(collection(db, S("auditLog"))), audit(LEGACY_T, LEGACY_ADMIN, "edit-member-teams"));
+    await assertSucceeds(both.commit());
+  });
+
+  it("activeForms: an admin sets the season's form; any other season key, a non-string or an empty or long id is refused; a member cannot", async () => {
+    await assertSucceeds(updateDoc(teamRef(ADMIN), { "activeForms.biobuzz": "my-form" }));
+    expect((await getDoc(teamRef(ADMIN))).data()?.activeForms).toEqual({ biobuzz: "my-form" });
+    await assertFails(updateDoc(teamRef(ADMIN), { "activeForms.other": "x" }));
+    await assertFails(updateDoc(teamRef(ADMIN), { "activeForms.biobuzz": 5 }));
+    await assertFails(updateDoc(teamRef(ADMIN), { "activeForms.biobuzz": "" }));
+    await assertFails(updateDoc(teamRef(ADMIN), { "activeForms.biobuzz": "x".repeat(41) }));
+    await assertFails(updateDoc(teamRef(MEMBER), { "activeForms.biobuzz": "other" }));
+    await assertFails(updateDoc(teamRef(ADMIN_T2), { "activeForms.biobuzz": "other" }));
+    // with its audit entry in one batch, as the app writes it
+    const db = as(ADMIN);
+    const batch = writeBatch(db);
+    batch.update(doc(db, S("teams"), T1), { "activeForms.biobuzz": "biobuzz" });
+    batch.set(doc(collection(db, S("auditLog"))), audit(T1, ADMIN, "set-active-form"));
+    await assertSucceeds(batch.commit());
+  });
+
+  it("audit log: an admin creates an entry for their own team as themselves; a member, a spoofed uid, another team's admin and a signed-out user cannot; only an admin reads", async () => {
+    await assertSucceeds(addDoc(collection(as(ADMIN), S("auditLog")), audit(T1, ADMIN)));
+    await assertFails(addDoc(collection(as(MEMBER), S("auditLog")), audit(T1, MEMBER)));
+    await assertFails(addDoc(collection(as(ADMIN), S("auditLog")), audit(T1, "someone-else")));
+    await assertFails(addDoc(collection(as(ADMIN_T2), S("auditLog")), audit(T1, ADMIN_T2)));
+    await assertFails(addDoc(collection(anon(), S("auditLog")), audit(T1, ADMIN)));
+    await assertSucceeds(getDocs(query(collection(as(ADMIN), S("auditLog")), where("teamId", "==", T1))));
+    await assertFails(getDocs(query(collection(as(MEMBER), S("auditLog")), where("teamId", "==", T1))));
+  });
+
+  it("changelog reads: a member's exact query (teamId ==, status == published) sees only published entries; the unfiltered one is refused; an admin sees drafts too; another team and signed-out cannot", async () => {
+    const coll = (uid: string) => collection(as(uid), S("changelog"));
+    expect(ids(await assertSucceeds(getDocs(query(coll(MEMBER), where("teamId", "==", T1), where("status", "==", "published")))))).toEqual(["cl-pub"]);
+    await assertFails(getDocs(query(coll(MEMBER), where("teamId", "==", T1))));
+    expect(ids(await assertSucceeds(getDocs(query(coll(ADMIN), where("teamId", "==", T1)))))).toEqual(["cl-draft", "cl-pub"]);
+    await assertFails(getDocs(query(coll(ADMIN_T2), where("teamId", "==", T1), where("status", "==", "published"))));
+    await assertFails(getDocs(query(collection(anon(), S("changelog")), where("teamId", "==", T1), where("status", "==", "published"))));
+    await assertFails(getDoc(doc(as(MEMBER), S("changelog"), "cl-draft")));
+    await assertSucceeds(getDoc(doc(as(MEMBER), S("changelog"), "cl-pub")));
+  });
+
+  it("changelog writes: an admin creates a draft and a published entry (the app's shape) and edits one; a member, another team's admin and a spoofed createdBy cannot; the old app's `legacy` key is not accepted", async () => {
+    const coll = (uid: string) => collection(as(uid), S("changelog"));
+    await assertSucceeds(addDoc(coll(ADMIN), changelogDoc(T1, ADMIN)));
+    await assertSucceeds(addDoc(coll(ADMIN), changelogDoc(T1, ADMIN, { status: "published", publishedAt: serverTimestamp() })));
+    await assertFails(addDoc(coll(MEMBER), changelogDoc(T1, MEMBER)));
+    await assertFails(addDoc(coll(ADMIN_T2), changelogDoc(T1, ADMIN_T2)));
+    await assertFails(addDoc(coll(ADMIN), changelogDoc(T1, "someone-else")));
+    await assertFails(addDoc(collection(anon(), S("changelog")), changelogDoc(T1, ADMIN)));
+    await assertFails(addDoc(coll(ADMIN), changelogDoc(T1, ADMIN, { legacy: true })));
+    await assertFails(addDoc(coll(ADMIN), changelogDoc(T1, ADMIN, { status: "published", publishedAt: null })));
+    await assertSucceeds(updateDoc(doc(as(ADMIN), S("changelog"), "cl-draft"), { title: "Edited", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as(MEMBER), S("changelog"), "cl-draft"), { title: "Edited" }));
+    await assertFails(deleteDoc(doc(as(MEMBER), S("changelog"), "cl-pub")));
+    await assertSucceeds(deleteDoc(doc(as(ADMIN), S("changelog"), "cl-draft")));
+  });
+
+  it("the first-visit seed (one transaction: starter drafts, changelogSeeded on the team doc, an audit entry) works for an admin and not for a member", async () => {
+    const seed = (uid: string) => {
+      const db = as(uid);
+      const teamDoc = doc(db, S("teams"), T1);
+      return runTransaction(db, async (tx) => {
+        const team = await tx.get(teamDoc);
+        if (team.data()?.changelogSeeded === true) return false;
+        for (const s of FTC_STARTER_ENTRIES) {
+          tx.set(doc(db, S("changelog"), `starter-${T1}-${s.key}`), changelogDoc(T1, uid, { version: s.version, title: s.title, date: s.date, summary: s.summary, changes: s.changes }));
+        }
+        tx.update(teamDoc, { changelogSeeded: true });
+        tx.set(doc(collection(db, S("auditLog"))), audit(T1, uid));
+        return true;
+      });
+    };
+    await assertFails(seed(MEMBER));
+    expect(await assertSucceeds(seed(ADMIN))).toBe(true);
+    expect(await assertSucceeds(seed(ADMIN))).toBe(false); // the flag is set: a second visit writes nothing
+    const drafts = await getDocs(query(collection(as(ADMIN), S("changelog")), where("teamId", "==", T1)));
+    expect(drafts.docs.filter((d) => d.id.startsWith(`starter-${T1}-`)).length).toBe(FTC_STARTER_ENTRIES.length);
+  });
+
+  it("lastSeenChangelogAt: a person stamps their own user doc; nobody else's; a signed-out user cannot", async () => {
+    await assertSucceeds(updateDoc(userRef(MEMBER, MEMBER), { lastSeenChangelogAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(userRef(ADMIN, ADMIN), { lastSeenChangelogAt: serverTimestamp() }));
+    await assertFails(updateDoc(userRef(MEMBER, "ftc-lead-1"), { lastSeenChangelogAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(anon(), S("users"), MEMBER), { lastSeenChangelogAt: serverTimestamp() }));
+    expect((await getDoc(userRef(MEMBER, MEMBER))).data()?.lastSeenChangelogAt).toBeTruthy();
   });
 });

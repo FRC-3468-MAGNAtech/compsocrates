@@ -30,6 +30,8 @@ const PORT_READERS: Record<string, string> = {
   "components/program/program-auth.tsx": "supplies the program's own profile",
   "components/program/program-gate.tsx": "enrollment for a program with a port",
   "components/program/team-setup.tsx": "enrollment writes through the port; the card is shared",
+  "components/team/account-teams-section.tsx": "its writes (add, rename, remove, assign) and the team-name lookup go through the program's port; shown only where the program has several teams per account (ProgramConfig.multiTeam)",
+  "components/team/active-forms-section.tsx": "its write goes through the program's port; shown only where the program has no Forms admin tab (ProgramConfig.teamSettings.activeForms)",
   "components/team/join-requests-panel.tsx": "which source the same panel reads",
 };
 

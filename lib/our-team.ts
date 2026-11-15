@@ -101,7 +101,8 @@ export function OurTeamProvider({ children }: { children: ReactNode }) {
 
   const accountTeams = multiTeam ? (team?.accountTeams ?? NO_TEAMS) : NO_TEAMS;
   const storedId = teamDocId ? (picks[teamDocId] ?? null) : null;
-  const assignedIds = profile?.assignedTeamIds;
+  // An admin sees every team of the account; a member only the ones they are assigned to (an assignment is a person's own narrowing, never an admin's).
+  const assignedIds = profile?.isAdmin ? undefined : profile?.assignedTeamIds;
   const chosen = useMemo(() => chooseAccountTeam(accountTeams, storedId, assignedIds), [accountTeams, storedId, assignedIds]);
 
   const select = useCallback(

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { Check, Users } from "lucide-react";
+import { ActiveFormsSection } from "@/components/team/active-forms-section";
+import { AccountTeamsSection } from "@/components/team/account-teams-section";
 import { OwnershipSection } from "@/components/team/ownership-section";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -11,6 +13,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth";
 import { useOurTeam } from "@/lib/our-team";
 import { usePermissions } from "@/lib/permissions";
+import { useProgramConfig } from "@/lib/program/context";
 import { parseTeamNumber } from "@/lib/team-number";
 
 const MAX_TEAM_NAME = 80;
@@ -106,20 +109,29 @@ export default function TeamSettingsPage() {
   const { profile } = useAuth();
   const { isAdmin } = usePermissions();
   const { number, name, loaded } = useOurTeam();
+  const { multiTeam, teamSettings } = useProgramConfig();
   const teamId = profile?.teamId ?? null;
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Team Settings</h1>
-        <p className="text-sm text-[var(--muted-foreground)]">Your team&apos;s name and number, and who owns the account.</p>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          {multiTeam ? "The teams your account scouts for and who sees which" : "Your team's name and number"}
+          {teamSettings.activeForms ? ", the form for each season" : ""}
+          {teamSettings.ownershipTransfer ? ", and who owns the account." : "."}
+        </p>
       </div>
-      {!loaded || !teamId ? (
+      {multiTeam ? (
+        // A program with several teams per account edits that list; its first team is the name and number the single-team card would edit.
+        <AccountTeamsSection />
+      ) : !loaded || !teamId ? (
         <div className="glass-card h-32 animate-pulse" />
       ) : (
         <TeamIdentitySection teamId={teamId} initialName={name ?? ""} initialNumber={number !== null ? String(number) : ""} canEdit={isAdmin} />
       )}
-      <OwnershipSection />
+      {teamSettings.activeForms && <ActiveFormsSection />}
+      {teamSettings.ownershipTransfer && <OwnershipSection />}
     </div>
   );
 }
