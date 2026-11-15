@@ -77,6 +77,10 @@ describe("REBUILT built-in form", () => {
     const pluginKeys = new Set(Object.keys(rebuiltPlugin.defaultValues()));
     pluginKeys.delete("incidents");
     for (const i of REBUILT_INCIDENTS) formKeys.delete(i.key);
+    // an optional answer (`optionalAnswer`) is absent from the plugin's defaults by design (old entries have none: unknown); the plugin reads and writes it only when present
+    const optional = valueSlots(REBUILT_FORM).filter((s) => s.field.optionalAnswer).map((s) => s.storageKey);
+    expect(optional).toEqual(["endgame_attemptedClimb"]);
+    for (const key of optional) formKeys.delete(key);
     expect([...formKeys].sort()).toEqual([...pluginKeys].sort());
     // and the per-shift human player counters (D8)
     for (const seg of ["transition", "shift1", "shift2", "shift3", "shift4"]) expect(formKeys.has(`teleop_humanPlayerFuel_${seg}`)).toBe(true);

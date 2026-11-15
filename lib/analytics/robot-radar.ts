@@ -43,6 +43,8 @@ export type RadarSample = {
   tower: number;
   /** Climb attempts (CS `endgame.attemptedClimb`) with the endgame points that attempt scored: feeds the Climb Reliability box plot. */
   climbAttempt: { attempted: boolean; points: number };
+  /** Present (true) only when the entry answered "Attempted climb" (Session 2). Entries without it are unknown: the box plot says how many it rests on. */
+  climbRecorded?: true;
 };
 
 export type RadarTeamStat = {
@@ -86,6 +88,8 @@ export function sampleFromDoc(teamNumber: number, doc: CsDoc, gameId: GameId = C
     tower: TOWER_POWER[status] ?? 0,
     // CS's Climb Reliability reads `endgame.attemptedClimb` and `endgame.level|result|status`; the climb points are the level's.
     climbAttempt: { attempted: Boolean(endgame.attemptedClimb), points: climbPointsFromEndgame(endgame) },
+    // only when the form recorded an answer (the key is left off otherwise, so every older sample is byte-identical)
+    ...(endgame.attemptedClimbRecorded === true && typeof endgame.attemptedClimb === "boolean" ? { climbRecorded: true as const } : {}),
   };
 }
 

@@ -207,6 +207,9 @@ function buildDoc(values: GameValues): CsDoc {
       estimatedFuel: 0,
       failedClimb: numVal(values, "endgame_failedClimb"),
       status: strVal(values, "endgame_status"),
+      // Optional, zero points (Session 2): written only when the form recorded an answer. The marker beside it lets `docToValues` tell an entry saved with
+      // the field from an older CS doc that merely carries `attemptedClimb`, so old documents keep reading as "unknown" (the Batch 7 golden relies on it).
+      ...(typeof values.endgame_attemptedClimb === "boolean" ? { attemptedClimb: values.endgame_attemptedClimb, attemptedClimbRecorded: true } : {}),
     },
     incidents: strArrVal(values, "incidents"),
     notes: strVal(values, "notes"),
@@ -255,6 +258,8 @@ function docToValues(doc: CsDoc): GameValues {
     incidents: Array.isArray(doc.incidents) ? doc.incidents.map((v) => String(v)) : [],
     notes: String(doc.notes || ""),
   };
+  // Absent stays absent (unknown): only an answer the form recorded (marked) is read back.
+  if (endgame.attemptedClimbRecorded === true && typeof endgame.attemptedClimb === "boolean") values.endgame_attemptedClimb = endgame.attemptedClimb;
   for (const shift of SHIFT_KEYS) {
     values[`teleop_${shift}Cycles`] = arr(teleop[`${shift}Cycles`]);
     values[`teleop_${shift}Override`] = n(teleop[`${shift}Override`]);

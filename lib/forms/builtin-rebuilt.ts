@@ -228,6 +228,15 @@ const sections: FormSection[] = [
     fields: [
       ...fuelFields("endgame_cycleTimes", GROUP.endgame.fuel, "Fuel", "Endgame Cycle Timer", "endgame_counterOverride", "endgame_counterOverrideMissedFuel"),
       counter("endgame_humanPlayerFuel", "Human player: scored fuel", GROUP.endgame.fuel, "Fuel", "Fuel the human player scored in the endgame."),
+      // Optional and worth ZERO points. On with no level below = a failed attempt; off = no attempt. Old entries have no answer (unknown).
+      toggle(
+        "endgame_attemptedClimb",
+        "Attempted climb",
+        GROUP.endgame.climb,
+        "Climb",
+        "Turn on if the robot tried to climb, even if it did not reach a level. Tried and failed = on with no level below. Did not try = off. It does not score.",
+        { optionalAnswer: true }
+      ),
       counter("endgame_failedClimb", "Failed Climb", GROUP.endgame.climb, "Climb", "Tally each failed climb attempt. It does not score."),
       {
         ...base("endgame_status", GROUP.endgame.climb),

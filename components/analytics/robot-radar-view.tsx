@@ -185,7 +185,10 @@ export function RobotRadarView() {
                     <h3 className="text-base font-semibold">Climb Reliability ({gameName})</h3>
                     <span className="text-xs text-[var(--muted-foreground)]">Follows the Accuracy filter</span>
                   </div>
-                  <ClimbBoxPlot boxes={boxes} />
+                  <ClimbBoxPlot
+                    boxes={boxes}
+                    basis={model?.climbBasis ? { recorded: model.climbBasis(selected), total: [statA, statB].reduce((s, t) => s + (t?.entryCount ?? 0), 0) } : undefined}
+                  />
                 </GlassPanel>
               )}
             </>

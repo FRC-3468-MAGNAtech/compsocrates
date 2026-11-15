@@ -70,3 +70,9 @@ export function buildClimbBoxes(samples: readonly RadarSample[], teamNumbers: re
     return buildBox(team, b.values, b.success, b.attempts);
   });
 }
+
+/** How many of the chosen teams' samples answered "Attempted climb": what the box plot rests on (entries without the answer are unknown and left out). */
+export function climbRecordedCount(samples: readonly RadarSample[], teamNumbers: readonly number[]): number {
+  const teams = new Set(teamNumbers);
+  return samples.filter((s) => teams.has(s.teamNumber) && s.climbRecorded === true).length;
+}

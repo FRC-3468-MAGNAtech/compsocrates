@@ -182,9 +182,11 @@ export function buildTeamStats(
 
     // an alliance-role field averages over the entries that recorded it (absent is "not asked", not 0)
     const alliance = field.allianceRole !== undefined;
-    const pool = alliance ? entries.filter((e) => isRecorded(entryValues(e, schema), field.key)) : entries;
+    // an optional answer (an old entry has none: unknown, not "no") is averaged over the entries that have it, like an alliance field, without the alliance label
+    const partial = alliance || field.optionalAnswer === true;
+    const pool = partial ? entries.filter((e) => isRecorded(entryValues(e, schema), field.key)) : entries;
     const np = pool.length;
-    const base = { key: field.key, label: field.label, type: field.type, sectionId: m.sectionId, groupLabel: m.groupLabel, ...(alliance ? { allianceStat: true, recorded: np } : {}) };
+    const base = { key: field.key, label: field.label, type: field.type, sectionId: m.sectionId, groupLabel: m.groupLabel, ...(alliance ? { allianceStat: true, recorded: np } : partial ? { recorded: np } : {}) };
     const scored = !!m.points;
 
     if (field.type === "number" || field.type === "rating") {

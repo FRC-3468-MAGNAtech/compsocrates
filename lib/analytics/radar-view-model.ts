@@ -1,5 +1,5 @@
 import type { RadarProfile } from "@/config/games/radar";
-import { buildClimbBoxes, type ClimbBox } from "@/lib/analytics/climb-box";
+import { buildClimbBoxes, climbRecordedCount, type ClimbBox } from "@/lib/analytics/climb-box";
 import { axesRows, axisFullLabel, buildAxesStats } from "@/lib/analytics/radar-axes";
 import { RADAR_AXES, buildRadarStats, leadSkillByTeam, radarRows, radarSamples, type RadarRow } from "@/lib/analytics/robot-radar";
 import type { FormEntry } from "@/lib/form-entries-model";
@@ -20,6 +20,8 @@ export type RadarModel = {
   rows(a: number | undefined, b: number | undefined): RadarRow[];
   /** The Climb Reliability box plot, or null when the game has no such element (it is then not shown at all). */
   climbBoxes: ((teams: readonly number[]) => ClimbBox[]) | null;
+  /** How many of the chosen teams' entries answered "Attempted climb" (what the plot rests on), or null when the game has no climb plot. */
+  climbBasis: ((teams: readonly number[]) => number) | null;
   /** Lines under the chart for the chosen teams (what a number rests on, what reads 0 and why). */
   notes(a: number | undefined, b: number | undefined): string[];
   /** Does the profile read Lead Scout entries (the Agility axis)? When not, the page need not read them. */
@@ -37,6 +39,7 @@ export function buildRadarModel(profile: RadarProfile, entries: readonly ScoutEn
       teams: [...stats.values()].sort((x, y) => x.teamNumber - y.teamNumber).map((t) => ({ teamNumber: t.teamNumber, entryCount: t.entryCount })),
       rows: (a, b) => radarRows(a !== undefined ? stats.get(a) : undefined, b !== undefined ? stats.get(b) : undefined, maxAuto, maxActiveFuel),
       climbBoxes: (teams) => buildClimbBoxes(samples, teams),
+      climbBasis: (teams) => climbRecordedCount(samples, teams),
       notes: (a, b) => {
         const statA = a !== undefined ? stats.get(a) : undefined;
         const statB = b !== undefined ? stats.get(b) : undefined;
@@ -55,6 +58,7 @@ export function buildRadarModel(profile: RadarProfile, entries: readonly ScoutEn
     teams: [...stats.values()].sort((x, y) => x.teamNumber - y.teamNumber).map((t) => ({ teamNumber: t.teamNumber, entryCount: t.entryCount })),
     rows: (a, b) => axesRows(profile.axes, a !== undefined ? stats.get(a) : undefined, b !== undefined ? stats.get(b) : undefined, best),
     climbBoxes: null,
+    climbBasis: null,
     notes: (a, b) => {
       const lines: string[] = [];
       for (const team of [a, b]) {

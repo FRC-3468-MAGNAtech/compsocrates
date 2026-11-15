@@ -8,7 +8,15 @@ const HEIGHT = 260;
 const PAD = { top: 16, right: 16, bottom: 34, left: 40 };
 const WIDTH_PER_TEAM = 140;
 
-export function ClimbBoxPlot({ boxes }: { boxes: ClimbBox[] }) {
+/** The line under the plot: what it rests on. An entry that did not answer "Attempted climb" (anything scouted before the field existed) is unknown and left out. */
+export function climbBasisNote(recorded: number, total: number): string {
+  if (total === 0) return "No scouting entries for these teams.";
+  const entries = (n: number) => `${n} ${n === 1 ? "entry" : "entries"}`;
+  if (recorded === 0) return `None of the ${entries(total)} answered "Attempted climb" yet, so there is nothing to plot. Older entries did not have the question and are left out.`;
+  return `Based on ${entries(recorded)} that answered "Attempted climb", out of ${total}. Older entries did not have the question and are left out.`;
+}
+
+export function ClimbBoxPlot({ boxes, basis }: { boxes: ClimbBox[]; basis?: { recorded: number; total: number } }) {
   const width = Math.max(260, boxes.length * WIDTH_PER_TEAM);
   const innerW = width - PAD.left - PAD.right;
   const innerH = HEIGHT - PAD.top - PAD.bottom;
@@ -20,6 +28,7 @@ export function ClimbBoxPlot({ boxes }: { boxes: ClimbBox[] }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {basis && <p className="text-xs text-[var(--muted-foreground)]">{climbBasisNote(basis.recorded, basis.total)}</p>}
       {attempted && (
         <div className="overflow-x-auto">
           <svg width={width} height={HEIGHT} role="img" aria-label={`Climb points box plot for ${boxes.map((b) => `team ${b.teamNumber}: ${b.attemptCount === 0 ? "no attempts" : `median ${b.median}, ${b.successCount} of ${b.attemptCount} successful`}`).join("; ")}. The table below lists the same numbers.`}>

@@ -196,7 +196,8 @@ export function normalizeValues(form: Pick<Form, "sections" | "keyAliases">, raw
   for (const s of valueSlots(form)) {
     if (s.storageKey in aliased) out[s.storageKey] = coerceFieldValue(s.field, aliased[s.storageKey]);
     // an alliance-role field nobody recorded stays absent (not 0): "not recorded" differs from "recorded zero"
-    else if (s.field.allianceRole === undefined) out[s.storageKey] = defaultFieldValue(s.field);
+    // (an optional answer an old entry never had stays absent the same way: unknown, not "no")
+    else if (s.field.allianceRole === undefined && !s.field.optionalAnswer) out[s.storageKey] = defaultFieldValue(s.field);
   }
   return out;
 }

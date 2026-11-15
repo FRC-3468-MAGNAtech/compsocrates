@@ -202,6 +202,11 @@ export type FormField = {
    * only for that role (absent, not 0, for the other), and team stats read it as an alliance stat over the entries that recorded it.
    */
   allianceRole?: string;
+  /**
+   * An answer that may be missing ("unknown"): an entry saved before the field existed, or imported with an empty cell, keeps it ABSENT (not off, not 0), so
+   * readers can tell "not recorded" from "recorded as no". A NEW entry still starts from the field's default, so a scout who saw the form has answered.
+   */
+  optionalAnswer?: boolean;
   /** A short scouting tip shown while filling the form (P22). */
   tip?: string;
   /** slider: the labels at the two ends, and tick marks along the track (`min`, `max` and `step` are the integer range). */

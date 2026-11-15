@@ -17,13 +17,23 @@ const point = (i: number, n: number, value: number) => {
 };
 const polygon = (values: number[]) => values.map((v, i) => point(i, values.length, v).map((n) => n.toFixed(1)).join(",")).join(" ");
 
+const LABEL_FONT = 12;
+/** Room each side of the chart for its widest axis label (a label on the left or right edge such as "Hub Volume" runs past the plot circle). */
+export function radarLabelPad(labels: readonly string[]): number {
+  const longest = labels.reduce((m, l) => Math.max(m, l.length), 0);
+  // ~0.62em per character at the label size, the label starts about 20px inside the viewBox edge, plus a little air; never less than the old margin
+  return Math.min(120, Math.max(24, Math.ceil(longest * LABEL_FONT * 0.62) - 20 + 8));
+}
+
 export function RobotRadarChart({ rows, axes, teamA, teamB }: { rows: RadarRow[]; axes: readonly { key: string; full: string; help: string }[]; teamA: number; teamB: number | null }) {
   const n = rows.length;
   const summary = rows.map((r) => `${r.full} ${r.a.toFixed(1)}${r.b !== null ? ` versus ${r.b.toFixed(1)}` : ""}`).join(", ");
+  const pad = radarLabelPad(rows.map((r) => r.label));
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="h-auto w-full max-w-[26rem]" role="img" aria-label={`Radar chart on a 0 to 10 scale for team ${teamA}${teamB !== null ? ` and team ${teamB}` : ""}: ${summary}.`}>
+      {/* Padded on both sides and allowed to overflow, so a long label on the left or right edge is never cut off. */}
+      <svg viewBox={`${-pad} 0 ${SIZE + pad * 2} ${SIZE}`} className="h-auto w-full max-w-[30rem] overflow-visible" role="img" aria-label={`Radar chart on a 0 to 10 scale for team ${teamA}${teamB !== null ? ` and team ${teamB}` : ""}: ${summary}.`}>
         {RINGS.map((ring) => (
           <g key={ring} aria-hidden>
             <polygon points={polygon(rows.map(() => ring))} fill="none" stroke="var(--glass-border)" strokeWidth={1} />
@@ -44,7 +54,7 @@ export function RobotRadarChart({ rows, axes, teamA, teamB }: { rows: RadarRow[]
                 y={ly}
                 dy="0.32em"
                 textAnchor={Math.abs(cos) < 0.2 ? "middle" : cos > 0 ? "start" : "end"}
-                fontSize={12}
+                fontSize={LABEL_FONT}
                 fontWeight={r.highlight ? 700 : 500}
                 fill={r.highlight ? "var(--color-primary)" : "var(--muted-foreground)"}
               >

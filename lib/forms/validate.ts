@@ -113,6 +113,7 @@ const fieldSchema = z
     statRoles: z.array(z.enum(STAT_ROLES)).max(STAT_ROLES.length).optional(),
     unrealisticAbove: finite.optional(),
     allianceRole: z.string().regex(KEY).optional(),
+    optionalAnswer: z.boolean().optional(),
     tip: text(FORM_LIMITS.tip).optional(),
     endLabels: z.object({ min: text(40).optional(), max: text(40).optional() }).strict().optional(),
     ticks: z.boolean().optional(),
