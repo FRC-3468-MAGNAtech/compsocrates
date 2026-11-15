@@ -152,6 +152,8 @@ describe("winnerOf / formatStart", () => {
     expect(plain(formatStart(NINE_AM, TZ, "en-US"))).toBe("Sat 9:00 AM");
     expect(plain(formatStart(NINE_AM, "America/New_York", "en-US"))).toBe("Sat 12:00 PM");
     expect(formatStart(null, TZ, "en-US")).toBe("Time TBD");
+    // the viewer's own zone (null) with the zone name; 9:00 AM in Los Angeles is the same instant everywhere
+    expect(plain(formatStart(NINE_AM, null, "en-US", true))).toMatch(/^(Fri|Sat|Sun)\s+\d{1,2}:\d{2}\s(AM|PM)\s\S+$/);
     expect(formatStart(NINE_AM, "Not/AZone", "en-US")).toMatch(/AM|PM/);
   });
 });

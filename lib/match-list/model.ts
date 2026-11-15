@@ -150,10 +150,13 @@ export function winnerOf(row: Pick<MatchListRow, "redScore" | "blueScore">): "re
   return row.redScore > row.blueScore ? "red" : row.redScore < row.blueScore ? "blue" : "tie";
 }
 
-/** "Sat 9:30 AM" in the event's own time zone (the viewer's when the event has none); "Time TBD" without a start. */
-export function formatStart(startMs: number | null, timeZone: string | null, locale?: string): string {
+/**
+ * "Sat 9:30 AM" in `timeZone` (the viewer's own when null); "Time TBD" without a start. The Match List passes null so every time is
+ * the viewer's device time, with `showZone` adding the zone name ("Sat 7:15 PM EST") so a far-away event is not misread.
+ */
+export function formatStart(startMs: number | null, timeZone: string | null, locale?: string, showZone = false): string {
   if (startMs === null) return "Time TBD";
-  const opts: Intl.DateTimeFormatOptions = { weekday: "short", hour: "numeric", minute: "2-digit" };
+  const opts: Intl.DateTimeFormatOptions = { weekday: "short", hour: "numeric", minute: "2-digit", ...(showZone ? { timeZoneName: "short" as const } : {}) };
   try {
     return new Intl.DateTimeFormat(locale, timeZone ? { ...opts, timeZone } : opts).format(new Date(startMs));
   } catch {

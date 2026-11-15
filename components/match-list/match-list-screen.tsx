@@ -306,7 +306,7 @@ function MatchCard({ row, timeZone, showEvent, isOurTeam }: { row: MatchListRow;
     >
       <div className="flex items-baseline justify-between gap-2 sm:block">
         <div className="text-xl font-semibold tracking-tight">{row.label}</div>
-        <div className="text-xs text-[var(--muted-foreground)]">{formatStart(row.startMs, timeZone)}</div>
+        <div className="text-xs text-[var(--muted-foreground)]">{formatStart(row.startMs, null, undefined, true)}</div>
         {showEvent && (
           <div className="text-[11px] text-[var(--muted-foreground)]" title={row.eventCode}>
             <EventName eventKey={row.eventCode} />
