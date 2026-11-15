@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { BRAND } from "@/config/brand";
 import { ProgramCards } from "@/components/program/program-switcher";
 import { HomeRedirect } from "@/components/program/home-redirect";
+import { HeroAuthActions, SignedOutOnly } from "@/components/marketing/auth-actions";
 
 const features = [
   {
@@ -34,31 +35,23 @@ export default function LandingPage() {
   return (
     <div className="pb-20">
       <HomeRedirect />
+      {/* The program choice comes first: visible without scrolling on a phone and on a desktop, above the marketing content. */}
+      <section aria-label="Choose a program" className="flex flex-col items-center gap-4 pt-6 text-center sm:gap-6 sm:pt-12">
+        <h1 className="max-w-3xl text-balance text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
+          Scout smarter. <span className="text-gradient">Pick winners.</span>
+        </h1>
+        <ProgramCards className="w-full max-w-3xl" />
+      </section>
+
       <section className="relative flex flex-col items-center gap-8 pt-16 text-center sm:pt-24">
         <Badge variant="glass" className="gap-2 px-4 py-1.5">
           <Sparkles className="h-3.5 w-3.5" style={{ color: "var(--color-secondary)" }} />
           {BRAND.tagline}
         </Badge>
-        <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
-          Scout smarter.
-          <br />
-          <span className="text-gradient">Pick winners.</span>
-        </h1>
         <p className="max-w-xl text-balance text-base text-[var(--muted-foreground)] sm:text-lg">
           {BRAND.description}
         </p>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link href="/signup">
-            <Button size="lg" className="gap-2">
-              Get started <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/login">
-            <Button size="lg" variant="glass">
-              Log in
-            </Button>
-          </Link>
-        </div>
+        <HeroAuthActions />
 
         <GlassPanel strong className="mt-10 w-full max-w-4xl overflow-hidden p-0">
           <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-5 py-3">
@@ -78,10 +71,6 @@ export default function LandingPage() {
         </GlassPanel>
       </section>
 
-      <section className="mt-16" aria-label="Choose a program">
-        <ProgramCards />
-      </section>
-
       <section className="mt-24 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {features.map(({ icon: Icon, title, desc }) => (
           <GlassPanel key={title} interactive className="flex flex-col gap-3">
@@ -97,6 +86,7 @@ export default function LandingPage() {
         ))}
       </section>
 
+      <SignedOutOnly>
       <section className="mt-24 flex justify-center">
         <GlassPanel strong className="flex w-full max-w-3xl flex-col items-center gap-5 py-12 text-center">
           <Trophy className="h-10 w-10" style={{ color: "var(--color-secondary)" }} />
@@ -111,6 +101,7 @@ export default function LandingPage() {
           </Link>
         </GlassPanel>
       </section>
+      </SignedOutOnly>
     </div>
   );
 }

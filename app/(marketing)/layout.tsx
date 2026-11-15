@@ -2,7 +2,7 @@
 
 import Link from "@/components/program/link";
 import { Trophy } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { HeaderAuthActions } from "@/components/marketing/auth-actions";
 import { ColorModeToggle } from "@/components/theme/color-mode-toggle";
 import { GlassLayerButton } from "@/components/theme/glass-layer-slider";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -26,14 +26,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             <ColorModeToggle compact />
           </div>
           <GlassLayerButton compact side="bottom" />
-          <Link href="/login">
-            <Button variant="ghost" size="sm">
-              Log in
-            </Button>
-          </Link>
-          <Link href="/signup">
-            <Button size="sm">Sign up</Button>
-          </Link>
+          <HeaderAuthActions />
         </div>
       </header>
 

@@ -10,6 +10,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/auth/google-button";
 import { useAuth } from "@/lib/auth";
+import { SignedOutOnly } from "@/components/marketing/auth-actions";
 import { cardEntranceVariants } from "@/lib/motion";
 import { BRAND } from "@/config/brand";
 
@@ -214,12 +215,14 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="text-center text-sm text-[var(--muted-foreground)]">
-            No account?{" "}
-            <Link href="/signup" className="font-medium text-[var(--foreground)] underline underline-offset-4">
-              Sign up
-            </Link>
-          </p>
+          <SignedOutOnly>
+            <p className="text-center text-sm text-[var(--muted-foreground)]">
+              No account?{" "}
+              <Link href="/signup" className="font-medium text-[var(--foreground)] underline underline-offset-4">
+                Sign up
+              </Link>
+            </p>
+          </SignedOutOnly>
 
           <p className="text-center text-xs text-[var(--muted-foreground)]">
             By continuing, you agree to our{" "}

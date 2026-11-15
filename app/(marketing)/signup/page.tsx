@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/auth/google-button";
 import { TeamEnrollmentFields, TeamEnrollmentScreen, useTeamEnrollment } from "@/components/auth/team-enrollment";
 import { useAuth } from "@/lib/auth";
+import { SignedOutOnly } from "@/components/marketing/auth-actions";
 import { cardEntranceVariants } from "@/lib/motion";
 
 function authErrorMessage(err: unknown): string {
@@ -240,12 +241,14 @@ export default function SignupPage() {
             </Button>
           </form>
 
-          <p className="text-center text-sm text-[var(--muted-foreground)]">
-            Already have an account?{" "}
-            <Link href="/login" className="font-medium text-[var(--foreground)] underline underline-offset-4">
-              Log in
-            </Link>
-          </p>
+          <SignedOutOnly>
+            <p className="text-center text-sm text-[var(--muted-foreground)]">
+              Already have an account?{" "}
+              <Link href="/login" className="font-medium text-[var(--foreground)] underline underline-offset-4">
+                Log in
+              </Link>
+            </p>
+          </SignedOutOnly>
 
           <p className="text-center text-xs text-[var(--muted-foreground)]">
             By creating an account, you agree to our{" "}
