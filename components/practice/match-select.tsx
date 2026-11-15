@@ -1,20 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, Shuffle, VideoOff } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadError } from "@/components/practice/load-error";
 import { ChipSummary } from "@/components/practice/chip-summary";
 import { useAuth } from "@/lib/auth";
 import { useTeamDoc } from "@/lib/team";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgramData } from "@/lib/program/data";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
 import { useTeamPracticeSessions } from "@/lib/practice-sessions";
 import { buildMatchRows, pickRandomMatchRow, type MatchRow } from "@/lib/practice-match-rows";
 import { DIFFICULTY_CLASSNAMES, DIFFICULTY_LABELS, type Difficulty } from "@/lib/difficulty";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import { getSeason } from "@/lib/seasons";
 import { cn } from "@/lib/utils";
 
 const STATUS_BADGE: Record<MatchRow["status"], { label: string; className: string }> = {
@@ -30,23 +33,37 @@ export function MatchSelect({
   onStart,
 }: {
   seasonId: string;
-  difficulty: Difficulty;
+  /** Null: every difficulty (and matches with no official score yet). */
+  difficulty: Difficulty | null;
   onBack: () => void;
   onStart: (row: MatchRow) => void;
 }) {
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const { team } = useTeamDoc(teamId);
-  const usePlaceholder = team?.usePlaceholderVideo ?? false;
+  // A program with its own library has no video entry yet: a match without one is scouted against the timer placeholder instead of being unstartable.
+  const ownLibrary = useProgramData()?.library != null;
+  const usePlaceholder = (team?.usePlaceholderVideo ?? false) || ownLibrary;
   const { matches, loaded: matchesLoaded, error: matchesError, retry: retryMatches } = useLibraryMatchesBySeason(seasonId);
   const { sessions, loaded: sessionsLoaded, error: sessionsError, retry: retrySessions } = useTeamPracticeSessions(teamId);
   const loadError = matchesError ?? sessionsError;
-  const season = getSeason(seasonId);
+  const seasonName = useForms().seasonFor(seasonId).name;
 
-  const rows = useMemo(
-    () => (user ? buildMatchRows(matches, sessions, user.uid, difficulty) : []),
-    [matches, sessions, user, difficulty]
-  );
+  // The events that have published matches, from the library (not the team's own event list or its archived events). Only a program with its own library
+  // picks an event first; the default program lists every match of the season, as before.
+  const events = useMemo(() => {
+    const byCode = new Map<string, string>();
+    for (const m of matches) if (!byCode.has(m.eventCode)) byCode.set(m.eventCode, m.eventName || m.eventCode);
+    return [...byCode].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [matches]);
+  const [chosenEvent, setChosenEvent] = useState<string | null>(null);
+  const eventCode = ownLibrary ? (events.find((e) => e.code === chosenEvent)?.code ?? events[0]?.code ?? null) : null;
+
+  const rows = useMemo(() => {
+    if (!user) return [];
+    const all = buildMatchRows(matches, sessions, user.uid, difficulty);
+    return ownLibrary ? all.filter((r) => r.eventCode === eventCode) : all;
+  }, [matches, sessions, user, difficulty, ownLibrary, eventCode]);
   const startable = useMemo(() => rows.filter((r) => r.hasVideo || usePlaceholder), [rows, usePlaceholder]);
 
   const handleRandomize = () => {
@@ -55,6 +72,7 @@ export function MatchSelect({
   };
 
   const loaded = matchesLoaded && sessionsLoaded;
+  const nothingPublished = ownLibrary && matches.length === 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -62,18 +80,37 @@ export function MatchSelect({
         <Button variant="ghost" className="gap-1.5" onClick={onBack}>
           <ChevronLeft className="h-4 w-4" /> Back
         </Button>
-        <ChipSummary seasonName={season.name} difficulty={difficulty} />
+        <ChipSummary seasonName={seasonName} difficulty={difficulty} />
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <h2 className="text-lg font-bold">Pick a match</h2>
-        <Button className="gap-2" disabled={startable.length === 0} onClick={handleRandomize}>
-          <Shuffle className="h-4 w-4" /> Randomize
-        </Button>
+        <div className="flex flex-wrap items-end gap-3">
+          {ownLibrary && events.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="practice-event">Event</Label>
+              <Select value={eventCode ?? ""} onValueChange={setChosenEvent}>
+                <SelectTrigger id="practice-event" className="w-64" data-testid="practice-event-select">
+                  <SelectValue>{events.find((e) => e.code === eventCode)?.name ?? eventCode}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {events.map((e) => (
+                    <SelectItem key={e.code} value={e.code}>
+                      {e.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <Button className="gap-2" disabled={startable.length === 0} onClick={handleRandomize}>
+            <Shuffle className="h-4 w-4" /> Randomize
+          </Button>
+        </div>
       </div>
 
       {!loaded ? (
-        <div className="glass-card h-48 animate-pulse" />
+        <div className="glass-card h-48 animate-pulse" aria-busy="true" />
       ) : loadError ? (
         <LoadError
           failure={loadError}
@@ -82,10 +119,18 @@ export function MatchSelect({
             retrySessions();
           }}
         />
+      ) : nothingPublished ? (
+        <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]" data-testid="practice-empty">
+          No practice matches published yet. Ask an admin to publish a library match.
+        </GlassPanel>
       ) : rows.length === 0 ? (
         <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">
-          No {DIFFICULTY_LABELS[difficulty].toLowerCase()} matches in the library yet &mdash; ask an admin to import one in the
-          Admin Panel (or, if matches were imported before and are missing, to press Update library in Admin Panel &gt; Match Library).
+          {difficulty === null
+            ? "No matches to scout in this event yet."
+            : `No ${DIFFICULTY_LABELS[difficulty].toLowerCase()} matches ${ownLibrary ? "in this event" : "in the library"} yet`}
+          {ownLibrary
+            ? ". Try another event or difficulty, or ask an admin to publish more matches."
+            : " — ask an admin to import one in the Admin Panel (or, if matches were imported before and are missing, to press Update library in Admin Panel > Match Library)."}
         </GlassPanel>
       ) : (
         <div className="flex flex-col gap-2">
@@ -117,7 +162,13 @@ export function MatchSelect({
                     Manual
                   </Badge>
                 )}
-                <Badge className={DIFFICULTY_CLASSNAMES[row.difficulty]}>{DIFFICULTY_LABELS[row.difficulty]}</Badge>
+                {row.difficulty ? (
+                  <Badge className={DIFFICULTY_CLASSNAMES[row.difficulty]}>{DIFFICULTY_LABELS[row.difficulty]}</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">
+                    No official score yet
+                  </Badge>
+                )}
                 <Badge className={status.className}>
                   {status.label}
                   {row.byYou ? " · by you" : ""}

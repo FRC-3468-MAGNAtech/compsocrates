@@ -16,7 +16,7 @@ export const FRC_PROGRAM: ProgramConfig = {
   pagesConnected: true,
   connection: {
     paths: "all",
-    features: { assignments: true, subIns: true, practice: true, live: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: true, joinRequests: true, announcements: true, eventLookup: true },
+    features: { assignments: true, subIns: true, practice: true, live: true, lobby: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: true, joinRequests: true, announcements: true, eventLookup: true },
   },
   // Today's Admin Panel, unchanged: every tab, in this order (the platform-owner tabs and Forms are still gated by who is looking).
   admin: { tabs: ADMIN_TAB_IDS, platformSettings: true },

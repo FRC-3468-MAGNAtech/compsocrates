@@ -13,9 +13,14 @@ describe("the dashboard sources a program has connected", () => {
     }
   });
 
-  it("a program without practice does not read the session source, and reads the rest (the library, assignments and the pick list are connected)", () => {
+  it("a program with solo practice reads the session source too (through its own session store), with the library, assignments and the pick list", () => {
     const got = connectedSources(all, PROGRAMS.ftc.connection.features);
-    expect([...got].sort()).toEqual(["assignments", "attendance", "formEntries", "library", "members", "pickList", "teamAssignments"]);
+    expect([...got].sort()).toEqual(["assignments", "attendance", "formEntries", "library", "members", "pickList", "sessions", "teamAssignments"]);
+  });
+
+  it("a program without practice does not read the session source", () => {
+    const got = connectedSources(all, { ...PROGRAMS.ftc.connection.features, practice: false });
+    expect([...got]).not.toContain("sessions");
   });
 
   it("only the features a source needs matter", () => {

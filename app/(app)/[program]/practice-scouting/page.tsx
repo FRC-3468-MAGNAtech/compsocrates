@@ -18,7 +18,11 @@ import { LobbyFlow } from "@/components/practice/lobby/lobby-flow";
 import { useAuth } from "@/lib/auth";
 import { useTeamDoc } from "@/lib/team";
 import { detectPlatform } from "@/lib/platform";
-import { getSeason } from "@/lib/seasons";
+import { GameSelect } from "@/components/scout/game-select";
+import { UnreadableSessionsNotice } from "@/components/practice/unreadable-sessions-notice";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { useProgramData } from "@/lib/program/data";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
 import { useMyActiveLobbyId } from "@/lib/lobby";
 import { useTeamActiveLiveScouts } from "@/lib/live-presence";
@@ -51,9 +55,15 @@ export default function PracticeScoutingPage() {
   const { user, profile, loading } = useAuth();
   const teamId = profile?.teamId ?? null;
   const { team } = useTeamDoc(teamId);
-  const usePlaceholder = team?.usePlaceholderVideo ?? false;
 
-  const { session: pausedSession, loaded: pausedLoaded } = useOwnPausedSession(teamId, user?.uid ?? null);
+  const program = useProgram();
+  const { live: liveConnected, lobby: lobbyConnected } = useProgramConfig().connection.features;
+  // A program with its own session store: one game, solo practice only, no member-matching reads, a library without video entry yet.
+  const ownStore = useProgramData()?.practice != null;
+  const usePlaceholder = (team?.usePlaceholderVideo ?? false) || ownStore;
+  const forms = useForms();
+  const seasonName = (id: string) => forms.seasonFor(id).name;
+  const { session: pausedSession, loaded: pausedLoaded, error: pausedError } = useOwnPausedSession(teamId, user?.uid ?? null);
   const { sessions: liveSessions, loaded: liveSessionsLoaded } = useTeamLiveSessions(teamId);
   const myRecentLiveSessions = liveSessions
     .filter((s) => s.uid === user?.uid && s.status === "completed")
@@ -63,7 +73,8 @@ export default function PracticeScoutingPage() {
   const [step, setStep] = useState<Step>("season");
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [mode, setMode] = useState<SessionMode>(null);
-  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  // "any" (a program whose matches can have no official score yet) lists every match; otherwise one difficulty.
+  const [difficulty, setDifficulty] = useState<Difficulty | "any" | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<FirestoreFailure | null>(null);
@@ -85,7 +96,7 @@ export default function PracticeScoutingPage() {
   const handleResume = (session: PracticeSession) => {
     setSeasonId(session.seasonId);
     setMode(session.mode);
-    setDifficulty(session.difficulty);
+    setDifficulty(session.difficulty ?? "any");
     setActiveSessionId(session.id);
     setStep("session");
   };
@@ -95,12 +106,13 @@ export default function PracticeScoutingPage() {
     setClaiming(true);
     setError(null);
     try {
-      const sessionId = await claimSessionId(teamId, user.uid, "solo");
+      const sessionId = await claimSessionId(teamId, user.uid, "solo", 5, program);
       await updatePracticeSession(sessionId, {
         scoutName: profile.name,
         seasonId,
         mode,
-        difficulty,
+        // the alliance's own difficulty (null when its match has no official score yet); the one chosen when a single difficulty was picked
+        difficulty: row.difficulty,
         libraryMatchId: row.libraryMatchId,
         eventCode: row.eventCode,
         alliance: row.alliance,
@@ -117,7 +129,7 @@ export default function PracticeScoutingPage() {
         lobbyId: null,
         pairId: null,
         finishedAt: null,
-      }, { match: { id: row.libraryMatchId, eventCode: row.eventCode, eventName: row.eventName ?? "", matchType: row.matchType, matchNumber: row.matchNumber, cs: row.cs } });
+      }, { match: { id: row.libraryMatchId, eventCode: row.eventCode, eventName: row.eventName ?? "", matchType: row.matchType, matchNumber: row.matchNumber, cs: row.cs } }, program);
       setActiveSessionId(sessionId);
       setStep("session");
     } catch (err) {
@@ -168,20 +180,26 @@ export default function PracticeScoutingPage() {
               Scout recorded matches solo, on your own time &mdash; Trial to practice, Competitive for the real pressure.
             </p>
           </div>
-          <PresencePanel
-            teamId={teamId}
-            onJoin={(target) => {
-              setLiveResumeTarget(target);
-              setStep("live");
-            }}
-          />
-          <PendingRobotsList
-            onStart={(target) => {
-              setLiveResumeTarget(target);
-              setStep("live");
-            }}
-          />
-          {myActiveLobbyId && (
+          {ownStore && profile?.isAdmin && <UnreadableSessionsNotice teamId={teamId} />}
+          {pausedError && <LoadError failure={pausedError} />}
+          {liveConnected && (
+            <PresencePanel
+              teamId={teamId}
+              onJoin={(target) => {
+                setLiveResumeTarget(target);
+                setStep("live");
+              }}
+            />
+          )}
+          {liveConnected && (
+            <PendingRobotsList
+              onStart={(target) => {
+                setLiveResumeTarget(target);
+                setStep("live");
+              }}
+            />
+          )}
+          {lobbyConnected && myActiveLobbyId && (
             <GlassPanel className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm">You&apos;re still in a Live Practice Lobby.</span>
               <Button
@@ -195,6 +213,7 @@ export default function PracticeScoutingPage() {
               </Button>
             </GlassPanel>
           )}
+          {lobbyConnected && (
           <GlassPanel className="flex flex-wrap items-center gap-3">
             <Input
               value={joinCode}
@@ -213,7 +232,8 @@ export default function PracticeScoutingPage() {
               Join Lobby
             </Button>
           </GlassPanel>
-          {myRecentLiveSessions.length > 0 && (
+          )}
+          {liveConnected && myRecentLiveSessions.length > 0 && (
             <GlassPanel className="flex flex-col gap-3">
               <h2 className="text-base font-semibold">Recent live matches</h2>
               <div className="flex flex-col gap-2">
@@ -250,6 +270,21 @@ export default function PracticeScoutingPage() {
                 Finish or discard your paused session before starting a new one.
               </p>
             </>
+          ) : ownStore ? (
+            // One game: the shared game dropdown, disabled with the game's name, then on to the mode.
+            <div className="flex flex-col gap-4">
+              <GameSelect value={forms.defaultSeasonId} onChange={() => undefined} disabled id="practice-game" />
+              <Button
+                size="lg"
+                className="min-h-11 self-start"
+                onClick={() => {
+                  setSeasonId(forms.defaultSeasonId);
+                  setStep("mode");
+                }}
+              >
+                Start practice
+              </Button>
+            </div>
           ) : (
             <SeasonSelect
               onSelect={(id) => {
@@ -267,7 +302,7 @@ export default function PracticeScoutingPage() {
             <Button variant="ghost" className="gap-1.5" onClick={() => setStep("season")}>
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
-            <ChipSummary seasonName={getSeason(seasonId).name} />
+            <ChipSummary seasonName={seasonName(seasonId)} />
           </div>
           <ModeSelect
             onSelect={(m) => {
@@ -284,22 +319,38 @@ export default function PracticeScoutingPage() {
             <Button variant="ghost" className="gap-1.5" onClick={() => setStep("mode")}>
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
-            <ChipSummary seasonName={getSeason(seasonId).name} mode={mode} />
+            <ChipSummary seasonName={seasonName(seasonId)} mode={mode} />
           </div>
           <DifficultySelect
             onSelect={(d) => {
               setDifficulty(d);
               setStep("match-select");
             }}
-            onSelectLive={() => {
-              setLiveResumeTarget(undefined);
-              setLiveViewResultsId(undefined);
-              setStep("live");
-            }}
-            onSelectLobby={() => {
-              setLobbyId(undefined);
-              setStep("lobby");
-            }}
+            onSelectAny={
+              ownStore
+                ? () => {
+                    setDifficulty("any");
+                    setStep("match-select");
+                  }
+                : undefined
+            }
+            onSelectLive={
+              liveConnected
+                ? () => {
+                    setLiveResumeTarget(undefined);
+                    setLiveViewResultsId(undefined);
+                    setStep("live");
+                  }
+                : undefined
+            }
+            onSelectLobby={
+              lobbyConnected
+                ? () => {
+                    setLobbyId(undefined);
+                    setStep("lobby");
+                  }
+                : undefined
+            }
           />
         </>
       )}
@@ -332,7 +383,7 @@ export default function PracticeScoutingPage() {
       {step === "match-select" && seasonId && difficulty && (
         <>
           {error && <LoadError failure={error} />}
-          <MatchSelect seasonId={seasonId} difficulty={difficulty} onBack={() => setStep("difficulty")} onStart={claimAndStart} />
+          <MatchSelect seasonId={seasonId} difficulty={difficulty === "any" ? null : difficulty} onBack={() => setStep("difficulty")} onStart={claimAndStart} />
           {claiming && <p className="text-sm text-[var(--muted-foreground)]">Starting session&hellip;</p>}
         </>
       )}

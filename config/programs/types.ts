@@ -43,8 +43,10 @@ export type ProgramFeatures = {
   subIns: boolean;
   /** Practice sessions and the "scores ready" watcher. */
   practice: boolean;
-  /** Live match presence. */
+  /** Live match presence and live practice. Off: no live entry point, pill or watcher is shown and no live collection is read. */
   live: boolean;
+  /** Practice lobbies (shared sessions). Off: no lobby entry point, join box or rejoin banner is shown and no lobby collection is read. Solo practice rides `practice`. */
+  lobby: boolean;
   /** The match library and its admin backfill. */
   library: boolean;
   /** The shared pick list (the board and its edit log). */
@@ -121,4 +123,9 @@ export type ProgramConfig = {
   admin: ProgramAdmin;
   /** May one account hold several teams and switch between them (lib/our-team.ts)? Off: one team per account, and no switcher is shown. */
   multiTeam: boolean;
+  /**
+   * The practice difficulty cut-offs of the games this program has that the default program's registry does not know, by game id (upper case):
+   * `lib/difficulty.ts` reads them for this program. Absent: the default program's own game table applies.
+   */
+  gameDifficulty?: Readonly<Record<string, { readonly easyMax: number; readonly mediumMax: number }>>;
 };

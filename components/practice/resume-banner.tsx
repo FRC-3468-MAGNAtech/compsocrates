@@ -5,6 +5,7 @@ import { PauseCircle, Trash2 } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useProgram } from "@/lib/program/context";
 import { deletePracticeSession, type PracticeSession } from "@/lib/practice-sessions";
 
 export function ResumeBanner({
@@ -16,13 +17,14 @@ export function ResumeBanner({
   onResume: () => void;
   onDiscarded: () => void;
 }) {
+  const program = useProgram();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [discarding, setDiscarding] = useState(false);
 
   const handleDiscard = async () => {
     setDiscarding(true);
     try {
-      await deletePracticeSession(session.id);
+      await deletePracticeSession(session.id, program);
       onDiscarded();
     } finally {
       setDiscarding(false);

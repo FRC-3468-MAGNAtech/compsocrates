@@ -37,9 +37,9 @@ describe("admin tab resolver", () => {
 });
 
 describe("FTC admin connection", () => {
-  it("/admin is connected and the library flag is on; csvImport, practice, live and accuracy stay off", () => {
+  it("/admin is connected and the library flag is on; csvImport, live, lobby and accuracy stay off (solo practice is on)", () => {
     expect(PROGRAMS.ftc.connection.paths).toContain("/admin");
     expect(PROGRAMS.ftc.connection.features.library).toBe(true);
-    for (const off of ["csvImport", "practice", "live", "accuracy"] as const) expect(PROGRAMS.ftc.connection.features[off], off).toBe(false);
+    for (const off of ["csvImport", "live", "lobby", "accuracy"] as const) expect(PROGRAMS.ftc.connection.features[off], off).toBe(false);
   });
 });

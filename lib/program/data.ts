@@ -34,8 +34,9 @@ import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import type { TeamDoc } from "@/lib/team";
 import type { LibraryEvent } from "@/lib/library/store";
 import type { EventFormInput } from "@/lib/library/event-form";
-import type { CreateEventResult, ImportOutcome, LibraryActor, ScheduleMatchInput, UpsertResult } from "@/lib/library/schedule";
+import type { CreateEventResult, ImportOutcome, LibraryActor, MatchScores, ScheduleMatchInput, UpsertResult } from "@/lib/library/schedule";
 import type { LibraryMatch } from "@/lib/match-library";
+import type { AllianceColor, PracticeSession, SessionKind } from "@/lib/practice-sessions";
 
 export type DataError = (failure: FirestoreFailure) => void;
 
@@ -162,12 +163,31 @@ export type ProgramData = {
     /** Creates or replaces hand-made matches of one event. A new match is an unpublished draft; an edit keeps its published state. */
     upsertMatches(actor: LibraryActor, event: LibraryEvent, matches: readonly ScheduleMatchInput[]): Promise<UpsertResult>;
     setPublished(actor: LibraryActor, ids: readonly string[], published: boolean): Promise<number>;
+    /** Sets (or, with null, clears) the OFFICIAL score of one match: what Practice Scouting compares a session's total with. A match with none is "No official score yet". */
+    setScores(actor: LibraryActor, id: string, scores: MatchScores | null): Promise<number>;
     deleteMatches(actor: LibraryActor, ids: readonly string[]): Promise<number>;
     /**
      * Fetches the event's schedule on the server (keys never reach the browser) and writes it under stable ids, so importing twice updates in place.
      * A missing or rejected key, a rate limit or an unknown event comes back as `{ ok: false, message }` with nothing written.
      */
     importSchedule(actor: LibraryActor, args: { eventCode: string; seasonId: string }): Promise<ImportOutcome>;
+  };
+  /**
+   * Practice sessions (FTC: `programs/ftc/practiceSessions`). The root program has none: its hooks read the root collections themselves
+   * (`lib/practice-sessions.ts`, `lib/practice-extras.ts`). Every list is `teamId ==` (team-wide, never by event); a failed read calls `onError`.
+   */
+  practice: {
+    subscribeTeamSessions(teamId: string, onData: (sessions: PracticeSession[]) => void, onError: DataError): Unsubscribe;
+    subscribeOwnPaused(teamId: string, uid: string, onData: (session: PracticeSession | null) => void, onError: DataError): Unsubscribe;
+    subscribeSession(sessionId: string, onData: (session: PracticeSession | null) => void, onError: DataError): Unsubscribe;
+    getSession(sessionId: string): Promise<PracticeSession | null>;
+    /** Reserves a unique session id (a stub doc) and returns it. */
+    claimSession(teamId: string, uid: string, kind: SessionKind): Promise<string>;
+    updateSession(sessionId: string, patch: Partial<PracticeSession>): Promise<void>;
+    deleteSession(sessionId: string): Promise<void>;
+    hasCompletedAttempt(teamId: string, uid: string, libraryMatchId: string, alliance: AllianceColor): Promise<boolean>;
+    /** Every entry saved so far for one session (both robots), found by the session id. */
+    entriesForSession(teamId: string, sessionId: string): Promise<ScoutEntry[]>;
   };
   games: {
     seasons: readonly ProgramSeason[];

@@ -137,6 +137,8 @@ export function ftcDocToScoutEntry(id: string, doc: FtcScoutEntryDoc): ScoutEntr
  */
 export function ftcScoutEntryDoc(teamId: string, uid: string, input: SaveEntryInput, now: () => unknown, submittedAt: string = new Date().toISOString()): Record<string, unknown> {
   const { source = "event", mode = null, sessionId = null, libraryMatchId = null, ...rest } = input;
+  // `gate` only tells the shared submit path which season's switch applies: it is never written to the document.
+  delete (rest as { gate?: unknown }).gate;
   return stripUndefined({
     ...rest,
     teamId,

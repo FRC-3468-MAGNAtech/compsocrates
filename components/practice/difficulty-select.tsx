@@ -9,12 +9,16 @@ const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 
 export function DifficultySelect({
   onSelect,
+  onSelectAny,
   onSelectLive,
   onSelectLobby,
 }: {
   onSelect: (difficulty: Difficulty) => void;
-  onSelectLive: () => void;
-  onSelectLobby: () => void;
+  /** Offered by a program whose matches can have no official score yet (and so no difficulty): every match, whatever its difficulty. */
+  onSelectAny?: () => void;
+  /** Live and lobby entry points exist only where the program has them: a missing handler hides the tile (no dead button). */
+  onSelectLive?: () => void;
+  onSelectLobby?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -30,21 +34,36 @@ export function DifficultySelect({
             <Badge className={`text-sm ${DIFFICULTY_CLASSNAMES[difficulty]}`}>{DIFFICULTY_LABELS[difficulty]}</Badge>
           </GlassPanel>
         ))}
+        {onSelectAny && (
+          <GlassPanel interactive onClick={onSelectAny} data-testid="difficulty-any" className="flex flex-col items-center gap-2 py-10 text-center">
+            <Badge variant="outline" className="text-sm">
+              Any difficulty
+            </Badge>
+          </GlassPanel>
+        )}
       </div>
 
+      {(onSelectLive || onSelectLobby) && (
+        <>
       <h3 className="mt-2 text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Other ways to scout</h3>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {onSelectLive && (
         <GlassPanel interactive onClick={onSelectLive} className="flex flex-col items-center gap-2 py-8 text-center">
           <Radio className="h-6 w-6 text-[var(--color-primary)]" />
           <div className="text-base font-semibold">Live</div>
           <p className="text-xs text-[var(--muted-foreground)]">Scout a real, livestreamed FRC match.</p>
         </GlassPanel>
+        )}
+        {onSelectLobby && (
         <GlassPanel interactive onClick={onSelectLobby} className="flex flex-col items-center gap-2 py-8 text-center">
           <Users className="h-6 w-6 text-[var(--color-primary)]" />
           <div className="text-base font-semibold">Live Practice Lobby</div>
           <p className="text-xs text-[var(--muted-foreground)]">Host or join a Kahoot-style group scouting round.</p>
         </GlassPanel>
+        )}
       </div>
+        </>
+      )}
     </div>
   );
 }

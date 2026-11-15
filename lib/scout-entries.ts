@@ -369,8 +369,10 @@ export function entryDocForSave(teamId: string, uid: string, input: SaveEntryInp
 /** `program` picks where the entry is written: the default program's `scouting` collection (below), or a namespaced program's own through its data port. */
 export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
   // Session E: the team's submission switches, enforced here for every new entry (the one place; edits go through updateEntry and are never gated).
-  // Practice Scouting (a practice or live-practice session) is never closed: it is harmless and always encouraged.
-  if (input.source !== "practice" && input.source !== "live") assertSubmissionOpen(program, teamId, input.gate);
+  // Practice Scouting (a practice or live-practice session) is never closed in the default program: it is harmless and always encouraged. A program with its
+  // own practice store closes it with the team's switches like every form, so a practice entry is gated here too (the screen disables Submit first).
+  const practiceStore = programData(program)?.practice != null;
+  if (practiceStore || (input.source !== "practice" && input.source !== "live")) assertSubmissionOpen(program, teamId, input.gate);
   const data = programData(program);
   if (data) return data.scoutEntries.save(teamId, uid, input);
   // Throws for a form CS cannot store: nothing is written.
@@ -417,7 +419,9 @@ export function subscribeEntries(teamId: string, eventCode: string, callback: (e
 }
 
 /** P4: every entry saved so far for one practice session (`practiceSessionId`), so Results can assemble both robots' entries. */
-export async function getEntriesForSession(teamId: string, sessionId: string): Promise<ScoutEntry[]> {
+export async function getEntriesForSession(teamId: string, sessionId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<ScoutEntry[]> {
+  const port = programData(program)?.practice;
+  if (port) return port.entriesForSession(teamId, sessionId);
   const [snap, flags] = await Promise.all([getDocs(teamQuery(teamId, where("practiceSessionId", "==", sessionId))), loadFlagStates(teamId)]);
   return toEntries(snap.docs.map(toRaw), teamId, flags);
 }

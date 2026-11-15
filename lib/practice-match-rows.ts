@@ -12,7 +12,10 @@ export type MatchRow = {
   matchNumber: number;
   alliance: AllianceColor;
   teams: number[];
-  difficulty: Difficulty;
+  /** Null when the alliance has no official score yet (a scheduled match nobody has scored): it has no difficulty either. */
+  difficulty: Difficulty | null;
+  /** False when the alliance has no official score yet: its session shows the totals and "No official score yet", never an accuracy. Absent on every FRC row. */
+  scoreKnown?: boolean;
   hasVideo: boolean;
   /** P15: hand-entered rather than imported from the FIRST API — shown as a small "Manual" tag. */
   manual?: boolean;
@@ -39,7 +42,8 @@ export function buildMatchRows(
   matches: LibraryMatch[],
   sessions: PracticeSession[],
   uid: string,
-  difficulty: Difficulty
+  /** Null lists every alliance whatever its difficulty (including ones with no official score yet). */
+  difficulty: Difficulty | null
 ): MatchRow[] {
   const rows: MatchRow[] = [];
 
@@ -47,7 +51,9 @@ export function buildMatchRows(
     for (const alliance of ["red", "blue"] as const) {
       const side = match.alliances[alliance];
       // An alliance with no teams is one CS never imported (it only keeps alliances that have a video): nothing to scout.
-      if (side.difficulty !== difficulty || side.teams.length === 0) continue;
+      const scoreKnown = side.scoreKnown !== false;
+      const rowDifficulty = scoreKnown ? side.difficulty : null;
+      if ((difficulty !== null && rowDifficulty !== difficulty) || side.teams.length === 0) continue;
 
       const relevant = sessions.filter((s) => s.libraryMatchId === match.id && s.alliance === alliance);
       const completed = relevant.filter((s) => s.status === "completed");
@@ -70,7 +76,8 @@ export function buildMatchRows(
         matchNumber: match.matchNumber,
         alliance,
         teams: side.teams,
-        difficulty: side.difficulty,
+        difficulty: rowDifficulty,
+        ...(scoreKnown ? {} : { scoreKnown: false }),
         hasVideo: match.video !== null,
         manual: match.origin === "manual",
         eventName: match.eventName,

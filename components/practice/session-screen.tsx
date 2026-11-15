@@ -18,8 +18,11 @@ import { ChipSummary } from "@/components/practice/chip-summary";
 import { springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import { getSeason } from "@/lib/seasons";
-import { computeAllianceAccuracy } from "@/lib/accuracy/engine";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgram } from "@/lib/program/context";
+import { useProgramData } from "@/lib/program/data";
+import { SubmissionLockoutBanner, useSubmissionLockout } from "@/components/forms/submission-lockout";
+import { practiceOutcome } from "@/lib/practice-outcome";
 import { evaluatePracticeSessionFlags, type PendingSessionFlag } from "@/lib/practice-flags";
 import { calculateScore, type ScoreResult } from "@/lib/forms/scoring";
 import { useLockedForm } from "@/lib/forms/forms-context";
@@ -72,7 +75,13 @@ export function SessionScreen({
   const scoutFormRef = useRef<ScoutFormHandle>(null);
   const videoRef = useRef<VideoPlayerHandle>(null);
 
-  const season = getSeason(session.seasonId);
+  const program = useProgram();
+  const seasonName = useForms().seasonFor(session.seasonId).name;
+  // A program with its own session store closes practice submissions with the team's switches (the master switch and the season's), like every form.
+  // What was typed stays on the page: the Submit buttons are only disabled. The default program's practice is never closed (Session E), as before.
+  const submissionsGated = useProgramData()?.practice != null;
+  const lockout = useSubmissionLockout(session.teamId, session.seasonId);
+  const submissionsClosed = submissionsGated && lockout.locked;
   // The season's form, fixed for this session so every robot is scouted with the same version.
   const form = useLockedForm(session.seasonId);
   const teamNumber = session.robots[robotIndex];
@@ -100,7 +109,8 @@ export function SessionScreen({
       mode: session.mode,
       sessionId: session.id,
       libraryMatchId: session.libraryMatchId!,
-    });
+      gate: { seasonId: session.seasonId },
+    }, program);
   };
 
   const handleNextOrFinish = async () => {
@@ -124,26 +134,26 @@ export function SessionScreen({
     setError(null);
     try {
       await saveRobotEntry(robot);
-      const entries = await getEntriesForSession(session.teamId, session.id);
-      // One entry per scouted robot (3 for FRC); every one must be there to score the alliance.
+      const entries = await getEntriesForSession(session.teamId, session.id, program);
+      // One entry per scouted robot (the alliance size: 3 for one program, 2 for the other); every one must be there to score the alliance.
       const allianceEntries = entries.slice(0, session.robots.length);
       if (allianceEntries.length < session.robots.length) throw new Error("Couldn't find every robot's entries.");
 
       const alliance = session.alliance!;
       const officialAlliance = libraryMatch.alliances[alliance];
-      // A form with scoring off has nothing to compare to the official score: accuracy is "n/a" (null), never an error (P21).
-      const { accuracy, scoutedTotal } = form.scoringEnabled
-        ? computeAllianceAccuracy({
-            robotScores: allianceEntries.map((e) => e.score.total),
-            penaltyPoints: officialAlliance.penaltyPoints,
-            officialScore: officialAlliance.score,
-          })
-        : { accuracy: null, scoutedTotal: null };
+      // A form with scoring off has nothing to compare to the official score: accuracy is "n/a" (null), never an error (P21). An alliance with no official
+      // score yet keeps the robots' total and has no accuracy (never a 0).
+      const { accuracy, scoutedTotal, officialScore, penaltyPoints } = practiceOutcome({
+        robotScores: allianceEntries.map((e) => e.score.total),
+        official: officialAlliance,
+        scoringEnabled: form.scoringEnabled,
+      });
       const priorCompletedAttempt = await hasCompletedAttemptBefore(
         session.teamId,
         session.uid,
         session.libraryMatchId!,
-        alliance
+        alliance,
+        program
       );
       const flags: PendingSessionFlag[] = evaluatePracticeSessionFlags({
         entries: allianceEntries,
@@ -158,11 +168,11 @@ export function SessionScreen({
         entryIds: entries.map((e) => e.id),
         accuracy,
         scoutedTotal,
-        penaltyPoints: officialAlliance.penaltyPoints,
-        officialScore: officialAlliance.score,
+        penaltyPoints: officialScore === null ? null : penaltyPoints,
+        officialScore,
         flags: flags.map((f) => ({ ...f, dismissed: false })),
         finishedAt: new Date().toISOString(),
-      });
+      }, undefined, program);
       onCompleted();
     } catch (err) {
       setError(describeFirestoreError("Couldn't finish the session.", err));
@@ -177,7 +187,7 @@ export function SessionScreen({
     setError(null);
     try {
       await saveRobotEntry(pendingRobot);
-      await updatePracticeSession(session.id, { completedRobots: [...session.completedRobots, pendingRobot.teamNumber] });
+      await updatePracticeSession(session.id, { completedRobots: [...session.completedRobots, pendingRobot.teamNumber] }, undefined, program);
       setBreakMenuOpen(false);
       setPendingRobot(null);
       setRobotIndex((i) => i + 1);
@@ -201,7 +211,7 @@ export function SessionScreen({
       await updatePracticeSession(session.id, {
         status: "paused",
         completedRobots: [...session.completedRobots, pendingRobot.teamNumber],
-      });
+      }, undefined, program);
       onPaused();
     } catch (err) {
       setError(describeFirestoreError("Couldn't pause the session.", err));
@@ -210,7 +220,7 @@ export function SessionScreen({
   };
 
   const handleEndOrCancel = async () => {
-    await deletePracticeSession(session.id);
+    await deletePracticeSession(session.id, program);
     onExitToMatchSelect();
   };
 
@@ -221,7 +231,7 @@ export function SessionScreen({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <ChipSummary seasonName={season.name} mode={session.mode} difficulty={session.difficulty} />
+          <ChipSummary seasonName={seasonName} mode={session.mode} difficulty={session.difficulty} />
           <Badge variant="glass" className="font-mono">
             {MATCH_TYPE_PREFIX[libraryMatch.matchType]}
             {libraryMatch.matchNumber}
@@ -284,6 +294,7 @@ export function SessionScreen({
         notice={
           <>
             {validationError && <p className="mt-2 text-sm font-medium text-red-300">Fill in the form before continuing.</p>}
+            {submissionsClosed && <div className="mt-2"><SubmissionLockoutBanner lockout={lockout} editAllowed={false} /></div>}
             {error && <LoadError failure={error} />}
           </>
         }
@@ -292,7 +303,7 @@ export function SessionScreen({
             <Button variant="ghost" className="gap-1.5 text-red-300" onClick={() => setCancelConfirmOpen(true)}>
               <X className="h-4 w-4" /> Cancel
             </Button>
-            <Button size="lg" className="gap-2" onClick={handleNextOrFinish} disabled={saving}>
+            <Button size="lg" className="gap-2" onClick={handleNextOrFinish} disabled={saving || submissionsClosed} data-testid="practice-submit">
               <Send className="h-4 w-4" />
               {saving ? "Saving…" : isLastRobot ? "Finish Session" : `Next Robot (${robotIndex + 1}/${session.robots.length})`}
             </Button>

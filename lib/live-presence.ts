@@ -2,6 +2,7 @@
 
 import { deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { useProgramConfig } from "@/lib/program/context";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { liveMatchScoutsQuery, teamLiveScoutsQuery } from "@/lib/practice-queries";
@@ -88,9 +89,11 @@ export function useLiveMatchScouts(matchKey: string | null, teamId: string | nul
 export function useTeamActiveLiveScouts(teamId: string | null) {
   const [scouts, setScouts] = useState<(LiveMatchScoutPresence & { matchKey: string })[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  // A program without live practice has no presence docs to read (this is a collection-group query: it must not run there).
+  const liveConnected = useProgramConfig().connection.features.live;
 
   useEffect(() => {
-    if (!teamId || !isFirebaseConfigured()) {
+    if (!teamId || !liveConnected || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setScouts([]);
       setLoaded(true);
@@ -110,7 +113,7 @@ export function useTeamActiveLiveScouts(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId]);
+  }, [teamId, liveConnected]);
 
   return { scouts, loaded };
 }

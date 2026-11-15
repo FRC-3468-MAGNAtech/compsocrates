@@ -98,12 +98,19 @@ describe("the shared write path", () => {
     expect(h.saveScout).toHaveBeenCalledTimes(1);
   });
 
-  it("Practice Scouting is never closed, even with the master switch off", async () => {
+  // Batch 3: this program has its own practice store, and its Practice Scouting follows the team's switches like every form (the default program's stays
+  // exempt: lib/ftc/practice-program.test.ts).
+  it("Practice Scouting is closed with the master switch off, like every other submission", async () => {
     settings({ enabled: false, seasons: { biobuzz: false } });
-    await saveEntry(TEAM, "u", { ...scout, source: "practice", mode: "trial", sessionId: "s1" }, "ftc");
-    await saveEntry(TEAM, "u", { ...scout, source: "live", sessionId: "s2" }, "ftc");
-    expect(h.saveScout).toHaveBeenCalledTimes(2);
+    await expect(saveEntry(TEAM, "u", { ...scout, source: "practice", mode: "trial", sessionId: "s1", gate: { seasonId: "biobuzz" } }, "ftc")).rejects.toBeInstanceOf(SubmissionClosedError);
     await expect(saveEntry(TEAM, "u", { ...scout, source: "event" }, "ftc")).rejects.toBeInstanceOf(SubmissionClosedError);
+    expect(h.saveScout).not.toHaveBeenCalled();
+  });
+
+  it("Practice Scouting is open when the switches are on, and a practice entry is not written with the gate field", async () => {
+    settings({ enabled: true, seasons: { biobuzz: true } });
+    await saveEntry(TEAM, "u", { ...scout, source: "practice", mode: "trial", sessionId: "s1", gate: { seasonId: "biobuzz" } }, "ftc");
+    expect(h.saveScout).toHaveBeenCalledTimes(1);
   });
 
   it("an admin's import (bypass) is not a scout submitting", async () => {

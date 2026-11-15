@@ -16,6 +16,9 @@ import { tryClaimDoc } from "@/lib/claim-doc";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { completedAttemptQuery, ownPausedSessionQuery, scoutSessionsQuery, teamLiveSessionsQuery, teamSessionsQuery } from "@/lib/practice-queries";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programData, useProgramData } from "@/lib/program/data";
+import { useProgramConfig } from "@/lib/program/context";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/events/types";
 
@@ -79,6 +82,8 @@ export type PracticeSession = {
   /** P7: stream position (seconds) when scouting started/ended, when the embed could report it — used to re-watch the match later. Null if not captured (e.g. "Open in a new tab" fallback) or not finished yet. */
   streamStartSec: number | null;
   streamEndSec: number | null;
+  /** Schedule-only programs (additive, never stored): why a stored doc could not be read as a whole session ("no team id, unknown status"). Such a session is kept and flagged for an admin, never dropped. */
+  malformed?: string;
 };
 
 // D1: sessions live in CS's `practiceSessions` (data/cs/practice.ts). An app-written session carries the app's fields (uid, kind, status, ...)
@@ -131,7 +136,9 @@ export async function claimUniqueDocId(
  * (P4) follows up with further writes to fill in the rest of the session
  * once more context is known (library match, alliance, robots, ...).
  */
-export async function claimSessionId(teamId: string, uid: string, kind: SessionKind, maxAttempts = 5): Promise<string> {
+export async function claimSessionId(teamId: string, uid: string, kind: SessionKind, maxAttempts = 5, program: ProgramId = DEFAULT_PROGRAM): Promise<string> {
+  const port = programData(program)?.practice;
+  if (port) return port.claimSession(teamId, uid, kind);
   return claimUniqueDocId(
     COLLECTION,
     SESSION_ID_PREFIXES[kind],
@@ -163,11 +170,15 @@ const isSession = (s: PracticeSession | null): s is PracticeSession => s !== nul
  * readable by CS: pass `context` (the library match, the session kind) when the patch sets the match, since the CS match fields come
  * from the match and the patch alone does not carry them.
  */
-export async function updatePracticeSession(sessionId: string, patch: Partial<PracticeSession>, context?: SessionWriteContext): Promise<void> {
+export async function updatePracticeSession(sessionId: string, patch: Partial<PracticeSession>, context?: SessionWriteContext, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.practice;
+  if (port) return port.updateSession(sessionId, patch);
   await updateDoc(doc(db, COLLECTION, sessionId), { ...patch, ...practicePatchToCsFields(patch, context) });
 }
 
-export async function getPracticeSession(sessionId: string): Promise<PracticeSession | null> {
+export async function getPracticeSession(sessionId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<PracticeSession | null> {
+  const port = programData(program)?.practice;
+  if (port) return port.getSession(sessionId);
   const snap = await getDoc(doc(db, COLLECTION, sessionId));
   return snap.exists() ? toSession(snap.id, snap.data()) : null;
 }
@@ -176,6 +187,7 @@ export async function getPracticeSession(sessionId: string): Promise<PracticeSes
 export function usePracticeSession(sessionId: string | null) {
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.practice;
 
   useEffect(() => {
     if (!sessionId || !isFirebaseConfigured()) {
@@ -183,6 +195,19 @@ export function usePracticeSession(sessionId: string | null) {
       setSession(null);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      return port.subscribeSession(
+        sessionId,
+        (next) => {
+          setSession(next);
+          setLoaded(true);
+        },
+        () => {
+          setSession(null);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       doc(db, COLLECTION, sessionId),
@@ -197,7 +222,7 @@ export function usePracticeSession(sessionId: string | null) {
       }
     );
     return unsubscribe;
-  }, [sessionId]);
+  }, [sessionId, port]);
 
   return { session, loaded };
 }
@@ -215,6 +240,7 @@ function useTeamPracticeSessionsBase(teamId: string | null) {
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const port = useProgramData()?.practice;
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) {
@@ -224,6 +250,22 @@ function useTeamPracticeSessionsBase(teamId: string | null) {
       return;
     }
     setError(null);
+    if (port) {
+      // A program with its own session store: team-wide (teamId ==, never by event); a failed read is an error, not an empty list. A doc that could not be
+      // read as a whole session is kept (flagged malformed), not dropped.
+      return port.subscribeTeamSessions(
+        teamId,
+        (all) => {
+          setSessions(all.filter((s) => s.kind === "solo"));
+          setLoaded(true);
+        },
+        (failure) => {
+          setError(failure);
+          setSessions([]);
+          setLoaded(true);
+        }
+      );
+    }
     const unsubscribe = onSnapshot(
       // CS's own snapshots carry no `kind`, so the team's sessions are read and filtered here instead of querying `kind == "solo"`.
       teamSessionsQuery(db, teamId),
@@ -240,7 +282,7 @@ function useTeamPracticeSessionsBase(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId, attempt]);
+  }, [teamId, attempt, port]);
 
   return { sessions, loaded, error, retry: () => setAttempt((n) => n + 1) };
 }
@@ -254,9 +296,11 @@ function useTeamPracticeSessionsBase(teamId: string | null) {
 export function useTeamLiveSessions(teamId: string | null) {
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  // A program without live practice reads nothing here (no live session store exists for it).
+  const liveConnected = useProgramConfig().connection.features.live;
 
   useEffect(() => {
-    if (!teamId || !isFirebaseConfigured()) {
+    if (!teamId || !liveConnected || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSessions([]);
       setLoaded(true);
@@ -275,7 +319,7 @@ export function useTeamLiveSessions(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId]);
+  }, [teamId, liveConnected]);
 
   return { sessions, loaded };
 }
@@ -291,6 +335,7 @@ function useAllTeamPracticeSessionsBase(teamId: string | null) {
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.practice;
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) {
@@ -298,6 +343,21 @@ function useAllTeamPracticeSessionsBase(teamId: string | null) {
       setSessions([]);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      setError(null);
+      return port.subscribeTeamSessions(
+        teamId,
+        (all) => {
+          setSessions(all);
+          setLoaded(true);
+        },
+        (failure) => {
+          setError(failure);
+          setSessions([]);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       teamSessionsQuery(db, teamId),
@@ -314,7 +374,7 @@ function useAllTeamPracticeSessionsBase(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId]);
+  }, [teamId, port]);
 
   return { sessions, loaded, error };
 }
@@ -323,6 +383,8 @@ function useAllTeamPracticeSessionsBase(teamId: string | null) {
 export function useOwnPausedSession(teamId: string | null, uid: string | null) {
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const [error, setError] = useState<FirestoreFailure | null>(null);
+  const port = useProgramData()?.practice;
 
   useEffect(() => {
     if (!teamId || !uid || !isFirebaseConfigured()) {
@@ -330,6 +392,23 @@ export function useOwnPausedSession(teamId: string | null, uid: string | null) {
       setSession(null);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      setError(null);
+      return port.subscribeOwnPaused(
+        teamId,
+        uid,
+        (next) => {
+          setSession(next);
+          setLoaded(true);
+        },
+        (failure) => {
+          // A failed read is an error to show, not "nothing paused": the scout is told, so they do not start over by mistake.
+          setError(failure);
+          setSession(null);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       ownPausedSessionQuery(db, teamId, uid),
@@ -345,9 +424,9 @@ export function useOwnPausedSession(teamId: string | null, uid: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId, uid]);
+  }, [teamId, uid, port]);
 
-  return { session, loaded };
+  return { session, loaded, error };
 }
 
 /** One-shot check for the "Repeat Attempt" flag — has this uid already completed this exact alliance+match before? */
@@ -355,8 +434,11 @@ export async function hasCompletedAttemptBefore(
   teamId: string,
   uid: string,
   libraryMatchId: string,
-  alliance: AllianceColor
+  alliance: AllianceColor,
+  program: ProgramId = DEFAULT_PROGRAM
 ): Promise<boolean> {
+  const port = programData(program)?.practice;
+  if (port) return port.hasCompletedAttempt(teamId, uid, libraryMatchId, alliance);
   const snap = await getDocs(completedAttemptQuery(db, teamId, uid, libraryMatchId, alliance));
   if (!snap.empty) return true;
   // A CS-written snapshot has no `status` / `uid`: look through the scout's sessions by `scoutId` for the same match and alliance.
@@ -379,7 +461,9 @@ export async function hasCompletedAttemptBefore(
  * completed (see firestore.rules) — P4 extends P3's `allow delete: if
  * false` for exactly this.
  */
-export async function deletePracticeSession(sessionId: string): Promise<void> {
+export async function deletePracticeSession(sessionId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.practice;
+  if (port) return port.deleteSession(sessionId);
   await deleteDoc(doc(db, COLLECTION, sessionId));
 }
 
@@ -402,17 +486,20 @@ export function getCategory(input: CategoryInput): ScoutingCategory {
  */
 export function useTeamPracticeSessions(teamId: string | null) {
   const base = useTeamPracticeSessionsBase(teamId);
-  const extras = usePracticeExtras(teamId);
+  // A program with its own session store has nothing the team query misses (new data, flags on the session): no member-matching extras are read.
+  const ownStore = useProgramData()?.practice != null;
+  const extras = usePracticeExtras(ownStore ? null : teamId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sessions = useMemo(() => finalizeSessions(base.sessions, extras).filter((s) => s.kind === "solo"), [base.sessions, extras.sessions, extras.excluded, extras.members]);
+  const sessions = useMemo(() => (ownStore ? base.sessions : finalizeSessions(base.sessions, extras).filter((s) => s.kind === "solo")), [ownStore, base.sessions, extras.sessions, extras.excluded, extras.members]);
   return { sessions, loaded: base.loaded && extras.loaded, error: base.error ?? extras.error, retry: base.retry };
 }
 
 /** Every session of the team, any kind, with the same extras as `useTeamPracticeSessions`. */
 export function useAllTeamPracticeSessions(teamId: string | null) {
   const base = useAllTeamPracticeSessionsBase(teamId);
-  const extras = usePracticeExtras(teamId);
+  const ownStore = useProgramData()?.practice != null;
+  const extras = usePracticeExtras(ownStore ? null : teamId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sessions = useMemo(() => finalizeSessions(base.sessions, extras), [base.sessions, extras.sessions, extras.excluded, extras.members]);
+  const sessions = useMemo(() => (ownStore ? base.sessions : finalizeSessions(base.sessions, extras)), [ownStore, base.sessions, extras.sessions, extras.excluded, extras.members]);
   return { sessions, loaded: base.loaded && extras.loaded, error: base.error ?? extras.error };
 }

@@ -3,11 +3,12 @@
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/config/games/ftc";
 import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
-import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, subscribeLibraryEvents, subscribeLibraryMatches, upsertManualMatches } from "@/data/ftc/library";
+import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchScores, subscribeLibraryEvents, subscribeLibraryMatches, upsertManualMatches } from "@/data/ftc/library";
 import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
+import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeOwnPausedSession, subscribeSession, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
 import { fetchFtcSchedule } from "@/lib/ftc/library-import";
 import { approveJoinRequest, denyJoinRequest, subscribePendingJoinRequests } from "@/data/ftc/join-requests";
-import { getFormVersion, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
+import { getFormVersion, getScoutEntriesForSession, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
 import {
   adminUpdateFormEntry,
   deleteFormEntry,
@@ -69,6 +70,7 @@ export const ftcProgramData: ProgramData = {
     deleteEvent: deleteManualEvent,
     upsertMatches: upsertManualMatches,
     setPublished: setMatchesPublished,
+    setScores: setMatchScores,
     deleteMatches: deleteManualMatches,
     importSchedule: async (actor, { eventCode, seasonId }) => {
       const season = FTC_SEASONS.find((s) => s.id === seasonId);
@@ -85,6 +87,17 @@ export const ftcProgramData: ProgramData = {
         return { ok: false, message: err instanceof Error && err.message ? err.message : "Couldn't save the imported schedule. Run the import again: it picks up where it stopped." };
       }
     },
+  },
+  practice: {
+    subscribeTeamSessions,
+    subscribeOwnPaused: subscribeOwnPausedSession,
+    subscribeSession,
+    getSession,
+    claimSession,
+    updateSession,
+    deleteSession,
+    hasCompletedAttempt,
+    entriesForSession: getScoutEntriesForSession,
   },
   games: { seasons: FTC_SEASONS, defaultSeasonId: seasonIdOf(CURRENT_FTC_GAME_ID), builtinForms: FTC_BUILTIN_FORMS },
 };

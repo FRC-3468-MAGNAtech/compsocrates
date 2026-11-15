@@ -101,7 +101,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           </main>
           <SiteFooter className="mt-10" />
         </div>
-        {features.practice && <ScoresReadyWatcher />}
+        {features.practice && features.live && <ScoresReadyWatcher />}
         {features.assignments && <TeamAssignmentsWatcher />}
         {profile.isAdmin && features.library && <LibraryBackfill />}
       </div>

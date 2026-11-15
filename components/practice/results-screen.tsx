@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { ChipSummary } from "@/components/practice/chip-summary";
 import { getStatus, getPercentColor } from "@/lib/accuracy/engine";
 import { getEntriesForSession, type ScoutEntry } from "@/lib/scout-entries";
-import { getSeason } from "@/lib/seasons";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgram } from "@/lib/program/context";
+import { useProgramData } from "@/lib/program/data";
 import { cardEntranceVariants } from "@/lib/motion";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { PracticeSession } from "@/lib/practice-sessions";
@@ -26,25 +28,44 @@ export function ResultsScreen({
   onBackToPracticeScouting: () => void;
 }) {
   const [entries, setEntries] = useState<ScoutEntry[] | null>(null);
-  const season = getSeason(session.seasonId);
+  const program = useProgram();
+  const seasonName = useForms().seasonFor(session.seasonId).name;
+  // A program with its own session store can finish a session with no accuracy (the match has no official score yet): that is a result, not a loading state.
+  const noAccuracyIsResult = useProgramData()?.practice != null;
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    getEntriesForSession(session.teamId, session.id).then((result) => {
-      if (!cancelled) setEntries(result);
-    });
+    getEntriesForSession(session.teamId, session.id, program)
+      .then((result) => {
+        if (!cancelled) setEntries(result);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [session.teamId, session.id]);
+  }, [session.teamId, session.id, program]);
 
-  if (!entries || session.accuracy === null) {
-    return <div className="glass-card h-64 animate-pulse" />;
+  if (loadError) {
+    return (
+      <GlassPanel role="alert" className="flex flex-col gap-3 py-8 text-center text-sm">
+        <p>Your session was saved, but the robots&apos; entries couldn&apos;t be loaded for the results. Check your connection and try again.</p>
+        <Button variant="glass" className="mx-auto min-h-11" onClick={onBackToPracticeScouting}>
+          Back to Practice Scouting
+        </Button>
+      </GlassPanel>
+    );
   }
+  if (!entries || (session.accuracy === null && !noAccuracyIsResult) || (noAccuracyIsResult && session.status !== "completed")) {
+    return <div className="glass-card h-64 animate-pulse" aria-busy="true" />;
+  }
+  const hasOfficial = session.officialScore !== null && session.accuracy !== null;
 
   // One comparison tile per scouted robot (3 for FRC), in scouting order.
   const robotStats = session.robots.map((team, i) => ({ team, total: (entries.find((e) => e.teamNumber === team) ?? entries[i])?.score.total ?? 0 }));
-  const accuracy = session.accuracy;
+  const accuracy = session.accuracy ?? 0;
   const status = getStatus(accuracy);
   const percentColor = getPercentColor(accuracy);
   const officialAlliance = libraryMatch.alliances[session.alliance ?? "red"];
@@ -53,7 +74,7 @@ export function ResultsScreen({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <ChipSummary seasonName={season.name} mode={session.mode} difficulty={session.difficulty} />
+        <ChipSummary seasonName={seasonName} mode={session.mode} difficulty={session.difficulty} />
         {libraryMatch.origin === "manual" && (
           <Badge variant="outline" className="text-[10px]" title="Entered by hand — this event's scores aren't in the FIRST API">
             Manual
@@ -64,25 +85,37 @@ export function ResultsScreen({
       <motion.div variants={cardEntranceVariants} initial="hidden" animate="show">
         <GlassPanel strong className="flex flex-col items-center gap-2 py-10 text-center">
           <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Accuracy</span>
-          <span className={`text-6xl font-bold tabular-nums ${percentColor}`}>{Math.round(accuracy)}%</span>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.badgeClassName}`}>{status.label}</span>
+          {hasOfficial ? (
+            <>
+              <span className={`text-6xl font-bold tabular-nums ${percentColor}`} data-testid="practice-accuracy">{Math.round(accuracy)}%</span>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.badgeClassName}`}>{status.label}</span>
+            </>
+          ) : (
+            <span className="text-2xl font-semibold text-[var(--muted-foreground)]" data-testid="practice-no-official-score">No official score yet</span>
+          )}
         </GlassPanel>
       </motion.div>
 
       <GlassPanel className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Comparison</h2>
-        <div className={`grid grid-cols-2 gap-3 text-sm ${COMPARISON_COLUMNS[robotStats.length + 2] ?? "sm:grid-cols-4"}`}>
+        <div className={`grid grid-cols-2 gap-3 text-sm ${COMPARISON_COLUMNS[robotStats.length + (hasOfficial ? 2 : 1)] ?? "sm:grid-cols-4"}`}>
           {robotStats.map((r) => (
             <Stat key={r.team} label={`Team ${r.team}`} value={r.total} />
           ))}
-          <Stat label="+ Penalties" value={session.penaltyPoints ?? officialAlliance.penaltyPoints} />
+          {hasOfficial && <Stat label="+ Penalties" value={session.penaltyPoints ?? officialAlliance.penaltyPoints} />}
           <Stat label="= Your total" value={session.scoutedTotal ?? 0} emphasize />
         </div>
         <div className="my-1 h-px bg-[var(--glass-border)]" />
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <Stat label="Your total" value={session.scoutedTotal ?? 0} />
-          <Stat label="Official score" value={session.officialScore ?? officialAlliance.score} />
-          <Stat label="Difference" value={difference} signed />
+          {hasOfficial ? (
+            <>
+              <Stat label="Official score" value={session.officialScore ?? officialAlliance.score} />
+              <Stat label="Difference" value={difference} signed />
+            </>
+          ) : (
+            <Stat label="Official score" value="Not entered yet" />
+          )}
         </div>
       </GlassPanel>
 
@@ -101,8 +134,8 @@ export function ResultsScreen({
 // Full literal class names so Tailwind picks them up: the robots' tiles plus the penalties and total tiles.
 const COMPARISON_COLUMNS: Record<number, string> = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" };
 
-function Stat({ label, value, emphasize, signed }: { label: string; value: number; emphasize?: boolean; signed?: boolean }) {
-  const display = signed && value > 0 ? `+${value}` : String(value);
+function Stat({ label, value, emphasize, signed }: { label: string; value: number | string; emphasize?: boolean; signed?: boolean }) {
+  const display = signed && typeof value === "number" && value > 0 ? `+${value}` : String(value);
   return (
     <div className="glass-card flex flex-col gap-1 p-3">
       <span className="text-[11px] text-[var(--muted-foreground)]">{label}</span>

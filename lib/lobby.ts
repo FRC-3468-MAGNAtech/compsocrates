@@ -9,6 +9,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { useProgramConfig } from "@/lib/program/context";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { lobbyPlayersQuery, lobbySessionsQuery, myLobbyPlayersQuery } from "@/lib/practice-queries";
@@ -239,9 +240,11 @@ export function useLobbySessions(teamId: string | null, lobbyId: string | null) 
 export function useMyActiveLobbyId(uid: string | null) {
   const [lobbyId, setLobbyId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  // A program without lobbies reads no player docs (this is a collection-group query: it must not run there).
+  const lobbyConnected = useProgramConfig().connection.features.lobby;
 
   useEffect(() => {
-    if (!uid || !isFirebaseConfigured()) {
+    if (!uid || !lobbyConnected || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLobbyId(null);
       setLoaded(true);
@@ -270,7 +273,7 @@ export function useMyActiveLobbyId(uid: string | null) {
       }
     );
     return unsubscribe;
-  }, [uid]);
+  }, [uid, lobbyConnected]);
 
   return { lobbyId, loaded };
 }
