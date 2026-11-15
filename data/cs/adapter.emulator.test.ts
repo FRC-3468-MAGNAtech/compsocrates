@@ -137,12 +137,16 @@ const rt = vi.hoisted(() => {
       },
     };
   }
-  return { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore, renderHook };
+  // No provider is ever mounted here, so a context reads as its default value (the real useContext needs a React render, which these tests do not have).
+  function useContext<T>(context: { _currentValue: T }): T {
+    return context._currentValue;
+  }
+  return { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore, useContext, renderHook };
 });
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
-  return { ...actual, default: actual, useState: rt.useState, useEffect: rt.useEffect, useMemo: rt.useMemo, useCallback: rt.useCallback, useRef: rt.useRef, useSyncExternalStore: rt.useSyncExternalStore };
+  return { ...actual, default: actual, useState: rt.useState, useEffect: rt.useEffect, useMemo: rt.useMemo, useCallback: rt.useCallback, useRef: rt.useRef, useSyncExternalStore: rt.useSyncExternalStore, useContext: rt.useContext };
 });
 // useAssignments asks the event facade for the match schedule (TBA over the network). The tests have no schedule: slot positions fall back to
 // "first free slot" (documented in data/cs/assignments.ts), which is what the stored rows are matched by anyway.
