@@ -101,6 +101,8 @@ export type ProgramAdmin = {
   tabs: readonly AdminTabId[];
   /** The platform owner's "Allow team creation" card (it reads root collections). */
   platformSettings: boolean;
+  /** Public templates, "request to publish" and the owner's review (cross-team sharing). Off: the Forms tab shows the team's own templates only. */
+  templateSharing: boolean;
 };
 
 export type ProgramConfig = {
@@ -128,9 +130,8 @@ export type ProgramConfig = {
   /**
    * What Team Settings shows beyond the team's name and number (a multi-team program edits its teams list instead of the single name/number).
    * `ownershipTransfer`: the Ownership card (its actions call a server route that only knows the default program's teams).
-   * `activeForms`: the "form for each season" card (a program whose Admin Panel has no Forms tab chooses it here).
    */
-  teamSettings: { ownershipTransfer: boolean; activeForms: boolean };
+  teamSettings: { ownershipTransfer: boolean };
   /** The starter changelog drafts created the first time an admin opens the Changelog. Absent: the default program's list (lib/changelog/seed.ts). */
   changelogSeed?: readonly StarterEntry[];
   /**

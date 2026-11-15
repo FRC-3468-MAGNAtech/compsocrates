@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { Check, Users } from "lucide-react";
-import { ActiveFormsSection } from "@/components/team/active-forms-section";
 import { AccountTeamsSection } from "@/components/team/account-teams-section";
 import { OwnershipSection } from "@/components/team/ownership-section";
 import { Button } from "@/components/ui/button";
@@ -118,7 +117,6 @@ export default function TeamSettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Team Settings</h1>
         <p className="text-sm text-[var(--muted-foreground)]">
           {multiTeam ? "The teams your account scouts for and who sees which" : "Your team's name and number"}
-          {teamSettings.activeForms ? ", the form for each season" : ""}
           {teamSettings.ownershipTransfer ? ", and who owns the account." : "."}
         </p>
       </div>
@@ -130,7 +128,6 @@ export default function TeamSettingsPage() {
       ) : (
         <TeamIdentitySection teamId={teamId} initialName={name ?? ""} initialNumber={number !== null ? String(number) : ""} canEdit={isAdmin} />
       )}
-      {teamSettings.activeForms && <ActiveFormsSection />}
       {teamSettings.ownershipTransfer && <OwnershipSection />}
     </div>
   );

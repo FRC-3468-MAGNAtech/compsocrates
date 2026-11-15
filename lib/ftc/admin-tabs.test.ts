@@ -17,20 +17,36 @@ describe("admin tab resolver", () => {
     expect(PROGRAMS.frc.admin.platformSettings).toBe(true);
   });
 
-  it("FTC shows exactly Match Library, Page Access, Sidebar, Submissions and Audit Log", () => {
-    expect(resolveAdminTabs(PROGRAMS.ftc.admin, plainAdmin)).toEqual(["match-library", "page-access", "sidebar", "submissions", "audit-log"]);
+  it("FTC shows the nine ported tabs in FRC's order (Forms, Sessions, Rescore and Backups are the Batch 5b ones; templates live inside Forms)", () => {
+    const ftc = resolveAdminTabs(PROGRAMS.ftc.admin, plainAdmin);
+    expect(ftc).toEqual(["match-library", "forms", "page-access", "sidebar", "submissions", "sessions", "rescore", "audit-log", "backups"]);
+    // the shared tabs keep the order FRC has them in
+    const frc = resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin);
+    expect(frc.filter((t) => ftc.includes(t))).toEqual(ftc);
+  });
+
+  it("Forms follows the permission to manage forms in both programs", () => {
+    const noForms = { isPlatformOwner: false, canManageForms: false };
+    expect(resolveAdminTabs(PROGRAMS.ftc.admin, noForms)).not.toContain("forms");
+    expect(resolveAdminTabs(PROGRAMS.frc.admin, noForms)).not.toContain("forms");
+  });
+
+  it("FTC has no public template sharing; FRC keeps it", () => {
+    expect(PROGRAMS.ftc.admin.templateSharing).toBe(false);
+    expect(PROGRAMS.frc.admin.templateSharing).toBe(true);
   });
 
   it("FTC hides the unported and owner-only tabs even from a platform owner", () => {
     const shown = resolveAdminTabs(PROGRAMS.ftc.admin, owner);
-    for (const hidden of ["forms", "sessions", "rescore", "backups", "templates", "applications", "recovery", "entries", "match-scout-ids", "practice-session-ids", "setup-check"]) expect(shown, hidden).not.toContain(hidden);
+    for (const hidden of ["templates", "applications", "recovery", "entries", "match-scout-ids", "practice-session-ids", "setup-check"]) expect(shown, hidden).not.toContain(hidden);
     expect(PROGRAMS.ftc.admin.platformSettings).toBe(false);
   });
 
   it("opens the first shown tab when the wanted one is not shown", () => {
     const ftc = resolveAdminTabs(PROGRAMS.ftc.admin, plainAdmin);
     expect(activeAdminTab(ftc, null)).toBe("match-library");
-    expect(activeAdminTab(ftc, "rescore")).toBe("match-library");
+    expect(activeAdminTab(ftc, "recovery")).toBe("match-library");
+    expect(activeAdminTab(ftc, "rescore")).toBe("rescore");
     expect(activeAdminTab(ftc, "sidebar")).toBe("sidebar");
     expect(activeAdminTab([], "sidebar")).toBeNull();
   });

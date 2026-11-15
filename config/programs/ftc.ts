@@ -73,11 +73,12 @@ export const FTC_PROGRAM: ProgramConfig = {
     ],
     features: { assignments: true, subIns: false, practice: true, live: false, lobby: false, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },
-  // Only the tabs whose data layer is ported: Forms, Sessions, Rescore, Backups, Templates and the platform-owner tabs are not listed, so they do not exist here.
-  admin: { tabs: ["match-library", "page-access", "sidebar", "submissions", "audit-log"], platformSettings: false },
+  // Only the tabs whose data layer is ported, in the shared order. Not listed, so they do not exist here: Entries, the two ID tools, Setup Check and the platform-owner tabs
+  // (Team Applications, Template Review, Recovery). The team's own templates live inside the Forms tab (as in the other program), without public sharing.
+  admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "submissions", "sessions", "rescore", "audit-log", "backups"], platformSettings: false, templateSharing: false },
   multiTeam: true,
-  // Team Settings: the season's form is chosen here (the Forms admin tab is not ported); ownership transfer is a root-only server route, so its card is not shown.
-  teamSettings: { ownershipTransfer: false, activeForms: true },
+  // Team Settings: the season's form is chosen in Admin Panel > Forms (as in the other program); ownership transfer is a root-only server route, so its card is not shown.
+  teamSettings: { ownershipTransfer: false },
   // The changelog's starter drafts: only features this program has today (lib/ftc/changelog-seed.ts).
   changelogSeed: FTC_STARTER_ENTRIES,
   practice: { noScoreIsResult: true, liveTileText: "Scout a real, livestreamed FTC match." },

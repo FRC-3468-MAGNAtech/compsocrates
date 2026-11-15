@@ -22,6 +22,8 @@ const PORT_READERS: Record<string, string> = {
   "app/(app)/[program]/practice-scouting/page.tsx": "own session store: placeholder video and the unreadable-sessions notice (accepted FTC-only)",
   "app/(app)/[program]/scout/page.tsx": "own entry store for accuracy recompute",
   "components/admin/match-library-panel.tsx": "KNOWN FORK (Group B in docs/PARITY_REPORT.md): two library panels, to be merged next",
+  "components/admin/backups-panel.tsx": "which export runs (the program's own collections, team-scoped) and the form used for CSV columns when a team has no entries; the panel is shared",
+  "components/admin/rescore-panel.tsx": "a program with its own session/entry store keeps admins' flag dismissals and never replaces a recorded accuracy with a missing one; the library refresh goes through the program's port (data, not layout)",
   "components/admin/schedule-library-panel.tsx": "KNOWN FORK (Group B): the FTC library panel, to be merged into the shared one",
   "components/analytics/import-csv-dialog.tsx": "which import engine runs; the preview component is shared",
   "components/practice/live/live-results-screen.tsx": "live results data source",
@@ -31,7 +33,6 @@ const PORT_READERS: Record<string, string> = {
   "components/program/program-gate.tsx": "enrollment for a program with a port",
   "components/program/team-setup.tsx": "enrollment writes through the port; the card is shared",
   "components/team/account-teams-section.tsx": "its writes (add, rename, remove, assign) and the team-name lookup go through the program's port; shown only where the program has several teams per account (ProgramConfig.multiTeam)",
-  "components/team/active-forms-section.tsx": "its write goes through the program's port; shown only where the program has no Forms admin tab (ProgramConfig.teamSettings.activeForms)",
   "components/team/join-requests-panel.tsx": "which source the same panel reads",
 };
 

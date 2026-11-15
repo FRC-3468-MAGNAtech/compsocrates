@@ -19,10 +19,10 @@ export const FRC_PROGRAM: ProgramConfig = {
     features: { assignments: true, subIns: true, practice: true, live: true, lobby: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: true, joinRequests: true, announcements: true, eventLookup: true },
   },
   // Today's Admin Panel, unchanged: every tab, in this order (the platform-owner tabs and Forms are still gated by who is looking).
-  admin: { tabs: ADMIN_TAB_IDS, platformSettings: true },
+  admin: { tabs: ADMIN_TAB_IDS, platformSettings: true, templateSharing: true },
   multiTeam: false,
   // Team Settings: FRC's page is unchanged (its form choice lives in Admin Panel > Forms, its ownership transfer is the root route's).
-  teamSettings: { ownershipTransfer: true, activeForms: false },
+  teamSettings: { ownershipTransfer: true },
   // FRC keeps the skeleton until accuracy exists (CS behavior, unchanged); see the note in components/practice/results-screen.tsx.
   practice: { noScoreIsResult: false, liveTileText: "Scout a real, livestreamed FRC match." },
 };
