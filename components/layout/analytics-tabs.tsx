@@ -4,6 +4,8 @@ import Link from "@/components/program/link";
 import { usePathname } from "@/lib/program/navigation";
 import { motion } from "framer-motion";
 import { analyticsNav } from "@/lib/nav";
+import { isUnavailableInProgram } from "@/config/programs";
+import { useProgram } from "@/lib/program/context";
 import { spring } from "@/lib/motion";
 import { useAnalyticsHref } from "@/lib/analytics/filter-context";
 
@@ -11,12 +13,15 @@ export function AnalyticsTabs() {
   const pathname = usePathname();
   // Tabs carry the filters in the URL so they persist from subpage to subpage.
   const withFilters = useAnalyticsHref();
+  // Only tabs for pages this program has (a program's unavailable pages are not linked from here).
+  const program = useProgram();
+  const tabs = analyticsNav.filter((item) => !isUnavailableInProgram(program, item.href));
 
   return (
     <div className="glass-pill mb-6 flex w-full flex-wrap items-center gap-1 overflow-x-auto p-1.5">
-      {analyticsNav.map((item, index) => {
-        const startsGroup = !!item.group && analyticsNav[index - 1]?.group !== item.group;
-        const endsGroup = !!item.group && analyticsNav[index + 1]?.group !== item.group;
+      {tabs.map((item, index) => {
+        const startsGroup = !!item.group && tabs[index - 1]?.group !== item.group;
+        const endsGroup = !!item.group && tabs[index + 1]?.group !== item.group;
         // A Team Profile (/analytics/teams/254) is reached from Team Averages / Rankings; keep Team Averages lit.
         const active = pathname === item.href || (item.href === "/analytics/team-averages" && pathname.startsWith("/analytics/teams/"));
         return (

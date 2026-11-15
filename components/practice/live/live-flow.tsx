@@ -15,6 +15,7 @@ import { useActiveEvents } from "@/lib/active-event";
 import { pickDefaultActiveEvent } from "@/lib/active-events";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { getEvents, getMatchesForEvent } from "@/lib/events/actions";
+import { useProgram } from "@/lib/program/context";
 import { getDefaultSeason } from "@/lib/events/config";
 import { parseStreamUrl } from "@/lib/live/stream";
 import { determineJoinOption, type CoveredRobot } from "@/lib/live/join-rules";
@@ -59,6 +60,7 @@ export function LiveFlow({
   const activeEvent = pickDefaultActiveEvent({ events: activeEvents, primaryCode }, now);
   const teamId = profile?.teamId ?? null;
   const season = activeEvent?.season ?? getDefaultSeason();
+  const program = useProgram();
 
   const [step, setStep] = useState<LiveStep>(() => (viewResultsSessionId ? "results" : "link"));
   const [streamUrl, setStreamUrl] = useState(resumePendingRobot?.streamUrl ?? "");
@@ -76,9 +78,9 @@ export function LiveFlow({
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const [resumeHandled, setResumeHandled] = useState(false);
 
-  const eventsQuery = useEventQuery(`live-events:${season}`, () => getEvents({ season }));
-  const qualQuery = useEventQuery(event ? `live-matches:${event.code}:Q:${season}` : null, () => getMatchesForEvent(event!.code, "Qualification", season));
-  const playoffQuery = useEventQuery(event ? `live-matches:${event.code}:F:${season}` : null, () => getMatchesForEvent(event!.code, "Playoff", season));
+  const eventsQuery = useEventQuery(`live-events:${program}:${season}`, () => getEvents({ season }, program));
+  const qualQuery = useEventQuery(event ? `live-matches:${program}:${event.code}:Q:${season}` : null, () => getMatchesForEvent(event!.code, "Qualification", season, program));
+  const playoffQuery = useEventQuery(event ? `live-matches:${program}:${event.code}:F:${season}` : null, () => getMatchesForEvent(event!.code, "Playoff", season, program));
   const { matches: libraryMatches } = useLibraryMatches(event?.code ?? null);
 
   const { session } = usePracticeSession(sessionId);
@@ -105,7 +107,7 @@ export function LiveFlow({
       const res = await fetch("/api/live/detect-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: streamUrl, season }),
+        body: JSON.stringify({ url: streamUrl, season, program }),
       });
       const json = await res.json();
       if (json.detected) {

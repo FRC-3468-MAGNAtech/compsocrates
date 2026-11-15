@@ -9,6 +9,7 @@ export const FTC_UNAVAILABLE_PATHS = [
   "/analytics/performance-reliability",
   "/analytics/robot-radar",
   "/judge-book",
+  "/events/[eventKey]",
 ] as const;
 
 export const FTC_PROGRAM: ProgramConfig = {
@@ -47,6 +48,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/profile",
       "/credits",
       "/team-management",
+      "/analytics",
       "/analytics/match-scout",
       "/analytics/lead-scout",
       "/analytics/pit-scout",
@@ -62,7 +64,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/analytics/team-breakdown",
       "/analytics/rankings",
     ],
-    features: { assignments: true, subIns: false, practice: false, live: false, library: false, pickList: true, accuracy: false, csvImport: false, changelog: false, applications: false, joinRequests: false, announcements: false, eventLookup: false },
+    features: { assignments: true, subIns: false, practice: false, live: false, library: false, pickList: true, accuracy: false, csvImport: false, changelog: false, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },
   multiTeam: true,
 };

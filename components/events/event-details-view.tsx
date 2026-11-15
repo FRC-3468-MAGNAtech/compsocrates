@@ -19,6 +19,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BRAND } from "@/config/brand";
 import { getEvent } from "@/lib/events/actions";
+import { useProgram } from "@/lib/program/context";
 import { EVENT_DETAILS_TABS, eventBadge, eventKeyYear, locationLabel, parseEventTab, parseHighlightedTeam, type EventDetailsTab } from "@/lib/events/details-model";
 import { useEventName } from "@/lib/events/use-event-names";
 import { useEventQuery } from "@/lib/events/use-event-query";
@@ -51,13 +52,14 @@ function NotFound({ eventKey, reason }: { eventKey: string; reason: string }) {
 /** /events/[eventKey]: one event's information, team list, schedule and rankings (CS /event-details/[eventKey]). */
 export function EventDetailsView({ eventKey }: { eventKey: string }) {
   const params = useSearchParams();
+  const program = useProgram();
   const [tab, setTab] = useState<EventDetailsTab>(() => parseEventTab(params.get("tab")));
   const [now] = useState(() => Date.now());
   const highlighted = parseHighlightedTeam(params.get("team"));
 
   // A key that doesn't start with a year and a code (CS's "app-testing" fallback, say) is not a TBA event: skip the fetch.
   const year = eventKeyYear(eventKey);
-  const query = useEventQuery(year ? `event:${eventKey}` : null, () => getEvent(eventKey, year ?? undefined));
+  const query = useEventQuery(year ? `event:${program}:${eventKey}` : null, () => getEvent(eventKey, year ?? undefined, program));
   const event = query.data;
 
   // The name for the tab title and the fallback heading: the API event's own name, else stored, else the static table, else the key.

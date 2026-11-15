@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isProgramId, DEFAULT_PROGRAM } from "@/config/programs/types";
 import { getEvents } from "@/lib/events/actions";
 import { getDefaultSeason } from "@/lib/events/config";
 import { matchEventFromText } from "@/lib/live/matching";
@@ -41,7 +42,8 @@ export async function POST(request: Request) {
     text = stream.id;
   }
 
-  const eventsResult = await getEvents({ season });
+  const program = isProgramId(body?.program) ? body.program : DEFAULT_PROGRAM;
+  const eventsResult = await getEvents({ season }, program);
   if (!eventsResult.ok) {
     // The reason (a missing or rejected TBA key, a rate limit) goes along so the page can say why, not just "unavailable".
     return NextResponse.json({ ok: true, detected: null, reason: "events-unavailable", message: eventsResult.error.message });
