@@ -13,7 +13,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 import { EventName } from "@/components/events/event-name";
 import type { EventInfo } from "@/lib/events/types";
-import { MATCH_LIST_TABS, buildMatchRows, defaultTab, filterRows, formatStart, rowsInTab, tabCounts, winnerOf, type MatchListRow, type MatchListStatus, type MatchListTab } from "@/lib/match-list/model";
+import { hasEventEnded } from "@/lib/events/event-status";
+import { MATCH_LIST_TABS, buildMatchRows, defaultTab, filterRows, formatEventDates, formatStart, rowsInTab, tabCounts, winnerOf, type MatchListRow, type MatchListStatus, type MatchListTab } from "@/lib/match-list/model";
 import { cn } from "@/lib/utils";
 
 // FIX4: the Match List page. Everything is plain props (the connected page feeds it the active events, the FIRST API
@@ -43,9 +44,11 @@ export type MatchListScreenProps = {
   isOurTeam: (n: number) => boolean;
   /** The clock the statuses are computed against. */
   now: number;
+  /** The program's current season: an event with no dates from an earlier season has ended. Null: unknown (dates alone decide). */
+  currentSeason?: number | null;
 };
 
-export function MatchListScreen({ events, eventsLoaded, matches, loading, error, updatedAt, refreshing, onRefresh, isOurTeam, now }: MatchListScreenProps) {
+export function MatchListScreen({ events, eventsLoaded, matches, loading, error, updatedAt, refreshing, onRefresh, isOurTeam, now, currentSeason = null }: MatchListScreenProps) {
   const [eventSel, setEventSel] = useState<string>(ALL);
   const [pickedTab, setPickedTab] = useState<MatchListTab | null>(null);
   const [ourOnly, setOurOnly] = useState(false);
@@ -56,8 +59,8 @@ export function MatchListScreen({ events, eventsLoaded, matches, loading, error,
   const shownEvents = useMemo(() => (selected === ALL ? events : events.filter((e) => e.code === selected)), [events, selected]);
 
   const rowsByEvent = useMemo(
-    () => new Map(events.map((e) => [e.code, buildMatchRows({ eventCode: e.code, matches, timeZone: e.timezone, now, isOurTeam })])),
-    [events, matches, now, isOurTeam]
+    () => new Map(events.map((e) => [e.code, buildMatchRows({ eventCode: e.code, matches, timeZone: e.timezone, now, isOurTeam, eventEnded: hasEventEnded(e, now, currentSeason) })])),
+    [events, matches, now, isOurTeam, currentSeason]
   );
   const shownRows = useMemo(() => shownEvents.flatMap((e) => rowsByEvent.get(e.code) ?? []), [shownEvents, rowsByEvent]);
   const tab = pickedTab ?? defaultTab(shownRows);
@@ -151,6 +154,7 @@ export function MatchListScreen({ events, eventsLoaded, matches, loading, error,
                     {event.name} <span className="font-normal normal-case opacity-70">· {event.code}</span>
                   </h2>
                 )}
+                <EventStatusLine event={event} ended={hasEventEnded(event, now, currentSeason)} />
                 {visible.length === 0 ? (
                   <EmptyGroup scheduled={inTab.length} tab={tab} filtersOn={filtersOn} onClear={() => { setOurOnly(false); setSearch(""); }} />
                 ) : (
@@ -263,6 +267,18 @@ function Alliance({ side, teams, score, won, isOurTeam }: { side: "red" | "blue"
       <div className="flex flex-wrap gap-x-2 gap-y-1 text-sm">
         {teams.length === 0 ? <span className="text-[var(--muted-foreground)]">TBD</span> : teams.map((t) => <TeamChip key={t} team={t} ours={isOurTeam(t)} />)}
       </div>
+    </div>
+  );
+}
+
+/** The event's real dates, with "Completed" once it is over (shown whenever there is either to say). */
+function EventStatusLine({ event, ended }: { event: EventInfo; ended: boolean }) {
+  const dates = formatEventDates(event.dateStart, event.dateEnd);
+  if (!dates && !ended) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]" data-testid={`event-status-${event.code}`}>
+      {dates && <span>{dates}</span>}
+      {ended && <Badge variant="outline">Completed</Badge>}
     </div>
   );
 }

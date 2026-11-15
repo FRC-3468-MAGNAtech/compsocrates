@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { MatchListScreen } from "@/components/match-list/match-list-screen";
 import { useActiveEvents } from "@/lib/active-event";
 import { useEventMatches } from "@/lib/analytics/use-event-data";
+import { EVENT_CONFIG } from "@/config/event";
+import { currentSeasonFor } from "@/lib/events/event-status";
 import { useIsOurTeam } from "@/lib/our-team";
+import { useProgramConfig } from "@/lib/program/context";
 
 /** The existing API cache cadence (lib/analytics/use-event-data.ts caches the schedule for 3 minutes): the page re-asks at that pace while it is open and visible. */
 export const MATCH_LIST_REFRESH_MS = 3 * 60 * 1000;
@@ -34,8 +37,12 @@ export function MatchListView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests]);
 
+  const { event: eventRules } = useProgramConfig();
+  const currentSeason = currentSeasonFor(eventRules.seasonKind, now, EVENT_CONFIG.season);
+
   return (
     <MatchListScreen
+      currentSeason={currentSeason}
       events={events}
       eventsLoaded={loaded}
       matches={matches}

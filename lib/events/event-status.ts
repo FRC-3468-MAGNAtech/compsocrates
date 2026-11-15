@@ -72,3 +72,23 @@ export function countEventsByStatus(events: EventInfo[], now: Date | number = ne
   for (const e of events) counts[getEventStatus(e, now)] += 1;
   return counts;
 }
+
+/**
+ * The season a program is in right now. "calendar" programs use the configured game season (falling back to
+ * the calendar year); "start-year" programs are named for the year the season starts in (Sept to Aug).
+ */
+export function currentSeasonFor(seasonKind: "calendar" | "start-year", now: Date | number = new Date(), configured?: number): number {
+  const d = typeof now === "number" ? new Date(now) : now;
+  if (seasonKind === "calendar") return configured ?? d.getFullYear();
+  return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1;
+}
+
+/**
+ * True when an event is over and must never read as live: its end date has passed (in its own timezone), or, with
+ * no dates at all (a placeholder built from a bare key), it belongs to an earlier season than `currentSeason`.
+ */
+export function hasEventEnded(event: Partial<EventStatusInput> & { season?: number | null }, now: Date | number, currentSeason: number | null): boolean {
+  if (event.dateStart && event.dateEnd) return getEventStatus({ dateStart: event.dateStart, dateEnd: event.dateEnd, timezone: event.timezone }, now) === "completed";
+  if (event.dateEnd) return calendarDay(typeof now === "number" ? new Date(now) : now, event.timezone) > event.dateEnd.slice(0, 10);
+  return typeof event.season === "number" && currentSeason !== null && event.season < currentSeason;
+}

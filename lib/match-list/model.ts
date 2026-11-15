@@ -56,7 +56,7 @@ export type MatchListRow = {
  * field; every other unplayed match is Upcoming (including ones the schedule has slipped past: they are still
  * ahead of us). The first Upcoming match of each tab is `isNext`.
  */
-export function buildMatchRows(input: { eventCode: string; matches: OfficialMatch[]; timeZone: string | null; now: number; isOurTeam: (n: number) => boolean; finalsOverride?: ReadonlySet<number> | null }): MatchListRow[] {
+export function buildMatchRows(input: { eventCode: string; matches: OfficialMatch[]; timeZone: string | null; now: number; isOurTeam: (n: number) => boolean; finalsOverride?: ReadonlySet<number> | null; eventEnded?: boolean }): MatchListRow[] {
   const mine = input.matches.filter((m) => m.eventCode === input.eventCode);
   const classifiable = mine.map((m) => ({ matchType: m.matchType, matchNumber: m.matchNumber, series: m.series }));
   const finals = finalsMatchNumbers(classifiable, input.finalsOverride);
@@ -87,8 +87,17 @@ export function buildMatchRows(input: { eventCode: string; matches: OfficialMatc
       } satisfies MatchListRow;
     });
 
+  // A finished event is Completed, whatever the schedule says: its unplayed rows (FIRST's practice schedule never carries
+  // scores, so they stay "unplayed" forever) must not read as In Progress or Next. The same holds for practice once a
+  // qualification match has been played: practice comes first, so it is over.
+  const qualsStarted = rows.some((r) => r.category === "qualification" && r.played);
+  if (input.eventEnded || qualsStarted) {
+    for (const r of rows) if (!r.played && (input.eventEnded || r.tab === "practice")) r.status = "completed";
+  }
+  if (input.eventEnded) return rows;
+
   for (const tab of MATCH_LIST_TABS) {
-    const unplayed = rows.filter((r) => r.tab === tab.id && !r.played);
+    const unplayed = rows.filter((r) => r.tab === tab.id && !r.played && r.status !== "completed");
     const first = unplayed[0];
     let nextTaken = false;
     if (first && first.startMs !== null && first.startMs <= input.now && input.now - first.startMs <= IN_PROGRESS_WINDOW_MS) {
@@ -150,4 +159,19 @@ export function formatStart(startMs: number | null, timeZone: string | null, loc
   } catch {
     return new Intl.DateTimeFormat(locale, opts).format(new Date(startMs));
   }
+}
+
+/** "Nov 8 – 10, 2025" from an event's date-only strings (read as calendar dates, so no timezone shifts them); "" when it has none. */
+export function formatEventDates(dateStart: string, dateEnd: string, locale?: string): string {
+  const parse = (v: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+    return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+  };
+  const s = parse(dateStart);
+  const e = parse(dateEnd) ?? s;
+  if (!s || !e) return "";
+  const fmt = (d: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale, { timeZone: "UTC", ...o }).format(d);
+  const startText = fmt(s, { month: "short", day: "numeric" });
+  const endText = fmt(e, { month: "short", day: "numeric", year: "numeric" });
+  return s.getTime() === e.getTime() ? endText : `${startText} – ${endText}`;
 }

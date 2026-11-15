@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countEventsByStatus, getEventStatus, sortEvents } from "./event-status";
+import { countEventsByStatus, currentSeasonFor, getEventStatus, hasEventEnded, sortEvents } from "./event-status";
 import type { EventInfo } from "@/lib/events/types";
 
 function ev(code: string, dateStart: string, dateEnd: string, extra: Partial<EventInfo> = {}): EventInfo {
@@ -85,5 +85,35 @@ describe("countEventsByStatus", () => {
   it("counts each bucket and the total", () => {
     const events = [ev("a", "2025-11-08", "2025-11-08"), ev("b", "2025-12-01", "2025-12-02"), ev("c", "2025-10-01", "2025-10-02"), ev("d", "2025-10-05", "2025-10-06")];
     expect(countEventsByStatus(events, NOW)).toEqual({ all: 4, "in-progress": 1, upcoming: 1, completed: 2 });
+  });
+});
+
+describe("hasEventEnded / currentSeasonFor (fixed dates)", () => {
+  const dates = { dateStart: "2025-11-07", dateEnd: "2025-11-08", timezone: "America/Los_Angeles" };
+  const at = (iso: string) => Date.parse(iso);
+
+  it("is false before and during the event, true after", () => {
+    expect(hasEventEnded(dates, at("2025-11-06T20:00:00Z"), 2025)).toBe(false);
+    expect(hasEventEnded(dates, at("2025-11-08T20:00:00Z"), 2025)).toBe(false);
+    expect(hasEventEnded(dates, at("2025-11-10T20:00:00Z"), 2025)).toBe(true);
+  });
+
+  it("judges the end date in the event's own timezone, not UTC", () => {
+    // 2025-11-09 03:00 UTC is still Nov 8 evening in Los Angeles: not over. 09:00 UTC is Nov 9 01:00 there: over.
+    expect(hasEventEnded(dates, at("2025-11-09T03:00:00Z"), 2025)).toBe(false);
+    expect(hasEventEnded(dates, at("2025-11-09T09:00:00Z"), 2025)).toBe(true);
+  });
+
+  it("with no dates, an earlier season has ended and the current one has not", () => {
+    expect(hasEventEnded({ dateStart: "", dateEnd: "", season: 2025 }, at("2026-11-14T12:00:00Z"), 2026)).toBe(true);
+    expect(hasEventEnded({ dateStart: "", dateEnd: "", season: 2026 }, at("2026-11-14T12:00:00Z"), 2026)).toBe(false);
+    expect(hasEventEnded({ dateStart: "", dateEnd: "" }, at("2026-11-14T12:00:00Z"), 2026)).toBe(false);
+    expect(hasEventEnded({ dateStart: "", dateEnd: "", season: 2025 }, at("2026-11-14T12:00:00Z"), null)).toBe(false);
+  });
+
+  it("names the current season by the program's rule", () => {
+    expect(currentSeasonFor("calendar", new Date(2026, 10, 14), 2026)).toBe(2026);
+    expect(currentSeasonFor("start-year", new Date(2026, 10, 14))).toBe(2026);
+    expect(currentSeasonFor("start-year", new Date(2027, 2, 1))).toBe(2026);
   });
 });

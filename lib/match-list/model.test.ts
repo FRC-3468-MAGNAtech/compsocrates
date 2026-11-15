@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
-import { IN_PROGRESS_WINDOW_MS, buildMatchRows, defaultTab, filterRows, formatStart, rowsInTab, tabCounts, winnerOf } from "./model";
+import { IN_PROGRESS_WINDOW_MS, buildMatchRows, defaultTab, filterRows, formatEventDates, formatStart, rowsInTab, tabCounts, winnerOf } from "./model";
 
 const isOurTeam = (n: number) => n === 3468;
 const TZ = "America/Los_Angeles";
@@ -153,5 +153,51 @@ describe("winnerOf / formatStart", () => {
     expect(plain(formatStart(NINE_AM, "America/New_York", "en-US"))).toBe("Sat 12:00 PM");
     expect(formatStart(null, TZ, "en-US")).toBe("Time TBD");
     expect(formatStart(NINE_AM, "Not/AZone", "en-US")).toMatch(/AM|PM/);
+  });
+});
+
+describe("buildMatchRows: finished events", () => {
+  const unplayed = [
+    match({ matchType: "Practice", matchNumber: 3, startTime: "2025-11-08T17:00:00.000Z" }),
+    match({ matchType: "Qualification", matchNumber: 1, startTime: "2025-11-08T17:05:00.000Z" }),
+  ];
+  const buildEnded = (matches: OfficialMatch[], now: number, eventEnded: boolean) => buildMatchRows({ eventCode: "EVT1", matches, timeZone: TZ, now, isOurTeam, eventEnded });
+
+  it("during the event a match inside its window is In Progress and the next is flagged", () => {
+    const rows = buildEnded(unplayed, NINE_AM + 60_000, false);
+    expect(rows.find((r) => r.label === "P3")?.status).toBe("in-progress");
+    expect(rows.find((r) => r.label === "Q1")?.isNext).toBe(true);
+  });
+
+  it("after the event every row is Completed, with no In Progress and no Next, even inside a stale window", () => {
+    const rows = buildEnded(unplayed, NINE_AM + 60_000, true);
+    expect(rows.map((r) => r.status)).toEqual(["completed", "completed"]);
+    expect(rows.some((r) => r.isNext)).toBe(false);
+  });
+
+  it("with no start times (no-date source) a finished event still shows no Next or Upcoming", () => {
+    const rows = buildEnded([match({ matchType: "Practice", matchNumber: 1 }), match({ matchType: "Qualification", matchNumber: 1 })], NINE_AM, true);
+    expect(rows.every((r) => r.status === "completed" && !r.isNext)).toBe(true);
+    expect(defaultTab(rows)).toBe("qualification");
+  });
+
+  it("an event that is not over keeps live status: before it begins nothing is In Progress", () => {
+    const rows = buildEnded(unplayed, NINE_AM - 24 * 3600_000, false);
+    expect(rows.some((r) => r.status === "in-progress")).toBe(false);
+    expect(rows.filter((r) => r.isNext)).toHaveLength(2); // one per tab
+  });
+
+  it("practice is Completed once a qualification match has been played (FIRST practice has no scores)", () => {
+    const rows = buildEnded([match({ matchType: "Practice", matchNumber: 3 }), played("Qualification", 1, 50, 40), match({ matchType: "Qualification", matchNumber: 2 })], NINE_AM, false);
+    expect(rows.find((r) => r.label === "P3")).toMatchObject({ status: "completed", isNext: false });
+    expect(rows.find((r) => r.label === "Q2")?.isNext).toBe(true);
+  });
+});
+
+describe("formatEventDates", () => {
+  it("reads date-only strings as calendar dates and includes the year", () => {
+    expect(formatEventDates("2025-11-07", "2025-11-08", "en-US")).toBe("Nov 7 – Nov 8, 2025");
+    expect(formatEventDates("2025-11-08", "2025-11-08", "en-US")).toBe("Nov 8, 2025");
+    expect(formatEventDates("", "", "en-US")).toBe("");
   });
 });
