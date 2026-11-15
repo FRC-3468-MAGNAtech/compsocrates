@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "@/components/program/link";
-import { usePathname, useRouter } from "@/lib/program/navigation";
-import { AnimatePresence, motion } from "framer-motion";
-import { ChevronsLeft, ChevronsRight, LogOut, Trophy } from "lucide-react";
-import { mainNav, secondaryNav, type NavItem } from "@/lib/nav";
-import { visibleNav } from "@/lib/page-access/nav";
+import { usePathname, useRouter } from "@/lib/program/navigation";import { AnimatePresence, motion } from "framer-motion";
+import { ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Trophy } from "lucide-react";
 import { useAccessUser, usePageAccess } from "@/lib/page-access/store";
+import { resolveSidebar, type ResolvedSidebar, type SidebarNode } from "@/lib/sidebar/resolve";
+import { useSidebarConfig } from "@/lib/sidebar/store";
+import { useNavLabel } from "@/components/layout/use-nav-label";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/motion";
 import { ColorModeToggle } from "@/components/theme/color-mode-toggle";
@@ -22,21 +22,24 @@ import { Avatar } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth";
 import { getRole } from "@/lib/roles";
 import { useChangelogUnread } from "@/lib/changelog/store";
-import { BRAND } from "@/config/brand";
-import { isUnavailableInProgram, programConfig } from "@/config/programs";
+import { BRAND, storageKey } from "@/config/brand";
+import { programConfig } from "@/config/programs";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
 import { TeamSwitcher } from "@/components/program/team-switcher";
 
 function NavLink({
   item,
+  child = false,
   collapsed,
   onNavigate,
   scope,
   unread = false,
   count = 0,
 }: {
-  item: NavItem;
+  item: SidebarNode;
+  /** Inside a group: indented. */
+  child?: boolean;
   collapsed: boolean;
   onNavigate?: () => void;
   scope: string;
@@ -45,18 +48,18 @@ function NavLink({
   /** P20: a count badge (the platform owner's pending applications on Admin Panel). */
   count?: number;
 }) {
-  const pathname = usePathname();
   const program = useProgram();
-  const active = item.matchPrefix ? pathname.startsWith(item.href) : pathname === item.href;
+  const active = item.active;
   const Icon = item.icon;
+  const href = item.href ?? "/";
 
   // A page the active program does not have yet: shown, greyed out, not a link.
-  if (isUnavailableInProgram(program, item.href)) {
+  if (item.unavailable) {
     return (
       <div
         aria-disabled="true"
         title={`Not available for ${programConfig(program).brand.label} yet`}
-        className="relative flex cursor-not-allowed items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium text-[var(--muted-foreground)] opacity-45"
+        className={cn("relative flex cursor-not-allowed items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium text-[var(--muted-foreground)] opacity-45 pointer-coarse:min-h-11", child && !collapsed && "ml-5")}
       >
         <Icon className="h-[18px] w-[18px] shrink-0" />
         {!collapsed && <span className="truncate">{item.label}</span>}
@@ -65,12 +68,12 @@ function NavLink({
   }
 
   return (
-    <Link href={item.href} onClick={onNavigate} className="relative block">
+    <Link href={href} onClick={onNavigate} className={cn("relative block", child && !collapsed && "ml-5")}>
       <motion.div
         whileHover={{ x: collapsed ? 0 : 3 }}
         transition={spring}
         className={cn(
-          "relative flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-colors duration-200",
+          "relative flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-colors duration-200 pointer-coarse:min-h-11",
           active
             ? "text-[var(--color-primary-foreground)]"
             : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-white/6"
@@ -100,6 +103,89 @@ function NavLink({
   );
 }
 
+/** Which groups are open, remembered per device and program (a browser preference, never stored on the team). */
+function useOpenGroups(program: string, activeGroupId: string | null) {
+  const key = storageKey(`sidebar-open.${program}`);
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = typeof window === "undefined" ? null : window.localStorage.getItem(key);
+      const parsed: unknown = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
+  // Walking into a group's page opens it (adjusted during render, so there is no flash of a closed group).
+  const [seenActive, setSeenActive] = useState(activeGroupId);
+  if (seenActive !== activeGroupId) {
+    setSeenActive(activeGroupId);
+    if (activeGroupId && !open[activeGroupId]) setOpen({ ...open, [activeGroupId]: true });
+  }
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(open));
+    } catch {
+      // storage blocked: the open state just is not remembered
+    }
+  }, [key, open]);
+  // The group holding the current page is open even before anything is stored.
+  const isOpen = (id: string) => open[id] ?? id === activeGroupId;
+  const toggle = (id: string) => setOpen({ ...open, [id]: !isOpen(id) });
+  return { isOpen, toggle };
+}
+
+/** A parent button: expands and collapses its children (indented). Highlighted while the current page is inside it. */
+function GroupNav({
+  node,
+  open,
+  onToggle,
+  collapsed,
+  onNavigate,
+  scope,
+  unreadId,
+  countFor,
+}: {
+  node: SidebarNode;
+  open: boolean;
+  onToggle: () => void;
+  collapsed: boolean;
+  onNavigate?: () => void;
+  scope: string;
+  unreadId: string | null;
+  countFor: (id: string) => number;
+}) {
+  const Icon = node.icon;
+  const panelId = `sidebar-group-${scope}-${node.id}`;
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={collapsed ? node.label : undefined}
+        title={collapsed ? node.label : undefined}
+        onClick={onToggle}
+        data-testid={`sidebar-group-${node.id}`}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-2xl px-3.5 py-2.5 text-left text-sm font-medium transition-colors duration-200 pointer-coarse:min-h-11",
+          node.active ? "bg-white/8 text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:bg-white/6 hover:text-[var(--foreground)]"
+        )}
+      >
+        <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+        {!collapsed && <span className="truncate">{node.label}</span>}
+        {!collapsed && <ChevronDown aria-hidden className={cn("ml-auto h-4 w-4 shrink-0 transition-transform duration-200", open && "rotate-180")} />}
+      </button>
+      {open && (
+        <div id={panelId} className="mt-1 flex flex-col gap-1">
+          {node.children?.map((child) => (
+            <NavLink key={child.id} item={child} child collapsed={collapsed} onNavigate={onNavigate} scope={scope} unread={child.id === unreadId} count={countFor(child.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** P20: "N waiting". Always the accent fill with its guarded on-accent text, so it stays legible in every theme. */
 function CountBadge({ count, className }: { count: number; className?: string }) {
   return (
@@ -124,13 +210,18 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
   const router = useRouter();
   const name = profile?.name ?? "";
   const isAdmin = profile?.isAdmin ?? false;
-  // P26: the nav hides pages this person can't open (the same check as the route guard). The Admin Panel is the admin-only page.
+  // The one resolver: the code's pages, arranged by the team's config, then hidden by the same access checks as the route guard (P26) and the admin-only Admin Panel.
+  // The layout is the cached or default one until the live config arrives, so nothing flashes.
   const pageAccess = usePageAccess();
   const accessUser = useAccessUser();
   const canOpen = accessUser ? pageAccess.can : null;
-  const visibleSecondaryNav = visibleNav(
-    secondaryNav.filter((item) => item.href !== "/admin" || isAdmin),
-    canOpen
+  const { config } = useSidebarConfig();
+  const program = useProgram();
+  const pathname = usePathname();
+  const labelOf = useNavLabel();
+  const resolved = useMemo(
+    () => resolveSidebar({ program, isAdmin, can: canOpen, config, labelOf, pathname }),
+    [program, isAdmin, canOpen, config, labelOf, pathname]
   );
   // The changelog is read from the default program's collection, so a program without it connected asks for nothing (no team = no subscription).
   const { features } = useProgramConfig().connection;
@@ -158,7 +249,7 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
             collapsed={collapsed}
             name={name}
             primaryRole={profile?.primaryRole}
-            navItems={visibleSecondaryNav}
+            resolved={resolved}
             changelogUnread={changelogUnread}
             connection={connection}
             onLogout={handleLogout}
@@ -197,7 +288,7 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
                 collapsed={false}
                 name={name}
                 primaryRole={profile?.primaryRole}
-                navItems={visibleSecondaryNav}
+                resolved={resolved}
           changelogUnread={changelogUnread}
           connection={connection}
                 onLogout={handleLogout}
@@ -216,7 +307,7 @@ function SidebarInner({
   collapsed,
   name,
   primaryRole,
-  navItems,
+  resolved,
   changelogUnread,
   connection,
   onLogout,
@@ -226,7 +317,7 @@ function SidebarInner({
   collapsed: boolean;
   name: string;
   primaryRole?: string;
-  navItems: NavItem[];
+  resolved: ResolvedSidebar;
   changelogUnread: boolean;
   connection: ConnectionNotice | null;
   onLogout: () => void;
@@ -240,9 +331,25 @@ function SidebarInner({
   const { isPlatformOwner } = usePermissions();
   const { features: programFeatures } = useProgramConfig().connection;
   const pendingApplications = usePendingApplicationCount(isPlatformOwner && programFeatures.applications);
-  const pageAccess = usePageAccess();
-  const accessUser = useAccessUser();
-  const canOpen = accessUser ? pageAccess.can : null;
+  const program = useProgram();
+  const activeGroupId = [...resolved.main, ...resolved.footer].find((n) => n.kind === "group" && n.active)?.id ?? null;
+  const { isOpen, toggle } = useOpenGroups(program, activeGroupId);
+  const renderNode = (node: SidebarNode) =>
+    node.kind === "group" ? (
+      <GroupNav
+        key={node.id}
+        node={node}
+        open={isOpen(node.id)}
+        onToggle={() => toggle(node.id)}
+        collapsed={collapsed}
+        onNavigate={onNavigate}
+        scope={scope}
+        unreadId={changelogUnread ? "changelog" : null}
+        countFor={(id) => (id === "admin-panel" ? pendingApplications : 0)}
+      />
+    ) : (
+      <NavLink key={node.id} item={node} collapsed={collapsed} onNavigate={onNavigate} scope={scope} unread={node.id === "changelog" && changelogUnread} count={node.id === "admin-panel" ? pendingApplications : 0} />
+    );
   return (
     <>
       {/* The team line is data-driven: our team's number and name under the wordmark (lib/our-team.ts; a multi-team switcher would go here). */}
@@ -270,13 +377,9 @@ function SidebarInner({
       {!collapsed && <ProgramSwitcher className="mb-1" />}
       {!collapsed && <TeamSwitcher className="mb-1" />}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto py-1">
-        {visibleNav(mainNav, canOpen).map((item) => (
-          <NavLink key={item.href} item={item} collapsed={collapsed} onNavigate={onNavigate} scope={scope} />
-        ))}
-        <div className="my-2 h-px bg-[var(--glass-border)]" />
-        {navItems.map((item) => (
-          <NavLink key={item.href} item={item} collapsed={collapsed} onNavigate={onNavigate} scope={scope} unread={item.href === "/changelog" && changelogUnread} count={item.href === "/admin" ? pendingApplications : 0} />
-        ))}
+        {resolved.main.map(renderNode)}
+        {resolved.footer.length > 0 && <div className="my-2 h-px bg-[var(--glass-border)]" />}
+        {resolved.footer.map(renderNode)}
       </nav>
 
       <div className="flex flex-col gap-3 border-t border-[var(--glass-border)] pt-3">

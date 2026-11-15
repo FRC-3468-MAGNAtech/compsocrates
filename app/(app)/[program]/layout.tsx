@@ -24,6 +24,7 @@ import { useConnectionNotice } from "@/lib/use-connection-state";
 import { OurTeamProvider } from "@/lib/our-team";
 import { PageGuard } from "@/components/page-access/page-guard";
 import { PageAccessProvider } from "@/lib/page-access/store";
+import { SidebarConfigProvider } from "@/lib/sidebar/store";
 import { FormsProvider } from "@/lib/forms/forms-context";
 import { OwnershipTransferBanner } from "@/components/layout/ownership-transfer-banner";
 import { ImmersiveContext, useImmersiveValue } from "@/lib/shell-immersive";
@@ -66,6 +67,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
     <OurTeamProvider>
       {/* P26: one shared subscription to the account's page access, for the nav, the route guard and the permissions. */}
       <PageAccessProvider>
+      {/* Session F: the team's sidebar layout (cached on the device, live from Firestore), read by the sidebar through lib/sidebar/resolve.ts. */}
+      <SidebarConfigProvider>
       <FormsProvider>
       <ImmersiveContext.Provider value={immersiveValue}>
       <div className="mx-auto flex w-full max-w-[1600px] gap-4 px-3 pb-6 pt-4 lg:px-6">
@@ -89,6 +92,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       </ImmersiveContext.Provider>
       </FormsProvider>
+      </SidebarConfigProvider>
       </PageAccessProvider>
     </OurTeamProvider>
   );

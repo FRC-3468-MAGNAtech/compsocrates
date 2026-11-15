@@ -9,7 +9,7 @@ import { explainAccess, memberPageState, accessiblePages, type AccessExplanation
 import { visibleNav } from "@/lib/page-access/nav";
 import { PAGES, RESTRICTED_PAGES } from "@/lib/page-access/pages";
 import type { PageAccessRequest } from "@/lib/page-access/store";
-import { mainNav, secondaryNav } from "@/lib/nav";
+import { NAV_PAGES } from "@/lib/nav";
 import { ROLES, getRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
@@ -130,7 +130,8 @@ export function MemberAccessEditor({ member, config, onSet, disabled }: { member
 
 /** "Preview as member": the navigation they see and which pages they can open, from the same function the app uses. */
 export function PreviewAsMember({ member, config }: { member: AccessUser & { name: string }; config: PageAccessConfig }) {
-  const navItems = visibleNav([...mainNav, ...secondaryNav], (id) => explainAccess(member, id, config).allowed);
+  // The code's page list, not the team's sidebar layout: customizing the sidebar never changes who can open a page.
+  const navItems = visibleNav(NAV_PAGES, (id) => explainAccess(member, id, config).allowed);
   const open = new Set(accessiblePages(member, config).map((p) => p.id));
   return (
     <div className="grid gap-4 md:grid-cols-2" data-testid="preview-as-member">
