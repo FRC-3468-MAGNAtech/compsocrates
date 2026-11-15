@@ -8,7 +8,7 @@ import { isPathConnected, PROGRAMS } from "@/config/programs";
 import { ProgramProvider, useProgram, useProgramConfig } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
 import { ProgramGate } from "@/components/program/program-gate";
-import { ProgramSwitcher } from "@/components/program/program-switcher";
+import { ProgramSetupFrame } from "@/components/program/setup-frame";
 import { TeamEnrollmentScreen } from "@/components/auth/team-enrollment";
 import { ProgramAuth } from "@/components/program/program-auth";
 import { ReadFailureBanner } from "@/components/program/read-failure-banner";
@@ -63,10 +63,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return ported ? (
         <ProgramGate />
       ) : (
-        <div className="mx-auto flex min-h-[70vh] w-full max-w-xl flex-col justify-center gap-4 px-4">
-          <ProgramSwitcher />
+        <ProgramSetupFrame>
           <TeamEnrollmentScreen embedded programLabel={config.brand.label} greeting={user.displayName ? `Hi, ${user.displayName}` : undefined} onComplete={() => router.push("/dashboard")} />
-        </div>
+        </ProgramSetupFrame>
       );
     }
     return (

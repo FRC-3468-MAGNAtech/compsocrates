@@ -78,8 +78,9 @@ export function JoinRequestsPanel({ teamId }: { teamId: string }) {
         setMessage({ kind: "ok", text: `Denied ${row.name}'s request.` });
       }
     } catch (err) {
-      const reason = err instanceof Error && err.message ? ` ${err.message}` : "";
-      setMessage({ kind: "error", text: `Couldn't ${action === "approve" ? "approve" : "deny"} ${row.name}'s request.${port ? " It may have been handled already, or you may not be allowed to." : reason}` });
+      // One message for every program: the reason when there is one, else the usual causes.
+      const reason = err instanceof Error && err.message ? ` ${err.message}` : " It may have been handled already, or you may not be allowed to.";
+      setMessage({ kind: "error", text: `Couldn't ${action === "approve" ? "approve" : "deny"} ${row.name}'s request.${reason}` });
     } finally {
       setBusy(null);
     }

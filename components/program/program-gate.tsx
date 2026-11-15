@@ -8,7 +8,7 @@ import { failureDetails, reportFirestoreError } from "@/lib/firestore-errors";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "@/lib/program/navigation";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
-import { ProgramSwitcher } from "@/components/program/program-switcher";
+import { ProgramSetupFrame } from "@/components/program/setup-frame";
 import { TeamSetup } from "@/components/program/team-setup";
 import { useProgramData } from "@/lib/program/data";
 
@@ -43,8 +43,7 @@ export function ProgramGate() {
   }, [user, program]);
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-xl flex-col justify-center gap-4 px-4">
-      <ProgramSwitcher />
+    <ProgramSetupFrame>
       {membership === "none" && data ? (
         <TeamSetup />
       ) : (
@@ -64,6 +63,6 @@ export function ProgramGate() {
         {typeof membership === "object" && <p className="text-sm text-[var(--destructive,#d33)]">Could not read your {config.brand.label} membership: {membership.error}</p>}
       </div>
       )}
-    </div>
+    </ProgramSetupFrame>
   );
 }

@@ -148,6 +148,12 @@ export function ImportCsvDialog({
     }
   };
 
+  // One preview for both programs, from one shape. The default program refuses a file with any unreadable row (nothing is imported); a ported program
+  // imports the readable rows and lists the others (`blockOnErrors`).
+  const preview: ImportPreviewModel | null = port
+    ? plan && { fileError: plan.fileError, rowErrors: plan.rowErrors, rows: plan.toWrite.map(({ id, row }) => ({ key: id, row })), duplicates: plan.duplicates }
+    : { fileError: null, rowErrors: errors, rows: toInsert.map((row, i) => ({ key: String(i), row })), duplicates: skipped };
+
   return (
     <Dialog
       open={open}
@@ -182,82 +188,44 @@ export function ImportCsvDialog({
           )}
           {fileName && <p className="text-sm text-[var(--muted-foreground)]">{fileName}</p>}
 
-          {port && plan && <PortPreview plan={plan} result={result} importError={importError} importing={importing} onImport={confirmPortImport} />}
-
-          {!port && errors.length > 0 && (
-            <div className="glass-card flex flex-col gap-1 p-4 text-sm text-red-300">
-              {errors.map((e) => (
-                <p key={e}>{e}</p>
-              ))}
-            </div>
-          )}
-
-          {!port && fileName && errors.length === 0 && (
-            <>
-              <p className="text-sm text-[var(--muted-foreground)]">
-                <span className="font-semibold text-[var(--foreground)]">{toInsert.length}</span> new row
-                {toInsert.length === 1 ? "" : "s"} to import, <span className="font-semibold text-[var(--foreground)]">{skipped}</span>{" "}
-                duplicate{skipped === 1 ? "" : "s"} skipped.
-              </p>
-              {toInsert.length > 0 && (
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>Match</TH>
-                      <TH>Team</TH>
-                      <TH>Scout</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {toInsert.slice(0, 8).map((r, i) => (
-                      <TR key={i}>
-                        <TD>{formatMatch({ matchType: r.matchType, matchNumber: r.matchNumber })}</TD>
-                        <TD>{r.teamNumber}</TD>
-                        <TD>{r.scoutName}</TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
-              )}
-              {toInsert.length > 8 && (
-                <p className="text-xs text-[var(--muted-foreground)]">...and {toInsert.length - 8} more.</p>
-              )}
-              <Button size="lg" disabled={toInsert.length === 0 || importing} onClick={confirmImport}>
-                {importing ? "Importing…" : `Import ${toInsert.length} row${toInsert.length === 1 ? "" : "s"}`}
-              </Button>
-            </>
-          )}
+          {fileName && <ImportPreview preview={preview} result={result} importError={importError} importing={importing} blockOnErrors={!port} onImport={port ? confirmPortImport : confirmImport} />}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-/** The preview and result of a ported program's import: row counts, every unreadable row by number and reason, then what was written and what failed. */
-function PortPreview({ plan, result, importError, importing, onImport }: { plan: CsvImportPlan; result: CsvImportResult | null; importError: string | null; importing: boolean; onImport: () => void }) {
-  if (plan.fileError) {
+type ImportPreviewModel = { fileError: string | null; rowErrors: string[]; rows: { key: string; row: ImportedRow }[]; duplicates: number };
+
+/** The preview and result of a CSV import (the same for every program): row counts, every unreadable row by number and reason, the first rows, then what was written. */
+function ImportPreview({ preview, result, importError, importing, blockOnErrors, onImport }: { preview: ImportPreviewModel | null; result: CsvImportResult | null; importError: string | null; importing: boolean; blockOnErrors: boolean; onImport: () => void }) {
+  if (!preview) return null;
+  if (preview.fileError) {
     return (
       <div role="alert" className="glass-card flex flex-col gap-1 p-4 text-sm text-red-300">
-        <p>{plan.fileError}</p>
+        <p>{preview.fileError}</p>
         <p className="text-[var(--muted-foreground)]">Nothing was imported. Export a CSV from this page and use its columns.</p>
       </div>
     );
   }
-  const count = plan.toWrite.length;
+  const blocked = blockOnErrors && preview.rowErrors.length > 0;
+  const count = blocked ? 0 : preview.rows.length;
+  const { duplicates, rowErrors } = preview;
   return (
     <>
-      {!result && (
+      {!result && !blocked && (
         <p className="text-sm text-[var(--muted-foreground)]" data-testid="import-preview">
           <span className="font-semibold text-[var(--foreground)]">{count}</span> new row{count === 1 ? "" : "s"} to import,{" "}
-          <span className="font-semibold text-[var(--foreground)]">{plan.duplicates}</span> duplicate{plan.duplicates === 1 ? "" : "s"} skipped,{" "}
-          <span className="font-semibold text-[var(--foreground)]">{plan.rowErrors.length}</span> row{plan.rowErrors.length === 1 ? "" : "s"} with errors (not imported).
+          <span className="font-semibold text-[var(--foreground)]">{duplicates}</span> duplicate{duplicates === 1 ? "" : "s"} skipped,{" "}
+          <span className="font-semibold text-[var(--foreground)]">{rowErrors.length}</span> row{rowErrors.length === 1 ? "" : "s"} with errors (not imported).
         </p>
       )}
-      {plan.rowErrors.length > 0 && (
+      {rowErrors.length > 0 && (
         <div role="alert" className="glass-card flex max-h-40 flex-col gap-1 overflow-y-auto p-4 text-sm text-red-300">
-          {plan.rowErrors.map((e) => (
+          {rowErrors.map((e) => (
             <p key={e}>{e}</p>
           ))}
+          {blocked && <p className="text-[var(--muted-foreground)]">Nothing was imported. Fix these rows and choose the file again.</p>}
         </div>
       )}
       {!result && count > 0 && (
@@ -270,8 +238,8 @@ function PortPreview({ plan, result, importError, importing, onImport }: { plan:
             </TR>
           </THead>
           <TBody>
-            {plan.toWrite.slice(0, 8).map(({ id, row }) => (
-              <TR key={id}>
+            {preview.rows.slice(0, 8).map(({ key, row }) => (
+              <TR key={key}>
                 <TD>{formatMatch({ matchType: row.matchType, matchNumber: row.matchNumber })}</TD>
                 <TD>{row.teamNumber}</TD>
                 <TD>{row.scoutName}</TD>
@@ -289,8 +257,8 @@ function PortPreview({ plan, result, importError, importing, onImport }: { plan:
       {result && (
         <div className="glass-card flex flex-col gap-1 p-4 text-sm" data-testid="import-result">
           <p>
-            Imported <span className="font-semibold">{result.written}</span> row{result.written === 1 ? "" : "s"}. {plan.duplicates} duplicate{plan.duplicates === 1 ? "" : "s"} skipped,{" "}
-            {plan.rowErrors.length} row{plan.rowErrors.length === 1 ? "" : "s"} not imported because of errors.
+            Imported <span className="font-semibold">{result.written}</span> row{result.written === 1 ? "" : "s"}. {duplicates} duplicate{duplicates === 1 ? "" : "s"} skipped,{" "}
+            {rowErrors.length} row{rowErrors.length === 1 ? "" : "s"} not imported because of errors.
           </p>
           {result.failures.map((f, i) => (
             <p key={i} role="alert" className="text-red-300">
@@ -299,7 +267,7 @@ function PortPreview({ plan, result, importError, importing, onImport }: { plan:
           ))}
         </div>
       )}
-      {!result && (
+      {!result && !blocked && (
         <Button size="lg" disabled={count === 0 || importing} onClick={onImport}>
           {importing ? "Importing…" : `Import ${count} row${count === 1 ? "" : "s"}`}
         </Button>

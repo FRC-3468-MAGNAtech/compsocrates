@@ -41,6 +41,7 @@ export function TeamSetup() {
   return (
     <TeamSetupCard
       programLabel={label}
+      greeting={user.displayName ? `Hi, ${user.displayName}` : undefined}
       creation="open"
       defaultName={user.displayName ?? (user.email ?? "").split("@")[0] ?? ""}
       onJoin={async ({ code, name }) => {
