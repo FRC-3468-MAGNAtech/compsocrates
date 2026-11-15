@@ -229,7 +229,7 @@ export function ProfileEditorForm({
           <VisibilityOption
             icon={Lock}
             title="Private"
-            body="Teammates who aren't admins see only your picture, name and role, and “This profile is private”."
+            body={`${adminsSeeAll !== false ? "Teammates who aren't admins see" : "Teammates see"} only your picture, name and role, and “This profile is private”.`}
             selected={shownVisibility === "private"}
             disabled={visibilityBusy}
             onSelect={() => void chooseVisibility("private")}
@@ -255,7 +255,7 @@ export function ProfileEditorForm({
         <div className="flex flex-col gap-1 text-xs text-[var(--muted-foreground)]" data-testid="privacy-limits">
           <p className="font-medium text-[var(--foreground)]">What private does and doesn&apos;t do</p>
           <p>
-            Private hides your profile page and the text on it (display name, bio, pronouns) from teammates who aren&apos;t admins. It doesn&apos;t hide the scouting your team already shares: your
+            Private hides your profile page and the text on it (display name, bio, pronouns) from teammates{adminsSeeAll !== false ? " who aren't admins" : ""}. It doesn&apos;t hide the scouting your team already shares: your
             entries, practice sessions, accuracy and rank still appear in Analytics, Scout Accuracy, Scout Status and the leaderboards, and the People page still lists you.
             {adminsSeeAll !== false ? " Admins can always see your profile and" : " Admins"} can clear a bio or pronouns that break your team&apos;s rules (they can&apos;t write for you).
           </p>
@@ -324,12 +324,17 @@ function VisibilityOption({
       data-testid={testId}
       className={cn(
         "glass-card flex flex-col gap-1.5 p-4 text-left outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[rgba(var(--glow),0.6)] disabled:cursor-not-allowed",
-        selected ? "ring-2 ring-[var(--color-primary)]" : "ring-1 ring-transparent",
+        selected ? "bg-white/[0.08] ring-2 ring-[var(--color-primary)]" : "ring-1 ring-transparent",
         disabled && !selected && "opacity-50"
       )}
     >
       <span className="flex items-center gap-2 text-sm font-medium">
         <Icon className="h-4 w-4" aria-hidden /> {title}
+        {selected && (
+          <span data-testid={`${testId}-selected`} className="ml-auto flex items-center gap-1 rounded-full bg-[var(--color-primary)] px-2 py-0.5 text-xs font-semibold text-[var(--color-primary-foreground)]">
+            <Check className="h-3 w-3" aria-hidden /> Selected
+          </span>
+        )}
       </span>
       <span className="text-xs text-[var(--muted-foreground)]">{body}</span>
     </button>
