@@ -8,6 +8,7 @@ import { SummaryStats } from "@/components/scout-stats/summary-stats";
 import { FiltersBar } from "@/components/scout-stats/filters-bar";
 import { LeaderboardTable } from "@/components/scout-stats/leaderboard-table";
 import { ScoutDetailsDialog } from "@/components/scout-stats/scout-details-dialog";
+import { UnassignedRow } from "@/components/scout-stats/unassigned-row";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
 import type { RoleId } from "@/lib/roles";
@@ -55,6 +56,8 @@ export default function ScoutAccuracyPage() {
     rankingBasis: effectiveRankingBasis,
     realEventScope,
     seasonId: seasonId || null,
+    // Data that belongs to no member is only shown to an admin.
+    includeUnassigned: can("manageScoutData"),
   });
   // Cross-event page: reads every selected event, archived ones included (archiving only affects event pickers).
   const { allEvents: activeEvents, storedPrimaryCode: primaryCode } = useActiveEvents();
@@ -89,15 +92,16 @@ export default function ScoutAccuracyPage() {
         <GameSelect id="accuracy-game" value={seasonId} onChange={setSeasonId} seasons={seasons} />
       </div>
 
-      {sources.sessionsError && (
-        <GlassPanel role="alert" className="flex flex-col gap-1 text-sm">
-          <div className="font-semibold">{sources.sessionsError.context}</div>
+      {/* Each source names its own failure; the rest of the page still renders what it has. */}
+      {sources.sourceErrors.map((e) => (
+        <GlassPanel key={e.source} role="alert" className="flex flex-col gap-1 text-sm">
+          <div className="font-semibold">{e.title}</div>
           <div className="text-[var(--muted-foreground)]">
-            {sources.sessionsError.code}: {sources.sessionsError.message}
-            {sources.sessionsError.path ? ` (${sources.sessionsError.path})` : ""}. Practice accuracy below may be incomplete.
+            {e.failure.code}: {e.failure.message}
+            {e.failure.path ? ` (${e.failure.path})` : ""}. The numbers below may be incomplete.
           </div>
         </GlassPanel>
-      )}
+      ))}
 
       {!loaded || !result ? (
         <div className="glass-card h-64 animate-pulse" />
@@ -118,9 +122,15 @@ export default function ScoutAccuracyPage() {
             onRealEventScopeChange={setRealEventScope}
           />
 
+          {category !== "real-event" && sources.sessions.length === 0 && sources.sourceErrors.every((e) => e.source !== "sessions") && (
+            <GlassPanel className="text-center text-sm text-[var(--muted-foreground)]">No practice sessions yet</GlassPanel>
+          )}
+
           <GlassPanel>
             <LeaderboardTable category={category} rows={result.rows} onViewDetails={setSelectedUid} />
           </GlassPanel>
+
+          {result.unassigned && (result.unassigned.sessions > 0 || result.unassigned.entries > 0) && <UnassignedRow category={category} stats={result.unassigned} />}
         </>
       )}
 

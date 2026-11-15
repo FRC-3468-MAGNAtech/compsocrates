@@ -19,6 +19,7 @@ import type {
   ScoutLeaderboardRow,
   ScoutStatsResult,
   ScoutStatsSummary,
+  UnassignedStats,
 } from "./types";
 
 function mean(values: number[]): number {
@@ -103,14 +104,53 @@ function practiceSessionSummary(session: PracticeSession, libraryMatchesById: Ma
  * as old CS did (`scouting` docs with `isPracticeScouting`, not live, matching `practiceMode`, by `scoutId` or `scoutName`).
  * It is NOT read off the sessions: a session CS wrote carries no list of its entries, so summing `session.entryIds` gave 0.
  */
-export function practiceEntryCount(entries: readonly ScoutEntry[], uid: string, name: string, mode: "trial" | "competitive", seasonId: string | null = null): number {
+export function practiceEntryCount(entries: readonly ScoutEntry[], uid: string, name: string, mode: "trial" | "competitive", seasonId: string | null = null, seasonOf: SeasonOfEntry = defaultSeasonOfEntry): number {
   const nameKey = name.trim().toLowerCase();
   return entries.filter((e) => {
     if (e.source !== "practice" || e.mode !== mode) return false;
     const mine = e.uid ? e.uid === uid : nameKey !== "" && e.scoutName.trim().toLowerCase() === nameKey;
     if (!mine) return false;
-    return !seasonId || seasonIdForGame(e.game ?? e.formId) === seasonId;
+    return entryInSeason(e, seasonId, seasonOf);
   }).length;
+}
+
+/** The season (game) an entry was scouted in, or null when it cannot be told. */
+export type SeasonOfEntry = (entry: ScoutEntry) => string | null;
+
+/** The default program's rule: the CS `game` field, else the form id, mapped to a known season (an unknown one is the default season). */
+const defaultSeasonOfEntry: SeasonOfEntry = (e) => seasonIdForGame(e.game ?? e.formId);
+
+/** A game filter keeps an entry whose season matches; an entry whose season cannot be told is kept (never silently dropped). */
+function entryInSeason(e: ScoutEntry, seasonId: string | null, seasonOf: SeasonOfEntry): boolean {
+  if (!seasonId) return true;
+  const of = seasonOf(e);
+  return of === null || of === seasonId;
+}
+
+/** Admin-only extra row: completed solo sessions and entries whose scout is not a member (no scout id, or someone who left). */
+function computeUnassigned(
+  category: ScoutCategory,
+  members: TeamMember[],
+  sessions: PracticeSession[],
+  entries: ScoutEntry[],
+  seasonId: string | null,
+  seasonOf: SeasonOfEntry
+): UnassignedStats {
+  const uids = new Set(members.map((m) => m.uid));
+  const names = new Set(members.map((m) => m.name.trim().toLowerCase()).filter(Boolean));
+  const belongsToMember = (uid: string, name: string) => (uid ? uids.has(uid) : names.has(name.trim().toLowerCase()));
+  if (category === "real-event") {
+    const own = entries.filter((e) => isRealEventEntry(e) && !belongsToMember(e.uid, e.scoutName));
+    return { sessions: 0, entries: own.length, averageAccuracy: null };
+  }
+  const orphans = sessions.filter((s) => s.kind === "solo" && !s.csLive && s.mode === category && s.status === "completed" && !belongsToMember(s.uid, s.scoutName));
+  const counted = orphans.filter((s) => !s.excluded && typeof s.accuracy === "number");
+  const orphanEntries = entries.filter((e) => e.source === "practice" && e.mode === category && !belongsToMember(e.uid, e.scoutName) && entryInSeason(e, seasonId, seasonOf));
+  return {
+    sessions: orphans.length,
+    entries: orphanEntries.length,
+    averageAccuracy: counted.length > 0 ? mean(counted.map((s) => s.accuracy as number)) : null,
+  };
 }
 
 function computePracticeDetail(
@@ -201,6 +241,12 @@ export type ScoutStatsInput = {
   realEventScope: RealEventCalculationScope;
   /** Count only this game's practice entries (a season id). Null/absent counts every game. */
   seasonId?: string | null;
+  /** Which season an entry belongs to; absent = the default program's rule (`game`, else the form id). */
+  seasonOfEntry?: SeasonOfEntry;
+  /** A program with its own session store: "total entries" is the scout's practice entries and nothing else (never a stored list on the session). */
+  entriesOnlyCount?: boolean;
+  /** Also compute the unassigned row (admins). Absent: the result carries `unassigned: null`. */
+  includeUnassigned?: boolean;
 };
 
 /**
@@ -239,7 +285,9 @@ export function computeScoutStats(input: ScoutStatsInput): ScoutStatsResult {
       // The entries are the truth; a session this app wrote also lists its entry ids, and the larger count wins so neither source undercounts.
       detailsByUid.set(member.uid, {
         ...detail,
-        totalEntries: Math.max(detail.totalEntries ?? 0, practiceEntryCount(entries, member.uid, member.name, category, input.seasonId ?? null)),
+        totalEntries: input.entriesOnlyCount
+          ? practiceEntryCount(entries, member.uid, member.name, category, input.seasonId ?? null, input.seasonOfEntry)
+          : Math.max(detail.totalEntries ?? 0, practiceEntryCount(entries, member.uid, member.name, category, input.seasonId ?? null, input.seasonOfEntry)),
       });
     }
   }
@@ -300,5 +348,6 @@ export function computeScoutStats(input: ScoutStatsInput): ScoutStatsResult {
     totalEntries: category === "real-event" ? null : rows.reduce((sum, r) => sum + (r.totalEntries ?? 0), 0),
   };
 
-  return { rows, summary, detailsByUid };
+  const unassigned = input.includeUnassigned ? computeUnassigned(category, members, sessions, entries, input.seasonId ?? null, input.seasonOfEntry ?? defaultSeasonOfEntry) : null;
+  return { rows, summary, detailsByUid, unassigned };
 }

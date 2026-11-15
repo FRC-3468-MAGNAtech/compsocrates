@@ -84,8 +84,20 @@ export type ScoutStatsSummary = {
   totalEntries: number | null;
 };
 
+/** Data that belongs to no member of the team (no scout id, or a scout who is not on the roster): shown to admins as its own row, never dropped. */
+export type UnassignedStats = {
+  /** Completed solo sessions (Real Event: 0). */
+  sessions: number;
+  /** Practice entries of the mode (Real Event: event entries). */
+  entries: number;
+  /** 0-100 over the unassigned sessions that count (not excluded, with a numeric accuracy), or null. */
+  averageAccuracy: number | null;
+};
+
 export type ScoutStatsResult = {
   rows: ScoutLeaderboardRow[];
   summary: ScoutStatsSummary;
   detailsByUid: Map<string, ScoutCategoryDetail>;
+  /** Only when the input asked for it (`includeUnassigned`); null otherwise, so the default program's result is unchanged. */
+  unassigned: UnassignedStats | null;
 };

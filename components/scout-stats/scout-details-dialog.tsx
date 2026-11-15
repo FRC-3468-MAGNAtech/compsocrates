@@ -10,6 +10,7 @@ import { getPercentColor } from "@/lib/accuracy/engine";
 import { dismissSessionFlag, hardResetScoutData, setSessionExcluded } from "@/lib/scout-stats/actions";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import type { ScoutCategory, ScoutCategoryDetail } from "@/lib/scout-stats/types";
+import { useProgram } from "@/lib/program/context";
 import { PlatformBadge } from "./platform-badge";
 
 const RECENT_SHOWN = 5;
@@ -47,6 +48,11 @@ export function ScoutDetailsDialog({
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
+  // The program the page is in: the actions write to its own collections.
+  const program = useProgram();
+  // A failed action says so (a denied write is never silent).
+  const [actionError, setActionError] = useState<string | null>(null);
+  const describe = (what: string, err: unknown) => `${what}: ${err instanceof Error && err.message ? err.message : "something went wrong."}`;
 
   if (!detail) return null;
 
@@ -61,8 +67,11 @@ export function ScoutDetailsDialog({
     const session = sessionsById.get(sessionId);
     if (!session) return;
     setBusySessionId(sessionId);
+    setActionError(null);
     try {
-      await dismissSessionFlag(teamId, actorUid, actorName, session, flagType);
+      await dismissSessionFlag(teamId, actorUid, actorName, session, flagType, program);
+    } catch (err) {
+      setActionError(describe("Could not dismiss that flag", err));
     } finally {
       setBusySessionId(null);
     }
@@ -72,8 +81,11 @@ export function ScoutDetailsDialog({
     const session = sessionsById.get(sessionId);
     if (!session) return;
     setBusySessionId(sessionId);
+    setActionError(null);
     try {
-      await setSessionExcluded(teamId, actorUid, actorName, session, excluded);
+      await setSessionExcluded(teamId, actorUid, actorName, session, excluded, program);
+    } catch (err) {
+      setActionError(describe(excluded ? "Could not exclude that session" : "Could not include that session", err));
     } finally {
       setBusySessionId(null);
     }
@@ -82,10 +94,14 @@ export function ScoutDetailsDialog({
   const handleHardReset = async () => {
     if (category === "real-event") return;
     setResetting(true);
+    setActionError(null);
     try {
-      await hardResetScoutData(teamId, actorUid, actorName, detail.uid, detail.name, category, allSessionsForScout);
+      await hardResetScoutData(teamId, actorUid, actorName, detail.uid, detail.name, category, allSessionsForScout, program);
       setConfirmResetOpen(false);
       onOpenChange(false);
+    } catch (err) {
+      setConfirmResetOpen(false);
+      setActionError(describe("Could not reset this scout's data", err));
     } finally {
       setResetting(false);
     }
@@ -99,6 +115,11 @@ export function ScoutDetailsDialog({
           <DialogDescription>
             {category === "trial" ? "Trial Mode" : category === "competitive" ? "Competitive Mode" : "Real Event"} scouting record.
           </DialogDescription>
+          {actionError && (
+            <p role="alert" className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">
+              {actionError}
+            </p>
+          )}
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Avg accuracy" value={detail.averageAccuracy === null ? "?" : `${Math.round(detail.averageAccuracy)}%`} accentClass={detail.averageAccuracy !== null ? getPercentColor(detail.averageAccuracy) : undefined} />
