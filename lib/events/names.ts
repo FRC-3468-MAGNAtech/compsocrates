@@ -1,5 +1,6 @@
 import { staticEventName } from "@/config/event-names";
 import { EVENT_CONFIG, normalizeEventKey, type EventConfig } from "@/config/event";
+import { parseEventKey, seasonLabel } from "@/lib/events/event-key";
 
 /**
  * Pure event-name resolution (no React, no network). The chain, first usable name wins:
@@ -57,6 +58,52 @@ export function resolveEventName({ key, api, stored, config = EVENT_CONFIG }: Re
   if (fromStatic) return { name: fromStatic, source: "static" };
   const trimmed = String(key ?? "").trim();
   return { name: trimmed || UNKNOWN_EVENT_NAME, source: "key" };
+}
+
+const FIRST_SEASON = 1992;
+const LAST_SEASON = 2100;
+
+/**
+ * The season an event key belongs to, shown as the year label for a display name: a "tba" key (`2026lake`) gives `2026`, a "season-code" key
+ * (`2025-USCALAB`) gives the two-year form `2025-26`. Null when the key carries no season (`app-testing`, `week0`, empty): the season is never guessed.
+ * Pure and program-free: the key's own shape says which form it is (the two shapes cannot overlap, see `lib/events/event-key.ts`).
+ */
+export function eventYearLabel(key: string, config: EventConfig = EVENT_CONFIG): string | null {
+  const raw = String(key ?? "").trim();
+  if (!raw) return null;
+  const inRange = (season: number) => season >= FIRST_SEASON && season <= LAST_SEASON;
+  const coded = parseEventKey("season-code", raw);
+  if (coded) return inRange(coded.season) ? seasonLabel("start-year", coded.season) : null;
+  const tba = parseEventKey("tba", raw) ?? parseEventKey("tba", normalizeEventKey(raw, config));
+  return tba && inRange(tba.season) ? seasonLabel("calendar", tba.season) : null;
+}
+
+/** The years a name may already state for this label: `2026`, or for `2025-26` both `2025` and `2026`. */
+function labelYears(label: string): string[] {
+  const start = /^(\d{4})-(\d{2})$/.exec(label);
+  return start ? [start[1], String(Number(start[1]) + 1)] : [label];
+}
+
+/**
+ * The name for display with its season beside it: "Arkansas Regional" becomes "Arkansas Regional 2026" (an FTC name gets "2025-26").
+ * Display only: callers never store this or put it in a machine-readable export. The name is returned unchanged when the key has no
+ * season, when it already states the year anywhere (a whole number, so "FIRST 2026 Arkansas" and "Arkansas 2025-26" are left alone), and when
+ * it is only the raw key (a placeholder, not a name).
+ */
+export function withEventYear(name: string, key: string, config: EventConfig = EVENT_CONFIG): string {
+  const text = String(name ?? "").trim();
+  if (!text) return String(name ?? "");
+  const label = eventYearLabel(key, config);
+  if (!label) return text;
+  const rawKey = String(key ?? "").trim().toLowerCase();
+  if (text.toLowerCase() === rawKey || text.toLowerCase() === normalizeEventKey(rawKey, config)) return text;
+  if (labelYears(label).some((year) => new RegExp(`(?<!\\d)${year}(?!\\d)`).test(text))) return text;
+  return `${text} ${label}`;
+}
+
+/** `withEventYear` for a record that carries its own code and name (an `EventInfo`, a library event): the one call a component makes for an event title. */
+export function eventTitle(event: { code: string; name: string }): string {
+  return withEventYear(event.name, event.code);
 }
 
 /**

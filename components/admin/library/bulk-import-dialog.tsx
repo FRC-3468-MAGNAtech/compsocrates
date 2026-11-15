@@ -19,6 +19,7 @@ import { useProgramConfig } from "@/lib/program/context";
 import { parseYouTubeUrl } from "@/lib/library/youtube-url";
 import { useLibraryMatches } from "@/lib/match-library";
 import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
 
 const NEW_EVENT = "__new__";
 const MAX_PREVIEW_ROWS = 200;
@@ -161,12 +162,12 @@ export function BulkImportDialog({
               >
                 {events.map((e) => (
                   <option key={e.eventCode} value={e.eventCode}>
-                    {e.eventName} ({e.eventCode})
+                    {withEventYear(e.eventName, e.eventCode)} ({e.eventCode})
                   </option>
                 ))}
                 {createdEvent && !events.some((e) => e.eventCode === createdEvent.eventCode) && (
                   <option value={createdEvent.eventCode}>
-                    {createdEvent.eventName} ({createdEvent.eventCode})
+                    {withEventYear(createdEvent.eventName, createdEvent.eventCode)} ({createdEvent.eventCode})
                   </option>
                 )}
                 <option value={NEW_EVENT}>＋ Create new event…</option>
@@ -189,7 +190,7 @@ export function BulkImportDialog({
             )}
             {event && (
               <p className="text-xs text-[var(--muted-foreground)]">
-                Importing into <span className="font-medium text-[var(--foreground)]">{event.eventName}</span> (<span className="font-mono">{event.eventCode}</span>) — {existingMatches.length} match{existingMatches.length === 1 ? "" : "es"} already in it.
+                Importing into <span className="font-medium text-[var(--foreground)]">{withEventYear(event.eventName, event.eventCode)}</span> (<span className="font-mono">{event.eventCode}</span>) — {existingMatches.length} match{existingMatches.length === 1 ? "" : "es"} already in it.
               </p>
             )}
           </section>

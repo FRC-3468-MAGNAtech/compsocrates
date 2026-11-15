@@ -38,8 +38,9 @@ export function EventNameText({ state, className }: { state: EventNameState; cla
     );
   }
   return (
-    <span className={className} title={eventNameTitle(state)} data-event-name-source={state.source}>
-      {state.name}
+    // The title carries the full text for a name a narrow select or row cuts off with an ellipsis (a failure reason wins when there is one).
+    <span className={className} title={eventNameTitle(state) ?? state.displayName} data-event-name-source={state.source}>
+      {state.displayName}
     </span>
   );
 }

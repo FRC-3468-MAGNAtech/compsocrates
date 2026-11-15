@@ -15,6 +15,7 @@ import { allianceTeamFields, emptyRawMatch, libraryMatchToValid, manualMatchId, 
 import type { Actor, LibraryEvent } from "@/lib/library/store";
 import type { LibraryMatch } from "@/lib/match-library";
 import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
 
 export type MatchDialogMode = { kind: "new" } | { kind: "edit"; match: LibraryMatch } | { kind: "duplicate"; match: LibraryMatch };
 
@@ -151,7 +152,7 @@ export function ManualMatchDialog({
       <DialogContent className="glass-overlay max-h-[92vh] w-[min(95vw,760px)] overflow-y-auto">
         <DialogTitle className="pr-8">{title}</DialogTitle>
         <DialogDescription>
-          {event.eventName} <span className="font-mono text-xs">({event.eventCode})</span>
+          {withEventYear(event.eventName, event.eventCode)} <span className="font-mono text-xs">({event.eventCode})</span>
           {idPreview && <span className="ml-2 font-mono text-xs">→ {idPreview}</span>}
         </DialogDescription>
 

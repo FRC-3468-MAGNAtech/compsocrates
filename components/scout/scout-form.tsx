@@ -43,6 +43,7 @@ import { ALLIANCE_ROLE_KEY, allianceRoleFor, allianceRoleLabel, applyAllianceRol
 import { isSystemField, type FormValue, type Form, type FormField, type FormSection, type FormValues, type ImageValue } from "@/lib/forms/types";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import type { EventInfo } from "@/lib/events/types";
+import { eventTitle } from "@/lib/events/names";
 
 export type ScoutFormMode = "event" | "practice" | "live" | "lobby";
 export type ScoutFormLayout = "page" | "side-panel";
@@ -699,12 +700,12 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
           <Label htmlFor="scout-event-picker">Event</Label>
           <Select value={activeEvent?.code ?? ""} onValueChange={handleEventChange} disabled={isLocked("match")}>
             <SelectTrigger id="scout-event-picker">
-              <SelectValue>{activeEvent?.name ?? "Pick an event"}</SelectValue>
+              <SelectValue>{activeEvent ? eventTitle(activeEvent) : "Pick an event"}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {eventChoices.map((e) => (
                 <SelectItem key={e.code} value={e.code}>
-                  {e.name}
+                  {eventTitle(e)}
                 </SelectItem>
               ))}
             </SelectContent>

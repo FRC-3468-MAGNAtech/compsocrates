@@ -20,6 +20,7 @@ import { useEventMatches } from "@/lib/analytics/use-event-data";
 import { useAuth } from "@/lib/auth";
 import type { CsDoc } from "@/lib/games/types";
 import type { ScoutEntry } from "@/lib/scout-entries";
+import { withEventYear } from "@/lib/events/names";
 
 type Active = { match: HighAccuracyMatch; alliance: AllianceGroup };
 
@@ -227,7 +228,7 @@ export function AccuracyVerificationView() {
         <DialogContent>
           <DialogTitle>Re-scout match</DialogTitle>
           <DialogDescription>
-            {active ? `${active.match.eventName} - ${active.match.matchLabel} - ${active.alliance.alliance === "red" ? "Red" : "Blue"} Alliance. Pick the robot to re-scout.` : ""}
+            {active ? `${withEventYear(active.match.eventName, active.match.eventKey)} -${active.match.matchLabel} - ${active.alliance.alliance === "red" ? "Red" : "Blue"} Alliance. Pick the robot to re-scout.` : ""}
           </DialogDescription>
           <div className="mt-4 grid grid-cols-1 gap-2">
             {active?.alliance.teams.map((team) => {

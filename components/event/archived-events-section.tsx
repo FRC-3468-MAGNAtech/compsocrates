@@ -9,6 +9,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { STATUS_BADGE, formatDateRange } from "@/components/event/selected-events-panel";
 import { getEventStatus } from "@/lib/events/event-status";
 import { useNamedEvents } from "@/lib/events/use-event-names";
+import { eventTitle } from "@/lib/events/names";
 import type { EventInfo } from "@/lib/events/types";
 import { cn } from "@/lib/utils";
 
@@ -63,8 +64,8 @@ export function ArchivedEventsSection({ archived: rawArchived, previousSeason, c
             return (
               <li key={event.code} className="flex items-center gap-2 rounded-xl p-2.5" data-testid={`archived-${event.code}`}>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium" title={event.name}>
-                    {event.name}
+                  <div className="truncate text-sm font-medium" title={eventTitle(event)}>
+                    {eventTitle(event)}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
                     <span>{event.code}</span>
@@ -73,7 +74,7 @@ export function ArchivedEventsSection({ archived: rawArchived, previousSeason, c
                   </div>
                 </div>
                 {canEdit && (
-                  <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => onRestore(event)} aria-label={`Restore ${event.name}`}>
+                  <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => onRestore(event)} aria-label={`Restore ${eventTitle(event)}`}>
                     <ArchiveRestore className="h-4 w-4" aria-hidden /> Restore
                   </Button>
                 )}

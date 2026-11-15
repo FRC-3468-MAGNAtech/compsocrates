@@ -77,11 +77,11 @@ export function EventDetailsView({ eventKey }: { eventKey: string }) {
   const resolved = useEventName(nameKey, { name: event?.name });
   useEffect(() => {
     const previous = document.title;
-    document.title = `${resolved.name} | ${BRAND.title}`;
+    document.title = `${resolved.displayName} | ${BRAND.title}`;
     return () => {
       document.title = previous;
     };
-  }, [resolved.name]);
+  }, [resolved.displayName]);
 
   let body: React.ReactNode;
   if (!parsed) {

@@ -32,6 +32,7 @@ import { DIFFICULTY_LABELS, type Difficulty } from "@/lib/difficulty";
 import { eventMatchesToInputs, libraryMatchesToInputs } from "@/lib/scheduler/sources";
 import type { MatchInput, ScheduleResult, SlotId } from "@/lib/scheduler/types";
 import { useEventName } from "@/lib/events/use-event-names";
+import { eventTitle } from "@/lib/events/names";
 
 /** P31: the three kinds of assignment. Match Scouting is the original schedule; Pit Scouting and Team Strategy hand out teams. */
 type AssignmentTab = "match" | TeamAssignKind;
@@ -73,7 +74,7 @@ export default function AssignmentsPage() {
   );
   const selectedEventHint = activeSelected?.name ?? eventsQuery.data?.find((e) => e.code === eventCode)?.name;
   const resolvedSelectedName = useEventName(eventCode ?? "", { name: selectedEventHint });
-  const selectedEventName = eventCode ? resolvedSelectedName.name : "Pick an event";
+  const selectedEventName = eventCode ? resolvedSelectedName.displayName : "Pick an event";
 
   const { members, loaded: membersLoaded } = useTeamMembers(teamId);
   const { attendance, loaded: attendanceLoaded } = useEventAttendance(teamId, eventCode);
@@ -220,7 +221,7 @@ export default function AssignmentsPage() {
               {activeOptions.map((e) => (
                 <SelectItem key={e.code} value={e.code}>
                   {e.code === primaryCode ? "★ " : ""}
-                  {e.name}
+                  {eventTitle(e)}
                 </SelectItem>
               ))}
               {activeOptions.length > 0 && otherEvents.length > 0 && (
@@ -230,7 +231,7 @@ export default function AssignmentsPage() {
               )}
               {otherEvents.map((e) => (
                 <SelectItem key={e.code} value={e.code}>
-                  {e.name}
+                  {eventTitle(e)}
                 </SelectItem>
               ))}
             </SelectContent>

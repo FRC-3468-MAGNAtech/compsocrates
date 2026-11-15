@@ -104,7 +104,7 @@ export function AttendanceWidget() {
   const eventName = useEventName(d.event?.code ?? "", { name: d.event?.name });
   return (
     <Widget title="Attendance" icon={Users} size="small" status={!d.attendanceLoaded ? "loading" : "ready"} href="/assignments" linkLabel="Assignments">
-      <KeyNumber label="Attending" value={d.attendingUids.length} hint={d.attendingUids.length === 0 ? "No attendance recorded for this event yet" : `at ${d.event ? eventName.name : "this event"}`} />
+      <KeyNumber label="Attending" value={d.attendingUids.length} hint={d.attendingUids.length === 0 ? "No attendance recorded for this event yet" : `at ${d.event ? eventName.displayName : "this event"}`} />
     </Widget>
   );
 }

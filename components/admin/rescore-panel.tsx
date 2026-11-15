@@ -30,6 +30,7 @@ import {
   type SessionRescorePatch,
 } from "@/lib/admin/rescore-sessions";
 import type { EventMatch } from "@/lib/events/types";
+import { withEventYear } from "@/lib/events/names";
 
 type Category = "event" | "sessions";
 
@@ -232,12 +233,12 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
         if (!outcome.ok) throw new Error(outcome.message);
         const r = outcome.summary;
         imported = r;
-        setRefreshResult(`${r.eventName}: refreshed ${r.written} matches, skipped ${r.skipped}.` + (r.skippedManual.length > 0 ? ` Left ${r.skippedManual.length} hand-made match(es) untouched.` : "") + (r.detail ? ` ${r.detail}` : ""));
+        setRefreshResult(`${withEventYear(r.eventName, code)}: refreshed ${r.written} matches, skipped ${r.skipped}.` + (r.skippedManual.length > 0 ? ` Left ${r.skippedManual.length} hand-made match(es) untouched.` : "") + (r.detail ? ` ${r.detail}` : ""));
       } else {
         const r = await importLibraryEvent(refreshSeasonId, code);
         imported = r;
         setRefreshResult(
-          `${r.eventName}: refreshed ${r.imported} matches, skipped ${r.skipped}.` +
+          `${withEventYear(r.eventName, code)}: refreshed ${r.imported} matches, skipped ${r.skipped}.` +
             (r.skippedManual.length > 0 ? ` Left ${r.skippedManual.length} manual match${r.skippedManual.length === 1 ? "" : "es"} untouched (${r.skippedManual.join(", ")}).` : "")
         );
       }

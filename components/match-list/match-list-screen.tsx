@@ -12,6 +12,7 @@ import { Shimmer } from "@/components/ui/shimmer";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OfficialMatch } from "@/lib/analytics/match-breakdown";
 import { EventName } from "@/components/events/event-name";
+import { eventTitle } from "@/lib/events/names";
 import type { EventInfo } from "@/lib/events/types";
 import { hasEventEnded } from "@/lib/events/event-status";
 import { MATCH_LIST_TABS, buildMatchRows, defaultTab, filterRows, formatEventDates, formatStart, rowsInTab, tabCounts, winnerOf, type MatchListRow, type MatchListStatus, type MatchListTab } from "@/lib/match-list/model";
@@ -148,10 +149,10 @@ export function MatchListScreen({ events, eventsLoaded, matches, loading, error,
             const inTab = rowsInTab(rowsByEvent.get(event.code) ?? [], tab);
             const visible = filterRows(inTab, { ourOnly, search });
             return (
-              <section key={event.code} aria-label={event.name} data-testid={`match-group-${event.code}`} className="flex flex-col gap-2">
+              <section key={event.code} aria-label={eventTitle(event)} data-testid={`match-group-${event.code}`} className="flex flex-col gap-2">
                 {shownEvents.length > 1 && (
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]" title={event.name}>
-                    {event.name} <span className="font-normal normal-case opacity-70">· {event.code}</span>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]" title={eventTitle(event)}>
+                    {eventTitle(event)} <span className="font-normal normal-case opacity-70">· {event.code}</span>
                   </h2>
                 )}
                 <EventStatusLine event={event} ended={hasEventEnded(event, now, currentSeason)} />

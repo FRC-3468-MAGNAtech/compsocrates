@@ -14,6 +14,7 @@ import { eventPagePath } from "@/lib/events/event-key";
 import { getEventStatus } from "@/lib/events/event-status";
 import { useProgramConfig } from "@/lib/program/context";
 import { useNamedEvents } from "@/lib/events/use-event-names";
+import { eventTitle } from "@/lib/events/names";
 import { spring, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { EventLifecycleStatus, EventInfo } from "@/lib/events/types";
@@ -217,7 +218,7 @@ export function SelectedEventsPanel({ events: rawEvents, primaryCode, canEdit, o
                     >
                       {event.code === primaryCode && <Star className="h-3 w-3 fill-current" style={{ color: "var(--color-primary)" }} />}
                       {/* FIX4: every chip is the event code, the same format for all of them; the full name is its tooltip. */}
-                      <span className="max-w-[11rem] truncate uppercase" title={event.name} aria-label={event.name}>
+                      <span className="max-w-[11rem] truncate uppercase" title={eventTitle(event)} aria-label={eventTitle(event)}>
                         {event.code}
                       </span>
                     </span>
@@ -345,7 +346,7 @@ function SortableEventCard({
                   count,
                   onMove: (to) => onMove(event.code, to),
                   grip: (
-                    <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Drag ${event.name} to reorder`} className={dragGripClass}>
+                    <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Drag ${eventTitle(event)} to reorder`} className={dragGripClass}>
                       <GripVertical className="h-4 w-4" />
                     </button>
                   ),
@@ -390,7 +391,7 @@ function EventRow({
         transition={springSnappy}
         disabled={!canEdit || isPrimary}
         onClick={() => onMakePrimary(event.code)}
-        aria-label={isPrimary ? `${event.name} is the primary event` : `Make ${event.name} the primary event`}
+        aria-label={isPrimary ? `${eventTitle(event)} is the primary event` : `Make ${eventTitle(event)} the primary event`}
         title={isPrimary ? "Primary event" : canEdit ? "Make primary" : undefined}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:cursor-default"
       >
@@ -400,7 +401,7 @@ function EventRow({
         />
       </motion.button>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold">{event.name}</div>
+        <div className="truncate text-sm font-semibold" title={eventTitle(event)}>{eventTitle(event)}</div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--muted-foreground)]">
           <span className="uppercase tracking-wide">{event.code}</span>
           <span className="flex items-center gap-1">
@@ -413,7 +414,7 @@ function EventRow({
       </Badge>
       <Link
         href={eventPagePath(keyShape, event)}
-        aria-label={`Details for ${event.name}`}
+        aria-label={`Details for ${eventTitle(event)}`}
         className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-xs font-medium text-[var(--muted-foreground)] outline-none hover:bg-white/10 hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--glow),0.5)]"
       >
         Details
@@ -424,7 +425,7 @@ function EventRow({
             type="button"
             onClick={() => reorder.onMove(reorder.index - 1)}
             disabled={reorder.index === 0}
-            aria-label={`Move ${event.name} up`}
+            aria-label={`Move ${eventTitle(event)} up`}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-white/10 hover:text-[var(--foreground)] disabled:opacity-30 disabled:hover:bg-transparent"
           >
             <ArrowUp className="h-4 w-4" />
@@ -433,7 +434,7 @@ function EventRow({
             type="button"
             onClick={() => reorder.onMove(reorder.index + 1)}
             disabled={reorder.index === reorder.count - 1}
-            aria-label={`Move ${event.name} down`}
+            aria-label={`Move ${eventTitle(event)} down`}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-white/10 hover:text-[var(--foreground)] disabled:opacity-30 disabled:hover:bg-transparent"
           >
             <ArrowDown className="h-4 w-4" />
@@ -446,7 +447,7 @@ function EventRow({
           whileTap={{ scale: 0.85 }}
           transition={springSnappy}
           onClick={() => onArchive(event)}
-          aria-label={`Archive ${event.name}`}
+          aria-label={`Archive ${eventTitle(event)}`}
           title="Archive"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-white/10 hover:text-[var(--foreground)]"
         >
@@ -459,7 +460,7 @@ function EventRow({
           whileTap={{ scale: 0.85 }}
           transition={springSnappy}
           onClick={() => onRemove(event)}
-          aria-label={`Remove ${event.name}`}
+          aria-label={`Remove ${eventTitle(event)}`}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-white/10 hover:text-[var(--foreground)]"
         >
           <X className="h-4 w-4" />

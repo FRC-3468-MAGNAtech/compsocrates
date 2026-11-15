@@ -71,13 +71,15 @@ describe("<EventName>", () => {
     expect(unknown).not.toContain(">2026zzzz<");
   });
 
-  it("API up: the API's name wins over the static one, with no tooltip", async () => {
+  it("API up: the API's name wins over the static one, with the year and no failure tooltip", async () => {
     api.getEvents.mockResolvedValue({ ok: true, data: [{ ...placeholderEventForKey("2026lake"), name: "Bayou Regional presented by FIRST", dateStart: "2026-04-01", dateEnd: "2026-04-04" } satisfies EventInfo] });
     await eventNameStore.ensureSeason(2026);
     const html = clean(renderToString(<EventName eventKey="2026lake" />));
-    expect(html).toContain("Bayou Regional presented by FIRST");
+    expect(html).toContain("Bayou Regional presented by FIRST 2026");
     expect(html).toContain('data-event-name-source="api"');
-    expect(html).not.toContain("title=");
+    // The only tooltip is the full text (for a name a narrow row cuts off), never a failure reason.
+    expect(html).toContain('title="Bayou Regional presented by FIRST 2026"');
+    expect(html).not.toContain("could not be loaded");
     expect(api.getEvents).toHaveBeenCalledTimes(1);
     expect(api.getEvent).not.toHaveBeenCalled();
   });
@@ -90,7 +92,7 @@ describe("<EventName>", () => {
   });
 
   it("EventNameText renders a state it is given", () => {
-    const html = renderToString(<EventNameText state={{ key: "k", name: "Named", source: "stored", status: "ready" }} />);
+    const html = renderToString(<EventNameText state={{ key: "k", name: "Named", displayName: "Named", source: "stored", status: "ready" }} />);
     expect(html).toContain("Named");
   });
 });

@@ -21,6 +21,7 @@ import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/library/youtube-url"
 import { importVideoCsv, useLibraryMatches, type LibraryMatch, type LibraryVideo } from "@/lib/match-library";
 import { useProgramConfig } from "@/lib/program/context";
 import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
 
 type Notice = { kind: "ok" | "error"; text: string };
 
@@ -153,7 +154,7 @@ export function ImportedLibraryPanel() {
               <option value="">Choose an imported event…</option>
               {importedEvents.map((e) => (
                 <option key={e.eventCode} value={e.eventCode}>
-                  {e.eventName} ({e.eventCode})
+                  {withEventYear(e.eventName, e.eventCode)} ({e.eventCode})
                 </option>
               ))}
               {viewingEventCode && !importedEvents.some((e) => e.eventCode === viewingEventCode) && <option value={viewingEventCode}>{viewingEventCode}</option>}

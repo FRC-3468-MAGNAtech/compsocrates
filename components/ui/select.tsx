@@ -71,7 +71,8 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        "flex h-11 w-full items-center justify-between gap-2 rounded-2xl border border-[var(--glass-border)] bg-white/5 px-4 text-sm outline-none transition-shadow duration-300 focus:shadow-[0_0_0_3px_rgba(var(--glow),0.25)] data-[state=open]:shadow-[0_0_0_3px_rgba(var(--glow),0.25)]",
+        // The value (first child) shrinks and cuts off with an ellipsis, so a long event name plus its year never pushes the chevron out or widens a narrow trigger.
+        "flex h-11 w-full items-center justify-between gap-2 rounded-2xl border border-[var(--glass-border)] bg-white/5 px-4 text-sm outline-none transition-shadow duration-300 focus:shadow-[0_0_0_3px_rgba(var(--glow),0.25)] data-[state=open]:shadow-[0_0_0_3px_rgba(var(--glow),0.25)] [&>span:first-child]:min-w-0 [&>span:first-child]:truncate",
         className
       )}
       {...props}

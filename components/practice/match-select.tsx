@@ -19,6 +19,7 @@ import { buildMatchRows, pickRandomMatchRow, type MatchRow } from "@/lib/practic
 import { DIFFICULTY_CLASSNAMES, DIFFICULTY_LABELS, type Difficulty } from "@/lib/difficulty";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { cn } from "@/lib/utils";
+import { eventTitle } from "@/lib/events/names";
 
 const STATUS_BADGE: Record<MatchRow["status"], { label: string; className: string }> = {
   fresh: { label: "Fresh", className: "bg-emerald-500/15 text-emerald-300 border border-emerald-400/30" },
@@ -90,12 +91,12 @@ export function MatchSelect({
               <Label htmlFor="practice-event">Event</Label>
               <Select value={eventCode ?? ""} onValueChange={setChosenEvent}>
                 <SelectTrigger id="practice-event" className="w-64" data-testid="practice-event-select">
-                  <SelectValue>{events.find((e) => e.code === eventCode)?.name ?? eventCode}</SelectValue>
+                  <SelectValue>{(() => { const picked = events.find((e) => e.code === eventCode); return picked ? eventTitle(picked) : eventCode; })()}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {events.map((e) => (
                     <SelectItem key={e.code} value={e.code}>
-                      {e.name}
+                      {eventTitle(e)}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -9,6 +9,7 @@ import { SECTION_PREVIEW, type AllianceGroup, type HighAccuracyMatch } from "@/l
 import type { Rescout, RescoutAlliance } from "@/lib/analytics/rescouts";
 import { EventName } from "@/components/events/event-name";
 import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
 
 /** A titled list that shows the first few rows and a View all / View less toggle (CS `SectionCard`). */
 export function SectionCard<T>({ title, description, items, empty, children }: { title: string; description?: string; items: readonly T[]; empty: string; children: (visible: T[]) => React.ReactNode }) {
@@ -96,7 +97,7 @@ export function HighAccuracyCard({ match, isComplete, accuracyOf, onRescout }: {
   return (
     <div className="rounded-2xl border border-[var(--glass-border)] p-4">
       <div className="mb-3">
-        <p className="font-semibold">{match.eventName}</p>
+        <p className="font-semibold">{withEventYear(match.eventName, match.eventKey)}</p>
         <p className="text-sm text-[var(--muted-foreground)]">{match.matchLabel}</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">

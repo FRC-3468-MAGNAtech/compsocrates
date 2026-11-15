@@ -169,7 +169,7 @@ function ProfileHeader({ stats }: { stats: TeamStats }) {
           <Badge key={code} variant="success" className="gap-1.5" title="Official FIRST qualification ranking">
             <Trophy className="h-3 w-3" />
             Rank {row.rank} · {row.wins}-{row.losses}-{row.ties}
-            <span className="font-normal opacity-80">· {data.eventNameOf(code)}</span>
+            <span className="font-normal opacity-80">· <EventName eventKey={code} name={data.eventNameOf(code)} /></span>
           </Badge>
         ))}
       </div>

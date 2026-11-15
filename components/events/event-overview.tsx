@@ -2,6 +2,7 @@ import { ExternalLink } from "lucide-react";
 import { formatDateRange } from "@/components/event/selected-events-panel";
 import { locationLabel, safeWebsite } from "@/lib/events/details-model";
 import { seasonLabel } from "@/lib/events/event-key";
+import { eventTitle } from "@/lib/events/names";
 import { useProgramConfig } from "@/lib/program/context";
 import type { EventInfo } from "@/lib/events/types";
 
@@ -44,7 +45,7 @@ export function EventOverview({ event }: { event: EventInfo }) {
       <section className="flex flex-col gap-2 text-sm text-[var(--muted-foreground)]">
         <h2 className="text-lg font-semibold text-[var(--foreground)]">About This Event</h2>
         <p>
-          {event.name} is a competition in the {rules.eventCopy.seasonName} season{location ? `, held in ${location}` : ""} from {formatDateRange(event.dateStart, event.dateEnd)}.
+          {eventTitle(event)} is a competition in the {rules.eventCopy.seasonName} season{location ? `, held in ${location}` : ""} from {formatDateRange(event.dateStart, event.dateEnd)}.
         </p>
         <p>Team lists are loaded from {rules.eventCopy.teamListSource}.</p>
       </section>

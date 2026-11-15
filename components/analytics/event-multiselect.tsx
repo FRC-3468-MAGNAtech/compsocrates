@@ -9,7 +9,7 @@ import { STATUS_BADGE } from "@/components/event/selected-events-panel";
 import type { EventOption } from "@/lib/analytics/data-context";
 import type { EventScope } from "@/lib/analytics/filters";
 import { getEventStatus } from "@/lib/events/event-status";
-import { eventLabel } from "@/lib/events/names";
+import { eventLabel, eventTitle, withEventYear } from "@/lib/events/names";
 import { springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +60,10 @@ export function EventMultiSelect({
 
   const customCodes = scope.kind === "custom" ? scope.codes : [];
   const selectedCodes = singleEvent ? (singleSelectedCode ? [singleSelectedCode] : []) : customCodes;
-  const nameOf = (code: string) => options.find((o) => o.code === code)?.name ?? eventLabel({ key: code });
+  const nameOf = (code: string) => {
+    const option = options.find((o) => o.code === code);
+    return option ? eventTitle(option) : withEventYear(eventLabel({ key: code }), code);
+  };
 
   const summary = singleEvent
     ? singleSelectedCode
@@ -97,7 +100,7 @@ export function EventMultiSelect({
         className="flex h-11 min-w-[14rem] max-w-full items-center justify-between gap-2 rounded-2xl border border-[var(--glass-border)] bg-white/5 px-4 text-sm outline-none transition-shadow duration-300 focus-visible:shadow-[0_0_0_3px_rgba(var(--glow),0.25)] data-[open=true]:shadow-[0_0_0_3px_rgba(var(--glow),0.25)]"
         data-open={open}
       >
-        <span className="truncate">{summary}</span>
+        <span className="truncate" title={summary}>{summary}</span>
         <motion.span animate={{ rotate: open ? 180 : 0 }} transition={springSnappy} className="shrink-0">
           <ChevronDown className="h-4 w-4 text-[var(--muted-foreground)]" />
         </motion.span>
@@ -158,7 +161,7 @@ export function EventMultiSelect({
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       {o.code === primaryCode && !practice && <Star className="h-3 w-3 shrink-0 fill-current" style={{ color: "var(--color-primary)" }} />}
-                      <span className="truncate font-medium">{o.name}</span>
+                      <span className="truncate font-medium" title={eventTitle(o)}>{eventTitle(o)}</span>
                     </span>
                     <span className="block text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
                       {o.code} &middot; {o.count} {o.count === 1 ? "entry" : "entries"}

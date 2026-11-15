@@ -1,5 +1,5 @@
 import { getSeasonFromEventKey, isTbaEventKey, normalizeEventKey } from "@/config/event";
-import { resolveEventName, type EventNameSource } from "@/lib/events/names";
+import { resolveEventName, withEventYear, type EventNameSource } from "@/lib/events/names";
 import type { ActionError, ActionResult, EventInfo } from "@/lib/events/types";
 
 /**
@@ -21,7 +21,10 @@ export type EventNameStatus = "loading" | "ready" | "fallback";
 
 export type EventNameState = {
   key: string;
+  /** The resolved name as the chain found it. This is the one to store, compare or export; never show-only text. */
   name: string;
+  /** `name` with the event's season beside it ("Arkansas Regional 2026"), or `name` itself when the season is unknown or already in the name. Display only. */
+  displayName: string;
   source: EventNameSource;
   /** `loading`: the season lookup is pending. `ready`: a definitive answer (the API's, or no lookup needed). `fallback`: the API failed, `name` is the best known fallback and `error` says why. */
   status: EventNameStatus;
@@ -157,6 +160,11 @@ export function createEventNameStore(options: EventNameStoreOptions) {
 
   /** The state for one key. `extraStored` (keyed by normalized key) is checked before the registered names. */
   function resolve(key: string, extraStored?: Readonly<Record<string, string>>): EventNameState {
+    const state = resolveChain(key, extraStored);
+    return { ...state, displayName: withEventYear(state.name, key) };
+  }
+
+  function resolveChain(key: string, extraStored?: Readonly<Record<string, string>>): Omit<EventNameState, "displayName"> {
     const normalized = normalizeEventKey(key);
     const storedName = extraStored?.[normalized] ?? extraStored?.[String(key ?? "").trim()] ?? stored.get(normalized) ?? null;
     const season = lookupSeasonForKey(key);

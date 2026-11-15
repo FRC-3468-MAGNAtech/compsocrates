@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ROLES, type RoleId } from "@/lib/roles";
 import type { RankingBasisId, RealEventCalculationScope, ScoutCategory } from "@/lib/scout-stats/types";
 import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
 
 const RANKING_BASIS_LABELS: Record<RankingBasisId, string> = {
   preserve: "Preserve original ranks",
@@ -96,7 +97,7 @@ export function FiltersBar({
                 active={eventFilter.includes(e.eventCode)}
                 onClick={() => onEventFilterChange(toggle(eventFilter, e.eventCode))}
               >
-                {e.eventName}
+                {withEventYear(e.eventName, e.eventCode)}
               </ChipToggle>
             ))}
           </div>
@@ -141,9 +142,9 @@ export function FiltersBar({
                 <SelectItem value="all:competitive">All Events (Competitive)</SelectItem>
                 {eventOptions.map((e) => (
                   <Fragment key={e.eventCode}>
-                    <SelectItem value={`${e.eventCode}:plain`}>{e.eventName}</SelectItem>
-                    <SelectItem value={`${e.eventCode}:trial`}>{e.eventName} (Trial)</SelectItem>
-                    <SelectItem value={`${e.eventCode}:competitive`}>{e.eventName} (Competitive)</SelectItem>
+                    <SelectItem value={`${e.eventCode}:plain`}>{withEventYear(e.eventName, e.eventCode)}</SelectItem>
+                    <SelectItem value={`${e.eventCode}:trial`}>{withEventYear(e.eventName, e.eventCode)} (Trial)</SelectItem>
+                    <SelectItem value={`${e.eventCode}:competitive`}>{withEventYear(e.eventName, e.eventCode)} (Competitive)</SelectItem>
                   </Fragment>
                 ))}
               </SelectContent>
@@ -159,7 +160,8 @@ function realEventCalculationLabel(
   scope: RealEventCalculationScope,
   eventOptions: { eventCode: string; eventName: string }[]
 ): string {
-  const base = scope.eventCode === null ? "All Events" : eventOptions.find((e) => e.eventCode === scope.eventCode)?.eventName ?? scope.eventCode;
+  const picked = scope.eventCode === null ? undefined : eventOptions.find((e) => e.eventCode === scope.eventCode);
+  const base = scope.eventCode === null ? "All Events" : picked ? withEventYear(picked.eventName, picked.eventCode) : scope.eventCode;
   if (scope.variant === "plain") return base;
   return `${base} (${scope.variant === "trial" ? "Trial" : "Competitive"})`;
 }

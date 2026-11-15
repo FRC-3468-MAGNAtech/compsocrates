@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { seasonRangeLabel } from "@/lib/events/event-key";
+import { eventTitle } from "@/lib/events/names";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Check, CheckCircle2, Clock, MapPin, RefreshCw, Star, Users } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -380,7 +381,7 @@ function EventCard({
             </AnimatePresence>
           </span>
         )}
-        <h3 className="min-w-0 flex-1 font-semibold leading-snug">{event.name}</h3>
+        <h3 className="min-w-0 flex-1 font-semibold leading-snug">{eventTitle(event)}</h3>
         {selected && isPrimary && (
           <Star className="mt-0.5 h-4 w-4 shrink-0 fill-current" style={{ color: "var(--color-primary)" }} aria-label="Primary event" />
         )}
@@ -452,7 +453,7 @@ function ActiveEventSummary({ event, now }: { event: EventInfo; now: number }) {
       <GlassPanel strong className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <CheckCircle2 className="h-5 w-5 shrink-0" style={{ color: "var(--color-primary)" }} />
-          <h2 className="text-lg font-semibold">{event.name}</h2>
+          <h2 className="text-lg font-semibold">{eventTitle(event)}</h2>
           <Badge variant={status.variant}>{status.label}</Badge>
           <Badge variant="outline">Primary</Badge>
         </div>

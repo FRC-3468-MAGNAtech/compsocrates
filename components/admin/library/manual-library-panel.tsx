@@ -24,6 +24,7 @@ import { parseYouTubeUrl } from "@/lib/library/youtube-url";
 import { useLibraryEvents, type Actor, type LibraryEvent } from "@/lib/library/store";
 import { useLibraryMatches, type LibraryMatch } from "@/lib/match-library";
 import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
 
 type StatusFilter = "all" | "published" | "review" | "unpublished";
 
@@ -187,7 +188,7 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
       void run(async () => {
         await adapter.deleteEvent(actor, event);
         setChosenCode(null);
-        return `Deleted ${event.eventName}.`;
+        return `Deleted ${withEventYear(event.eventName, event.eventCode)}.`;
       });
     }
   };
@@ -204,7 +205,7 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
             {manualEvents.length === 0 && <option value="">No manual events yet</option>}
             {manualEvents.map((e) => (
               <option key={e.eventCode} value={e.eventCode}>
-                {e.eventName} ({e.eventCode})
+                {withEventYear(e.eventName, e.eventCode)} ({e.eventCode})
               </option>
             ))}
           </select>

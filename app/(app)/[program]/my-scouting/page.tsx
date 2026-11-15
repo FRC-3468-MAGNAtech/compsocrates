@@ -19,6 +19,7 @@ import { useActiveEvents } from "@/lib/active-event";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import { useAssignments } from "@/lib/assignments";
 import type { EventInfo } from "@/lib/events/types";
+import { eventTitle } from "@/lib/events/names";
 import { matchSortValue } from "@/lib/analytics/game-schema";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import { computeScoutStats } from "@/lib/scout-stats/engine";
@@ -37,7 +38,7 @@ function UpcomingAssignmentsPanel({ teamId, uid, event }: { teamId: string | nul
 
   return (
     <GlassPanel className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">My upcoming assignments &mdash; {event.name}</h2>
+      <h2 className="text-base font-semibold">My upcoming assignments &mdash; {eventTitle(event)}</h2>
       {mine.length === 0 ? (
         <p className="text-sm text-[var(--muted-foreground)]">No assignments yet for this event.</p>
       ) : (

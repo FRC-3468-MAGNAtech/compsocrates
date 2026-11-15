@@ -23,6 +23,7 @@ import { liveMatchKey, useLiveMatchScouts } from "@/lib/live-presence";
 import { useTeamLiveSessions, claimSessionId, updatePracticeSession, usePracticeSession, type AllianceColor } from "@/lib/practice-sessions";
 import { useLibraryMatches } from "@/lib/match-library";
 import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
+import { eventTitle } from "@/lib/events/names";
 import { LoadError } from "@/components/practice/load-error";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
@@ -238,7 +239,7 @@ export function LiveFlow({
             {event && detectedConfident ? (
               <div className="glass-card flex items-center justify-between gap-3 p-4">
                 <div>
-                  <div className="font-semibold">{event.name}</div>
+                  <div className="font-semibold">{eventTitle(event)}</div>
                   <div className="text-xs text-[var(--muted-foreground)]">{event.code}</div>
                 </div>
                 <Badge variant="success">Detected</Badge>
@@ -252,12 +253,12 @@ export function LiveFlow({
               <Label htmlFor="live-event">Event</Label>
               <Select value={event?.code ?? ""} onValueChange={(code) => setEvent(eventsQuery.data?.find((e) => e.code === code) ?? null)}>
                 <SelectTrigger id="live-event">
-                  <SelectValue>{event?.name ?? "Pick an event"}</SelectValue>
+                  <SelectValue>{event ? eventTitle(event) : "Pick an event"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(eventsQuery.data ?? []).map((e) => (
                     <SelectItem key={e.code} value={e.code}>
-                      {e.name}
+                      {eventTitle(e)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -276,7 +277,7 @@ export function LiveFlow({
             <Button variant="ghost" className="gap-1.5" onClick={() => setStep("event")}>
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
-            <Badge variant="glass">{event.name}</Badge>
+            <Badge variant="glass">{eventTitle(event)}</Badge>
           </div>
           <GlassPanel className="flex flex-col gap-4">
             <h2 className="text-lg font-bold">Pick the match</h2>
@@ -352,7 +353,7 @@ export function LiveFlow({
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
             <Badge variant="glass">
-              {event.name} &middot; {matchType} {matchNumber}
+              {eventTitle(event)} &middot; {matchType} {matchNumber}
             </Badge>
           </div>
           <GlassPanel className="flex flex-col gap-4">

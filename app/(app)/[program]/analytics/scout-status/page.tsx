@@ -20,6 +20,7 @@ import { assignedTeamCounts } from "@/lib/team-assignments/model";
 import { useTeamAssignmentDocs } from "@/lib/team-assignments/store";
 import { useScoutStatus } from "@/lib/scout-status/use-scout-status";
 import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
 
 /** A collapsible setup section (the setup data behind the table and coverage). Open for editors, collapsed for everyone else. */
 function Section({ title, hint, defaultOpen, children }: { title: string; hint?: string; defaultOpen: boolean; children: React.ReactNode }) {
@@ -205,7 +206,7 @@ function SummedRanges({ views, enabled }: { views: { eventCode: string; eventNam
     <ul className="flex flex-col gap-1.5 text-sm">
       {views.map((v) => (
         <li key={v.eventCode} className="flex flex-wrap gap-x-3">
-          <span className="font-medium">{v.eventName}</span>
+          <span className="font-medium">{withEventYear(v.eventName, v.eventCode)}</span>
           <span className="text-[var(--muted-foreground)]">{STATUS_CATEGORIES.filter((c) => enabled.has(c.id)).map((c) => `${c.prefix} ${v.ctx.matches.filter((m) => m.category === c.id).length}`).join(" · ")} matches counted</span>
         </li>
       ))}
