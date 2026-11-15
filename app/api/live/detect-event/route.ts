@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isProgramId, DEFAULT_PROGRAM } from "@/config/programs/types";
+import { programFromBody } from "@/lib/server/live-program";
 import { getEvents } from "@/lib/events/actions";
 import { getDefaultSeason } from "@/lib/events/config";
 import { matchEventFromText } from "@/lib/live/matching";
@@ -22,6 +22,10 @@ export async function POST(request: Request) {
   const url = typeof body?.url === "string" ? body.url : "";
   const season = typeof body?.season === "number" ? body.season : getDefaultSeason();
   if (!url) return NextResponse.json({ ok: false, error: "Missing url." }, { status: 400 });
+  // REQUIRED, from the body: no default (missing, unknown or unsupported is a 400), checked before any network call.
+  const parsed = programFromBody(body?.program, "live");
+  if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error, code: parsed.code }, { status: 400 });
+  const program = parsed.program;
 
   const stream = parseStreamUrl(url);
   if (!stream) return NextResponse.json({ ok: true, detected: null, reason: "unrecognized-link" });
@@ -42,7 +46,6 @@ export async function POST(request: Request) {
     text = stream.id;
   }
 
-  const program = isProgramId(body?.program) ? body.program : DEFAULT_PROGRAM;
   const eventsResult = await getEvents({ season }, program);
   if (!eventsResult.ok) {
     // The reason (a missing or rejected TBA key, a rate limit) goes along so the page can say why, not just "unavailable".

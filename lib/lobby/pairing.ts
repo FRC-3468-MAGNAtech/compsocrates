@@ -51,9 +51,9 @@ export function assignPairs(
 }
 
 /** How many players make one group: a robot per slot of the alliance (the match's own team count when known). */
-export function lobbyGroupSize(allianceTeams?: { red: readonly number[]; blue: readonly number[] } | null): number {
+export function lobbyGroupSize(allianceTeams?: { red: readonly number[]; blue: readonly number[] } | null, fallbackSize: number = ALLIANCE_SIZE): number {
   const n = allianceTeams ? Math.max(allianceTeams.red.length, allianceTeams.blue.length) : 0;
-  return n > 0 ? n : ALLIANCE_SIZE;
+  return n > 0 ? n : fallbackSize;
 }
 
 /** The round can start with whole groups on at least two alliances: a multiple of `groupSize`, at least twice it. */

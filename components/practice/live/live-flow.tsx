@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Radio } from "lucide-react";
-import { ALLIANCE_SIZE, isValidAllianceTeams, slotId, slotLabel } from "@/config/alliance";
+import { isValidAllianceTeams, slotId, slotLabel } from "@/config/alliance";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -15,20 +15,19 @@ import { useActiveEvents } from "@/lib/active-event";
 import { pickDefaultActiveEvent } from "@/lib/active-events";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { getEvents, getMatchesForEvent } from "@/lib/events/actions";
-import { useProgram } from "@/lib/program/context";
-import { getDefaultSeason } from "@/lib/events/config";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { useForms } from "@/lib/forms/forms-context";
 import { parseStreamUrl } from "@/lib/live/stream";
 import { determineJoinOption, type CoveredRobot } from "@/lib/live/join-rules";
 import { liveMatchKey, useLiveMatchScouts } from "@/lib/live-presence";
 import { useTeamLiveSessions, claimSessionId, updatePracticeSession, usePracticeSession, type AllianceColor } from "@/lib/practice-sessions";
-import { getSeason } from "@/lib/seasons";
 import { useLibraryMatches } from "@/lib/match-library";
 import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
 import { LoadError } from "@/components/practice/load-error";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
 type LiveStep = "link" | "event" | "match" | "robot" | "session" | "results";
-/** Each alliance's team numbers: 3 for FRC (the match's own length when it is posted, ALLIANCE_SIZE when typed in by hand). */
+/** Each alliance's team numbers: the program's alliance size when typed in by hand (3 or 2), the match's own length when it is posted. */
 type Roster = { red: number[]; blue: number[] };
 export type ResumePendingRobot = {
   eventCode: string;
@@ -40,7 +39,7 @@ export type ResumePendingRobot = {
   streamUrl: string | null;
 };
 
-const emptyAlliance = (): number[] => Array.from({ length: ALLIANCE_SIZE }, () => 0);
+const emptyAlliance = (size: number): number[] => Array.from({ length: size }, () => 0);
 
 export function LiveFlow({
   onExit,
@@ -59,8 +58,11 @@ export function LiveFlow({
   const [now] = useState(() => Date.now());
   const activeEvent = pickDefaultActiveEvent({ events: activeEvents, primaryCode }, now);
   const teamId = profile?.teamId ?? null;
-  const season = activeEvent?.season ?? getDefaultSeason();
+  const forms = useForms();
+  // The program's own current game: its API season is the fallback when no active event names one, and its id is what a live session is stored under.
+  const season = activeEvent?.season ?? forms.seasonFor().apiSeason;
   const program = useProgram();
+  const allianceSize = useProgramConfig().event.allianceSize;
 
   const [step, setStep] = useState<LiveStep>(() => (viewResultsSessionId ? "results" : "link"));
   const [streamUrl, setStreamUrl] = useState(resumePendingRobot?.streamUrl ?? "");
@@ -91,7 +93,7 @@ export function LiveFlow({
   const matches: EventMatch[] = matchType === "Qualification" ? (qualQuery.data ?? []) : (playoffQuery.data ?? []);
   const officialMatch = matches.find((m) => m.matchNumber === matchNumber) ?? null;
   const roster: Roster | null =
-    officialMatch && isValidAllianceTeams(officialMatch.redTeams) && isValidAllianceTeams(officialMatch.blueTeams)
+    officialMatch && isValidAllianceTeams(officialMatch.redTeams, allianceSize) && isValidAllianceTeams(officialMatch.blueTeams, allianceSize)
       ? { red: [...officialMatch.redTeams], blue: [...officialMatch.blueTeams] }
       : manualRoster && [...manualRoster.red, ...manualRoster.blue].every((t) => t > 0)
         ? manualRoster
@@ -145,11 +147,11 @@ export function LiveFlow({
     setClaiming(true);
     setError(null);
     try {
-      const newSessionId = await claimSessionId(teamId, user.uid, "live");
+      const newSessionId = await claimSessionId(teamId, user.uid, "live", 5, program);
       const libraryMatch = libraryMatches.find((m) => m.matchType === effective.matchType && m.matchNumber === effective.matchNumber);
       await updatePracticeSession(newSessionId, {
         scoutName: profile.name,
-        seasonId: getSeason().id,
+        seasonId: forms.defaultSeasonId,
         mode: null,
         difficulty: null,
         libraryMatchId: libraryMatch?.id ?? null,
@@ -174,7 +176,7 @@ export function LiveFlow({
         streamUrl: effective.streamUrl ?? "",
         streamStartSec: null,
         streamEndSec: null,
-      }, { match: libraryMatch ?? null });
+      }, { match: libraryMatch ?? null }, program);
       setSessionId(newSessionId);
       setStep("session");
     } catch (err) {
@@ -317,15 +319,15 @@ export function LiveFlow({
                   This match isn&apos;t posted yet — enter both alliances&apos; team numbers manually.
                 </p>
                 {(["red", "blue"] as AllianceColor[]).map((side) => (
-                  <div key={side} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${ALLIANCE_SIZE}, minmax(0, 1fr))` }}>
-                    {Array.from({ length: ALLIANCE_SIZE }, (_, i) => (
+                  <div key={side} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${allianceSize}, minmax(0, 1fr))` }}>
+                    {Array.from({ length: allianceSize }, (_, i) => (
                       <Input
                         key={i}
                         placeholder={slotLabel(slotId(side, i))}
                         inputMode="numeric"
                         onChange={(e) =>
                           setManualRoster((r) => {
-                            const next: Roster = { red: r?.red ?? emptyAlliance(), blue: r?.blue ?? emptyAlliance() };
+                            const next: Roster = { red: r?.red ?? emptyAlliance(allianceSize), blue: r?.blue ?? emptyAlliance(allianceSize) };
                             next[side] = next[side].map((t, j) => (j === i ? Number(e.target.value) || 0 : t));
                             return next;
                           })

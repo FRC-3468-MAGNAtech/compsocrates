@@ -260,3 +260,25 @@ describe("flags do not misfire on an objective the robot was not assigned", () =
     expect(evaluateAutoFlagRuleIds(ghost, ctx())).toContain("never-started-but-scored");
   });
 });
+
+describe("roles in live and lobby practice (the exact arguments the two screens pass)", () => {
+  // live-session-screen: the event code, the match, the session's alliance and its recorded roster; lobby-session-screen: the lobby id as the event key.
+  const live = (teamNumber: number, matchNumber = 7) =>
+    allianceRoleFor(form, { eventKey: "USTXHOU", matchType: "Qualification", matchNumber, alliance: "red", teams: [4000, 1000], teamNumber });
+  const lobby = (teamNumber: number) => allianceRoleFor(form, { eventKey: "LB-ABC123", matchType: "Qualification", matchNumber: 7, alliance: "blue", teams: [1000, 4000], teamNumber });
+
+  it("a live alliance's two robots get Hive and Garden, whichever robot a scout picks and in whichever order the roster is recorded (one scout doing both included)", () => {
+    for (let m = 1; m <= 30; m++) expect(new Set([live(1000, m), live(4000, m)])).toEqual(new Set(["hive", "garden"]));
+    expect(live(1000)).toBe(allianceRoleFor(form, { eventKey: "USTXHOU", matchType: "Qualification", matchNumber: 7, alliance: "red", teams: [1000, 4000], teamNumber: 1000 }));
+  });
+
+  it("every scout of a lobby computes the same split for a pair: opposite roles, the same on every device", () => {
+    expect(new Set([lobby(1000), lobby(4000)])).toEqual(new Set(["hive", "garden"]));
+    expect(lobby(1000)).toBe(lobby(1000));
+  });
+
+  it("an unknown roster gives no role, so every field is shown rather than a half form", () => {
+    expect(allianceRoleFor(form, { eventKey: "USTXHOU", matchType: "Qualification", matchNumber: 7, alliance: "red", teams: undefined, teamNumber: 1000 })).toBeNull();
+    expect(allianceRoleFor(form, { eventKey: "USTXHOU", matchType: "Qualification", matchNumber: 7, alliance: "red", teams: [1000], teamNumber: 1000 })).toBeNull();
+  });
+});

@@ -71,7 +71,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/team-settings",
       "/changelog",
     ],
-    features: { assignments: true, subIns: false, practice: true, live: false, lobby: false, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: false, joinRequests: true, announcements: false, eventLookup: true },
+    features: { assignments: true, subIns: false, practice: true, live: true, lobby: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },
   // Only the tabs whose data layer is ported, in the shared order. Not listed, so they do not exist here: Entries, the two ID tools, Setup Check and the platform-owner tabs
   // (Team Applications, Template Review, Recovery). The team's own templates live inside the Forms tab (as in the other program), without public sharing.

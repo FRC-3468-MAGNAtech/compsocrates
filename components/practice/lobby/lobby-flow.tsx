@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronLeft, Users } from "lucide-react";
-import { ALLIANCE_SIZE } from "@/config/alliance";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { LobbyWaitingRoom } from "@/components/practice/lobby/lobby-waiting-room";
@@ -30,6 +30,8 @@ export function LobbyFlow({
 }) {
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
+  const program = useProgram();
+  const allianceSize = useProgramConfig().event.allianceSize;
 
   const [lobbyId, setLobbyId] = useState<string | null>(initialLobbyId ?? null);
   const [creating, setCreating] = useState(false);
@@ -47,8 +49,8 @@ export function LobbyFlow({
     if (!lobbyId || !teamId || !user || !profile || joined) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setJoined(true);
-    void joinLobby(lobbyId, teamId, user.uid, profile.name);
-  }, [lobbyId, teamId, user, profile, joined]);
+    void joinLobby(lobbyId, teamId, user.uid, profile.name, program).catch(() => undefined); // a failure is reported by the store
+  }, [lobbyId, teamId, user, profile, joined, program]);
 
   // One heartbeat loop for the whole time this lobby room is open,
   // regardless of which status screen is showing — the host writes
@@ -57,20 +59,20 @@ export function LobbyFlow({
   useEffect(() => {
     if (!lobbyId || !user || !joined || lobby?.status === "closed") return;
     const write = () => {
-      void heartbeatPlayer(lobbyId, user.uid);
-      if (isHost) void heartbeatHost(lobbyId);
+      void heartbeatPlayer(lobbyId, user.uid, program).catch(() => undefined);
+      if (isHost) void heartbeatHost(lobbyId, program).catch(() => undefined);
     };
     write();
     const interval = setInterval(write, LOBBY_CONFIG.HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [lobbyId, user, joined, isHost, lobby?.status]);
+  }, [lobbyId, user, joined, isHost, lobby?.status, program]);
 
   const handleHost = async () => {
     if (!teamId || !user || !profile || !seasonId || !mode) return;
     setCreating(true);
     setError(null);
     try {
-      const id = await claimLobbyId(teamId, user.uid, profile.name, seasonId, mode);
+      const id = await claimLobbyId(teamId, user.uid, profile.name, seasonId, mode, program);
       setLobbyId(id);
     } catch (err) {
       setError(describeFirestoreError("Couldn't create a lobby.", err));
@@ -91,7 +93,7 @@ export function LobbyFlow({
           <Users className="h-8 w-8 text-[var(--color-primary)]" />
           <h2 className="text-lg font-bold">Host a Live Practice Lobby</h2>
           <p className="max-w-sm text-sm text-[var(--muted-foreground)]">
-            Everyone scouts the same match at once, in {ALLIANCE_SIZE === 2 ? "pairs" : `groups of ${ALLIANCE_SIZE}`} — results show a winner and a leaderboard, like Kahoot.
+            Everyone scouts the same match at once, in {allianceSize === 2 ? "pairs" : `groups of ${allianceSize}`} — results show a winner and a leaderboard, like Kahoot.
           </p>
           {error && <LoadError failure={error} />}
           <Button size="lg" disabled={creating} onClick={handleHost}>

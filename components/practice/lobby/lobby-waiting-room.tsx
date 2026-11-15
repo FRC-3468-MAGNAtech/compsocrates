@@ -12,6 +12,7 @@ import { ChipSummary } from "@/components/practice/chip-summary";
 import { DIFFICULTY_CLASSNAMES, DIFFICULTY_LABELS, type Difficulty } from "@/lib/difficulty";
 import { getSeason } from "@/lib/seasons";
 import { useAuth } from "@/lib/auth";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { useTeamDoc } from "@/lib/team";
 import { useLibraryMatchesBySeason, type LibraryMatch } from "@/lib/match-library";
 import { pickRandomLobbyMatch, sortMatchesByDifficultyTarget } from "@/lib/lobby/match-select";
@@ -38,6 +39,8 @@ export function LobbyWaitingRoom({
   onExit: () => void;
 }) {
   const { user } = useAuth();
+  const program = useProgram();
+  const allianceSize = useProgramConfig().event.allianceSize;
   const { team } = useTeamDoc(lobby.teamId);
   const usePlaceholder = team?.usePlaceholderVideo ?? false;
   const { matches } = useLibraryMatchesBySeason(lobby.seasonId, { includeImported: false });
@@ -57,8 +60,8 @@ export function LobbyWaitingRoom({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAutoPicked(true);
     const picked = pickRandomLobbyMatch(playableMatches);
-    if (picked) void updateLobby(lobby.id, { libraryMatchId: picked.id });
-  }, [isHost, autoPicked, lobby.libraryMatchId, lobby.id, playableMatches]);
+    if (picked) void updateLobby(lobby.id, { libraryMatchId: picked.id }, program).catch(() => undefined); // a failure is reported by the store
+  }, [isHost, autoPicked, lobby.libraryMatchId, lobby.id, playableMatches, program]);
 
   // Clear a stale `submitted: true` from a previous round (including after
   // "Play Again") the moment we're back in the waiting room — otherwise the
@@ -66,12 +69,12 @@ export function LobbyWaitingRoom({
   // before anyone scouts anything. Only the player themself may write this.
   const myPlayer = players.find((p) => p.uid === user?.uid) ?? null;
   useEffect(() => {
-    if (user && myPlayer?.submitted) void resetPlayerSubmitted(lobby.id, user.uid);
-  }, [user, myPlayer?.submitted, lobby.id]);
+    if (user && myPlayer?.submitted) void resetPlayerSubmitted(lobby.id, user.uid, program).catch(() => undefined);
+  }, [user, myPlayer?.submitted, lobby.id, program]);
 
   const scoutingPlayers = players.filter((p) => p.uid !== lobby.hostUid || lobby.settings.hostScouts);
-  // One player per robot, so a group is one alliance's robot count (three for FRC).
-  const groupSize = lobbyGroupSize(chosenMatch ? { red: chosenMatch.alliances.red.teams, blue: chosenMatch.alliances.blue.teams } : null);
+  // One player per robot, so a group is one alliance's robot count (the match's own, else the program's alliance size).
+  const groupSize = lobbyGroupSize(chosenMatch ? { red: chosenMatch.alliances.red.teams, blue: chosenMatch.alliances.blue.teams } : null, allianceSize);
   const canStart = canStartLobby(scoutingPlayers.length, groupSize);
   const startDisabledReason = !chosenMatch ? "Waiting on a match to be chosen." : lobbyStartBlocker(scoutingPlayers.length, groupSize);
 
@@ -103,7 +106,7 @@ export function LobbyWaitingRoom({
         status: "scouting",
         pairing,
         startsAt: new Date(Date.now() + LOBBY_CONFIG.COUNTDOWN_SEC * 1000).toISOString(),
-      });
+      }, program);
     } catch (err) {
       setError(describeFirestoreError("Couldn't start the round.", err));
     } finally {
@@ -112,13 +115,13 @@ export function LobbyWaitingRoom({
   };
 
   const handleClose = async () => {
-    await updateLobby(lobby.id, { status: "closed" });
+    await updateLobby(lobby.id, { status: "closed" }, program);
     onExit();
   };
 
   const handleLeave = async () => {
     if (!user) return;
-    await leaveLobbyPlayer(lobby.id, user.uid);
+    await leaveLobbyPlayer(lobby.id, user.uid, program);
     onExit();
   };
 
@@ -180,7 +183,7 @@ export function LobbyWaitingRoom({
             </div>
             <Switch
               checked={lobby.settings.hostScouts}
-              onCheckedChange={(checked) => void updateLobby(lobby.id, { settings: { ...lobby.settings, hostScouts: checked } })}
+              onCheckedChange={(checked) => void updateLobby(lobby.id, { settings: { ...lobby.settings, hostScouts: checked } }, program)}
             />
           </div>
           <div className="flex items-center justify-between gap-4">
@@ -192,7 +195,7 @@ export function LobbyWaitingRoom({
             </div>
             <Switch
               checked={lobby.settings.hostIsDisplayer}
-              onCheckedChange={(checked) => void updateLobby(lobby.id, { settings: { ...lobby.settings, hostIsDisplayer: checked } })}
+              onCheckedChange={(checked) => void updateLobby(lobby.id, { settings: { ...lobby.settings, hostIsDisplayer: checked } }, program)}
             />
           </div>
         </GlassPanel>
@@ -258,7 +261,7 @@ export function LobbyWaitingRoom({
                 key={m.id}
                 type="button"
                 onClick={() => {
-                  void updateLobby(lobby.id, { libraryMatchId: m.id });
+                  void updateLobby(lobby.id, { libraryMatchId: m.id }, program);
                   setPickOpen(false);
                 }}
                 className="glass-card flex items-center gap-2 p-3 text-left hover:bg-white/8"

@@ -60,6 +60,16 @@ export function subscribeTeamSessions(teamId: string, onData: (sessions: Practic
   return watch("Couldn't load practice sessions", sessionsQuery([["teamId", teamId]]), onData, onError);
 }
 
+/** Realtime, the team's LIVE sessions (`teamId ==`, `kind ==`; live practice: Pending Robots, the score watcher, and the match keys the presence reads derive from). */
+export function subscribeTeamLiveSessions(teamId: string, onData: (sessions: PracticeSession[]) => void, onError: Failure): Unsubscribe {
+  return watch("Couldn't load live practice sessions", sessionsQuery([["teamId", teamId], ["kind", "live"]]), onData, onError);
+}
+
+/** Realtime, the sessions of one lobby (`teamId ==`, `lobbyId ==`): the waiting room and the results screen. */
+export function subscribeLobbySessions(teamId: string, lobbyId: string, onData: (sessions: PracticeSession[]) => void, onError: Failure): Unsubscribe {
+  return watch("Couldn't load the lobby's sessions", sessionsQuery([["teamId", teamId], ["lobbyId", lobbyId]]), onData, onError);
+}
+
 /** Realtime, one scout's own sessions. */
 export function subscribeOwnSessions(teamId: string, uid: string, onData: (sessions: PracticeSession[]) => void, onError: Failure): Unsubscribe {
   return watch("Couldn't load your practice sessions", sessionsQuery([["teamId", teamId], ["uid", uid]]), onData, onError);

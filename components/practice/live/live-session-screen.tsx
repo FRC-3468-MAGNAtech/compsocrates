@@ -12,6 +12,7 @@ import { embedUrlFor, parseStreamUrl } from "@/lib/live/stream";
 import { LIVE_CONFIG } from "@/lib/live/config";
 import { liveMatchKey, removePresence, upsertPresence } from "@/lib/live-presence";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { calculateScore } from "@/lib/forms/scoring";
 import { useLockedForm } from "@/lib/forms/forms-context";
 import { deletePracticeSession, updatePracticeSession, type PracticeSession } from "@/lib/practice-sessions";
@@ -43,6 +44,7 @@ export function LiveSessionScreen({
   onCompleted: () => void;
 }) {
   const { user } = useAuth();
+  const program = useProgram();
   const form = useLockedForm(session.seasonId);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [validationError, setValidationError] = useState(false);
@@ -62,24 +64,28 @@ export function LiveSessionScreen({
   useEffect(() => {
     if (!matchKey || !user || !session.alliance) return;
     const write = () =>
-      void upsertPresence(matchKey, {
-        uid: user.uid,
-        teamId: session.teamId,
-        name: session.scoutName,
-        robot: teamNumber,
-        alliance: session.alliance!,
-        sessionId: session.id,
-      });
+      void upsertPresence(
+        matchKey,
+        {
+          uid: user.uid,
+          teamId: session.teamId,
+          name: session.scoutName,
+          robot: teamNumber,
+          alliance: session.alliance!,
+          sessionId: session.id,
+        },
+        program
+      ).catch(() => undefined); // a failed heartbeat is reported by the store; the next one tries again
     write();
     const interval = setInterval(write, LIVE_CONFIG.PRESENCE_HEARTBEAT_INTERVAL_MS);
     return () => {
       clearInterval(interval);
-      void removePresence(matchKey, user.uid);
+      void removePresence(matchKey, user.uid, program).catch(() => undefined);
     };
-  }, [matchKey, user, session.alliance, session.teamId, session.scoutName, session.id, teamNumber]);
+  }, [matchKey, user, session.alliance, session.teamId, session.scoutName, session.id, teamNumber, program]);
 
   const handleCancel = async () => {
-    await deletePracticeSession(session.id);
+    await deletePracticeSession(session.id, program);
     onExitToLanding();
   };
 
@@ -106,18 +112,18 @@ export function LiveSessionScreen({
         mode: null,
         sessionId: session.id,
         libraryMatchId: session.libraryMatchId,
-      });
-      const entries = await getEntriesForSession(session.teamId, session.id);
+      }, program);
+      const entries = await getEntriesForSession(session.teamId, session.id, program);
       await updatePracticeSession(session.id, {
         status: "completed",
         completedRobots: [teamNumber],
         entryIds: entries.map((e) => e.id),
         finishedAt: new Date().toISOString(),
-      });
+      }, undefined, program);
       // Try to resolve scores immediately — the server-side poller/fallback
       // still cover it if the official score isn't posted yet.
       try {
-        await fetch("/api/live/check-scores", { method: "POST" });
+        await fetch("/api/live/check-scores", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ program }) });
       } catch {
         // Best-effort — the cron/client-poll fallbacks still cover this.
       }

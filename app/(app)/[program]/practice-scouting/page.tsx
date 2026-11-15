@@ -82,7 +82,7 @@ export default function PracticeScoutingPage() {
   const [lobbyId, setLobbyId] = useState<string | undefined>(undefined);
   const [joinCode, setJoinCode] = useState("");
 
-  const { lobbyId: myActiveLobbyId, loaded: lobbyLoaded } = useMyActiveLobbyId(user?.uid ?? null);
+  const { lobbyId: myActiveLobbyId, loaded: lobbyLoaded } = useMyActiveLobbyId(user?.uid ?? null, teamId);
   const { loaded: presenceLoaded } = useTeamActiveLiveScouts(teamId);
 
   const { session: activeSession } = usePracticeSession(activeSessionId);

@@ -13,6 +13,7 @@ import { LIVE_CONFIG } from "@/lib/live/config";
 import { AddToHomeScreenHint } from "@/components/ui/add-to-home-screen-hint";
 import { requestAndRegisterPush } from "@/lib/notifications";
 import { useProgramData } from "@/lib/program/data";
+import { useProgram } from "@/lib/program/context";
 import { ComparisonRow, Stat } from "@/components/practice/comparison-row";
 import { cardEntranceVariants } from "@/lib/motion";
 import type { PracticeSession } from "@/lib/practice-sessions";
@@ -20,6 +21,7 @@ import type { PracticeSession } from "@/lib/practice-sessions";
 export function LiveResultsScreen({ session, onBackToPracticeScouting }: { session: PracticeSession; onBackToPracticeScouting: () => void }) {
   const { user } = useAuth();
   const data = useProgramData();
+  const program = useProgram();
   const { entries } = useEntriesForMatch(session.teamId, session.eventCode, session.matchType, session.matchNumber);
   const [pushState, setPushState] = useState<"idle" | "requesting" | "enabled" | "failed">("idle");
 
@@ -32,10 +34,10 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
   useEffect(() => {
     if (resolved) return;
     const interval = setInterval(() => {
-      fetch("/api/live/check-scores", { method: "POST" }).catch(() => {});
+      fetch("/api/live/check-scores", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ program }) }).catch(() => {});
     }, LIVE_CONFIG.CLIENT_SCORE_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [resolved]);
+  }, [resolved, program]);
 
   const handleEnableNotifications = async () => {
     if (!user) return;

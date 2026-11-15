@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { DEFAULT_PROGRAM, PROGRAM_IDS, type ProgramId } from "@/config/programs/types";
 import { firebaseAdminProblem, getAdminFirestore, getAdminMessaging } from "@/lib/firebase/admin";
 import { cronSecret } from "@/lib/server/env";
 import { liveDataWarnings } from "@/lib/server/live-env";
@@ -39,12 +40,25 @@ export async function GET(request: Request) {
   if (!db) return NextResponse.json({ ok: false, error: firebaseAdminProblem() ?? "Server isn't configured." }, { status: 503 });
   const messaging = getAdminMessaging();
 
-  try {
-    const result = await resolvePendingLiveMatches(db, messaging);
-    const warnings = liveDataWarnings();
-    return NextResponse.json({ ok: true, ...result, ...(warnings.length > 0 ? { warnings } : {}) });
-  } catch (err) {
-    console.error("poll-live-scores failed:", err);
-    return NextResponse.json({ ok: false, error: "Internal error." }, { status: 500 });
+  // One sweep per program (each has its own sessions, entries and event API). A program that fails is reported and does not stop the others.
+  const perProgram: Partial<Record<ProgramId, { checked: number; resolved: number } | { error: string }>> = {};
+  const warnings: string[] = [];
+  let checked = 0;
+  let resolved = 0;
+  for (const program of PROGRAM_IDS) {
+    try {
+      const result = await resolvePendingLiveMatches(db, messaging, undefined, program);
+      perProgram[program] = result;
+      checked += result.checked;
+      resolved += result.resolved;
+      // A key problem only matters while there is something pending that needs the program's data.
+      if (result.checked > 0 || program === DEFAULT_PROGRAM) warnings.push(...liveDataWarnings(program));
+    } catch (err) {
+      console.error(`poll-live-scores failed (${program}):`, err);
+      perProgram[program] = { error: "Internal error." };
+    }
   }
+  // The default program's sweep failing is still a 500, as before (the other program's sweep has run either way).
+  if ("error" in (perProgram[DEFAULT_PROGRAM] ?? {})) return NextResponse.json({ ok: false, error: "Internal error." }, { status: 500 });
+  return NextResponse.json({ ok: true, checked, resolved, programs: perProgram, ...(warnings.length > 0 ? { warnings } : {}) });
 }

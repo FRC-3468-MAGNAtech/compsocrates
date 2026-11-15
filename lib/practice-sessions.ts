@@ -298,6 +298,7 @@ export function useTeamLiveSessions(teamId: string | null) {
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   // A program without live practice reads nothing here (no live session store exists for it).
   const liveConnected = useProgramConfig().connection.features.live;
+  const port = useProgramData()?.practice;
 
   useEffect(() => {
     if (!teamId || !liveConnected || !isFirebaseConfigured()) {
@@ -305,6 +306,20 @@ export function useTeamLiveSessions(teamId: string | null) {
       setSessions([]);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      // A program with its own session store: `teamId ==` and `kind == "live"`; a failed read is reported by the port (the list is empty meanwhile).
+      return port.subscribeTeamLiveSessions(
+        teamId,
+        (list) => {
+          setSessions(list);
+          setLoaded(true);
+        },
+        () => {
+          setSessions([]);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       teamLiveSessionsQuery(db, teamId),
@@ -319,7 +334,7 @@ export function useTeamLiveSessions(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId, liveConnected]);
+  }, [teamId, liveConnected, port]);
 
   return { sessions, loaded };
 }

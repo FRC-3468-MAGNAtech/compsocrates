@@ -36,7 +36,7 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 | Variable | What it is | What breaks while it is unset |
 |---|---|---|
 | `APP_URL` | Public URL used in links inside emails | Falls back to the host's own URL variables |
-| `CRON_SECRET` | Protects `/api/cron/poll-live-scores` | The poller answers 503 and does nothing |
+| `CRON_SECRET` | Protects `/api/cron/poll-live-scores` (one sweep per program: FRC needs the TBA key, FTC the `FTC_API_*` keys for its live scores) | The poller answers 503 and does nothing |
 | `RESEND_API_KEY` | Sends email through Resend | No notification emails (the app still works) |
 | `EMAIL_FROM` | Sender for outgoing email | No notification emails |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key (set both or neither) | The bot check on the team application form is skipped |

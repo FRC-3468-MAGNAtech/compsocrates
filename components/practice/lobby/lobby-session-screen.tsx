@@ -13,6 +13,8 @@ import { clipDurationOrFallback } from "@/lib/library/video-window";
 import { MOCK_VIDEO_DURATION_SEC } from "@/components/video/mock-video-player";
 import { ChipSummary } from "@/components/practice/chip-summary";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
+import type { ProgramId } from "@/config/programs/types";
 import { useTeamDoc } from "@/lib/team";
 import { detectPlatform } from "@/lib/platform";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
@@ -29,12 +31,12 @@ import { LoadError } from "@/components/practice/load-error";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { eventLabel } from "@/lib/events/names";
 
-async function triggerResolve(lobbyId: string): Promise<void> {
+async function triggerResolve(lobbyId: string, program: ProgramId): Promise<void> {
   try {
     await fetch("/api/lobby/resolve-results", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lobbyId }),
+      body: JSON.stringify({ lobbyId, program }),
     });
   } catch {
     // Best-effort — another open client, the host's "End Scouting," or the
@@ -54,6 +56,7 @@ export function LobbySessionScreen({
   onExit: () => void;
 }) {
   const { user, profile } = useAuth();
+  const program = useProgram();
   const form = useLockedForm(lobby.seasonId);
   const { team } = useTeamDoc(lobby.teamId);
   const usePlaceholder = team?.usePlaceholderVideo ?? false;
@@ -95,7 +98,7 @@ export function LobbySessionScreen({
     setClaiming(true);
     (async () => {
       try {
-        const id = await claimSessionId(lobby.teamId, user.uid, "lobby");
+        const id = await claimSessionId(lobby.teamId, user.uid, "lobby", 5, program);
         await updatePracticeSession(id, {
           scoutName: profile.name,
           seasonId: lobby.seasonId,
@@ -123,7 +126,7 @@ export function LobbySessionScreen({
           streamUrl: null,
           streamStartSec: null,
           streamEndSec: null,
-        }, { match: chosenMatch });
+        }, { match: chosenMatch }, program);
         setSessionId(id);
       } catch (err) {
         setError(describeFirestoreError("Couldn't start your session.", err));
@@ -131,7 +134,7 @@ export function LobbySessionScreen({
         setClaiming(false);
       }
     })();
-  }, [myPair, myRobot, user, profile, claiming, sessionId, mySession, lobby, chosenMatch]);
+  }, [myPair, myRobot, user, profile, claiming, sessionId, mySession, lobby, chosenMatch, program]);
 
   const scoutingUids = new Set(lobby.pairing?.flatMap((p) => p.playerUids) ?? []);
   const scoutingPlayers = players.filter((p) => scoutingUids.has(p.uid));
@@ -151,9 +154,9 @@ export function LobbySessionScreen({
     if (resolveTriggered.current || lobby.status !== "scouting") return;
     if (allSubmitted || pastDeadline) {
       resolveTriggered.current = true;
-      void triggerResolve(lobby.id);
+      void triggerResolve(lobby.id, program);
     }
-  }, [allSubmitted, pastDeadline, lobby.status, lobby.id]);
+  }, [allSubmitted, pastDeadline, lobby.status, lobby.id, program]);
 
   const countdownMs = lobby.startsAt ? new Date(lobby.startsAt).getTime() - now : 0;
   const countingDown = countdownMs > 0;
@@ -181,16 +184,16 @@ export function LobbySessionScreen({
         mode: lobby.mode,
         sessionId: mySession.id,
         libraryMatchId: lobby.libraryMatchId,
-      });
-      const entries = await getEntriesForSession(lobby.teamId, mySession.id);
+      }, program);
+      const entries = await getEntriesForSession(lobby.teamId, mySession.id, program);
       await updatePracticeSession(mySession.id, {
         status: "completed",
         completedRobots: [myRobot],
         entryIds: entries.map((e) => e.id),
         finishedAt: new Date().toISOString(),
-      });
-      await markPlayerSubmitted(lobby.id, user.uid);
-      void triggerResolve(lobby.id);
+      }, undefined, program);
+      await markPlayerSubmitted(lobby.id, user.uid, program);
+      void triggerResolve(lobby.id, program);
     } catch (err) {
       setError(describeFirestoreError("Couldn't submit that entry.", err));
     } finally {
@@ -201,7 +204,7 @@ export function LobbySessionScreen({
   const handleEndScouting = async () => {
     setEnding(true);
     try {
-      await triggerResolve(lobby.id);
+      await triggerResolve(lobby.id, program);
     } finally {
       setEnding(false);
     }

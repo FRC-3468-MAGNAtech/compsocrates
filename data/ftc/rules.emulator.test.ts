@@ -22,6 +22,7 @@ import { ftcMatchId, planScheduleImport } from "@/lib/ftc/library";
 import { buildManualMatchDoc } from "@/lib/library/schedule";
 import { tryClaimDoc } from "@/lib/claim-doc";
 import { ftcSessionStub } from "@/lib/ftc/practice";
+import { lobbyStub } from "@/lib/ftc/lobby";
 import type { EventMatch } from "@/lib/events/types";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 
@@ -1427,5 +1428,126 @@ describe("Team Settings and the Changelog (Batch 5a)", () => {
     await assertFails(updateDoc(userRef(MEMBER, "ftc-lead-1"), { lastSeenChangelogAt: serverTimestamp() }));
     await assertFails(updateDoc(doc(anon(), S("users"), MEMBER), { lastSeenChangelogAt: serverTimestamp() }));
     expect((await getDoc(userRef(MEMBER, MEMBER))).data()?.lastSeenChangelogAt).toBeTruthy();
+  });
+});
+
+describe("FTC live practice presence and lobbies (Batch 6): the replacement queries, by path, never a collection group", () => {
+  const S = (name: string) => programPath("ftc", name);
+  const MATE = "ftc-lead-1"; // another plain member of team 1 that other tests already seed
+  const anon = () => testEnv.unauthenticatedContext().firestore();
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+  const presence = (uid: string, teamId: string) => ({ uid, teamId, name: uid, robot: 111, alliance: "red", sessionId: "LV-B6", lastSeen: serverTimestamp() });
+  const scouts = (uid: string, key: string) => collection(as(uid), S("liveMatches"), key, "scouts");
+  const players = (uid: string, lobbyId: string) => collection(as(uid), S("lobbies"), lobbyId, "players");
+  const lobbyDocData = (teamId: string, hostUid: string, status: string) => ({ teamId, hostUid, hostName: "Host", seasonId: "biobuzz", mode: "trial", status, libraryMatchId: null, settings: { hostScouts: true, hostIsDisplayer: false }, pairing: null, startsAt: null, resolvedAt: null });
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      const stamp = { lastSeen: new Date(1000) };
+      await setDoc(doc(db, S("liveMatches"), "EVB6_Q1", "scouts", MATE), { uid: MATE, teamId: T1, name: "Grace", robot: 222, alliance: "red", sessionId: "LV-MATE", ...stamp });
+      await setDoc(doc(db, S("liveMatches"), "EVB6_Q1", "scouts", OTHER), { uid: OTHER, teamId: T2, name: "Other", robot: 333, alliance: "blue", sessionId: "LV-OTHER", ...stamp });
+      await setDoc(doc(db, S("lobbies"), "LB-B6OPEN"), lobbyDocData(T1, MATE, "waiting"));
+      await setDoc(doc(db, S("lobbies"), "LB-B6DONE"), lobbyDocData(T1, MATE, "closed"));
+      await setDoc(doc(db, S("lobbies"), "LB-B6OTHER"), lobbyDocData(T2, OTHER, "waiting"));
+      await setDoc(doc(db, S("lobbies"), "LB-B6OPEN", "players", MATE), { uid: MATE, teamId: T1, name: "Grace", submitted: false, ...stamp, joinedAt: new Date(1000) });
+      await setDoc(doc(db, S("lobbies"), "LB-B6OTHER", "players", OTHER), { uid: OTHER, teamId: T2, name: "Other", submitted: false, ...stamp, joinedAt: new Date(1000) });
+    });
+  });
+
+  describe("presence: liveMatches/{key}/scouts/{uid}", () => {
+    it("a scout marks themselves present on a match, as themselves and for their own team, and takes it back", async () => {
+      await assertSucceeds(setDoc(doc(as(SCOUT), S("liveMatches"), "EVB6_Q1", "scouts", SCOUT), presence(SCOUT, T1)));
+      await assertSucceeds(deleteDoc(doc(as(SCOUT), S("liveMatches"), "EVB6_Q1", "scouts", SCOUT)));
+    });
+
+    it("nobody writes a teammate's presence, or presence for another team, and a signed-out user writes nothing", async () => {
+      await assertFails(setDoc(doc(as(SCOUT), S("liveMatches"), "EVB6_Q1", "scouts", MATE), presence(MATE, T1)));
+      await assertFails(setDoc(doc(as(SCOUT), S("liveMatches"), "EVB6_Q1", "scouts", SCOUT), presence(SCOUT, T2)));
+      await assertFails(setDoc(doc(anon(), S("liveMatches"), "EVB6_Q1", "scouts", SCOUT), presence(SCOUT, T1)));
+    });
+
+    it("the derived read: one match's scouts where teamId == mine returns only my team's, and the parent match doc is never readable", async () => {
+      expect(ids(await assertSucceeds(getDocs(query(scouts(SCOUT, "EVB6_Q1"), where("teamId", "==", T1)))))).toEqual([MATE]);
+      await assertFails(getDoc(doc(as(SCOUT), S("liveMatches"), "EVB6_Q1")));
+    });
+
+    it("asking for another team's scouts, for everyone's (no team filter), or signed out is refused", async () => {
+      await assertFails(getDocs(query(scouts(SCOUT, "EVB6_Q1"), where("teamId", "==", T2))));
+      await assertFails(getDocs(scouts(SCOUT, "EVB6_Q1")));
+      await assertFails(getDocs(query(collection(anon(), S("liveMatches"), "EVB6_Q1", "scouts"), where("teamId", "==", T1))));
+    });
+
+    it("the team's live sessions (where the match keys come from) are a plain two-equality read", async () => {
+      await assertSucceeds(getDocs(query(collection(as(SCOUT), S("practiceSessions")), where("teamId", "==", T1), where("kind", "==", "live"))));
+      await assertFails(getDocs(query(collection(as(SCOUT), S("practiceSessions")), where("kind", "==", "live"))));
+    });
+  });
+
+  describe("lobbies: lobbies/{code} and players/{uid}", () => {
+    it("a member reserves a fresh code as the host (the same transaction the app uses) and only the host changes the lobby", async () => {
+      const claim = (uid: string, id: string, data: Record<string, unknown>) => tryClaimDoc(as(uid) as unknown as Parameters<typeof tryClaimDoc>[0], S("lobbies"), id, data);
+      const stub = lobbyStub({ teamId: T1, hostUid: SCOUT, hostName: "Ada", seasonId: "biobuzz", mode: "trial" }, serverTimestamp);
+      expect(await assertSucceeds(claim(SCOUT, "LB-B6NEW1", stub))).toBe(true);
+      expect(await assertSucceeds(claim(SCOUT, "LB-B6NEW1", stub))).toBe(false); // taken: the app tries another code
+      await assertSucceeds(updateDoc(doc(as(SCOUT), S("lobbies"), "LB-B6NEW1"), { status: "scouting", startsAt: new Date().toISOString() }));
+      await assertFails(updateDoc(doc(as(MATE), S("lobbies"), "LB-B6NEW1"), { status: "closed" }));
+      await assertFails(claim(SCOUT, "LB-B6NEW2", lobbyStub({ teamId: T1, hostUid: MATE, hostName: "x", seasonId: "biobuzz", mode: "trial" }, serverTimestamp))); // not as someone else
+      await assertFails(claim(SCOUT, "LB-B6NEW3", lobbyStub({ teamId: T2, hostUid: SCOUT, hostName: "x", seasonId: "biobuzz", mode: "trial" }, serverTimestamp))); // not for another team
+    });
+
+    it("joining by code: a lobby of my team is readable by id, another team's is not, a missing code reads as free (no error)", async () => {
+      await assertSucceeds(getDoc(doc(as(SCOUT), S("lobbies"), "LB-B6OPEN")));
+      await assertFails(getDoc(doc(as(SCOUT), S("lobbies"), "LB-B6OTHER")));
+      expect((await assertSucceeds(getDoc(doc(as(SCOUT), S("lobbies"), "LB-B6NOPE")))).exists()).toBe(false);
+    });
+
+    it("the team's lobbies: lobbies where teamId == mine; another team's, or no filter, is refused", async () => {
+      const mine = ids(await assertSucceeds(getDocs(query(collection(as(SCOUT), S("lobbies")), where("teamId", "==", T1)))));
+      expect(mine).toEqual(expect.arrayContaining(["LB-B6DONE", "LB-B6OPEN"]));
+      expect(mine).not.toContain("LB-B6OTHER");
+      await assertFails(getDocs(query(collection(as(SCOUT), S("lobbies")), where("teamId", "==", T2))));
+      await assertFails(getDocs(collection(as(SCOUT), S("lobbies"))));
+    });
+
+    it("a player joins, heartbeats, submits, resets and leaves as themselves, for their own team", async () => {
+      const mine = doc(as(SCOUT), S("lobbies"), "LB-B6OPEN", "players", SCOUT);
+      await assertSucceeds(setDoc(mine, { uid: SCOUT, teamId: T1, name: "Ada", lastSeen: serverTimestamp(), submitted: false, joinedAt: serverTimestamp() }, { merge: true }));
+      await assertSucceeds(updateDoc(mine, { lastSeen: serverTimestamp() }));
+      await assertSucceeds(updateDoc(mine, { submitted: true }));
+      await assertSucceeds(updateDoc(mine, { submitted: false }));
+      await assertSucceeds(deleteDoc(mine));
+    });
+
+    it("nobody writes a teammate's player doc, or one for another team, and a signed-out user writes nothing", async () => {
+      await assertFails(updateDoc(doc(as(SCOUT), S("lobbies"), "LB-B6OPEN", "players", MATE), { submitted: true }));
+      await assertFails(deleteDoc(doc(as(SCOUT), S("lobbies"), "LB-B6OPEN", "players", MATE)));
+      await assertFails(setDoc(doc(as(SCOUT), S("lobbies"), "LB-B6OPEN", "players", SCOUT), { uid: SCOUT, teamId: T2, name: "x", submitted: false }));
+      await assertFails(setDoc(doc(anon(), S("lobbies"), "LB-B6OPEN", "players", SCOUT), { uid: SCOUT, teamId: T1, name: "x", submitted: false }));
+    });
+
+    it("the roster: players where teamId == mine; another team's or no filter is refused", async () => {
+      expect(ids(await assertSucceeds(getDocs(query(players(SCOUT, "LB-B6OPEN"), where("teamId", "==", T1)))))).toContain(MATE);
+      await assertFails(getDocs(query(players(SCOUT, "LB-B6OPEN"), where("teamId", "==", T2))));
+      await assertFails(getDocs(players(SCOUT, "LB-B6OPEN")));
+    });
+
+    it('"the lobby I am in": players where teamId == mine and uid == me, by path, in each open lobby (an empty answer is allowed)', async () => {
+      const own = doc(as(SCOUT), S("lobbies"), "LB-B6OPEN", "players", SCOUT);
+      await assertSucceeds(setDoc(own, { uid: SCOUT, teamId: T1, name: "Ada", lastSeen: serverTimestamp(), submitted: false, joinedAt: serverTimestamp() }));
+      const mineQ = (lobbyId: string) => query(players(SCOUT, lobbyId), where("teamId", "==", T1), where("uid", "==", SCOUT));
+      expect(ids(await assertSucceeds(getDocs(mineQ("LB-B6OPEN"))))).toEqual([SCOUT]);
+      expect(ids(await assertSucceeds(getDocs(mineQ("LB-B6DONE"))))).toEqual([]); // not in that one: empty, not an error
+      await assertSucceeds(deleteDoc(own));
+    });
+
+    it("why it is a query and not a get: reading a player doc that does not exist is refused, so a get would fail in every lobby I am not in", async () => {
+      await assertFails(getDoc(doc(as(SCOUT), S("lobbies"), "LB-B6DONE", "players", SCOUT)));
+    });
+
+    it("another team's lobby and roster stay unreadable", async () => {
+      await assertFails(getDoc(doc(as(SCOUT), S("lobbies"), "LB-B6OTHER", "players", OTHER)));
+      await assertFails(getDocs(query(players(SCOUT, "LB-B6OTHER"), where("teamId", "==", T2))));
+    });
   });
 });

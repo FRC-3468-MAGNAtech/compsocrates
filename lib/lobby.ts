@@ -9,7 +9,9 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { useProgramConfig } from "@/lib/program/context";
+import { programData, useProgramData } from "@/lib/program/data";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { lobbyPlayersQuery, lobbySessionsQuery, myLobbyPlayersQuery } from "@/lib/practice-queries";
@@ -71,8 +73,11 @@ export async function claimLobbyId(
   hostUid: string,
   hostName: string,
   seasonId: string,
-  mode: Exclude<SessionMode, null>
+  mode: Exclude<SessionMode, null>,
+  program: ProgramId = DEFAULT_PROGRAM
 ): Promise<string> {
+  const port = programData(program)?.lobby;
+  if (port) return port.claimLobby(teamId, hostUid, hostName, seasonId, mode);
   return claimUniqueDocId("lobbies", "LB-", {
     teamId,
     hostUid,
@@ -91,17 +96,22 @@ export async function claimLobbyId(
 }
 
 /** Host-only writes (settings, match selection, pairing, status, heartbeat) — enforced by firestore.rules, not here. */
-export async function updateLobby(lobbyId: string, patch: Partial<LobbyDoc>): Promise<void> {
+export async function updateLobby(lobbyId: string, patch: Partial<LobbyDoc>, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.updateLobby(lobbyId, patch);
   await updateDoc(doc(db, LOBBIES, lobbyId), patch);
 }
 
-export async function heartbeatHost(lobbyId: string): Promise<void> {
+export async function heartbeatHost(lobbyId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.heartbeatHost(lobbyId);
   await updateDoc(doc(db, LOBBIES, lobbyId), { hostLastSeen: serverTimestamp() });
 }
 
 export function useLobby(lobbyId: string | null) {
   const [lobby, setLobby] = useState<LobbyDoc | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.lobby;
 
   useEffect(() => {
     if (!lobbyId || !isFirebaseConfigured()) {
@@ -109,6 +119,19 @@ export function useLobby(lobbyId: string | null) {
       setLobby(null);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      return port.subscribeLobby(
+        lobbyId,
+        (l) => {
+          setLobby(l);
+          setLoaded(true);
+        },
+        () => {
+          setLobby(null);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       doc(db, LOBBIES, lobbyId),
@@ -123,13 +146,15 @@ export function useLobby(lobbyId: string | null) {
       }
     );
     return unsubscribe;
-  }, [lobbyId]);
+  }, [lobbyId, port]);
 
   return { lobby, loaded };
 }
 
 /** Create-or-merge your own player doc — both "Join with code" and a reconnecting refresh call this the same way. */
-export async function joinLobby(lobbyId: string, teamId: string, uid: string, name: string): Promise<void> {
+export async function joinLobby(lobbyId: string, teamId: string, uid: string, name: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.joinLobby(lobbyId, teamId, uid, name);
   await setDoc(
     doc(db, LOBBIES, lobbyId, PLAYERS, uid),
     { uid, teamId, name, lastSeen: serverTimestamp(), submitted: false, joinedAt: serverTimestamp() },
@@ -137,20 +162,28 @@ export async function joinLobby(lobbyId: string, teamId: string, uid: string, na
   );
 }
 
-export async function heartbeatPlayer(lobbyId: string, uid: string): Promise<void> {
+export async function heartbeatPlayer(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.heartbeatPlayer(lobbyId, uid);
   await updateDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid), { lastSeen: serverTimestamp() });
 }
 
-export async function markPlayerSubmitted(lobbyId: string, uid: string): Promise<void> {
+export async function markPlayerSubmitted(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.markPlayerSubmitted(lobbyId, uid);
   await updateDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid), { submitted: true });
 }
 
 /** Called by a player's own client on re-entering the waiting room (including after "Play Again") — clears a stale `submitted: true` from the previous round so the next round's "everyone submitted" check isn't satisfied before it even starts. */
-export async function resetPlayerSubmitted(lobbyId: string, uid: string): Promise<void> {
+export async function resetPlayerSubmitted(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.resetPlayerSubmitted(lobbyId, uid);
   await updateDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid), { submitted: false });
 }
 
-export async function leaveLobbyPlayer(lobbyId: string, uid: string): Promise<void> {
+export async function leaveLobbyPlayer(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.leaveLobbyPlayer(lobbyId, uid);
   await deleteDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid));
 }
 
@@ -169,6 +202,7 @@ export function isHostActive(hostLastSeen: unknown): boolean {
 export function useLobbyPlayers(lobbyId: string | null, teamId: string | null) {
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.lobby;
 
   useEffect(() => {
     if (!lobbyId || !teamId || !isFirebaseConfigured()) {
@@ -176,6 +210,20 @@ export function useLobbyPlayers(lobbyId: string | null, teamId: string | null) {
       setPlayers([]);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      return port.subscribePlayers(
+        lobbyId,
+        teamId,
+        (list) => {
+          setPlayers(list);
+          setLoaded(true);
+        },
+        () => {
+          setPlayers([]);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       lobbyPlayersQuery(db, lobbyId, teamId),
@@ -190,7 +238,7 @@ export function useLobbyPlayers(lobbyId: string | null, teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [lobbyId, teamId]);
+  }, [lobbyId, teamId, port]);
 
   return { players, loaded };
 }
@@ -204,6 +252,7 @@ export function useLobbyPlayers(lobbyId: string | null, teamId: string | null) {
 export function useLobbySessions(teamId: string | null, lobbyId: string | null) {
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.lobby;
 
   useEffect(() => {
     if (!teamId || !lobbyId || !isFirebaseConfigured()) {
@@ -211,6 +260,20 @@ export function useLobbySessions(teamId: string | null, lobbyId: string | null) 
       setSessions([]);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      return port.subscribeLobbySessions(
+        teamId,
+        lobbyId,
+        (list) => {
+          setSessions(list);
+          setLoaded(true);
+        },
+        () => {
+          setSessions([]);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       lobbySessionsQuery(db, teamId, lobbyId),
@@ -225,7 +288,7 @@ export function useLobbySessions(teamId: string | null, lobbyId: string | null) 
       }
     );
     return unsubscribe;
-  }, [teamId, lobbyId]);
+  }, [teamId, lobbyId, port]);
 
   return { sessions, loaded };
 }
@@ -237,18 +300,35 @@ export function useLobbySessions(teamId: string | null, lobbyId: string | null) 
  * query here has no cheap way to pre-filter out closed lobbies). Needs the `players` collection-group index in
  * firestore.indexes.json.
  */
-export function useMyActiveLobbyId(uid: string | null) {
+export function useMyActiveLobbyId(uid: string | null, teamId: string | null = null) {
   const [lobbyId, setLobbyId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
-  // A program without lobbies reads no player docs (this is a collection-group query: it must not run there).
+  // A program without lobbies reads no player docs.
   const lobbyConnected = useProgramConfig().connection.features.lobby;
+  const port = useProgramData()?.lobby;
 
   useEffect(() => {
-    if (!uid || !lobbyConnected || !isFirebaseConfigured()) {
+    if (!uid || !lobbyConnected || !isFirebaseConfigured() || (port && !teamId)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLobbyId(null);
       setLoaded(true);
       return;
+    }
+    if (port && teamId) {
+      // A program with its own store NEVER runs the collection-group query below (the rules cannot guard it): the port lists the team's lobbies and reads
+      // the caller's own player doc in each open one, by path.
+      return port.subscribeMyLobby(
+        teamId,
+        uid,
+        (id) => {
+          setLobbyId(id);
+          setLoaded(true);
+        },
+        () => {
+          setLobbyId(null);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       myLobbyPlayersQuery(db, uid),
@@ -273,7 +353,7 @@ export function useMyActiveLobbyId(uid: string | null) {
       }
     );
     return unsubscribe;
-  }, [uid, lobbyConnected]);
+  }, [uid, teamId, lobbyConnected, port]);
 
   return { lobbyId, loaded };
 }

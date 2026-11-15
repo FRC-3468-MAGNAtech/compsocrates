@@ -6,7 +6,9 @@ import type { ProgramData, ProgramSeason } from "@/lib/program/data";
 import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchScores, setMatchesVideoLink, setMatchVideo, subscribeLibraryEvents, subscribeLibraryMatches, updateManualEvent, upsertManualMatches } from "@/data/ftc/library";
 import { scheduleInputFromValid } from "@/lib/library/schedule";
 import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
-import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeOwnPausedSession, subscribeSession, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
+import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeLobbySessions, subscribeOwnPausedSession, subscribeSession, subscribeTeamLiveSessions, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
+import { removePresence, subscribeMatchScouts, subscribeTeamLiveScouts, upsertPresence } from "@/data/ftc/live";
+import { claimLobby, heartbeatHost, heartbeatPlayer, joinLobby, leaveLobbyPlayer, markPlayerSubmitted, resetPlayerSubmitted, subscribeLobby, subscribeMyLobby, subscribePlayers, updateLobby } from "@/data/ftc/lobby";
 import { ftcDocToFormDoc, ftcDocToFormVersion } from "@/data/ftc/forms";
 import { readFtcBackup } from "@/data/ftc/backup";
 import { fetchFtcSchedule } from "@/lib/ftc/library-import";
@@ -121,6 +123,22 @@ export const ftcProgramData: ProgramData = {
     deleteSession,
     hasCompletedAttempt,
     entriesForSession: getScoutEntriesForSession,
+    subscribeTeamLiveSessions,
+  },
+  live: { upsertPresence, removePresence, subscribeMatchScouts, subscribeTeamScouts: subscribeTeamLiveScouts },
+  lobby: {
+    claimLobby,
+    updateLobby,
+    heartbeatHost,
+    subscribeLobby,
+    joinLobby,
+    heartbeatPlayer,
+    markPlayerSubmitted,
+    resetPlayerSubmitted,
+    leaveLobbyPlayer,
+    subscribePlayers,
+    subscribeLobbySessions,
+    subscribeMyLobby,
   },
   games: { seasons: FTC_SEASONS, defaultSeasonId: seasonIdOf(CURRENT_FTC_GAME_ID), builtinForms: FTC_BUILTIN_FORMS },
 };

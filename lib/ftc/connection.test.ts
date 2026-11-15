@@ -29,9 +29,9 @@ describe("program connection config", () => {
 
   it("only the data features FTC has a program-aware layer for are on", () => {
     const on = Object.entries(PROGRAMS.ftc.connection.features).filter(([, enabled]) => enabled).map(([name]) => name);
-    expect(on).toEqual(["assignments", "practice", "library", "pickList", "accuracy", "csvImport", "changelog", "joinRequests", "eventLookup"]);
-    // live and lobby stay off until their data layers are ported (solo practice is on: it has its own session store; accuracy and csvImport went on in Batch 4)
-    for (const off of ["live", "lobby"] as const) expect(PROGRAMS.ftc.connection.features[off], off).toBe(false);
+    expect(on).toEqual(["assignments", "practice", "live", "lobby", "library", "pickList", "accuracy", "csvImport", "changelog", "joinRequests", "eventLookup"]);
+    // live and lobby went on in Batch 6 (their presence and lobby data layers read by path, never by collection group)
+    for (const on of ["live", "lobby"] as const) expect(PROGRAMS.ftc.connection.features[on], on).toBe(true);
     // the default program has live and lobby on, as before
     expect(PROGRAMS.frc.connection.features.live).toBe(true);
     expect(PROGRAMS.frc.connection.features.lobby).toBe(true);

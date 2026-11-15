@@ -56,6 +56,10 @@ export class FakeFirestore {
         const current = this.store.get(path);
         this.store.set(path, options?.merge && current ? deepMergeData(current, data) : clone(data));
       },
+      create: async (data: Data) => {
+        if (this.store.has(path)) throw Object.assign(new Error(`ALREADY_EXISTS: ${path}`), { code: 6 });
+        this.store.set(path, clone(data));
+      },
       update: async (data: Data) => {
         const current = this.store.get(path);
         if (!current) throw new Error(`NOT_FOUND: ${path}`);

@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
     subscribeTeamSessions: vi.fn(),
     subscribeOwnPausedSession: vi.fn(),
     subscribeSession: vi.fn(),
+    subscribeTeamLiveSessions: vi.fn(),
+    subscribeLobbySessions: vi.fn(),
   },
 }));
 

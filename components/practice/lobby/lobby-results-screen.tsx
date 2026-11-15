@@ -12,6 +12,7 @@ import { cardEntranceVariants } from "@/lib/motion";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
 import { pickRandomLobbyMatch } from "@/lib/lobby/match-select";
 import { getEntriesForSession, type ScoutEntry } from "@/lib/scout-entries";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { updateLobby, useLobbySessions, type LobbyDoc, type LobbyPlayer, type LobbyStatus } from "@/lib/lobby";
 import type { PairAssignment } from "@/lib/lobby/pairing";
 import type { PracticeSession } from "@/lib/practice-sessions";
@@ -22,6 +23,9 @@ type PairResult = {
   sessions: PracticeSession[];
   accuracy: number;
 };
+
+/** A group that finished its scouting on a match with no official score: it has a scouted total and no accuracy (never a 0). */
+type UnscoredPair = Omit<PairResult, "accuracy">;
 
 function nameFor(players: LobbyPlayer[], uid: string): string {
   return players.find((p) => p.uid === uid)?.name ?? "Unknown";
@@ -47,18 +51,24 @@ export function LobbyResultsScreen({
   isHost: boolean;
   onExit: () => void;
 }) {
+  const program = useProgram();
   const { sessions } = useLobbySessions(lobby.teamId, lobby.id);
   const { matches } = useLibraryMatchesBySeason(lobby.seasonId, { includeImported: false });
-  const [detailPair, setDetailPair] = useState<PairResult | null>(null);
+  // `practice.noScoreIsResult` (program config): a finished group with no accuracy (the match has no official score yet) is a result, not "did not finish".
+  const noAccuracyIsResult = useProgramConfig().practice.noScoreIsResult;
+  const [detailPair, setDetailPair] = useState<UnscoredPair | null>(null);
   const [startingAgain, setStartingAgain] = useState(false);
 
   const pairing = lobby.pairing ?? [];
   const complete: PairResult[] = [];
+  const unscored: UnscoredPair[] = [];
   const incomplete: PairAssignment[] = [];
   for (const pair of pairing) {
     const pairSessions = sessions.filter((s) => s.pairId === pair.pairId);
     if (pairSessions.length === pair.playerUids.length && pairSessions.every((s) => s.accuracy !== null)) {
       complete.push({ pair, sessions: pairSessions, accuracy: pairSessions[0].accuracy! });
+    } else if (noAccuracyIsResult && pairSessions.length === pair.playerUids.length && pairSessions.every((s) => s.status === "completed" && s.accuracy === null && s.scoutedTotal !== null)) {
+      unscored.push({ pair, sessions: pairSessions });
     } else {
       incomplete.push(pair);
     }
@@ -79,14 +89,14 @@ export function LobbyResultsScreen({
         pairing: null,
         startsAt: null,
         resolvedAt: null,
-      });
+      }, program);
     } finally {
       setStartingAgain(false);
     }
   };
 
   const handleClose = async () => {
-    await updateLobby(lobby.id, { status: "closed" });
+    await updateLobby(lobby.id, { status: "closed" }, program);
     onExit();
   };
 
@@ -137,6 +147,20 @@ export function LobbyResultsScreen({
         </GlassPanel>
       )}
 
+      {unscored.length > 0 && (
+        <GlassPanel className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">No official score yet</h2>
+          <div className="flex flex-col gap-2">
+            {unscored.map((r) => (
+              <button key={r.pair.pairId} type="button" onClick={() => setDetailPair(r)} className="glass-card flex flex-wrap items-center gap-3 p-3 text-left hover:bg-white/8">
+                <span className="text-sm font-medium">{namesFor(players, r.pair.playerUids)}</span>
+                <span className="ml-auto text-sm font-semibold tabular-nums">{r.sessions[0].scoutedTotal} pts</span>
+              </button>
+            ))}
+          </div>
+        </GlassPanel>
+      )}
+
       {incomplete.length > 0 && (
         <GlassPanel className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Did not finish</h2>
@@ -181,7 +205,7 @@ export function LobbyResultsScreen({
   );
 }
 
-function PairDetail({ teamId, players, result }: { teamId: string; players: LobbyPlayer[]; result: PairResult }) {
+function PairDetail({ teamId, players, result }: { teamId: string; players: LobbyPlayer[]; result: UnscoredPair }) {
   const [entries, setEntries] = useState<ScoutEntry[] | null>(null);
 
   useEffect(() => {
@@ -210,16 +234,22 @@ function PairDetail({ teamId, players, result }: { teamId: string; players: Lobb
           ))}
           <Stat label="+ Penalties" value={first.penaltyPoints ?? 0} />
           <Stat label="= Scouted total" value={first.scoutedTotal ?? 0} emphasize />
-          <Stat label="Official score" value={first.officialScore ?? 0} />
-          <Stat label="Difference" value={(first.scoutedTotal ?? 0) - (first.officialScore ?? 0)} signed />
+          {first.officialScore === null ? (
+            <Stat label="Official score" text="No official score yet" />
+          ) : (
+            <>
+              <Stat label="Official score" value={first.officialScore} />
+              <Stat label="Difference" value={(first.scoutedTotal ?? 0) - first.officialScore} signed />
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function Stat({ label, value, emphasize, signed }: { label: string; value: number; emphasize?: boolean; signed?: boolean }) {
-  const display = signed && value > 0 ? `+${value}` : String(value);
+function Stat({ label, value = 0, text, emphasize, signed }: { label: string; value?: number; text?: string; emphasize?: boolean; signed?: boolean }) {
+  const display = text ?? (signed && value > 0 ? `+${value}` : String(value));
   return (
     <div className="glass-card flex flex-col gap-1 p-3">
       <span className="text-[11px] text-[var(--muted-foreground)]">{label}</span>

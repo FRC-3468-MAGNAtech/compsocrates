@@ -1,7 +1,7 @@
 "use client";
 
 import { Radio, UserPlus } from "lucide-react";
-import { ALLIANCE_SIZE } from "@/config/alliance";
+import { useProgramConfig } from "@/lib/program/context";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import type { ResumePendingRobot } from "@/components/practice/live/live-flow";
 export function PresencePanel({ teamId, onJoin }: { teamId: string | null; onJoin: (target: ResumePendingRobot) => void }) {
   const { scouts } = useTeamActiveLiveScouts(teamId);
   const { sessions } = useTeamLiveSessions(teamId);
+  const allianceSize = useProgramConfig().event.allianceSize;
 
   const byMatch = new Map<string, typeof scouts>();
   for (const s of scouts) {
@@ -33,7 +34,7 @@ export function PresencePanel({ teamId, onJoin }: { teamId: string | null; onJoi
   // A match "needs a partner" while its scouts are all on one alliance and don't yet cover every robot on it
   // (one or two scouts of three).
   const soloMatches = [...byMatch.entries()].filter(([, list]) => {
-    const size = sessions.find((s) => s.id === list[0].sessionId)?.allianceTeams?.length ?? ALLIANCE_SIZE;
+    const size = sessions.find((s) => s.id === list[0].sessionId)?.allianceTeams?.length ?? allianceSize;
     return list.length < size && new Set(list.map((s) => s.alliance)).size === 1;
   });
 

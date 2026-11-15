@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { firebaseAdminProblem, getAdminFirestore, getAdminMessaging } from "@/lib/firebase/admin";
 import { checkSession } from "@/lib/server/require-user";
 import { liveDataWarnings } from "@/lib/server/live-env";
+import { liveProgramStore, programFromBody } from "@/lib/server/live-program";
 import { resolvePendingLiveMatches } from "@/lib/live/resolve-pending";
 import { LIVE_CONFIG } from "@/lib/live/config";
 
@@ -22,26 +23,37 @@ import { LIVE_CONFIG } from "@/lib/live/config";
 const lastCallByUid = new Map<string, number>();
 const MIN_INTERVAL_MS = LIVE_CONFIG.CLIENT_SCORE_POLL_INTERVAL_MS / 2;
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await checkSession();
   if (!session.ok) {
     return NextResponse.json({ ok: false, error: session.message }, { status: session.reason === "not-configured" ? 503 : 401 });
   }
   const user = { uid: session.uid };
+  // The program comes from the body and is REQUIRED (missing, unknown or unsupported is a 400); there is no default.
+  const body = (await request.json().catch(() => null)) as { program?: unknown } | null;
+  const parsed = programFromBody(body?.program, "live");
+  if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error, code: parsed.code }, { status: 400 });
+  const program = parsed.program;
 
-  const lastCall = lastCallByUid.get(user.uid);
+  // Per program: the same person polling for both programs is two separate callers.
+  const callKey = `${program}:${user.uid}`;
+  const lastCall = lastCallByUid.get(callKey);
   if (lastCall && Date.now() - lastCall < MIN_INTERVAL_MS) {
     return NextResponse.json({ ok: true, checked: 0, resolved: 0, rateLimited: true });
   }
-  lastCallByUid.set(user.uid, Date.now());
+  lastCallByUid.set(callKey, Date.now());
 
   const db = getAdminFirestore();
   if (!db) return NextResponse.json({ ok: false, error: firebaseAdminProblem() ?? "Server isn't configured." }, { status: 503 });
   const messaging = getAdminMessaging();
 
   try {
-    const result = await resolvePendingLiveMatches(db, messaging, user.uid);
-    const warnings = liveDataWarnings();
+    // The caller must have a team in THAT program (its own users collection): a person of the other program has no account here and is refused.
+    const userSnap = await db.collection(liveProgramStore(program).paths.users).doc(user.uid).get();
+    if (!userSnap.exists || !userSnap.data()?.teamId) return NextResponse.json({ ok: false, error: "No team in this program." }, { status: 403 });
+    // Only the caller's own sessions, in the one program asked for (the session query is `uid ==`).
+    const result = await resolvePendingLiveMatches(db, messaging, user.uid, program);
+    const warnings = liveDataWarnings(program);
     return NextResponse.json({ ok: true, ...result, ...(warnings.length > 0 ? { warnings } : {}) });
   } catch (err) {
     console.error("check-scores failed:", err);

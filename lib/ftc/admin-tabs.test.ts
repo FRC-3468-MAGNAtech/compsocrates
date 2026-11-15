@@ -53,9 +53,9 @@ describe("admin tab resolver", () => {
 });
 
 describe("FTC admin connection", () => {
-  it("/admin is connected and the library flag is on; live and lobby stay off (solo practice, accuracy and csvImport are on)", () => {
+  it("/admin is connected and the library flag is on; live and lobby are on too (Batch 6: they read by path, never by collection group)", () => {
     expect(PROGRAMS.ftc.connection.paths).toContain("/admin");
     expect(PROGRAMS.ftc.connection.features.library).toBe(true);
-    for (const off of ["live", "lobby"] as const) expect(PROGRAMS.ftc.connection.features[off], off).toBe(false);
+    for (const on of ["live", "lobby"] as const) expect(PROGRAMS.ftc.connection.features[on], on).toBe(true);
   });
 });

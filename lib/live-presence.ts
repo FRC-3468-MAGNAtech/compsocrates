@@ -2,7 +2,9 @@
 
 import { deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { useProgramConfig } from "@/lib/program/context";
+import { programData, useProgramData } from "@/lib/program/data";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { liveMatchScoutsQuery, teamLiveScoutsQuery } from "@/lib/practice-queries";
@@ -36,11 +38,15 @@ export function liveMatchKey(eventCode: string, matchType: MatchType, matchNumbe
   return libraryMatchId(eventCode, matchType, matchNumber);
 }
 
-export async function upsertPresence(matchKey: string, presence: Omit<LiveMatchScoutPresence, "lastSeen">): Promise<void> {
+export async function upsertPresence(matchKey: string, presence: Omit<LiveMatchScoutPresence, "lastSeen">, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.live;
+  if (port) return port.upsertPresence(matchKey, presence);
   await setDoc(doc(db, COLLECTION, matchKey, "scouts", presence.uid), { ...presence, lastSeen: serverTimestamp() });
 }
 
-export async function removePresence(matchKey: string, uid: string): Promise<void> {
+export async function removePresence(matchKey: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.live;
+  if (port) return port.removePresence(matchKey, uid);
   await deleteDoc(doc(db, COLLECTION, matchKey, "scouts", uid));
 }
 
@@ -59,6 +65,7 @@ export function isPresenceActive(lastSeen: unknown): boolean {
 export function useLiveMatchScouts(matchKey: string | null, teamId: string | null) {
   const [scouts, setScouts] = useState<LiveMatchScoutPresence[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.live;
 
   useEffect(() => {
     if (!matchKey || !teamId || !isFirebaseConfigured()) {
@@ -66,6 +73,21 @@ export function useLiveMatchScouts(matchKey: string | null, teamId: string | nul
       setScouts([]);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      // A program with its own store reads this match's scouts by path (`teamId ==`); the port reports a failed read, the list is empty meanwhile.
+      return port.subscribeMatchScouts(
+        matchKey,
+        teamId,
+        (list) => {
+          setScouts(list);
+          setLoaded(true);
+        },
+        () => {
+          setScouts([]);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       liveMatchScoutsQuery(db, matchKey, teamId),
@@ -80,7 +102,7 @@ export function useLiveMatchScouts(matchKey: string | null, teamId: string | nul
       }
     );
     return unsubscribe;
-  }, [matchKey, teamId]);
+  }, [matchKey, teamId, port]);
 
   return { scouts, loaded };
 }
@@ -91,6 +113,7 @@ export function useTeamActiveLiveScouts(teamId: string | null) {
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   // A program without live practice has no presence docs to read (this is a collection-group query: it must not run there).
   const liveConnected = useProgramConfig().connection.features.live;
+  const port = useProgramData()?.live;
 
   useEffect(() => {
     if (!teamId || !liveConnected || !isFirebaseConfigured()) {
@@ -98,6 +121,20 @@ export function useTeamActiveLiveScouts(teamId: string | null) {
       setScouts([]);
       setLoaded(true);
       return;
+    }
+    if (port) {
+      // A program with its own store never runs a collection-group query: the port derives the match keys from the team's open live sessions and reads each by path.
+      return port.subscribeTeamScouts(
+        teamId,
+        (all) => {
+          setScouts(all.filter((s) => isPresenceActive(s.lastSeen)));
+          setLoaded(true);
+        },
+        () => {
+          setScouts([]);
+          setLoaded(true);
+        }
+      );
     }
     const unsubscribe = onSnapshot(
       teamLiveScoutsQuery(db, teamId),
@@ -113,7 +150,7 @@ export function useTeamActiveLiveScouts(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId, liveConnected]);
+  }, [teamId, liveConnected, port]);
 
   return { scouts, loaded };
 }

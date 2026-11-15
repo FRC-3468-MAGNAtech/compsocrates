@@ -39,7 +39,9 @@ import type { CreateEventResult, LibraryActor, LibraryImportOutcome, MatchScores
 import type { ValidMatch } from "@/lib/library/manual-match";
 import type { LibraryVideo } from "@/lib/match-library";
 import type { LibraryMatch } from "@/lib/match-library";
-import type { AllianceColor, PracticeSession, SessionKind } from "@/lib/practice-sessions";
+import type { AllianceColor, PracticeSession, SessionKind, SessionMode } from "@/lib/practice-sessions";
+import type { LiveMatchScoutPresence } from "@/lib/live-presence";
+import type { LobbyDoc, LobbyPlayer } from "@/lib/lobby";
 
 export type DataError = (failure: FirestoreFailure) => void;
 
@@ -215,6 +217,37 @@ export type ProgramData = {
     hasCompletedAttempt(teamId: string, uid: string, libraryMatchId: string, alliance: AllianceColor): Promise<boolean>;
     /** Every entry saved so far for one session (both robots), found by the session id. */
     entriesForSession(teamId: string, sessionId: string): Promise<ScoutEntry[]>;
+    /** The team's live sessions only (`teamId ==`, `kind ==`). */
+    subscribeTeamLiveSessions(teamId: string, onData: (sessions: PracticeSession[]) => void, onError: DataError): Unsubscribe;
+  };
+  /**
+   * Live practice presence (FTC: `programs/ftc/liveMatches/{key}/scouts/{uid}`). The root program has none: `lib/live-presence.ts` reads its own collections
+   * (and its collection-group query). A port NEVER uses a collection-group query: `subscribeTeamScouts` derives the match keys from the team's open live
+   * sessions and reads each match's `scouts` by path.
+   */
+  live: {
+    upsertPresence(matchKey: string, presence: Omit<LiveMatchScoutPresence, "lastSeen">): Promise<void>;
+    removePresence(matchKey: string, uid: string): Promise<void>;
+    subscribeMatchScouts(matchKey: string, teamId: string, onData: (scouts: LiveMatchScoutPresence[]) => void, onError: DataError): Unsubscribe;
+    subscribeTeamScouts(teamId: string, onData: (scouts: (LiveMatchScoutPresence & { matchKey: string })[]) => void, onError: DataError): Unsubscribe;
+  };
+  /**
+   * Practice lobbies (FTC: `programs/ftc/lobbies`). The root program has none: `lib/lobby.ts` reads its own collections. `subscribeMyLobby` replaces the
+   * root's collection-group query on `players`: it lists the team's lobbies and reads the caller's own player doc in each open one, by path.
+   */
+  lobby: {
+    claimLobby(teamId: string, hostUid: string, hostName: string, seasonId: string, mode: Exclude<SessionMode, null>): Promise<string>;
+    updateLobby(lobbyId: string, patch: Partial<LobbyDoc>): Promise<void>;
+    heartbeatHost(lobbyId: string): Promise<void>;
+    subscribeLobby(lobbyId: string, onData: (lobby: LobbyDoc | null) => void, onError: DataError): Unsubscribe;
+    joinLobby(lobbyId: string, teamId: string, uid: string, name: string): Promise<void>;
+    heartbeatPlayer(lobbyId: string, uid: string): Promise<void>;
+    markPlayerSubmitted(lobbyId: string, uid: string): Promise<void>;
+    resetPlayerSubmitted(lobbyId: string, uid: string): Promise<void>;
+    leaveLobbyPlayer(lobbyId: string, uid: string): Promise<void>;
+    subscribePlayers(lobbyId: string, teamId: string, onData: (players: LobbyPlayer[]) => void, onError: DataError): Unsubscribe;
+    subscribeLobbySessions(teamId: string, lobbyId: string, onData: (sessions: PracticeSession[]) => void, onError: DataError): Unsubscribe;
+    subscribeMyLobby(teamId: string, uid: string, onData: (lobbyId: string | null) => void, onError: DataError): Unsubscribe;
   };
   games: {
     seasons: readonly ProgramSeason[];

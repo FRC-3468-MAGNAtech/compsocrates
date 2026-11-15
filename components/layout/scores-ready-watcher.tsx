@@ -6,6 +6,7 @@ import { Bell } from "lucide-react";
 import { useRouter } from "@/lib/program/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { useTeamLiveSessions } from "@/lib/practice-sessions";
 import { LIVE_CONFIG } from "@/lib/live/config";
 import { onForegroundLiveScorePush } from "@/lib/notifications";
@@ -25,6 +26,7 @@ export function ScoresReadyWatcher() {
   const { user, profile } = useAuth();
   const { sessions } = useTeamLiveSessions(profile?.teamId ?? null);
   const router = useRouter();
+  const program = useProgram();
   const [popup, setPopup] = useState<{ title: string; body: string } | null>(null);
   const previouslyPendingIds = useRef<Set<string>>(new Set());
 
@@ -52,10 +54,10 @@ export function ScoresReadyWatcher() {
   useEffect(() => {
     if (myPending.length === 0) return;
     const interval = setInterval(() => {
-      fetch("/api/live/check-scores", { method: "POST" }).catch(() => {});
+      fetch("/api/live/check-scores", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ program }) }).catch(() => {});
     }, LIVE_CONFIG.CLIENT_SCORE_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [myPending.length]);
+  }, [myPending.length, program]);
 
   return (
     <AnimatePresence>
