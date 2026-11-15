@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { AnalyticsToolbar } from "@/components/analytics/toolbar";
 import { AnalyticsDataTable, type SortState } from "@/components/analytics/data-table";
 import { ConfigModal } from "@/components/analytics/config-modal";
+import { EntryEditDialog } from "@/components/admin/entry-edit-dialog";
 import { ImportCsvDialog } from "@/components/analytics/import-csv-dialog";
 import { useAuth } from "@/lib/auth";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
@@ -110,6 +111,8 @@ export default function MatchScoutAnalyticsPage() {
     });
   }, [sourceEntries, search, sort, schema, resolveDisplayName]);
 
+  const [editEntryId, setEditEntryId] = useState<string | null>(null);
+  const editEntry = editEntryId ? (sourceEntries.find((e) => e.id === editEntryId) ?? null) : null;
   const configEntry = configEntryId ? sourceEntries.find((e) => e.id === configEntryId) ?? null : null;
   const configSession = practiceMode && configEntry?.sessionId ? sessionsById.get(configEntry.sessionId) ?? null : null;
 
@@ -250,7 +253,18 @@ export default function MatchScoutAnalyticsPage() {
         onToggleExclude={handleToggleExclude}
         sessionExcluded={practiceMode ? (configSession?.excluded ?? false) : undefined}
         onToggleSessionExclude={configEntry ? () => handleToggleExclude(configEntry.id) : undefined}
+        onEdit={profile?.isAdmin ? setEditEntryId : undefined}
       />
+      {profile?.isAdmin && teamId && user && (
+        <EntryEditDialog
+          entry={editEntry}
+          open={editEntry !== null}
+          onOpenChange={(open) => !open && setEditEntryId(null)}
+          teamId={teamId}
+          actorUid={user.uid}
+          actorName={profile.name}
+        />
+      )}
 
       {features.csvImport && !practiceMode && teamId && user && eventCode && (
         <ImportCsvDialog

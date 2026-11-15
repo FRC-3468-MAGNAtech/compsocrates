@@ -179,8 +179,6 @@ function FormPageContent({
       />
       <SeasonSwitchDialog
         toName={switchingTo ? forms.seasonFor(switchingTo).name : null}
-        fromName={forms.seasonFor(seasonId).name}
-        effect="erases"
         onCancel={() => setSwitchingTo(null)}
         onConfirm={() => {
           if (switchingTo) setSeasonId(switchingTo);

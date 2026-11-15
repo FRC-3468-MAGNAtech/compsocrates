@@ -15,6 +15,7 @@ import { normalizeValues } from "@/lib/forms/values";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
 import { useForms } from "@/lib/forms/forms-context";
 import { entryPayloadFor, updateEntry, type ScoutEntry } from "@/lib/scout-entries";
+import { useProgram } from "@/lib/program/context";
 
 /**
  * Admin-only raw field editor, for bug fixes — the original values are
@@ -42,6 +43,7 @@ export function EntryEditDialog({
   onSaved?: () => void;
 }) {
   const forms = useForms();
+  const program = useProgram();
   const form = useMemo(() => (entry ? (forms.forEntry(entry) ?? forms.latest(entry.formId)) : null), [forms, entry]);
   const [values, setValues] = useState<FormValues>({});
   const [saving, setSaving] = useState(false);
@@ -63,7 +65,7 @@ export function EntryEditDialog({
       const next = reconcileRoleAfterEdit(form, normalizeValues(form, values));
       const score = calculateScore(form, withoutRole(next));
       const payload = entryPayloadFor(form, next, score);
-      await updateEntry(entry.id, payload);
+      await updateEntry(entry.id, payload, {}, program);
       await logAuditEvent(
         teamId,
         actorUid,
@@ -71,7 +73,8 @@ export function EntryEditDialog({
         "edit-entry",
         { entryId: entry.id, matchLabel: formatMatch(entry), teamNumber: entry.teamNumber },
         { values: entryValues(entry, form), comments: entry.comments, score: entry.score },
-        { values: next, comments: payload.comments, score: payload.score }
+        { values: next, comments: payload.comments, score: payload.score },
+        program
       );
       onSaved?.();
       onOpenChange(false);

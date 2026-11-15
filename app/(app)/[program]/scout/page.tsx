@@ -29,7 +29,6 @@ import { useTeamScoutEntries, saveEntry, entryPayloadFor } from "@/lib/scout-ent
 import type { ScoreResult } from "@/lib/forms/scoring";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { eventsForSeason } from "@/lib/forms/form-season";
-import { SeasonSwitchDialog } from "@/components/forms/season-switch-dialog";
 import { useFormSeason } from "@/lib/forms/use-form-season";
 import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -146,9 +145,16 @@ function MatchScoutFormContent() {
   // slots still to hand over: mine, not scouted yet
   const handOverable = uid && eventCode ? allSlots.filter((s) => s.scoutUid === uid && !scoutedTeamsFor(entries.filter((e) => e.uid === uid), eventCode, s.matchType, s.matchNumber).has(s.teamNumber)) : [];
   // P28: the sticky notes written while scouting this robot (saved with the entry; the old Comments column folds them in)
-  const [notes, setNotes] = useState<StickyNote[]>([]);
-  // A form without sticky notes keeps its own notes field; it moves into the notes box beside the form (large screens) or the notes sheet (phones).
-  const [comments, setComments] = useState("");
+  // Kept per game, so switching games never deletes them: they are still there when you switch back.
+  const [notesByGame, setNotesByGame] = useState<Record<string, StickyNote[]>>({});
+  const notes = notesByGame[gameId] ?? [];
+  const setNotesOf = (game: string, next: StickyNote[] | ((current: StickyNote[]) => StickyNote[])) =>
+    setNotesByGame((all) => ({ ...all, [game]: typeof next === "function" ? next(all[game] ?? []) : next }));
+  const setNotes = (next: StickyNote[]) => setNotesOf(gameId, next);
+  // A form without sticky notes keeps its own notes field; it moves into the notes box beside the form (large screens) or the notes sheet (phones). Also per game.
+  const [commentsByGame, setCommentsByGame] = useState<Record<string, string>>({});
+  const comments = commentsByGame[gameId] ?? "";
+  const setComments = (value: string) => setCommentsByGame((all) => ({ ...all, [gameId]: value }));
   const notesInSideBox = !form.stickyNotes?.enabled && !!fieldWithRole(form, "comments");
   const [loadedAssignment, setLoadedAssignment] = useState<{ match: AssignedMatch; teamNumber: number } | null>(null);
 
@@ -166,16 +172,10 @@ function MatchScoutFormContent() {
     });
   };
 
-  // Another game is another form: the notes written for this robot are not carried into it (the form's own answers are kept as a draft per game)
-  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  // Another game is another form, with its own answers, draft and notes: nothing is deleted when you switch, and each game's come back when you return to it.
+  // (An assignment loaded for the other game's event does not apply here.)
   const changeGame = (next: string) => {
     if (next === gameId) return;
-    if (notes.length > 0 || comments.trim() !== "") setSwitchingTo(next);
-    else switchGame(next);
-  };
-  const switchGame = (next: string) => {
-    setNotes([]);
-    setComments("");
     setLoadedAssignment(null);
     setAutoLoadNext(false);
     setGameId(next);
@@ -189,7 +189,8 @@ function MatchScoutFormContent() {
     // Clear the notes BEFORE awaiting the save: offline, the write waits in Firestore's queue and the promise stays pending, and notes left on screen
     // would be copied into the next robot's entry. A save that fails puts them back (ahead of anything typed since).
     const submittedNotes = notes;
-    setNotes([]);
+    const submittedGame = gameId;
+    setNotesOf(submittedGame, []);
     try {
       await saveEntry(profile.teamId, user.uid, {
         scoutName: name,
@@ -202,7 +203,7 @@ function MatchScoutFormContent() {
         gate: { seasonId: gameId },
       }, program);
     } catch (error) {
-      setNotes((current) => [...submittedNotes, ...current]);
+      setNotesOf(submittedGame, (current) => [...submittedNotes, ...current]);
       throw error;
     }
     // Recomputes the whole event's accuracy/flags (not just this entry) so a
@@ -228,17 +229,6 @@ function MatchScoutFormContent() {
           <GameSelect value={gameId} onChange={changeGame} />
         </div>
       </div>
-
-      <SeasonSwitchDialog
-        toName={switchingTo ? forms.seasonFor(switchingTo).name : null}
-        fromName={forms.seasonFor(gameId).name}
-        effect="draft"
-        onCancel={() => setSwitchingTo(null)}
-        onConfirm={() => {
-          if (switchingTo) switchGame(switchingTo);
-          setSwitchingTo(null);
-        }}
-      />
 
       {nextAssignment && !effectiveLoaded && (
         <GlassPanel className="flex flex-wrap items-center gap-3">

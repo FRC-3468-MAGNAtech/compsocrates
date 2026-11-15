@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Ban, CheckCircle2, X } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, Pencil, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ export function ConfigModal({
   onToggleExclude,
   sessionExcluded,
   onToggleSessionExclude,
+  onEdit,
 }: {
   entry: ScoutEntry | null;
   open: boolean;
@@ -48,6 +49,8 @@ export function ConfigModal({
    */
   sessionExcluded?: boolean;
   onToggleSessionExclude?: () => void;
+  /** Admins: opens the answer editor for this entry (the modal closes first). Omitted: no Edit button. */
+  onEdit?: (entryId: string) => void;
 }) {
   const [reason, setReason] = useState<ManualFlagReason>(MANUAL_FLAG_REASONS[0]);
   const [note, setNote] = useState("");
@@ -65,6 +68,19 @@ export function ConfigModal({
         </DialogDescription>
 
         <div className="mt-5 flex flex-col gap-5">
+          {onEdit && (
+            <Button
+              variant="glass"
+              className="gap-2 self-start"
+              data-testid="config-edit-answers"
+              onClick={() => {
+                onOpenChange(false);
+                onEdit(entry.id);
+              }}
+            >
+              <Pencil className="h-4 w-4" aria-hidden /> Edit answers
+            </Button>
+          )}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold">Auto Flags</h3>
             {activeAutoFlags.length === 0 ? (

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { CalendarX2, Download, Table2, Upload, Rows3 } from "lucide-react";
 import { AnalyticsDataTable, type SortState } from "@/components/analytics/data-table";
 import { ConfigModal } from "@/components/analytics/config-modal";
+import { FormEntryEditDialog } from "@/components/admin/form-entry-edit-dialog";
 import { FormImportDialog } from "@/components/analytics/form-import-dialog";
 import { RebuiltFormSummaryView } from "@/components/analytics/form-summaries-rebuilt-view";
 import { AnalyticsToolbar } from "@/components/analytics/toolbar";
@@ -49,6 +50,8 @@ export type FormAnalyticsViewProps = {
   initialView?: View;
   onUpdate: (id: string, patch: { excluded?: boolean; flags?: FormEntry["flags"] }) => void;
   onDelete: (id: string) => void;
+  /** Admins: opens the answer editor for an entry (the Config modal's Edit answers button). Omitted: no button. */
+  onEditEntry?: (id: string) => void;
   onImportSave: (input: NewFormEntry) => Promise<unknown>;
 };
 
@@ -56,7 +59,7 @@ export type FormAnalyticsViewProps = {
  * One of the six form Analytics pages (P30), as a pure view: the schema-driven raw table (the same table Match Scout Analytics uses) and a summary view, for the
  * entries of one form type. Everyone can read; only admins flag, exclude, delete and import (the rules say the same).
  */
-export function FormAnalyticsView({ page, entries, allEntries, form, importForm, loaded, eventCodes, isAdmin, teamNames, importEvent, initialView = "table", onUpdate, onDelete, onImportSave }: FormAnalyticsViewProps) {
+export function FormAnalyticsView({ page, entries, allEntries, form, importForm, loaded, eventCodes, isAdmin, teamNames, importEvent, initialView = "table", onUpdate, onDelete, onEditEntry, onImportSave }: FormAnalyticsViewProps) {
   const multiEvent = eventCodes === null || eventCodes.length > 1;
   // Session E: the page's name is `<GAME> <Form Type> Form` from the one helper (display only)
   const formName = useFormDisplayNames().forType(page.formType, page.title);
@@ -195,6 +198,7 @@ export function FormAnalyticsView({ page, entries, allEntries, form, importForm,
           onDismissAutoFlags={() => undefined}
           onAddManualFlag={(id, reason: ManualFlagReason, note) => patchFlags(id, (flags) => [...flags, { id: `mf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, reason, ...(note ? { note } : {}), addedAt: new Date().toISOString() }])}
           onRemoveManualFlag={(id, flagId) => patchFlags(id, (flags) => flags.filter((f) => f.id !== flagId))}
+          onEdit={onEditEntry}
           onToggleExclude={(id) => {
             const e = entryById.get(id);
             if (e) onUpdate(id, { excluded: !e.excluded });
@@ -260,7 +264,11 @@ export function FormAnalyticsPage({ slug }: { slug: FormAnalyticsSlug }) {
   const importForm: Form = forms.latest(page.formId)!;
   const importEvent = eventCodes && eventCodes.length === 1 ? eventCodes[0] : (data.primaryCode ?? data.activeEventCodes[0] ?? null);
 
+  const [editId, setEditId] = useState<string | null>(null);
+  const editing = editId ? (all.find((e) => e.id === editId) ?? null) : null;
+
   return (
+    <>
     <FormAnalyticsView
       page={page}
       entries={scope}
@@ -275,7 +283,12 @@ export function FormAnalyticsPage({ slug }: { slug: FormAnalyticsSlug }) {
       initialView={searchParams.get("view") === "summary" ? "summary" : "table"}
       onUpdate={(id, patch) => void adminUpdateFormEntry(id, patch, program)}
       onDelete={(id) => void deleteFormEntry(id, program)}
+      onEditEntry={isAdmin ? setEditId : undefined}
       onImportSave={(input) => (teamId && user ? saveFormEntry(teamId, user.uid, { ...input, gate: { bypass: true } }, program) : Promise.reject(new Error("Not signed in.")))}
     />
+    {isAdmin && teamId && user && (
+      <FormEntryEditDialog entry={editing} open={editing !== null} onOpenChange={(o) => !o && setEditId(null)} teamId={teamId} actorUid={user.uid} actorName={profile?.name ?? ""} />
+    )}
+    </>
   );
 }
