@@ -16,6 +16,9 @@ import {
 const PAGE_BY_ID = new Map<string, NavItem>(NAV_PAGES.map((p) => [p.id, p]));
 const FOOTER_IDS = new Set(secondaryNav.map((p) => p.id));
 
+/** The sidebar text of a page: its own label, never a game-prefixed form name (the sidebar does not show "REEFSCAPE Lead Scout Form"). An admin's rename wins over it in the resolver. */
+export const pageLabel = (page: { label: string }): string => page.label;
+
 export const pageById = (id: string): NavItem | null => PAGE_BY_ID.get(id) ?? null;
 
 /** A page that opens a form (it carries a `formType`). These sit in the "Forms" group by default. Analytics, Practice Scouting and Judge Book are not forms. */

@@ -5,9 +5,9 @@ import Link from "@/components/program/link";
 import { usePathname, useRouter } from "@/lib/program/navigation";import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Trophy } from "lucide-react";
 import { useAccessUser, usePageAccess } from "@/lib/page-access/store";
+import { pageLabel } from "@/lib/sidebar/layout";
 import { resolveSidebar, type ResolvedSidebar, type SidebarNode } from "@/lib/sidebar/resolve";
 import { useSidebarConfig } from "@/lib/sidebar/store";
-import { useNavLabel } from "@/components/layout/use-nav-label";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/motion";
 import { ColorModeToggle } from "@/components/theme/color-mode-toggle";
@@ -218,10 +218,9 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
   const { config } = useSidebarConfig();
   const program = useProgram();
   const pathname = usePathname();
-  const labelOf = useNavLabel();
   const resolved = useMemo(
-    () => resolveSidebar({ program, isAdmin, can: canOpen, config, labelOf, pathname }),
-    [program, isAdmin, canOpen, config, labelOf, pathname]
+    () => resolveSidebar({ program, isAdmin, can: canOpen, config, labelOf: pageLabel, pathname }),
+    [program, isAdmin, canOpen, config, pathname]
   );
   // The changelog is read from the default program's collection, so a program without it connected asks for nothing (no team = no subscription).
   const { features } = useProgramConfig().connection;
