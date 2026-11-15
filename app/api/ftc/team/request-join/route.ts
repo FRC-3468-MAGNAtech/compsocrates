@@ -1,3 +1,4 @@
+import { getAdminFirestoreRest } from "@/lib/firebase/admin";
 import { requestToJoinFtcTeam } from "@/lib/ftc/server-join-requests";
 import { readJsonBody, withCaller } from "@/lib/server/route-helpers";
 
@@ -10,5 +11,6 @@ export const maxDuration = 30;
 
 export async function POST(request: Request) {
   const body = await readJsonBody(request);
-  return withCaller(request, (db, caller) => requestToJoinFtcTeam(db, caller, { joinCode: body.joinCode, name: body.name }));
+  // The REST client, not the shared gRPC one: on this host the gRPC connection stalled on its first call (see getAdminFirestoreRest).
+  return withCaller(request, (db, caller) => requestToJoinFtcTeam(getAdminFirestoreRest() ?? db, caller, { joinCode: body.joinCode, name: body.name }));
 }

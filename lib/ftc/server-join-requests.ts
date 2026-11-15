@@ -60,7 +60,10 @@ export async function requestToJoinFtcTeam(db: Firestore, caller: Caller, input:
       console.error("ftc join request: admin diagnosis:", diagnosis);
       return fail(504, "timeout", `The server could not reach the database in time (${err.step}). ${diagnosis}`);
     }
-    throw err;
+    // A database error (permission, API disabled, ...): its own words say what to fix, so say them rather than a bare "Something went wrong".
+    const reason = (err instanceof Error ? err.message : String(err)).replace(/s+/g, " ").slice(0, 200);
+    console.error("ftc join request: database error:", reason);
+    return fail(502, "database-error", `The database refused the request: ${reason}`);
   }
 }
 

@@ -1,7 +1,7 @@
 import "server-only";
 import { cert, getApps, getApp, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { Firestore, getFirestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
 import { firebaseAdminEnv, firebaseAdminMissingNames, firebaseProjectIdMismatch } from "@/lib/server/env";
 
@@ -103,6 +103,25 @@ export function getAdminFirestore(): Firestore | null {
   if (!adminApp) return null;
   firestoreInstance = getFirestore(adminApp);
   return firestoreInstance;
+}
+
+let restFirestoreInstance: Firestore | null = null;
+
+/**
+ * A second Admin Firestore client that talks plain HTTPS (REST) instead of gRPC (`preferRest`), with the same service account. For a route whose gRPC
+ * connection stalls on the host (the first call never answers) while Google accepts the key. Reads, writes and transactions all work over REST; only
+ * snapshot listeners need gRPC, and no route uses one. Null when unconfigured, like the others. Everything else keeps using `getAdminFirestore()`.
+ */
+export function getAdminFirestoreRest(): Firestore | null {
+  if (restFirestoreInstance) return restFirestoreInstance;
+  const account = getServiceAccount();
+  if (!account || !getAdminApp()) return null;
+  restFirestoreInstance = new Firestore({
+    projectId: account.projectId,
+    credentials: { client_email: account.clientEmail, private_key: account.privateKey },
+    preferRest: true,
+  });
+  return restFirestoreInstance;
 }
 
 /** P7: sends web push for live-score-ready notifications (app/api/cron/poll-live-scores, app/api/live/check-scores). Null when unconfigured, same convention as the others. */
