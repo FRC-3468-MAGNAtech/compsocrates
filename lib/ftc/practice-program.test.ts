@@ -121,7 +121,7 @@ describe("the other program goes through its own session store, and never touche
   });
 });
 
-describe("submissions turned off (Session E) and practice", () => {
+describe("submissions turned off (Session E): practice is never closed, in either program", () => {
   const practiceEntry: SaveEntryInput = {
     scoutName: "Ada",
     eventCode: "EV",
@@ -137,39 +137,28 @@ describe("submissions turned off (Session E) and practice", () => {
     mode: "trial",
     sessionId: "PS-A",
     libraryMatchId: "EV_Q1",
-    gate: { seasonId: "biobuzz" },
   };
 
-  it("the master switch off: a practice entry is refused (nothing is written), with the same message the forms use", async () => {
+  it("with the master switch off a practice entry is still saved, and a real-event entry is still refused", async () => {
     const save = vi.spyOn(ftcProgramData.scoutEntries, "save").mockResolvedValue(undefined);
-    rememberSubmissionSettings("ftc", "T1", { enabled: false, seasons: {} });
-    const err = await saveEntry("T1", "u1", practiceEntry, "ftc").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(SubmissionClosedError);
-    expect((err as Error).message).toMatch(/turned off|disabled|closed/i);
-    expect(save).not.toHaveBeenCalled();
-    save.mockRestore();
-  });
-
-  it("the season switch off closes that season only", async () => {
-    const save = vi.spyOn(ftcProgramData.scoutEntries, "save").mockResolvedValue(undefined);
-    rememberSubmissionSettings("ftc", "T1", { enabled: true, seasons: { biobuzz: false } });
-    await expect(saveEntry("T1", "u1", practiceEntry, "ftc")).rejects.toBeInstanceOf(SubmissionClosedError);
-    expect(save).not.toHaveBeenCalled();
-    await saveEntry("T1", "u1", { ...practiceEntry, gate: { seasonId: "other" } }, "ftc");
-    expect(save).toHaveBeenCalledTimes(1);
-    save.mockRestore();
-  });
-
-  it("switches on (or never set): the practice entry is saved, and the typed data was never touched by the refusal", async () => {
-    const save = vi.spyOn(ftcProgramData.scoutEntries, "save").mockResolvedValue(undefined);
-    await saveEntry("T1", "u1", practiceEntry, "ftc"); // unknown settings count as open
-    rememberSubmissionSettings("ftc", "T1", { enabled: true, seasons: { biobuzz: true } });
-    await saveEntry("T1", "u1", practiceEntry, "ftc");
+    rememberSubmissionSettings("ftc", "T1", { enabled: false, seasons: { biobuzz: false } });
+    await saveEntry("T1", "u1", { ...practiceEntry, gate: { seasonId: "biobuzz" } }, "ftc");
+    await saveEntry("T1", "u1", { ...practiceEntry, source: "live", gate: { seasonId: "biobuzz" } }, "ftc");
+    expect(save).toHaveBeenCalledTimes(2);
+    await expect(saveEntry("T1", "u1", { ...practiceEntry, source: "event", gate: { seasonId: "biobuzz" } }, "ftc")).rejects.toBeInstanceOf(SubmissionClosedError);
     expect(save).toHaveBeenCalledTimes(2);
     save.mockRestore();
   });
 
-  it("an entry already handed over (queued offline) is not recalled when the switch flips afterwards", async () => {
+  it("with only the season switch off a practice entry of that season is still saved", async () => {
+    const save = vi.spyOn(ftcProgramData.scoutEntries, "save").mockResolvedValue(undefined);
+    rememberSubmissionSettings("ftc", "T1", { enabled: true, seasons: { biobuzz: false } });
+    await saveEntry("T1", "u1", { ...practiceEntry, gate: { seasonId: "biobuzz" } }, "ftc");
+    expect(save).toHaveBeenCalledTimes(1);
+    save.mockRestore();
+  });
+
+  it("an entry handed over to the offline queue is the same call as online: it is not held back by the switches either way", async () => {
     const save = vi.spyOn(ftcProgramData.scoutEntries, "save").mockReturnValue(new Promise<void>(() => undefined)); // never resolves: waiting for the server
     void saveEntry("T1", "u1", practiceEntry, "ftc");
     rememberSubmissionSettings("ftc", "T1", { enabled: false, seasons: {} });
@@ -177,7 +166,7 @@ describe("submissions turned off (Session E) and practice", () => {
     save.mockRestore();
   });
 
-  it("the default program keeps practice exempt (Session E): a closed switch does not refuse a practice entry there", async () => {
+  it("the default program keeps practice exempt as before: a closed switch does not refuse a practice entry there", async () => {
     h.addDoc.mockResolvedValue({ id: "x" });
     rememberSubmissionSettings("frc", "T1", { enabled: false, seasons: {} });
     const outcome = await saveEntry("T1", "u1", { ...practiceEntry, formId: "rebuilt", gate: { seasonId: "rebuilt" } }).catch((e: unknown) => e);

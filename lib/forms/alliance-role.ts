@@ -94,6 +94,14 @@ export function allianceRoleFor(form: Pick<Form, "sections">, input: Omit<RoleSe
   return assignAllianceRole({ seed: roleSeedText({ ...input, alliance: input.alliance }), teams: input.teams, teamNumber: input.teamNumber, roles });
 }
 
+/**
+ * The form a practice session scouts with. A saved override of a game's match form that predates the alliance roles has no role block: both robots would then
+ * record every objective and the alliance would count twice. When the program's built-in form splits roles and the resolved one does not, the built-in is used.
+ */
+export function formWithRoles<F extends Pick<Form, "sections">>(resolved: F, builtin: F | null | undefined): F {
+  return builtin && hasAllianceRoles(builtin) && !hasAllianceRoles(resolved) ? builtin : resolved;
+}
+
 /** The label of a role, from the role field's options (`Hive`), or the id when the form doesn't list it. */
 export function allianceRoleLabel(form: Pick<Form, "sections">, role: string): string {
   const field = form.sections.flatMap((s) => s.fields).find((f) => f.key === ALLIANCE_ROLE_KEY);

@@ -21,7 +21,7 @@ import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { useForms } from "@/lib/forms/forms-context";
 import { useProgram } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
-import { SubmissionLockoutBanner, useSubmissionLockout } from "@/components/forms/submission-lockout";
+import { formWithRoles } from "@/lib/forms/alliance-role";
 import { practiceOutcome } from "@/lib/practice-outcome";
 import { evaluatePracticeSessionFlags, type PendingSessionFlag } from "@/lib/practice-flags";
 import { calculateScore, type ScoreResult } from "@/lib/forms/scoring";
@@ -76,14 +76,12 @@ export function SessionScreen({
   const videoRef = useRef<VideoPlayerHandle>(null);
 
   const program = useProgram();
-  const seasonName = useForms().seasonFor(session.seasonId).name;
-  // A program with its own session store closes practice submissions with the team's switches (the master switch and the season's), like every form.
-  // What was typed stays on the page: the Submit buttons are only disabled. The default program's practice is never closed (Session E), as before.
-  const submissionsGated = useProgramData()?.practice != null;
-  const lockout = useSubmissionLockout(session.teamId, session.seasonId);
-  const submissionsClosed = submissionsGated && lockout.locked;
-  // The season's form, fixed for this session so every robot is scouted with the same version.
-  const form = useLockedForm(session.seasonId);
+  const forms = useForms();
+  const seasonName = forms.seasonFor(session.seasonId).name;
+  // The season's form, fixed for this session so every robot is scouted with the same version. A saved form override from before the alliance roles existed
+  // has no role block, so both robots would record every objective and the alliance would double count: the program's built-in form is used for the session then.
+  const lockedForm = useLockedForm(session.seasonId);
+  const form = formWithRoles(lockedForm, useProgramData()?.games.builtinForms[forms.seasonFor(session.seasonId).formId]);
   const teamNumber = session.robots[robotIndex];
   const isLastRobot = robotIndex === session.robots.length - 1;
 
@@ -109,7 +107,6 @@ export function SessionScreen({
       mode: session.mode,
       sessionId: session.id,
       libraryMatchId: session.libraryMatchId!,
-      gate: { seasonId: session.seasonId },
     }, program);
   };
 
@@ -294,7 +291,6 @@ export function SessionScreen({
         notice={
           <>
             {validationError && <p className="mt-2 text-sm font-medium text-red-300">Fill in the form before continuing.</p>}
-            {submissionsClosed && <div className="mt-2"><SubmissionLockoutBanner lockout={lockout} editAllowed={false} /></div>}
             {error && <LoadError failure={error} />}
           </>
         }
@@ -303,7 +299,7 @@ export function SessionScreen({
             <Button variant="ghost" className="gap-1.5 text-red-300" onClick={() => setCancelConfirmOpen(true)}>
               <X className="h-4 w-4" /> Cancel
             </Button>
-            <Button size="lg" className="gap-2" onClick={handleNextOrFinish} disabled={saving || submissionsClosed} data-testid="practice-submit">
+            <Button size="lg" className="gap-2" onClick={handleNextOrFinish} disabled={saving} data-testid="practice-submit">
               <Send className="h-4 w-4" />
               {saving ? "Saving…" : isLastRobot ? "Finish Session" : `Next Robot (${robotIndex + 1}/${session.robots.length})`}
             </Button>

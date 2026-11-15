@@ -372,10 +372,8 @@ export function entryDocForSave(teamId: string, uid: string, input: SaveEntryInp
 /** `program` picks where the entry is written: the default program's `scouting` collection (below), or a namespaced program's own through its data port. */
 export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
   // Session E: the team's submission switches, enforced here for every new entry (the one place; edits go through updateEntry and are never gated).
-  // Practice Scouting (a practice or live-practice session) is never closed in the default program: it is harmless and always encouraged. A program with its
-  // own practice store closes it with the team's switches like every form, so a practice entry is gated here too (the screen disables Submit first).
-  const practiceStore = programData(program)?.practice != null;
-  if (practiceStore || (input.source !== "practice" && input.source !== "live")) assertSubmissionOpen(program, teamId, input.gate);
+  // Practice Scouting (a practice or live-practice session) is never closed, in either program: it is harmless and always encouraged.
+  if (input.source !== "practice" && input.source !== "live") assertSubmissionOpen(program, teamId, input.gate);
   const data = programData(program);
   if (data) return data.scoutEntries.save(teamId, uid, input);
   // Throws for a form CS cannot store: nothing is written.
