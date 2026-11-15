@@ -15,7 +15,7 @@ export type FormDisplayNames = {
 };
 
 /**
- * The display-name helper bound to the active program's game list (`useForms().seasons`: FRC's REBUILT, REEFSCAPE, CHARGED UP; FTC's BIOBUZZ).
+ * The display-name helper bound to the active program's game list (`useForms().seasons`: the program's own games).
  * `seasonId` picks the game; omitted, the program's current one. Display only: never write the result to Firestore.
  */
 export function useFormDisplayNames(seasonId?: string): FormDisplayNames {

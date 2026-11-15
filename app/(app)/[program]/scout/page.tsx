@@ -29,6 +29,7 @@ import { useTeamScoutEntries, saveEntry, entryPayloadFor } from "@/lib/scout-ent
 import type { ScoreResult } from "@/lib/forms/scoring";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { eventsForSeason } from "@/lib/forms/form-season";
+import { SeasonSwitchDialog } from "@/components/forms/season-switch-dialog";
 import { useFormSeason } from "@/lib/forms/use-form-season";
 import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -166,10 +167,13 @@ function MatchScoutFormContent() {
   };
 
   // Another game is another form: the notes written for this robot are not carried into it (the form's own answers are kept as a draft per game)
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const changeGame = (next: string) => {
     if (next === gameId) return;
-    const hasNotes = notes.length > 0 || comments.trim() !== "";
-    if (hasNotes && !window.confirm(`Switch to ${forms.seasonFor(next).name}? The notes you wrote for this robot are not saved yet and will be cleared. Your other answers stay as a draft on this device.`)) return;
+    if (notes.length > 0 || comments.trim() !== "") setSwitchingTo(next);
+    else switchGame(next);
+  };
+  const switchGame = (next: string) => {
     setNotes([]);
     setComments("");
     setLoadedAssignment(null);
@@ -224,6 +228,17 @@ function MatchScoutFormContent() {
           <GameSelect value={gameId} onChange={changeGame} />
         </div>
       </div>
+
+      <SeasonSwitchDialog
+        toName={switchingTo ? forms.seasonFor(switchingTo).name : null}
+        fromName={forms.seasonFor(gameId).name}
+        effect="draft"
+        onCancel={() => setSwitchingTo(null)}
+        onConfirm={() => {
+          if (switchingTo) switchGame(switchingTo);
+          setSwitchingTo(null);
+        }}
+      />
 
       {nextAssignment && !effectiveLoaded && (
         <GlassPanel className="flex flex-wrap items-center gap-3">

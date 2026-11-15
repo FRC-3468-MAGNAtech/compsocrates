@@ -8,6 +8,7 @@ import { MatchPickerDialog } from "@/components/scout/match-picker-dialog";
 import { FieldLabel } from "@/components/scout/field-inputs";
 import { useSubmissionLockout } from "@/components/forms/submission-lockout";
 import { GameSelect } from "@/components/scout/game-select";
+import { SeasonSwitchDialog } from "@/components/forms/season-switch-dialog";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
 import { useActiveEvents } from "@/lib/active-event";
@@ -16,7 +17,7 @@ import { useEventMatches, useEventTeams } from "@/lib/analytics/use-event-data";
 import { useAuth } from "@/lib/auth";
 import { formMatchKey } from "@/lib/form-entries-model";
 import { csGameOfSeason, editOwnFormEntry, saveFormEntry, useFormEntries } from "@/lib/form-entries";
-import { eventsForSeason } from "@/lib/forms/form-season";
+import { eventsForSeason, seasonsOfForm } from "@/lib/forms/form-season";
 import { useFormSeason } from "@/lib/forms/use-form-season";
 import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -86,11 +87,14 @@ function FormPageContent({
   const { events: allActive, primaryCode, loaded } = useActiveEvents();
   const [now] = useState(() => Date.now());
   // Session E: the season the page is open on: the URL's `game`, else the active event's season, else the program's current one
-  const { seasonId, setSeasonId } = useFormSeason(pickDefaultActiveEvent({ events: allActive, primaryCode }, now));
+  // (only the games this form exists for: the REBUILT-only forms offer REBUILT, so the select shows it disabled)
+  const offered = seasonsOfForm(form, forms.seasons);
+  const { seasonId, setSeasonId } = useFormSeason(pickDefaultActiveEvent({ events: allActive, primaryCode }, now), offered);
   const lockout = useSubmissionLockout(teamId, seasonId);
   const names = useFormDisplayNames(seasonId);
-  const events = useMemo(() => eventsForSeason(allActive, forms.seasons, seasonId, forms.defaultSeasonId), [allActive, forms.seasons, forms.defaultSeasonId, seasonId]);
-  const ordered = useMemo(() => orderPrimaryFirst({ events, primaryCode }), [events, primaryCode]);
+  // (no manual useMemo: React Compiler memoizes these)
+  const events = eventsForSeason(allActive, offered, seasonId, forms.defaultSeasonId);
+  const ordered = orderPrimaryFirst({ events, primaryCode });
   const defaultEvent = pickDefaultActiveEvent({ events, primaryCode }, now);
   const game = csGameOfSeason(seasonId);
   const title = form ? names.forForm(form) : "";
@@ -99,11 +103,12 @@ function FormPageContent({
   const onDirtyChange = useCallback((next: boolean) => {
     dirty.current = next;
   }, []);
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const changeSeason = (next: string) => {
     if (next === seasonId) return;
-    // the answers are not saved anywhere until Submit: ask before a different game's form replaces them
-    if (dirty.current && !window.confirm(`Switch to ${forms.seasonFor(next).name}? What you typed is not submitted yet and will be cleared.`)) return;
-    setSeasonId(next);
+    // the answers are not saved anywhere until Submit: the site asks before a different game's form replaces them
+    if (dirty.current) setSwitchingTo(next);
+    else setSeasonId(next);
   };
   const [eventCode, setEventCode] = useState<string | null>(null);
   const activeCode = ordered.some((e) => e.code === eventCode) ? eventCode : (defaultEvent?.code ?? null);
@@ -158,7 +163,7 @@ function FormPageContent({
         hideEventPickerIfSingle={hideEventPickerIfSingle}
         photoKind={photoKind}
         lockout={lockout}
-        headerExtra={<GameSelect value={seasonId} onChange={changeSeason} id="form-season" />}
+        headerExtra={<GameSelect value={seasonId} onChange={changeSeason} id="form-season" seasons={offered} />}
         onDirtyChange={onDirtyChange}
         assignedTeams={assigned}
         onUpdate={(entry, patch) => {
@@ -170,6 +175,16 @@ function FormPageContent({
           if (!teamId || !user) return Promise.reject(new Error("Not signed in."));
           // the entry is for the season the page is open on; the shared write path refuses it when the team closed that season
           return saveFormEntry(teamId, user.uid, { ...doc, gate: { seasonId } }, program);
+        }}
+      />
+      <SeasonSwitchDialog
+        toName={switchingTo ? forms.seasonFor(switchingTo).name : null}
+        fromName={forms.seasonFor(seasonId).name}
+        effect="erases"
+        onCancel={() => setSwitchingTo(null)}
+        onConfirm={() => {
+          if (switchingTo) setSeasonId(switchingTo);
+          setSwitchingTo(null);
         }}
       />
     </PhotoUploadProvider>

@@ -6,6 +6,16 @@ import type { EventInfo } from "@/lib/events/types";
 /** What a season is here: `ProgramSeason` (`lib/program/data.ts`) has these fields and more. */
 export type SeasonLike = { id: string; apiSeason: number };
 
+/**
+ * The seasons a form exists for: the ones named in its tags (the REBUILT-only forms are tagged `rebuilt`). A form tagged with none of the program's seasons
+ * (a custom form, the second program's forms) is offered for all of them. Never empty while the program has a season.
+ */
+export function seasonsOfForm<S extends SeasonLike>(form: { tags?: readonly string[] } | null | undefined, seasons: readonly S[]): S[] {
+  const tags = new Set((form?.tags ?? []).map((t) => t.toLowerCase().replace(/-/g, "_")));
+  const named = seasons.filter((s) => tags.has(s.id));
+  return named.length > 0 ? named : [...seasons];
+}
+
 /** The season whose events API year is `year`, or null. */
 export function seasonOfYear(seasons: readonly SeasonLike[], year: number | null | undefined): SeasonLike | null {
   return year === null || year === undefined ? null : (seasons.find((s) => s.apiSeason === year) ?? null);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultFormSeasonId, eventsForSeason, readFormSeasonParam, seasonOfYear, withSeasonParam } from "@/lib/forms/form-season";
+import { defaultFormSeasonId, eventsForSeason, readFormSeasonParam, seasonOfYear, seasonsOfForm, withSeasonParam } from "@/lib/forms/form-season";
 import { draftKey } from "@/lib/forms/draft";
 import { BUILTIN_FORMS } from "@/lib/forms/builtin";
 import { SEASONS } from "@/lib/seasons";
@@ -36,11 +36,23 @@ describe("form season", () => {
     expect(eventsForSeason(events, seasons, "charged_up", "rebuilt").map((e) => e.code)).toEqual(["2023c"]);
   });
 
-  it("never filters the events of a program with one season (FTC)", () => {
-    const one = [{ id: "biobuzz", apiSeason: 2026 }];
+  it("never filters the events of a program with one season (one game)", () => {
+    const one = [{ id: "solo", apiSeason: 2026 }];
     const events = [ev("a", 2025), ev("b", 2026)];
-    expect(eventsForSeason(events, one, "biobuzz", "biobuzz")).toHaveLength(2);
-    expect(defaultFormSeasonId(one, null, "biobuzz")).toBe("biobuzz");
+    expect(eventsForSeason(events, one, "solo", "solo")).toHaveLength(2);
+    expect(defaultFormSeasonId(one, null, "solo")).toBe("solo");
+  });
+
+  it("offers a form only the seasons it exists for", () => {
+    expect(seasonsOfForm({ tags: ["pit-scout", "rebuilt", "2026"] }, seasons).map((s) => s.id)).toEqual(["rebuilt"]);
+    expect(seasonsOfForm({ tags: ["match-strategy", "reefscape"] }, seasons).map((s) => s.id)).toEqual(["reefscape"]);
+    // no season tag (a custom form, the second program's forms): every season of the program
+    expect(seasonsOfForm({ tags: [] }, seasons)).toHaveLength(3);
+    expect(seasonsOfForm({ tags: ["strategy"] }, [{ id: "solo", apiSeason: 2026 }]).map((s) => s.id)).toEqual(["solo"]);
+    expect(seasonsOfForm(null, seasons)).toHaveLength(3);
+    // the match forms of each game are tagged with their game
+    expect(seasonsOfForm(BUILTIN_FORMS.reefscape, seasons).map((s) => s.id)).toEqual(["reefscape"]);
+    expect(seasonsOfForm(BUILTIN_FORMS["pit-scout-v1"], seasons).map((s) => s.id)).toEqual(["rebuilt"]);
   });
 
   it("sets the game query and keeps the others", () => {

@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FORM_TYPES } from "@/lib/forms/types";
 import { listGameDefinitions } from "@/config/games";
-import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST } from "@/config/games/ftc";
 import { BUILTIN_FORMS } from "@/lib/forms/builtin";
-import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import { displayNameOfForm, formDisplayName, formTypeDisplayName, formTypeLabel, FORM_TYPE_LABELS, gameLabel } from "@/lib/forms/form-display-name";
 
 describe("formDisplayName", () => {
@@ -11,12 +9,12 @@ describe("formDisplayName", () => {
     expect(formDisplayName("REBUILT", "match-scout")).toBe("REBUILT Match Scout Form");
     expect(formDisplayName("REEFSCAPE", "drive-reflection")).toBe("REEFSCAPE Drive Reflection Form");
     expect(formDisplayName("CHARGED UP", "helper")).toBe("CHARGED UP Helper Form");
-    expect(formDisplayName("BIOBUZZ", "match-scout")).toBe("BIOBUZZ Match Scout Form");
+    expect(formDisplayName("SOLO GAME", "match-scout")).toBe("SOLO GAME Match Scout Form");
   });
 
-  it("covers every game of both programs and every built-in form type", () => {
-    const games = [...listGameDefinitions().map((g) => g.label), ...FTC_GAME_ID_LIST.map((id) => FTC_GAME_DEFINITIONS[id].label)];
-    expect(games).toEqual(["REBUILT", "REEFSCAPE", "CHARGED UP", "BIOBUZZ"]);
+  it("covers every game of the default program and every built-in form type (the second program's game is in lib/ftc/)", () => {
+    const games = listGameDefinitions().map((g) => g.label);
+    expect(games).toEqual(["REBUILT", "REEFSCAPE", "CHARGED UP"]);
     for (const game of games) {
       for (const type of FORM_TYPES) {
         if (type === "custom") continue;
@@ -56,19 +54,15 @@ describe("formDisplayName", () => {
 });
 
 describe("displayNameOfForm", () => {
-  it("renames the built-in forms' default names, for every game and both programs", () => {
+  it("renames the built-in forms' default names, for every game", () => {
     for (const form of Object.values(BUILTIN_FORMS)) {
       const game = form.formType === "match-scout" ? form.name : "REBUILT";
       const shown = displayNameOfForm(form, game);
       expect(shown).toBe(formDisplayName(game, form.formType));
       expect(shown.match(/Form/g)).toHaveLength(1);
     }
-    for (const form of Object.values(FTC_BUILTIN_FORMS)) {
-      expect(displayNameOfForm(form, "BIOBUZZ")).toBe(formDisplayName("BIOBUZZ", form.formType));
-    }
     expect(displayNameOfForm(BUILTIN_FORMS.reefscape, "REEFSCAPE")).toBe("REEFSCAPE Match Scout Form");
     expect(displayNameOfForm(BUILTIN_FORMS.charged_up, "CHARGED UP")).toBe("CHARGED UP Match Scout Form");
-    expect(displayNameOfForm(FTC_BUILTIN_FORMS.biobuzz, "BIOBUZZ")).toBe("BIOBUZZ Match Scout Form");
   });
 
   it("does not touch the stored form", () => {
