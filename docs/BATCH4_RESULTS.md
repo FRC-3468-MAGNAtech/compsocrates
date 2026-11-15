@@ -8,7 +8,18 @@
 **Additive fields (also in REMAINING.md):** `programs/ftc/scoutEntries/{id}.importedFrom` ("csv"). TS-only: `ScoutEntry.importedFrom`, `UnassignedStats`, `ProgramData.scoutEntries.getForEvent` and `.importBatch`, `ImportedRow.rowNumber`, an `error` on the members, entries and attendance hooks.
 **Verify.** lint 0 errors, 1 warning (`match-list-screen.tsx`, not mine). `npm test`: 3211 pass, 5 fail (all `brand-guard`, as in Batch 3: docs and two test files). `test:rules` 375/375 (8 new: reads for scout, admin, other team and signed out; scout save; admin-only accuracy, flag, exclude, audit and hard-reset writes; a 400-entry import batch). build pass.
 **Rule change: none, nothing to deploy.** Roll back: `git revert` the Batch 4 commits (the flags go off again).
-**Manual check (9).** 1) Two accounts each finish a practice session on a match with an official score (Batch 3 flow). 2) As admin open /ftc/scout-accuracy: both scouts show accuracy and entry counts that match; game box is disabled. 3) Exclude one session: that average changes. A session on a match with no official score shows "?" and is not averaged as 0. 4) Open the page as a plain scout: whole team's rows, no Exclude or Hard Reset, no Unassigned row (compare /frc/scout-accuracy). 5) As a plain scout submit a match scout entry: no error. 6) As admin open Match Scout analytics: "Recalculate Accuracy" runs (a plain scout does not see the button). 7) Export CSV, edit one row, Import CSV as admin: preview counts, then confirm. 8) Import the same file again: 0 new rows, nothing duplicated. 9) /frc/scout-accuracy looks and behaves as before.
+**Manual check (9).**
+1) Two accounts each finish a practice session on a match with an official score (Batch 3 flow).
+2) As admin open /ftc/scout-accuracy: both scouts show accuracy and entry counts that match; game box is disabled.
+3) Exclude one session: that average changes. A session on a match with no official score shows "?" and is not averaged as 0.
+4) Open the page as a plain scout: whole team's rows, no Exclude or Hard Reset, no Unassigned row (compare /frc/scout-accuracy). **Not needed: plain scouts have no access to this page (owner, checked).**
+5) As a plain scout submit a match scout entry: no error.
+6) As admin open Match Scout analytics: "Recalculate Accuracy" runs (a plain scout does not see the button). **Not shown on that page in FTC, and the owner does not need it there: it moves to the Admin Panel later (Batch 5 or after).**
+7) Export CSV, edit one row, Import CSV as admin: preview counts, then confirm.
+8) Import the same file again: 0 new rows, nothing duplicated.
+9) /frc/scout-accuracy looks and behaves as before.
 **Left for later:** Rescore admin tab, the FRC-only rescout flow, live practice, bulk removal of imported entries, My Practice (none exists), an optional field-scoped rule if scouts ever need to write accuracy.
 
-**Next step:** run the 9 checks (no deploy needed), then Batch 5 (Team Settings + Changelog).
+**Manual check done by the owner:** 1, 2, 3, 5, 7, 8, 9 confirmed; 4 not needed (scouts cannot open the page); 6 skipped (the button is not on that page and will live in the Admin Panel).
+
+**Next step:** Batch 5 (Team Settings + Changelog); put "Recalculate Accuracy" in the Admin Panel (`recomputeForEvent` is ready, admin-only for FTC).
