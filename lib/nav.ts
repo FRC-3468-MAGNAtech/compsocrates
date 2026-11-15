@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { FormType } from "@/lib/forms/types";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -28,6 +29,8 @@ import {
 export type NavItem = {
   href: string;
   label: string;
+  /** Session E: set on the entries that open a form; the navigation shows `formDisplayName(game, formType)` instead of `label` (`useNavLabel`). */
+  formType?: FormType;
   icon: LucideIcon;
   matchPrefix?: boolean;
 };
@@ -37,13 +40,13 @@ export const mainNav: NavItem[] = [
   { href: "/assignments", label: "Assignments", icon: CalendarRange },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/match-list", label: "Match List", icon: ListOrdered },
-  { href: "/scout", label: "Match Scout Form", icon: ClipboardList },
-  { href: "/lead-scout-form", label: "Lead Scout Form", icon: UserSearch },
-  { href: "/match-strategy-form", label: "Match Strategy Form", icon: Route },
-  { href: "/drive-reflection-form", label: "Drive Reflection Form", icon: RotateCcw },
-  { href: "/pit-scout-form", label: "Pit Scout Form", icon: Wrench },
-  { href: "/team-strategy-form", label: "Team Strategy Form", icon: Lightbulb },
-  { href: "/helper-form", label: "Helper Form", icon: HandHelping },
+  { href: "/scout", formType: "match-scout", label: "Match Scout Form", icon: ClipboardList },
+  { href: "/lead-scout-form", formType: "lead-scout", label: "Lead Scout Form", icon: UserSearch },
+  { href: "/match-strategy-form", formType: "match-strategy", label: "Match Strategy Form", icon: Route },
+  { href: "/drive-reflection-form", formType: "drive-reflection", label: "Drive Reflection Form", icon: RotateCcw },
+  { href: "/pit-scout-form", formType: "pit-scout", label: "Pit Scout Form", icon: Wrench },
+  { href: "/team-strategy-form", formType: "team-strategy", label: "Team Strategy Form", icon: Lightbulb },
+  { href: "/helper-form", formType: "helper", label: "Helper Form", icon: HandHelping },
   { href: "/analytics", label: "Analytics", icon: BarChart3, matchPrefix: true },
   { href: "/practice-scouting", label: "Practice Scouting", icon: FlaskConical },
   { href: "/scout-accuracy", label: "Scout Accuracy", icon: Target },

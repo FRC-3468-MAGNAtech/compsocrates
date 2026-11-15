@@ -23,6 +23,7 @@ import { canBeActive, type FormSummary } from "@/lib/forms/resolve";
 import { exportFormJson } from "@/lib/forms/portable";
 import { getBuiltinForm } from "@/lib/forms/builtin";
 import { useForms } from "@/lib/forms/forms-context";
+import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
 import { usePermissions } from "@/lib/permissions";
 import { SEASONS } from "@/lib/seasons";
 import { downloadTextFile } from "@/lib/download";
@@ -74,6 +75,12 @@ export function FormsPanelView({ onOpenRescore, services: svc }: { onOpenRescore
   /** The newest version of each template one of our forms came from (null: it's gone or we can't read it). */
   const [sourceTemplates, setSourceTemplates] = useState<Record<string, FormTemplate | null>>({});
   const effectiveForm = (id: string): Form | null => forms.latest(id) ?? svc.catalog.docs.get(id)?.draft ?? getBuiltinForm(id);
+  // Session E: a built-in's name is shown as `<GAME> <Form Type> Form` (display only: the stored name is untouched); a custom form keeps its own
+  const names = useFormDisplayNames();
+  const shownName = (s: { id: string; name: string }): string => {
+    const form = effectiveForm(s.id);
+    return form ? names.forForm(form) : s.name;
+  };
   const templateIds = [...new Set(forms.summaries.map((x) => effectiveForm(x.id)?.templateId).filter((x): x is string => !!x))].sort().join(",");
   const { getTemplate } = tpl;
   useEffect(() => {
@@ -203,7 +210,7 @@ export function FormsPanelView({ onOpenRescore, services: svc }: { onOpenRescore
               <GlassPanel className={cn("flex h-full flex-col gap-3", s.archived && "opacity-70")} data-form-card={s.id}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <h3 className="truncate text-base font-semibold">{s.name}</h3>
+                    <h3 className="truncate text-base font-semibold">{shownName(s)}</h3>
                     <p className="font-mono text-[11px] text-[var(--muted-foreground)]">{s.id}</p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-1.5">

@@ -25,6 +25,7 @@ import { downloadTextFile } from "@/lib/download";
 import { adminUpdateFormEntry, deleteFormEntry, saveFormEntry, useFormEntries } from "@/lib/form-entries";
 import { formEntryToRow, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
 import { useForms, useFormsForEntries } from "@/lib/forms/forms-context";
+import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
 import type { Form } from "@/lib/forms/types";
 import type { ManualFlagReason, ScoutEntry } from "@/lib/scout-entries";
 
@@ -57,6 +58,8 @@ export type FormAnalyticsViewProps = {
  */
 export function FormAnalyticsView({ page, entries, allEntries, form, importForm, loaded, eventCodes, isAdmin, teamNames, importEvent, initialView = "table", onUpdate, onDelete, onImportSave }: FormAnalyticsViewProps) {
   const multiEvent = eventCodes === null || eventCodes.length > 1;
+  // Session E: the page's name is `<GAME> <Form Type> Form` from the one helper (display only)
+  const formName = useFormDisplayNames().forType(page.formType, page.title);
   const baseSchema = useMemo(() => buildFormSchema(form, { multiEvent, page }), [form, multiEvent, page]);
   // the Actions column (Config, Delete) is for admins only
   const schema = useMemo(() => (isAdmin ? baseSchema : { ...baseSchema, columns: baseSchema.columns.filter((c) => c.type !== "actions") }), [baseSchema, isAdmin]);
@@ -131,7 +134,7 @@ export function FormAnalyticsView({ page, entries, allEntries, form, importForm,
     <div className="flex flex-col gap-4" data-testid={`form-analytics-${page.slug}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">{page.title}</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{formName} Analytics</h2>
           <p className="text-sm text-[var(--muted-foreground)]">{page.description}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -162,7 +165,7 @@ export function FormAnalyticsView({ page, entries, allEntries, form, importForm,
         <div className="glass-card h-64 animate-pulse" data-testid="analytics-skeleton" />
       ) : entries.length === 0 ? (
         <GlassPanel className="py-12 text-center text-sm text-[var(--muted-foreground)]" data-testid="analytics-empty">
-          No {page.navLabel} entries yet for {eventCodes === null ? "any event" : eventCodes.length === 1 ? "this event" : "these events"}.
+          No {formName} entries yet for {eventCodes === null ? "any event" : eventCodes.length === 1 ? "this event" : "these events"}.
         </GlassPanel>
       ) : view === "table" ? (
         visible.length === 0 ? (

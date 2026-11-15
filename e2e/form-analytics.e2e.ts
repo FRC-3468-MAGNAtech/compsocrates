@@ -15,7 +15,7 @@ const teamsShown = async (page: Page) => (await rows(page).evaluateAll((els) => 
 test.describe("raw table", () => {
   test("a team-based form: sticky Team and Scout, a three-tier header, one row per entry, the entry count", async ({ page }) => {
     await open(page, "page=pit-scout");
-    await expect(page.getByRole("heading", { name: "Pit Scout Analytics" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "REBUILT Pit Scout Form Analytics" })).toBeVisible();
     // EVT1 only: team 111 and team 222 (twice)
     expect(await teamsShown(page)).toEqual([111, 222, 222]);
     await expect(page.getByText("3 entries")).toBeVisible();

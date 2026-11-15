@@ -1,4 +1,5 @@
 import type { RoleId } from "@/lib/roles";
+import type { FormType } from "@/lib/forms/types";
 
 // P26: the single registry of who may open which page. A new page declares its access HERE, once; the navigation,
 // the route guard, the Admin Panel's Page Access screen and (for gated writes) firestore.rules' `pageAccessAllowed()` all
@@ -16,6 +17,8 @@ export type PageDef = {
   /** Stable id (stored in the page-access doc; never rename one). */
   id: string;
   title: string;
+  /** Session E: set on the pages that are forms; they are shown as `formDisplayName(game, formType)` (`useNavLabel`). `title` stays the stored fallback. */
+  formType?: FormType;
   /** The main route first. A path belongs to the page whose route is its longest match (a route matches itself and everything below it). */
   routes: string[];
   access: PageAccessKind;
@@ -26,7 +29,7 @@ export type PageDef = {
 export const PAGES: PageDef[] = [
   // --- open to every role ------------------------------------------------------------------------------------
   { id: "dashboard", title: "Dashboard", routes: ["/dashboard"], access: "open", defaultRoles: [] },
-  { id: "match-scout-form", title: "Match Scout Form", routes: ["/scout"], access: "open", defaultRoles: [] },
+  { id: "match-scout-form", formType: "match-scout", title: "Match Scout Form", routes: ["/scout"], access: "open", defaultRoles: [] },
   // Every Analytics subpage except Scout Status (a longer route below wins for that one).
   { id: "analytics", title: "Analytics", routes: ["/analytics"], access: "open", defaultRoles: [] },
   { id: "practice-scouting", title: "Practice Scouting", routes: ["/practice-scouting"], access: "open", defaultRoles: [] },
@@ -42,12 +45,12 @@ export const PAGES: PageDef[] = [
   { id: "judge-book", title: "Judge Book", routes: ["/judge-book"], access: "open", defaultRoles: [] },
 
   // --- restricted (configurable) -----------------------------------------------------------------------------
-  { id: "lead-scout-form", title: "Lead Scout Form", routes: ["/lead-scout-form"], access: "restricted", defaultRoles: ["lead-scout"] },
-  { id: "pit-scout-form", title: "Pit Scout Form", routes: ["/pit-scout-form"], access: "restricted", defaultRoles: ["pit-scout"] },
-  { id: "team-strategy-form", title: "Team Strategy Form", routes: ["/team-strategy-form"], access: "restricted", defaultRoles: ["lead-strategist"] },
-  { id: "match-strategy-form", title: "Match Strategy Form", routes: ["/match-strategy-form"], access: "restricted", defaultRoles: ["lead-strategist"] },
-  { id: "drive-reflection-form", title: "Drive Reflection Form", routes: ["/drive-reflection-form"], access: "restricted", defaultRoles: ["drive-team"] },
-  { id: "helper-form", title: "Helper Form", routes: ["/helper-form"], access: "restricted", defaultRoles: ["pit-scout", "pit-team"] },
+  { id: "lead-scout-form", formType: "lead-scout", title: "Lead Scout Form", routes: ["/lead-scout-form"], access: "restricted", defaultRoles: ["lead-scout"] },
+  { id: "pit-scout-form", formType: "pit-scout", title: "Pit Scout Form", routes: ["/pit-scout-form"], access: "restricted", defaultRoles: ["pit-scout"] },
+  { id: "team-strategy-form", formType: "team-strategy", title: "Team Strategy Form", routes: ["/team-strategy-form"], access: "restricted", defaultRoles: ["lead-strategist"] },
+  { id: "match-strategy-form", formType: "match-strategy", title: "Match Strategy Form", routes: ["/match-strategy-form"], access: "restricted", defaultRoles: ["lead-strategist"] },
+  { id: "drive-reflection-form", formType: "drive-reflection", title: "Drive Reflection Form", routes: ["/drive-reflection-form"], access: "restricted", defaultRoles: ["drive-team"] },
+  { id: "helper-form", formType: "helper", title: "Helper Form", routes: ["/helper-form"], access: "restricted", defaultRoles: ["pit-scout", "pit-team"] },
   { id: "scout-status", title: "Scout Status", routes: ["/analytics/scout-status"], access: "restricted", defaultRoles: ["lead-scout", "team-coach"] },
   // CS gated both of these to team-coach (`canAccessForm("accuracy-verification")`); the longer routes win over the open `/analytics`.
   { id: "accuracy-verification", title: "Accuracy Verification", routes: ["/analytics/accuracy-verification", "/analytics/accuracy-compare"], access: "restricted", defaultRoles: ["team-coach"] },
