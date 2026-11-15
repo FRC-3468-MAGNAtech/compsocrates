@@ -10,7 +10,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
 import { Shimmer } from "@/components/ui/shimmer";
 import { useAnalyticsEntries, useTeamStats } from "@/lib/analytics/data-context";
-import { SAMPLE_WARNING_THRESHOLD, buildTeamReliability, isLowSample, teamFromSearch } from "@/lib/analytics/performance-reliability";
+import { SAMPLE_WARNING_THRESHOLD, buildTeamReliability, isLowSample, roleSplitNote, teamFromSearch } from "@/lib/analytics/performance-reliability";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
  * the team picked from the chart or the table. Uses the shared filters, including the Accuracy threshold.
  */
 export function PerformanceReliabilityView() {
-  const { entries, loaded, filters } = useAnalyticsEntries();
+  const { entries, loaded, filters, schema } = useAnalyticsEntries();
+  const totalsNote = roleSplitNote(schema);
   const { teamStats } = useTeamStats();
   const [picked, setPicked] = useState<number | null>(null);
   const [search, setSearch] = useState("");
@@ -38,6 +39,7 @@ export function PerformanceReliabilityView() {
           <p className="max-w-2xl text-sm text-[var(--muted-foreground)]">
             Power is a team&apos;s average match score. Consistency is the standard deviation of those scores (lower is steadier). Pick a team to see every match.
           </p>
+          {totalsNote && <p className="mt-1 max-w-2xl text-xs text-[var(--muted-foreground)]">{totalsNote}</p>}
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" aria-hidden />

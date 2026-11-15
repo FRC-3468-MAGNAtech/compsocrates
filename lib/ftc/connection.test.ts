@@ -17,7 +17,7 @@ describe("program connection config", () => {
       "/dashboard", "/my-scouting", "/people", "/team-management", "/account", "/profile", "/credits", "/analytics",
       "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
       "/practice-scouting", "/scout-accuracy", "/team-settings", "/changelog", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/teams", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings", "/admin",
-      "/events/[eventKey]",
+      "/events/[eventKey]", "/analytics/performance-reliability",
     ];
     expect(PROGRAMS.ftc.multiTeam).toBe(true);
     expect([...(PROGRAMS.ftc.connection.paths as readonly string[])].sort()).toEqual([...connected].sort());

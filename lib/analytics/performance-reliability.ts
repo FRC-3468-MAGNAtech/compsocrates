@@ -2,6 +2,8 @@ import { ANALYTICS_THRESHOLDS } from "@/config/games";
 import type { AnalyticsEntry } from "@/lib/analytics/entries";
 import { formatMatch, matchSortValue } from "@/lib/analytics/game-schema";
 import { scoreStdDev } from "@/lib/games/accuracy";
+import { hasAllianceRoles } from "@/lib/forms/alliance-role";
+import type { Form } from "@/lib/forms/types";
 
 // Pure model behind Performance Reliability (CS app/utils/performanceReliability.ts `getProcessedTeamStats`). The entry filtering
 // (game, event, practice, accuracy, excluded) is the shared Analytics selection's, so this only groups and measures.
@@ -25,6 +27,14 @@ export type TeamReliability = {
   /** In match order. */
   scores: ReliabilityPoint[];
 };
+
+/**
+ * A game whose alliance objectives are recorded by one scout per alliance (a Hive and a Garden role) has per-entry totals that hold only what that
+ * scout recorded. The note is shown for such a game only; it comes from the game's own form (the role fields), never from the program.
+ */
+export const ROLE_SPLIT_TOTALS_NOTE = "Totals include only the objectives each scout recorded.";
+
+export const roleSplitNote = (schema: Pick<Form, "sections">): string | null => (hasAllianceRoles(schema) ? ROLE_SPLIT_TOTALS_NOTE : null);
 
 export const isLowSample = (entriesCount: number, threshold: number = SAMPLE_WARNING_THRESHOLD): boolean => entriesCount < threshold;
 

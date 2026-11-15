@@ -8,7 +8,6 @@ export const FTC_UNAVAILABLE_PATHS = [
   "/analytics/accuracy-compare",
   "/analytics/accuracy-verification",
   "/analytics/match-prediction",
-  "/analytics/performance-reliability",
   "/analytics/robot-radar",
   "/judge-book",
 ] as const;
@@ -82,6 +81,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/team-settings",
       "/changelog",
       "/events/[eventKey]",
+      "/analytics/performance-reliability",
     ],
     features: { assignments: true, subIns: false, practice: true, live: true, lobby: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },
