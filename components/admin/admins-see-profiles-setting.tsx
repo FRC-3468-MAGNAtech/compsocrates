@@ -10,15 +10,22 @@ export function AdminsSeeProfilesSetting() {
   const value = useAdminsSeeAllProfiles();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  // Unknown (the public config could not be read) counts as ON, the default. The switch stays usable then: the owner is the one person who can set it.
   const on = value !== false;
 
   const toggle = async (next: boolean) => {
     setError(null);
+    setSaved(false);
     setBusy(true);
+    const previous = value;
+    setAdminsSeeAllProfilesLocal(next); // shows the new position at once, like the Allow team creation switch above it
     try {
       await setAdminsSeeAllProfiles(next);
-      setAdminsSeeAllProfilesLocal(next);
+      setSaved(true);
     } catch (err) {
+      if (previous !== null) setAdminsSeeAllProfilesLocal(previous);
+      else setAdminsSeeAllProfilesLocal(true);
       setError(err instanceof Error ? err.message : "Couldn't change this.");
     } finally {
       setBusy(false);
@@ -35,9 +42,18 @@ export function AdminsSeeProfilesSetting() {
             Admins can still set their own profile private.
           </div>
         </div>
-        <Switch checked={on} onCheckedChange={toggle} disabled={value === null || busy} aria-label="Admins can see every profile on their team" />
+        <Switch checked={on} onCheckedChange={toggle} disabled={busy} aria-label="Admins can see every profile on their team" />
       </div>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {saved && !error && (
+        <p role="status" className="text-sm text-emerald-400" data-testid="admins-see-profiles-saved">
+          Saved. {on ? "Admins can see every profile on their team." : "Admins now see profiles like any member. This needs the updated security rules to be deployed to take effect."}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-400" data-testid="admins-see-profiles-error">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
