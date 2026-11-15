@@ -1,4 +1,5 @@
 # Sidebar customizer: plan (Session F, Phase 1)
+> **Changed after review:** the builder is drag and drop (no up/down arrows) and the sidebar uses each page's plain label, never the game-prefixed form name. See `SESSION_F_RESULTS.md`.
 
 Repo is `CompSocrates rebuild/`, branch `rebuild` (not main). Session E's helper exists, so no stop.
 
