@@ -1,6 +1,7 @@
 import type { ScoutEntry } from "@/lib/scout-entries";
 import type { PracticeSession } from "@/lib/practice-sessions";
-import { resolveEventCodes, type AnalyticsFilters } from "@/lib/analytics/filters";
+import { eventCodeIn, resolveEventCodes, type AnalyticsFilters } from "@/lib/analytics/filters";
+import { inAllEventsScope, type AllEventsScope } from "@/lib/analytics/event-defaults";
 
 // Pure selection logic for the shared Analytics dataset (P10). The realtime
 // subscriptions live in data-context.tsx; this module only turns "every entry
@@ -65,7 +66,7 @@ export function passesAccuracy(entry: Pick<AnalyticsEntry, "allianceAccuracy">, 
 export function isInScope(entry: ScoutEntry, filters: AnalyticsFilters, eventCodes: string[] | null, gameFormIds?: ReadonlySet<string>): boolean {
   // P21: a Game (season) can be scouted with more than one form (the built-in, an edited copy, a custom form made active), so scope by the season's set of form ids when given.
   if (gameFormIds ? !gameFormIds.has(entry.formId) && entry.formId !== filters.gameId : entry.formId !== filters.gameId) return false;
-  if (eventCodes !== null && !eventCodes.includes(entry.eventCode)) return false;
+  if (eventCodes !== null && !eventCodeIn(eventCodes, entry.eventCode)) return false;
 
   if (!filters.practice) return entry.source === "event";
 
@@ -92,6 +93,11 @@ export type EntrySelection = {
   used: AnalyticsEntry[];
 };
 
+/** Every entry joined to its practice session's accuracy (`toAnalyticsEntry`), in the entries' order. Depends only on the data, never on a filter. */
+export function joinEntries(entries: readonly ScoutEntry[], sessionsById: ReadonlyMap<string, SessionAccuracy>): AnalyticsEntry[] {
+  return entries.map((entry) => toAnalyticsEntry(entry, entry.sessionId ? sessionsById.get(entry.sessionId) : null));
+}
+
 export function selectAnalyticsEntries(
   input: {
     entries: ScoutEntry[];
@@ -101,6 +107,13 @@ export function selectAnalyticsEntries(
     activeEventCodes: string[];
     /** P21: every form id that counts as the filter's Game (default: just the Game's own id). */
     gameFormIds?: ReadonlySet<string>;
+    /** Where "All Events" stops (the selected game's season, archived events left out unless shown). Only consulted when the event scope is unrestricted. */
+    allScope?: AllEventsScope;
+    /**
+     * `joinEntries(entries, sessionsById)`, done once per data change and passed in, so a FILTER change (event, game, accuracy) only filters: it no longer
+     * re-joins every entry to its session and allocates a new object per entry. Same length and order as `entries`. Absent = join on the way, as before.
+     */
+    joined?: readonly AnalyticsEntry[];
   },
   options: SelectOptions = {}
 ): EntrySelection {
@@ -108,8 +121,15 @@ export function selectAnalyticsEntries(
   const eventCodes = resolveEventCodes(input.filters, input.activeEventCodes);
 
   const scope: AnalyticsEntry[] = [];
-  for (const entry of input.entries) {
+  const { entries, joined } = input;
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
     if (!isInScope(entry, input.filters, eventCodes, input.gameFormIds)) continue;
+    if (eventCodes === null && input.allScope && !inAllEventsScope(entry.eventCode, input.allScope)) continue;
+    if (joined) {
+      scope.push(joined[i]);
+      continue;
+    }
     const session = entry.sessionId ? input.sessionsById.get(entry.sessionId) : null;
     scope.push(toAnalyticsEntry(entry, session));
   }

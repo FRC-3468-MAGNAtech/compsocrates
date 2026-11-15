@@ -49,11 +49,12 @@ describe("parseFilters", () => {
   it("reads every control", () => {
     expect(parse("events=uswabon1,USWASEQ&practice=1&mode=trial&source=live&acc=85")).toEqual({
       gameId: DEFAULT_FILTERS.gameId,
-      events: { kind: "custom", codes: ["USWABON1", "USWASEQ"] },
+      events: { kind: "custom", codes: ["uswabon1", "USWASEQ"] }, // spelled as written (a program may store lower-case or upper-case keys)
       practice: true,
       practiceMode: "trial",
       practiceSource: "live",
       accuracy: 85,
+      archived: false,
     });
     expect(parse("events=all").events).toEqual({ kind: "all" });
   });
@@ -90,6 +91,7 @@ describe("serializeFilters", () => {
       practiceMode: "competitive",
       practiceSource: "practice",
       accuracy: 90,
+      archived: true,
     };
     expect(parseFilters(serializeFilters(filters))).toEqual(filters);
   });

@@ -1,5 +1,5 @@
 import { buildGameSchema, type AnalyticsColumn, type GameSchema } from "@/lib/analytics/game-schema";
-import type { EventScope } from "@/lib/analytics/filters";
+import { eventCodeIn, type EventScope } from "@/lib/analytics/filters";
 import type { FormEntry, FormEntryType } from "@/lib/form-entries-model";
 import { seasonFormId } from "@/lib/forms/builtin";
 import type { Form } from "@/lib/forms/types";
@@ -61,7 +61,7 @@ export function eventCodesForScope(scope: EventScope, activeCodes: readonly stri
 
 /** The entries of one form type in the chosen events. Excluded entries stay when `includeExcluded` (the raw table shows and toggles them). */
 export function selectFormEntries(entries: readonly FormEntry[], formType: FormEntryType, eventCodes: readonly string[] | null, opts: { includeExcluded?: boolean } = {}): FormEntry[] {
-  return entries.filter((e) => e.formType === formType && (eventCodes === null || eventCodes.includes(e.eventCode)) && (opts.includeExcluded || !e.excluded));
+  return entries.filter((e) => e.formType === formType && (eventCodes === null || eventCodeIn(eventCodes, e.eventCode)) && (opts.includeExcluded || !e.excluded));
 }
 
 /** One row's identity for "latest entry by default": a team at an event, or a match's alliance at an event. */

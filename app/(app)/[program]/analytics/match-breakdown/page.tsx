@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatchRow, matchRowId } from "@/components/analytics/match-row";
 import { useAnalyticsData, useAnalyticsEntries } from "@/lib/analytics/data-context";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
-import { resolveEventCodes } from "@/lib/analytics/filters";
+import { eventCodeIn, resolveEventCodes } from "@/lib/analytics/filters";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { buildMatchBreakdowns, libraryMatchToOfficial, matchHasTeam, matchKey, type OfficialMatch } from "@/lib/analytics/match-breakdown";
 import { useEventMatches } from "@/lib/analytics/use-event-data";
@@ -60,7 +60,7 @@ export default function MatchBreakdownPage() {
     // Practice mode: the imported library matches for this game (and the chosen events, if any).
     const codes = resolveEventCodes(filters, data.activeEventCodes);
     return data.libraryMatches
-      .filter((m) => m.seasonId === filters.gameId && (codes === null || codes.includes(m.eventCode)))
+      .filter((m) => m.seasonId === filters.gameId && (codes === null || eventCodeIn(codes, m.eventCode)))
       .map(libraryMatchToOfficial);
   }, [practice, eventMatches, data.libraryMatches, filters, data.activeEventCodes]);
 

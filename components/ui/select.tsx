@@ -138,6 +138,15 @@ export function SelectContent({
   );
 }
 
+/**
+ * The ONE "this option is selected" mark: every Radix select item (below) and the Analytics event list render it, so a selected option looks the
+ * same everywhere. Decorative (`aria-hidden`): the state itself is `aria-selected` on the option (Radix sets it on its items; the custom listbox
+ * sets it by hand).
+ */
+export function OptionCheck({ className }: { className?: string }) {
+  return <Check aria-hidden="true" data-option-check="" className={cn("h-4 w-4 shrink-0 text-[var(--color-primary)]", className)} />;
+}
+
 export function SelectItem({
   className,
   children,
@@ -152,8 +161,8 @@ export function SelectItem({
       {...props}
     >
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-      <SelectPrimitive.ItemIndicator className="ml-auto">
-        <Check className="h-4 w-4 text-[var(--color-primary)]" />
+      <SelectPrimitive.ItemIndicator className="ml-auto pl-2">
+        <OptionCheck />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   );

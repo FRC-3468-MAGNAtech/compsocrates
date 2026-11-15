@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EventMultiSelect } from "@/components/analytics/event-multiselect";
 import { useAnalyticsData, useAnalyticsEntries, useSingleEvent } from "@/lib/analytics/data-context";
+import { GAME_NOT_CONFIGURED_NOTE, pickedWithoutGameConfig } from "@/lib/analytics/event-defaults";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 import { isFormAnalyticsRoute } from "@/lib/analytics/form-analytics";
 import {
@@ -56,6 +57,9 @@ export function AnalyticsFilterBar() {
     [singleMode, filters, single.code]
   );
   const { scopeCount, usedCount, loaded } = useAnalyticsEntries(countFilters, raw ? { applyAccuracy: false, includeExcluded: true } : undefined);
+  // A hand-picked event whose game has no config yet (the next, unannounced season): say so instead of showing empty tables.
+  const picked = singleMode ? (single.code ? [single.code] : []) : filters.events.kind === "custom" ? filters.events.codes : [];
+  const unconfigured = pickedWithoutGameConfig(data.eventOptions, picked);
   // The active program's games, and only the filters it has connected: Practice mode and the accuracy threshold need practice and official results.
   const games = useForms().seasons;
   const { practice: practiceConnected, accuracy: accuracyConnected } = useProgramConfig().connection.features;
@@ -87,6 +91,9 @@ export function AnalyticsFilterBar() {
             practice={filters.practice && !formRoute}
             primaryCode={data.primaryCode}
             singleSelectedCode={single.code}
+            showArchived={filters.archived}
+            onShowArchivedChange={(archived) => setFilters({ archived })}
+            hasArchived={data.hasArchived}
           />
         </Control>
 
@@ -151,6 +158,12 @@ export function AnalyticsFilterBar() {
           </Control>
         )}
       </div>
+
+      {unconfigured.length > 0 && (
+        <p role="status" className="rounded-xl border border-[var(--glass-border)] bg-white/5 px-3 py-2 text-sm text-[var(--muted-foreground)]">
+          {GAME_NOT_CONFIGURED_NOTE}
+        </p>
+      )}
 
       {!formRoute && (
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted-foreground)]">

@@ -9,6 +9,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { useAnalyticsData } from "@/lib/analytics/data-context";
 import { useAnalyticsFilters, useAnalyticsHref } from "@/lib/analytics/filter-context";
 import { eventCodesForScope } from "@/lib/analytics/form-analytics";
+import { eventCodeIn } from "@/lib/analytics/filters";
 import { STRATEGY_REBUILT_ABILITIES, teamRebuiltProfile, titleCase, type PlanCapability, type TeamRebuiltProfile } from "@/lib/analytics/form-summaries-rebuilt";
 import { useAuth } from "@/lib/auth";
 import { useFormEntries } from "@/lib/form-entries";
@@ -24,7 +25,7 @@ export function RebuiltPitAndStrategySection({ teamNumber }: { teamNumber: numbe
   const data = useAnalyticsData();
   const { entries, loaded } = useFormEntries(profile?.teamId ?? null);
   const codes = useMemo(() => eventCodesForScope(filters.events, data.activeEventCodes), [filters.events, data.activeEventCodes]);
-  const inScope = useMemo(() => entries.filter((e) => TYPES.has(e.formType) && !e.excluded && (codes === null || codes.includes(e.eventCode))), [entries, codes]);
+  const inScope = useMemo(() => entries.filter((e) => TYPES.has(e.formType) && !e.excluded && (codes === null || eventCodeIn(codes, e.eventCode))), [entries, codes]);
   const info = useMemo(() => teamRebuiltProfile(teamNumber, inScope), [teamNumber, inScope]);
   if (!loaded || !info.any) return null;
   return <RebuiltPitAndStrategyView teamNumber={teamNumber} info={info} />;
@@ -139,7 +140,7 @@ export function RebuiltPitAndStrategyView({ teamNumber, info }: { teamNumber: nu
           <ul className="flex flex-col gap-1">
             {lead.notes.slice(0, 3).map((n, i) => (
               <li key={i} className="text-xs">
-                {n.matchKey && <span className="mr-1 font-mono text-[var(--muted-foreground)]">{n.matchKey}</span>}
+                {n.matchKey && <span className="mr-1 tabular-nums text-[var(--muted-foreground)]">{n.matchKey}</span>}
                 {n.text}
               </li>
             ))}

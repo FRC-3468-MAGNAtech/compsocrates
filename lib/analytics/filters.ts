@@ -27,6 +27,8 @@ export type AnalyticsFilters = {
   practiceMode: PracticeModeFilter;
   practiceSource: PracticeSourceFilter;
   accuracy: AccuracyThreshold;
+  /** "Show archived events": archived events are listed in the Event select and counted by All Events only when on (off by default). */
+  archived: boolean;
 };
 
 export const ACCURACY_PRESETS = [75, 85, 90] as const;
@@ -38,6 +40,7 @@ export const DEFAULT_FILTERS: AnalyticsFilters = {
   practiceMode: "all",
   practiceSource: "all",
   accuracy: null,
+  archived: false,
 };
 
 /** Whole number, clamped to 1-100. */
@@ -63,13 +66,24 @@ type ParamReader = { get(name: string): string | null };
 const MODES: PracticeModeFilter[] = ["all", "trial", "competitive"];
 const SOURCES: PracticeSourceFilter[] = ["all", "practice", "live"];
 
+/** Same event code, whatever the case? One program stores lower-case keys (`2026lake`), another upper-case (`2025-USCALAB`), and a hand-typed link may use either. */
+export const sameEventCode = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+/** Is `code` one of `codes`, ignoring case? Every event filter compares through this. */
+export const eventCodeIn = (codes: readonly string[], code: string): boolean => codes.some((c) => sameEventCode(c, code));
+
+/**
+ * The event codes in the URL, in the spelling they were written (the app writes a code exactly as it is stored). They used to be upper-cased here,
+ * which no longer matched a stored lower-case key (`2026lake`): picking an event then selected nothing and every table and form list was empty.
+ * Duplicates differing only in case are dropped.
+ */
 function splitCodes(raw: string): string[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, string>();
   for (const part of raw.split(",")) {
-    const code = part.trim().toUpperCase();
-    if (/^[A-Z0-9_-]{1,40}$/.test(code)) seen.add(code);
+    const code = part.trim();
+    if (/^[A-Za-z0-9_-]{1,40}$/.test(code) && !seen.has(code.toLowerCase())) seen.set(code.toLowerCase(), code);
   }
-  return [...seen];
+  return [...seen.values()];
 }
 
 /** Reads filters off URL params; anything missing or invalid falls back to its default, so a hand-edited link can't produce an impossible state. */
@@ -96,6 +110,7 @@ export function parseFilters(params: ParamReader, validGameIds: string[] = Objec
     practiceMode: MODES.includes(modeRaw as PracticeModeFilter) ? (modeRaw as PracticeModeFilter) : "all",
     practiceSource: SOURCES.includes(sourceRaw as PracticeSourceFilter) ? (sourceRaw as PracticeSourceFilter) : "all",
     accuracy: acc,
+    archived: params.get("archived") === "1",
   };
 }
 
@@ -111,10 +126,11 @@ export function serializeFilters(filters: AnalyticsFilters): URLSearchParams {
     if (filters.practiceSource !== "all") params.set("source", filters.practiceSource);
   }
   if (filters.accuracy !== null) params.set("acc", String(filters.accuracy));
+  if (filters.archived) params.set("archived", "1");
   return params;
 }
 
-const FILTER_PARAM_KEYS = ["game", "events", "practice", "mode", "source", "acc"] as const;
+const FILTER_PARAM_KEYS = ["game", "events", "practice", "mode", "source", "acc", "archived"] as const;
 
 /**
  * `current` with its filter params replaced by `filters`'s — every other
