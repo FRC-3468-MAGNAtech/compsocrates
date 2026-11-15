@@ -7,14 +7,14 @@
  * API-imported docs (`origin == 'api'`, public competition data) and a team's own hand-made docs (`teamId == <mine>`), and the rules can prove a list query
  * only from its constraints: `origin == 'api'` for the first, `teamId == <mine>` for the second (see the `programs/ftc` block of firestore.rules).
  */
-import { deleteField, getDoc, getDocs, onSnapshot, query, where, writeBatch, type Query, type Unsubscribe, type WriteBatch } from "firebase/firestore";
+import { deleteField, getDocs, onSnapshot, query, where, writeBatch, type Query, type Unsubscribe, type WriteBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc } from "@/lib/firebase/paths";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { clearReadFailure, recordReadFailure } from "@/lib/read-failures";
 import { createMergedFeed, ftcDocToLibraryEvent, ftcDocsToLibraryMatches, ftcMatchId, generateFtcManualEventCode, planScheduleImport } from "@/lib/ftc/library";
-import { LIBRARY_BATCH_SIZE, buildManualMatchDoc, chunk, type CreateEventResult, type ImportSummary, type MatchScores, type LibraryActor, type LibraryEventRef, type LibraryWrite, type ScheduleMatchInput, type UpsertResult } from "@/lib/library/schedule";
+import { LIBRARY_BATCH_SIZE, buildManualMatchDoc, chunk, type CreateEventResult, type ImportSummary, type MatchScores, type LibraryActor, type LibraryEventRef, type LibraryWrite, type ScheduleMatchInput, type UpsertOptions, type UpsertResult } from "@/lib/library/schedule";
 import { validateEventForm, type EventFormInput } from "@/lib/library/event-form";
 import { validateEventCode } from "@/lib/library/ids";
 import type { EventMatch } from "@/lib/events/types";
@@ -189,7 +189,7 @@ export async function deleteManualEvent(actor: Actor, event: LibraryEvent): Prom
 // --- matches --------------------------------------------------------------------------------------------------------
 
 /** Creates or replaces hand-made matches of one event of the actor's team. A match listed twice keeps the last one. */
-export async function upsertManualMatches(actor: Actor, event: LibraryEvent, matches: readonly ScheduleMatchInput[]): Promise<UpsertResult> {
+export async function upsertManualMatches(actor: Actor, event: LibraryEvent, matches: readonly ScheduleMatchInput[], options: UpsertOptions = { newPublished: false, newNeedsReview: false }): Promise<UpsertResult> {
   const existing = await readEventMatches(event, actor.teamId);
   const byId = new Map<string, ScheduleMatchInput>();
   for (const m of matches) byId.set(ftcMatchId(event.eventCode, m.matchType, m.matchNumber), m);
@@ -200,18 +200,18 @@ export async function upsertManualMatches(actor: Actor, event: LibraryEvent, mat
   let updated = 0;
   for (const [id, match] of byId) {
     const current = existing.get(id) ?? null;
-    ops.push({ kind: "set", id, merge: false, data: buildManualMatchDoc(match, ref, current, actor.teamId, actor.uid, now) });
+    ops.push({ kind: "set", id, merge: false, data: buildManualMatchDoc(match, ref, current, actor.teamId, actor.uid, now, options) });
     if (current) updated++;
     else created++;
   }
   await commitMatchOps(actor, ops, { op: "upsert-matches", eventCode: event.eventCode }, { created, updated });
   return { created, updated, ids: [...byId.keys()] };
 }
-
+/** Publishes or unpublishes matches. As in CE, either action also clears "needs review" (the admin has looked). */
 /** Publishes or unpublishes matches (each match only carries `published`). */
 export function setMatchesPublished(actor: Actor, ids: readonly string[], published: boolean): Promise<number> {
   const now = new Date().toISOString();
-  return commitMatchOps(actor, ids.map((id) => ({ kind: "update" as const, id, data: { published, updatedAt: now } })), { op: published ? "publish-matches" : "unpublish-matches", count: ids.length, matchIds: ids.slice(0, 50) }, { published });
+  return commitMatchOps(actor, ids.map((id) => ({ kind: "update" as const, id, data: { published, needsReview: false, updatedAt: now } })), { op: published ? "publish-matches" : "unpublish-matches", count: ids.length, matchIds: ids.slice(0, 50) }, { published });
 }
 
 /**
@@ -255,22 +255,32 @@ export function deleteManualMatches(actor: Actor, ids: readonly string[]): Promi
 export async function importSchedule(actor: Actor, args: { event: LibraryEventRef; matches: readonly EventMatch[] }): Promise<ImportSummary> {
   const { event } = args;
   const eventRef = programDoc(db, PROGRAM, EVENTS, event.eventCode);
+  // Two queries, not a read of the event doc: a doc that does not exist yet cannot be read under the rules (there is nothing to check them against).
   let eventExists = false;
   try {
-    const snap = await getDoc(eventRef);
-    eventExists = snap.exists();
-    if (snap.exists() && snap.data().origin === "manual") throw new Error(`${event.eventCode} is a hand-made event: it can't be imported over.`);
+    const [shared, own] = await Promise.all([
+      getDocs(query(eventsRef(), where("eventCode", "==", event.eventCode), where("origin", "==", "api"))),
+      getDocs(query(eventsRef(), where("eventCode", "==", event.eventCode), where("teamId", "==", actor.teamId))),
+    ]);
+    eventExists = !shared.empty;
+    if (!own.empty) throw new Error(`${event.eventCode} is a hand-made event of your team: it can't be imported over.`);
   } catch (err) {
-    if ((err as { code?: string })?.code === "permission-denied") throw new Error(`${event.eventCode} is already used by another team's hand-made event.`);
+    reportFirestoreError("Couldn't check the library event", err, `${eventsRef().path} where eventCode == ${event.eventCode}`);
     throw err;
   }
   const existing = await readEventMatches({ eventCode: event.eventCode, origin: "api" }, actor.teamId);
   const now = new Date().toISOString();
   const plan = planScheduleImport({ event, matches: args.matches, existing, uid: actor.uid, now });
   const ops: Op[] = plan.writes.map((w: LibraryWrite) => ({ kind: "set", id: w.id, data: w.data, merge: w.merge }));
-  const batches = await commitMatchOps(actor, ops, { op: "import-event", eventCode: event.eventCode, seasonId: event.seasonId }, { created: plan.created, updated: plan.updated, scored: plan.scored, skippedManual: plan.skippedManual.length, skippedNoTeams: plan.skippedNoTeams }, (batch) => {
-    if (eventExists) batch.update(eventRef, { eventName: event.eventName, updatedAt: now });
-    else batch.set(eventRef, { eventCode: event.eventCode, eventName: event.eventName, seasonId: event.seasonId, origin: "api", date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: actor.uid, createdAt: now, updatedAt: now });
-  });
+  let batches: number;
+  try {
+    batches = await commitMatchOps(actor, ops, { op: "import-event", eventCode: event.eventCode, seasonId: event.seasonId }, { created: plan.created, updated: plan.updated, scored: plan.scored, skippedManual: plan.skippedManual.length, skippedNoTeams: plan.skippedNoTeams }, (batch) => {
+      if (eventExists) batch.update(eventRef, { eventName: event.eventName, updatedAt: now });
+      else batch.set(eventRef, { eventCode: event.eventCode, eventName: event.eventName, seasonId: event.seasonId, origin: "api", date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: actor.uid, createdAt: now, updatedAt: now });
+    });
+  } catch (err) {
+    if ((err as { code?: string })?.code === "permission-denied") throw new Error(`Permission denied saving ${event.eventCode}. Only admins can import, and a code used by another team's hand-made event can't be imported.`);
+    throw err;
+  }
   return { eventCode: event.eventCode, eventName: event.eventName, created: plan.created, updated: plan.updated, skippedManual: plan.skippedManual, skippedNoTeams: plan.skippedNoTeams, batches, scored: plan.scored };
 }

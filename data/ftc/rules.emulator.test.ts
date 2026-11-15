@@ -974,6 +974,43 @@ describe("the FTC match library (Batch 2)", () => {
     expect(ids(await assertSucceeds(qMatches(SCOUT, where("eventCode", "==", "USWAIMP1"), where("published", "==", true), where("origin", "==", "api"))))).toEqual(["USWAIMP1_Q1", "USWAIMP1_Q2"]);
   });
 
+  it("the import's existence check: an admin queries the events by code (shared, then their own team), and a missing event doc cannot be read by id", async () => {
+    const db = as(ADMIN);
+    // a code nobody has used: both queries are allowed and empty (this is what a first import of a new event does)
+    expect((await assertSucceeds(getDocs(query(collection(db, L("libraryEvents")), where("eventCode", "==", "USWANEW1"), where("origin", "==", "api"))))).empty).toBe(true);
+    expect((await assertSucceeds(getDocs(query(collection(db, L("libraryEvents")), where("eventCode", "==", "USWANEW1"), where("teamId", "==", T1))))).empty).toBe(true);
+    // an existing shared event and the team's own hand-made one are found
+    expect((await assertSucceeds(getDocs(query(collection(db, L("libraryEvents")), where("eventCode", "==", EV_API), where("origin", "==", "api"))))).empty).toBe(false);
+    expect((await assertSucceeds(getDocs(query(collection(db, L("libraryEvents")), where("eventCode", "==", EV_T1), where("teamId", "==", T1))))).empty).toBe(false);
+    // another team's hand-made event is invisible (empty), never an error, so the check does not mistake it for an existing event
+    expect((await assertSucceeds(getDocs(query(collection(db, L("libraryEvents")), where("eventCode", "==", EV_T2), where("teamId", "==", T1))))).empty).toBe(true);
+    // reading a doc that does not exist by id is refused: the import must not do it
+    await assertFails(getDoc(doc(db, L("libraryEvents"), "USWANEW1")));
+  });
+
+  it("a brand-new event imports end to end: event doc and matches in one batch, then the import's own reads work", async () => {
+    const db = as(ADMIN);
+    const event = { eventCode: "USWANEW2", eventName: "New", seasonId: "biobuzz" };
+    const plan = planScheduleImport({ event, matches: [{ id: "Q-1", matchNumber: 1, type: "Qualification", description: null, series: null, played: false, redTeams: [1, 2], blueTeams: [3, 4], redScore: null, blueScore: null, redPenaltyPoints: null, bluePenaltyPoints: null, startTime: null }], existing: new Map(), uid: ADMIN, now: "2026-11-15T00:00:00.000Z" });
+    const batch = writeBatch(db);
+    batch.set(doc(db, L("libraryEvents"), event.eventCode), { ...event, origin: "api", date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: ADMIN, createdAt: "t", updatedAt: "t" });
+    for (const w of plan.writes) batch.set(doc(db, L("libraryMatches"), w.id), w.data, { merge: w.merge });
+    await assertSucceeds(batch.commit());
+    expect(ids(await assertSucceeds(qMatches(ADMIN, where("eventCode", "==", "USWANEW2"), where("origin", "==", "api"))))).toEqual(["USWANEW2_Q1"]);
+  });
+
+  it("bulk entry: matches arrive as unpublished drafts that need review, a member cannot see them, publishing clears the flag", async () => {
+    const db = as(ADMIN);
+    const ref = { eventCode: EV_T1, eventName: "E", seasonId: "biobuzz" };
+    const vm = { matchType: "Qualification" as const, matchNumber: 21, red: [1, 2], blue: [3, 4], scheduledTime: null };
+    const id = ftcMatchId(EV_T1, "Qualification", 21);
+    await assertSucceeds(setDoc(doc(db, L("libraryMatches"), id), buildManualMatchDoc(vm, ref, null, T1, ADMIN, "t", { newPublished: false, newNeedsReview: true })));
+    expect((await getDoc(doc(db, L("libraryMatches"), id))).data()).toMatchObject({ published: false, needsReview: true });
+    expect(ids(await assertSucceeds(qMatches(SCOUT, where("eventCode", "==", EV_T1), where("published", "==", true), where("teamId", "==", T1))))).not.toContain(id);
+    await assertSucceeds(updateDoc(doc(db, L("libraryMatches"), id), { published: true, needsReview: false, updatedAt: "t2" }));
+    expect(ids(await assertSucceeds(qMatches(SCOUT, where("eventCode", "==", EV_T1), where("published", "==", true), where("teamId", "==", T1))))).toContain(id);
+  });
+
   it("an API doc cannot be turned into a hand-made one or deleted, and an API import cannot land under a hand-made event", async () => {
     const db = as(ADMIN);
     await assertFails(deleteDoc(doc(db, L("libraryMatches"), `${EV_API}_Q1`)));

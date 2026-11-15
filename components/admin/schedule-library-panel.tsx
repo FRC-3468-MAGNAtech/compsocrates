@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, Download, Eye, EyeOff, Pencil, Plus, Trash2, Trophy } from "lucide-react";
+import { ArrowLeft, Copy, Download, Eye, EyeOff, FileSpreadsheet, Pencil, Plus, Rows3, Trash2, Trophy } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,10 @@ import { Input, Label } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/scout/confirm-dialog";
-import { FieldError, selectClass } from "@/components/admin/library/shared";
+import { ScheduleFastEntry } from "@/components/admin/schedule-fast-entry";
+import { ScheduleBulkImport } from "@/components/admin/schedule-bulk-import";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FieldError, WarningList, selectClass } from "@/components/admin/library/shared";
 import { OriginBadge } from "@/components/admin/library/manual-library-panel";
 import { useAuth } from "@/lib/auth";
 import { useProgramData } from "@/lib/program/data";
@@ -18,6 +21,8 @@ import { useAllLibraryMatches, useLibraryMatches, type LibraryMatch } from "@/li
 import { useProgramConfig } from "@/lib/program/context";
 import {
   emptyRawScheduleMatch,
+  nextScheduleMatchNumber,
+  scheduleMatchWarnings,
   publishedLabel,
   rawScoresOf,
   scoreLabel,
@@ -253,13 +258,21 @@ function NewEventDialog({ library, actor, seasonId, existing, onClose, onCreated
 
 function EventView({ event, actor, library, onBack }: { event: LibraryEvent; actor: Actor; library: LibraryPort; onBack: () => void }) {
   const { matches, loaded, error, retry, unreadable } = useLibraryMatches(event.eventCode, { includeUnpublished: true });
-  const [editing, setEditing] = useState<LibraryMatch | "new" | null>(null);
+  const size = useProgramConfig().event.allianceSize;
+  const [editing, setEditing] = useState<LibraryMatch | "new" | { duplicateOf: LibraryMatch } | null>(null);
+  const [showFast, setShowFast] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scoring, setScoring] = useState<LibraryMatch | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "match"; match: LibraryMatch } | { kind: "event" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "match"; match: LibraryMatch } | { kind: "selected"; ids: string[] } | { kind: "event" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const manual = event.origin === "manual";
   const publishedCount = matches.filter((m) => m.published === true).length;
+  const reviewMatches = matches.filter((m) => m.needsReview === true);
+  const selectedIds = matches.filter((m) => selected.has(m.id)).map((m) => m.id);
+  const allSelected = matches.length > 0 && selectedIds.length === matches.length;
+  const toggle = (id: string) => setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   const run = async (work: () => Promise<string>) => {
     setBusy(true);
@@ -295,9 +308,17 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
           {manual && (
-            <Button className="min-h-11 gap-2" onClick={() => setEditing("new")} disabled={busy}>
-              <Plus className="h-4 w-4" /> Add match
-            </Button>
+            <>
+              <Button className="min-h-11 gap-2" onClick={() => setEditing("new")} disabled={busy}>
+                <Plus className="h-4 w-4" /> Add match
+              </Button>
+              <Button variant="glass" className="min-h-11 gap-2" onClick={() => setShowFast((v) => !v)} aria-pressed={showFast}>
+                <Rows3 className="h-4 w-4" /> {showFast ? "Hide fast entry" : "Fast entry"}
+              </Button>
+              <Button variant="glass" className="min-h-11 gap-2" onClick={() => setBulkOpen(true)} disabled={busy}>
+                <FileSpreadsheet className="h-4 w-4" /> Bulk import
+              </Button>
+            </>
           )}
           <Button variant="glass" className="min-h-11 gap-2" disabled={busy || matches.length === 0 || publishedCount === matches.length} onClick={() => void publish(matches.filter((m) => m.published !== true).map((m) => m.id), true)}>
             <Eye className="h-4 w-4" /> Publish all
@@ -312,6 +333,34 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
           )}
         </div>
       </div>
+      {manual && showFast && <ScheduleFastEntry event={event} eventMatches={matches} actor={actor} library={library} size={size} />}
+      {reviewMatches.length > 0 && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <span>{reviewMatches.length} imported match{reviewMatches.length === 1 ? "" : "es"} need review before scouts see them.</span>
+          <Button size="sm" className="min-h-11" disabled={busy} onClick={() => void publish(reviewMatches.map((m) => m.id), true)}>
+            Publish {reviewMatches.length} reviewed
+          </Button>
+        </div>
+      )}
+      {selectedIds.length > 0 && (
+        <div role="toolbar" aria-label="Bulk actions" className="flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--glass-border)] bg-white/6 px-4 py-2.5">
+          <span className="text-sm">{selectedIds.length} selected</span>
+          <Button size="sm" variant="glass" className="min-h-11" disabled={busy} onClick={() => void publish(selectedIds, true)}>
+            Publish
+          </Button>
+          <Button size="sm" variant="glass" className="min-h-11" disabled={busy} onClick={() => void publish(selectedIds, false)}>
+            Unpublish
+          </Button>
+          {manual && (
+            <Button size="sm" variant="glass" className="min-h-11" disabled={busy} onClick={() => setConfirm({ kind: "selected", ids: selectedIds })}>
+              Delete
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="min-h-11" onClick={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
       {busy && <p role="status" className="text-xs text-[var(--muted-foreground)]">Saving…</p>}
       {message && (
         <p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-sm text-red-400" : "text-sm text-emerald-400"}>
@@ -335,6 +384,9 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
         <Table>
           <THead>
             <TR>
+              <TH className="w-10">
+                <Checkbox checked={allSelected} onCheckedChange={(v) => setSelected(v ? new Set(matches.map((m) => m.id)) : new Set())} aria-label="Select all matches" />
+              </TH>
               <TH>Match</TH>
               <TH>Red</TH>
               <TH>Blue</TH>
@@ -347,6 +399,9 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
           <TBody>
             {matches.map((m) => (
               <TR key={m.id}>
+                <TD>
+                  <Checkbox checked={selected.has(m.id)} onCheckedChange={() => toggle(m.id)} aria-label={`Select ${matchLabel(m)}`} />
+                </TD>
                 <TD className="font-medium">{matchLabel(m)}</TD>
                 <TD className="text-red-300">{m.alliances.red.teams.length ? m.alliances.red.teams.join(", ") : "TBD"}</TD>
                 <TD className="text-blue-300">{m.alliances.blue.teams.length ? m.alliances.blue.teams.join(", ") : "TBD"}</TD>
@@ -354,6 +409,7 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
                 <TD className="text-xs" data-testid={`lib-score-${m.id}`}>{scoreLabel(m)}</TD>
                 <TD>
                   <Badge variant={m.published === true ? "success" : "outline"}>{m.published === true ? "Published" : "Draft"}</Badge>
+                  {m.needsReview === true && <Badge variant="warning" className="ml-1.5">Needs review</Badge>}
                 </TD>
                 <TD>
                   <div className="flex flex-wrap gap-1.5">
@@ -367,6 +423,9 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
                       <>
                         <Button size="sm" variant="glass" className="min-h-11 gap-1" disabled={busy} onClick={() => setEditing(m)} aria-label={`Edit ${matchLabel(m)}`}>
                           <Pencil className="h-3.5 w-3.5" /> Edit
+                        </Button>
+                        <Button size="sm" variant="glass" className="min-h-11 gap-1" disabled={busy} onClick={() => setEditing({ duplicateOf: m })} aria-label={`Duplicate ${matchLabel(m)}`}>
+                          <Copy className="h-3.5 w-3.5" /> Duplicate
                         </Button>
                         <Button size="sm" variant="glass" className="min-h-11 gap-1" disabled={busy} onClick={() => setConfirm({ kind: "match", match: m })} aria-label={`Delete ${matchLabel(m)}`}>
                           <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -386,10 +445,27 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
           library={library}
           event={event}
           actor={actor}
-          match={editing === "new" ? null : editing}
+          match={editing === "new" || "duplicateOf" in editing ? null : editing}
+          prefill={typeof editing === "object" && "duplicateOf" in editing ? editing.duplicateOf : null}
+          eventMatches={matches}
           onClose={() => setEditing(null)}
           onSaved={(text) => {
             setEditing(null);
+            setMessage({ tone: "ok", text });
+          }}
+        />
+      )}
+
+      {bulkOpen && manual && (
+        <ScheduleBulkImport
+          event={event}
+          eventMatches={matches}
+          actor={actor}
+          library={library}
+          size={size}
+          onClose={() => setBulkOpen(false)}
+          onDone={(text) => {
+            setBulkOpen(false);
             setMessage({ tone: "ok", text });
           }}
         />
@@ -411,7 +487,7 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
       <ConfirmDialog
         open={confirm !== null}
         onOpenChange={(open) => !open && setConfirm(null)}
-        title={confirm?.kind === "event" ? `Delete ${event.eventName}?` : confirm?.kind === "match" ? `Delete ${matchLabel(confirm.match)}?` : ""}
+        title={confirm?.kind === "event" ? `Delete ${event.eventName}?` : confirm?.kind === "match" ? `Delete ${matchLabel(confirm.match)}?` : confirm?.kind === "selected" ? `Delete ${confirm.ids.length} match${confirm.ids.length === 1 ? "" : "es"}?` : ""}
         description={confirm?.kind === "event" ? `This deletes the event and its ${matches.length} match${matches.length === 1 ? "" : "es"}. It can't be undone.` : "This deletes the match. It can't be undone."}
         confirmLabel="Delete"
         cancelLabel="Cancel"
@@ -419,7 +495,13 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
         onConfirm={() => {
           const target = confirm;
           if (!target) return;
-          if (target.kind === "match") {
+          if (target.kind === "selected") {
+            void run(async () => {
+              await library.deleteMatches(actor, target.ids);
+              setSelected(new Set());
+              return `${target.ids.length} match${target.ids.length === 1 ? "" : "es"} deleted.`;
+            });
+          } else if (target.kind === "match") {
             void run(async () => {
               await library.deleteMatches(actor, [target.match.id]);
               return `${matchLabel(target.match)} deleted.`;
@@ -437,19 +519,25 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
   );
 }
 
-function MatchDialog({ library, event, actor, match, onClose, onSaved }: { library: LibraryPort; event: LibraryEvent; actor: Actor; match: LibraryMatch | null; onClose: () => void; onSaved: (text: string) => void }) {
+function MatchDialog({ library, event, actor, match, prefill, eventMatches, onClose, onSaved }: { library: LibraryPort; event: LibraryEvent; actor: Actor; match: LibraryMatch | null; prefill: LibraryMatch | null; eventMatches: LibraryMatch[]; onClose: () => void; onSaved: (text: string) => void }) {
   const size = useProgramConfig().event.allianceSize;
+  const source = match ?? prefill;
   const [raw, setRaw] = useState<RawScheduleMatch>(() =>
-    match
+    source
       ? {
-          matchType: match.matchType === "Practice" ? "P" : match.matchType === "Playoff" ? "F" : "Q",
-          matchNumber: String(match.matchNumber),
-          red: Array.from({ length: size }, (_, i) => String(match.alliances.red.teams[i] ?? "")),
-          blue: Array.from({ length: size }, (_, i) => String(match.alliances.blue.teams[i] ?? "")),
-          scheduledTime: toLocalInput(match.scheduledTime),
+          matchType: source.matchType === "Practice" ? "P" : source.matchType === "Playoff" ? "F" : "Q",
+          // A duplicate starts at the next free number of its type; an edit keeps its own.
+          matchNumber: String(match ? source.matchNumber : nextScheduleMatchNumber(eventMatches, source.matchType)),
+          red: Array.from({ length: size }, (_, i) => String(source.alliances.red.teams[i] ?? "")),
+          blue: Array.from({ length: size }, (_, i) => String(source.alliances.blue.teams[i] ?? "")),
+          scheduledTime: toLocalInput(source.scheduledTime),
         }
-      : emptyRawScheduleMatch(size)
+      : { ...emptyRawScheduleMatch(size), matchNumber: String(nextScheduleMatchNumber(eventMatches, "Qualification")) }
   );
+  const warnings = useMemo(() => {
+    const checked = validateRawScheduleMatch(raw, size);
+    return checked.ok && !match ? scheduleMatchWarnings(checked.match, { eventCode: event.eventCode, existing: eventMatches }) : [];
+  }, [raw, size, match, event.eventCode, eventMatches]);
   const [errors, setErrors] = useState<ScheduleMatchErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -464,8 +552,8 @@ function MatchDialog({ library, event, actor, match, onClose, onSaved }: { libra
     setSaving(true);
     setError(null);
     try {
-      const result = await library.upsertMatches(actor, event, [checked.match]);
-      onSaved(result.created > 0 ? "Match added (a draft: publish it when ready)." : "Match updated.");
+      const result = await library.upsertMatches(actor, event, [checked.match], { newPublished: true, newNeedsReview: false });
+      onSaved(result.created > 0 ? "Match added and published." : "Match updated.");
     } catch (err) {
       setError(err instanceof Error && err.message ? `Couldn't save: ${err.message}` : "Couldn't save. Check your connection and try again.");
     } finally {
@@ -478,7 +566,7 @@ function MatchDialog({ library, event, actor, match, onClose, onSaved }: { libra
   return (
     <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
       <DialogContent className="w-[min(92vw,520px)]">
-        <DialogTitle>{match ? `Edit ${matchLabel(match)}` : "Add match"}</DialogTitle>
+        <DialogTitle>{match ? `Edit ${matchLabel(match)}` : prefill ? `Duplicate ${matchLabel(prefill)}` : "Add match"}</DialogTitle>
         <DialogDescription>{event.eventName}</DialogDescription>
         <div className="mt-4 flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
@@ -516,6 +604,7 @@ function MatchDialog({ library, event, actor, match, onClose, onSaved }: { libra
             <Input id="lib-m-time" type="datetime-local" value={raw.scheduledTime} onChange={(e) => setRaw({ ...raw, scheduledTime: e.target.value })} aria-invalid={!!errors.scheduledTime} />
             <FieldError>{errors.scheduledTime}</FieldError>
           </div>
+          <WarningList warnings={warnings} />
           {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="glass" className="min-h-11" onClick={onClose} disabled={saving}>

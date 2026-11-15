@@ -163,6 +163,7 @@ export function ftcDocToLibraryMatch(id: string, data: Record<string, unknown>):
     scoresUpdatedAt: asIso(data.scoresUpdatedAt),
     origin: originOf(data) as LibraryOrigin,
     published: typeof data.published === "boolean" ? data.published : undefined,
+    needsReview: typeof data.needsReview === "boolean" ? data.needsReview : undefined,
     createdBy: typeof data.createdBy === "string" ? data.createdBy : undefined,
     updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : undefined,
     scheduleOnly: !red.scoreKnown && !blue.scoreKnown,

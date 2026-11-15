@@ -156,6 +156,19 @@ describe("FTC library writes", () => {
     expect(sets.find((o) => o.path.endsWith("_Q2"))?.data).toMatchObject({ published: true, createdBy: "first" });
   });
 
+  it("typed entry publishes new matches at once; a bulk import starts them unpublished and needing review; publishing clears the review flag", async () => {
+    h.getDocs.mockResolvedValue({ docs: [] });
+    const m = { matchType: "Qualification" as const, matchNumber: 1, red: [1, 2], blue: [3, 4], scheduledTime: null };
+    await upsertManualMatches(actor, manualEvent, [m], { newPublished: true, newNeedsReview: false });
+    expect(h.commits[0].find((o) => o.path.endsWith("_Q1"))?.data).toMatchObject({ published: true });
+    h.commits.length = 0;
+    await upsertManualMatches(actor, manualEvent, [m], { newPublished: false, newNeedsReview: true });
+    expect(h.commits[0].find((o) => o.path.endsWith("_Q1"))?.data).toMatchObject({ published: false, needsReview: true });
+    h.commits.length = 0;
+    await setMatchesPublished(actor, ["EV_Q1"], true);
+    expect(h.commits[0].find((o) => o.path.endsWith("EV_Q1"))?.data).toMatchObject({ published: true, needsReview: false });
+  });
+
   it("deleting a manual event deletes its matches in batches, then the event; an imported event cannot be deleted", async () => {
     h.getDocs.mockResolvedValue({ docs: ids(450).map((id) => ({ id, data: () => ({ origin: "manual" }) })) });
     await deleteManualEvent(actor, manualEvent);
@@ -166,13 +179,25 @@ describe("FTC library writes", () => {
   });
 });
 
+/** Routes the three reads an import makes: the shared-event query, the own-event query and the event's matches. */
+function routeImportReads(opts: { sharedEvent?: boolean; ownEvent?: boolean; matches?: { id: string | undefined; data: () => unknown }[]; eventsError?: unknown }) {
+  h.getDocs.mockImplementation(async (q: { ref: { path: string }; constraints: Constraint[] }) => {
+    if (q.ref.path.endsWith("/libraryEvents")) {
+      if (opts.eventsError) throw opts.eventsError;
+      const field = q.constraints.some((c) => c.field === "origin") ? "shared" : "own";
+      const has = field === "shared" ? opts.sharedEvent : opts.ownEvent;
+      return { empty: !has, docs: has ? [{ id: "x", data: () => ({}) }] : [] };
+    }
+    return { empty: !opts.matches?.length, docs: opts.matches ?? [] };
+  });
+}
+
 describe("FTC schedule import writes", () => {
   const sched = (n: number): EventMatch => ({ id: `Q-${n}`, matchNumber: n, type: "Qualification", description: null, series: null, played: false, redTeams: [1, 2], blueTeams: [3, 4], redScore: null, blueScore: null, redPenaltyPoints: null, bluePenaltyPoints: null, startTime: null });
   const event = { eventCode: "USWASEAQ", eventName: "Seattle", seasonId: "biobuzz" };
 
   it("creates the event and matches under stable ids, then a second run writes the same ids and creates nothing new", async () => {
-    h.getDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
-    h.getDocs.mockResolvedValue({ docs: [] });
+    routeImportReads({});
     const first = await importSchedule(actor, { event, matches: [sched(1), sched(2)] });
     expect(first).toMatchObject({ created: 2, updated: 0 });
     const written = h.commits[0].filter((o) => o.path.startsWith("programs/ftc/libraryMatches/"));
@@ -181,8 +206,7 @@ describe("FTC schedule import writes", () => {
     expect(h.commits[0].find((o) => o.path === "programs/ftc/libraryEvents/USWASEAQ")?.data).not.toHaveProperty("teamId");
 
     h.commits.length = 0;
-    h.getDoc.mockResolvedValue({ exists: () => true, data: () => ({ origin: "api" }) });
-    h.getDocs.mockResolvedValue({ docs: written.map((o) => ({ id: o.path.split("/").pop(), data: () => o.data })) });
+    routeImportReads({ sharedEvent: true, matches: written.map((o) => ({ id: o.path.split("/").pop(), data: () => o.data })) });
     const second = await importSchedule(actor, { event, matches: [sched(1), sched(2)] });
     expect(second).toMatchObject({ created: 0, updated: 2 });
     expect(h.commits[0].filter((o) => o.path.startsWith("programs/ftc/libraryMatches/")).map((o) => o.path)).toEqual(written.map((o) => o.path));
@@ -190,19 +214,24 @@ describe("FTC schedule import writes", () => {
   });
 
   it("splits a big schedule 400 per batch", async () => {
-    h.getDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
-    h.getDocs.mockResolvedValue({ docs: [] });
+    routeImportReads({});
     const r = await importSchedule(actor, { event, matches: Array.from({ length: 850 }, (_, i) => sched(i + 1)) });
     expect(r.batches).toBe(3);
     expect(h.commits.map((c) => c.filter((o) => o.path.startsWith("programs/ftc/libraryMatches/")).length)).toEqual([400, 400, 50]);
   });
 
   it("refuses a code that belongs to a hand-made event", async () => {
-    h.getDoc.mockResolvedValue({ exists: () => true, data: () => ({ origin: "manual" }) });
+    routeImportReads({ ownEvent: true });
     await expect(importSchedule(actor, { event, matches: [sched(1)] })).rejects.toThrow(/hand-made/);
-    h.getDoc.mockRejectedValue({ code: "permission-denied" });
-    await expect(importSchedule(actor, { event, matches: [sched(1)] })).rejects.toThrow(/another team/);
     expect(h.commits).toHaveLength(0);
+  });
+
+  it("never reads the event doc by id (a missing doc is unreadable under the rules); a denied write names the likely cause", async () => {
+    routeImportReads({});
+    await importSchedule(actor, { event, matches: [sched(1)] });
+    expect(h.getDoc).not.toHaveBeenCalled();
+    h.commitError = { code: "permission-denied", message: "no" };
+    await expect(importSchedule(actor, { event, matches: [sched(1)] })).rejects.toThrow(/Permission denied.*another team/);
   });
 });
 

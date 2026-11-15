@@ -34,7 +34,7 @@ import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import type { TeamDoc } from "@/lib/team";
 import type { LibraryEvent } from "@/lib/library/store";
 import type { EventFormInput } from "@/lib/library/event-form";
-import type { CreateEventResult, ImportOutcome, LibraryActor, MatchScores, ScheduleMatchInput, UpsertResult } from "@/lib/library/schedule";
+import type { CreateEventResult, ImportOutcome, LibraryActor, MatchScores, ScheduleMatchInput, UpsertOptions, UpsertResult } from "@/lib/library/schedule";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { AllianceColor, PracticeSession, SessionKind } from "@/lib/practice-sessions";
 
@@ -165,7 +165,7 @@ export type ProgramData = {
     /** Deletes a hand-made event and its matches (batched); resolves with how many matches went. */
     deleteEvent(actor: LibraryActor, event: LibraryEvent): Promise<number>;
     /** Creates or replaces hand-made matches of one event. A new match is an unpublished draft; an edit keeps its published state. */
-    upsertMatches(actor: LibraryActor, event: LibraryEvent, matches: readonly ScheduleMatchInput[]): Promise<UpsertResult>;
+    upsertMatches(actor: LibraryActor, event: LibraryEvent, matches: readonly ScheduleMatchInput[], options?: UpsertOptions): Promise<UpsertResult>;
     setPublished(actor: LibraryActor, ids: readonly string[], published: boolean): Promise<number>;
     /** Sets (or, with null, clears) the OFFICIAL score of one match: what Practice Scouting compares a session's total with. A match with none is "No official score yet". */
     setScores(actor: LibraryActor, id: string, scores: MatchScores | null): Promise<number>;

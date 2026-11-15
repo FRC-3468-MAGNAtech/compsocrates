@@ -8,6 +8,16 @@
 **Additive fields.** `teamId` on hand-made library events/matches, `scheduledTime` on matches (in `docs/REMAINING.md`).
 **Known gaps.** Any FTC admin can still publish/unpublish shared API matches. FTC matches carry no score (`scheduleOnly: true`, placeholder score fields): Practice Scouting (next batch) must not total them. Nothing was run in a browser (no keys here).
 **Verify.** lint 0 errors, 1 warning (`match-list-screen.tsx`, not mine). `npm test`: 3106 pass, 5 fail (all `brand-guard`: `docs/FTC_COMPLETION_PLAN.md`, `SESSION_C_RESULTS.md`, two e2e files, `scroll-reset.test.ts`; failed before). `test:rules` 355/355 (Java ok). build pass.
-**Manual check.** 1) /ftc/admin as admin: five tabs only. 2) As a normal member: "only for admins". 3) Match Library > New event, add two matches. 4) Publish one. 5) Import a real event code (keys needed; without them see the named-variable message and manual still works). 6) Import it twice: no duplicates. 7) Page Access and Sidebar save and reload; switch one season off in Submissions. 8) /frc/admin unchanged.
+**Manual check.**
+1) /ftc/admin as admin: five tabs only.
+2) As a normal member: "only for admins".
+3) Match Library > New event, add two matches.
+4) Publish one.
+5) Import a real event code (keys needed; without them see the named-variable message and manual still works).
+6) Import it twice: no duplicates.
+7) Page Access and Sidebar save and reload; switch one season off in Submissions.
+8) /frc/admin unchanged.
+
+**Manual check follow-up.** Import failed on a new event code ("already used by another team's hand-made event"): the new read rule refuses reading an event doc that does not exist, and the import did exactly that. It now checks with two queries (no rules change; emulator tests cover it). Match adding now follows CE: Add match (published at once, warns if it replaces one), Duplicate, Fast entry (Tab/Enter, next number, keeps the type), Bulk import (paste or CSV, checked before saving, starts unpublished with Needs review), row selection with Publish / Unpublish / Delete.
 
 **Next step:** deploy `firestore.rules` by hand, run the 8 checks, then Batch 3 (practice).
