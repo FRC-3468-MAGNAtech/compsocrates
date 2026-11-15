@@ -11,7 +11,7 @@
 
 **Verify.** lint: 0 errors, 1 warning (`match-list-screen.tsx` unused `timeZone`, not mine). `npm test`: 3043 pass, 5 fail. `test:rules` (Java ok): 336/336. build: pass.
 **Unrelated failures (not fixed).** 5 in `config/brand-guard.test.ts`: `docs/FTC_COMPLETION_PLAN.md` and `app/e2e/sidebar-builder/fixture.tsx` name FTC outside scope (failed before this batch).
-**Known gaps.** The shared event-name store still calls the default provider; FTC codes are not TBA-shaped, so it should not fire (not verified in a browser). Nothing was run in a browser this batch.
+**Known gaps.** `/finish-setup` is the root program's join flow (root teams and server routes): FTC codes never match there. It now forwards to the program dashboard when the last-used program has a port; an FTC-only account whose last-used program is FRC still lands in the root flow (pick FTC on the home page, or open /ftc/dashboard). Signup still enrolls through the root flow. The shared event-name store still calls the default provider; FTC codes are not TBA-shaped, so it should not fire (not verified in a browser). Nothing was run in a browser this batch.
 
 **Manual check.** 1) FTC People: only your team's members. 2) Move the glass slider on an FTC-only account, reload: it sticks. 3) Open /analytics in FTC: lands on Match Scout. 4) Open /events/<key> in FTC: not available. 5) Second account: Join a team with the code. 6) Admin: Team Management > Approve (confirm): second account reaches the dashboard unaided. 7) Send another request, Deny it.
 
