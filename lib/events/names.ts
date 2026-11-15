@@ -85,7 +85,7 @@ function labelYears(label: string): string[] {
 }
 
 /**
- * The name for display with its season beside it: "Arkansas Regional" becomes "Arkansas Regional 2026" (an FTC name gets "2025-26").
+ * The name for display with its season beside it: "Arkansas Regional" becomes "Arkansas Regional 2026" (a name whose key has a season-code shape gets "2025-26").
  * Display only: callers never store this or put it in a machine-readable export. The name is returned unchanged when the key has no
  * season, when it already states the year anywhere (a whole number, so "FIRST 2026 Arkansas" and "Arkansas 2025-26" are left alone), and when
  * it is only the raw key (a placeholder, not a name).

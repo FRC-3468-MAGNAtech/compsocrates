@@ -24,7 +24,7 @@ describe("withEventYear", () => {
     expect(withEventYear("Arkansas Regional", "2026arli")).toBe("Arkansas Regional 2026");
   });
 
-  it("adds the two-year season to an FTC name", () => {
+  it("adds the two-year season to a season-code key's name", () => {
     expect(withEventYear("California League Meet", "2025-USCALAB")).toBe("California League Meet 2025-26");
   });
 
@@ -65,9 +65,9 @@ describe("the name store: name stays raw, displayName carries the year", () => {
     const frc = store.resolve("2026lake");
     expect(frc.name).toBe("Bayou Regional");
     expect(frc.displayName).toBe("Bayou Regional 2026");
-    const ftc = store.resolve("2025-USCALAB", { "2025-USCALAB": "California League Meet" });
-    expect(ftc.name).toBe("California League Meet");
-    expect(ftc.displayName).toBe("California League Meet 2025-26");
+    const coded = store.resolve("2025-USCALAB", { "2025-USCALAB": "California League Meet" });
+    expect(coded.name).toBe("California League Meet");
+    expect(coded.displayName).toBe("California League Meet 2025-26");
   });
 
   it("an unknown key shows the key and no year", () => {
