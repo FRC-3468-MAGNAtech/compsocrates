@@ -32,7 +32,7 @@ export function TeamSetup() {
   const config = useProgramConfig();
   const data = useProgramData();
   const { user } = useAuth();
-  const [mode, setMode] = useState<Mode>("create");
+  const [mode, setMode] = useState<Mode>("join");
 
   const [teamNumber, setTeamNumber] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -111,8 +111,8 @@ export function TeamSetup() {
 
       <Tabs value={mode} onValueChange={(v) => switchMode(v as Mode)}>
         <TabsList>
-          <TabsTrigger value="create">Create a team</TabsTrigger>
           <TabsTrigger value="join">Join a team</TabsTrigger>
+          <TabsTrigger value="create">Create a team</TabsTrigger>
         </TabsList>
       </Tabs>
 

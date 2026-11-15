@@ -43,7 +43,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // A program with its own data port (not the root program) has its own profile and team, and only the features it has connected.
   const ported = useProgramData() !== null;
-  const { features } = useProgramConfig().connection;
+  const config = useProgramConfig();
+  const { features } = config.connection;
   // One subscription for the offline / unsynced badge, shared by the sidebar and the mobile top bar.
   const connection = useConnectionNotice();
   // Both programs send an account with no team to the same place, `/<program>/apply-to-team`: the root program's own join-or-create screen, or a program
@@ -64,7 +65,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       ) : (
         <div className="mx-auto flex min-h-[70vh] w-full max-w-xl flex-col justify-center gap-4 px-4">
           <ProgramSwitcher />
-          <TeamEnrollmentScreen greeting={user.displayName ? `Hi, ${user.displayName}` : undefined} onComplete={() => router.push("/dashboard")} />
+          <TeamEnrollmentScreen embedded programLabel={config.brand.label} greeting={user.displayName ? `Hi, ${user.displayName}` : undefined} onComplete={() => router.push("/dashboard")} />
         </div>
       );
     }

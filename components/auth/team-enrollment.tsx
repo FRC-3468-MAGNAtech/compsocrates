@@ -242,8 +242,14 @@ export function PendingJoinCard({
 export function TeamEnrollmentScreen({
   greeting,
   onComplete,
+  embedded = false,
+  programLabel,
 }: {
   greeting?: string;
+  /** Rendered inside a page that already centers it (the signed-in shell's setup route), so no centering wrapper of its own. */
+  embedded?: boolean;
+  /** The program's short name for the heading ("Set up your FRC team"); omitted, the heading just says "your team". */
+  programLabel?: string;
   /** Called once the account has a team (create succeeded, or an admin approved the request): the caller decides where to go, e.g. router.push("/dashboard"). */
   onComplete: () => void;
 }) {
@@ -331,13 +337,16 @@ export function TeamEnrollmentScreen({
     }
   };
 
-  const shell = (children: React.ReactNode, width = "max-w-md") => (
+  const shell = (children: React.ReactNode, width = "max-w-md") =>
+    embedded ? (
+      children
+    ) : (
     <div className="flex min-h-[70vh] items-center justify-center py-16">
       <motion.div variants={cardEntranceVariants} initial="hidden" animate="show" className={`w-full ${width}`}>
         {children}
       </motion.div>
     </div>
-  );
+    );
 
   if (createdJoinCode) {
     return shell(
@@ -379,11 +388,11 @@ export function TeamEnrollmentScreen({
   }
 
   return shell(
-    <GlassPanel strong className="flex flex-col gap-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold">Almost there</h1>
-        {greeting && <p className="mt-1 text-sm font-medium">{greeting}</p>}
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">Ask to join your team with its code. A team admin approves you.</p>
+    <div className="glass-card flex flex-col gap-4 p-5 sm:p-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-xl font-semibold">Set up {programLabel ? `your ${programLabel} team` : "your team"}</h1>
+        {greeting && <p className="text-sm font-medium">{greeting}</p>}
+        <p className="text-sm text-[var(--muted-foreground)]">Ask to join your team with its code, or start a new one. A team admin approves join requests.</p>
       </div>
 
       {(notice || lastClosed) && (
@@ -392,14 +401,14 @@ export function TeamEnrollmentScreen({
         </p>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <TeamEnrollmentFields enrollment={enrollment} />
         {error && (
           <p role="alert" className="text-sm text-red-400">
             {error}
           </p>
         )}
-        <Button type="submit" size="lg" className="mt-1 min-h-11 gap-2" disabled={submitting}>
+        <Button type="submit" className="min-h-11 w-full gap-2" disabled={submitting}>
           {enrollment.mode === "apply" && enrollment.teamCreationEnabled === false ? (
             <Send className="h-4 w-4" />
           ) : enrollment.mode === "create" && enrollment.teamCreationEnabled ? (
@@ -417,7 +426,7 @@ export function TeamEnrollmentScreen({
         </Button>
       </form>
 
-      <p className="text-center text-sm text-[var(--muted-foreground)]">
+      <p className="text-sm text-[var(--muted-foreground)]">
         Wrong account?{" "}
         <button
           type="button"
@@ -428,7 +437,7 @@ export function TeamEnrollmentScreen({
           {loggingOut ? "Logging out…" : "Log out"}
         </button>
       </p>
-    </GlassPanel>,
-    "max-w-sm"
+    </div>,
+    "max-w-xl"
   );
 }
