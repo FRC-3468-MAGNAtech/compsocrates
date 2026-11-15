@@ -42,6 +42,11 @@ const ALLOWED: Record<string, string> = {
   "firestore.rules": "the FTC rules block",
   "firestore.indexes.json": "FTC indexes",
   "firestore.rules.test.ts": "tests the FTC rules block",
+  "lib/sidebar/resolve.test.ts": "tests the sidebar resolver for each program id (greyed-out pages differ by program)",
+  "lib/sidebar/store.emulator.test.ts": "tests the sidebar config rules and save for both programs' paths",
+  "components/admin/sidebar-panel.test.tsx": "renders the customizer for each program id",
+  "docs/SIDEBAR_PLAN.md": "the plan for the sidebar customizer, which covers both programs",
+  "docs/SESSION_F_RESULTS.md": "the results of the sidebar customizer session, which covers both programs",
 };
 
 const inFtcScope = (file: string) => FTC_SCOPE.some((re) => re.test(file));

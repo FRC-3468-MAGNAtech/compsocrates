@@ -14,7 +14,7 @@ import { toConfig } from "@/lib/sidebar/edit";
 import { parseSidebarConfig } from "@/lib/sidebar/layout";
 import { SIDEBAR_CONFIG_VERSION, type SidebarConfig, type SidebarEntry } from "@/lib/sidebar/types";
 
-// The sidebar config doc `teams/{teamId}/settings/sidebar` (FTC: `programs/ftc/teams/{teamId}/settings/sidebar`): one doc per team and program, read by every
+// The sidebar config doc `teams/{teamId}/settings/sidebar` (a namespaced program: the same path under its own prefix, built with `programPath`): one doc per team and program, read by every
 // member, written by team admins only (firestore.rules). One shared subscription for the whole shell. The last good config is cached on the device per program and
 // team, so the sidebar paints the right layout immediately and swaps in the live one without a flash. A failed read never shows in the sidebar: the cached (or
 // default) layout stays and the customizer says so.
