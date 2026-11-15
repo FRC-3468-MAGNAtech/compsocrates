@@ -47,10 +47,3 @@ export function previousSeasonEvents<T extends Pick<EventInfo, "code" | "season"
   const set = new Set(archived);
   return events.filter((e) => !set.has(e.code) && typeof e.season === "number" && e.season < currentSeason);
 }
-
-/** Analytics' event list: archived events are left out unless "Show archived events" is on or the event was explicitly chosen. */
-export function filterArchivedOptions<T extends { code: string }>(options: readonly T[], archived: readonly string[], showArchived: boolean, explicit: readonly string[] = []): T[] {
-  if (showArchived || archived.length === 0) return [...options];
-  const hidden = new Set(archived.filter((c) => !explicit.includes(c)));
-  return options.filter((o) => !hidden.has(o.code));
-}

@@ -88,8 +88,7 @@ export function ArchivedEventsSection({ archived: rawArchived, previousSeason, c
           <DialogTitle>Archive all previous seasons?</DialogTitle>
           <DialogDescription>
             This will archive {previousSeason.length} {previousSeason.length === 1 ? "event" : "events"} from earlier seasons. They leave the event pickers
-            (scouting, assignments, match list, dashboard) but nothing is deleted, they stay in Analytics when &ldquo;Show archived events&rdquo; is on, and you can
-            restore any of them.
+            (scouting, assignments, match list, dashboard). Nothing is deleted, Analytics still uses all of their data, and you can restore any of them.
           </DialogDescription>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setConfirming(false)}>

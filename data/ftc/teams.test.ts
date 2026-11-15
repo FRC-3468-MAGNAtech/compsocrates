@@ -78,6 +78,13 @@ describe("readStoredEvent", () => {
   });
 });
 
+describe("ftcTeamToTeamDoc archivedEvents", () => {
+  it("reads the archived event codes (strings only) and leaves them off when absent", () => {
+    expect(ftcTeamToTeamDoc("team-1", stored({ archivedEvents: ["E1", 7, "E1"] })).archivedEvents).toEqual(["E1"]);
+    expect(ftcTeamToTeamDoc("team-1", stored()).archivedEvents).toBeUndefined();
+  });
+});
+
 describe("ftcTeamToTeamDoc", () => {
   it("takes the app's team from the first field team", () => {
     expect(ftcTeamToTeamDoc("team-1", stored())).toMatchObject({ number: 12345, name: "First Team", joinCode: "JOIN42", ownerUid: "uid-owner", accountName: "Robotics Club" });

@@ -8,10 +8,10 @@
 - Fix: `hasEventEnded` (`lib/events/event-status.ts`: end date in the event's own timezone; with no dates, an earlier season than `currentSeasonFor(program)`). An ended event's rows are all Completed, with no In Progress, no Next. Practice rows also complete once a qualification match has a result. Event dates and a "Completed" badge show under each event.
 
 ## Task 2: Archive
-- `lib/events/archive.ts` (pure), `components/event/archived-events-section.tsx`, Archive button on Selected events, `setArchivedEvents` in `lib/team.ts` (FRC merge write) and `data/ftc/write.ts` (FTC path through the program port).
+- `lib/events/archive.ts` (pure), `components/event/archived-events-section.tsx`, Archive button on Selected events, `setArchivedEvents` in `lib/team.ts` (merge write on the root team doc) and in the second program's write module (its own path, through the program port).
 - `useActiveEvents()`: `events`, `primary`, `primaryCode` now exclude archived (pickers: Match Scout, forms, Assignments, Practice Scouting, Match List, dashboard). An archived primary falls back to the first current event, or the empty state. Added: `allEvents`, `archivedEvents`, `archivedCodes`, `storedPrimaryCode`; `isActive` still counts archived.
 - Cross-event pages use `allEvents`: My Scouting, Scout Accuracy, Profile. People uses `isActive`. No data read filters on `archived`.
-- Analytics: archived events leave the Events list unless "Show archived events" is on (checkbox, only when something is archived) or one was opened explicitly. "All events" still reads everything.
+- Analytics ignores archiving (it reads `allEvents`). Its Events list is by the game's season instead (`lib/analytics/event-options.ts`): a selected 2027 event is not offered under a 2025 game unless it has data there.
 - Known limit: archived events still count toward the 10 selected events limit.
 
 ## Task 3: My Scouting game select
@@ -19,11 +19,11 @@
 - URL `?game=` (default: current game, `all` = every game). `lib/scout-stats/game-filter.ts` filters entries and sessions; no `game` counts as REEFSCAPE for FRC (`event.unspecifiedGameId`, else the default game). Loading, empty ("No REEFSCAPE entries yet") and error states added.
 
 ## Additive fields
-- `archivedEvents: string[]` on `teams/{id}` and `programs/ftc/teams/{id}` (listed in `docs/REMAINING.md`). `ProgramEventRules.unspecifiedGameId?` (config only). No schema or scoring changes.
+- `archivedEvents: string[]` on the team doc of both programs (listed in `docs/REMAINING.md`). `ProgramEventRules.unspecifiedGameId?` (config only). No schema or scoring changes.
 
 ## Verify
 - `npm run lint`: 0 errors. `npm run build`: passes.
-- `npm test`: 2867 passed, 1 failed (188/189 files). Unrelated, not fixed: `config/brand-guard.test.ts` flags `/ftc/scout` in `lib/scroll-reset.test.ts` and FTC names in `docs/SESSION_C_RESULTS.md` (both from Session C).
+- `npm test`: 2867 passed, 1 failed (188/189 files). Unrelated, not fixed: `config/brand-guard.test.ts` flags `lib/scroll-reset.test.ts` and `docs/SESSION_C_RESULTS.md` (both from Session C).
 - Not run: Firestore emulator tests, e2e. Scout Accuracy still maps a missing session `game` to REBUILT (`seasonIdForGame`), unlike the new My Scouting rule.
 
 ## Next step

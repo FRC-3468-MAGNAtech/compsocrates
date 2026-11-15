@@ -4,13 +4,13 @@ import { createContext, useContext, useMemo, useState } from "react";
 import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
 import { orderPrimaryFirst, pickDefaultActiveEvent } from "@/lib/active-events";
+import { eventsOfGameSeason } from "@/lib/analytics/event-options";
 import { isInScope, selectAnalyticsEntries, type AnalyticsEntry, type EntrySelection, type SelectOptions } from "@/lib/analytics/entries";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 import { resolveSingleEventCode, type AnalyticsFilters } from "@/lib/analytics/filters";
 import { buildAllTeamStats, type TeamStats } from "@/lib/analytics/team-stats";
 import { useTeamNames } from "@/lib/analytics/use-event-data";
 import { getEvents } from "@/lib/events/actions";
-import { filterArchivedOptions } from "@/lib/events/archive";
 import { collectStoredEventNames } from "@/lib/events/stored-names";
 import { resolveEventName } from "@/lib/events/names";
 import { useEventNames, useRegisterStoredEventNames } from "@/lib/events/use-event-names";
@@ -60,10 +60,6 @@ type AnalyticsDataValue = {
   /** Every imported library match — Practice mode's official matches (Match Breakdown). */
   libraryMatches: LibraryMatch[];
   eventOptions: EventOption[];
-  /** Session D: codes the team archived. Analytics lists them only while "Show archived events" is on (or one was explicitly chosen); data reads are never filtered by it. */
-  archivedCodes: string[];
-  showArchived: boolean;
-  setShowArchived: (show: boolean) => void;
   /** The standard selection (accuracy filter applied, excluded dropped) for the current URL filters — computed once and shared. */
   selection: EntrySelection;
   teamStats: TeamStats[];
@@ -78,8 +74,8 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   const { profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const { filters } = useAnalyticsFilters();
-  const { events: activeEventsRaw, primaryCode, archivedCodes } = useActiveEvents();
-  const [showArchived, setShowArchived] = useState(false);
+  // Analytics reads every selected event, archived ones included: archiving only declutters the scouting pickers.
+  const { allEvents: activeEventsRaw, storedPrimaryCode: primaryCode } = useActiveEvents();
   // Everything below reads only what the active program has connected: practice sessions, the match library and event-name lookups are the default
   // program's collections and API, so a program without them asks for nothing (the filters already turn Practice off there).
   const program = useProgram();
@@ -138,7 +134,8 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
     if (filters.practice) {
       for (const m of libraryMatches) add(m.eventCode, nameOf(m.eventCode), false);
     } else {
-      for (const e of activeEvents) add(e.code, nameOf(e.code), true);
+      // Only the selected events of this game's season: a 2027 event has no entries under a 2025 game. Events with data are added below.
+      for (const e of eventsOfGameSeason(activeEvents, game.apiSeason)) add(e.code, nameOf(e.code), true);
     }
     // Events with data under the current Game/Practice settings, whatever the Event filter says.
     const scopeAnyEvent = allEntries.filter((e) => isInScope(e, { ...filters, events: { kind: "all" } }, null, gameFormIds));
@@ -147,16 +144,14 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
       options.get(e.eventCode)!.count += 1;
     }
 
-    // Archived events leave the event list (unless shown, or explicitly chosen in the Event filter). Practice mode lists library events and is not affected.
-    const listed = filters.practice ? [...options.values()] : filterArchivedOptions([...options.values()], archivedCodes, showArchived, filters.events.kind === "custom" ? filters.events.codes : []);
-    return listed.sort(
+    return [...options.values()].sort(
       (a, b) =>
         Number(b.active) - Number(a.active) ||
         (a.active && b.active ? activeEventCodes.indexOf(a.code) - activeEventCodes.indexOf(b.code) : 0) ||
         b.count - a.count ||
         a.name.localeCompare(b.name)
     );
-  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds, eventNameOf, archivedCodes, showArchived]);
+  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds, eventNameOf, game.apiSeason]);
 
   // Names for every event that has data in scope (not just the ones passing the accuracy filter), so they don't flicker as the threshold changes.
   const nameRequests = useMemo(() => {
@@ -181,14 +176,11 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
       eventNameOf,
       libraryMatches,
       eventOptions,
-      archivedCodes,
-      showArchived,
-      setShowArchived,
       selection,
       teamStats,
       teamNames,
     }),
-    [entriesLoaded, sessionsLoaded, filters.practice, allEntries, sessionsById, schema, game.apiSeason, activeEventCodes, activeEvents, primaryCode, eventDirectory, eventNameOf, libraryMatches, eventOptions, archivedCodes, showArchived, selection, teamStats, teamNames]
+    [entriesLoaded, sessionsLoaded, filters.practice, allEntries, sessionsById, schema, game.apiSeason, activeEventCodes, activeEvents, primaryCode, eventDirectory, eventNameOf, libraryMatches, eventOptions, selection, teamStats, teamNames]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

@@ -30,7 +30,7 @@ describe("filterByGame", () => {
   it("keeps everything for all games or a one-game program", () => {
     expect(filterByGame(items, gameOf, opts(""))).toHaveLength(4);
     expect(filterByGame(items, gameOf, opts(null))).toHaveLength(4);
-    expect(filterByGame(items, gameOf, { seasonId: "biobuzz", seasonIds: ["biobuzz"], fallbackSeasonId: "biobuzz" })).toHaveLength(4);
+    expect(filterByGame(items, gameOf, { seasonId: "solo", seasonIds: ["solo"], fallbackSeasonId: "solo" })).toHaveLength(4);
   });
 });
 
