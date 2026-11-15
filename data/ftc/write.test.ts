@@ -20,7 +20,7 @@ vi.mock("firebase/firestore", () => ({
 }));
 vi.mock("@/lib/firebase/client", () => ({ db: { fake: true } }));
 
-import { deleteScoutEntry, saveScoutEntry, setActiveEvents, updateScoutEntry } from "@/data/ftc/write";
+import { deleteScoutEntry, saveScoutEntry, setActiveEvents, updateScoutEntry, updateUserFields } from "@/data/ftc/write";
 import type { SaveEntryInput } from "@/lib/scout-entries";
 
 const input: SaveEntryInput = {
@@ -112,5 +112,25 @@ describe("setActiveEvents", () => {
     h.updateDoc.mockRejectedValue(denied);
     await expect(setActiveEvents("team-a", { events: [], primaryCode: null })).rejects.toBe(denied);
     expect(String(errorSpy.mock.calls[0][0])).toContain("programs/ftc/teams/team-a");
+  });
+});
+
+describe("updateUserFields", () => {
+  it("writes preference fields to programs/ftc/users/{uid}, never the root users doc", async () => {
+    h.updateDoc.mockResolvedValue(undefined);
+    await updateUserFields("uid-ada", { glassLayerLevel: 1.1 });
+    expect(h.updateDoc).toHaveBeenCalledWith({ kind: "doc", path: "programs/ftc/users/uid-ada" }, { glassLayerLevel: 1.1 });
+  });
+
+  it("refuses the fields the rules lock, before any write", async () => {
+    await expect(updateUserFields("uid-ada", { isAdmin: true })).rejects.toThrow(/isAdmin/);
+    await expect(updateUserFields("uid-ada", { teamId: "other" })).rejects.toThrow(/teamId/);
+    expect(h.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("reports and rethrows a failed write", async () => {
+    h.updateDoc.mockRejectedValue(Object.assign(new Error("nope"), { code: "permission-denied" }));
+    await expect(updateUserFields("uid-ada", { glassLayerLevel: 1 })).rejects.toThrow();
+    expect(errorSpy.mock.calls.length).toBeGreaterThan(0);
   });
 });

@@ -6,7 +6,7 @@
  * So far: saving, editing and deleting a Match Scout entry, and setting the active events. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
  * rules; a refusal is reported and rethrown like any other failure.
  */
-import { addDoc, deleteDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, deleteDoc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError } from "@/lib/firestore-errors";
@@ -231,6 +231,19 @@ export function updateUserProfile(uid: string, patch: FtcProfilePatch): Promise<
   return reported("Couldn't save your profile", `${programPath(PROGRAM, USERS)}/${uid}`, () => updateDoc(programDoc(db, PROGRAM, USERS, uid), fields));
 }
 
+/**
+ * Preference fields of the person's own profile that shared UI saves (glass level, workspace layout, changelog last-seen, push tokens). Values may be
+ * Firestore sentinels. The fields the rules lock (team, roles, flags, fieldTeamIds, avatar) are refused here too, before any write.
+ */
+const LOCKED_USER_FIELDS = ["teamId", "primaryRole", "secondaryRoles", "isAdmin", "isOwner", "isPlatformOwner", "fieldTeamIds", "avatar"];
+
+export function updateUserFields(uid: string, fields: Record<string, unknown>): Promise<void> {
+  const locked = Object.keys(fields).find((k) => LOCKED_USER_FIELDS.includes(k));
+  if (locked) return Promise.reject(new Error(`"${locked}" can't be changed from here.`));
+  if (Object.keys(fields).length === 0) return Promise.resolve();
+  return reported("Couldn't save your settings", `${programPath(PROGRAM, USERS)}/${uid}`, () => updateDoc(programDoc(db, PROGRAM, USERS, uid), fields));
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // enrollment: start a team, or ask to join one
 // ---------------------------------------------------------------------------------------------------------------------
@@ -255,7 +268,14 @@ export async function createTeam(input: NewTeamInput): Promise<{ teamId: string;
 /** Asks to join the team with this join code: `teams/{code}/joinRequests/{uid}`, pending. The rules refuse a code that matches no team. */
 export function requestToJoinTeam(joinCode: string, input: JoinRequestInput): Promise<void> {
   const path = `${programPath(PROGRAM, TEAMS)}/${joinCode}/joinRequests/${input.uid}`;
-  return reported("Couldn't send your request", path, () => setDoc(programDoc(db, PROGRAM, TEAMS, joinCode, "joinRequests", input.uid), ftcJoinRequestDoc(input, serverTimestamp())));
+  const ref = programDoc(db, PROGRAM, TEAMS, joinCode, "joinRequests", input.uid);
+  return reported("Couldn't send your request", path, async () => {
+    // A request an admin denied can be sent again: the applicant removes the old one first (the rules let them delete their own), because a
+    // decided request is never rewritten in place.
+    const existing = await getDoc(ref).catch(() => null);
+    if (existing?.exists() && existing.data()?.status === "denied") await deleteDoc(ref);
+    await setDoc(ref, ftcJoinRequestDoc(input, serverTimestamp()));
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

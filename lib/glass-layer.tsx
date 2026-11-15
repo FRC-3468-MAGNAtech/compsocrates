@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { doc, updateDoc } from "firebase/firestore";
-import { useAuth } from "@/lib/auth";
+import { useAuth, type UserDoc } from "@/lib/auth";
+import { useProgramData } from "@/lib/program/data";
+import { saveUserFields } from "@/lib/program/user-fields";
 import { APPEARANCE_RESET_EVENT } from "@/lib/account-appearance";
-import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { isFirebaseConfigured } from "@/lib/firebase/client";
 import {
   GLASS_LAYER_DEFAULT,
   GLASS_LAYER_STORAGE_KEY,
@@ -27,6 +28,8 @@ type GlassLayerContextValue = {
   level: number;
   setLevel: (value: number) => void;
   reset: () => void;
+  /** Why the last save to the account failed (null when it worked). The level still applies in this browser. */
+  saveError: string | null;
 };
 
 const GlassLayerContext = createContext<GlassLayerContextValue | null>(null);
@@ -43,10 +46,28 @@ function readLocal(): number | null {
 }
 
 export function GlassLayerProvider({ children }: { children: ReactNode }) {
-  const { user, profile } = useAuth();
+  const { user, profile: rootProfile } = useAuth();
   const uid = user?.uid ?? null;
+  // This provider sits above the program shell, so it reads the profile of the program in use itself: a program with a data port keeps the level on
+  // its own user doc (an account that only exists there has no root `users` doc), the root program on `users/{uid}` as ever.
+  const port = useProgramData();
+  const portRef = useRef(port);
+  useEffect(() => {
+    portRef.current = port;
+  }, [port]);
+  const [held, setHeld] = useState<{ uid: string; profile: UserDoc | null } | null>(null);
+  useEffect(() => {
+    if (!port || !uid) return;
+    return port.profile.subscribe(
+      uid,
+      (p) => setHeld({ uid, profile: p }),
+      () => setHeld({ uid, profile: null }) // already reported by the port
+    );
+  }, [port, uid]);
+  const profile = port ? (held?.uid === uid ? held.profile : null) : rootProfile;
   const profileLevel = profile?.glassLayerLevel;
   const profileLoaded = profile !== null;
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [level, setLevelState] = useState(GLASS_LAYER_DEFAULT);
   const saveTimer = useRef<number | null>(null);
@@ -66,7 +87,10 @@ export function GlassLayerProvider({ children }: { children: ReactNode }) {
       saveTimer.current = window.setTimeout(() => {
         saveTimer.current = null;
         pendingSave.current = null;
-        updateDoc(doc(db, "users", uid), { glassLayerLevel: value }).catch((err) => console.error("couldn't save the glass level to the user doc:", err));
+        saveUserFields(portRef.current, uid, { glassLayerLevel: value }, "Couldn't save the glass shading").then(
+          () => setSaveError(null),
+          (err: unknown) => setSaveError(err instanceof Error ? err.message : "Couldn't save the glass shading.")
+        );
       }, SAVE_DEBOUNCE_MS);
     },
     [uid]
@@ -118,7 +142,8 @@ export function GlassLayerProvider({ children }: { children: ReactNode }) {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
       const pending = pendingSave.current;
       if (pending && isFirebaseConfigured()) {
-        updateDoc(doc(db, "users", pending.uid), { glassLayerLevel: pending.value }).catch(() => {});
+        // The provider is going away, so there is nobody to show an error to; saveUserFields has already reported it.
+        saveUserFields(portRef.current, pending.uid, { glassLayerLevel: pending.value }, "Couldn't save the glass shading").catch(() => {});
       }
     },
     []
@@ -134,7 +159,7 @@ export function GlassLayerProvider({ children }: { children: ReactNode }) {
   );
   const reset = useCallback(() => setLevel(GLASS_LAYER_DEFAULT), [setLevel]);
 
-  const value = useMemo(() => ({ level, setLevel, reset }), [level, setLevel, reset]);
+  const value = useMemo(() => ({ level, setLevel, reset, saveError }), [level, setLevel, reset, saveError]);
   return <GlassLayerContext.Provider value={value}>{children}</GlassLayerContext.Provider>;
 }
 

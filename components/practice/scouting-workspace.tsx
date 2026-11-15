@@ -130,7 +130,12 @@ function CommentsPanel({ comments, onClose, className, autoFocusKey }: { comment
 export function ScoutingWorkspace({ video, videoNote, form, actions, notice, comments = null, testId = "scouting-workspace" }: ScoutingWorkspaceProps) {
   const wide = useMediaQuery(WIDE_QUERY);
   const { setImmersive } = useImmersive();
-  const { formFraction, setFormFraction, phoneSplit, setPhoneSplit } = useWorkspacePrefs();
+  const { formFraction, setFormFraction, phoneSplit, setPhoneSplit, saveError: layoutSaveError } = useWorkspacePrefs();
+  const layoutSaveAlert = layoutSaveError ? (
+    <p role="alert" className="shrink-0 px-2 py-1 text-xs text-red-400">
+      {layoutSaveError} Kept on this device only.
+    </p>
+  ) : null;
 
   const rootRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -386,6 +391,7 @@ export function ScoutingWorkspace({ video, videoNote, form, actions, notice, com
     return (
       <div ref={rootRef} data-testid={testId} data-layout="phone" className={rootClass} style={rootStyle}>
         <div ref={rowRef} className="absolute inset-0 -z-10" aria-hidden />
+        {layoutSaveAlert}
         {hasVideo && (
           <div data-testid="workspace-phone-video" className="flex shrink-0 flex-col" style={{ height: videoH || undefined }}>
             <VideoStage dragging={dragging} className="flex-1">
@@ -442,6 +448,7 @@ export function ScoutingWorkspace({ video, videoNote, form, actions, notice, com
   // TABLET and DESKTOP
   return (
     <div ref={rootRef} data-testid={testId} data-layout="wide" data-focus={focus ? "1" : "0"} className={rootClass} style={rootStyle}>
+      {layoutSaveAlert}
       <div ref={rowRef} className="flex min-h-0 flex-1 gap-0">
         {hasVideo && (
           <div className="flex min-h-0 min-w-0 flex-1 gap-2">

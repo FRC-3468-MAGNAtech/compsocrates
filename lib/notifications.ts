@@ -1,7 +1,9 @@
 "use client";
 
-import { arrayUnion, doc, updateDoc } from "firebase/firestore";
-import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { arrayUnion } from "firebase/firestore";
+import { isFirebaseConfigured } from "@/lib/firebase/client";
+import type { ProgramData } from "@/lib/program/data";
+import { saveUserFields } from "@/lib/program/user-fields";
 
 export type PushRegistrationResult = { ok: true } | { ok: false; reason: "unsupported" | "denied" | "not-configured" | "error" };
 
@@ -23,7 +25,7 @@ export function isLikelyUnsupportedIOSBrowser(): boolean {
  * sandbox (no real device/browser push delivery to test against); the plumbing follows Firebase's documented web
  * setup exactly.
  */
-export async function requestAndRegisterPush(uid: string): Promise<PushRegistrationResult> {
+export async function requestAndRegisterPush(uid: string, port: Pick<ProgramData, "profile"> | null = null): Promise<PushRegistrationResult> {
   if (!isFirebaseConfigured() || typeof window === "undefined" || !("serviceWorker" in navigator)) {
     return { ok: false, reason: "unsupported" };
   }
@@ -42,7 +44,8 @@ export async function requestAndRegisterPush(uid: string): Promise<PushRegistrat
     const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
     if (!token) return { ok: false, reason: "error" };
 
-    await updateDoc(doc(db, "users", uid), { fcmTokens: arrayUnion(token) });
+    // The program's own user doc through its port, else the root `users/{uid}`; a failure comes back as { ok: false, reason: "error" } below.
+    await saveUserFields(port, uid, { fcmTokens: arrayUnion(token) }, "Couldn't register this device for notifications");
     return { ok: true };
   } catch (err) {
     console.error("Push registration failed:", err);

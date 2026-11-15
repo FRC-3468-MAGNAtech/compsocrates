@@ -34,6 +34,9 @@ import type { TeamDoc } from "@/lib/team";
 
 export type DataError = (failure: FirestoreFailure) => void;
 
+/** A request to join the viewer's team, waiting for a decision. `requestedAtMs` is null until the server time has arrived. */
+export type PendingJoinRequest = { uid: string; name: string; requestedAtMs: number | null };
+
 /** A season (a game the program scouts), as the form picker and the form resolver need it. */
 export type ProgramSeason = {
   /** The id stored on library data and practice sessions. */
@@ -52,6 +55,11 @@ export type ProgramData = {
     subscribe(uid: string, onData: (profile: UserDoc | null) => void, onError: DataError): Unsubscribe;
     /** A person changes their own name, theme or avatar. */
     update(uid: string, patch: Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar">>): Promise<void>;
+    /**
+     * Preference fields of the person's own user doc that the shared UI saves (glass level, workspace layout, changelog last-seen, push tokens).
+     * Values may be Firestore sentinels. Callers go through `saveUserFields` (lib/program/user-fields.ts), which turns a failure into an error to show.
+     */
+    updateFields(uid: string, fields: Record<string, unknown>): Promise<void>;
   };
   team: {
     subscribe(teamId: string, onData: (team: TeamDoc | null) => void, onError: DataError): Unsubscribe;
@@ -115,6 +123,14 @@ export type ProgramData = {
     createTeam(input: { uid: string; email: string; name: string; teamNumber: number; teamName: string; location: string }): Promise<{ teamId: string; joinCode: string }>;
     /** Sends a request to join the team with this (normalized) join code. */
     requestToJoin(joinCode: string, input: { uid: string; name: string }): Promise<void>;
+  };
+  /** Approving or denying the requests to join the viewer's team (a member-manager of that team only, by the rules). */
+  joinRequests: {
+    /** The team's pending requests, oldest first. */
+    subscribePending(teamId: string, onData: (requests: PendingJoinRequest[]) => void, onError: DataError): Unsubscribe;
+    /** Creates the applicant's profile (a plain member) and marks the request approved, in one batch. */
+    approve(teamId: string, request: Pick<PendingJoinRequest, "uid" | "name">, actorUid: string): Promise<void>;
+    deny(teamId: string, requestUid: string, actorUid: string): Promise<void>;
   };
   attendance: {
     /** Every event the team has attendance recorded for. */

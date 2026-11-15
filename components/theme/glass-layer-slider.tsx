@@ -21,7 +21,7 @@ const GAP = 8;
  * A native range input, so the arrow keys, Home/End, and Page Up/Down all work.
  */
 export const GlassLayerSlider = ({ inputRef }: { inputRef?: React.Ref<HTMLInputElement> }) => {
-  const { level, setLevel, reset } = useGlassLayerLevel();
+  const { level, setLevel, reset, saveError } = useGlassLayerLevel();
   const labelId = useId();
   return (
     <div>
@@ -50,6 +50,11 @@ export const GlassLayerSlider = ({ inputRef }: { inputRef?: React.Ref<HTMLInputE
         <span className="font-medium text-[var(--foreground)]">{formatGlassLayerLevel(level)}</span>
         <span>More solid</span>
       </div>
+      {saveError && (
+        <p role="alert" className="mt-2 text-xs text-red-400">
+          {saveError} It is kept on this device only.
+        </p>
+      )}
     </div>
   );
 };

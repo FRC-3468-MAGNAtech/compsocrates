@@ -3,6 +3,7 @@
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/config/games/ftc";
 import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
+import { approveJoinRequest, denyJoinRequest, subscribePendingJoinRequests } from "@/data/ftc/join-requests";
 import { getFormVersion, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
 import {
   adminUpdateFormEntry,
@@ -26,6 +27,7 @@ import {
   updateFormEntry,
   updateMemberAccess,
   updateScoutEntry,
+  updateUserFields,
   updateUserProfile,
 } from "@/data/ftc/write";
 
@@ -38,7 +40,7 @@ export const FTC_SEASONS: readonly ProgramSeason[] = FTC_GAME_ID_LIST.map((id) =
 });
 
 export const ftcProgramData: ProgramData = {
-  profile: { subscribe: subscribeUserProfile, update: updateUserProfile },
+  profile: { subscribe: subscribeUserProfile, update: updateUserProfile, updateFields: updateUserFields },
   team: { subscribe: subscribeTeamDoc, setActiveEvents, setArchivedEvents, setFormSubmissionSettings },
   scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry, update: updateScoutEntry, delete: deleteScoutEntry },
   formEntries: {
@@ -54,6 +56,7 @@ export const ftcProgramData: ProgramData = {
   pickList: { subscribe: subscribePickList, edit: editPickList },
   members: { subscribe: subscribeTeamMembers, updateAccess: updateMemberAccess },
   enrollment: { createTeam, requestToJoin: (joinCode, input) => requestToJoinTeam(joinCode, input) },
+  joinRequests: { subscribePending: subscribePendingJoinRequests, approve: approveJoinRequest, deny: denyJoinRequest },
   attendance: { subscribeTeam: subscribeTeamAttendance, set: setEventAttendance },
   forms: { subscribeDocs: subscribeFormDocs, loadVersion: getFormVersion },
   games: { seasons: FTC_SEASONS, defaultSeasonId: seasonIdOf(CURRENT_FTC_GAME_ID), builtinForms: FTC_BUILTIN_FORMS },

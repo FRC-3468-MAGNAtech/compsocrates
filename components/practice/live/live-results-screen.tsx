@@ -12,11 +12,13 @@ import { useEntriesForMatch } from "@/lib/scout-entries";
 import { LIVE_CONFIG } from "@/lib/live/config";
 import { AddToHomeScreenHint } from "@/components/ui/add-to-home-screen-hint";
 import { requestAndRegisterPush } from "@/lib/notifications";
+import { useProgramData } from "@/lib/program/data";
 import { cardEntranceVariants } from "@/lib/motion";
 import type { PracticeSession } from "@/lib/practice-sessions";
 
 export function LiveResultsScreen({ session, onBackToPracticeScouting }: { session: PracticeSession; onBackToPracticeScouting: () => void }) {
   const { user } = useAuth();
+  const data = useProgramData();
   const { entries } = useEntriesForMatch(session.teamId, session.eventCode, session.matchType, session.matchNumber);
   const [pushState, setPushState] = useState<"idle" | "requesting" | "enabled" | "failed">("idle");
 
@@ -37,7 +39,7 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
   const handleEnableNotifications = async () => {
     if (!user) return;
     setPushState("requesting");
-    const result = await requestAndRegisterPush(user.uid);
+    const result = await requestAndRegisterPush(user.uid, data);
     setPushState(result.ok ? "enabled" : "failed");
   };
 

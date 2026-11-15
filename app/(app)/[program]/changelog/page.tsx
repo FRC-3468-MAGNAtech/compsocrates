@@ -26,6 +26,7 @@ import {
 } from "@/lib/changelog";
 import { deleteEntry, markChangelogSeen, patchEntry, seedChangelogIfNeeded, useAsyncAction, useChangelog } from "@/lib/changelog/store";
 import { usePermissions } from "@/lib/permissions";
+import { useProgramData } from "@/lib/program/data";
 import { cn } from "@/lib/utils";
 
 type EditorState = { key: number; entryId: string | null; initial: ChangelogDraft };
@@ -62,11 +63,16 @@ export default function ChangelogPage() {
   const latestPublished = useMemo(() => latestPublishedMs(entries), [entries]);
   const stampedFor = useRef<number | null | undefined>(undefined);
   const uid = user?.uid ?? null;
+  const port = useProgramData();
+  const [seenError, setSeenError] = useState<string | null>(null);
   useEffect(() => {
     if (!uid || !loaded || stampedFor.current === latestPublished) return;
     stampedFor.current = latestPublished;
-    void markChangelogSeen(uid);
-  }, [uid, loaded, latestPublished]);
+    markChangelogSeen(uid, port).then(
+      () => setSeenError(null),
+      (err: unknown) => setSeenError(err instanceof Error ? err.message : "Couldn't record the changelog visit.")
+    );
+  }, [uid, loaded, latestPublished, port]);
 
   const filterActive = types.length > 0 || query.trim() !== "";
   const displayed = useMemo(() => filterEntries(entries, { types, query }), [entries, types, query]);
@@ -93,6 +99,11 @@ export default function ChangelogPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {seenError && (
+        <p role="alert" className="text-sm text-red-400">
+          {seenError} The unread dot will stay until it is saved.
+        </p>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Changelog</h1>

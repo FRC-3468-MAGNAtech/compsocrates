@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import type { ProgramData } from "@/lib/program/data";
+import { saveUserFields } from "@/lib/program/user-fields";
 import { entryFromData, hasUnread, normalizeDraft, sortEntries, timestampMs, entryToDraft, type ChangelogDraft, type ChangelogEntry } from "@/lib/changelog";
 import { STARTER_ENTRIES, starterDocId } from "@/lib/changelog/seed";
 
@@ -81,13 +83,12 @@ export function useChangelogUnread(teamId: string | null, lastSeenChangelogAt: u
   return useMemo(() => hasUnread(published, seenMs), [published, seenMs]);
 }
 
-/** Stamps "I've seen the changelog up to now" on the user's own doc — clears the dot. Best-effort: a failure just leaves the dot. */
-export async function markChangelogSeen(uid: string): Promise<void> {
-  try {
-    await updateDoc(doc(db, "users", uid), { lastSeenChangelogAt: serverTimestamp() });
-  } catch (err) {
-    console.error("couldn't record the changelog visit:", err);
-  }
+/**
+ * Stamps "I've seen the changelog up to now" on the user's own doc (the program's own through its port, else the root `users/{uid}`) — clears the dot.
+ * A failure is reported and thrown (a `UserFieldsSaveError` with text to show), so the page can say the dot will stay.
+ */
+export async function markChangelogSeen(uid: string, port: Pick<ProgramData, "profile"> | null = null): Promise<void> {
+  await saveUserFields(port, uid, { lastSeenChangelogAt: serverTimestamp() }, "Couldn't record the changelog visit");
 }
 
 /** What an entry looks like in the audit log: its content, not its timestamps. */

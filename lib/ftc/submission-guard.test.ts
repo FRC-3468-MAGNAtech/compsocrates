@@ -8,6 +8,7 @@ vi.mock("@/data/ftc/write", () => ({
   setEventAttendance: (...args: unknown[]) => h.other(...args),
   editPickList: (...args: unknown[]) => h.other(...args),
   updateUserProfile: (...args: unknown[]) => h.other(...args),
+  updateUserFields: (...args: unknown[]) => h.other(...args),
   publishAssignments: (...args: unknown[]) => h.other(...args),
   undoAssignments: (...args: unknown[]) => h.other(...args),
   swapAssignmentSlot: (...args: unknown[]) => h.other(...args),

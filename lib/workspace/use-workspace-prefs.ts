@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/lib/auth";
-import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { isFirebaseConfigured } from "@/lib/firebase/client";
+import { useProgramData } from "@/lib/program/data";
+import { saveUserFields } from "@/lib/program/user-fields";
 import { FORM_DEFAULT_FRACTION, SPLIT_DEFAULT, WORKSPACE_STORAGE_KEYS, clampSplit, parseFraction, readFraction, resolveFraction, writeFraction } from "@/lib/workspace/layout";
 
 // P24: the ScoutingWorkspace's remembered layout: how wide the form is (a share of the workspace) and, on phones, how the screen splits between video and form.
@@ -29,6 +30,13 @@ function usePersistedFraction(field: Field, storageKey: string, fallback: number
   const [local, setLocal] = useState<number | null>(() => readFraction(storage(), storageKey));
   const timer = useRef<number | null>(null);
   const pending = useRef<{ uid: string; value: number } | null>(null);
+  // The program's own user doc (its own users/{uid} under the program prefix); null for the root program, which writes users/{uid} as it always did.
+  const port = useProgramData();
+  const portRef = useRef(port);
+  useEffect(() => {
+    portRef.current = port;
+  }, [port]);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const value = clamp(resolveFraction(profileValue, local, fallback));
 
@@ -37,7 +45,12 @@ function usePersistedFraction(field: Field, storageKey: string, fallback: number
     pending.current = null;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
-    if (p && isFirebaseConfigured()) updateDoc(doc(db, "users", p.uid), { [field]: p.value }).catch((err) => console.error(`couldn't save ${field}:`, err));
+    if (p && isFirebaseConfigured()) {
+      saveUserFields(portRef.current, p.uid, { [field]: p.value }, "Couldn't save your workspace layout").then(
+        () => setSaveError(null),
+        (err: unknown) => setSaveError(err instanceof Error ? err.message : "Couldn't save your workspace layout.")
+      );
+    }
   }, [field]);
 
   const set = useCallback(
@@ -65,14 +78,14 @@ function usePersistedFraction(field: Field, storageKey: string, fallback: number
   // A pending debounced save isn't lost when the workspace closes.
   useEffect(() => flush, [flush]);
 
-  return [value, set] as const;
+  return [value, set, saveError] as const;
 }
 
 const clampForm = (n: number) => n;
 
 /** The remembered form width (share of the workspace) and phone split (video's share of the height). */
 export function useWorkspacePrefs() {
-  const [formFraction, setFormFraction] = usePersistedFraction("workspaceFormWidth", WORKSPACE_STORAGE_KEYS.formFraction, FORM_DEFAULT_FRACTION, clampForm);
-  const [phoneSplit, setPhoneSplit] = usePersistedFraction("workspacePhoneSplit", WORKSPACE_STORAGE_KEYS.phoneSplit, SPLIT_DEFAULT, clampSplit);
-  return { formFraction, setFormFraction, phoneSplit, setPhoneSplit };
+  const [formFraction, setFormFraction, formError] = usePersistedFraction("workspaceFormWidth", WORKSPACE_STORAGE_KEYS.formFraction, FORM_DEFAULT_FRACTION, clampForm);
+  const [phoneSplit, setPhoneSplit, splitError] = usePersistedFraction("workspacePhoneSplit", WORKSPACE_STORAGE_KEYS.phoneSplit, SPLIT_DEFAULT, clampSplit);
+  return { formFraction, setFormFraction, phoneSplit, setPhoneSplit, saveError: formError ?? splitError };
 }
