@@ -80,6 +80,7 @@ The current state, kept short. "Not verified" means it was built and unit tested
 Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the schema freeze must be absolute.
 - `users/{uid}`: `isOwner`, `isPlatformOwner`, and the theme and preference fields (`themeId`, `colorMode`, `gradientIntensity`, avatar, `lastSeenChangelogAt`, `fcmTokens`, workspace preferences and similar).
 - `teams/{id}`: `selectedEventNames` (`{ [eventKey]: name }`, written by Event Select beside `selectedEvents` with a merge write so event names survive a data-API outage; read in `data/cs/teams.ts`, the "stored" step of the name chain in `lib/events/names.ts`).
+- `teams/{id}` (FRC) and `programs/ftc/teams/{id}` (FTC): `archivedEvents` (`string[]` of event codes, Session D; written by Event Select with a merge write / `updateDoc` of that one field, admins and owners only; read in `data/cs/teams.ts` and `data/ftc/teams.ts`). Archived codes stay in `selectedEvents`; only the event pickers skip them. No data read is filtered by it.
 - `scoutingFlagStates`: `manualReasonText` and `manualNoteText` (the extra manual-flag reason and note).
 - Entries and form docs: `stickyNotes` (and `linkedEntryId`, `planDifferences` where a form has them); `alliance` on match-strategy plan and drive-reflection docs; `eventKey` on helper docs; `teleop.humanPlayerFuelByShift` on REBUILT entries (D8).
 - FTC entries: `values.allianceRole` (`hive` or `garden`) on BIOBUZZ match entries; the other role's fields are absent, not 0.

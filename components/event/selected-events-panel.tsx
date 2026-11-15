@@ -6,7 +6,7 @@ import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, 
 import { SortableContext, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowDown, ArrowUp, CalendarX2, Check, ChevronDown, Clock, GripVertical, Star, X } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, CalendarX2, Check, ChevronDown, Clock, GripVertical, Star, X } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { moveActiveEvent } from "@/lib/active-events";
@@ -45,6 +45,8 @@ type PanelProps = {
   /** Admins can reorder (which also sets the primary), star a primary and remove events; everyone else sees the panel read-only. */
   canEdit: boolean;
   onRemove: (event: EventInfo) => void;
+  /** Session D: archive an event (admins only). Omit to hide the action. */
+  onArchive?: (event: EventInfo) => void;
   /** FIX4: move an event to a new place in the order. The first place is the primary event, so the star is "move to 0". */
   onMove: (code: string, toIndex: number) => void;
 };
@@ -67,7 +69,7 @@ const dragGripClass =
  * slot needs the page-tall container as its sticky containing block, and its
  * negative bottom margin cancels the flex gap it would otherwise add.
  */
-export function SelectedEventsPanel({ events: rawEvents, primaryCode, canEdit, onRemove, onMove }: PanelProps) {
+export function SelectedEventsPanel({ events: rawEvents, primaryCode, canEdit, onRemove, onArchive, onMove }: PanelProps) {
   // Every name below goes through the shared chain (API, stored, static, key), so a placeholder never shows as a bare key.
   const events = useNamedEvents(rawEvents);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -242,6 +244,7 @@ export function SelectedEventsPanel({ events: rawEvents, primaryCode, canEdit, o
                         canEdit={canEdit}
                         now={now}
                         onRemove={onRemove}
+                        onArchive={onArchive}
                         onMakePrimary={(code) => move(code, 0)}
                       />
                     ))}
@@ -283,6 +286,7 @@ export function SelectedEventsPanel({ events: rawEvents, primaryCode, canEdit, o
                       canReorder={canReorder}
                       now={now}
                       onRemove={onRemove}
+                      onArchive={onArchive}
                       onMove={move}
                     />
                   ))}
@@ -306,6 +310,7 @@ function SortableEventCard({
   canReorder,
   now,
   onRemove,
+  onArchive,
   onMove,
 }: {
   event: EventInfo;
@@ -316,6 +321,7 @@ function SortableEventCard({
   canReorder: boolean;
   now: number;
   onRemove: (event: EventInfo) => void;
+  onArchive?: (event: EventInfo) => void;
   onMove: (code: string, toIndex: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: event.code, disabled: !canReorder });
@@ -328,6 +334,7 @@ function SortableEventCard({
           canEdit={canEdit}
           now={now}
           onRemove={onRemove}
+          onArchive={onArchive}
           onMakePrimary={(code) => onMove(code, 0)}
           reorder={
             canReorder
@@ -355,6 +362,7 @@ function EventRow({
   canEdit,
   now,
   onRemove,
+  onArchive,
   onMakePrimary,
   reorder,
 }: {
@@ -363,6 +371,7 @@ function EventRow({
   canEdit: boolean;
   now: number;
   onRemove: (event: EventInfo) => void;
+  onArchive?: (event: EventInfo) => void;
   onMakePrimary: (code: string) => void;
   /** The drag grip and up/down arrows, only in the big panel and only when there is something to reorder. */
   reorder?: { index: number; count: number; onMove: (toIndex: number) => void; grip: React.ReactNode };
@@ -427,6 +436,19 @@ function EventRow({
             <ArrowDown className="h-4 w-4" />
           </button>
         </>
+      )}
+      {canEdit && onArchive && (
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.85 }}
+          transition={springSnappy}
+          onClick={() => onArchive(event)}
+          aria-label={`Archive ${event.name}`}
+          title="Archive"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-white/10 hover:text-[var(--foreground)]"
+        >
+          <Archive className="h-4 w-4" />
+        </motion.button>
       )}
       {canEdit && (
         <motion.button

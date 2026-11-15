@@ -17,6 +17,7 @@ vi.mock("@/data/ftc/write", () => ({
   undoTeamAssignments: (...args: unknown[]) => h.other(...args),
   updateMemberAccess: (...args: unknown[]) => h.other(...args),
   setActiveEvents: (...args: unknown[]) => h.events(...args),
+  setArchivedEvents: (...args: unknown[]) => h.events(...args),
   saveFormEntry: (...args: unknown[]) => h.other(...args),
   updateFormEntry: (...args: unknown[]) => h.other(...args),
   editOwnFormEntry: (...args: unknown[]) => h.other(...args),
@@ -25,7 +26,7 @@ vi.mock("@/data/ftc/write", () => ({
 }));
 
 import { deleteEntry, saveEntry, updateEntry, type SaveEntryInput } from "@/lib/scout-entries";
-import { setActiveEvent, setActiveEvents } from "@/lib/team";
+import { setActiveEvent, setActiveEvents, setArchivedEvents } from "@/lib/team";
 import { setEventAttendance } from "@/lib/event-attendance";
 import { updateMemberAccess } from "@/lib/team-members";
 import { editPickList } from "@/lib/pick-list/store";
@@ -102,6 +103,12 @@ describe("setActiveEvents and the program", () => {
     await setActiveEvent("team-a", null, "ftc");
     expect(h.events).toHaveBeenCalledTimes(2);
     expect(h.events).toHaveBeenCalledWith("team-a", state);
+  });
+
+  it("archiving writes the archived codes through the program's port, de-duplicated", async () => {
+    h.events.mockResolvedValue(undefined);
+    await setArchivedEvents("team-a", ["E1", "E1", "E2"], "ftc");
+    expect(h.events).toHaveBeenCalledWith("team-a", ["E1", "E2"]);
   });
 
   it("the default program never touches the program port", async () => {

@@ -9,6 +9,7 @@ import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
+import { readArchivedEvents } from "@/lib/events/archive";
 import { csTeamToTeamDoc, selectedEventNamesPatch, selectedEventsPatch } from "@/data/cs/teams";
 
 export type TeamDoc = {
@@ -48,6 +49,8 @@ export type TeamDoc = {
   selectedEvents?: string[];
   /** ADDITIVE (rebuild only): `{ [eventKey]: name }` for the selected events, written with `selectedEvents` (see data/cs/teams.ts). The "stored" step of the event-name chain (lib/events/names.ts). */
   selectedEventNames?: Record<string, string>;
+  /** ADDITIVE (Session D): event codes an admin archived (both programs). They stay selected; only the event pickers skip them. Absent: none. */
+  archivedEvents?: string[];
   /** D1: CS `submissionControls` as stored. Use `submissionLockout` to gate a new submission. */
   submissionControls?: CsSubmissionControls;
   /** D1: the lockout CS's `assertSubmissionsOpen` enforces on every NEW submission (edit mode bypasses it). */
@@ -136,6 +139,16 @@ export async function setActiveEvents(teamId: string, state: ActiveEventsState, 
   if (data) return data.team.setActiveEvents(teamId, state);
   // `selectedEventNames` is the additive names map (merged key by key, nothing else touched); absent when no event has a real name yet.
   await setDoc(doc(db, "teams", teamId), { ...selectedEventsPatch(state), ...selectedEventNamesPatch(state) }, { merge: true });
+}
+
+/**
+ * Session D: writes the team's archived event codes, ADDITIVE field `archivedEvents`, with a merge write beside `selectedEvents` (which is
+ * not touched). Admin-gated at the call site and by the rules. A namespaced program writes it through its data port (its own path).
+ */
+export async function setArchivedEvents(teamId: string, codes: string[], program: ProgramId = DEFAULT_PROGRAM) {
+  const data = programData(program);
+  if (data) return data.team.setArchivedEvents(teamId, readArchivedEvents(codes));
+  await setDoc(doc(db, "teams", teamId), { archivedEvents: readArchivedEvents(codes) }, { merge: true });
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */

@@ -82,7 +82,8 @@ function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member:
   const { user, profile: me } = useAuth();
   const program = useProgram();
   const sources = useScoutStatsSources(teamId);
-  const { events: activeEvents, primaryCode } = useActiveEvents();
+  // Names and the target event come from every selected event, archived ones included (a cross-event view).
+  const { allEvents: activeEvents, storedPrimaryCode: primaryCode } = useActiveEvents();
   const targets = useScoutTargets(teamId);
   const { slotsByEvent, loaded: slotsLoaded } = useTeamAssignmentSlots(teamId);
   // Fixed once per visit: "5 minutes ago" doesn't need to tick, and a render shouldn't read the clock.

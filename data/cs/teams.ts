@@ -14,6 +14,7 @@
  * `tbaApiKey*`, `judgeBookCards`, ...) is never written by this adapter, so a merge write leaves it untouched.
  */
 import { dedupeEventKeys, EVENT_CONFIG, getSeasonFromEventKey, normalizeEventKey } from "@/config/event";
+import { readArchivedEvents } from "@/lib/events/archive";
 import { collectStoredEventNames } from "@/lib/events/stored-names";
 import type { CsRecord, CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
 import { isRecord, str } from "@/data/cs/util";
@@ -77,6 +78,7 @@ const CE_PASSTHROUGH = [
 export function csTeamToTeamDoc(id: string, doc: CsTeamDoc): TeamDoc {
   const selectedEvents = readSelectedEvents(doc.selectedEvents);
   const selectedEventNames = readSelectedEventNames(doc.selectedEventNames);
+  const archivedEvents = readArchivedEvents(doc.archivedEvents);
   const events = selectedEvents.map(placeholderEventForKey);
   const primary = events[0] ?? null;
   const rawNumber = typeof doc.teamNumber === "number" ? doc.teamNumber : Number(String(doc.teamNumber ?? "").replace(/[^\d]/g, ""));
@@ -95,6 +97,7 @@ export function csTeamToTeamDoc(id: string, doc: CsTeamDoc): TeamDoc {
     activeEvents: events,
     selectedEvents,
     ...(Object.keys(selectedEventNames).length > 0 ? { selectedEventNames } : {}),
+    ...(archivedEvents.length > 0 ? { archivedEvents } : {}),
     ...(controls ? { submissionControls: controls } : {}),
     submissionLockout: readSubmissionLockout(controls),
     ...(isRecord(doc.eventAttendees) ? { eventAttendees: doc.eventAttendees as Record<string, string[]> } : {}),

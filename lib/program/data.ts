@@ -56,6 +56,8 @@ export type ProgramData = {
     subscribe(teamId: string, onData: (team: TeamDoc | null) => void, onError: DataError): Unsubscribe;
     /** Sets the account's active events (admins and the owner, by the rules). */
     setActiveEvents(teamId: string, state: ActiveEventsState): Promise<void>;
+    /** Writes the team's archived event codes (admins and the owner). Writes that one field and nothing else. */
+    setArchivedEvents(teamId: string, codes: string[]): Promise<void>;
   };
   scoutEntries: {
     /** Every entry of the team, all events and sources. */

@@ -92,6 +92,8 @@ export type CsTeamDoc = {
   selectedEvents?: string[];
   /** ADDITIVE (rebuild only, CS ignores it): `{ [eventKey]: name }` for the selected events, written with `selectedEvents` so the names survive an API outage. */
   selectedEventNames?: Record<string, string>;
+  /** ADDITIVE (rebuild only, CS ignores it): event codes an admin archived. They stay in `selectedEvents`; only the event pickers skip them. */
+  archivedEvents?: string[];
   eventAttendees?: Record<string, string[]>;
   manualTeamListsByEvent?: Record<string, unknown>;
   formAccessOverrides?: Record<string, string[]>;

@@ -17,6 +17,7 @@ import { setActiveEvent as setTeamActiveEvent, useTeamDoc } from "@/lib/team";
 import { readActiveEvents } from "@/lib/active-events";
 import { getEventStatus } from "@/lib/events/event-status";
 import type { EventNameState } from "@/lib/events/name-store";
+import { readArchivedEvents, splitArchived, visibleEventsState } from "@/lib/events/archive";
 import { collectStoredEventNames } from "@/lib/events/stored-names";
 import type { EventInfo } from "@/lib/events/types";
 import { useEventNames, useRegisterStoredEventNames } from "@/lib/events/use-event-names";
@@ -53,6 +54,12 @@ function useEnrichedEvents(events: EventInfo[], stored: Record<string, string> |
  * realtime, shared by every page that used to assume exactly one active event.
  * `events` is in selection order; `primary` is the first one (the team doc's
  * `selectedEvents[0]`; null when nothing is active).
+ *
+ * Session D: `events` / `primary` / `primaryCode` are what a PICKER offers, so archived events (`archivedEvents` on the
+ * team doc) are left out, and an archived primary falls back to the first current event (or null: the empty state).
+ * Pages that read across events keep everything: `allEvents` (archived included, selection order), `archivedEvents`,
+ * `archivedCodes`, `storedPrimaryCode`, and `isActive` (still true for an archived selected event). Archiving never removes a code from
+ * `selectedEvents` and never filters a data read.
  */
 export function useActiveEvents() {
   const { profile } = useAuth();
@@ -65,11 +72,14 @@ export function useActiveEvents() {
   useRegisterStoredEventNames(stored);
   const { eventLookup } = useProgramConfig().connection.features;
   const { events, names: eventNames } = useEnrichedEvents(state.events, stored, eventLookup);
-  const primary = useMemo(() => events.find((e) => e.code === state.primaryCode) ?? null, [events, state.primaryCode]);
+  const archivedCodes = useMemo(() => readArchivedEvents(team?.archivedEvents), [team]);
+  const visible = useMemo(() => visibleEventsState({ events, primaryCode: state.primaryCode }, archivedCodes), [events, archivedCodes, state.primaryCode]);
+  const archivedEvents = useMemo(() => splitArchived(events, archivedCodes).archived, [events, archivedCodes]);
+  const primary = useMemo(() => visible.events.find((e) => e.code === visible.primaryCode) ?? null, [visible]);
 
   const isActive = useCallback((code: string) => state.events.some((e) => e.code === code), [state.events]);
 
-  return { events, primary, primaryCode: state.primaryCode, isActive, loaded, eventNames };
+  return { events: visible.events, primary, primaryCode: visible.primaryCode, isActive, loaded, eventNames, allEvents: events, archivedEvents, archivedCodes, storedPrimaryCode: state.primaryCode };
 }
 
 /** The primary active event only — kept for callers that genuinely only need one. Anything that picks or filters by event should use `useActiveEvents()`. */

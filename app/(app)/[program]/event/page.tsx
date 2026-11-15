@@ -17,11 +17,16 @@ import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
 import { useTeamScoutEntries } from "@/lib/scout-entries";
-import { setActiveEvents } from "@/lib/team";
+import { setActiveEvents, setArchivedEvents } from "@/lib/team";
+import { ArchivedEventsSection } from "@/components/event/archived-events-section";
+import { EVENT_CONFIG } from "@/config/event";
+import { archiveCodes, previousSeasonEvents, restoreCode } from "@/lib/events/archive";
+import { useProgramConfig } from "@/lib/program/context";
 import { MAX_ACTIVE_EVENTS, moveActiveEvent, toggleActiveEvent, type ActiveEventsState } from "@/lib/active-events";
 import {
   EVENT_STATUS_ORDER,
   countEventsByStatus,
+  currentSeasonFor,
   getEventStatus,
   sortEvents,
   type EventSort,
@@ -52,11 +57,13 @@ const SORT_LABELS: Record<EventSort, string> = {
 export default function EventSelectionPage() {
   const { profile } = useAuth();
   const teamId = profile?.teamId ?? null;
-  const { events: activeEvents, primary, primaryCode } = useActiveEvents();
+  // Event Select edits the WHOLE selection (archived events stay selected), so it reads `allEvents` and the stored primary, not the pickers' view.
+  const { events: currentEvents, allEvents: activeEvents, archivedEvents, archivedCodes, primary, primaryCode: shownPrimaryCode, storedPrimaryCode: primaryCode } = useActiveEvents();
   const { isAdmin } = usePermissions();
   const { entries: scoutEntries } = useTeamScoutEntries(teamId);
   // The program picks the season range (its current game), the events API it asks, and where the selection is saved.
   const program = useProgram();
+  const { event: eventRules } = useProgramConfig();
   const { selectableApiSeasons: seasons, defaultApiSeason } = useForms();
   const [season, setSeason] = useState(defaultApiSeason);
   const [search, setSearch] = useState("");
@@ -71,6 +78,8 @@ export default function EventSelectionPage() {
 
   const state: ActiveEventsState = useMemo(() => ({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
   const activeCodes = useMemo(() => new Set(activeEvents.map((e) => e.code)), [activeEvents]);
+  const currentSeason = currentSeasonFor(eventRules.seasonKind, now, EVENT_CONFIG.season);
+  const previousSeason = useMemo(() => previousSeasonEvents(currentEvents, archivedCodes, currentSeason), [currentEvents, archivedCodes, currentSeason]);
 
   // Search narrows first; the status counts then describe what the search found, so the
   // segmented control never promises events the current search would hide.
@@ -101,6 +110,15 @@ export default function EventSelectionPage() {
   const commit = (next: ActiveEventsState) => {
     if (!teamId || !isAdmin) return;
     void setActiveEvents(teamId, next, program);
+    // An event taken off the selection also leaves the archive, so adding it back later does not start out archived.
+    const kept = archivedCodes.filter((c) => next.events.some((e) => e.code === c));
+    if (kept.length !== archivedCodes.length) void setArchivedEvents(teamId, kept, program);
+  };
+
+  // Archive and Restore write `archivedEvents` only (never `selectedEvents`); admins and owners, by the rules.
+  const commitArchived = (next: string[]) => {
+    if (!teamId || !isAdmin) return;
+    void setArchivedEvents(teamId, next, program);
   };
 
   const scoutedCount = (code: string) => scoutEntries.filter((e) => e.source === "event" && e.eventCode === code).length;
@@ -145,11 +163,25 @@ export default function EventSelectionPage() {
       {isAdmin && <EventNamesNotice />}
 
       <SelectedEventsPanel
-        events={activeEvents}
-        primaryCode={primaryCode}
+        events={currentEvents}
+        primaryCode={shownPrimaryCode}
         canEdit={isAdmin}
         onRemove={removeEvent}
-        onMove={(code, toIndex) => commit(moveActiveEvent(state, code, toIndex))}
+        onArchive={(event) => commitArchived(archiveCodes(archivedCodes, [event.code]))}
+        // The panel shows current events only: a position among them is a position among all selected events.
+        onMove={(code, toIndex) => {
+          const target = currentEvents[Math.min(toIndex, currentEvents.length - 1)];
+          commit(moveActiveEvent(state, code, Math.max(0, activeEvents.findIndex((e) => e.code === target?.code))));
+        }}
+      />
+
+      <ArchivedEventsSection
+        archived={archivedEvents}
+        previousSeason={previousSeason}
+        canEdit={isAdmin}
+        now={now}
+        onRestore={(event) => commitArchived(restoreCode(archivedCodes, event.code))}
+        onArchiveAll={(events) => commitArchived(archiveCodes(archivedCodes, events.map((e) => e.code)))}
       />
 
       {primary && <ActiveEventSummary key={primary.code} event={primary} now={now} />}
@@ -257,7 +289,7 @@ export default function EventSelectionPage() {
                       event={event}
                       status={getEventStatus(event, now)}
                       selected={activeCodes.has(event.code)}
-                      isPrimary={event.code === primaryCode}
+                      isPrimary={event.code === shownPrimaryCode}
                       canEdit={isAdmin}
                       onToggle={() => toggleEvent(event)}
                     />

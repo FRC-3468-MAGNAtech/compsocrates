@@ -93,6 +93,16 @@ export async function setActiveEvents(teamId: string, state: ActiveEventsState):
   }
 }
 
+/** Sets the account's archived event codes (ADDITIVE field `archivedEvents`; admins and the owner, by the rules). Writes that field and nothing else. */
+export async function setArchivedEvents(teamId: string, codes: string[]): Promise<void> {
+  try {
+    await updateDoc(programDoc(db, PROGRAM, TEAMS, teamId), { archivedEvents: codes });
+  } catch (err) {
+    reportFirestoreError("Couldn't save the archived events", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
+    throw err;
+  }
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // formEntries (the team's other forms)
 // ---------------------------------------------------------------------------------------------------------------------

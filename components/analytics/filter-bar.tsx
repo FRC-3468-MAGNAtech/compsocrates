@@ -90,6 +90,13 @@ export function AnalyticsFilterBar() {
           />
         </Control>
 
+        {!filters.practice && data.archivedCodes.length > 0 && (
+          <label className="flex h-11 cursor-pointer items-center gap-2.5 text-sm font-medium">
+            <Checkbox checked={data.showArchived} onCheckedChange={(v) => data.setShowArchived(v === true)} aria-label="Show archived events" data-testid="show-archived" />
+            Show archived events
+          </label>
+        )}
+
         {!formRoute && practiceConnected && (
         <label className="flex h-11 cursor-pointer items-center gap-2.5 text-sm font-medium">
           <Checkbox checked={filters.practice} onCheckedChange={(v) => setFilters({ practice: v === true, events: { kind: "active" } })} aria-label="Practice data" />

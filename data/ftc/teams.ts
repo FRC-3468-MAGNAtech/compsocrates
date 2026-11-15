@@ -12,6 +12,7 @@
 import type { EventInfo, EventLifecycleStatus } from "@/lib/events/types";
 import type { TeamDoc } from "@/lib/team";
 import type { AccountTeam } from "@/lib/team-number";
+import { readArchivedEvents } from "@/lib/events/archive";
 import { digitsToNumber, finiteNumber, isRecord, nonEmptyString, str, stringList, stripUndefined } from "@/data/ftc/util";
 import { orderPrimaryFirst, type ActiveEventsState } from "@/lib/active-events";
 
@@ -34,6 +35,7 @@ export type FtcTeamDoc = {
   activeEvent?: unknown;
   activeEventCodes?: unknown;
   activeEvents?: unknown;
+  archivedEvents?: unknown;
   usePlaceholderVideo?: unknown;
   changelogSeeded?: unknown;
   libraryBackfilled?: unknown;
@@ -112,6 +114,7 @@ export function ftcTeamToTeamDoc(id: string, doc: FtcTeamDoc): TeamDoc {
   if (primaryCode && !codes.includes(primaryCode)) codes.unshift(primaryCode);
 
   const activeForms = readActiveForms(doc.activeForms);
+  const archivedEvents = readArchivedEvents(doc.archivedEvents);
   const accountName = nonEmptyString(doc.accountName);
   const ownerUid = nonEmptyString(doc.ownerUid);
 
@@ -131,6 +134,7 @@ export function ftcTeamToTeamDoc(id: string, doc: FtcTeamDoc): TeamDoc {
     activeEvent: primary,
     activeEventCodes: codes,
     activeEvents: events,
+    ...(archivedEvents.length > 0 ? { archivedEvents } : {}),
     ...(typeof doc.usePlaceholderVideo === "boolean" ? { usePlaceholderVideo: doc.usePlaceholderVideo } : {}),
     ...(typeof doc.changelogSeeded === "boolean" ? { changelogSeeded: doc.changelogSeeded } : {}),
     ...(typeof doc.libraryBackfilled === "boolean" ? { libraryBackfilled: doc.libraryBackfilled } : {}),
