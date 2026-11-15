@@ -97,6 +97,14 @@ describe("the shared write path", () => {
     expect(h.saveScout).toHaveBeenCalledTimes(1);
   });
 
+  it("Practice Scouting is never closed, even with the master switch off", async () => {
+    settings({ enabled: false, seasons: { biobuzz: false } });
+    await saveEntry(TEAM, "u", { ...scout, source: "practice", mode: "trial", sessionId: "s1" }, "ftc");
+    await saveEntry(TEAM, "u", { ...scout, source: "live", sessionId: "s2" }, "ftc");
+    expect(h.saveScout).toHaveBeenCalledTimes(2);
+    await expect(saveEntry(TEAM, "u", { ...scout, source: "event" }, "ftc")).rejects.toBeInstanceOf(SubmissionClosedError);
+  });
+
   it("an admin's import (bypass) is not a scout submitting", async () => {
     settings({ enabled: false });
     await saveEntry(TEAM, "u", { ...scout, gate: { bypass: true } }, "ftc");

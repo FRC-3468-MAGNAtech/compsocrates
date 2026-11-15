@@ -26,7 +26,6 @@ import { notesForSave } from "@/lib/sticky-notes";
 import { markPlayerSubmitted, useLobbySessions, type LobbyDoc, type LobbyPlayer } from "@/lib/lobby";
 import { LOBBY_CONFIG } from "@/lib/lobby/config";
 import { LoadError } from "@/components/practice/load-error";
-import { SubmissionLockoutBanner, useSubmissionLockout } from "@/components/forms/submission-lockout";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { eventLabel } from "@/lib/events/names";
 
@@ -56,8 +55,6 @@ export function LobbySessionScreen({
 }) {
   const { user, profile } = useAuth();
   const form = useLockedForm(lobby.seasonId);
-  // Session E: the team's submission switches for this lobby's season (the scout's answers stay on screen; saving the entry is what is closed)
-  const lockout = useSubmissionLockout(lobby.teamId, lobby.seasonId);
   const { team } = useTeamDoc(lobby.teamId);
   const usePlaceholder = team?.usePlaceholderVideo ?? false;
   const { matches } = useLibraryMatchesBySeason(lobby.seasonId, { includeImported: false });
@@ -184,7 +181,6 @@ export function LobbySessionScreen({
         mode: lobby.mode,
         sessionId: mySession.id,
         libraryMatchId: lobby.libraryMatchId,
-        gate: { seasonId: lobby.seasonId },
       });
       const entries = await getEntriesForSession(lobby.teamId, mySession.id);
       await updatePracticeSession(mySession.id, {
@@ -286,13 +282,12 @@ export function LobbySessionScreen({
               comments={{ notes, onChange: setNotes, label: `Robot: #${myRobot}` }}
               notice={
                 <>
-                  <SubmissionLockoutBanner lockout={lockout} editAllowed={false} />
                   {validationError && <p className="mt-2 text-sm font-medium text-red-300">Fill in the form before submitting.</p>}
                   {error && <LoadError failure={error} />}
                 </>
               }
               actions={
-                <Button size="lg" className="gap-2" onClick={handleSubmit} disabled={submitting || !mySession || lockout.locked}>
+                <Button size="lg" className="gap-2" onClick={handleSubmit} disabled={submitting || !mySession}>
                   <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit"}
                 </Button>
               }

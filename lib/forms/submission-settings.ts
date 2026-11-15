@@ -3,7 +3,7 @@
 //   formSubmissionSettings: { enabled: boolean, seasons: { [seasonId]: boolean }, updatedBy?: { uid, name }, updatedAtMs?: number }
 //
 // A missing field, a missing key and anything unreadable mean ON, so nothing changes on deploy. `enabled: false` closes every form; `seasons.<id>: false` closes one
-// game's forms (`rebuilt`, `reefscape`, `charged_up`, `biobuzz`: the program's season ids). Closing a form stops NEW submissions only: the form stays viewable,
+// game's forms (a game id lower-cased: `rebuilt`, `charged_up`; the program's season ids). Closing a form stops NEW submissions only: the form stays viewable,
 // drafts keep saving, and an admin can still edit entries. This is a client-side control (like other team scoping) until the rules are tightened (docs/SECURITY-NOTES.md).
 // Pure: no React, no Firebase.
 

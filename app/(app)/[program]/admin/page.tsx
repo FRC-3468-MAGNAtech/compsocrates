@@ -125,7 +125,8 @@ export default function AdminPanelPage() {
       )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as AdminTab)}>
-        <TabsList>
+        {/* the tabs wrap onto more rows instead of running off the screen */}
+        <TabsList className="flex max-w-full flex-wrap justify-start rounded-3xl">
           {(Object.keys(TAB_LABELS) as AdminTab[])
             .filter((t) => isPlatformOwner || !PLATFORM_TABS.includes(t))
             .filter((t) => t !== "forms" || can("manageForms"))

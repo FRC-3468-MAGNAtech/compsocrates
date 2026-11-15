@@ -43,7 +43,7 @@ describe("reading the settings", () => {
 describe("master off", () => {
   const s = readFormSubmissionSettings({ enabled: false });
   it("closes every season, and a form with no season", () => {
-    for (const id of ["rebuilt", "reefscape", "charged_up", "biobuzz", null, undefined]) expect(isSubmissionOpen(s, id)).toBe(false);
+    for (const id of ["rebuilt", "reefscape", "charged_up", "solo", null, undefined]) expect(isSubmissionOpen(s, id)).toBe(false);
   });
   it("says so", () => {
     expect(submissionBlock(s, "rebuilt", "REBUILT")).toEqual({ kind: "all", message: MASTER_OFF_MESSAGE });
@@ -56,7 +56,7 @@ describe("one season off", () => {
     expect(isSubmissionOpen(s, "reefscape")).toBe(false);
     expect(isSubmissionOpen(s, "rebuilt")).toBe(true);
     expect(isSubmissionOpen(s, "charged_up")).toBe(true);
-    expect(isSubmissionOpen(s, "biobuzz")).toBe(true);
+    expect(isSubmissionOpen(s, "solo")).toBe(true);
     expect(isSubmissionOpen(s, null)).toBe(true);
   });
   it("names the game in the message", () => {

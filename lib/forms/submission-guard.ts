@@ -11,7 +11,7 @@ import { SubmissionClosedError, submissionBlock, type FormSubmissionSettings, ty
 
 /** Rides on a new entry's input (never written to the document): which season the entry belongs to, and whether this writer is exempt. */
 export type SubmissionGateInput = {
-  /** The season id of the entry (`rebuilt`, `reefscape`, `charged_up`, `biobuzz`). Omitted: only the master switch applies. */
+  /** The season id of the entry (a game id lower-cased: `rebuilt`, `charged_up`). Omitted: only the master switch applies. */
   seasonId?: string | null;
   /** An admin tool that bulk-creates entries on purpose (the CSV import) skips the check. Not for scouts' submit paths. */
   bypass?: boolean;
