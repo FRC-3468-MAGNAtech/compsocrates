@@ -47,6 +47,7 @@ const ALLOWED: Record<string, string> = {
   "components/admin/sidebar-panel.test.tsx": "renders the customizer for each program id",
   "docs/SIDEBAR_PLAN.md": "the plan for the sidebar customizer, which covers both programs",
   "docs/SESSION_F_RESULTS.md": "the results of the sidebar customizer session, which covers both programs",
+  "docs/BATCH1_RESULTS.md": "the results of the FTC foundation fixes and join-request approval batch, which names the program",
 };
 
 const inFtcScope = (file: string) => FTC_SCOPE.some((re) => re.test(file));

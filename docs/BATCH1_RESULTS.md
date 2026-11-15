@@ -1,0 +1,18 @@
+# Batch 1 results: FTC foundation fixes and join-request approval
+**People diagnosis.** Collection `programs/ftc/users`; filter `teamId == profile.teamId` (the signed-in account's own team doc). It never reads root `users` (an FTC port always exists, the root read runs only when the port is null). So other team documents' members were never listed; what leaked was members assigned only to another account team (`fieldTeamIds`) inside the same team doc. Fixed: People now filters by the selected team from `useAccountTeamChoice` (`lib/member-scope.ts`; unassigned members show for every team). Platform owners had no special case and are unchanged. Not checked (no live data): `lib/ftc/migration.ts` stamps `migratedFrom: "ce"`; if migrated users all carry one `teamId`, that is a data problem, not code. No data touched.
+
+**Done.** T2: `saveUserFields` (`lib/program/user-fields.ts`) + port `profile.updateFields`; glass level, workspace layout, changelog last-seen and push token now write the program's own user doc (FRC: `users/{uid}`, unchanged). Failures are thrown and shown (slider, workspace, changelog, push button). T3: `/analytics` connected (links filtered to FTC pages), `/events/[eventKey]` unavailable in FTC, program passed to the 3 lookup sites, `eventLookup` on, shell `ReadFailureBanner` shows failed FTC reads (`lib/read-failures.ts`). T4: rules, `data/ftc/join-requests.ts`, program-aware `JoinRequestsPanel` (confirm, loading, error, empty), `joinRequests` on. T5: adapter test mock got `useContext` (21 tests, all that cause).
+
+**Approval model.** Approve = one batch: request `approved` + `programs/ftc/users/{uid}` as Match Scout, not admin/owner, with the team's `fieldTeamIds` (the account gains the team; nothing replaced, requesters have no profile). Deny changes only the request. Name only is shown (a request holds no email). Also new rule: you may read your own (missing) profile, so the waiting screen moves to the dashboard by itself on approval (live listener, no refresh). A denied requester can send again.
+
+**Additive fields.** Request: `decidedBy`, `decidedAt`. Approved profile: only the fields above. In memory: `TeamMember.assignedTeamIds`. Listed in `docs/REMAINING.md`.
+
+**DEPLOY BY HAND.** `firestore.rules` changed (FTC block: `joinRequests` update, `users` read and create). Approval does NOT work on the live project until you deploy it. Roll back: `git revert` the rules commit (or redeploy the previous `firestore.rules`) and deploy; the panel then shows an error on Approve, nothing else breaks.
+
+**Verify.** lint: 0 errors, 1 warning (`match-list-screen.tsx` unused `timeZone`, not mine). `npm test`: 3043 pass, 5 fail. `test:rules` (Java ok): 336/336. build: pass.
+**Unrelated failures (not fixed).** 5 in `config/brand-guard.test.ts`: `docs/FTC_COMPLETION_PLAN.md` and `app/e2e/sidebar-builder/fixture.tsx` name FTC outside scope (failed before this batch).
+**Known gaps.** The shared event-name store still calls the default provider; FTC codes are not TBA-shaped, so it should not fire (not verified in a browser). Nothing was run in a browser this batch.
+
+**Manual check.** 1) FTC People: only your team's members. 2) Move the glass slider on an FTC-only account, reload: it sticks. 3) Open /analytics in FTC: lands on Match Scout. 4) Open /events/<key> in FTC: not available. 5) Second account: Join a team with the code. 6) Admin: Team Management > Approve (confirm): second account reaches the dashboard unaided. 7) Send another request, Deny it.
+
+**Next step:** deploy the rules by hand, run the 7 manual steps, then start Batch 2 (practice and library data layer).
