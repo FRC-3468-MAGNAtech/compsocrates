@@ -19,7 +19,7 @@ Report: `docs/PARITY_REPORT.md`. Branch `rebuild`. No data schema, scoring, rule
 ## Still different (accepted or next)
 - **Next task: Group B**, merge the Match Library panels (`schedule-library-panel` + `schedule-*` into the shared `match-library-panel`). Also `admin/library/manual-match-dialog.tsx` and the live/lobby flows read the fixed `ALLIANCE_SIZE` (FRC-only today).
 - Team setup: after submitting, FRC shows "Waiting for approval" and FTC shows "Request sent" (different post-submit screens); the frame, card and greeting match.
-- FTC lacks the admin tabs Forms, Sessions, Rescore, Backups, Templates, and 8 pages (`connection.paths`): unported, not in scope.
+- FTC has the admin tabs Forms (with its templates), Sessions, Rescore and Backups since Batch 5b; it still lacks Entries, the two ID tools and Setup Check, and 8 pages (`connection.paths`): unported, not in scope.
 
 ## Side by side (open `/frc/<page>` and `/ftc/<page>` in two windows)
 - **/practice-scouting:** first step is the same "Choose a season" cards (FTC: one card); difficulty step has the same four tiles; match picker has the Event dropdown, same empty text; results Comparison tiles line up (FTC 2 robots).
