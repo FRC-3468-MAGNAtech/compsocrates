@@ -32,6 +32,10 @@ import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { useProgram } from "@/lib/program/context";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import type { TeamDoc } from "@/lib/team";
+import type { LibraryEvent } from "@/lib/library/store";
+import type { EventFormInput } from "@/lib/library/event-form";
+import type { CreateEventResult, ImportOutcome, LibraryActor, ScheduleMatchInput, UpsertResult } from "@/lib/library/schedule";
+import type { LibraryMatch } from "@/lib/match-library";
 
 export type DataError = (failure: FirestoreFailure) => void;
 
@@ -141,6 +145,29 @@ export type ProgramData = {
   forms: {
     subscribeDocs(teamId: string, onData: (docs: Map<string, FormDoc>) => void, onError: DataError): Unsubscribe;
     loadVersion(teamId: string, formId: string, version: number): Promise<Form | null>;
+  };
+  /**
+   * The scheduled-match library (events and matches; FTC: `programs/ftc/libraryEvents` and `libraryMatches`). The root program has none: its hooks read
+   * the root collections themselves (`lib/match-library.ts`, `lib/library/store.ts`).
+   */
+  library: {
+    /** The shared (imported) events plus the team's own hand-made ones, optionally of one season. */
+    subscribeEvents(teamId: string, seasonId: string | null, onData: (events: LibraryEvent[]) => void, onError: DataError): Unsubscribe;
+    /** One event's, one season's or all matches; `includeUnpublished` is for admins (a scout's query must ask for published only). */
+    subscribeMatches(teamId: string, filter: { eventCode?: string | null; seasonId?: string | null; includeUnpublished: boolean }, onData: (matches: LibraryMatch[], unreadable: number) => void, onError: DataError): Unsubscribe;
+    /** Creates a hand-made event owned by the actor's team (no API key needed). */
+    createEvent(actor: LibraryActor, input: EventFormInput, seasonId: string, existing: readonly LibraryEvent[]): Promise<CreateEventResult>;
+    /** Deletes a hand-made event and its matches (batched); resolves with how many matches went. */
+    deleteEvent(actor: LibraryActor, event: LibraryEvent): Promise<number>;
+    /** Creates or replaces hand-made matches of one event. A new match is an unpublished draft; an edit keeps its published state. */
+    upsertMatches(actor: LibraryActor, event: LibraryEvent, matches: readonly ScheduleMatchInput[]): Promise<UpsertResult>;
+    setPublished(actor: LibraryActor, ids: readonly string[], published: boolean): Promise<number>;
+    deleteMatches(actor: LibraryActor, ids: readonly string[]): Promise<number>;
+    /**
+     * Fetches the event's schedule on the server (keys never reach the browser) and writes it under stable ids, so importing twice updates in place.
+     * A missing or rejected key, a rate limit or an unknown event comes back as `{ ok: false, message }` with nothing written.
+     */
+    importSchedule(actor: LibraryActor, args: { eventCode: string; seasonId: string }): Promise<ImportOutcome>;
   };
   games: {
     seasons: readonly ProgramSeason[];

@@ -11,6 +11,8 @@ import { getDifficulty, type Difficulty } from "@/lib/difficulty";
 import { parseVideoCsv } from "@/lib/library/video-csv";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { libraryAllQuery, libraryEventQuery, librarySeasonQuery } from "@/lib/practice-queries";
+import { useAuth } from "@/lib/auth";
+import { useProgramData } from "@/lib/program/data";
 import { decideMatchWrite, libraryMatchId, originOf, type LibraryOrigin } from "@/lib/library/ids";
 import { getSeason } from "@/lib/seasons";
 import type { MatchType } from "@/lib/events/types";
@@ -65,6 +67,15 @@ export type LibraryMatch = {
   updatedAt?: string;
   /** P15, manual matches only. */
   notes?: string;
+  /**
+   * Schedule-only programs (additive): a scheduled match with no score. The alliance score fields of such a match are placeholders (0, "easy") that nothing may
+   * show or total. Absent on every FRC match.
+   */
+  scheduleOnly?: boolean;
+  /** Schedule-only programs (additive): the scheduled start, ISO, or null. */
+  scheduledTime?: string | null;
+  /** Schedule-only programs (additive): the owner team of a hand-made match. */
+  teamId?: string;
   /**
    * D1: set on a match read from CS's `practiceMatches` (written only by the owner's import scripts, so read-only here and never in
    * `libraryMatches`). `docIds` are CS's per-alliance doc ids (a practice session written for the match stores the one for its alliance as
@@ -188,6 +199,34 @@ export async function importLibraryEvent(seasonId: string, eventCode: string): P
   return { eventName, imported, skipped, skippedManual };
 }
 
+type PortMatchState = { matches: LibraryMatch[]; loaded: boolean; error: FirestoreFailure | null; unreadable: number; retry: () => void };
+
+/**
+ * Library matches through the program's port. A null filter means not in use. A failed read sets `error` (and leaves the list empty, which the caller
+ * must not show as "no matches"); `retry` subscribes again. The query is the viewer's team's: a scout (published only) or an admin (drafts too).
+ */
+function usePortLibraryMatches(filter: { eventCode?: string; seasonId?: string; includeUnpublished: boolean } | null): PortMatchState {
+  const port = useProgramData()?.library ?? null;
+  const teamId = useAuth().profile?.teamId ?? null;
+  const [state, setState] = useState<{ key: string; matches: LibraryMatch[]; error: FirestoreFailure | null; unreadable: number } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const key = filter && teamId ? JSON.stringify([teamId, filter, attempt]) : "";
+
+  useEffect(() => {
+    if (!port || !teamId || !filter) return;
+    return port.subscribeMatches(
+      teamId,
+      filter,
+      (matches, unreadable) => setState({ key, matches, error: null, unreadable }),
+      (error) => setState({ key, matches: [], error, unreadable: 0 })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the key stands for teamId, filter and attempt
+  }, [port, key]);
+
+  const current = state && state.key === key ? state : null;
+  return { matches: current?.matches ?? [], loaded: key === "" || current !== null, error: current?.error ?? null, unreadable: current?.unreadable ?? 0, retry: () => setAttempt((n) => n + 1) };
+}
+
 const CS_IMPORT_TTL_MS = 10 * 60 * 1000;
 let csImportCache: { at: number; promise: Promise<LibraryMatch[]> } | null = null;
 
@@ -240,8 +279,12 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
   const includeUnpublished = options.includeUnpublished ?? false;
   const [matches, setMatches] = useState<LibraryMatch[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  // A program with a library port reads through it; the root program keeps the reads below exactly as they were.
+  const portActive = useProgramData()?.library != null;
+  const portState = usePortLibraryMatches(portActive && eventCode ? { eventCode, includeUnpublished } : null);
 
   useEffect(() => {
+    if (portActive) return;
     if (!eventCode || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMatches([]);
@@ -263,15 +306,16 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
       }
     );
     return unsubscribe;
-  }, [eventCode, includeUnpublished]);
+  }, [eventCode, includeUnpublished, portActive]);
 
   // D1: scout-facing lists (no drafts) also show CS's imported practice matches for this event, read-only; an admin table does not.
-  const imported = useCsImportedMatches(Boolean(eventCode) && !includeUnpublished);
+  const imported = useCsImportedMatches(Boolean(eventCode) && !includeUnpublished && !portActive);
   const merged = useMemo(
     () => (imported.length > 0 && eventCode ? mergeLibraryMatches(matches, imported, (m) => m.eventCode === normalizeEventKey(eventCode)).sort(compareLibraryMatches) : matches),
     [matches, imported, eventCode]
   );
-  return { matches: merged, loaded };
+  if (portActive) return { matches: portState.matches, loaded: eventCode ? portState.loaded : true, error: portState.error, unreadable: portState.unreadable, retry: portState.retry };
+  return { matches: merged, loaded, error: null as FirestoreFailure | null, unreadable: 0, retry: () => {} };
 }
 
 /**
@@ -289,8 +333,11 @@ export function useLibraryMatchesBySeason(seasonId: string | null, options: { in
   // FIX3: a failed subscription is surfaced (with a Retry) instead of looking like an empty library.
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const portActive = useProgramData()?.library != null;
+  const portState = usePortLibraryMatches(portActive && seasonId ? { seasonId, includeUnpublished: false } : null);
 
   useEffect(() => {
+    if (portActive) return;
     if (!seasonId || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMatches([]);
@@ -316,10 +363,11 @@ export function useLibraryMatchesBySeason(seasonId: string | null, options: { in
       }
     );
     return unsubscribe;
-  }, [seasonId, attempt]);
+  }, [seasonId, attempt, portActive]);
 
-  const imported = useCsImportedMatches(Boolean(seasonId) && includeImported);
+  const imported = useCsImportedMatches(Boolean(seasonId) && includeImported && !portActive);
   const merged = useMemo(() => (imported.length > 0 ? mergeLibraryMatches(matches, imported, (m) => m.seasonId === seasonId).sort(compareLibraryMatches) : matches), [matches, imported, seasonId]);
+  if (portActive) return { matches: portState.matches, loaded: seasonId ? portState.loaded : true, error: portState.error, retry: portState.retry };
   return { matches: merged, loaded, error, retry: () => setAttempt((n) => n + 1) };
 }
 
@@ -336,8 +384,11 @@ export function useAllLibraryMatches(enabled: boolean = true, options: { include
   const includeUnpublished = options.includeUnpublished ?? false;
   const [matches, setMatches] = useState<LibraryMatch[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const portActive = useProgramData()?.library != null;
+  const portState = usePortLibraryMatches(portActive && enabled ? { includeUnpublished } : null);
 
   useEffect(() => {
+    if (portActive) return;
     // `enabled: false` (P13: a dashboard role that doesn't show practice matches) skips the subscription entirely.
     if (!enabled || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -358,12 +409,13 @@ export function useAllLibraryMatches(enabled: boolean = true, options: { include
       }
     );
     return unsubscribe;
-  }, [enabled, includeUnpublished]);
+  }, [enabled, includeUnpublished, portActive]);
 
   // D1: scout-facing lists (no drafts) also show CS's imported practice matches, read-only; an admin table (drafts included) does not.
-  const imported = useCsImportedMatches(enabled && !includeUnpublished);
+  const imported = useCsImportedMatches(enabled && !includeUnpublished && !portActive);
   const merged = useMemo(() => (imported.length > 0 ? mergeLibraryMatches(matches, imported) : matches), [matches, imported]);
-  return { matches: merged, loaded };
+  if (portActive) return { matches: portState.matches, loaded: enabled ? portState.loaded : true, error: portState.error, retry: portState.retry };
+  return { matches: merged, loaded, error: null as FirestoreFailure | null, retry: () => {} };
 }
 
 export async function setLibraryMatchVideo(id: string, video: LibraryVideo | null): Promise<void> {

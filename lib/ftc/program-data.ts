@@ -3,6 +3,9 @@
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/config/games/ftc";
 import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
+import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, subscribeLibraryEvents, subscribeLibraryMatches, upsertManualMatches } from "@/data/ftc/library";
+import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
+import { fetchFtcSchedule } from "@/lib/ftc/library-import";
 import { approveJoinRequest, denyJoinRequest, subscribePendingJoinRequests } from "@/data/ftc/join-requests";
 import { getFormVersion, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
 import {
@@ -59,5 +62,29 @@ export const ftcProgramData: ProgramData = {
   joinRequests: { subscribePending: subscribePendingJoinRequests, approve: approveJoinRequest, deny: denyJoinRequest },
   attendance: { subscribeTeam: subscribeTeamAttendance, set: setEventAttendance },
   forms: { subscribeDocs: subscribeFormDocs, loadVersion: getFormVersion },
+  library: {
+    subscribeEvents: subscribeLibraryEvents,
+    subscribeMatches: subscribeLibraryMatches,
+    createEvent: createManualEvent,
+    deleteEvent: deleteManualEvent,
+    upsertMatches: upsertManualMatches,
+    setPublished: setMatchesPublished,
+    deleteMatches: deleteManualMatches,
+    importSchedule: async (actor, { eventCode, seasonId }) => {
+      const season = FTC_SEASONS.find((s) => s.id === seasonId);
+      if (!season) return { ok: false, message: "Pick a season first." };
+      // The fetch runs in the server actions (keys read through lib/server/env.ts there); only the schedule comes back.
+      const schedule = await fetchFtcSchedule(
+        { getEvent: (code, apiSeason) => getEvent(code, apiSeason, "ftc"), getMatches: (code, type, apiSeason) => getMatchesForEvent(code, type, apiSeason, "ftc") },
+        { eventCode, apiSeason: season.apiSeason }
+      );
+      if (!schedule.ok) return { ok: false, message: schedule.message };
+      try {
+        return { ok: true, summary: await importSchedule(actor, { event: { eventCode: schedule.eventCode, eventName: schedule.eventName, seasonId }, matches: schedule.matches }) };
+      } catch (err) {
+        return { ok: false, message: err instanceof Error && err.message ? err.message : "Couldn't save the imported schedule. Run the import again: it picks up where it stopped." };
+      }
+    },
+  },
   games: { seasons: FTC_SEASONS, defaultSeasonId: seasonIdOf(CURRENT_FTC_GAME_ID), builtinForms: FTC_BUILTIN_FORMS },
 };

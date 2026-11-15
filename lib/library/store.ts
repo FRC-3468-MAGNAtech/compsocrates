@@ -10,6 +10,9 @@ import { buildManualMatchDoc, manualMatchId, type ValidMatch } from "@/lib/libra
 import { validateEventForm, type EventFormErrors, type EventFormInput } from "@/lib/library/event-form";
 import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/library/youtube-url";
 import { getSeason } from "@/lib/seasons";
+import { useAuth } from "@/lib/auth";
+import { useProgramData } from "@/lib/program/data";
+import type { FirestoreFailure } from "@/lib/firestore-errors";
 import type { LibraryMatch, LibraryVideo } from "@/lib/match-library";
 import type { TeamDoc } from "@/lib/team";
 
@@ -37,6 +40,8 @@ export type LibraryEvent = {
   createdBy: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Schedule-only programs (additive): the owner team of a hand-made event. */
+  teamId?: string;
 };
 
 const toEvent = (id: string, data: Record<string, unknown>): LibraryEvent => ({
@@ -52,12 +57,33 @@ const toEvent = (id: string, data: Record<string, unknown>): LibraryEvent => ({
   updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : undefined,
 });
 
-/** Realtime list of every library event (API and manual), by name. */
-export function useLibraryEvents() {
+/**
+ * Realtime list of every library event (API and manual), by name. The root program reads the root `libraryEvents` as before; a program with a library port
+ * reads through it (its own collection, shared API events plus the team's hand-made ones, optionally of one season) and reports a failed read in
+ * `error` instead of returning an empty list.
+ */
+export function useLibraryEvents(seasonId: string | null = null) {
   const [events, setEvents] = useState<LibraryEvent[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.library ?? null;
+  const teamId = useAuth().profile?.teamId ?? null;
+  const [portState, setPortState] = useState<{ key: string; events: LibraryEvent[]; error: FirestoreFailure | null } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const portKey = port && teamId ? JSON.stringify([teamId, seasonId, attempt]) : "";
 
   useEffect(() => {
+    if (!port || !teamId) return;
+    return port.subscribeEvents(
+      teamId,
+      seasonId,
+      (next) => setPortState({ key: portKey, events: [...next].sort((a, b) => a.eventName.localeCompare(b.eventName)), error: null }),
+      (error) => setPortState({ key: portKey, events: [], error })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- portKey stands for teamId, seasonId and attempt
+  }, [port, portKey]);
+
+  useEffect(() => {
+    if (port) return;
     if (!isFirebaseConfigured()) return;
     const unsubscribe = onSnapshot(
       collection(db, EVENTS),
@@ -72,9 +98,13 @@ export function useLibraryEvents() {
       }
     );
     return unsubscribe;
-  }, []);
+  }, [port]);
 
-  return { events, loaded };
+  if (port) {
+    const current = portState && portState.key === portKey ? portState : null;
+    return { events: current?.events ?? [], loaded: portKey === "" || current !== null, error: current?.error ?? null, retry: () => setAttempt((n) => n + 1) };
+  }
+  return { events, loaded, error: null as FirestoreFailure | null, retry: () => {} };
 }
 
 const chunk = <T,>(items: T[], size: number): T[][] => {
@@ -356,7 +386,10 @@ export async function backfillLibraryMetadata(actor: Pick<Actor, "uid">): Promis
  */
 export function useLibraryBackfill(teamId: string | null, uid: string | null, team: Pick<TeamDoc, "libraryBackfilled"> | null, teamLoaded: boolean) {
   const started = useRef(false);
+  // A program with a library port never had pre-P15 docs and its collections are not these root ones: nothing to stamp.
+  const hasPort = useProgramData()?.library != null;
   useEffect(() => {
+    if (hasPort) return;
     if (!teamId || !uid || !teamLoaded || !team || team.libraryBackfilled === true || started.current || !isFirebaseConfigured()) return;
     started.current = true;
     backfillLibraryMetadata({ uid })
@@ -365,5 +398,5 @@ export function useLibraryBackfill(teamId: string | null, uid: string | null, te
         console.error("library backfill failed:", err);
         started.current = false;
       });
-  }, [teamId, uid, team, teamLoaded]);
+  }, [teamId, uid, team, teamLoaded, hasPort]);
 }
