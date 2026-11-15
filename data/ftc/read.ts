@@ -29,6 +29,7 @@ import {
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
+import { clearReadFailure, recordReadFailure } from "@/lib/read-failures";
 import type { UserDoc } from "@/lib/auth";
 import type { MatchType } from "@/lib/events/types";
 import type { AssignmentsDoc } from "@/lib/assignments";
@@ -88,8 +89,15 @@ async function readRows<T>(context: string, target: Target, convert: (rows: FtcR
 }
 
 function watchRows(context: string, target: Target, onRows: (rows: FtcRawRow[], pendingWrites: number) => void, onError: Failure, withMetadata = false): Unsubscribe {
-  const next = (snap: QuerySnapshot) => onRows(snap.docs.map(rawRow), snap.docs.filter((d) => d.metadata.hasPendingWrites).length);
-  const fail = (err: unknown) => onError(reportFirestoreError(context, err, target.path));
+  const next = (snap: QuerySnapshot) => {
+    clearReadFailure(context, target.path);
+    onRows(snap.docs.map(rawRow), snap.docs.filter((d) => d.metadata.hasPendingWrites).length);
+  };
+  const fail = (err: unknown) => {
+    const failure = reportFirestoreError(context, err, target.path);
+    recordReadFailure(failure); // the shell shows it (components/program/read-failure-banner.tsx), so an empty list is not mistaken for no data
+    onError(failure);
+  };
   return withMetadata ? onSnapshot(target.q, { includeMetadataChanges: true }, next, fail) : onSnapshot(target.q, next, fail);
 }
 
@@ -108,10 +116,15 @@ function watchOne<T>(context: string, ref: DocumentReference, convert: (id: stri
   return onSnapshot(
     ref,
     (snap) => {
+      clearReadFailure(context, ref.path);
       const data = snap.data();
       onData(snap.exists() && isRecord(data) ? convert(snap.id, data) : null);
     },
-    (err) => onError(reportFirestoreError(context, err, ref.path))
+    (err) => {
+      const failure = reportFirestoreError(context, err, ref.path);
+      recordReadFailure(failure);
+      onError(failure);
+    }
   );
 }
 

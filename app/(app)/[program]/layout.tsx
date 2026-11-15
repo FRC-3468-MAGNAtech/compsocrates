@@ -9,6 +9,7 @@ import { ProgramProvider, useProgram, useProgramConfig } from "@/lib/program/con
 import { useProgramData } from "@/lib/program/data";
 import { ProgramGate } from "@/components/program/program-gate";
 import { ProgramAuth } from "@/components/program/program-auth";
+import { ReadFailureBanner } from "@/components/program/read-failure-banner";
 import { UnconnectedPage } from "@/components/program/unconnected-page";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -78,6 +79,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <main className="min-w-0">
             <VerifyEmailBanner className="mb-4" />
             <OwnershipTransferBanner className="mb-4" />
+            <ReadFailureBanner className="mb-4" />
             {features.live && <LiveMatchPill />}
             <PageTransition>
               {/* A path whose data layer is not connected for this program shows a notice, never the shared page (it would read another program's data). */}
