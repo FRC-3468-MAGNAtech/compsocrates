@@ -82,6 +82,8 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - `teams/{id}`: `selectedEventNames` (`{ [eventKey]: name }`, written by Event Select beside `selectedEvents` with a merge write so event names survive a data-API outage; read in `data/cs/teams.ts`, the "stored" step of the name chain in `lib/events/names.ts`).
 - `teams/{id}` (FRC) and `programs/ftc/teams/{id}` (FTC): `archivedEvents` (`string[]` of event codes, Session D; written by Event Select with a merge write / `updateDoc` of that one field, admins and owners only; read in `data/cs/teams.ts` and `data/ftc/teams.ts`). Archived codes stay in `selectedEvents`; only the event pickers skip them. No data read is filtered by it.
 - `teams/{id}` (FRC) and the second program's team doc: `formSubmissionSettings` (`{ enabled: boolean, seasons: { [seasonId]: boolean }, updatedBy?: { uid, name }, updatedAtMs?: number }`, Session E; written by Admin Panel > Form Submissions with a merge write / `updateDoc` of that one field, admins and owners by the rules). Missing means every form is open. A client-side control: the rules do not enforce it (`lib/forms/submission-guard.ts`).
+- `appSettings/global`: `adminsSeeAllProfiles` (boolean, Session G; written only by the platform-owner route `/api/admin/admins-see-profiles`; missing means on; read by the profile rules and `/api/public/config`).
+- `changelog/{id}` (FRC): `legacy` (boolean, Session G; set only by `scripts/import-cs-changelog.ts` and kept by edits; legacy entries list below the current ones and never light the unread dot).
 - `scoutingFlagStates`: `manualReasonText` and `manualNoteText` (the extra manual-flag reason and note).
 - Entries and form docs: `stickyNotes` (and `linkedEntryId`, `planDifferences` where a form has them); `alliance` on match-strategy plan and drive-reflection docs; `eventKey` on helper docs; `teleop.humanPlayerFuelByShift` on REBUILT entries (D8).
 - FTC entries: `values.allianceRole` (`hive` or `garden`) on BIOBUZZ match entries; the other role's fields are absent, not 0.
@@ -125,6 +127,12 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
   - Deploy dry run (`firebase deploy --only firestore:rules --project compsocrates --dry-run`) was not run: it contacts production, and the CLI was signed in as a different account than the project owner's. `.firebaserc` defaults to the demo project, so always pass `--project`.
   - `npm run test:rules` earlier on 2026-11-14 recorded 252 of 253 (one sub-in "cancel" failure, thought to be a timing flake). Superseded by the run in "Test status" below.
   - **Docs and tree reconciled (2026-11-14, `docs/STEP1_RESULTS.md`).** `data/ftc/` is in the repo (24 tracked files) and committed on branch `rebuild`; `pagesConnected` is true for both FRC and FTC, and the connected-pages list above matches `connection.paths`. The earlier "no `data/ftc/`" note came from looking in the wrong folder (the repo is `CompSocrates rebuild/`, inside `compsocrates-rebuild/`), not from lost work.
+
+## Session G follow-ups
+- Old CS changelog: the notes exist only in the old project's Firestore (`teams/{id}.versionReleases`); export them and run `scripts/import-cs-changelog.ts` (dry run first). The second program's changelog is a separate follow-up (its starter text describes the FRC app).
+- App Testing: no admin button was found in the CS reference; see `docs/SESSION_G_RESULTS.md` for the question.
+- Device-only theme covers theme, mode and gradient intensity; the glass layer level stays account-wide.
+- Admins who saved Private while they were admins (the old code kept that choice) are now private to non-admin teammates. Check before the rules are deployed.
 
 ## Cleanup left
 - Mixed LF and CRLF line endings across files (git warns on commit). Normalise with a `.gitattributes` when convenient.
