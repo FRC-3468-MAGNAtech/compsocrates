@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@/lib/program/navigation";
 import { motion } from "framer-motion";
-import { Clock, Rocket, Send, UserPlus } from "lucide-react";
+import { Clock } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { createTeam, fetchTeamCreationEnabled, joinTeam, syncRoles, type JoinReq
 import { cancelJoinRequest, fetchTeamLabel, useMyJoinRequests } from "@/lib/join-requests-client";
 import { isFallbackCodeLabel, type JoinRequest } from "@/data/cs/join-requests";
 import { DEFAULT_ROLE_ID, getRole, ROLES, type RoleId } from "@/lib/roles";
+import { TeamSetupCard } from "@/components/auth/team-setup-card";
 import { ApplicationStatusCard } from "@/components/applications/application-status-card";
 import { useMyApplications } from "@/lib/applications-client";
 
@@ -254,16 +255,14 @@ export function TeamEnrollmentScreen({
   onComplete: () => void;
 }) {
   const router = useRouter();
-  const { logout, profile, user } = useAuth();
+  const { profile, user } = useAuth();
   const enrollment = useTeamEnrollment();
   const { requests, loaded: requestsLoaded } = useMyJoinRequests(user?.uid ?? null);
   // P20: anyone who has applied sees their Application status here whenever they sign in, instead of the join form.
   const { applications, loaded: applicationsLoaded } = useMyApplications(user?.uid ?? null);
   const [showJoinInstead, setShowJoinInstead] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [createdJoinCode, setCreatedJoinCode] = useState<string | null>(null);
-  const [loggingOut, setLoggingOut] = useState(false);
   // The request just sent: shown at once, before the realtime listener delivers the row.
   const [justRequested, setJustRequested] = useState<{ id: string | null; teamId: string; label: string; role: RoleId; atMs: number } | null>(null);
   const [canceling, setCanceling] = useState(false);
@@ -290,34 +289,20 @@ export function TeamEnrollmentScreen({
     void syncRoles();
   }, [approvedUnsynced, hasTeam]);
 
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await logout();
-    } finally {
-      setLoggingOut(false);
-    }
+  // What happens on submit, for the shared setup card (components/auth/team-setup-card.tsx): a join request, or a new team.
+  const handleJoin = async ({ code, name }: { code: string; name: string }) => {
+    setNotice(null);
+    const requested = await joinTeam(code, { name });
+    setJustRequested({ id: requested.requestId, teamId: requested.teamId, label: requested.teamLabel, role: DEFAULT_ROLE_ID, atMs: Date.now() });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const handleCreate = async ({ teamNumber, teamName, role, name }: { teamNumber: number; teamName: string; role: RoleId; name: string }) => {
     setNotice(null);
     setSubmitting(true);
     try {
-      const result = await enrollment.enroll();
-      if (result.apply) {
-        router.push("/apply");
-        return;
-      }
-      if (result.joinCode) {
-        setCreatedJoinCode(result.joinCode);
-      } else if (result.requested) {
-        setJustRequested({ id: result.requested.requestId, teamId: result.requested.teamId, label: result.requested.teamLabel, role: enrollment.role, atMs: Date.now() });
-      }
-      setSubmitting(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const result = await createTeam(teamNumber, teamName || undefined, name, role);
+      setCreatedJoinCode(result.joinCode);
+    } finally {
       setSubmitting(false);
     }
   };
@@ -388,56 +373,16 @@ export function TeamEnrollmentScreen({
   }
 
   return shell(
-    <div className="glass-card flex flex-col gap-4 p-5 sm:p-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">Set up {programLabel ? `your ${programLabel} team` : "your team"}</h1>
-        {greeting && <p className="text-sm font-medium">{greeting}</p>}
-        <p className="text-sm text-[var(--muted-foreground)]">Ask to join your team with its code, or start a new one. A team admin approves join requests.</p>
-      </div>
-
-      {(notice || lastClosed) && (
-        <p role="status" className="glass-card rounded-xl p-3 text-sm" data-testid="join-closed-note">
-          {notice ?? (lastClosed?.status === "denied" ? "Your last join request was denied. Check the code with your team admin and try again." : "You canceled your last join request.")}
-        </p>
-      )}
-
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <TeamEnrollmentFields enrollment={enrollment} />
-        {error && (
-          <p role="alert" className="text-sm text-red-400">
-            {error}
-          </p>
-        )}
-        <Button type="submit" className="min-h-11 w-full gap-2" disabled={submitting}>
-          {enrollment.mode === "apply" && enrollment.teamCreationEnabled === false ? (
-            <Send className="h-4 w-4" />
-          ) : enrollment.mode === "create" && enrollment.teamCreationEnabled ? (
-            <Rocket className="h-4 w-4" />
-          ) : (
-            <UserPlus className="h-4 w-4" />
-          )}
-          {submitting
-            ? "Working…"
-            : enrollment.mode === "apply" && enrollment.teamCreationEnabled === false
-              ? "Continue to application"
-              : enrollment.mode === "create" && enrollment.teamCreationEnabled
-                ? "Create team"
-                : "Request to join"}
-        </Button>
-      </form>
-
-      <p className="text-sm text-[var(--muted-foreground)]">
-        Wrong account?{" "}
-        <button
-          type="button"
-          onClick={handleLogout}
-          disabled={loggingOut}
-          className="inline-flex min-h-11 items-center font-medium text-[var(--foreground)] underline underline-offset-4 disabled:opacity-60"
-        >
-          {loggingOut ? "Logging out…" : "Log out"}
-        </button>
-      </p>
-    </div>,
+    <TeamSetupCard
+      programLabel={programLabel}
+      greeting={greeting}
+      creation={enrollment.teamCreationEnabled === null ? "loading" : enrollment.teamCreationEnabled ? "open" : "apply"}
+      defaultName={user?.displayName ?? (user?.email ?? "").split("@")[0] ?? ""}
+      notice={notice ?? (lastClosed ? (lastClosed.status === "denied" ? "Your last join request was denied. Check the code with your team admin and try again." : "You canceled your last join request.") : null)}
+      onJoin={handleJoin}
+      onCreate={handleCreate}
+      onApply={() => router.push("/apply")}
+    />,
     "max-w-xl"
   );
 }

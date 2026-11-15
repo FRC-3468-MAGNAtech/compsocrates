@@ -10,7 +10,7 @@
  * - A request to join is `programs/ftc/teams/{CODE}/joinRequests/{uid}` (the sister app joins instantly through a server route and has no
  *   request document; this is new, additive schema).
  */
-import { DEFAULT_ROLE_ID } from "@/lib/roles";
+import { DEFAULT_ROLE_ID, type RoleId } from "@/lib/roles";
 import { defaultThemeId } from "@/lib/themes";
 import { generateTeamCode } from "@/data/cs/join-requests";
 import { migratedFieldTeamId } from "@/data/ftc/teams";
@@ -33,6 +33,8 @@ export type NewTeamInput = {
   teamNumber: number;
   teamName: string;
   location: string;
+  /** The creator's role (a role id); the default role when absent. */
+  role?: RoleId;
 };
 
 /** The team document and the creator's profile, to be written in one batch. `createdAt` is a server timestamp the caller supplies. */
@@ -61,7 +63,7 @@ export function ftcNewTeamDocs(code: string, input: NewTeamInput, createdAt: unk
       name: input.name.trim(),
       email: input.email,
       teamId: code,
-      primaryRole: DEFAULT_ROLE_ID,
+      primaryRole: input.role ?? DEFAULT_ROLE_ID,
       secondaryRoles: [],
       isAdmin: true,
       isOwner: true,

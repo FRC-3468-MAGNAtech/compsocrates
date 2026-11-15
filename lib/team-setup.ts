@@ -29,3 +29,24 @@ export function parseJoinCode(input: string): string | null {
   const code = normalizeTeamCode(input);
   return isValidTeamCode(code) ? code : null;
 }
+
+/** Validates the join form (code and name). `code` is the normalised code (null when invalid); `errors` is empty when the form can be sent. */
+export function validateJoin(form: { joinCode: string; displayName: string }): { code: string | null; errors: { joinCode?: string; displayName?: string } } {
+  const errors: { joinCode?: string; displayName?: string } = {};
+  const code = parseJoinCode(form.joinCode);
+  if (!code) errors.joinCode = "Enter the join code your team admin gave you.";
+  const displayName = form.displayName.trim();
+  if (!displayName) errors.displayName = "Enter your name.";
+  else if (displayName.length > NAME_MAX) errors.displayName = `Keep your name under ${NAME_MAX} characters.`;
+  return { code, errors };
+}
+
+/** Validates the create form (team number, optional team name). `number` is null when invalid; `teamName` is trimmed; `errors` is empty when the form can be sent. */
+export function validateCreate(form: { teamNumber: string; teamName: string }): { number: number | null; teamName: string; errors: { teamNumber?: string; teamName?: string } } {
+  const errors: { teamNumber?: string; teamName?: string } = {};
+  const number = parseTeamNumber(form.teamNumber);
+  if (number === null) errors.teamNumber = "Enter your team number: 1 to 5 digits.";
+  const teamName = form.teamName.trim();
+  if (teamName.length > NAME_MAX) errors.teamName = `Keep the team name under ${NAME_MAX} characters.`;
+  return { number, teamName, errors };
+}
