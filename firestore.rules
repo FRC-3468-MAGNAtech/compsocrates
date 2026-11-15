@@ -1588,10 +1588,15 @@ service cloud.firestore {
           && request.resource.data.uid == request.auth.uid
           && ftc_sameTeam(request.resource.data.teamId);
 
-        allow update: if ftc_sameTeam(resource.data.teamId) && (
-          (resource.data.uid == request.auth.uid && resource.data.status in ["in-progress", "paused"])
-          || ftc_isAdmin()
-        );
+        // Batch 3 (FTC): an update never moves a session to another team or another scout (nobody, an admin included, may change `teamId` or `uid`);
+        // before this the owner could rewrite `teamId` on their own open session. An admin may still exclude or flag a session of the team.
+        allow update: if ftc_sameTeam(resource.data.teamId)
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.uid == resource.data.uid
+          && (
+            (resource.data.uid == request.auth.uid && resource.data.status in ["in-progress", "paused"])
+            || ftc_isAdmin()
+          );
 
         // P4: the owner can delete their own session while it's still
         // in-progress or paused — "Change Match," "Cancel"/"End Session," and

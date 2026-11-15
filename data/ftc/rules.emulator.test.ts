@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ftcDocToPickList, ftcPickListDoc, ftcPickListId } from "@/data/ftc/pick-list";
 import { applySlotSwap, ftcAssignmentDocId, ftcAssignmentsDoc, ftcDocsToTeamAssignments, ftcTeamAssignmentDocId, ftcTeamAssignmentsDoc, pickMatchAssignments, readAssignmentVersion } from "@/data/ftc/assignments";
 import { applyPickOp, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
@@ -18,6 +18,8 @@ import { ftcApprovedProfileDoc, ftcJoinDecisionFields } from "@/data/ftc/join-re
 import { programPath } from "@/lib/firebase/paths";
 import { ftcMatchId, planScheduleImport } from "@/lib/ftc/library";
 import { buildManualMatchDoc } from "@/lib/library/schedule";
+import { tryClaimDoc } from "@/lib/claim-doc";
+import { ftcSessionStub } from "@/lib/ftc/practice";
 import type { EventMatch } from "@/lib/events/types";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 
@@ -77,6 +79,159 @@ afterAll(async () => {
 });
 
 const as = (uid: string) => testEnv.authenticatedContext(uid).firestore();
+
+describe("FTC practice sessions and official scores (Batch 3)", () => {
+  const ADMIN_B3 = "ftc-admin-b3";
+  // a second plain member of team 1 that other tests already seed (a new user here would change the roster other tests count)
+  const SCOUT2 = "ftc-lead-1";
+  const S = (name: string) => programPath("ftc", name);
+  const sessions = (uid: string) => collection(as(uid), S("practiceSessions"));
+  const sessionDoc = (uid: string, id: string) => doc(as(uid), S("practiceSessions"), id);
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+  const anon = () => testEnv.unauthenticatedContext().firestore();
+  const stored = (uid: string, teamId: string, extra: Record<string, unknown> = {}) => ({
+    teamId, uid, kind: "solo", status: "in-progress", scoutName: "x", seasonId: "biobuzz", mode: "trial", difficulty: null, libraryMatchId: "EVB3_Q1", eventCode: "EVB3", alliance: "red",
+    robots: [111, 222], completedRobots: [], entryIds: [], accuracy: null, scoutedTotal: null, penaltyPoints: null, officialScore: null, platform: "pc", flags: [], excluded: false,
+    lobbyId: null, pairId: null, startedAt: "2026-02-01T10:00:00.000Z", finishedAt: null, ...extra,
+  });
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, P("users"), ADMIN_B3), { name: "Admin B3", email: "b3@example.org", teamId: T2, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+      await setDoc(doc(db, S("practiceSessions"), "PS-OWN-OPEN"), stored(SCOUT, T1));
+      await setDoc(doc(db, S("practiceSessions"), "PS-OWN-PAUSED"), stored(SCOUT, T1, { status: "paused", completedRobots: [111] }));
+      await setDoc(doc(db, S("practiceSessions"), "PS-OWN-DONE"), stored(SCOUT, T1, { status: "completed", accuracy: 90, scoutedTotal: 60, officialScore: 66, penaltyPoints: 6, finishedAt: "2026-02-01T10:10:00.000Z" }));
+      await setDoc(doc(db, S("practiceSessions"), "PS-MATE-OPEN"), stored(SCOUT2, T1));
+      await setDoc(doc(db, S("practiceSessions"), "PS-T2-OPEN"), stored(OTHER, T2));
+      // a library: one shared API event and one hand-made event of team 1, each with one match
+      const event = (code: string, origin: string, teamId?: string) => ({ eventCode: code, eventName: code, seasonId: "b3season", origin, date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: "seed", ...(teamId ? { teamId } : {}) });
+      const lib = (code: string, origin: string, teamId?: string) => ({ seasonId: "b3season", eventCode: code, eventName: code, matchType: "Qualification", matchNumber: 1, alliances: { red: { teams: [111, 222] }, blue: { teams: [333, 444] } }, scheduledTime: null, origin, published: true, createdBy: "seed", updatedAt: "2026-01-01T00:00:00.000Z", ...(teamId ? { teamId } : {}) });
+      await setDoc(doc(db, S("libraryEvents"), "SCRAPI"), event("SCRAPI", "api"));
+      await setDoc(doc(db, S("libraryMatches"), "SCRAPI_Q1"), lib("SCRAPI", "api"));
+      await setDoc(doc(db, S("libraryEvents"), "MAN-SCR-CCCC"), event("MAN-SCR-CCCC", "manual", T1));
+      await setDoc(doc(db, S("libraryMatches"), "MAN-SCR-CCCC_Q1"), lib("MAN-SCR-CCCC", "manual", T1));
+    });
+  });
+
+  it("a plain scout runs every practice query the app makes, for their own team", async () => {
+    // the team's sessions, team-wide (never narrowed by event or kind)
+    expect(ids(await assertSucceeds(getDocs(query(sessions(SCOUT), where("teamId", "==", T1)))))).toEqual(["PS-MATE-OPEN", "PS-OWN-DONE", "PS-OWN-OPEN", "PS-OWN-PAUSED"]);
+    // a scout's own sessions
+    expect(ids(await assertSucceeds(getDocs(query(sessions(SCOUT), where("teamId", "==", T1), where("uid", "==", SCOUT)))))).toEqual(["PS-OWN-DONE", "PS-OWN-OPEN", "PS-OWN-PAUSED"]);
+    // their paused session
+    expect(ids(await assertSucceeds(getDocs(query(sessions(SCOUT), where("teamId", "==", T1), where("uid", "==", SCOUT), where("status", "==", "paused")))))).toEqual(["PS-OWN-PAUSED"]);
+    // one session by id, theirs and a teammate's
+    await assertSucceeds(getDoc(sessionDoc(SCOUT, "PS-OWN-DONE")));
+    await assertSucceeds(getDoc(sessionDoc(SCOUT, "PS-MATE-OPEN")));
+    // the completed-attempt check: five equalities, limit 1
+    const attempt = await assertSucceeds(
+      getDocs(query(sessions(SCOUT), where("teamId", "==", T1), where("uid", "==", SCOUT), where("libraryMatchId", "==", "EVB3_Q1"), where("alliance", "==", "red"), where("status", "==", "completed"), limit(1)))
+    );
+    expect(ids(attempt)).toEqual(["PS-OWN-DONE"]);
+    // the entries of one session (both robots), found by the session id
+    await assertSucceeds(getDocs(query(collection(as(SCOUT), S("scoutEntries")), where("teamId", "==", T1), where("sessionId", "==", "PS-OWN-DONE"))));
+    // the published library matches a practice flow lists: the shared ones and the team's own, each with published == true
+    await assertSucceeds(getDocs(query(collection(as(SCOUT), S("libraryMatches")), where("seasonId", "==", "b3season"), where("published", "==", true), where("origin", "==", "api"))));
+    await assertSucceeds(getDocs(query(collection(as(SCOUT), S("libraryMatches")), where("seasonId", "==", "b3season"), where("published", "==", true), where("teamId", "==", T1))));
+  });
+
+  it("a team admin runs the same queries", async () => {
+    expect((await assertSucceeds(getDocs(query(sessions(ADMIN), where("teamId", "==", T1))))).size).toBe(4);
+    await assertSucceeds(getDocs(query(sessions(ADMIN), where("teamId", "==", T1), where("uid", "==", SCOUT), where("status", "==", "paused"))));
+    await assertSucceeds(getDoc(sessionDoc(ADMIN, "PS-OWN-OPEN")));
+  });
+
+  it("a scout of another team cannot read, list or change this team's sessions, nor the entries of one", async () => {
+    await assertFails(getDocs(query(sessions(OTHER), where("teamId", "==", T1))));
+    await assertFails(getDocs(query(sessions(OTHER), where("teamId", "==", T1), where("uid", "==", SCOUT), where("status", "==", "paused"))));
+    await assertFails(getDocs(sessions(OTHER)));
+    await assertFails(getDoc(sessionDoc(OTHER, "PS-OWN-DONE")));
+    await assertFails(updateDoc(sessionDoc(OTHER, "PS-OWN-OPEN"), { excluded: true }));
+    await assertFails(deleteDoc(sessionDoc(OTHER, "PS-OWN-OPEN")));
+    await assertFails(setDoc(sessionDoc(OTHER, "PS-FOR-T1"), stored(OTHER, T1)));
+    await assertFails(getDocs(query(collection(as(OTHER), S("scoutEntries")), where("teamId", "==", T1), where("sessionId", "==", "PS-OWN-DONE"))));
+    // their own team is theirs
+    await assertSucceeds(getDocs(query(sessions(OTHER), where("teamId", "==", T2))));
+  });
+
+  it("a signed-out user cannot read or write any session or library match", async () => {
+    await assertFails(getDocs(query(collection(anon(), S("practiceSessions")), where("teamId", "==", T1))));
+    await assertFails(getDoc(doc(anon(), S("practiceSessions"), "PS-OWN-DONE")));
+    await assertFails(setDoc(doc(anon(), S("practiceSessions"), "PS-ANON"), stored(SCOUT, T1)));
+    await assertFails(getDocs(query(collection(anon(), S("libraryMatches")), where("published", "==", true), where("origin", "==", "api"))));
+  });
+
+  it("a scout writes only their own sessions: create as themselves, change their own while open or paused, never another's", async () => {
+    await assertSucceeds(setDoc(sessionDoc(SCOUT, "PS-NEW-MINE"), stored(SCOUT, T1)));
+    await assertFails(setDoc(sessionDoc(SCOUT, "PS-NEW-AS-MATE"), stored(SCOUT2, T1))); // uid must be the signer
+    await assertFails(setDoc(sessionDoc(SCOUT, "PS-NEW-OTHER-TEAM"), stored(SCOUT, T2))); // and the signer's own team
+    await assertSucceeds(updateDoc(sessionDoc(SCOUT, "PS-OWN-OPEN"), { status: "paused", completedRobots: [111] }));
+    await assertSucceeds(updateDoc(sessionDoc(SCOUT, "PS-OWN-OPEN"), { status: "in-progress" }));
+    await assertSucceeds(updateDoc(sessionDoc(SCOUT, "PS-OWN-OPEN"), { status: "completed", accuracy: 80, scoutedTotal: 50, officialScore: 62, penaltyPoints: 4, finishedAt: "2026-02-01T11:00:00.000Z" }));
+    await assertFails(updateDoc(sessionDoc(SCOUT, "PS-OWN-OPEN"), { accuracy: 100 })); // completed: no more edits by the scout
+    await assertFails(updateDoc(sessionDoc(SCOUT, "PS-MATE-OPEN"), { status: "paused" })); // a teammate's
+  });
+
+  it("an update never moves a session to another team or another scout (the rule fixed in this batch)", async () => {
+    await assertFails(updateDoc(sessionDoc(SCOUT, "PS-OWN-PAUSED"), { teamId: T2 }));
+    await assertFails(updateDoc(sessionDoc(SCOUT, "PS-OWN-PAUSED"), { uid: SCOUT2 }));
+    await assertFails(updateDoc(sessionDoc(ADMIN, "PS-OWN-PAUSED"), { teamId: T2 }));
+    await assertFails(updateDoc(sessionDoc(ADMIN, "PS-OWN-PAUSED"), { uid: ADMIN }));
+    await assertSucceeds(updateDoc(sessionDoc(SCOUT, "PS-OWN-PAUSED"), { completedRobots: [111] })); // the same document still updates normally
+  });
+
+  it("an admin can exclude a completed session and dismiss a flag; a plain scout cannot touch a completed one", async () => {
+    await assertSucceeds(updateDoc(sessionDoc(ADMIN, "PS-OWN-DONE"), { excluded: true, flags: [{ type: "zero-entries", title: "Zero Entries", detail: "d", dismissed: true }] }));
+    await assertFails(updateDoc(sessionDoc(SCOUT, "PS-OWN-DONE"), { excluded: false }));
+    await assertFails(updateDoc(sessionDoc(SCOUT2, "PS-OWN-DONE"), { excluded: false }));
+  });
+
+  it("a scout deletes their own open or paused session, never a completed one; an admin deletes a completed one", async () => {
+    await assertSucceeds(setDoc(sessionDoc(SCOUT, "PS-TO-DISCARD"), stored(SCOUT, T1)));
+    await assertSucceeds(deleteDoc(sessionDoc(SCOUT, "PS-TO-DISCARD")));
+    await assertFails(deleteDoc(sessionDoc(SCOUT, "PS-OWN-DONE")));
+    await assertFails(deleteDoc(sessionDoc(SCOUT2, "PS-OWN-PAUSED")));
+    await assertSucceeds(setDoc(doc(testEnv.authenticatedContext(ADMIN).firestore(), S("practiceSessions"), "PS-ADMIN-DEL"), stored(ADMIN, T1, { status: "completed" })));
+    await assertSucceeds(deleteDoc(sessionDoc(ADMIN, "PS-ADMIN-DEL")));
+  });
+
+  it("starting a session reserves its id in a transaction that first reads the free id (as the app does)", async () => {
+    const claim = (uid: string, id: string) => tryClaimDoc(as(uid) as unknown as Parameters<typeof tryClaimDoc>[0], S("practiceSessions"), id, ftcSessionStub(T1, uid, "solo", serverTimestamp));
+    await assertSucceeds(claim(SCOUT, "PS-CLAIM-1"));
+    // a second claim of the same id finds it taken (returns false) instead of overwriting it
+    expect(await claim(SCOUT, "PS-CLAIM-1")).toBe(false);
+    // another team's scout cannot take over a team-1 session id: reading it is refused
+    await assertFails(tryClaimDoc(as(OTHER) as unknown as Parameters<typeof tryClaimDoc>[0], S("practiceSessions"), "PS-CLAIM-1", ftcSessionStub(T2, OTHER, "solo", serverTimestamp)));
+  });
+
+  describe("official scores on a library match", () => {
+    const now = "2026-02-02T10:00:00.000Z";
+    const scores = (red: unknown, blue: unknown) => ({ "alliances.red.score": red, "alliances.red.penaltyPoints": 4, "alliances.blue.score": blue, "alliances.blue.penaltyPoints": 0, scoresUpdatedAt: now, updatedAt: now });
+    const match = (uid: string, id: string) => doc(as(uid), S("libraryMatches"), id);
+
+    it("an admin sets and clears the official score of a shared API match and of their own team's hand-made match", async () => {
+      await assertSucceeds(updateDoc(match(ADMIN, "SCRAPI_Q1"), scores(60, 55)));
+      await assertSucceeds(updateDoc(match(ADMIN, "MAN-SCR-CCCC_Q1"), scores(60, 55)));
+      const read = await assertSucceeds(getDoc(match(SCOUT, "MAN-SCR-CCCC_Q1")));
+      expect(read.data()?.alliances.red).toEqual({ teams: [111, 222], score: 60, penaltyPoints: 4 });
+      await assertSucceeds(updateDoc(match(ADMIN, "MAN-SCR-CCCC_Q1"), { "alliances.red.score": deleteField(), "alliances.red.penaltyPoints": deleteField(), "alliances.blue.score": deleteField(), "alliances.blue.penaltyPoints": deleteField(), scoresUpdatedAt: deleteField(), updatedAt: now }));
+    });
+
+    it("a plain scout cannot set a score; another team's admin cannot score this team's hand-made match", async () => {
+      await assertFails(updateDoc(match(SCOUT, "SCRAPI_Q1"), scores(1, 1)));
+      await assertFails(updateDoc(match(SCOUT, "MAN-SCR-CCCC_Q1"), scores(1, 1)));
+      await assertFails(updateDoc(match(ADMIN_B3, "MAN-SCR-CCCC_Q1"), scores(1, 1)));
+    });
+
+    it("a hand-made match refuses a score that is not a whole number from 0 to 9999", async () => {
+      await assertFails(updateDoc(match(ADMIN, "MAN-SCR-CCCC_Q1"), scores(-1, 5)));
+      await assertFails(updateDoc(match(ADMIN, "MAN-SCR-CCCC_Q1"), scores("60", 5)));
+      await assertFails(updateDoc(match(ADMIN, "MAN-SCR-CCCC_Q1"), scores(10000, 5)));
+      await assertFails(updateDoc(match(ADMIN, "MAN-SCR-CCCC_Q1"), scores(12.5, 5)));
+    });
+  });
+});
 
 const input: SaveEntryInput = {
   scoutName: "Ada",
