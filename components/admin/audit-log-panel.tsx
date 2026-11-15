@@ -50,6 +50,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "clear-profile-text": "Cleared Profile Bio / Pronouns",
   "edit-page-access": "Edit Page Access",
   "decide-page-access-request": "Decide Page Access Request",
+  "edit-sidebar": "Edit Sidebar",
   "edit-form-entry": "Edit Form Entry",
 };
 

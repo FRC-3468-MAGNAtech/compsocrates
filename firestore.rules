@@ -207,6 +207,17 @@ service cloud.firestore {
         && d.updatedAt == request.time;
     }
 
+    // Session F: `teams/{teamId}/settings/sidebar`. Cosmetic layout only (it can hide or arrange pages; it grants nothing). Shape and size are checked
+    // here; the entry fields (id, kind, parent, order, label, icon, hidden) are validated by the client, and an unreadable entry is ignored when read.
+    function validSidebarDoc(d) {
+      return d.keys().hasOnly(['version', 'rev', 'entries', 'updatedBy', 'updatedAt'])
+        && d.keys().hasAll(['version', 'rev', 'entries', 'updatedBy', 'updatedAt'])
+        && d.version == 1 && d.rev is int && d.rev >= 1
+        && d.entries is list && d.entries.size() >= 1 && d.entries.size() <= 120
+        && d.updatedBy == request.auth.uid
+        && d.updatedAt == request.time;
+    }
+
     // =================================================================================================================
     // 1. CS PRODUCTION COLLECTIONS (behavior unchanged)
     // =================================================================================================================
@@ -262,9 +273,16 @@ service cloud.firestore {
       // Settings docs of the account (app page access). Only `pageAccess` exists: every teammate reads it (the navigation
       // and route guard need it), only admins write it, never deleted. Nested under teams/{teamId}, which CS's rule does
       // not cascade to.
+      // Session F adds `sidebar` (how the team arranges the navigation): same read and write audience; each save must be revision
+      // `rev + 1` of the stored doc, so two admins cannot silently overwrite each other (the client also checks in a transaction).
       match /settings/{docId} {
         allow read: if sameTeam(teamId);
-        allow create, update: if docId == 'pageAccess' && sameTeam(teamId) && isAdmin() && validPageAccessDoc(request.resource.data);
+        allow create: if sameTeam(teamId) && isAdmin()
+          && ((docId == 'pageAccess' && validPageAccessDoc(request.resource.data))
+            || (docId == 'sidebar' && validSidebarDoc(request.resource.data) && request.resource.data.rev == 1));
+        allow update: if sameTeam(teamId) && isAdmin()
+          && ((docId == 'pageAccess' && validPageAccessDoc(request.resource.data))
+            || (docId == 'sidebar' && validSidebarDoc(request.resource.data) && request.resource.data.rev == resource.data.rev + 1));
         allow delete: if false;
       }
 
@@ -1209,6 +1227,16 @@ service cloud.firestore {
           && d.updatedAt == request.time;
       }
 
+      // Session F: the same shape check as the root `validSidebarDoc`.
+      function ftc_validSidebarDoc(d) {
+        return d.keys().hasOnly(['version', 'rev', 'entries', 'updatedBy', 'updatedAt'])
+          && d.keys().hasAll(['version', 'rev', 'entries', 'updatedBy', 'updatedAt'])
+          && d.version == 1 && d.rev is int && d.rev >= 1
+          && d.entries is list && d.entries.size() >= 1 && d.entries.size() <= 120
+          && d.updatedBy == request.auth.uid
+          && d.updatedAt == request.time;
+      }
+
       match /teams/{teamId} {
         // P1b: no more public read. Team lookup by join code, the first-run
         // "does a team exist" check, and team creation itself all moved
@@ -1256,9 +1284,15 @@ service cloud.firestore {
 
         // P26: settings docs of the account. Only `pageAccess` exists today: every teammate reads it (the navigation and the
         // route guard need it), only admins write it (never deleted). The Admin Panel's Page Access screen is its only writer.
+        // Session F adds `sidebar` (the team's navigation layout for this program), with the same audience and revision rule as the root block.
         match /settings/{docId} {
           allow read: if ftc_sameTeam(teamId);
-          allow create, update: if docId == 'pageAccess' && ftc_sameTeam(teamId) && ftc_isAdmin() && ftc_validPageAccessDoc(request.resource.data);
+          allow create: if ftc_sameTeam(teamId) && ftc_isAdmin()
+            && ((docId == 'pageAccess' && ftc_validPageAccessDoc(request.resource.data))
+              || (docId == 'sidebar' && ftc_validSidebarDoc(request.resource.data) && request.resource.data.rev == 1));
+          allow update: if ftc_sameTeam(teamId) && ftc_isAdmin()
+            && ((docId == 'pageAccess' && ftc_validPageAccessDoc(request.resource.data))
+              || (docId == 'sidebar' && ftc_validSidebarDoc(request.resource.data) && request.resource.data.rev == resource.data.rev + 1));
           allow delete: if false;
         }
 

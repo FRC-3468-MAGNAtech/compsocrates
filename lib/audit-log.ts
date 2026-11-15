@@ -59,6 +59,8 @@ export type AuditAction =
   // P26: page access (the role matrix, member overrides, and deciding an access request)
   | "edit-page-access"
   | "decide-page-access-request"
+  // Session F: the admin arranged the sidebar (Admin Panel > Sidebar)
+  | "edit-sidebar"
   // P29: a scout edited their own earlier form entry (the log keeps what it was and what it became)
   | "edit-form-entry";
 
