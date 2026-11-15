@@ -86,6 +86,7 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - Entries and form docs: `stickyNotes` (and `linkedEntryId`, `planDifferences` where a form has them); `alliance` on match-strategy plan and drive-reflection docs; `eventKey` on helper docs; `teleop.humanPlayerFuelByShift` on REBUILT entries (D8).
 - FTC entries: `values.allianceRole` (`hive` or `garden`) on BIOBUZZ match entries; the other role's fields are absent, not 0.
 - A new `subInRequests` collection (D7).
+- `teams/{id}/settings/sidebar` (FRC) and `programs/ftc/teams/{id}/settings/sidebar` (FTC), Session F: a new settings doc beside `pageAccess` (`{ version: 1, rev, entries: [{ id, kind, parent, order, label?, icon?, hidden? }], updatedBy, updatedAt }`). Read by every team member, written by team admins only, each save `rev + 1`; shape and size checked by `validSidebarDoc` / `ftc_validSidebarDoc` in `firestore.rules` (written to the file, NOT deployed). The `edit-sidebar` audit action is a new value of an existing free-form field. No existing field changed.
 - FTC only (`programs/ftc/`): `teams/{CODE}` (id is an 8-character random join code) carries an optional `location`; new `teams/{CODE}/joinRequests/{uid}` (`uid`, `name`, `status`, `createdAt`). Rules for both are written in `firestore.rules` and NOT deployed.
 
 ## Program merge (docs/MERGE_PLAN.md)
