@@ -26,6 +26,8 @@ export type ProgramEventRules = {
   allianceSize: number;
   /** "calendar": the season is the game's calendar year; "start-year": named for the year the season starts in. */
   seasonKind: "calendar" | "start-year";
+  /** The season id a stored record with no `game` field counts as (old CS data). Absent: the program's default game. */
+  unspecifiedGameId?: string;
   /** Does this program have EPA (Statbotics) data? */
   hasEpa: boolean;
 };

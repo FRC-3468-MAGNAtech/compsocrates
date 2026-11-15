@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
 import Link from "@/components/program/link";
 import { AlertTriangle, FlaskConical } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -9,7 +9,12 @@ import { FiltersBar } from "@/components/scout-stats/filters-bar";
 import { MyScoutingCard } from "@/components/scout-stats/my-scouting-card";
 import { PlatformBadge } from "@/components/scout-stats/platform-badge";
 import { Badge } from "@/components/ui/badge";
+import { GameSelect } from "@/components/scout-stats/game-select";
 import { useAuth } from "@/lib/auth";
+import { useForms } from "@/lib/forms/forms-context";
+import { usePathname, useSearchParams } from "@/lib/program/navigation";
+import { useProgramConfig } from "@/lib/program/context";
+import { filterByGame, readGameParam } from "@/lib/scout-stats/game-filter";
 import { useActiveEvents } from "@/lib/active-event";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import { useAssignments } from "@/lib/assignments";
@@ -52,18 +57,58 @@ function UpcomingAssignmentsPanel({ teamId, uid, event }: { teamId: string | nul
   );
 }
 
+// useSearchParams (the selected game lives in the URL, like Analytics' filters) needs a Suspense boundary so the page can still be prerendered.
 export default function MyScoutingPage() {
+  return (
+    <Suspense fallback={<div className="glass-card h-64 animate-pulse" />}>
+      <MyScoutingContent />
+    </Suspense>
+  );
+}
+
+function MyScoutingContent() {
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
-  const { events: activeEvents, primaryCode } = useActiveEvents();
+  // Cross-event page: its stats read every selected event, archived ones included (archiving only affects event pickers).
+  const { allEvents: activeEvents, storedPrimaryCode: primaryCode, events: pickerEvents, primaryCode: pickerPrimaryCode } = useActiveEvents();
   const orderedActiveEvents = useMemo(() => orderPrimaryFirst({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
+  // The upcoming-assignments panels are per event (Assignments is an event picker), so they skip archived events.
+  const assignmentEvents = useMemo(() => orderPrimaryFirst({ events: pickerEvents, primaryCode: pickerPrimaryCode }), [pickerEvents, pickerPrimaryCode]);
+
+  // Game select: the program's games, the current one by default, kept in the URL (`?game=`; `all` = every game).
+  const { seasons, defaultSeasonId } = useForms();
+  const { event: eventRules } = useProgramConfig();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
+  const seasonIds = useMemo(() => seasons.map((s) => s.id), [seasons]);
+  const seasonId = readGameParam(searchParams.get("game"), seasonIds, defaultSeasonId);
+  const fallbackSeasonId = eventRules.unspecifiedGameId && seasonIds.includes(eventRules.unspecifiedGameId) ? eventRules.unspecifiedGameId : defaultSeasonId;
+  const setSeasonId = useCallback(
+    (next: string) => {
+      const params = new URLSearchParams(queryString);
+      params.set("game", next === "" ? "all" : next);
+      window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+    },
+    [pathname, queryString]
+  );
+  const gameName = seasons.find((s) => s.id === seasonId)?.name ?? "";
 
   const [roleFilter, setRoleFilter] = useState<RoleId[]>([]);
   const [eventFilter, setEventFilter] = useState<string[]>([]);
   const [rankingBasis, setRankingBasis] = useState<RankingBasisId>("preserve");
   const [realEventScope, setRealEventScope] = useState<RealEventCalculationScope>({ eventCode: null, variant: "plain" });
 
-  const sources = useScoutStatsSources(teamId);
+  const rawSources = useScoutStatsSources(teamId);
+  // Entries and sessions of the selected game; one without a `game` field counts as the program's unspecified game (FRC: REEFSCAPE, as old CS did).
+  const sources = useMemo(() => {
+    const options = { seasonId, seasonIds, fallbackSeasonId };
+    return {
+      ...rawSources,
+      entries: filterByGame(rawSources.entries, (e) => e.game, options),
+      sessions: filterByGame(rawSources.sessions, (s) => (s as { game?: unknown }).game, options),
+    };
+  }, [rawSources, seasonId, seasonIds, fallbackSeasonId]);
   const eventOptions = useRealEventOptions(sources.entries, orderedActiveEvents);
 
   // Derived (not effect-corrected — see the matching comment in
@@ -93,6 +138,7 @@ export default function MyScoutingPage() {
         eventFilter,
         rankingBasis: effectiveRankingBasis,
         realEventScope,
+        seasonId: seasonId || null,
       });
     }
     return results;
@@ -109,6 +155,7 @@ export default function MyScoutingPage() {
     effectiveRankingBasis,
     realEventScope.eventCode,
     realEventScope.variant,
+    seasonId,
   ]);
 
   const recentSessions = useMemo(() => {
@@ -132,10 +179,29 @@ export default function MyScoutingPage() {
         </Link>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <GameSelect id="my-scouting-game" value={seasonId} onChange={setSeasonId} seasons={seasons} />
+      </div>
+
+      {rawSources.sessionsError && (
+        <GlassPanel role="alert" className="flex flex-col gap-1 text-sm" data-testid="my-scouting-error">
+          <div className="font-semibold">{rawSources.sessionsError.context}</div>
+          <div className="text-[var(--muted-foreground)]">
+            {rawSources.sessionsError.code}: {rawSources.sessionsError.message}
+            {rawSources.sessionsError.path ? ` (${rawSources.sessionsError.path})` : ""}. Your practice numbers below may be incomplete.
+          </div>
+        </GlassPanel>
+      )}
+
       {!resultsByCategory || !user ? (
         <div className="glass-card h-64 animate-pulse" />
       ) : (
         <>
+          {sources.entries.length === 0 && sources.sessions.length === 0 && (
+            <GlassPanel className="py-8 text-center text-sm text-[var(--muted-foreground)]" data-testid="my-scouting-empty">
+              {seasonId ? `No ${gameName} entries yet` : "No entries yet"}
+            </GlassPanel>
+          )}
           <FiltersBar
             category="real-event"
             roleFilter={roleFilter}
@@ -158,7 +224,7 @@ export default function MyScoutingPage() {
             })}
           </div>
 
-          {orderedActiveEvents.map((event) => (
+          {assignmentEvents.map((event) => (
             <UpcomingAssignmentsPanel key={event.code} teamId={teamId} uid={user.uid} event={event} />
           ))}
 

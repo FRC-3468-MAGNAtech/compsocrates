@@ -13,12 +13,8 @@ import { usePermissions } from "@/lib/permissions";
 import type { RoleId } from "@/lib/roles";
 import { useRealEventOptions, useScoutStats } from "@/lib/scout-stats/use-scout-stats";
 import { useActiveEvents } from "@/lib/active-event";
-import { Label } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DEFAULT_SEASON_ID, getEnabledSeasons } from "@/lib/seasons";
-
-/** Radix Select cannot hold an empty value, so "every game" is this sentinel; the page state uses "" for it. */
-const ALL_GAMES = "all";
+import { GameSelect } from "@/components/scout-stats/game-select";
+import { useForms } from "@/lib/forms/forms-context";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import type { RankingBasisId, RealEventCalculationScope, ScoutCategory } from "@/lib/scout-stats/types";
 
@@ -34,7 +30,9 @@ export default function ScoutAccuracyPage() {
   const [realEventScope, setRealEventScope] = useState<RealEventCalculationScope>({ eventCode: null, variant: "plain" });
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   // Practice accuracy is averaged one game at a time, as in the old app (REBUILT by default); "" counts every game.
-  const [seasonId, setSeasonId] = useState<string>(DEFAULT_SEASON_ID);
+  // The games are the active program's (a one-game program shows its game, disabled).
+  const { seasons, defaultSeasonId } = useForms();
+  const [seasonId, setSeasonId] = useState<string>(defaultSeasonId);
 
   // "Role Leaderboard"/"Event Leaderboard"/"both" only make sense while
   // their matching filter is actually active — derived here (not corrected
@@ -58,7 +56,8 @@ export default function ScoutAccuracyPage() {
     realEventScope,
     seasonId: seasonId || null,
   });
-  const { events: activeEvents, primaryCode } = useActiveEvents();
+  // Cross-event page: reads every selected event, archived ones included (archiving only affects event pickers).
+  const { allEvents: activeEvents, storedPrimaryCode: primaryCode } = useActiveEvents();
   const orderedActiveEvents = useMemo(() => orderPrimaryFirst({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
   const eventOptions = useRealEventOptions(sources.entries, orderedActiveEvents);
 
@@ -87,22 +86,7 @@ export default function ScoutAccuracyPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <CategoryTabs value={category} onChange={setCategory} />
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="accuracy-game">Game</Label>
-          <Select value={seasonId || ALL_GAMES} onValueChange={(v) => setSeasonId(v === ALL_GAMES ? "" : v)}>
-            <SelectTrigger id="accuracy-game" className="w-48">
-              <SelectValue>{seasonId ? (getEnabledSeasons().find((s) => s.id === seasonId)?.name ?? seasonId) : "All games"}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_GAMES}>All games</SelectItem>
-              {getEnabledSeasons().map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <GameSelect id="accuracy-game" value={seasonId} onChange={setSeasonId} seasons={seasons} />
       </div>
 
       {sources.sessionsError && (

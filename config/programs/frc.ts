@@ -10,7 +10,7 @@ export const FRC_PROGRAM: ProgramConfig = {
     description: BRAND.description,
     themeColor: BRAND.themeColor,
   },
-  event: { allianceSize: 3, seasonKind: "calendar", hasEpa: true },
+  event: { allianceSize: 3, seasonKind: "calendar", unspecifiedGameId: "reefscape", hasEpa: true },
   firestorePrefix: "",
   unavailablePaths: [],
   pagesConnected: true,
