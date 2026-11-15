@@ -53,7 +53,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new FtcApiError("unauthorized", "FIRST API rejected the configured credentials.");
+    throw new FtcApiError("unauthorized", "FIRST API rejected the configured credentials: check FTC_API_USERNAME and FTC_API_KEY.");
   }
   if (response.status === 404) {
     throw new FtcApiError("not_found", "The requested resource was not found.");
