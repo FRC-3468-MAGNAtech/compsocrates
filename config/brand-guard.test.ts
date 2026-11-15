@@ -49,6 +49,7 @@ const ALLOWED: Record<string, string> = {
   "docs/SIDEBAR_PLAN.md": "the plan for the sidebar customizer, which covers both programs",
   "docs/SESSION_F_RESULTS.md": "the results of the sidebar customizer session, which covers both programs",
   "docs/BATCH2_RESULTS.md": "the results of the FTC match library and Admin Panel batch, which names the program",
+  "docs/BATCH3_RESULTS.md": "the results of the FTC solo practice batch, which names the program",
   "docs/BATCH1_RESULTS.md": "the results of the FTC foundation fixes and join-request approval batch, which names the program",
 };
 
