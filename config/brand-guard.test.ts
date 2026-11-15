@@ -29,6 +29,8 @@ const ALLOWED: Record<string, string> = {
   "docs/REMAINING.md": "lists what is left of the program merge",
   "docs/STEP1_RESULTS.md": "the results of the docs and tree reconciliation, which names both programs",
   "docs/SESSION_A_RESULTS.md": "the results of the program selector and FTC team setup session",
+  "docs/BIOBUZZ_ROLES_PLAN.md": "the plan for the FTC alliance roles, which names the game and its program",
+  "docs/SESSION_C2_RESULTS.md": "the results of the FTC alliance roles session, which names the game and its program",
   ".env.example": "lists the per-program environment variables",
   "lib/server/env.ts": "the one reader of environment variables, including the FTC ones",
   "lib/events/actions.ts": "dispatches event data calls to the FTC provider",

@@ -2,7 +2,7 @@ import type { Form, FormField, FormValues } from "@/lib/forms/types";
 import { defaultFieldValue } from "@/lib/forms/values";
 import { mulberry32 } from "@/lib/scheduler/rng";
 
-// Alliance roles: an objective scored by the ALLIANCE (BIOBUZZ's Hive, Flower and Garden) must be recorded by one scout per alliance, or it is counted twice.
+// Alliance roles: an objective scored by the ALLIANCE (a game's Hive, Flower and Garden) must be recorded by one scout per alliance, or it is counted twice.
 // A form field names the role that records it (`FormField.allianceRole`); each scout is given one role per match; the fields of the other role are stored as
 // ABSENT (not 0), so "not recorded" differs from "recorded zero". A value that is present always counts as recorded, whatever the entry's role (old entries
 // kept every value and carry no role).
