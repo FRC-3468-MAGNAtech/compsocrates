@@ -20,15 +20,27 @@ export class ApiError extends Error {
  * way lib/team-enrollment.ts does, but keeping the status, `code` and `fields` so callers can react to a specific
  * refusal ("email-unverified", "reauth-required", ...). Throws ApiError on any non-2xx or `{ ok: false }` answer.
  */
-export async function authedApi<T = Record<string, unknown>>(path: string, init: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
+export async function authedApi<T = Record<string, unknown>>(path: string, init: { method?: "GET" | "POST"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   if (!auth.currentUser) throw new ApiError("Not signed in.", 401, "not-signed-in", null);
   const idToken = await auth.currentUser.getIdToken();
   const method = init.method ?? (init.body === undefined ? "GET" : "POST");
-  const res = await fetch(path, {
-    method,
-    headers: { Authorization: `Bearer ${idToken}`, ...(init.body === undefined ? {} : { "Content-Type": "application/json" }) },
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
-  });
+  // `timeoutMs` (optional): give up waiting and say so, rather than leave a form on "Sending…" for as long as the network or server takes.
+  const controller = init.timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), init.timeoutMs) : null;
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: { Authorization: `Bearer ${idToken}`, ...(init.body === undefined ? {} : { "Content-Type": "application/json" }) },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      signal: controller?.signal,
+    });
+  } catch (err) {
+    if (controller?.signal.aborted) throw new ApiError("The server took too long to answer. Check your connection and try again.", 504, "timeout", null);
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok || json.ok === false) {
     throw new ApiError(

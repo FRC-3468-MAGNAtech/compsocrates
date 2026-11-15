@@ -273,7 +273,7 @@ export async function createTeam(input: NewTeamInput): Promise<{ teamId: string;
  */
 export async function requestToJoinTeam(joinCode: string, input: JoinRequestInput): Promise<void> {
   try {
-    await authedApi("/api/ftc/team/request-join", { body: { joinCode, name: input.name } });
+    await authedApi("/api/ftc/team/request-join", { body: { joinCode, name: input.name }, timeoutMs: 30_000 });
   } catch (err) {
     reportFirestoreError("Couldn't send your request", err, `${programPath(PROGRAM, TEAMS)} (join code ${joinCode})`);
     throw err;
