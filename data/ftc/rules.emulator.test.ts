@@ -1031,3 +1031,156 @@ describe("the Admin Panel's data (Batch 2)", () => {
     await assertFails(updateDoc(doc(as("ftc-admin-lib-b"), P("teams"), T1), settings));
   });
 });
+
+// Batch 4: Scout Accuracy (its reads, its actions), the post-save accuracy write, and the CSV import, as a plain scout, a team admin, a scout of another team and a
+// signed-out user. The queries are the ones the page's ports run (team-wide `teamId ==`, never by event); nothing here relies on a loosened rule.
+describe("Scout Accuracy, post-save accuracy and CSV import (Batch 4)", () => {
+  const LEAD = "ftc-lead-1"; // a Lead Scout of team 1, not an admin (seeded above)
+  const ADMIN_T2 = "ftc-admin-b4-t2"; // an admin of ANOTHER team
+  const S = (name: string) => programPath("ftc", name);
+  const coll = (uid: string, name: string) => collection(as(uid), S(name));
+  const anon = () => testEnv.unauthenticatedContext().firestore();
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+  const session = (uid: string, teamId: string, extra: Record<string, unknown> = {}) => ({
+    teamId, uid, kind: "solo", status: "completed", scoutName: "x", seasonId: "biobuzz", mode: "trial", difficulty: null, libraryMatchId: "EVB4_Q1", eventCode: "EVB4", alliance: "red",
+    robots: [111, 222], completedRobots: [111, 222], entryIds: [], accuracy: 90, scoutedTotal: 60, penaltyPoints: 0, officialScore: 66, platform: "pc", flags: [{ type: "low", title: "Low", detail: "", dismissed: false }], excluded: false,
+    lobbyId: null, pairId: null, startedAt: "2026-03-01T10:00:00.000Z", finishedAt: "2026-03-01T10:10:00.000Z", ...extra,
+  });
+  const entryDoc = (uid: string, teamId: string, extra: Record<string, unknown> = {}) => ({
+    teamId, uid, source: "practice", mode: "trial", eventCode: "EVB4", matchType: "Qualification", matchNumber: 1, teamNumber: 111, formId: "biobuzz", formVersion: 1, values: {}, score: { auto: 0, teleop: 0, endgame: 0, total: 0 },
+    comments: "", submittedAt: "2026-03-01T10:05:00.000Z", excluded: false, autoFlags: [], manualFlags: [], accuracy: null, sessionId: "B4-S1", libraryMatchId: "EVB4_Q1", ...extra,
+  });
+  const importInput = (n: number): SaveEntryInput => ({
+    scoutName: "Ada", eventCode: "EVB4", matchType: "Qualification", matchNumber: n, teamNumber: 111, formId: "biobuzz", formVersion: 1, values: { teleTipHive: 1 }, score: { auto: 0, teleop: 20, endgame: 0, total: 20 }, comments: "", importedFrom: "csv",
+  });
+  const importBatch = (uid: string, teamId: string, from: number, count: number, prefix = "csv_b4") => {
+    const db = as(uid);
+    const batch = writeBatch(db);
+    for (let i = 0; i < count; i++) batch.set(doc(db, S("scoutEntries"), `${prefix}_${from + i}`), ftcScoutEntryDoc(teamId, uid, importInput(from + i), serverTimestamp));
+    return batch.commit();
+  };
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, P("users"), ADMIN_T2), { name: "Admin T2", email: "t2admin@example.org", teamId: T2, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+      await setDoc(doc(db, S("practiceSessions"), "B4-S1"), session(SCOUT, T1));
+      await setDoc(doc(db, S("practiceSessions"), "B4-S2"), session(LEAD, T1, { accuracy: null }));
+      await setDoc(doc(db, S("practiceSessions"), "B4-S3"), session(SCOUT, T1, { excluded: true }));
+      await setDoc(doc(db, S("practiceSessions"), "B4-T2"), session(OTHER, T2));
+      await setDoc(doc(db, S("scoutEntries"), "B4-E1"), entryDoc(SCOUT, T1));
+      await setDoc(doc(db, S("scoutEntries"), "B4-E2"), entryDoc(SCOUT, T1, { sessionId: "B4-S3" }));
+      await setDoc(doc(db, S("scoutEntries"), "B4-EV"), entryDoc(SCOUT, T1, { source: "event", mode: null, sessionId: null, libraryMatchId: null, eventCode: "EVB4" }));
+      await setDoc(doc(db, S("scoutEntries"), "B4-T2E"), entryDoc(OTHER, T2));
+      await setDoc(doc(db, S("eventAttendance"), "B4-ATT"), { teamId: T1, eventCode: "EVB4", uids: [SCOUT, LEAD] });
+    });
+  });
+
+  // the reads Scout Accuracy makes, as the ports make them
+  const accuracyReads = (uid: string, teamId: string) => [
+    () => getDocs(query(coll(uid, "users"), where("teamId", "==", teamId))),
+    () => getDocs(query(coll(uid, "practiceSessions"), where("teamId", "==", teamId))),
+    () => getDocs(query(coll(uid, "scoutEntries"), where("teamId", "==", teamId))),
+    () => getDocs(query(coll(uid, "eventAttendance"), where("teamId", "==", teamId))),
+    () => getDocs(query(coll(uid, "libraryMatches"), where("published", "==", true), where("origin", "==", "api"))),
+    () => getDocs(query(coll(uid, "libraryMatches"), where("published", "==", true), where("teamId", "==", teamId))),
+  ];
+
+  it("a plain scout reads the whole team's data the page needs (members, sessions, entries, attendance, library): the page shows the whole team, as in FRC", async () => {
+    const [users, sessions, entries, attendance] = await Promise.all(accuracyReads(SCOUT, T1).slice(0, 4).map((read) => assertSucceeds(read())));
+    expect(ids(users)).toEqual(expect.arrayContaining([SCOUT, LEAD, ADMIN, PIT]));
+    expect(ids(users)).not.toContain(OTHER);
+    expect(ids(sessions)).toEqual(expect.arrayContaining(["B4-S1", "B4-S2", "B4-S3"])); // a teammate's session too (team-wide), never the other team's
+    expect(ids(sessions)).not.toContain("B4-T2");
+    expect(ids(entries)).toEqual(expect.arrayContaining(["B4-E1", "B4-E2", "B4-EV"]));
+    expect(ids(entries)).not.toContain("B4-T2E");
+    expect(ids(attendance)).toContain("B4-ATT");
+    await assertSucceeds(accuracyReads(SCOUT, T1)[4]());
+    await assertSucceeds(accuracyReads(SCOUT, T1)[5]());
+    // the event read a recompute starts from: two equalities
+    await assertSucceeds(getDocs(query(coll(SCOUT, "scoutEntries"), where("teamId", "==", T1), where("eventCode", "==", "EVB4"))));
+  });
+
+  it("a team admin runs the same reads", async () => {
+    for (const read of accuracyReads(ADMIN, T1)) await assertSucceeds(read());
+  });
+
+  it("a scout of another team, and a signed-out user, read none of it", async () => {
+    for (const read of accuracyReads(OTHER, T1).slice(0, 4)) await assertFails(read());
+    await assertFails(getDocs(query(coll(OTHER, "scoutEntries"), where("teamId", "==", T1), where("eventCode", "==", "EVB4"))));
+    for (const name of ["users", "practiceSessions", "scoutEntries", "eventAttendance"]) {
+      await assertFails(getDocs(query(collection(anon(), S(name)), where("teamId", "==", T1))));
+    }
+    // and their own team is theirs
+    for (const read of accuracyReads(OTHER, T2).slice(0, 4)) await assertSucceeds(read());
+  });
+
+  it("a scout saves an entry (no error), but cannot write accuracy, flags or an exclusion onto one; an admin can (Recalculate Accuracy)", async () => {
+    await assertSucceeds(setDoc(doc(as(SCOUT), S("scoutEntries"), "B4-NEW"), ftcScoutEntryDoc(T1, SCOUT, { ...importInput(50), source: "event" }, serverTimestamp)));
+    const patch = ftcScoutEntryPatch({ accuracy: { status: "complete", value: 1, scoutedTotal: 50, penaltyPoints: 0, officialScore: 50 }, autoFlags: [{ ruleId: "zero-main-scoring", dismissed: false }] });
+    // the recompute a scout's save used to trigger is exactly this write: denied, so the scout pages skip it (nothing is loosened)
+    await assertFails(updateDoc(doc(as(SCOUT), S("scoutEntries"), "B4-NEW"), patch));
+    await assertFails(updateDoc(doc(as(LEAD), S("scoutEntries"), "B4-EV"), patch)); // a Lead Scout is not an admin either
+    await assertFails(updateDoc(doc(as(OTHER), S("scoutEntries"), "B4-EV"), patch));
+    await assertFails(updateDoc(doc(anon(), S("scoutEntries"), "B4-EV"), patch));
+    await assertSucceeds(updateDoc(doc(as(ADMIN), S("scoutEntries"), "B4-NEW"), patch));
+    await assertSucceeds(updateDoc(doc(as(ADMIN), S("scoutEntries"), "B4-EV"), patch));
+    await assertFails(updateDoc(doc(as(ADMIN_T2), S("scoutEntries"), "B4-EV"), patch)); // an admin of another team
+    expect((await getDoc(doc(as(ADMIN), S("scoutEntries"), "B4-NEW"))).data()).toMatchObject({ accuracy: { status: "complete", value: 1 }, importedFrom: "csv" });
+  });
+
+  it("dismiss, exclude and the audit entry are admin-only: a plain scout and another team's admin are refused", async () => {
+    const dismissed = [{ type: "low", title: "Low", detail: "", dismissed: true }];
+    const audit = (uid: string, teamId: string) => ({ ...buildAuditEntry(teamId, uid, "x", "exclude-session", { sessionId: "B4-S1" }, { excluded: false }, { excluded: true }), createdAt: serverTimestamp() });
+    for (const who of [SCOUT, LEAD, OTHER, ADMIN_T2]) {
+      await assertFails(updateDoc(doc(as(who), S("practiceSessions"), "B4-S1"), { excluded: true }));
+      await assertFails(updateDoc(doc(as(who), S("practiceSessions"), "B4-S1"), { flags: dismissed }));
+    }
+    await assertFails(addDoc(collection(as(SCOUT), S("auditLog")), audit(SCOUT, T1)));
+    await assertFails(addDoc(collection(as(ADMIN_T2), S("auditLog")), audit(ADMIN_T2, T1)));
+    await assertFails(addDoc(collection(anon(), S("auditLog")), audit(SCOUT, T1)));
+    // the admin: exclude, include, dismiss, and the audit entries (written with their own uid and team)
+    await assertSucceeds(updateDoc(doc(as(ADMIN), S("practiceSessions"), "B4-S1"), { excluded: true }));
+    await assertSucceeds(updateDoc(doc(as(ADMIN), S("practiceSessions"), "B4-S1"), { excluded: false }));
+    await assertSucceeds(updateDoc(doc(as(ADMIN), S("practiceSessions"), "B4-S1"), { flags: dismissed }));
+    await assertSucceeds(addDoc(collection(as(ADMIN), S("auditLog")), audit(ADMIN, T1)));
+    // moving a session to another team or scout is refused even for an admin (Batch 3)
+    await assertFails(updateDoc(doc(as(ADMIN), S("practiceSessions"), "B4-S1"), { teamId: T2 }));
+  });
+
+  it("hard reset: an admin deletes the scout's completed sessions and their entries; a plain scout, a lead and another team's admin cannot", async () => {
+    for (const who of [SCOUT, LEAD, OTHER, ADMIN_T2]) {
+      await assertFails(deleteDoc(doc(as(who), S("practiceSessions"), "B4-S3")));
+      await assertFails(deleteDoc(doc(as(who), S("scoutEntries"), "B4-E2")));
+    }
+    // the entries of one session, found by the session id (equality-only), then deleted one by one, then the session
+    const found = await assertSucceeds(getDocs(query(coll(ADMIN, "scoutEntries"), where("teamId", "==", T1), where("sessionId", "==", "B4-S3"))));
+    expect(ids(found)).toEqual(["B4-E2"]);
+    for (const d of found.docs) await assertSucceeds(deleteDoc(doc(as(ADMIN), S("scoutEntries"), d.id)));
+    await assertSucceeds(deleteDoc(doc(as(ADMIN), S("practiceSessions"), "B4-S3")));
+    await assertSucceeds(addDoc(collection(as(ADMIN), S("auditLog")), { ...buildAuditEntry(T1, ADMIN, "Admin", "hard-reset-scout-data", { targetUid: SCOUT }, { sessionCount: 1, entryCount: 1 }, { sessionCount: 0, entryCount: 0 }), createdAt: serverTimestamp() }));
+  });
+
+  it("CSV import: a batch of 400 stable-id entries writes as a team admin and as a Lead Scout; another team and a signed-out user cannot", async () => {
+    await assertSucceeds(importBatch(ADMIN, T1, 1, 400));
+    expect((await getDoc(doc(as(ADMIN), S("scoutEntries"), "csv_b4_1"))).data()).toMatchObject({ teamId: T1, uid: ADMIN, importedFrom: "csv", source: "event", accuracy: null });
+    await assertSucceeds(importBatch(LEAD, T1, 1001, 400, "csv_lead"));
+    // into someone else's team, as someone else's uid, or signed out: refused
+    await assertFails(importBatch(OTHER, T1, 2001, 2, "csv_x"));
+    const otherDb = as(OTHER);
+    const spoof = writeBatch(otherDb);
+    spoof.set(doc(otherDb, S("scoutEntries"), "csv_spoof"), ftcScoutEntryDoc(T1, SCOUT, importInput(1), serverTimestamp));
+    await assertFails(spoof.commit());
+    const anonDb = anon();
+    const out = writeBatch(anonDb);
+    out.set(doc(anonDb, S("scoutEntries"), "csv_anon"), ftcScoutEntryDoc(T1, SCOUT, importInput(1), serverTimestamp));
+    await assertFails(out.commit());
+  });
+
+  it("CSV import twice: writing an id again is an update (admin only), which is why the app leaves existing ids out of the second import", async () => {
+    await assertFails(importBatch(LEAD, T1, 1001, 2, "csv_lead")); // an update: refused for a Lead Scout
+    // the first import wrote exactly what was sent, the marker on all of it (800 imported, plus the scout's own B4-NEW that carries the marker in this test)
+    const imported = await assertSucceeds(getDocs(query(coll(ADMIN, "scoutEntries"), where("teamId", "==", T1), where("importedFrom", "==", "csv"))));
+    expect(imported.size).toBe(801);
+  });
+});
