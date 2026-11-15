@@ -143,14 +143,14 @@ describe("gating is applied after the config (customization never grants access)
     expect(ids(resolveSidebar(input({ isAdmin: false, can: () => true, config })).main)).not.toContain("admin-panel");
   });
 
-  it("keeps a page the program does not have as a greyed entry (FTC), and not for FRC", () => {
-    const ftc = flat(resolveSidebar(input({ program: "ftc" })).main).find((n) => n.id === "judge-book");
-    expect(ftc?.unavailable).toBe(true);
-    const frc = flat(resolveSidebar(input({ program: "frc" })).main).find((n) => n.id === "judge-book");
-    expect(frc?.unavailable).toBeUndefined();
+  it("HIDES a page the program does not have (FTC), in the default layout and under a config, and keeps it for FRC", () => {
+    const has = (r: ReturnType<typeof resolveSidebar>) => flat([...r.main, ...r.footer]).some((n) => n.id === "judge-book");
+    expect(has(resolveSidebar(input({ program: "ftc" })))).toBe(false);
+    expect(has(resolveSidebar(input({ program: "ftc", config: withEntries((e) => e) })))).toBe(false);
+    expect(has(resolveSidebar(input({ program: "frc" })))).toBe(true);
   });
 
-  it("hides a greyed FTC page when the config hides it", () => {
+  it("hides an FTC-unavailable page when the config hides it too", () => {
     const config = withEntries((e) => e.map((x) => (x.id === "judge-book" ? { ...x, hidden: true } : x)));
     expect(ids(resolveSidebar(input({ program: "ftc", config })).main)).not.toContain("judge-book");
   });

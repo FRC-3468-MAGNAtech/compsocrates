@@ -19,8 +19,6 @@ export type SidebarNode = {
   /** Pages only. */
   href?: string;
   matchPrefix?: boolean;
-  /** The page does not exist in this program yet: shown greyed out, not a link. */
-  unavailable?: boolean;
   /** Groups only: the visible children (never empty). */
   children?: SidebarNode[];
   /** A page: it is the current route. A group: it contains the current route. */
@@ -46,8 +44,12 @@ export type ResolveInput = {
   pathname?: string;
 };
 
-/** The same rule as `visibleNav`: a page no registered page owns is kept; Admin Panel also needs `isAdmin`. */
-export function canShowPage(page: NavItem, input: Pick<ResolveInput, "isAdmin" | "can">): boolean {
+/**
+ * The same rule as `visibleNav`: a page no registered page owns is kept; Admin Panel also needs `isAdmin`. A page the program does not have (its
+ * `unavailablePaths`) is HIDDEN, never shown greyed out: the sidebar, the mobile drawer and the customizer all go through here.
+ */
+export function canShowPage(page: NavItem, input: Pick<ResolveInput, "isAdmin" | "can"> & { program?: ProgramId }): boolean {
+  if (input.program && isUnavailableInProgram(input.program, page.href)) return false;
   if (page.id === ADMIN_PAGE_ID && !input.isAdmin) return false;
   if (!input.can) return true;
   const owner = pageForPath(page.href);
@@ -75,7 +77,6 @@ function build(entries: SidebarEntry[], input: ResolveInput, honourHidden: boole
       icon: sidebarIcon(e.icon, page.icon),
       href: page.href,
       matchPrefix: page.matchPrefix,
-      unavailable: isUnavailableInProgram(input.program, page.href) || undefined,
       active: isActive(page, pathname),
     };
   };

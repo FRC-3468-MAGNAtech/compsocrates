@@ -67,14 +67,17 @@ describe("SidebarEditor", () => {
     expect(out).toContain("Always shown");
   });
 
-  it("marks hidden, renamed and greyed-out items", () => {
+  it("marks hidden and renamed items, and lists no page the program does not have (hidden, never greyed)", () => {
     const entries = setHidden(defaultEntries(), "people", true).map((e) => (e.id === "dashboard" ? { ...e, label: "Home" } : e));
     const ftc = html(<SidebarEditor entries={entries} onChange={noop} labelOf={label} program="ftc" />);
     expect(ftc).toContain("Hidden from the sidebar");
     expect(ftc).toContain("Renamed (was Dashboard)");
-    expect(ftc).toContain("Greyed out: not in this program yet"); // Judge Book in FTC
+    expect(ftc).not.toContain("Greyed out");
+    expect(ftc).not.toContain("Judge Book"); // not in this program: not listed at all
     expect(isDisabled(tagOf(ftc, "Reset Home to its default"))).toBe(false);
-    expect(html(<SidebarEditor entries={entries} onChange={noop} labelOf={label} program="frc" />)).not.toContain("Greyed out");
+    const frc = html(<SidebarEditor entries={entries} onChange={noop} labelOf={label} program="frc" />);
+    expect(frc).not.toContain("Greyed out");
+    expect(frc).toContain("Judge Book");
   });
 
   it("shows a new empty group and says how to fill it", () => {

@@ -104,7 +104,6 @@ type RowProps = {
   dropHint: string | null;
   name: string;
   defaultName: string | null;
-  program: ProgramId;
   customized: boolean;
   disabled: boolean;
   onEdit: () => void;
@@ -114,7 +113,7 @@ type RowProps = {
   childCount: number;
 };
 
-function EntryRow({ entry: e, depth, dropDepth, dropHint, name, defaultName, program, customized, disabled, onEdit, onReset, onDelete, onHidden, childCount }: RowProps) {
+function EntryRow({ entry: e, depth, dropDepth, dropHint, name, defaultName, customized, disabled, onEdit, onReset, onDelete, onHidden, childCount }: RowProps) {
   const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id: e.id, disabled });
   const page = e.kind === "page" ? pageById(e.id) : null;
   const Icon = isSidebarIconKey(e.icon) ? SIDEBAR_ICONS[e.icon] : (page?.icon ?? Folder);
@@ -150,7 +149,6 @@ function EntryRow({ entry: e, depth, dropDepth, dropHint, name, defaultName, pro
           {dropHint && <span className="font-medium text-[var(--foreground)]">{dropHint}</span>}
           {e.kind === "group" && <span>{childCount === 0 ? "Empty group: drag a page under it, then right" : `Group of ${childCount}`}</span>}
           {e.hidden && <span>Hidden from the sidebar</span>}
-          {page && isUnavailableInProgram(program, page.href) && <span>Greyed out: not in this program yet</span>}
           {e.label && defaultName && <span>Renamed (was {defaultName})</span>}
         </div>
       </div>
@@ -207,7 +205,15 @@ export function SidebarEditor({ entries, onChange, labelOf, program, disabled = 
   const deletingEntry = deleting ? entries.find((e) => e.id === deleting) : undefined;
 
   const active = drag ? entries.find((e) => e.id === drag.activeId) : undefined;
-  const rows = useMemo(() => flattenRows(entries, active?.kind === "group" ? active.id : null), [entries, active]);
+  // A page this program does not have is not listed here (it is hidden everywhere, never greyed); its entry stays in the saved layout so Sync keeps working.
+  const rows = useMemo(
+    () =>
+      flattenRows(entries, active?.kind === "group" ? active.id : null).filter((r) => {
+        const page = r.kind === "page" ? pageById(r.id) : null;
+        return !page || !isUnavailableInProgram(program, page.href);
+      }),
+    [entries, active, program],
+  );
   const projection = useMemo(() => (drag ? projectDrop({ entries, activeId: drag.activeId, overId: drag.overId, offsetX: drag.level * INDENT_WIDTH, indentWidth: INDENT_WIDTH }) : null), [entries, drag]);
   const hintFor = (parent: string | null): string => (parent === null ? "Will land: main list" : parent === FOOTER_ZONE ? "Will land: bottom block" : `Will land: inside ${nameOfId(parent)}`);
   const childCountOf = (id: string) => entries.filter((x) => x.parent === id).length;
@@ -296,7 +302,6 @@ export function SidebarEditor({ entries, onChange, labelOf, program, disabled = 
                     dropHint={drag?.activeId === e.id && projection ? hintFor(projection.parent) : null}
                     name={entryName(e)}
                     defaultName={page ? labelOf(page) : null}
-                    program={program}
                     customized={isItemCustomized(entries, e.id)}
                     disabled={disabled}
                     childCount={e.kind === "group" ? childCountOf(e.id) : 0}
@@ -440,7 +445,7 @@ function PreviewNode({ node, child = false }: { node: SidebarNode; child?: boole
   const Icon = node.icon;
   return (
     <li>
-      <div className={cn("flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm", child && "ml-5", node.kind === "group" ? "font-medium text-[var(--foreground)]" : "text-[var(--muted-foreground)]", node.unavailable && "opacity-45")}>
+      <div className={cn("flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm", child && "ml-5", node.kind === "group" ? "font-medium text-[var(--foreground)]" : "text-[var(--muted-foreground)]")}>
         <Icon className="h-4 w-4 shrink-0" aria-hidden />
         <span className="truncate">{node.label}</span>
       </div>

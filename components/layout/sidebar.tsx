@@ -23,7 +23,6 @@ import { useAuth } from "@/lib/auth";
 import { getRole } from "@/lib/roles";
 import { useChangelogUnread } from "@/lib/changelog/store";
 import { BRAND, storageKey } from "@/config/brand";
-import { programConfig } from "@/config/programs";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
 import { TeamSwitcher } from "@/components/program/team-switcher";
@@ -48,24 +47,9 @@ function NavLink({
   /** P20: a count badge (the platform owner's pending applications on Admin Panel). */
   count?: number;
 }) {
-  const program = useProgram();
   const active = item.active;
   const Icon = item.icon;
   const href = item.href ?? "/";
-
-  // A page the active program does not have yet: shown, greyed out, not a link.
-  if (item.unavailable) {
-    return (
-      <div
-        aria-disabled="true"
-        title={`Not available for ${programConfig(program).brand.label} yet`}
-        className={cn("relative flex cursor-not-allowed items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium text-[var(--muted-foreground)] opacity-45 pointer-coarse:min-h-11", child && !collapsed && "ml-5")}
-      >
-        <Icon className="h-[18px] w-[18px] shrink-0" />
-        {!collapsed && <span className="truncate">{item.label}</span>}
-      </div>
-    );
-  }
 
   return (
     <Link href={href} onClick={onNavigate} className={cn("relative block", child && !collapsed && "ml-5")}>
