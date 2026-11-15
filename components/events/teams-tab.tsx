@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import Link from "@/components/program/link";
 import { QueryBoundary } from "@/components/events/query-boundary";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { getTeamsForEvent } from "@/lib/events/actions";
+import { eventQueries } from "@/lib/events/event-queries";
+import { useProgram } from "@/lib/program/context";
 import { sortTeams } from "@/lib/events/details-model";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { cn } from "@/lib/utils";
@@ -13,7 +14,9 @@ const teamLink = "inline-flex min-h-11 items-center rounded-md outline-none hove
 
 /** The event's team list (CS "Team List"). A `?team=` number is highlighted and scrolled into view. */
 export function TeamsTab({ eventKey, season, highlighted }: { eventKey: string; season: number; highlighted: number | null }) {
-  const query = useEventQuery(`teams:${eventKey}:${season}`, () => getTeamsForEvent(eventKey, season));
+  const program = useProgram();
+  const q = eventQueries(program, { code: eventKey, season }).teams;
+  const query = useEventQuery(q.key, q.fetch);
   const teams = query.data ? sortTeams(query.data) : [];
 
   const found = highlighted !== null && teams.some((t) => t.teamNumber === highlighted);

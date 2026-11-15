@@ -17,10 +17,11 @@ import {
 } from "@/data/cs/assignments";
 import { commitPlan, eventRowsQuery, fetchMemberNames, fetchRows } from "@/lib/assignment-io";
 import { getMatchesForEvent } from "@/lib/events/actions";
-import { getDefaultSeason } from "@/lib/events/config";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { auth, isFirebaseConfigured } from "@/lib/firebase/client";
-import { useProgramConfig } from "@/lib/program/context";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { useForms } from "@/lib/forms/forms-context";
+import { scopedKey } from "@/lib/program/paths";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
 import type { Difficulty } from "@/lib/difficulty";
@@ -98,11 +99,15 @@ const previousRows = new Map<string, PreviousRows>();
 
 /** The event's schedule as a slot lookup, fetched through the event facade (cached by `useEventQuery`, shared with the Assignments page). */
 function useEventSchedule(eventCode: string | null, enabled: boolean) {
-  const season = (eventCode ? getSeasonFromEventKey(eventCode) : null) ?? getDefaultSeason();
-  const key = (type: string) => (enabled && eventCode ? `assign:${eventCode}:${type}:${season}` : null);
-  const qual = useEventQuery(key("Q"), () => getMatchesForEvent(eventCode!, "Qualification", season));
-  const playoff = useEventQuery(key("F"), () => getMatchesForEvent(eventCode!, "Playoff", season));
-  const practice = useEventQuery(key("P"), () => getMatchesForEvent(eventCode!, "Practice", season));
+  // The program matters: without it the other program's event schedule was read from the default provider. A bare code has no season in it, so the program's default season
+  // stands in (the same one the Assignments page uses; for FRC it is the configured season, as before).
+  const program = useProgram();
+  const { defaultApiSeason } = useForms();
+  const season = (eventCode ? getSeasonFromEventKey(eventCode) : null) ?? defaultApiSeason;
+  const key = (type: string) => (enabled && eventCode ? scopedKey(program, `assign:${eventCode}:${type}:${season}`) : null);
+  const qual = useEventQuery(key("Q"), () => getMatchesForEvent(eventCode!, "Qualification", season, program));
+  const playoff = useEventQuery(key("F"), () => getMatchesForEvent(eventCode!, "Playoff", season, program));
+  const practice = useEventQuery(key("P"), () => getMatchesForEvent(eventCode!, "Practice", season, program));
   return useMemo(
     () => buildScheduleLookup(eventMatchesToInputs([...(qual.data ?? []), ...(playoff.data ?? []), ...(practice.data ?? [])])),
     [qual.data, playoff.data, practice.data]

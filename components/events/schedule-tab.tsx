@@ -4,7 +4,8 @@ import Link from "@/components/program/link";
 import { QueryBoundary } from "@/components/events/query-boundary";
 import { Badge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { getMatchesForEvent } from "@/lib/events/actions";
+import { eventQueries } from "@/lib/events/event-queries";
+import { useProgram } from "@/lib/program/context";
 import { matchLabel, matchWinner, sortSchedule } from "@/lib/events/details-model";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import { cn } from "@/lib/utils";
@@ -71,7 +72,9 @@ function MatchTable({ matches, caption }: { matches: EventMatch[]; caption: stri
 }
 
 function Section({ eventKey, season, type, title }: { eventKey: string; season: number; type: Extract<MatchType, "Qualification" | "Playoff">; title: string }) {
-  const query = useEventQuery(`matches:${eventKey}:${season}:${type}`, () => getMatchesForEvent(eventKey, type, season));
+  const program = useProgram();
+  const q = eventQueries(program, { code: eventKey, season }).matches(type);
+  const query = useEventQuery(q.key, q.fetch);
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">{title}</h3>

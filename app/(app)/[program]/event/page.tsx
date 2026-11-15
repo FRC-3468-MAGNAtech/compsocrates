@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { seasonRangeLabel } from "@/lib/events/event-key";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Check, CheckCircle2, Clock, MapPin, RefreshCw, Star, Users } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -197,13 +198,13 @@ export default function EventSelectionPage() {
           <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
             <SelectTrigger className="sm:w-36">
               <SelectValue>
-                {season}&ndash;{season + 1}
+                {seasonRangeLabel(eventRules.seasonKind, season)}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {seasons.map((s) => (
                 <SelectItem key={s} value={String(s)}>
-                  {s}&ndash;{s + 1}
+                  {seasonRangeLabel(eventRules.seasonKind, s)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -257,7 +258,7 @@ export default function EventSelectionPage() {
 
       {eventsQuery.status === "empty" && (
         <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">
-          No events found for the {season}&ndash;{season + 1} season.
+          No events found for the {seasonRangeLabel(eventRules.seasonKind, season)} season.
         </GlassPanel>
       )}
 

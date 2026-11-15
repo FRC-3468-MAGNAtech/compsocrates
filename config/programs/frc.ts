@@ -15,6 +15,7 @@ export const FRC_PROGRAM: ProgramConfig = {
     keyShape: "tba",
     codeLabel: "Event Key",
     eventCopy: {
+      invalidKeyReason: "That isn't an event key from The Blue Alliance (it should start with the year, like 2026arli).",
       seasonName: "FIRST Robotics",
       teamListSource: "the official FIRST API",
       credits: [

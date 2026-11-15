@@ -39,6 +39,8 @@ export type ProgramEventRules = {
   codeLabel: string;
   /** Wording on the event page that names the program's data source. */
   eventCopy: {
+    /** Why a key in the wrong shape is rejected (shown on the "Event not found" card). */
+    invalidKeyReason: string;
     /** "... is a competition in the {seasonName} season". */
     seasonName: string;
     /** "Team lists are loaded from {teamListSource}." */

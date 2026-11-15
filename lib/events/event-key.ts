@@ -40,3 +40,8 @@ export function eventPagePath(shape: EventKeyShape, event: { code: string; seaso
 export function seasonLabel(kind: "calendar" | "start-year", season: number): string {
   return kind === "calendar" ? String(season) : `${season}-${String((season + 1) % 100).padStart(2, "0")}`;
 }
+
+/** The season picker's wording: a "calendar" season keeps its range form (`2026–2027`); a "start-year" season is the two-year form (`2025-26`). */
+export function seasonRangeLabel(kind: "calendar" | "start-year", season: number): string {
+  return kind === "calendar" ? `${season}\u2013${season + 1}` : seasonLabel(kind, season);
+}

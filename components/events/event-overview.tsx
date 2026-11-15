@@ -1,6 +1,8 @@
 import { ExternalLink } from "lucide-react";
 import { formatDateRange } from "@/components/event/selected-events-panel";
 import { locationLabel, safeWebsite } from "@/lib/events/details-model";
+import { seasonLabel } from "@/lib/events/event-key";
+import { useProgramConfig } from "@/lib/program/context";
 import type { EventInfo } from "@/lib/events/types";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -14,6 +16,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 
 /** Event Information and About This Event (CS's Overview tab). */
 export function EventOverview({ event }: { event: EventInfo }) {
+  const { event: rules } = useProgramConfig();
   const location = locationLabel(event);
   const website = safeWebsite(event.website);
   return (
@@ -24,8 +27,8 @@ export function EventOverview({ event }: { event: EventInfo }) {
           <Fact label="Location">{location ?? "Location TBD"}</Fact>
           {event.venue && <Fact label="Venue">{event.venue}</Fact>}
           <Fact label="Dates">{formatDateRange(event.dateStart, event.dateEnd)}</Fact>
-          <Fact label="Season">{event.season}</Fact>
-          <Fact label="Event Key">
+          <Fact label="Season">{seasonLabel(rules.seasonKind, event.season)}</Fact>
+          <Fact label={rules.codeLabel}>
             <span className="font-mono">{event.code}</span>
           </Fact>
           {event.timezone && <Fact label="Timezone">{event.timezone}</Fact>}
@@ -41,9 +44,9 @@ export function EventOverview({ event }: { event: EventInfo }) {
       <section className="flex flex-col gap-2 text-sm text-[var(--muted-foreground)]">
         <h2 className="text-lg font-semibold text-[var(--foreground)]">About This Event</h2>
         <p>
-          {event.name} is a competition in the FIRST Robotics season{location ? `, held in ${location}` : ""} from {formatDateRange(event.dateStart, event.dateEnd)}.
+          {event.name} is a competition in the {rules.eventCopy.seasonName} season{location ? `, held in ${location}` : ""} from {formatDateRange(event.dateStart, event.dateEnd)}.
         </p>
-        <p>Team lists are loaded from the official FIRST API.</p>
+        <p>Team lists are loaded from {rules.eventCopy.teamListSource}.</p>
       </section>
     </div>
   );

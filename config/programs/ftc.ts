@@ -11,7 +11,6 @@ export const FTC_UNAVAILABLE_PATHS = [
   "/analytics/performance-reliability",
   "/analytics/robot-radar",
   "/judge-book",
-  "/events/[eventKey]",
 ] as const;
 
 export const FTC_PROGRAM: ProgramConfig = {
@@ -31,6 +30,7 @@ export const FTC_PROGRAM: ProgramConfig = {
     keyShape: "season-code",
     codeLabel: "Event Code",
     eventCopy: {
+      invalidKeyReason: "That isn't an FTC event key (it should be the season, a hyphen and the event code, like 2025-USCALAB).",
       seasonName: "FIRST Tech Challenge",
       teamListSource: "the official FIRST Tech Challenge Events API",
       credits: [{ before: "the official ", name: "FIRST Tech Challenge Events API", href: "https://ftc-events.firstinspires.org/services/API" }],
@@ -81,6 +81,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/admin",
       "/team-settings",
       "/changelog",
+      "/events/[eventKey]",
     ],
     features: { assignments: true, subIns: false, practice: true, live: true, lobby: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },

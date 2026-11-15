@@ -18,9 +18,11 @@ import { Shimmer } from "@/components/ui/shimmer";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BRAND } from "@/config/brand";
-import { getEvent } from "@/lib/events/actions";
-import { useProgram } from "@/lib/program/context";
-import { EVENT_DETAILS_TABS, eventBadge, eventKeyYear, locationLabel, parseEventTab, parseHighlightedTeam, type EventDetailsTab } from "@/lib/events/details-model";
+import { eventDetailQuery } from "@/lib/events/event-queries";
+import { parseEventKey, seasonLabel } from "@/lib/events/event-key";
+import { useActiveEvents } from "@/lib/active-event";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { EVENT_DETAILS_TABS, eventBadge, locationLabel, parseEventTab, parseHighlightedTeam, type EventDetailsTab } from "@/lib/events/details-model";
 import { useEventName } from "@/lib/events/use-event-names";
 import { useEventQuery } from "@/lib/events/use-event-query";
 
@@ -49,21 +51,30 @@ function NotFound({ eventKey, reason }: { eventKey: string; reason: string }) {
   );
 }
 
+/** Registers the names the team stored for its events (a step of the name chain), so the error card still names the event when the data API is down. */
+function StoredEventNames() {
+  useActiveEvents();
+  return null;
+}
+
 /** /events/[eventKey]: one event's information, team list, schedule and rankings (CS /event-details/[eventKey]). */
 export function EventDetailsView({ eventKey }: { eventKey: string }) {
   const params = useSearchParams();
   const program = useProgram();
+  const rules = useProgramConfig().event;
   const [tab, setTab] = useState<EventDetailsTab>(() => parseEventTab(params.get("tab")));
   const [now] = useState(() => Date.now());
   const highlighted = parseHighlightedTeam(params.get("team"));
 
-  // A key that doesn't start with a year and a code (CS's "app-testing" fallback, say) is not a TBA event: skip the fetch.
-  const year = eventKeyYear(eventKey);
-  const query = useEventQuery(year ? `event:${program}:${eventKey}` : null, () => getEvent(eventKey, year ?? undefined, program));
+  // A key that is not in this program's shape (CS's "app-testing" fallback, say, or the other program's key) is not an event here: skip the fetch.
+  const parsed = parseEventKey(rules.keyShape, eventKey);
+  const detail = parsed ? eventDetailQuery(program, eventKey, parsed) : null;
+  const query = useEventQuery(detail?.key ?? null, () => detail!.fetch());
+  const nameKey = parsed?.code ?? eventKey;
   const event = query.data;
 
   // The name for the tab title and the fallback heading: the API event's own name, else stored, else the static table, else the key.
-  const resolved = useEventName(eventKey, { name: event?.name });
+  const resolved = useEventName(nameKey, { name: event?.name });
   useEffect(() => {
     const previous = document.title;
     document.title = `${resolved.name} | ${BRAND.title}`;
@@ -73,8 +84,8 @@ export function EventDetailsView({ eventKey }: { eventKey: string }) {
   }, [resolved.name]);
 
   let body: React.ReactNode;
-  if (!year) {
-    body = <NotFound eventKey={eventKey} reason="That isn't an event key from The Blue Alliance (it should start with the year, like 2026arli)." />;
+  if (!parsed) {
+    body = <NotFound eventKey={eventKey} reason={rules.eventCopy.invalidKeyReason} />;
   } else if (query.status === "loading") {
     body = (
       <div role="status" aria-label="Loading event" className="flex flex-col gap-4">
@@ -88,9 +99,10 @@ export function EventDetailsView({ eventKey }: { eventKey: string }) {
         <AlertTriangle className="h-8 w-8" style={{ color: "var(--color-primary)" }} aria-hidden />
         <div>
           <div className="font-semibold">
-            Couldn&apos;t load <EventName eventKey={eventKey} />
+            Couldn&apos;t load <EventName eventKey={nameKey} />
           </div>
           <p className="text-sm text-[var(--muted-foreground)]">{query.error?.message}</p>
+          <StoredEventNames />
         </div>
         <Button variant="glass" onClick={query.refetch} className="gap-2">
           <RefreshCw className="h-4 w-4" /> Retry
@@ -126,8 +138,8 @@ export function EventDetailsView({ eventKey }: { eventKey: string }) {
         </GlassPanel>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <StatCard label="Season" value={String(event.season)} index={0} />
-          <StatCard label="Event Key" value={event.code} index={1} />
+          <StatCard label="Season" value={seasonLabel(rules.seasonKind, event.season)} index={0} />
+          <StatCard label={rules.codeLabel} value={event.code} index={1} />
           <StatCard label="Status" value={badge.label} index={2} />
         </div>
 

@@ -3,14 +3,17 @@
 import Link from "@/components/program/link";
 import { QueryBoundary } from "@/components/events/query-boundary";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { getRankingsForEvent, getTeamsForEvent } from "@/lib/events/actions";
+import { eventQueries } from "@/lib/events/event-queries";
+import { useProgram } from "@/lib/program/context";
 import { recordLabel, sortRankings, teamNameMap } from "@/lib/events/details-model";
 import { useEventQuery } from "@/lib/events/use-event-query";
 
 /** Official qualification rankings, with team names from the team list when it has loaded. */
 export function RankingsTab({ eventKey, season }: { eventKey: string; season: number }) {
-  const query = useEventQuery(`rankings:${eventKey}:${season}`, () => getRankingsForEvent(eventKey, season));
-  const teams = useEventQuery(`teams:${eventKey}:${season}`, () => getTeamsForEvent(eventKey, season));
+  const program = useProgram();
+  const queries = eventQueries(program, { code: eventKey, season });
+  const query = useEventQuery(queries.rankings.key, queries.rankings.fetch);
+  const teams = useEventQuery(queries.teams.key, queries.teams.fetch);
   const names = teamNameMap(teams.data ?? []);
   const rows = query.data ? sortRankings(query.data) : [];
 

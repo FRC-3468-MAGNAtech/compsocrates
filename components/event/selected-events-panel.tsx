@@ -10,7 +10,9 @@ import { Archive, ArrowDown, ArrowUp, CalendarX2, Check, ChevronDown, Clock, Gri
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { moveActiveEvent } from "@/lib/active-events";
+import { eventPagePath } from "@/lib/events/event-key";
 import { getEventStatus } from "@/lib/events/event-status";
+import { useProgramConfig } from "@/lib/program/context";
 import { useNamedEvents } from "@/lib/events/use-event-names";
 import { spring, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -377,6 +379,7 @@ function EventRow({
   reorder?: { index: number; count: number; onMove: (toIndex: number) => void; grip: React.ReactNode };
 }) {
   const status = STATUS_BADGE[getEventStatus(event, now)];
+  const { keyShape } = useProgramConfig().event;
 
   return (
     <div className="flex items-center gap-1 rounded-xl p-2.5 sm:gap-2" onClick={(e) => e.stopPropagation()}>
@@ -409,7 +412,7 @@ function EventRow({
         {status.label}
       </Badge>
       <Link
-        href={`/events/${encodeURIComponent(event.code)}`}
+        href={eventPagePath(keyShape, event)}
         aria-label={`Details for ${event.name}`}
         className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-xs font-medium text-[var(--muted-foreground)] outline-none hover:bg-white/10 hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--glow),0.5)]"
       >
