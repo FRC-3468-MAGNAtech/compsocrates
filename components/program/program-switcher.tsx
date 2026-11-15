@@ -9,7 +9,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * The program selector: one pill per program, the active one filled. Links go to the program's dashboard
- * (explicit `/<program>/dashboard`, so this is the one place that switches program on purpose).
+ * (explicit `/<program>/dashboard`, so this is the one place that switches program on purpose). There is no separate
+ * "All programs" button here any more; the top bar's `ProgramChip` still links to the selector on the home page.
  */
 export function ProgramSwitcher({ className }: { className?: string }) {
   const active = useProgram();
@@ -32,14 +33,6 @@ export function ProgramSwitcher({ className }: { className?: string }) {
           {PROGRAMS[id].brand.label}
         </NextLink>
       ))}
-      <NextLink
-        href={CHOOSE_PROGRAM_HREF}
-        aria-label="All programs"
-        title="All programs"
-        className="flex min-h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-      >
-        <LayoutGrid className="h-4 w-4" />
-      </NextLink>
     </div>
   );
 }
