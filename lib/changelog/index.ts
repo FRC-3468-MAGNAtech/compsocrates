@@ -37,6 +37,8 @@ export type ChangelogEntry = {
   updatedAtMs: number | null;
   /** When it first went live (drives the unread dot). Null for drafts, and briefly for an entry whose server timestamp hasn't resolved yet. */
   publishedAtMs: number | null;
+  /** Session G (additive `legacy` field): an entry brought over from the old CompSocrates changelog. Always listed below the current entries, never lights the unread dot. */
+  legacy?: boolean;
 };
 
 /** What the editor edits. */
@@ -95,14 +97,16 @@ export function entryFromData(id: string, data: Record<string, unknown>): Change
     createdAtMs: timestampMs(data.createdAt),
     updatedAtMs: timestampMs(data.updatedAt),
     publishedAtMs: timestampMs(data.publishedAt),
+    ...(data.legacy === true ? { legacy: true } : {}),
   };
 }
 
 // --- ordering, filtering, grouping ------------------------------------------------
 
-/** Pinned first; then newest date; ties by when it was published/created, then version. */
+/** Pinned first; then the app's own entries before entries brought over from the old app; then newest date; ties by when it was published/created, then version. */
 export function compareEntries(a: ChangelogEntry, b: ChangelogEntry): number {
   if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+  if (!!a.legacy !== !!b.legacy) return a.legacy ? 1 : -1;
   if (a.date !== b.date) return b.date.localeCompare(a.date);
   const at = a.publishedAtMs ?? a.createdAtMs ?? 0;
   const bt = b.publishedAtMs ?? b.createdAtMs ?? 0;
@@ -162,13 +166,14 @@ export function initiallyExpanded(displayed: ChangelogEntry[], count: number = 2
  * still pending (the admin's own just-published write) doesn't count — they
  * made it.
  */
-export function hasUnread(entries: Pick<ChangelogEntry, "status" | "publishedAtMs">[], lastSeenMs: number | null): boolean {
+export function hasUnread(entries: Pick<ChangelogEntry, "status" | "publishedAtMs" | "legacy">[], lastSeenMs: number | null): boolean {
   const seen = lastSeenMs ?? 0;
-  return entries.some((e) => e.status === "published" && e.publishedAtMs !== null && e.publishedAtMs > seen);
+  // Entries brought over from the old app (legacy) are history, never news: they don't light the dot for anyone.
+  return entries.some((e) => !e.legacy && e.status === "published" && e.publishedAtMs !== null && e.publishedAtMs > seen);
 }
 
-export function latestPublishedMs(entries: Pick<ChangelogEntry, "status" | "publishedAtMs">[]): number | null {
-  const times = entries.filter((e) => e.status === "published" && e.publishedAtMs !== null).map((e) => e.publishedAtMs!);
+export function latestPublishedMs(entries: Pick<ChangelogEntry, "status" | "publishedAtMs" | "legacy">[]): number | null {
+  const times = entries.filter((e) => !e.legacy && e.status === "published" && e.publishedAtMs !== null).map((e) => e.publishedAtMs!);
   return times.length === 0 ? null : Math.max(...times);
 }
 

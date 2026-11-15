@@ -57,7 +57,7 @@ export function useChangelog(teamId: string | null, isAdmin: boolean) {
  * published entries only, for every role, so it costs the same for everyone.
  */
 export function useChangelogUnread(teamId: string | null, lastSeenChangelogAt: unknown): boolean {
-  const [published, setPublished] = useState<Pick<ChangelogEntry, "status" | "publishedAtMs">[]>([]);
+  const [published, setPublished] = useState<Pick<ChangelogEntry, "status" | "publishedAtMs" | "legacy">[]>([]);
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) {
@@ -68,7 +68,7 @@ export function useChangelogUnread(teamId: string | null, lastSeenChangelogAt: u
     const q = query(collection(db, COLLECTION), where("teamId", "==", teamId), where("status", "==", "published"));
     const unsubscribe = onSnapshot(
       q,
-      (snap) => setPublished(snap.docs.map((d) => ({ status: "published" as const, publishedAtMs: timestampMs(d.data().publishedAt) }))),
+      (snap) => setPublished(snap.docs.map((d) => ({ status: "published" as const, publishedAtMs: timestampMs(d.data().publishedAt), legacy: d.data().legacy === true }))),
       (err) => {
         console.error("changelog unread subscription failed:", err);
         setPublished([]);
@@ -108,6 +108,7 @@ export async function saveEntry(actor: Actor, id: string | null, input: Changelo
     let createdBy = actor.uid;
     let createdAt: unknown = serverTimestamp();
     let publishedAt: unknown = null;
+    let legacy = false;
     if (id) {
       const snap = await tx.get(ref);
       if (!snap.exists()) throw new Error("That entry no longer exists.");
@@ -117,6 +118,7 @@ export async function saveEntry(actor: Actor, id: string | null, input: Changelo
       createdBy = snap.data().createdBy ?? actor.uid;
       createdAt = snap.data().createdAt ?? serverTimestamp();
       publishedAt = snap.data().publishedAt ?? null;
+      legacy = current.legacy === true; // an edit keeps an old-app entry below the current ones
     }
     if (draft.status === "published") {
       if (!wasPublished || publishedAt === null) publishedAt = serverTimestamp();
@@ -124,7 +126,7 @@ export async function saveEntry(actor: Actor, id: string | null, input: Changelo
       publishedAt = null;
     }
 
-    tx.set(ref, { teamId: actor.teamId, ...draft, createdBy, createdAt, updatedAt: serverTimestamp(), publishedAt });
+    tx.set(ref, { teamId: actor.teamId, ...draft, createdBy, createdAt, updatedAt: serverTimestamp(), publishedAt, ...(legacy ? { legacy: true } : {}) });
     tx.set(
       newAuditLogRef(),
       buildAuditEntry(actor.teamId, actor.uid, actor.name, id ? "edit-changelog-entry" : "create-changelog-entry", { entryId: ref.id, version: draft.version, title: draft.title }, before ? auditView(before) : null, auditView(draft))
