@@ -32,8 +32,10 @@ import {
   readDeviceThemeRecord,
   scopeSwitchNeedsChoice,
   switchScope,
+  withLeaveChoice,
   writeDeviceThemeRecord,
   type DeviceThemeRecord,
+  type LeaveChoice,
   type ThemeLook,
   type ThemeScope,
 } from "@/lib/theme-scope";
@@ -72,8 +74,15 @@ type ThemeContextValue = {
   scopeAvailable: boolean;
   /** True when leaving "device" would drop a different device theme: the UI asks "upload it to the account, or keep the account's?" first. */
   scopeNeedsChoice: boolean;
-  /** `choice` only matters when leaving "device" with a different device theme: "upload" saves it to the account, "keep" leaves the account's. Neither deletes the device theme. */
-  setScope: (next: ThemeScope, choice?: "upload" | "keep") => void;
+  /**
+   * `choice` only matters when leaving "device" with a different device theme: "upload" saves it to the account, "keep" leaves the account's.
+   * Neither deletes the device theme. With no `choice`, the remembered `leaveChoice` applies. `remember` stores `choice` as "don't ask again".
+   */
+  setScope: (next: ThemeScope, choice?: LeaveChoice, remember?: boolean) => void;
+  /** The remembered answer to the leave-device question on this device; undefined = ask each time. */
+  leaveChoice: LeaveChoice | undefined;
+  /** Sets or clears (undefined) the remembered answer, from the Appearance settings. */
+  setLeaveChoice: (choice: LeaveChoice | undefined) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -262,13 +271,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const scopeNeedsChoice = scopeSwitchNeedsChoice(record, { themeId: accountThemeId, colorMode: accountMode, gradientIntensity: accountIntensity });
   const setScope = useCallback(
-    (next: ThemeScope, choice?: "upload" | "keep") => {
+    (next: ThemeScope, choice?: LeaveChoice, remember?: boolean) => {
       if (!uid || next === record.scope) return;
       const account = accountLook({ themeId: accountThemeId, colorMode: accountMode, gradientIntensity: accountIntensity });
-      setStore({ uid, record: switchScope(record, next, { themeId, colorMode, gradientIntensity }) });
+      const switched = switchScope(record, next, { themeId, colorMode, gradientIntensity });
+      // "Don't ask me again": the answer is remembered on this device (and can be changed or cleared in the same settings section).
+      setStore({ uid, record: remember && choice ? withLeaveChoice(switched, choice) : switched });
       if (next === "device") return; // the device effect applies the device theme
       // Back to all devices: either this device's theme goes to the account (and stays on screen), or the account's comes back. The device theme is kept either way.
-      const look = choice === "upload" && record.theme ? record.theme : account;
+      const look = (choice ?? record.leaveChoice) === "upload" && record.theme ? record.theme : account;
       setThemeIdState(look.themeId);
       setColorModeState(look.colorMode);
       setGradientIntensityState(look.gradientIntensity);
@@ -308,11 +319,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setColorMode(oppositeMode(resolvedMode));
   }, [modeLocked, resolvedMode, setColorMode]);
 
+  const setLeaveChoice = useCallback((choice: LeaveChoice | undefined) => {
+    setStore((prev) => (prev.uid ? { uid: prev.uid, record: withLeaveChoice(prev.record, choice) } : prev));
+  }, []);
+
   const scope = record.scope;
   const scopeAvailable = uid !== null;
+  const leaveChoice = record.leaveChoice;
   const value = useMemo(
-    () => ({ theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity, scope, scopeAvailable, scopeNeedsChoice, setScope }),
-    [theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity, scope, scopeAvailable, scopeNeedsChoice, setScope]
+    () => ({ theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity, scope, scopeAvailable, scopeNeedsChoice, setScope, leaveChoice, setLeaveChoice }),
+    [theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity, scope, scopeAvailable, scopeNeedsChoice, setScope, leaveChoice, setLeaveChoice]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

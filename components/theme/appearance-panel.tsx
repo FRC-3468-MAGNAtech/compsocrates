@@ -6,7 +6,7 @@ import { Check, Monitor, Moon, Search, Sun, type LucideIcon } from "lucide-react
 import { useAppTheme } from "@/components/theme/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { ThemeScope } from "@/lib/theme-scope";
+import type { LeaveChoice, ThemeScope } from "@/lib/theme-scope";
 import { pageBackground, themeGroups, tokensFor, type ColorMode, type ColorModePreference, type ThemeDefinition } from "@/lib/themes";
 import { GRADIENT_INTENSITIES, type GradientIntensity } from "@/lib/theme-gradient";
 import { rgbTriple, parseHex } from "@/lib/theme-color";
@@ -141,11 +141,19 @@ const SCOPES: { id: ThemeScope; label: string }[] = [
   { id: "device", label: "This device only" },
 ];
 
+const LEAVE_OPTIONS: { id: LeaveChoice | undefined; label: string }[] = [
+  { id: undefined, label: "Ask me" },
+  { id: "upload", label: "Upload this device's theme" },
+  { id: "keep", label: "Keep my account's theme" },
+];
+
 /** Session G: "Theme applies to: All my devices / This device only". Signed-in only (there is no account to share with otherwise). */
 function ThemeScopeSection() {
-  const { scope, scopeAvailable, scopeNeedsChoice, setScope } = useAppTheme();
+  const { scope, scopeAvailable, scopeNeedsChoice, setScope, leaveChoice, setLeaveChoice } = useAppTheme();
   const [asking, setAsking] = useState(false);
+  const [dontAsk, setDontAsk] = useState(false);
   const labelId = useId();
+  const leaveId = useId();
   if (!scopeAvailable) return null;
 
   const choose = (next: ThemeScope) => {
@@ -158,7 +166,8 @@ function ThemeScopeSection() {
   };
   const decide = (choice: "upload" | "keep") => {
     setAsking(false);
-    setScope("account", choice);
+    setScope("account", choice, dontAsk);
+    setDontAsk(false);
   };
 
   return (
@@ -194,6 +203,10 @@ function ThemeScopeSection() {
       {asking && (
         <div role="alertdialog" aria-label="Use this device's theme on all your devices?" data-testid="theme-scope-choice" className="glass-card flex flex-col gap-3 p-4">
           <p className="text-sm">This device has its own theme. Upload it to your account, or keep the theme your account already has? Your device theme is kept either way.</p>
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" checked={dontAsk} onChange={(e) => setDontAsk(e.target.checked)} data-testid="theme-scope-dont-ask" className="h-4 w-4" />
+            Don&apos;t ask me again (you can change this under &ldquo;When I switch back&rdquo; here)
+          </label>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => decide("upload")} data-testid="theme-scope-upload">
               Upload this device&apos;s theme
@@ -207,6 +220,31 @@ function ThemeScopeSection() {
           </div>
         </div>
       )}
+      <div className="flex flex-col gap-1.5" data-testid="theme-scope-leave">
+        <h4 id={leaveId} className="text-xs font-medium text-[var(--muted-foreground)]">
+          When I switch back to All my devices
+        </h4>
+        <div role="group" aria-labelledby={leaveId} className="glass-pill grid w-full max-w-md grid-cols-3 gap-1 p-1">
+          {LEAVE_OPTIONS.map(({ id, label }) => {
+            const active = leaveChoice === id;
+            return (
+              <button
+                key={label}
+                type="button"
+                data-testid={`theme-scope-leave-${id ?? "ask"}`}
+                aria-pressed={active}
+                onClick={() => setLeaveChoice(id)}
+                className={cn(
+                  "flex min-h-10 items-center justify-center rounded-full px-2 text-center text-xs font-medium transition-colors",
+                  active ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </section>
   );
 }

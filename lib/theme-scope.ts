@@ -17,7 +17,12 @@ export type ThemeScope = "account" | "device";
 
 export type ThemeLook = { themeId: string; colorMode: ColorModePreference; gradientIntensity: GradientIntensity };
 
-export type DeviceThemeRecord = { scope: ThemeScope; theme: ThemeLook | null };
+/** What to do with a different device theme when leaving "This device only", remembered so the question is not asked again. Absent = ask. */
+export type LeaveChoice = "upload" | "keep";
+
+export const parseLeaveChoice = (raw: unknown): LeaveChoice | undefined => (raw === "upload" || raw === "keep" ? raw : undefined);
+
+export type DeviceThemeRecord = { scope: ThemeScope; theme: ThemeLook | null; leaveChoice?: LeaveChoice };
 
 /** The account's saved values, as they come off the user document (any of them may be missing or invalid). */
 export type AccountLook = { themeId?: unknown; colorMode?: unknown; gradientIntensity?: unknown };
@@ -46,10 +51,11 @@ function parseLook(raw: unknown): ThemeLook | null {
 export function parseDeviceThemeRecord(raw: string | null | undefined): DeviceThemeRecord {
   if (!raw) return EMPTY_DEVICE_RECORD;
   try {
-    const json = JSON.parse(raw) as { scope?: unknown; theme?: unknown } | null;
+    const json = JSON.parse(raw) as { scope?: unknown; theme?: unknown; leaveChoice?: unknown } | null;
     const theme = parseLook(json?.theme);
     const scope: ThemeScope = json?.scope === "device" && theme ? "device" : "account";
-    return { scope, theme };
+    const leaveChoice = parseLeaveChoice(json?.leaveChoice);
+    return leaveChoice ? { scope, theme, leaveChoice } : { scope, theme };
   } catch {
     return EMPTY_DEVICE_RECORD;
   }
@@ -75,7 +81,7 @@ export function readDeviceThemeRecord(uid: string, storage: KeyValueStorage | nu
 
 export function writeDeviceThemeRecord(uid: string, record: DeviceThemeRecord, storage: KeyValueStorage | null = defaultStorage()): void {
   try {
-    if (record.scope === "account" && !record.theme) storage?.removeItem(deviceThemeKey(uid));
+    if (record.scope === "account" && !record.theme && !record.leaveChoice) storage?.removeItem(deviceThemeKey(uid));
     else storage?.setItem(deviceThemeKey(uid), JSON.stringify(record));
   } catch {
     // storage blocked: the choice still applies for this session
@@ -99,9 +105,19 @@ export function resolveLook(record: DeviceThemeRecord, account: AccountLook | nu
 
 export const looksEqual = (a: ThemeLook, b: ThemeLook): boolean => a.themeId === b.themeId && a.colorMode === b.colorMode && a.gradientIntensity === b.gradientIntensity;
 
-/** Does leaving "This device only" need the "upload or keep the account's?" question? Only when a device theme exists and is different. */
+/**
+ * Does leaving "This device only" need the "upload or keep the account's?" question? Only when a device theme exists and is different,
+ * and the person has not said "don't ask again" (`leaveChoice`, changeable in the same settings section).
+ */
 export function scopeSwitchNeedsChoice(record: DeviceThemeRecord, account: AccountLook | null | undefined): boolean {
-  return record.scope === "device" && record.theme !== null && !looksEqual(record.theme, accountLook(account));
+  return record.scope === "device" && record.theme !== null && !record.leaveChoice && !looksEqual(record.theme, accountLook(account));
+}
+
+/** The record with the remembered answer set (or cleared with `undefined`, which means ask again). */
+export function withLeaveChoice(record: DeviceThemeRecord, choice: LeaveChoice | undefined): DeviceThemeRecord {
+  const { leaveChoice: _drop, ...rest } = record;
+  void _drop;
+  return choice ? { ...rest, leaveChoice: choice } : rest;
 }
 
 /**
@@ -110,11 +126,11 @@ export function scopeSwitchNeedsChoice(record: DeviceThemeRecord, account: Accou
  * Uploading the device theme to the account is a separate step (`ThemeProvider.setScope(..., "upload")`), and never touches the record.
  */
 export function switchScope(record: DeviceThemeRecord, to: ThemeScope, current: ThemeLook): DeviceThemeRecord {
-  if (to === "device") return { scope: "device", theme: record.theme ?? current };
-  return { scope: "account", theme: record.theme };
+  if (to === "device") return { ...record, scope: "device", theme: record.theme ?? current };
+  return { ...record, scope: "account", theme: record.theme };
 }
 
 /** A change made while the scope is "device" updates the device theme (never the account). */
 export function applyDeviceChange(record: DeviceThemeRecord, current: ThemeLook, patch: Partial<ThemeLook>): DeviceThemeRecord {
-  return { scope: "device", theme: { ...(record.theme ?? current), ...patch } };
+  return { ...record, scope: "device", theme: { ...(record.theme ?? current), ...patch } };
 }

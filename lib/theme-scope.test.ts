@@ -13,6 +13,7 @@ import {
   resolveLook,
   scopeSwitchNeedsChoice,
   switchScope,
+  withLeaveChoice,
   writeDeviceThemeRecord,
   type DeviceThemeRecord,
   type ThemeLook,
@@ -95,6 +96,30 @@ describe("switching scope", () => {
     expect(scopeSwitchNeedsChoice({ scope: "device", theme: accountLook(ACCOUNT) }, ACCOUNT)).toBe(false);
     expect(scopeSwitchNeedsChoice({ scope: "account", theme: DEVICE }, ACCOUNT)).toBe(false);
     expect(scopeSwitchNeedsChoice(EMPTY_DEVICE_RECORD, ACCOUNT)).toBe(false);
+  });
+
+  it("'don't ask again': a remembered answer skips the question, survives scope switches, and is read back from storage", () => {
+    const remembered = withLeaveChoice(deviceRecord, "keep");
+    expect(scopeSwitchNeedsChoice(remembered, ACCOUNT)).toBe(false);
+    expect(switchScope(remembered, "account", DEVICE).leaveChoice).toBe("keep");
+    expect(switchScope(switchScope(remembered, "account", DEVICE), "device", DEVICE).leaveChoice).toBe("keep");
+    expect(applyDeviceChange(remembered, DEVICE, { themeId: "ocean" }).leaveChoice).toBe("keep");
+    const s = fakeStorage();
+    writeDeviceThemeRecord("alice", remembered, s);
+    expect(readDeviceThemeRecord("alice", s)).toEqual(remembered);
+    expect(parseDeviceThemeRecord(JSON.stringify({ scope: "device", theme: DEVICE, leaveChoice: "bad" }))).toEqual(deviceRecord);
+  });
+
+  it("the remembered answer can be cleared again (ask me), and alone it still leaves a record to read", () => {
+    const remembered = withLeaveChoice({ scope: "account", theme: null }, "upload");
+    const s = fakeStorage();
+    writeDeviceThemeRecord("alice", remembered, s);
+    expect(s.data.size).toBe(1); // not removed as an "empty" record
+    const cleared = withLeaveChoice(remembered, undefined);
+    expect(cleared).toEqual({ scope: "account", theme: null });
+    expect(scopeSwitchNeedsChoice(withLeaveChoice(deviceRecord, undefined), ACCOUNT)).toBe(true);
+    writeDeviceThemeRecord("alice", cleared, s);
+    expect(s.data.size).toBe(0);
   });
 
   it("a change made in 'device' scope changes the device theme only", () => {
