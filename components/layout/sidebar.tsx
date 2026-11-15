@@ -7,7 +7,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronsLeft, ChevronsRight, LogOut, Trophy } from "lucide-react";
 import { mainNav, secondaryNav, type NavItem } from "@/lib/nav";
 import { visibleNav } from "@/lib/page-access/nav";
-import { useNavLabel } from "@/components/layout/use-nav-label";
 import { useAccessUser, usePageAccess } from "@/lib/page-access/store";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/motion";
@@ -48,7 +47,6 @@ function NavLink({
 }) {
   const pathname = usePathname();
   const program = useProgram();
-  const labelOf = useNavLabel();
   const active = item.matchPrefix ? pathname.startsWith(item.href) : pathname === item.href;
   const Icon = item.icon;
 
@@ -61,7 +59,7 @@ function NavLink({
         className="relative flex cursor-not-allowed items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium text-[var(--muted-foreground)] opacity-45"
       >
         <Icon className="h-[18px] w-[18px] shrink-0" />
-        {!collapsed && <span className="truncate">{labelOf(item)}</span>}
+        {!collapsed && <span className="truncate">{item.label}</span>}
       </div>
     );
   }
@@ -94,7 +92,7 @@ function NavLink({
           {unread && !active && collapsed && <UnreadDot className="absolute -right-1 -top-1" />}
           {count > 0 && collapsed && <CountBadge count={count} className="absolute -right-2 -top-2" />}
         </span>
-        {!collapsed && <span className="truncate">{labelOf(item)}</span>}
+        {!collapsed && <span className="truncate">{item.label}</span>}
         {unread && !active && !collapsed && <UnreadDot className="ml-auto" />}
         {count > 0 && !collapsed && <CountBadge count={count} className="ml-auto" />}
       </motion.div>

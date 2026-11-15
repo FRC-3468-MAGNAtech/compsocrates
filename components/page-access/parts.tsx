@@ -10,7 +10,6 @@ import { visibleNav } from "@/lib/page-access/nav";
 import { PAGES, RESTRICTED_PAGES } from "@/lib/page-access/pages";
 import type { PageAccessRequest } from "@/lib/page-access/store";
 import { mainNav, secondaryNav } from "@/lib/nav";
-import { useNavLabel } from "@/components/layout/use-nav-label";
 import { ROLES, getRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +21,6 @@ const STICKY = "sticky left-0 z-10 glass-overlay !rounded-none !shadow-none";
 
 /** Rows are the restricted pages, columns the roles; a ticked box means that role (primary or secondary) can open the page. */
 export function RoleMatrix({ config, onToggle, disabled }: { config: PageAccessConfig; onToggle: (role: (typeof ROLES)[number]["id"], pageId: string, on: boolean) => void; disabled?: boolean }) {
-  const labelOf = useNavLabel();
   return (
     <div className="glass-card overflow-x-auto p-0" data-testid="role-matrix">
       <table className="w-full min-w-[56rem] border-collapse text-left text-sm">
@@ -42,7 +40,7 @@ export function RoleMatrix({ config, onToggle, disabled }: { config: PageAccessC
           {RESTRICTED_PAGES.map((page) => (
             <tr key={page.id} data-page={page.id}>
               <th scope="row" className={cn(STICKY, "px-3 py-2.5 text-left font-medium")}>
-                {labelOf(page)}
+                {page.title}
               </th>
               {ROLES.map((r) => {
                 const checked = (config.roleGrants[r.id] ?? []).includes(page.id);
@@ -52,7 +50,7 @@ export function RoleMatrix({ config, onToggle, disabled }: { config: PageAccessC
                       checked={checked}
                       disabled={disabled}
                       onCheckedChange={(v) => onToggle(r.id, page.id, v === true)}
-                      aria-label={`${r.label} can open ${labelOf(page)}`}
+                      aria-label={`${r.label} can open ${page.title}`}
                       data-testid={`matrix-${r.id}-${page.id}`}
                       className="mx-auto h-7 w-7"
                     />
@@ -81,7 +79,6 @@ const STATE_LABEL: Record<MemberPageState, string> = { default: "Follow roles", 
 
 /** One member's pages: what they get from their roles, and per page an override (follow their roles, grant, or deny), with where the access comes from. */
 export function MemberAccessEditor({ member, config, onSet, disabled }: { member: AccessUser & { name: string }; config: PageAccessConfig; onSet: (pageId: string, state: MemberPageState) => void; disabled?: boolean }) {
-  const labelOf = useNavLabel();
   if (member.isAdmin || member.isOwner) {
     return (
       <p data-testid="member-admin-note" className="glass-card flex items-center gap-2 px-4 py-3 text-sm text-[var(--muted-foreground)]">
@@ -99,13 +96,13 @@ export function MemberAccessEditor({ member, config, onSet, disabled }: { member
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium">
                 {e.allowed ? <Check className="h-4 w-4 shrink-0 text-emerald-300" aria-label="Can open" /> : <Lock className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" aria-label="Can't open" />}
-                {labelOf(page)}
+                {page.title}
               </div>
               <div className="text-xs text-[var(--muted-foreground)]" data-testid="access-source">
                 {SOURCE_TEXT[e.source](e)}
               </div>
             </div>
-            <div role="radiogroup" aria-label={`${labelOf(page)} override`} className="glass-pill inline-flex shrink-0 items-center gap-1 self-start p-1 sm:self-auto">
+            <div role="radiogroup" aria-label={`${page.title} override`} className="glass-pill inline-flex shrink-0 items-center gap-1 self-start p-1 sm:self-auto">
               {(["default", "grant", "deny"] as const).map((s) => (
                 <button
                   key={s}
@@ -133,7 +130,6 @@ export function MemberAccessEditor({ member, config, onSet, disabled }: { member
 
 /** "Preview as member": the navigation they see and which pages they can open, from the same function the app uses. */
 export function PreviewAsMember({ member, config }: { member: AccessUser & { name: string }; config: PageAccessConfig }) {
-  const labelOf = useNavLabel();
   const navItems = visibleNav([...mainNav, ...secondaryNav], (id) => explainAccess(member, id, config).allowed);
   const open = new Set(accessiblePages(member, config).map((p) => p.id));
   return (
@@ -144,7 +140,7 @@ export function PreviewAsMember({ member, config }: { member: AccessUser & { nam
           {navItems.map((i) => (
             <li key={i.href}>
               <Badge variant="glass" className="gap-1.5">
-                <i.icon className="h-3 w-3" aria-hidden /> {labelOf(i)}
+                <i.icon className="h-3 w-3" aria-hidden /> {i.label}
               </Badge>
             </li>
           ))}
@@ -156,7 +152,7 @@ export function PreviewAsMember({ member, config }: { member: AccessUser & { nam
           {PAGES.map((p) => (
             <li key={p.id} data-page={p.id} data-open={open.has(p.id) ? "true" : "false"} className={cn("flex items-center gap-1.5", !open.has(p.id) && "text-[var(--muted-foreground)] line-through decoration-1")}>
               {open.has(p.id) ? <Check className="h-3.5 w-3.5 text-emerald-300" aria-hidden /> : <X className="h-3.5 w-3.5" aria-hidden />}
-              {labelOf(p)}
+              {p.title}
               <span className="sr-only">{open.has(p.id) ? " (can open)" : " (can't open)"}</span>
             </li>
           ))}
