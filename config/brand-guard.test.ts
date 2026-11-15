@@ -46,6 +46,7 @@ const FTC_ALLOWED: Record<string, string> = {
   "lib/server/live-program.ts": "the one server place that maps a program id to its live and lobby data store, and validates the program a live route is asked for",
   "app/api/ftc/templates/route.ts": "the server route for form templates of an FTC account; hands the call to the FTC-scoped server module",
   "app/api/ftc/templates/route.test.ts": "tests that route's token checks and an admin success",
+  "config/platform.ts": "platform-level footer credit: the one place that names the teams behind both programs (not a program file; the FRC scope stays strict)",
   "lib/events/event-key.test.ts": "asserts the season-code key shape of the FTC program config and that an FTC key never collides with an FRC key",
   "lib/events/event-queries.test.ts": "asserts an FTC event reads the FTC provider and an FRC event the FRC one (mocked providers)",
   "components/events/event-page.parity.test.tsx": "renders the one event page under each program id and checks the FTC wording, key shape and credit",

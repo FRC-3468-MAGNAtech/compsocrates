@@ -1,38 +1,33 @@
 "use client";
 
-import Link from "@/components/program/link";
-import { useOurTeam } from "@/lib/our-team";
-import { teamLabel } from "@/lib/team-number";
+import { PLATFORM } from "@/config/platform";
 import { cn } from "@/lib/utils";
-import { BRAND } from "@/config/brand";
 
 /**
- * The small footer on every page (P14): a credit line plus the Credits and Changelog links. The credit line is
- * data-driven: signed in, it names the team ("Team 3468"); signed out (marketing pages, which can't read team data) it is just
- * the app name.
+ * The one site footer: the app shell, the landing page and every marketing and auth page render this component (the marketing layout covers
+ * login, signup and the legal pages). "(c) {year} {holder}" then the teams; the holder links to the team site in a new tab. The text, the team
+ * list and the URL come from `config/platform.ts`. It is plain content at the end of the page, never fixed or sticky, so it can never cover the
+ * scout form's score bar or a Next / Cancel bar; the inner padding keeps it clear of the home indicator on phones.
+ *
+ * The year is read on the client, and the server-rendered page may have been built in an earlier year, so the year text is the one piece React is
+ * told may differ between the server and the first client render (`suppressHydrationWarning`), instead of a hydration error.
  */
 export function SiteFooter({ className }: { className?: string }) {
-  const { number } = useOurTeam();
-  const teams = number !== null ? teamLabel(number) : "";
+  const { holder, holderHref, teams } = PLATFORM.footer;
   return (
-    <footer className={cn("flex flex-col items-center gap-3 py-6 text-sm text-[var(--muted-foreground)] sm:flex-row sm:justify-between", className)}>
-      <span>
-        &copy; {new Date().getFullYear()} {BRAND.copyrightHolder}{teams && <> &mdash; {teams}</>}
-      </span>
-      <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-        <Link href="/credits" className="transition-colors hover:text-[var(--foreground)]">
-          Credits
-        </Link>
-        <Link href="/changelog" className="transition-colors hover:text-[var(--foreground)]">
-          Changelog
-        </Link>
-        <Link href="/privacy-policy" className="transition-colors hover:text-[var(--foreground)]">
-          Privacy Policy
-        </Link>
-        <Link href="/terms-of-service" className="transition-colors hover:text-[var(--foreground)]">
-          Terms of Service
-        </Link>
-      </nav>
+    <footer className={cn("px-4 py-6 text-center text-sm text-[var(--muted-foreground)]", className)} data-testid="site-footer">
+      <div className="flex flex-col items-center gap-x-2 gap-y-1 pb-[env(safe-area-inset-bottom)] sm:flex-row sm:flex-wrap sm:justify-center">
+        <span>
+          &copy; <span suppressHydrationWarning>{new Date().getFullYear()}</span>{" "}
+          <a href={holderHref} target="_blank" rel="noopener noreferrer" className="font-medium text-[var(--foreground)] underline-offset-4 hover:underline">
+            {holder}
+          </a>
+        </span>
+        <span aria-hidden className="hidden sm:inline">
+          &middot;
+        </span>
+        <span>{teams}</span>
+      </div>
     </footer>
   );
 }
