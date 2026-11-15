@@ -14,6 +14,7 @@ import { ftcAttendanceDoc, ftcAttendanceDocId, ftcDocsToAttendance } from "@/dat
 import { ftcActiveEventsFields, ftcTeamToTeamDoc, readStoredEvent } from "@/data/ftc/teams";
 import { ftcProfilePatch, ftcUserToMember, ftcUserToProfile } from "@/data/ftc/users";
 import { ftcJoinRequestDoc, ftcNewTeamDocs } from "@/data/ftc/enrollment";
+import { ftcApprovedProfileDoc, ftcJoinDecisionFields } from "@/data/ftc/join-request-docs";
 import { programPath } from "@/lib/firebase/paths";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 
@@ -535,5 +536,157 @@ describe("starting or joining a team (enrollment)", () => {
     await assertFails(setDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-j2"), { ...ftcJoinRequestDoc({ uid: "ftc-j2", name: "Jo" }, serverTimestamp()), status: "approved" }));
     await assertFails(setDoc(doc(db, P("teams"), T1, "joinRequests", "ftc-j2"), { ...ftcJoinRequestDoc({ uid: "ftc-j2", name: "Jo" }, serverTimestamp()), isAdmin: true }));
     await assertFails(setDoc(doc(as(SCOUT), P("teams"), T2, "joinRequests", SCOUT), ftcJoinRequestDoc({ uid: SCOUT, name: "Ada" }, serverTimestamp())));
+  });
+});
+
+describe("approving and denying a join request (team admin of the same team)", () => {
+  const ADMIN2 = "ftc-admin-t2";
+  const NAME = "Joiner";
+  let n = 0;
+
+  /** A pending request (written with the rules off, as the applicant's own create is covered above). */
+  async function seedRequest(teamId = T1, over: Record<string, unknown> = {}) {
+    const uid = `ftc-applicant-${++n}`;
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), P("teams"), teamId, "joinRequests", uid), { uid, name: NAME, status: "pending", createdAt: new Date(1000), ...over });
+    });
+    return uid;
+  }
+
+  const fieldIds = (teamId: string) => (teamId === T1 ? ["ft-1", "ft-2"] : []);
+
+  /** The batch the data layer sends: the request approved and the applicant's profile, as `actor`. The options bend it for the refusals. */
+  function approve(
+    actor: string,
+    uid: string,
+    opts: { teamId?: string; profile?: Record<string, unknown>; skipProfile?: boolean; skipRequest?: boolean; extra?: (b: ReturnType<typeof writeBatch>, db: ReturnType<typeof as>) => void } = {}
+  ) {
+    const db = as(actor);
+    const teamId = opts.teamId ?? T1;
+    const batch = writeBatch(db);
+    if (!opts.skipRequest) batch.update(doc(db, P("teams"), teamId, "joinRequests", uid), ftcJoinDecisionFields("approved", actor, serverTimestamp()));
+    if (!opts.skipProfile) batch.set(doc(db, P("users"), uid), { ...ftcApprovedProfileDoc(teamId, { name: NAME }, fieldIds(teamId), serverTimestamp()), ...opts.profile });
+    opts.extra?.(batch, db);
+    return batch.commit();
+  }
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), P("users"), ADMIN2), { name: "Admin Two", email: "a2@example.org", teamId: T2, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+    });
+  });
+
+  it("the team's admin approves: the applicant gets a plain-member profile on that team and the request reads approved", async () => {
+    const uid = await seedRequest();
+    await assertSucceeds(approve(ADMIN, uid));
+    const mine = await assertSucceeds(getDoc(doc(as(uid), P("users"), uid)));
+    expect(mine.data()).toMatchObject({ name: NAME, teamId: T1, primaryRole: "match-scout", secondaryRoles: [], isAdmin: false, isOwner: false, fieldTeamIds: ["ft-1", "ft-2"] });
+    const request = await assertSucceeds(getDoc(doc(as(ADMIN), P("teams"), T1, "joinRequests", uid)));
+    expect(request.data()).toMatchObject({ status: "approved", decidedBy: ADMIN });
+    // the new member is read by the team like anyone else (roster query) and reads the team doc
+    const roster = await assertSucceeds(getDocs(query(collection(as(SCOUT), P("users")), where("teamId", "==", T1))));
+    expect(roster.docs.map((d) => d.id)).toContain(uid);
+    await assertSucceeds(getDoc(doc(as(uid), P("teams"), T1)));
+  });
+
+  it("the pending list is one equality query under the team, readable by its admin only", async () => {
+    await seedRequest();
+    const q = (uid: string) => getDocs(query(collection(as(uid), P("teams"), T1, "joinRequests"), where("status", "==", "pending")));
+    const list = await assertSucceeds(q(ADMIN));
+    expect(list.docs.length).toBeGreaterThan(0);
+    await assertFails(q(SCOUT));
+    await assertFails(q(ADMIN2));
+  });
+
+  it("refuses approval by a non-admin, by an admin of another team, and of a request for another team", async () => {
+    const a = await seedRequest();
+    await assertFails(approve(SCOUT, a));
+    await assertFails(approve(ADMIN2, a));
+    const other = await seedRequest(T2);
+    await assertFails(approve(ADMIN, other, { teamId: T2 }));
+  });
+
+  it("refuses approving a request that does not exist, and a profile or an approval on its own", async () => {
+    await assertFails(approve(ADMIN, "ftc-no-such-request"));
+    await assertFails(approve(ADMIN, "ftc-no-such-request", { skipRequest: true }));
+    const uid = await seedRequest();
+    await assertFails(approve(ADMIN, uid, { skipRequest: true })); // a profile without approving the request
+    await assertFails(approve(ADMIN, uid, { skipProfile: true })); // approving without creating the profile
+  });
+
+  it("refuses a profile with an admin or owner role, any other role, extra fields, or another team's field teams", async () => {
+    for (const bad of [
+      { isAdmin: true },
+      { isOwner: true },
+      { primaryRole: "team-coach" },
+      { primaryRole: "lead-scout" },
+      { secondaryRoles: ["lead-scout"] },
+      { fieldTeamIds: ["other"] },
+      { teamId: T2 },
+      { name: "Someone Else" },
+      { email: "x@example.org" },
+      { isPlatformOwner: true },
+    ]) {
+      const uid = await seedRequest();
+      await assertFails(approve(ADMIN, uid, { profile: bad }));
+    }
+  });
+
+  it("refuses the applicant approving their own request", async () => {
+    const uid = await seedRequest();
+    await assertFails(approve(uid, uid));
+    await assertFails(updateDoc(doc(as(uid), P("teams"), T1, "joinRequests", uid), ftcJoinDecisionFields("approved", uid, serverTimestamp())));
+  });
+
+  it("refuses changing anything of another team, or anything but the decision", async () => {
+    const uid = await seedRequest();
+    await assertFails(approve(ADMIN, uid, { extra: (b, db) => b.update(doc(db, P("teams"), T2), { name: "Hijacked" }) }));
+    await assertFails(approve(ADMIN, uid, { extra: (b, db) => b.update(doc(db, P("users"), OTHER), { primaryRole: "lead-scout" }) }));
+    const t2 = await seedRequest(T2);
+    await assertFails(updateDoc(doc(as(ADMIN), P("teams"), T2, "joinRequests", t2), ftcJoinDecisionFields("denied", ADMIN, serverTimestamp())));
+    // only status, decidedBy and decidedAt may change: not the name, not who decided, and not back to pending
+    await assertFails(updateDoc(doc(as(ADMIN), P("teams"), T1, "joinRequests", uid), { ...ftcJoinDecisionFields("denied", ADMIN, serverTimestamp()), name: "Renamed" }));
+    await assertFails(updateDoc(doc(as(ADMIN), P("teams"), T1, "joinRequests", uid), ftcJoinDecisionFields("denied", "someone-else", serverTimestamp())));
+    await assertFails(updateDoc(doc(as(ADMIN), P("teams"), T1, "joinRequests", uid), { status: "pending", decidedBy: ADMIN, decidedAt: serverTimestamp() }));
+  });
+
+  it("refuses deciding a request twice, and overwriting an account that already has a profile", async () => {
+    const uid = await seedRequest();
+    await assertSucceeds(approve(ADMIN, uid));
+    await assertFails(approve(ADMIN, uid)); // already approved
+    const denied = await seedRequest(T1, { status: "denied" });
+    await assertFails(approve(ADMIN, denied));
+    // a request from an account that already has a profile (T2's OTHER): the profile would be an overwrite, which is not a create
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), P("teams"), T1, "joinRequests", OTHER), { uid: OTHER, name: "Other", status: "pending", createdAt: new Date(1000) });
+    });
+    await assertFails(approve(ADMIN, OTHER));
+  });
+
+  it("the team's admin denies a request: only the request changes and the applicant gets no profile", async () => {
+    const uid = await seedRequest();
+    await assertSucceeds(updateDoc(doc(as(ADMIN), P("teams"), T1, "joinRequests", uid), ftcJoinDecisionFields("denied", ADMIN, serverTimestamp())));
+    const request = await assertSucceeds(getDoc(doc(as(uid), P("teams"), T1, "joinRequests", uid)));
+    expect(request.data()).toMatchObject({ status: "denied", decidedBy: ADMIN });
+    const profile = await assertSucceeds(getDoc(doc(as(uid), P("users"), uid)));
+    expect(profile.exists()).toBe(false);
+  });
+
+  it("refuses a denial by a non-admin, an admin of another team, and the applicant", async () => {
+    const uid = await seedRequest();
+    const deny = (actor: string) => updateDoc(doc(as(actor), P("teams"), T1, "joinRequests", uid), ftcJoinDecisionFields("denied", actor, serverTimestamp()));
+    await assertFails(deny(SCOUT));
+    await assertFails(deny(ADMIN2));
+    await assertFails(deny(uid));
+  });
+
+  it("the applicant reads their own (missing) profile and may send a new request after a denial", async () => {
+    const uid = await seedRequest(T1, { status: "denied" });
+    const missing = await assertSucceeds(getDoc(doc(as(uid), P("users"), uid)));
+    expect(missing.exists()).toBe(false);
+    await assertFails(getDoc(doc(as(uid), P("users"), "ftc-someone-else-missing")));
+    const db = as(uid);
+    await assertSucceeds(deleteDoc(doc(db, P("teams"), T1, "joinRequests", uid)));
+    await assertSucceeds(setDoc(doc(db, P("teams"), T1, "joinRequests", uid), ftcJoinRequestDoc({ uid, name: "Again" }, serverTimestamp())));
   });
 });

@@ -1334,8 +1334,11 @@ service cloud.firestore {
 
         // Session A: a request to join, `joinRequests/{uid}` (the sister app joined instantly through a server route and had no such
         // document, so this is new). The person writes only their own, only for a team that exists, only while they have no profile, and
-        // only as pending. They and the team's admins read it; they may withdraw it. Approval (an admin creating the applicant's profile)
-        // is NOT allowed yet: it needs its own rule and the Team Management UI.
+        // only as pending. They and the team's admins read it; they may withdraw it.
+        // Batch 1: a member-manager (admin or owner) of THIS team decides a pending request. Denying changes only the request. Approving must be
+        // ONE batch that also creates the applicant's profile (the `users` create rule below reads the request with get/getAfter), so a request
+        // is never approved without a profile and a profile is never created without an approved request. Only status, decidedBy and decidedAt
+        // change. An update of a request that does not exist is a create, which only the applicant can do (above), so it cannot be approved.
         match /joinRequests/{reqUid} {
           allow read: if ftc_isSignedIn() && (reqUid == request.auth.uid || (ftc_sameTeam(teamId) && ftc_canManageMembers()));
           allow create: if ftc_isSignedIn() && reqUid == request.auth.uid
@@ -1347,13 +1350,25 @@ service cloud.firestore {
             && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
             && request.resource.data.status == 'pending'
             && request.resource.data.createdAt == request.time;
-          allow update: if false;
+          allow update: if ftc_sameTeam(teamId) && ftc_canManageMembers()
+            && reqUid != request.auth.uid
+            && resource.data.status == 'pending'
+            && request.resource.data.status in ['approved', 'denied']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedAt'])
+            && request.resource.data.decidedBy == request.auth.uid
+            && request.resource.data.decidedAt == request.time
+            && (request.resource.data.status == 'denied'
+              || (!exists(/databases/$(database)/documents/programs/ftc/users/$(reqUid))
+                && existsAfter(/databases/$(database)/documents/programs/ftc/users/$(reqUid))
+                && getAfter(/databases/$(database)/documents/programs/ftc/users/$(reqUid)).data.teamId == teamId));
           allow delete: if ftc_isSignedIn() && reqUid == request.auth.uid;
         }
       }
 
       match /users/{uid} {
-        allow read: if ftc_isSignedIn() && ftc_sameTeam(resource.data.teamId);
+        // Your own profile is always readable, including before it exists: a person waiting for a join request to be approved watches it (the
+        // document appears when an admin approves), and a read of a missing document cannot be allowed by anything that looks at its fields.
+        allow read: if ftc_isSignedIn() && (uid == request.auth.uid || ftc_sameTeam(resource.data.teamId));
 
         // P1b: user docs are only ever created via /api/team/join or
         // /api/team/create (Admin SDK) — never directly by a client. This
@@ -1376,6 +1391,27 @@ service cloud.firestore {
           && request.resource.data.primaryRole in ftc_validRoleIds()
           && request.resource.data.secondaryRoles == []
           && request.resource.data.fieldTeamIds == getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)).data.fieldTeamIdList
+          && request.resource.data.createdAt == request.time;
+
+        // Batch 1: approving a join request. An admin or owner of the request's own team (never the applicant) creates the applicant's profile in
+        // the SAME batch that marks their pending request approved (get = before, getAfter = after). The profile is a plain member: the lowest role
+        // (Match Scout), no secondary roles, not admin, not owner, on that team, with that team's field teams and the name the applicant gave. The
+        // rule cannot create a profile for a request that does not exist, was already decided, or belongs to another team, and `create` only
+        // applies when the profile does not exist, so an existing account is never overwritten.
+        allow create: if ftc_isSignedIn() && request.auth.uid != uid
+          && request.resource.data.teamId is string
+          && ftc_sameTeam(request.resource.data.teamId) && ftc_canManageMembers()
+          && exists(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)/joinRequests/$(uid))
+          && get(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)/joinRequests/$(uid)).data.status == 'pending'
+          && getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)/joinRequests/$(uid)).data.status == 'approved'
+          && getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)/joinRequests/$(uid)).data.uid == uid
+          && request.resource.data.keys().hasOnly(['name', 'teamId', 'primaryRole', 'secondaryRoles', 'isAdmin', 'isOwner', 'fieldTeamIds', 'createdAt'])
+          && request.resource.data.keys().hasAll(['name', 'teamId', 'primaryRole', 'secondaryRoles', 'isAdmin', 'isOwner', 'fieldTeamIds', 'createdAt'])
+          && request.resource.data.name == get(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)/joinRequests/$(uid)).data.name
+          && request.resource.data.isAdmin == false && request.resource.data.isOwner == false
+          && request.resource.data.primaryRole == 'match-scout'
+          && request.resource.data.secondaryRoles == []
+          && request.resource.data.fieldTeamIds == get(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)).data.get('fieldTeamIdList', [])
           && request.resource.data.createdAt == request.time;
 
         // You can update your own profile, but never teamId, primaryRole,
