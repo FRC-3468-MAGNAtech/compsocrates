@@ -21,6 +21,7 @@ import type { UserDoc } from "@/lib/auth";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import type { EventAttendance } from "@/lib/event-attendance";
 import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
+import type { AccountTeamsChange } from "@/lib/account-teams";
 import type { PickOp } from "@/lib/pick-list/ops";
 import type { PickListDoc } from "@/lib/pick-list/store";
 import type { MemberAccess } from "@/lib/member-access";
@@ -75,6 +76,12 @@ export type ProgramData = {
     setArchivedEvents(teamId: string, codes: string[]): Promise<void>;
     /** Writes the team's form-submission switches (ADDITIVE `formSubmissionSettings`; admins and the owner). Writes that one field and nothing else. */
     setFormSubmissionSettings(teamId: string, settings: FormSubmissionSettings): Promise<void>;
+    /** Team Settings: saves the account's teams and/or members' team assignments with one audit entry, in one batch (admins and the owner, by the rules). */
+    saveAccountTeams(actor: { teamId: string; uid: string; name: string }, change: AccountTeamsChange): Promise<void>;
+    /** Team Settings: asks the program's events API (on the server, keys never reach the browser) for a team's name by number. Rejects with a message to show; "found: false" for an unknown number. */
+    lookupTeamName(teamId: string, number: number): Promise<{ found: boolean; name?: string }>;
+    /** Team Settings: the form a season uses (`activeForms.{season}`), with its audit entry in the same batch (admins and the owner). */
+    setActiveForm(actor: { teamId: string; uid: string; name: string }, seasonId: string, formId: string, previousFormId: string | null): Promise<void>;
   };
   scoutEntries: {
     /** Every entry of the team, all events and sources. */

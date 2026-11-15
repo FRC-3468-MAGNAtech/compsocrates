@@ -52,6 +52,8 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "decide-page-access-request": "Decide Page Access Request",
   "edit-sidebar": "Edit Sidebar",
   "edit-form-entry": "Edit Form Entry",
+  "edit-account-teams": "Edit Teams",
+  "edit-member-teams": "Edit Member Teams",
 };
 
 function toMillis(value: unknown): number {

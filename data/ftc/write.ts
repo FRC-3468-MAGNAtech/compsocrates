@@ -13,7 +13,7 @@ import { programCollection, programDoc, programPath } from "@/lib/firebase/paths
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import { ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
-import { ftcActiveEventsFields } from "@/data/ftc/teams";
+import { ftcAccountTeamsFields, ftcActiveEventsFields } from "@/data/ftc/teams";
 import { ftcNewTeamDocs, newFtcJoinCode, type JoinRequestInput, type NewTeamInput } from "@/data/ftc/enrollment";
 import type { ActiveEventsState } from "@/lib/active-events";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
@@ -33,6 +33,7 @@ import type { TeamAssignKind, TeamAssignVersion, TeamAssignmentsDoc } from "@/li
 import { applyPickOp, samePicks, sanitizePicks, type PickOp } from "@/lib/pick-list/ops";
 import type { MemberAccess } from "@/lib/member-access";
 import type { TeamMember } from "@/lib/team-members";
+import type { AccountTeamsChange } from "@/lib/account-teams";
 
 const PROGRAM = "ftc" as const;
 const SCOUT_ENTRIES = "scoutEntries";
@@ -131,6 +132,34 @@ export async function setFormSubmissionSettings(teamId: string, settings: FormSu
     reportFirestoreError("Couldn't save the submission settings", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
     throw err;
   }
+}
+
+/**
+ * Team Settings: the account's teams and which members are assigned to which, in ONE batch with its audit entry. The team doc is written first, then each
+ * affected member's `fieldTeamIds` (the rules check them against the team doc AFTER the batch, so a team can be added and assigned together), then the log.
+ * `teams` null leaves the team list alone (an assignment-only change). Admins and the owner only, by the rules; a member cannot change their own list.
+ * Nothing here touches an entry: entries belong to the account, so a removed team leaves every entry as it was.
+ */
+export function saveAccountTeams(actor: { teamId: string; uid: string; name: string }, change: AccountTeamsChange): Promise<void> {
+  if (change.teams === null && change.assignments.length === 0) return Promise.resolve();
+  if (change.assignments.length > 400) return Promise.reject(new Error("Too many members to change at once."));
+  return reported("Couldn't save the teams", `${programPath(PROGRAM, TEAMS)}/${actor.teamId}`, async () => {
+    const batch = writeBatch(db);
+    if (change.teams) batch.update(programDoc(db, PROGRAM, TEAMS, actor.teamId), ftcAccountTeamsFields(change.teams));
+    for (const a of change.assignments) batch.update(programDoc(db, PROGRAM, USERS, a.uid), { fieldTeamIds: a.assignedTeamIds });
+    batch.set(newAuditLogRef(PROGRAM), buildAuditEntry(actor.teamId, actor.uid, actor.name, change.action, change.target, change.before, change.after));
+    await batch.commit();
+  });
+}
+
+/** Sets the form a season uses (`activeForms.{season}`), with its audit entry in the same batch. Admins and the owner only. */
+export function setActiveForm(actor: { teamId: string; uid: string; name: string }, seasonId: string, formId: string, previousFormId: string | null): Promise<void> {
+  return reported("Couldn't save the active form", `${programPath(PROGRAM, TEAMS)}/${actor.teamId}`, async () => {
+    const batch = writeBatch(db);
+    batch.update(programDoc(db, PROGRAM, TEAMS, actor.teamId), { [`activeForms.${seasonId}`]: formId });
+    batch.set(newAuditLogRef(PROGRAM), buildAuditEntry(actor.teamId, actor.uid, actor.name, "set-active-form", { seasonId }, { formId: previousFormId }, { formId }));
+    await batch.commit();
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

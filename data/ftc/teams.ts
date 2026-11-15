@@ -72,6 +72,21 @@ export function readFieldTeams(doc: Pick<FtcTeamDoc, "fieldTeams" | "number" | "
   return number > 0 ? [{ id: migratedFieldTeamId(number), number, name: str(doc.name).trim() }] : [];
 }
 
+/**
+ * The fields written to `programs/ftc/teams/{id}` when the account's team list changes. `number` / `name` mirror the first team (anything still reading the single
+ * team keeps working); `fieldTeamIdList` is the plain id list the rules check a member's assignment against; `fieldTeamNumbers` is the queryable mirror of the numbers.
+ */
+export function ftcAccountTeamsFields(teams: readonly AccountTeam[]): { fieldTeams: FtcFieldTeam[]; fieldTeamIdList: string[]; fieldTeamNumbers: number[]; number: number; name: string | null } {
+  const first = teams[0];
+  return {
+    fieldTeams: teams.map((t) => ({ id: t.id, number: t.number, name: (t.name ?? "").trim() })),
+    fieldTeamIdList: teams.map((t) => t.id),
+    fieldTeamNumbers: teams.map((t) => t.number),
+    number: first.number,
+    name: (first.name ?? "").trim() || null,
+  };
+}
+
 /** A stored event (the denormalized copy on the team doc) as `EventInfo`. Null without a code. A missing season reads as 0, a bad status as "upcoming". */
 export function readStoredEvent(value: unknown): EventInfo | null {
   if (!isRecord(value)) return null;

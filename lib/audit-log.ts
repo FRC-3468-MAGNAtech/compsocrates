@@ -62,7 +62,10 @@ export type AuditAction =
   // Session F: the admin arranged the sidebar (Admin Panel > Sidebar)
   | "edit-sidebar"
   // P29: a scout edited their own earlier form entry (the log keeps what it was and what it became)
-  | "edit-form-entry";
+  | "edit-form-entry"
+  // Batch 5a: the account's teams (add, rename, remove) and which of them a member is assigned to
+  | "edit-account-teams"
+  | "edit-member-teams";
 
 export type AuditLogEntry = {
   id: string;

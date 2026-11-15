@@ -7,6 +7,7 @@ import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedu
 import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
 import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeOwnPausedSession, subscribeSession, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
 import { fetchFtcSchedule } from "@/lib/ftc/library-import";
+import { lookupTeamName } from "@/lib/ftc/team-lookup-client";
 import { approveJoinRequest, denyJoinRequest, subscribePendingJoinRequests } from "@/data/ftc/join-requests";
 import { getFormVersion, getScoutEntriesForEvent, getScoutEntriesForSession, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
 import {
@@ -28,6 +29,8 @@ import {
   setActiveEvents,
   setArchivedEvents,
   setFormSubmissionSettings,
+  saveAccountTeams,
+  setActiveForm,
   setEventAttendance,
   updateFormEntry,
   updateMemberAccess,
@@ -46,7 +49,7 @@ export const FTC_SEASONS: readonly ProgramSeason[] = FTC_GAME_ID_LIST.map((id) =
 
 export const ftcProgramData: ProgramData = {
   profile: { subscribe: subscribeUserProfile, update: updateUserProfile, updateFields: updateUserFields },
-  team: { subscribe: subscribeTeamDoc, setActiveEvents, setArchivedEvents, setFormSubmissionSettings },
+  team: { subscribe: subscribeTeamDoc, setActiveEvents, setArchivedEvents, setFormSubmissionSettings, saveAccountTeams, lookupTeamName, setActiveForm },
   scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry, update: updateScoutEntry, delete: deleteScoutEntry, getForEvent: getScoutEntriesForEvent, importBatch: importScoutEntries },
   formEntries: {
     subscribe: (teamId, query, onData, onError) => subscribeFormEntries(teamId, query, onData, onError),
